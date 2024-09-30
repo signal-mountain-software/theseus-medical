@@ -2223,6 +2223,16 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
             });
           }
         }
+        if (allowed_event && (body.filter.slot_owner)) {
+          // event must have a slot owner in the list of body.filter.slot_owners
+          let slotOwnerList = makeArray(body.filter.slot_owner);
+          if (slotOwnerList.includes('*all')) { }
+          else {
+            allowed_event = Object.keys(response[this_date].events[this_event].slot_owners).some(this_slotOwner => {
+              return slotOwnerList.includes(this_slotOwner);
+            });
+          }
+        }
       }
       if (!allowed_event) {
         delete response[this_date].events[this_event];

@@ -499,7 +499,7 @@ export async function getIcon(pIcon) {
 
 export async function getObject64(pObj) {
   let imageBucket = 'theseus-medical-storage';
-  let oPieces = pObj.toLowerCase().split('/');
+  let oPieces = pObj.split('/');
   let oFile = oPieces.pop();
   let myPiece = oPieces.findIndex(x => {
     return (x.includes('.s3'));
@@ -509,18 +509,37 @@ export async function getObject64(pObj) {
   }
   let oData;
   try {
-    await s3.getObject({
-      Bucket: imageBucket,
-      Key: oFile,
-    }, function (error, data) {
-      if (data) { oData = data; };
-    })
-      .promise();
-    if (!oData || (oData.ContentLength === 0)) {
-      return;
-    }
+    let rawObject =
+      await s3.getObject({
+        Bucket: imageBucket,
+        Key: oFile,
+      }, function (error, data) {
+        if (data) {
+          oData = data;
+          if (oData) {
+            console.log('got oData');
+          }
+        };
+      })
+        .promise();
+    console.log(rawObject);
+    let gotURL =
+      s3.getSignedUrl('getObject', {
+        Bucket: imageBucket,
+        Key: oFile,
+        Expires: 3600
+      });
+    if (!gotURL || (gotURL.ContentLength === 0)) { throw new Error('No object returned'); }
     else {
-      let base64String = oData.Body.toString('base64');
+      let gotObject =
+        await s3.getObject({
+          Bucket: imageBucket,
+          Key: oFile,
+        }).promise();
+      if (!gotObject || (gotObject.ContentLength === 0)) {
+        return;
+      };
+      let base64String = gotObject.Body.toString('base64');
       return "data:image/jpeg;base64," + base64String;
     }
   }

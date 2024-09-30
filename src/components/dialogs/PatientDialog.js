@@ -4,7 +4,7 @@ import "cropperjs/dist/cropper.css";
 import { API, graphqlOperation } from 'aws-amplify';
 import { getPerson, getSession, makeName, makeSearchData, formatPhone } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
-import { getObject, cl, dbClient, s3, lambda, cloudfront, titleCase } from '../../util/AVAUtilities';
+import { getObject, cl, dbClient, s3, lambda, cloudfront, titleCase, deepCopy } from '../../util/AVAUtilities';
 import { createPutFact } from '../../graphql/mutations';
 import useSession from '../../hooks/useSession';
 
@@ -392,12 +392,12 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
       return {
         "person_id": pPerson,
         "location": "",
-        "client_id": state.session.client_id,
+        "client_id": state?.session?.client_id || patient.client_id,
         "search_data": "",
         "clients": [
           {
             "groups": [],
-            "id": state.session.client_id
+            "id": state?.session?.client_id || patient.client_id
           }
         ],
         "name": {
@@ -432,7 +432,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
         "patient_display_name": "New Account",
         "user_display_name": "New Account",
         "assigned_to": "",
-        "client_id": state.session.client_id,
+        "client_id": state?.session?.client_id || patient.client_id,
         "groups_managed": [],
         "kiosk_mode": false,
         "last_login": "",
@@ -445,7 +445,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
         "storePassword": true,
         "subscription_status": "na",
         "url_parameters": {},
-        "user_homeClient": state.session.client_id
+        "user_homeClient": state?.session?.client_id || patient.client_id
       };
       setPatientSession(temp_session);
       return temp_session;
@@ -576,8 +576,35 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
   }
 
   const handleUpdate = async () => {
+    // error chacking
+    let errorList = [];
+    if (localData.lastName.trim().length === 0) {
+      if (localData.firstName.trim().length === 0) {
+        errorList.push('First and Last Name are blank');
+      }
+      else {
+        let name_parts = localData.firstName.trim().split(' ');
+        if (name_parts.length > 1) {
+          localData.firstName = name_parts.shift();
+          localData.lastName = name_parts.join(" ");
+        }
+        else {
+          localData.lastName = name_parts[0];
+          localData.firstName = "";
+        }
+        if (patient.person_id.startsWith('*NEW~')) {
+          patient.person_id = await newUserID(deepCopy(localData))
+        }
+      }
+    }
+    if (errorList.length > 0) {
+      enqueueSnackbar(errorList, { variant: 'error', persist: false });
+      setChanges(false);
+      return;
+    }
+    // all good
     let updatePerson = {
-      client_id: state.session.client_id,
+      client_id: state?.session?.client_id || patient.client_id,
       person_id: localData.patient_id || (patient.person_id.startsWith('*NEW~') ? await newUserID(localData) : patient.person_id),
       first: localData.firstName.substr(0, 1).toUpperCase() + localData.firstName.substr(1),
       last: localData.lastName.substr(0, 1).toUpperCase() + localData.lastName.substr(1),
@@ -608,7 +635,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
       pwdReset: !(resettingPwd === 0),
       newPassword: localData.inputPWD
     };
-    let myClient = state.session.client_id;
+    let myClient = state?.session?.client_id || patient.client_id;
     let putPerson = {
       person_id: updatePerson.person_id,
       client_id: myClient,
@@ -668,8 +695,8 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
       qualifier: null,
       status: 'requested',
       session: {
-        user_id: state.session.user_id,
-        session_id: state.session.session_id,
+        user_id: updatePerson.person_id,
+        session_id: updatePerson.person_id,
       },
     };
     await API.graphql(graphqlOperation(createPutFact, { input: newFactData })).catch(error => {
@@ -677,9 +704,9 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
     });
 
     let sessionRec = await getSession(patient.person_id);
-    sessionRec.session_id = localData.patient_id;
-    sessionRec.person_id = localData.patient_id;
-    sessionRec.user_id = localData.patient_id;
+    sessionRec.session_id = updatePerson.person_id;
+    sessionRec.person_id = updatePerson.person_id;
+    sessionRec.user_id = updatePerson.person_id;
     sessionRec.status = {
       'version': `v${process.env.REACT_APP_AVA_VERSION}`,
       'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
@@ -691,7 +718,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
       sessionRec.patient_id = proxy;
     }
     else {
-      sessionRec.patient_id = localData.patient_id;
+      sessionRec.patient_id = localData.patient_id || updatePerson.person_id;
     }
     if (localData.last_login && (resettingPwd < 2)) {
       sessionRec.last_login = localData.last_login;
@@ -748,7 +775,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
             ':g': [inactiveGroup],
             ':c': {
               'groups': [inactiveGroup],
-              'id': state.session.client_id
+              'id': state?.session?.client_id || patient.client_id
             }
           },
           ExpressionAttributeNames: {
@@ -1121,7 +1148,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
                 justifyContent='flex-start' flexDirection='row'>
                 <TextField classes={{ root: classes.idText }}
                   id='UserID'
-                  value={localData.patient_id}
+                  value={localData.patient_id  || localData.proposedID || patient.person_id}
                   fullWidth
                   onChange={async (event) => { await handleChangeUser(event); }}
                   onBlur={async (event) => { await handleBlurUser(event); }}
@@ -1132,7 +1159,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
               <Box display='flex' alignItems='center'
                 justifyContent='flex-start' flexDirection='row'>
                 <TextField classes={{ root: classes.idText }}
-                  id='address' value={localData.location} fullWidth onChange={handleChangeLocation} helperText='Location' />
+                  id='address' value={localData.location} fullWidth onChange={handleChangeLocation} helperText='Location/Address' />
               </Box>
               <Box display='flex' alignItems='center'
                 justifyContent='flex-start' flexDirection='row'>
@@ -1153,7 +1180,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
                 <TextField classes={{ root: classes.idText }}
                   id='surrogate' value={localData.surrogate || ''} fullWidth onChange={handleChangeSurrogate} helperText='on-site alternate contact' />
               </Box>
-              {state.session.local_data &&
+              {state?.session?.local_data &&
                 (Object.keys(state.session.local_data).length > 0) &&
                 <Box flexGrow={2} display='flex' flexDirection='column'>
                   {Object.keys(state.session.local_data).map((local, lX) => (
@@ -1522,7 +1549,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
             </Box>
           </Paper>
         </Box >
-        {((reactData.options && reactData.options.fullAccess) || (['master', 'support'].includes(state.user.account_class)))
+        {((reactData.options && reactData.options.fullAccess) || (state?.user?.account_class && (['master', 'support'].includes(state.user.account_class))))
           &&
           <React.Fragment>
             <ClientsSection

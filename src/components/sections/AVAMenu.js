@@ -1318,7 +1318,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 removeCookie("AVAuser");
                 Auth.signOut().then(() => {
                   let jumpTo = window.location.origin;
-                  window.location.replace(jumpTo);
+                  window.location.replace(`${jumpTo}?client=${state.session.client_id}`);
                 });
               }}>
                 <Box

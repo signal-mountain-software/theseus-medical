@@ -5,6 +5,7 @@ import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 import { formatPhone, makeName, getPerson, getImage } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
 import AVAConfirm from './AVAConfirm';
+import { printDocument } from '../../util/AVAMessages';
 import { getGroupMembers } from '../../util/AVAGroups';
 import SignatureCanvas from 'react-signature-canvas';
 import Select from "react-dropdown-select";
@@ -138,6 +139,9 @@ export default ({ request = {}, onClose }) => {
     let docParts = options.document_id.split('%%');
     options.form_id = docParts[1];
   }
+  if (options.printMode) {
+    options.viewMode = true;
+  }
 
   /* 
    if options.changeMode, then
@@ -147,6 +151,12 @@ export default ({ request = {}, onClose }) => {
      - if saved, add replaced_by = <new document_id> to the incoming document_id and update that document
 
    if options.viewMode, then
+     - expect options.document_id
+     - the form_id comes from the document_id (person %% form_id %% version)
+     - all fields rendered in view mode, including signature
+     - do not show "save" button
+
+   if options.printMode, then
      - expect options.document_id
      - the form_id comes from the document_id (person %% form_id %% version)
      - all fields rendered in view mode, including signature
@@ -262,7 +272,7 @@ export default ({ request = {}, onClose }) => {
     let default_peopleList;
     let defaultText = '';
     let defaultValue;
-    let default_source, default_ref;
+    let default_source, default_ref, prompt_ref;
     if (reactData.formRec.fields[this_field].choose) {
       if (!reactData.peopleList.hasOwnProperty(reactData.formRec.fields[this_field].choose.ref)) {
         if (reactData.formRec.fields[this_field].choose.ref.startsWith('%%resp')) {
@@ -302,16 +312,25 @@ export default ({ request = {}, onClose }) => {
         default_peopleList = reactData.peopleList[reactData.formRec.fields[this_field].choose.ref];
       }
     }
-    if (!reactData.formRec.fields[this_field].default && !options.changeMode && !options.viewMode && !options.incompleteMode) {
-      return '';   // there is no default specified for this field (in change mode, ignore this - use value instead)
+    if (!reactData.formRec.fields[this_field].default) {
+      if (!options.changeMode && !options.viewMode && !options.incompleteMode) {
+        return '';   // there is no default specified for this field (in change mode, ignore this - use value instead)
+      }
+      else {
+        default_source = 'form';
+        default_ref = reactData.form_id;
+      }
     }
-    if (reactData.formRec.fields?.[this_field]?.default?.ref === 'image') {
+    else if (reactData.formRec.fields?.[this_field]?.default?.ref === 'image') {
       default_source = reactData.formRec.fields[this_field].default.source;
       default_ref = 'image';
     }
     else if (options.changeMode || options.viewMode || options.incompleteMode) {
       default_source = 'form';
       default_ref = reactData.form_id;
+      if (reactData.formRec.fields[this_field].default.source === 'form' && reactData.formRec.fields[this_field].default.ref !== 'recent') {
+        prompt_ref = reactData.formRec.fields[this_field].default.ref;
+      }
     }
     else {
       default_source = reactData.formRec.fields[this_field].default.source;
@@ -356,6 +375,15 @@ export default ({ request = {}, onClose }) => {
               document: documentsObj
             }, true);
           }
+          if (prompt_ref && (prompt_ref !== default_ref) && !reactData.document.hasOwnProperty(prompt_ref)) {
+            let documentsObj = await loadDocument({
+              form_id: prompt_ref,
+              fuzzy_search: `${options.document_id.split('%%')[0]}%%${prompt_ref}%%`,
+            });
+            updateReactData({
+              document: documentsObj
+            }, true);
+          }
           if ((!reactData.document[default_ref])
             || (!reactData.document[default_ref][this_field])) {
             // no op - the refererenced form doesn't exist, or this field has no value on that form
@@ -385,18 +413,33 @@ export default ({ request = {}, onClose }) => {
                   defaultText = defaultText.join('; ');
                 }
                 else {
-                  if (reactData.formRec.fields[this_field].prompt.ref.includes('%%default%%')) {
-                    reactData.formRec.fields[this_field].prompt.ref =
-                      reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', defaultText.join('; '));
-                  }
-                  if (reactData.formRec.fields[this_field].prompt.ignore_if) {
-                    let ignoreList = makeArray(reactData.formRec.fields[this_field].prompt.ignore_if);
-                    if ((ignoreList.includes('%%no_data%%') && (defaultText.length === 0))
-                      || (ignoreList.some(ignore_me => {
-                        return defaultText.includes(ignore_me);
-                      }))) {
-                      delete reactData.formRec.fields[this_field];
-                      return;
+                  if (reactData.formRec.fields.hasOwnProperty(this_field)) {
+                    if (reactData.formRec.fields[this_field].prompt.ref.includes('%%default%%')) {
+                      if (prompt_ref && (prompt_ref !== default_ref)) {
+                        let promptText = '';
+                        if (isObject(reactData.document[prompt_ref][this_field])) {
+                          promptText = reactData.document[prompt_ref][this_field].textDescription;
+                        }
+                        else {
+                          promptText = reactData.document[prompt_ref][this_field];
+                        }
+                        reactData.formRec.fields[this_field].prompt.ref =
+                          reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', promptText.join('; '));
+                      }
+                      else {
+                        reactData.formRec.fields[this_field].prompt.ref =
+                          reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', defaultText.join('; '));
+                      }
+                    }
+                    if (reactData.formRec.fields[this_field].prompt.ignore_if) {
+                      let ignoreList = makeArray(reactData.formRec.fields[this_field].prompt.ignore_if);
+                      if ((ignoreList.includes('%%no_data%%') && (defaultText.length === 0))
+                        || (ignoreList.some(ignore_me => {
+                          return defaultText.includes(ignore_me);
+                        }))) {
+                        delete reactData.formRec.fields[this_field];
+                        return;
+                      }
                     }
                   }
                   if (defaultText.length === 0) {
@@ -483,7 +526,8 @@ export default ({ request = {}, onClose }) => {
                   }
                 }
                 else {
-                  defaultText = await makeName(defaultValue);
+                  let whoIS = await makeName(defaultValue);
+                  defaultText = whoIS || defaultValue;
                 }
                 break;
               }
@@ -1111,7 +1155,7 @@ export default ({ request = {}, onClose }) => {
     }
   }
 
-  async function loadDocument({ recent, form_id, specific_document, assigned_to }) {
+  async function loadDocument({ recent, form_id, specific_document, fuzzy_search, assigned_to }) {
     let queryObj = { TableName: 'Documents' };
     queryObj.KeyConditionExpression = 'client_id = :c';
     queryObj.ExpressionAttributeValues = { ':c': state.session.client_id };
@@ -1121,6 +1165,12 @@ export default ({ request = {}, onClose }) => {
     if (recent && !assigned_to) {   // recent refers to the most recent version of the requested form
       queryObj.KeyConditionExpression += ' and begins_with(document_id, :dID)';
       queryObj.ExpressionAttributeValues[':dID'] = `${options.person_id || state.patient.person_id}%%${form_id}%%`;
+      queryObj.ScanIndexForward = false;
+      queryObj.Limit = 1;
+    }
+    else if (fuzzy_search) {   // fuzzy deliversmost recent version of the requested document without knowing its exact id
+      queryObj.KeyConditionExpression += ' and begins_with(document_id, :dID)';
+      queryObj.ExpressionAttributeValues[':dID'] = fuzzy_search;
       queryObj.ScanIndexForward = false;
       queryObj.Limit = 1;
     }
@@ -1236,8 +1286,24 @@ export default ({ request = {}, onClose }) => {
         stage: 'fill'
       }, true);
       setForceRedisplay('ready');
+      if (options.printMode) {
+        printDocument(
+          {
+            docData: reactData.formRec,
+            docValues: reactValues,
+            docDocument: reactData.document[reactData.form_id],
+            docID: reactData.form_id,
+            client_id: state.session.client_id,
+            title: reactData.document[reactData.form_id].document__title || reactData.formRec.form_name
+          }
+        );
+        onClose();
+      }
     }
     if (reactData.stage === 'initialize') {
+      updateReactData({
+        stage: 'still_initializing'
+      }, true);
       initialize();
     }
   }, [reactData.form_id, reactData.document_id]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -1252,7 +1318,7 @@ export default ({ request = {}, onClose }) => {
       classes={{ paper: classes.radius_rounded }}
       fullScreen
     >
-      {(reactData.stage !== 'initialize') &&
+      {(reactData.stage !== 'initialize') && (reactData.stage !== 'still_initializing') &&
         <React.Fragment>
           <Box m={2}>
             <Typography style={AVATextStyle({
@@ -1291,6 +1357,7 @@ export default ({ request = {}, onClose }) => {
                           <TextField
                             id={`field__${this_field}`}
                             key={`field__${this_field}`}
+                            multiline
                             style={AVATextStyle({
                               lineHeight: 1,
                               width: `${reactData.formRec.fields[this_field].prompt.width || 200}px`,

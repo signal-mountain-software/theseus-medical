@@ -1,4 +1,4 @@
-import { clt, cl, s3, recordExists, titleCase, uuid, isObject, listFromArray, makeArray, sentenceCase, dbClient, deepCopy } from './AVAUtilities';
+import { clt, cl, s3, recordExists, titleCase, uuid, isObject, listFromArray, makeArray, sentenceCase, dbClient, deepCopy, getObject } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
 import { getCustomizations, getObject64 } from './AVAUtilities';
@@ -8,7 +8,7 @@ import { makeDate } from './AVADateTime';
 
 import { jsPDF } from "jspdf";
 
-import htmlToFormattedText from "html-to-formatted-text";
+// import htmlToFormattedText from "html-to-formatted-text";
 
 let page = {};
 let pdfCurrent = {};
@@ -709,6 +709,73 @@ export async function formatRequestDetails(body, summaryType) {
   return [htmlMessage, rawMessage, pdfInfo];
 }
 
+
+export async function printDocument({ docData, docValues, docDocument, docID, client_id, title }) {
+  // Prep the PDF output
+  await pdfLaunch({ client_id });
+  page.title = title;
+  page.document_id = docID;
+  page.client_id = client_id;
+  page.footerText = `AVA reference: ${page.client_id}/${page.document_id}`;
+  pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
+  pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
+
+  docData.sections.forEach((sectionObj, sectionNdx) => {
+    pdfLine(sectionObj.section_name, { style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
+    sectionObj.fields.forEach((this_field, fieldNdx) => {
+      if (docData.fields.hasOwnProperty(this_field)) {
+        let printType = (docData.fields[this_field].value.type === 'view') ? docData.fields[this_field].prompt.type : docData.fields[this_field].value.type;
+        switch (printType) {
+          case 'image': {
+            pdfLine('', { image: docValues[this_field].valueText, style: 'normal', size: 'medium', align: 'left', after: 1 });
+            break;
+          }
+          case 'select&text':
+          case 'select': {
+            pdfLine(docData.fields[this_field].prompt.ref, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+            docData.fields[this_field].value.selection.selectionList.forEach((text, tIndex) => {
+              let radioSelected = docValues[this_field].valueList.includes(text);
+              if (tIndex === 0) {
+                pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
+              }
+              else {
+                pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+              }
+            });
+            pdfDown(1);
+            pdfStyle('reset');
+            break;
+          }
+          case 'html': {
+            pdfLine(docData.fields[this_field].prompt.ref, { html: true, style: 'normal', size: 'medium', align: 'left', after: 1 });
+            break;
+          }
+          case 'signature': {
+            pdfLine(docData.fields[this_field].prompt.ref, { image: docDocument.signature, style: 'normal', size: 'medium', align: 'left', after: 1 });
+            break;
+          }
+          default: {
+            if (docValues.hasOwnProperty(this_field)) {
+              if (docData.fields[this_field].prompt.ref.includes(docValues[this_field].valueText)) {
+                pdfLine(`${docData.fields[this_field].prompt.ref}`,
+                  { style: 'normal', size: 'medium', align: 'left', after: 1 });
+              }
+              else {
+                pdfLine(`${docData.fields[this_field].prompt.ref}: ${docValues[this_field].valueText}`,
+                  { style: 'normal', size: 'medium', align: 'left', after: 1 });
+              }
+            }
+          }
+        }
+      }
+    });
+  });
+
+  // Finish
+  pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
+  doc.save(docDocument.document_id);
+}
+
 export async function factForm(serviceRequestRec) {
   /*
   serviceRequestRec.original_request: {
@@ -721,9 +788,9 @@ export async function factForm(serviceRequestRec) {
   */
   // Standard 8.5 x 11 output for a Request of any type
   // Prep the PDF output
-   let page = {};
+  let page = {};
   await pdfLaunch(Object.assign({}, { client_id: serviceRequestRec.client_id }));
-  
+
   let htmlMessage = `<h1 style="color: #5e9ca0;"><span style="color: #000000;">${page.title}</span></h1>`;
   let rawMessage = `${page.title}\n\r`;
   pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
@@ -787,7 +854,7 @@ export async function factForm(serviceRequestRec) {
 
   let spaceBetweenLines = 25;
   let renderCheckBox = '';
-   
+
   let formattedRequestObj = formatServiceRequestDetails(serviceRequestRec);
   for (const [this_selection, optionList] of Object.entries(formattedRequestObj)) {
     htmlMessage += `<dt style="font-size: 1.2em; color: black;">${renderCheckBox}<strong>&nbsp;&nbsp;&nbsp;${sentenceCase(this_selection)}</dt>`;
@@ -815,7 +882,7 @@ export async function factForm(serviceRequestRec) {
   let refText = `AVA reference: ${serviceRequestRec.client_id}/${serviceRequestRec.request_id} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})`;
   if (serviceRequestRec.local_key) {
     htmlMessage += `<div>AVA request number: <strong>${serviceRequestRec.local_key}</strong></div>`;
-    rawMessage += `\n\rAVA request number: ${serviceRequestRec.local_key}`
+    rawMessage += `\n\rAVA request number: ${serviceRequestRec.local_key}`;
     pdfLine(`AVA request number: ${serviceRequestRec.local_key}`, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
     pdfLine(refText, { noNewPage: true, noNewLine: true, before: 1, align: 'center' });
   }
@@ -985,17 +1052,17 @@ export async function buildDocument(body) {
   if (body.fileName && body.fileName.slice(-4) !== '.pdf') {
     body.fileName += '.pdf';
   }
-  
+
   let pdfInfo = {
     s3Key: (body.fileName || `AVA_${body.requestID.replace('~', '_')}.pdf`),
     s3Bucket: (body.S3_bucket || 'theseus-medical-storage')
   };
-  
+
   let s3Resp;
   if (!body.multiPrint || body.multiPrint.lastDoc) {
     pdfLine(`***** END *****`, { noNewPage: true, noNewLine: true, before: 1 });
 
-    let this_method = body.overrideMethod || body.messaging?.format?.method  || body.messaging[0].format.method;;
+    let this_method = body.overrideMethod || body.messaging?.format?.method || body.messaging[0].format.method;;
     let pdfResp = await savePDF(doc, pdfInfo, { local: !body.PDF, S3: true, onSave: this_method });
     if (pdfResp.responseData.s3Resp) {
       pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
@@ -1407,12 +1474,12 @@ async function pdfLaunch(body) {
     reportTime: nowTime.absolute,
     timestamp: nowTime.numeric24
   };
-  let customizations = await getCustomizations('*all', body.client);
+  let customizations = await getCustomizations('*all', body.client || body.client_id);
   if (customizations['client_name']) {
     pdfCurrent.client_name = customizations['client_name'];
   }
   else {
-    pdfCurrent.client_name = `Client = ${body.client_id}`;
+    pdfCurrent.client_name = `Client = ${body.client || body.client_id}`;
   };
   if (customizations['print']) {
     let print_specs = customizations['print'];
@@ -1426,10 +1493,11 @@ async function pdfLaunch(body) {
     }
   }
   else {
-    pdfCurrent.client_name = `Client = ${body.client_id}`;
+    pdfCurrent.client_name = `Client = ${body.client || body.client_id}`;
   };
   if (customizations['logo']) {
-    pdfCurrent.logo = customizations['logo'];
+    pdfCurrent.logo = getObject(customizations['logo'], 'logo');
+    pdfCurrent.logo64 = await getObject64(customizations['logo'], 'logo');
     if (customizations['logo_dimensions']) {
       pdfCurrent.logo_width = customizations['logo_dimensions'][0] / 2;
       pdfCurrent.logo_height = customizations['logo_dimensions'][1] / 2;
@@ -1453,21 +1521,19 @@ function pdfHeader(pageN) {
       unit: "px",
       format: (page.width ? [page.width, page.height] : 'letter')
     });
+    pdfDown(2);
   }
   else if (pdfCurrent.logo) {
     //     doc.addImage(pdfCurrent.logo, 'PNG', page.center - (pdfCurrent.logo_width / 2), pdfCurrent.yPos, pdfCurrent.logo_width, pdfCurrent.logo_height);
     //     pdfCurrent.yPos += pdfCurrent.logo_height;
   }
   pdfStyle({ size: 'large', align: 'center', style: 'bold' });
-  doc.text(pdfCurrent.client_name, page.center, pdfCurrent.yPos, { align: 'center' });
-  pdfStyle({ size: 'medium', before: 1, style: 'normal' });
   doc.text(page.title, page.center, pdfCurrent.yPos, { align: 'center' });
   pdfDown(1);
-  doc.text(pdfCurrent.reportTime, page.center, pdfCurrent.yPos, { align: 'center' });
   if (pageN > 1) {
     pdfStyle({ size: 'small', before: 1 });
-    doc.text(`Page ${pdfCurrent.pageNumber}`, page.width / 2, pdfCurrent.yPos, { align: 'center' });
-    pdfDown(2);
+    doc.text(`Page ${pdfCurrent.pageNumber}`, page.width / 2, pdfCurrent.yPos - 3, { align: 'center' });
+    pdfDown(4);
     if (pdfCurrent.key) {
       pdfStyle({ size: 'medium', align: 'left', style: 'bold' });
       doc.text(titleCase(pdfCurrent.key), page.margin.left, pdfCurrent.yPos);
@@ -1475,6 +1541,7 @@ function pdfHeader(pageN) {
       pdfStyle({ size: 'small', style: 'normal' });
       doc.text('(continued)', newX, pdfCurrent.yPos);
     }
+    pdfStyle('reset');
     pdfCurrent = Object.assign({}, savedStyle, { yPos: pdfCurrent.yPos });
     pdfStyle(pdfCurrent);
   }
@@ -1492,7 +1559,7 @@ function pdfLine(text, options = {}) {
     pdfCurrent.yPos = options.yPos;
   }
   else if (options.yPos && (options.yPos === 'footer')) {
-    pdfCurrent.yPos = page.height - page.margin.bottom - 54;
+    pdfCurrent.yPos = page.height - page.margin.bottom - 20;
     pdfCurrent.xPos = page.margin.left;
     options.noNewPage = true;
   }
@@ -1504,36 +1571,66 @@ function pdfLine(text, options = {}) {
     pdfDown(1);
   }
   if (!options.noNewPage && (pdfCurrent.yPos >= (page.bottom - page.margin.bottom))) {
+    let savedStyle = Object.assign({}, pdfCurrent);
+    pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
+    pdfCurrent = Object.assign({}, savedStyle, { yPos: pdfCurrent.yPos });
+    pdfStyle(pdfCurrent);
     pdfHeader(++pdfCurrent.pageNumber);
   }
   if (options.image) {
     let imageSize = pdfCurrent.fontSize * 5;
     let xOffset;
-    switch (pdfCurrent.align) {
-      case 'center': {
-        xOffset = page.centerPoint - (imageSize / 2);
-        doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
-        pdfCurrent.xPos = page.centerPoint + (imageSize / 2);
-        break;
-      }
-      case 'right': {
-        xOffset = page.width - page.margin.right - imageSize;
-        doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
-        pdfCurrent.xPos = page.width - page.margin.right;
-        break;
-      }
-      default: {
-        xOffset = pdfCurrent.xPos + pdfCurrent.indent;
-        // doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
-        doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos);
-        pdfCurrent.xPos = xOffset + imageSize;
+    try {
+      switch (pdfCurrent.align) {
+        case 'center': {
+          xOffset = page.centerPoint - (imageSize / 2);
+          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
+          pdfCurrent.xPos = page.centerPoint + (imageSize / 2);
+          break;
+        }
+        case 'right': {
+          xOffset = page.width - page.margin.right - imageSize;
+          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
+          pdfCurrent.xPos = page.width - page.margin.right;
+          break;
+        }
+        default: {
+          xOffset = pdfCurrent.xPos + pdfCurrent.indent;
+          // doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, (page.width / 4));
+          let imageProps = doc.getImageProperties(options.image);
+          let shrink = (page.width / 4) / imageProps.width;
+          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, (page.width / 4), (imageProps.height * shrink));
+          pdfCurrent.yPos += (imageProps.height * shrink);
+          pdfDown(1);
+        }
       }
     }
-    pdfCurrent.yPos += imageSize;
+    catch {
+      doc.html(`<img src="${options.image}" />`);
+      switch (pdfCurrent.align) {
+        case 'center': {
+          pdfCurrent.xPos = page.centerPoint + (imageSize / 2);
+          break;
+        }
+        case 'right': {
+          pdfCurrent.xPos = page.width - page.margin.right;
+          break;
+        }
+        default: {
+          pdfCurrent.xPos = xOffset + imageSize;
+        }
+      }
+    }
+  }
+  if (options.radio) {
+    doc.circle(pdfCurrent.xPos + pdfCurrent.indent, pdfCurrent.yPos - 3.5, 3, (options.radioSelected ? 'F' : 'S'));
+    doc.text(text, pdfCurrent.xPos + pdfCurrent.indent + 8, pdfCurrent.yPos);
+    pdfCurrent.xPos = (pdfCurrent.xPos + pdfCurrent.indent + 8) + doc.getTextWidth(text) + pdfCurrent.fontSize;
   }
   else if (options.html) {
-    delete options.html;
-    pdfLine(htmlToFormattedText(text), options);
+    // delete options.html;
+    // pdfLine(htmlToFormattedText(text), options);
+    doc.html(text);
   }
   else {
     // this little chunk deals with text overflow
@@ -1547,7 +1644,7 @@ function pdfLine(text, options = {}) {
       }
       if (tWords.length > 0) {
         for (let t = 0; t < tWords.length - 1; t++) {
-          pdfLine(tWords[t], options);
+          pdfLine(tWords[t], Object.assign({}, options, { after: 0 }));
         }
         pdfDown(1);
         text = tWords[tWords.length - 1];
