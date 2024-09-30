@@ -114,7 +114,7 @@ const useStyles = makeStyles(theme => ({
 export default ({ request = {}, onClose }) => {
   const classes = useStyles();
   const AVAClass = AVAclasses();
-  const signatureRef = React.useRef(null);
+  const signatureRef = [React.useRef(null), React.useRef(null), React.useRef(null)]
 
   const { state } = useSession();
 
@@ -164,6 +164,8 @@ export default ({ request = {}, onClose }) => {
      - do not show "save" button
 
  */
+  
+  let signatureRefNumber = 0;
 
   const [reactData, setReactData] = React.useState({
     form_id: options.form_id,
@@ -1039,7 +1041,7 @@ export default ({ request = {}, onClose }) => {
       this_section.fields.forEach(this_field => {
         if (reactData.formRec.fields.hasOwnProperty(this_field)) {
           if (reactData.formRec.fields[this_field].value.type === 'signature') {
-            if (signatureRef.current.isEmpty()) {
+            if (signatureRef[reactData.formRec.fields[this_field].sigRefNumber || 0].current.isEmpty()) {
               if (reactData.formRec.fields[this_field].value.required) {
                 messageList.push(`Signature is required`);
                 errorFields.push(this_field);
@@ -1049,7 +1051,7 @@ export default ({ request = {}, onClose }) => {
               if (!reactValues.hasOwnProperty(this_field)) {
                 reactValues[this_field] = {};
               }
-              let sigImage = signatureRef.current.getTrimmedCanvas().toDataURL('image/png');
+              let sigImage = signatureRef[reactData.formRec.fields[this_field].sigRefNumber || 0].current.getTrimmedCanvas().toDataURL('image/png');
               reactValues[this_field].image = sigImage;
               reactValues[this_field].value = sigImage;
             }
@@ -1140,7 +1142,10 @@ export default ({ request = {}, onClose }) => {
               putError.push(err);
             });
           documentRec.values[this_field] = reactValues[this_field].image;
-          documentRec.signature_field = this_field;
+          if (!documentRec.signature_field) {
+            documentRec.signature_field = [];
+          }
+          documentRec.signature_field[reactData.formRec.fields[this_field].sigRefNumber || 0] = this_field;
         }
       }
       else if (reactValues[this_field].bonusText) {
@@ -1609,7 +1614,7 @@ export default ({ request = {}, onClose }) => {
                             width='97%'
                           >
                             <SignatureCanvas
-                              ref={signatureRef}
+                              ref={signatureRef[reactData.formRec.fields[this_field].sigRefNumber || 0]}
                               canvasProps={{
                                 style: {
                                   backgroundColor: 'beige',
@@ -1635,13 +1640,13 @@ export default ({ request = {}, onClose }) => {
                               {reactData.formRec.fields[this_field].prompt.ref}
                             </Typography>
                             <Box display='flex' mt={0} mb={0} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
-                              {signatureRef.current &&
+                              {signatureRef[reactData.formRec.fields[this_field].sigRefNumber || 0].current &&
                                 <Button
                                   className={AVAClass.AVAMicroButton}
                                   style={{ backgroundColor: 'white', color: 'red' }}
                                   size='small'
                                   onClick={() => {
-                                    signatureRef.current.clear();
+                                    signatureRef[reactData.formRec.fields[this_field].sigRefNumber || 0].current.clear();
                                     setForceRedisplay(!forceRedisplay);
                                   }}
                                 >
@@ -1665,7 +1670,7 @@ export default ({ request = {}, onClose }) => {
                             <img
                               className={classes.imageArea}
                               alt=''
-                              src={request.signatureImage}
+                              src={Array.isArray(request.signatureImage) ? request.signatureImage[reactData.formRec.fields[this_field].sigRefNumber || 0] : request.signatureImage}
                             />
                             <Typography
                               id={`sigBoxText__${this_field}`}

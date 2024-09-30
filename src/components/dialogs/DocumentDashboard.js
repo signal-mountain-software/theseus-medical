@@ -906,8 +906,10 @@ export default ({ request = {}, onClose }) => {
                                 onClick={() => {
                                   updateReactData({
                                     stage: 'viewDoc',
-                                    signatureData: (this_document.signature_field
-                                      ? this_document.values[this_document.signature_field]
+                                    signatureData: ((this_document.signature_field && (this_document.signature_field.length > 0))
+                                      ? (Array.isArray(this_document.signature_field) ? (this_document.signature_field.map(this_sig => {
+                                        return this_document.values[this_sig];
+                                      })) : this_document.values[this_document.signature_field])
                                       : null
                                     ),
                                     selectedDoc_id: this_document.document_id,
@@ -929,8 +931,10 @@ export default ({ request = {}, onClose }) => {
                                 onClick={() => {
                                   updateReactData({
                                     stage: 'printDoc',
-                                    signatureData: (this_document.signature_field
-                                      ? this_document.values[this_document.signature_field]
+                                    signatureData: ((this_document.signature_field && (this_document.signature_field.length > 0))
+                                      ? (Array.isArray(this_document.signature_field) ? (this_document.signature_field.map(this_sig => {
+                                        return this_document.values[this_sig];
+                                      })) : this_document.values[this_document.signature_field])
                                       : null
                                     ),
                                     selectedDoc_id: this_document.document_id,
