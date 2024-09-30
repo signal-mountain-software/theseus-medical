@@ -779,7 +779,7 @@ export default ({ request = {}, onClose }) => {
                         style={AVATextStyle({
                           size: 1.2,
                           margin: {
-                            left: 0.5
+                            left: 0.2
                           }
                         })}>
                         {this_person.person_first}

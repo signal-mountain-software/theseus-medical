@@ -413,31 +413,33 @@ export default ({ request = {}, onClose }) => {
                   defaultText = defaultText.join('; ');
                 }
                 else {
-                  if (reactData.formRec.fields[this_field].prompt.ref.includes('%%default%%')) {
-                    if (prompt_ref && (prompt_ref !== default_ref)) {
-                      let promptText = '';
-                      if (isObject(reactData.document[prompt_ref][this_field])) {
-                        promptText = reactData.document[prompt_ref][this_field].textDescription;
+                  if (reactData.formRec.fields.hasOwnProperty(this_field)) {
+                    if (reactData.formRec.fields[this_field].prompt.ref.includes('%%default%%')) {
+                      if (prompt_ref && (prompt_ref !== default_ref)) {
+                        let promptText = '';
+                        if (isObject(reactData.document[prompt_ref][this_field])) {
+                          promptText = reactData.document[prompt_ref][this_field].textDescription;
+                        }
+                        else {
+                          promptText = reactData.document[prompt_ref][this_field];
+                        }
+                        reactData.formRec.fields[this_field].prompt.ref =
+                          reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', promptText.join('; '));
                       }
                       else {
-                        promptText = reactData.document[prompt_ref][this_field];
+                        reactData.formRec.fields[this_field].prompt.ref =
+                          reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', defaultText.join('; '));
                       }
-                      reactData.formRec.fields[this_field].prompt.ref =
-                        reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', promptText.join('; '));
                     }
-                    else {
-                      reactData.formRec.fields[this_field].prompt.ref =
-                        reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', defaultText.join('; '));
-                    }
-                  }
-                  if (reactData.formRec.fields[this_field].prompt.ignore_if) {
-                    let ignoreList = makeArray(reactData.formRec.fields[this_field].prompt.ignore_if);
-                    if ((ignoreList.includes('%%no_data%%') && (defaultText.length === 0))
-                      || (ignoreList.some(ignore_me => {
-                        return defaultText.includes(ignore_me);
-                      }))) {
-                      delete reactData.formRec.fields[this_field];
-                      return;
+                    if (reactData.formRec.fields[this_field].prompt.ignore_if) {
+                      let ignoreList = makeArray(reactData.formRec.fields[this_field].prompt.ignore_if);
+                      if ((ignoreList.includes('%%no_data%%') && (defaultText.length === 0))
+                        || (ignoreList.some(ignore_me => {
+                          return defaultText.includes(ignore_me);
+                        }))) {
+                        delete reactData.formRec.fields[this_field];
+                        return;
+                      }
                     }
                   }
                   if (defaultText.length === 0) {
@@ -1299,6 +1301,9 @@ export default ({ request = {}, onClose }) => {
       }
     }
     if (reactData.stage === 'initialize') {
+      updateReactData({
+        stage: 'still_initializing'
+      }, true);
       initialize();
     }
   }, [reactData.form_id, reactData.document_id]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -1313,7 +1318,7 @@ export default ({ request = {}, onClose }) => {
       classes={{ paper: classes.radius_rounded }}
       fullScreen
     >
-      {(reactData.stage !== 'initialize') &&
+      {(reactData.stage !== 'initialize') && (reactData.stage !== 'still_initializing') &&
         <React.Fragment>
           <Box m={2}>
             <Typography style={AVATextStyle({
