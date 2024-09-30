@@ -26,6 +26,7 @@ import TextField from '@material-ui/core/TextField';
 import Button from '@material-ui/core/Button';
 
 import useSession from '../../hooks/useSession';
+import { useIdleTimer } from 'react-idle-timer';
 
 const useStyles = makeStyles(theme => ({
   dialogBox: {
@@ -172,7 +173,9 @@ export default ({ request = {}, onClose }) => {
     storedSignature: null,
     stage: 'initialize',
     version__number: 0,
+    savePending: !!options.incompleteMode,
     document: {},
+    lastActiveTime: new Date(),
     values: {
       sampleField: {
         valueList: [],
@@ -209,6 +212,61 @@ export default ({ request = {}, onClose }) => {
       setForceRedisplay(!forceRedisplay);
     }
   };
+
+  const oneMinute = 1000 * 60;
+  const msBeforeSleeping = 1 * oneMinute;
+
+  function onAction() {
+    let now = new Date();
+    if ((reactData.idleState) || ((now.getTime() - reactData.lastActiveTime.getTime()) > oneMinute)) {
+      cl(`Action/Update at ${now.toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}`);
+      updateReactData({
+        lastActiveTime: now,
+        idleState: false,
+      }, false);
+    }
+    reset();
+  };
+
+  const onIdle = async () => {
+    let now = new Date();
+    let minutesSinceActive = 0;
+    let reactUpdObj = {
+      idleState: true,
+      enteredIdleStateTime: now,
+    };
+    if (!reactData.idleState) {
+      if (!options.viewMode) {
+        cl(`Auto save at ${now.toLocaleString()}.`);
+        let saveCallObj = {
+          save_continue: true
+        };
+        if (reactData.document_id) {
+          saveCallObj.document_id = reactData.document_id;
+        }
+        let response = await handleSave(saveCallObj);
+        reactUpdObj.document_id = response.document_id;
+        reactUpdObj.savePending = true;
+
+      }
+      updateReactData(reactUpdObj, true);
+    }
+    else {
+      minutesSinceActive = Math.floor((now.getTime() - reactData.enteredIdleStateTime.getTime()) / oneMinute);
+      cl(`Still idle at ${new Date().toLocaleString()}.  Idle for ${minutesSinceActive} minutes.`);
+    }
+    if (minutesSinceActive > 5) {
+      onClose((reactData.savePending) ? 'docAdded' : '');
+    }
+    reset();
+  };
+
+  const { start, reset } = useIdleTimer({
+    onIdle,
+    onAction,
+    timeout: msBeforeSleeping,
+    throttle: 500
+  });
 
   const {
     coords,
@@ -1299,6 +1357,7 @@ export default ({ request = {}, onClose }) => {
         );
         onClose();
       }
+      start();    // idle timer
     }
     if (reactData.stage === 'initialize') {
       updateReactData({
@@ -1935,10 +1994,42 @@ export default ({ request = {}, onClose }) => {
             updateReactData({
               stage: 'fill'
             }, true);
-          }
-          }
+          }}
           onConfirm={async () => {
-            onClose((reactData.savePending) ? 'docAdded' : '');
+            if (reactData.savePending) {
+              updateReactData({
+                stage: 'keepAutoSave'
+              }, true);
+            }
+            else {
+              onClose((reactData.savePending) ? 'docAdded' : '');
+            }
+          }}
+          allowCancel={true}
+        />
+      }
+      {(reactData.stage === 'keepAutoSave') &&
+        <AVAConfirm
+          promptText={[`Do you want to save the "in progress" document and finish it later?`]}
+          cancelText={`No, delete it`}
+          confirmText={`Yes, keep it`}
+          onCancel={async () => {
+            await dbClient
+              .delete({
+                Key: {
+                  client_id: state.session.client_id,
+                  document_id: reactData.document_id
+                },
+                TableName: "Documents",
+              })
+              .promise()
+              .catch(error => {
+                console.log(`caught error updating Documents; error is:`, error);
+              });
+            onClose('docAdded');
+          }}
+          onConfirm={async () => {
+            onClose('docAdded');
           }}
           allowCancel={true}
         />
