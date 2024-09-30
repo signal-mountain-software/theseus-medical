@@ -514,7 +514,12 @@ export async function getObject64(pObj) {
         Bucket: imageBucket,
         Key: oFile,
       }, function (error, data) {
-        if (data) { oData = data; };
+        if (data) {
+          oData = data;
+          if (oData) {
+            console.log('got oData');
+          }
+        };
       })
         .promise();
     console.log(rawObject);

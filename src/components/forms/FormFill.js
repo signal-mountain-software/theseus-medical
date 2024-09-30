@@ -1357,6 +1357,7 @@ export default ({ request = {}, onClose }) => {
                           <TextField
                             id={`field__${this_field}`}
                             key={`field__${this_field}`}
+                            multiline
                             style={AVATextStyle({
                               lineHeight: 1,
                               width: `${reactData.formRec.fields[this_field].prompt.width || 200}px`,
