@@ -165,8 +165,6 @@ export default ({ request = {}, onClose }) => {
 
  */
   
-  let signatureRefNumber = 0;
-
   const [reactData, setReactData] = React.useState({
     form_id: options.form_id,
     formRec: {},
@@ -1043,7 +1041,7 @@ export default ({ request = {}, onClose }) => {
           if (reactData.formRec.fields[this_field].value.type === 'signature') {
             if (signatureRef[reactData.formRec.fields[this_field].sigRefNumber || 0].current.isEmpty()) {
               if (reactData.formRec.fields[this_field].value.required) {
-                messageList.push(`Signature is required`);
+                messageList.push(`${reactData.formRec.fields[this_field].prompt.ref || 'Signature'} is required`);
                 errorFields.push(this_field);
               }
             }
