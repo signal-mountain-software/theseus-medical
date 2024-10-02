@@ -118,7 +118,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
       groupList[tClient].push(tGroup);
     });
     if ((state.hasOwnProperty('accessList') && state.accessList[state.session.client_id])) {
-      let oKeys = Object.keys(groupList);
       Object.keys(groupList).forEach(this_client => {       
         if (groupList[this_client].includes('*all') || (this_client !== state.session.client_id)) {
           let thisList = state.accessList?.[this_client]?.list || ((this_client === state.session.client_id) ? state.session.last_state.list : []);
