@@ -1170,8 +1170,14 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
                 justifyContent='flex-start' flexDirection='row'>
                 <TextField classes={{ root: classes.idText }}
                   id='cell' value={localData.cell} onChange={handleChangeCell} helperText='cell phone' />
+              </Box>
+              <Box display='flex' alignItems='center'
+                justifyContent='flex-start' flexDirection='row'>
                 <TextField classes={{ root: classes.idText }}
                   id='home' value={localData.voice} onChange={handleChangeVoice} helperText='home phone' />{'    '}
+              </Box>
+              <Box display='flex' alignItems='center'
+                justifyContent='flex-start' flexDirection='row'>
                 <TextField classes={{ root: classes.idText }}
                   id='work' value={localData.office} onChange={handleChangeOffice} helperText='work phone' />
               </Box>

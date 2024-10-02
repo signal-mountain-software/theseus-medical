@@ -1,5 +1,5 @@
 import React from 'react';
-import { sentenceCase } from '../../util/AVAUtilities';
+import { makeArray, sentenceCase } from '../../util/AVAUtilities';
 import { determineClass } from '../../util/AVAGroups';
 import Box from '@material-ui/core/Box';
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -128,6 +128,9 @@ export default ({ person, groupData, multiple = false, updateGroups }) => {
       });
     } while (groupsToCheck.length > 0);
     let response = [...myAdminGroups, ...myOtherGroups, ...myRollUpGroups];
+    if (response.length === 0) {
+      response = makeArray(state.session?.group_assignments?.inactive || 'ianctive') 
+    }
     updateReactData({
       fullGroupList: response,
       accountClass: ((!['master', 'support'].includes(person.account_class)) ? determineClass(response) : person.account_class)
