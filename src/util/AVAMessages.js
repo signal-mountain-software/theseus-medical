@@ -751,7 +751,7 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
             break;
           }
           case 'signature': {
-            pdfLine(docData.fields[this_field].prompt.ref, { image: docDocument.signature, style: 'normal', size: 'medium', align: 'left', after: 1 });
+            pdfLine(docData.fields[this_field].prompt.ref, { image: docDocument[this_field] || docDocument.signature, style: 'normal', size: 'medium', align: 'left', after: 1 });
             break;
           }
           default: {

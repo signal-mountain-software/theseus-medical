@@ -101,22 +101,37 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
       building: 'in process'
     }, true);
     let memberInfo;
-    if ((state.hasOwnProperty('accessList') && state.accessList[state.session.client_id])) {
-      if (pGroupArray.includes('*all')) {
-        memberInfo = {
-          peopleList: state.accessList?.[state.session.client_id]?.list || state.session.last_state.list
-        };
+    let groupList = {};
+    let tClient, tGroup;
+    let peopleList = []
+    pGroupArray.forEach(this_group => {
+      if (this_group.includes('//')) {
+        [tClient, tGroup] = this_group.split('//');
       }
       else {
-        memberInfo =
-        {
-          peopleList: (state.accessList?.[state.session.client_id]?.list || state.session.last_state.list).filter((p, pX) => {
-            return makeArray(p.groups).some(g => {
-              return pGroupArray.includes(g);
-            });
-          })
-        };
+        tClient = state.session.client_id;
+        tGroup = this_group;
       }
+      if (!groupList.hasOwnProperty(tClient)) {
+        groupList[tClient] = [];
+      }
+      groupList[tClient].push(tGroup);
+    });
+    if ((state.hasOwnProperty('accessList') && state.accessList[state.session.client_id])) {
+      Object.keys(groupList).forEach(this_client => {       
+        if (groupList[this_client].includes('*all') || (this_client !== state.session.client_id)) {
+          let thisList = state.accessList?.[this_client]?.list || ((this_client === state.session.client_id) ? state.session.last_state.list : []);
+          peopleList = peopleList.concat(thisList);
+        }
+        else {
+          peopleList = peopleList.concat(state.accessList?.[this_client]?.list || ((this_client === state.session.client_id) ? state.session.last_state.list : [])).filter((p, pX) => {
+              return makeArray(p.groups).some(g => {
+                return groupList[this_client].includes(g);
+              });
+            });
+        }
+      });
+      memberInfo = { peopleList };
     }
     else {
       enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
@@ -125,16 +140,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
     }
     let reactUpdater = {};
     if (memberInfo.peopleList.length === 0) {
-      if (pGroupArray.every((this_group) => {
-        return (!state.accessList[state.session.client_id].hasOwnProperty(this_group)
-          || (state.accessList[state.session.client_id][this_group] === 0));
-      })) {
-        enqueueSnackbar(`You don't have permission to view that Group.`, { variant: 'error' });
-
-      }
-      else {
-        enqueueSnackbar(`AVA couldn't find any members in that Group.`, { variant: 'error' });
-      }
+      enqueueSnackbar(`Nobody found for you to view.`, { variant: 'error' });
     }
     reactUpdater.groupMemberList = deepCopy(memberInfo.peopleList);
     if (pGroupArray.length === 1) {
@@ -145,7 +151,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
       else if (pGroupArray[0] === '*viewAll') {
         reactUpdater.groupID = '*all';
         reactUpdater.groupRole = 'member';
-      } 
+      }
       else {
         reactUpdater.groupRec = await getGroup(pGroupArray[0], pSession.client_id);
         reactUpdater.groupID = reactUpdater.groupRec.group_id;
@@ -324,7 +330,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
                   let reactUpdater = {
                     showGroupSelect: true,
                     groupMemberList: [],
-                  }
+                  };
                   if (updatesMade) {
                     reactUpdater.updatesMade = true;
                   }

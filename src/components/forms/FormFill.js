@@ -26,6 +26,7 @@ import TextField from '@material-ui/core/TextField';
 import Button from '@material-ui/core/Button';
 
 import useSession from '../../hooks/useSession';
+import { useIdleTimer } from 'react-idle-timer';
 
 const useStyles = makeStyles(theme => ({
   dialogBox: {
@@ -113,7 +114,7 @@ const useStyles = makeStyles(theme => ({
 export default ({ request = {}, onClose }) => {
   const classes = useStyles();
   const AVAClass = AVAclasses();
-  const signatureRef = React.useRef(null);
+  const signatureRef = [React.useRef(null), React.useRef(null), React.useRef(null)]
 
   const { state } = useSession();
 
@@ -163,7 +164,7 @@ export default ({ request = {}, onClose }) => {
      - do not show "save" button
 
  */
-
+  
   const [reactData, setReactData] = React.useState({
     form_id: options.form_id,
     formRec: {},
@@ -172,7 +173,9 @@ export default ({ request = {}, onClose }) => {
     storedSignature: null,
     stage: 'initialize',
     version__number: 0,
+    savePending: !!options.incompleteMode,
     document: {},
+    lastActiveTime: new Date(),
     values: {
       sampleField: {
         valueList: [],
@@ -209,6 +212,61 @@ export default ({ request = {}, onClose }) => {
       setForceRedisplay(!forceRedisplay);
     }
   };
+
+  const oneMinute = 1000 * 60;
+  const msBeforeSleeping = 1 * oneMinute;
+
+  function onAction() {
+    let now = new Date();
+    if ((reactData.idleState) || ((now.getTime() - reactData.lastActiveTime.getTime()) > oneMinute)) {
+      cl(`Action/Update at ${now.toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}`);
+      updateReactData({
+        lastActiveTime: now,
+        idleState: false,
+      }, false);
+    }
+    reset();
+  };
+
+  const onIdle = async () => {
+    let now = new Date();
+    let minutesSinceActive = 0;
+    let reactUpdObj = {
+      idleState: true,
+      enteredIdleStateTime: now,
+    };
+    if (!reactData.idleState) {
+      if (!options.viewMode) {
+        cl(`Auto save at ${now.toLocaleString()}.`);
+        let saveCallObj = {
+          save_continue: true
+        };
+        if (reactData.document_id) {
+          saveCallObj.document_id = reactData.document_id;
+        }
+        let response = await handleSave(saveCallObj);
+        reactUpdObj.document_id = response.document_id;
+        reactUpdObj.savePending = true;
+
+      }
+      updateReactData(reactUpdObj, true);
+    }
+    else {
+      minutesSinceActive = Math.floor((now.getTime() - reactData.enteredIdleStateTime.getTime()) / oneMinute);
+      cl(`Still idle at ${new Date().toLocaleString()}.  Idle for ${minutesSinceActive} minutes.`);
+    }
+    if (minutesSinceActive > 5) {
+      onClose((reactData.savePending) ? 'docAdded' : '');
+    }
+    reset();
+  };
+
+  const { start, reset } = useIdleTimer({
+    onIdle,
+    onAction,
+    timeout: msBeforeSleeping,
+    throttle: 500
+  });
 
   const {
     coords,
@@ -981,9 +1039,9 @@ export default ({ request = {}, onClose }) => {
       this_section.fields.forEach(this_field => {
         if (reactData.formRec.fields.hasOwnProperty(this_field)) {
           if (reactData.formRec.fields[this_field].value.type === 'signature') {
-            if (signatureRef.current.isEmpty()) {
+            if (signatureRef[reactData.formRec.fields[this_field].sigRefNumber || 0].current.isEmpty()) {
               if (reactData.formRec.fields[this_field].value.required) {
-                messageList.push(`Signature is required`);
+                messageList.push(`${reactData.formRec.fields[this_field].prompt.ref || 'Signature'} is required`);
                 errorFields.push(this_field);
               }
             }
@@ -991,7 +1049,7 @@ export default ({ request = {}, onClose }) => {
               if (!reactValues.hasOwnProperty(this_field)) {
                 reactValues[this_field] = {};
               }
-              let sigImage = signatureRef.current.getTrimmedCanvas().toDataURL('image/png');
+              let sigImage = signatureRef[reactData.formRec.fields[this_field].sigRefNumber || 0].current.getTrimmedCanvas().toDataURL('image/png');
               reactValues[this_field].image = sigImage;
               reactValues[this_field].value = sigImage;
             }
@@ -1082,7 +1140,10 @@ export default ({ request = {}, onClose }) => {
               putError.push(err);
             });
           documentRec.values[this_field] = reactValues[this_field].image;
-          documentRec.signature_field = this_field;
+          if (!documentRec.signature_field) {
+            documentRec.signature_field = [];
+          }
+          documentRec.signature_field[reactData.formRec.fields[this_field].sigRefNumber || 0] = this_field;
         }
       }
       else if (reactValues[this_field].bonusText) {
@@ -1299,6 +1360,7 @@ export default ({ request = {}, onClose }) => {
         );
         onClose();
       }
+      start();    // idle timer
     }
     if (reactData.stage === 'initialize') {
       updateReactData({
@@ -1550,7 +1612,7 @@ export default ({ request = {}, onClose }) => {
                             width='97%'
                           >
                             <SignatureCanvas
-                              ref={signatureRef}
+                              ref={signatureRef[reactData.formRec.fields[this_field].sigRefNumber || 0]}
                               canvasProps={{
                                 style: {
                                   backgroundColor: 'beige',
@@ -1576,13 +1638,13 @@ export default ({ request = {}, onClose }) => {
                               {reactData.formRec.fields[this_field].prompt.ref}
                             </Typography>
                             <Box display='flex' mt={0} mb={0} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
-                              {signatureRef.current &&
+                              {signatureRef[reactData.formRec.fields[this_field].sigRefNumber || 0].current &&
                                 <Button
                                   className={AVAClass.AVAMicroButton}
                                   style={{ backgroundColor: 'white', color: 'red' }}
                                   size='small'
                                   onClick={() => {
-                                    signatureRef.current.clear();
+                                    signatureRef[reactData.formRec.fields[this_field].sigRefNumber || 0].current.clear();
                                     setForceRedisplay(!forceRedisplay);
                                   }}
                                 >
@@ -1606,7 +1668,7 @@ export default ({ request = {}, onClose }) => {
                             <img
                               className={classes.imageArea}
                               alt=''
-                              src={request.signatureImage}
+                              src={Array.isArray(request.signatureImage) ? request.signatureImage[reactData.formRec.fields[this_field].sigRefNumber || 0] : request.signatureImage}
                             />
                             <Typography
                               id={`sigBoxText__${this_field}`}
@@ -1935,10 +1997,42 @@ export default ({ request = {}, onClose }) => {
             updateReactData({
               stage: 'fill'
             }, true);
-          }
-          }
+          }}
           onConfirm={async () => {
-            onClose((reactData.savePending) ? 'docAdded' : '');
+            if (reactData.savePending) {
+              updateReactData({
+                stage: 'keepAutoSave'
+              }, true);
+            }
+            else {
+              onClose((reactData.savePending) ? 'docAdded' : '');
+            }
+          }}
+          allowCancel={true}
+        />
+      }
+      {(reactData.stage === 'keepAutoSave') &&
+        <AVAConfirm
+          promptText={[`Do you want to save the "in progress" document and finish it later?`]}
+          cancelText={`No, delete it`}
+          confirmText={`Yes, keep it`}
+          onCancel={async () => {
+            await dbClient
+              .delete({
+                Key: {
+                  client_id: state.session.client_id,
+                  document_id: reactData.document_id
+                },
+                TableName: "Documents",
+              })
+              .promise()
+              .catch(error => {
+                console.log(`caught error updating Documents; error is:`, error);
+              });
+            onClose('docAdded');
+          }}
+          onConfirm={async () => {
+            onClose('docAdded');
           }}
           allowCancel={true}
         />

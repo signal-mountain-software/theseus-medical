@@ -223,7 +223,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   const [time_to_display_string, setTimeToAsDisplayString] = React.useState(' ');
   const [timeToAs24HourNumber, setTimeToAs24HourNumber] = React.useState();
   const [showOwnerSelect, setShowOwnerSelect] = React.useState(false);
-  const [ownerList, setOwnerList] = React.useState([patient.patient_id]);
+  const [ownerList, setOwnerList] = React.useState([patient.person_id || patient.patient_id]);
 
   const [checkedDays, setCheckedDays] = React.useState({});
 
@@ -233,7 +233,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     groupList: [],
     restrictToGroups: [],
     slotObjList: [],
-    preReservationList: ((options.setPerson && isAppointment) ? [patient.person_id]: []),
+    preReservationList: ((options.setPerson && isAppointment) ? [patient.person_id || patient.patient_id]: []),
     dateObj: { error: true },
     chosen_names: ((options.setPerson && isAppointment) ? patient.display_name : ''),
     event_title: ((options.setPerson && isAppointment) ? (`${options.title ? titleCase(options.title.trim()) : 'Appointment'} for ${patient.display_name}`) : ''),
@@ -241,11 +241,6 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     event_location: ((options.setPerson && isAppointment) ? patient.location : ''),
     location_override: false
   });
-  /*
-   preReservationList: reservationList,
-                              chosen_names: listFromArray(peopleNames)
-  */
-  //const [forceRedisplay, setForceRedisplay] = React.useState();
 
   const updateReactData = (newData, force = false) => {
     for (let oKey in newData) {
@@ -726,7 +721,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                       closeOnClickInput={true}
                       placeholder={''}
                       values={(options.setPerson) 
-                        ? [{ label: patient.display_name, value: patient.patient_id }]
+                        ? [{ label: patient.display_name, value: (patient.person_id || patient.patient_id) }]
                         : []
                       }
                       closeOnSelect={true}
