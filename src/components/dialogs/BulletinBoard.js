@@ -429,7 +429,7 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
                           >
                             <CloudUploadIcon
                               classes={{ root: classes.rowButton }}
-                              size='small'
+                              size='medium'
                               aria-label="attach_icon"
                               onClick={() => {
                                 updateReactData({
@@ -441,7 +441,7 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
                             />
                             <LinkIcon
                               classes={{ root: classes.rowButton }}
-                              size='small'
+                              size='medium'
                               aria-label="attach_icon"
                               onClick={() => {
                                 updateReactData({
