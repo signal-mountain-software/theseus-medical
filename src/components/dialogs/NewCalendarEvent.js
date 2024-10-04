@@ -204,12 +204,9 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   const { state } = useSession();
   const { session } = state;
   const [ownerTargetInfo, setOwnerTargetInfo] = React.useState();
-  const [event_date, setEventDate] = React.useState(' ');
 
   const [last_date, setLastDate] = React.useState(' ');
-  const [eventAsADate, setEventAsADate] = React.useState();
   const [lastAsADate, setLastAsADate] = React.useState();
-  const [prefMethod, setMethod] = React.useState();
   const [specificPeople, setSpecificPeople] = React.useState(' ');
   const [customizeButton, setcustomizeButton] = React.useState(false);
   const [specificOwners, setSpecificOwners] = React.useState(' ');
@@ -233,7 +230,9 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     groupList: [],
     restrictToGroups: [],
     slotObjList: [],
-    preReservationList: ((options.setPerson && isAppointment) ? [patient.person_id || patient.patient_id]: []),
+    event_date: (options.setDate ? options.setDate.dateObj : null),
+    prefMethod: 'specific_date',
+    preReservationList: ((options.setPerson && isAppointment) ? [patient.person_id || patient.patient_id] : []),
     dateObj: { error: true },
     chosen_names: ((options.setPerson && isAppointment) ? patient.display_name : ''),
     event_title: ((options.setPerson && isAppointment) ? (`${options.title ? titleCase(options.title.trim()) : 'Appointment'} for ${patient.display_name}`) : ''),
@@ -293,7 +292,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   const handleUpdate = async () => {
     enqueueSnackbar(`AVA is creating your new event!  Stand by...`, { variant: 'warning' });
     let oDays = [];
-    if (prefMethod && ((prefMethod === 'weekly_on') || (prefMethod === 'bi-weekly_on'))) {
+    if (reactData.prefMethod && ((reactData.prefMethod === 'weekly_on') || (reactData.prefMethod === 'bi-weekly_on'))) {
       Object.keys(checkedDays).forEach(a => {
         if (checkedDays[a]) { oDays.push(Number(a)); };
       });
@@ -304,9 +303,9 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
         "groups": null,
         "description": reactData.event_title,
         "image": null,
-        "event_date": eventAsADate.getTime(),
+        "event_date": reactData.event_date.date.getTime(),
         "last_date": lastAsADate?.getTime() || null,
-        "schedule_type": prefMethod,
+        "schedule_type": reactData.prefMethod,
         "time_from": time_from_display_string,
         "time_to": time_to_display_string,
         "slots": reactData.slotObjList.map(s => { return s.key; }),
@@ -382,7 +381,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   }
 
   function OK2Save() {
-    return ((!reactData.dateObj.error)
+    return ((reactData.event_date && !reactData.event_date.error)
       && (reactData.event_title.trim() !== '')
       && (!isAppointment || (reactData.preReservationList.length > 0))
     );
@@ -400,11 +399,6 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
       event_location: vCheck,
       location_override: true
     }, true);
-  };
-
-  const handleChangeDate = event => {
-    setEventDate(event.target.value);
-    setEventAsADate(null);
   };
 
   const handleChangeTimeFrom = event => {
@@ -450,50 +444,6 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     setTimeToAsDisplayString(event.target.value);
   };
 
-  const handleDateExit = event => {
-    if (event.key === 'Enter' || event.type === 'blur') {
-      let goodDate = makeDate(event_date.trim());
-      updateReactData({
-        dateObj: goodDate
-      }, true);
-      setEventAsADate(goodDate.date);
-      if (!prefMethod) { setMethod('specific_date'); };
-      setEventDate(goodDate.absolute);
-      let checkedDays = [];
-      checkedDays[goodDate.dayOfWeek] = true;
-      setCheckedDays(checkedDays);
-    }
-  };
-
-  /*
-  function makeDate(pDate) {
-    let goodDate = new Date(pDate);
-    if (isNaN(goodDate)) {
-      let jump = 0;
-      let tDate = pDate.substr(0, 3).toLowerCase();
-      let dOfw = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(tDate);
-      goodDate = new Date(Date.now());
-      if (dOfw > -1) {
-        goodDate.setDate(goodDate.getDate() + ((7 - (goodDate.getDay() - dOfw)) % 7) + jump);
-      }
-      else if (tDate === 'tom') {
-        goodDate.setDate(goodDate.getDate() + 1);
-      }
-      else if (tDate !== 'tod') {
-        goodDate = new Date(pDate);
-      }
-    }
-    let current = new Date(Date.now());
-    current.setHours(0, 0, 0, 0);
-    if (goodDate < current) {
-      let yyyy = current.getFullYear();
-      goodDate.setFullYear(yyyy);
-      if (goodDate < current) { goodDate.setFullYear(yyyy + 1); }
-    };
-    return goodDate;
-  }
-*/
-
   const handleChangeLastDate = event => {
     setLastAsADate(null);
     setLastDate(event.target.value);
@@ -503,11 +453,11 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     if (event.key === 'Enter' || event.type === 'blur') {
       let goodDate = new Date(last_date);
       if (isNaN(goodDate.getTime())) {     // invalid date input
-        if (event_date) {
+        if (reactData.event_date) {
           let addYears = 1;
-          if (prefMethod === 'annually_on') { addYears = 10; }
-          if (prefMethod === 'semiannually_on') { addYears = 3; }
-          goodDate = new Date(event_date);
+          if (reactData.prefMethod === 'annually_on') { addYears = 10; }
+          if (reactData.prefMethod === 'semiannually_on') { addYears = 3; }
+          goodDate = reactData.event_date.date;
           goodDate.setFullYear(goodDate.getFullYear() + addYears);
         }
         else {
@@ -525,11 +475,6 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
       setLastAsADate(goodDate);
     }
   };
-
-  const handleChangeMethod = event => {
-    setMethod(event.target.value);
-  };
-
 
   const handleChangeOwnersToggle = event => {
     setSpecificOwners(event.target.value);
@@ -720,7 +665,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                       create={false}
                       closeOnClickInput={true}
                       placeholder={''}
-                      values={(options.setPerson) 
+                      values={(options.setPerson)
                         ? [{ label: patient.display_name, value: (patient.person_id || patient.patient_id) }]
                         : []
                       }
@@ -831,28 +776,41 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
               <div>
                 <TextField
                   id='event_date'
-                  value={event_date}
-                  onKeyPress={handleDateExit}
-                  onChange={handleChangeDate}
-                  onBlur={handleDateExit}
-                  helperText='Event Date'
+                  value={reactData.event_date ? reactData.event_date.absolute : ''}
+                  onBlur={(event) => {
+                    if (event.target.value) {
+                      let dObj = makeDate(event.target.value, { noTime: true });
+                      let reactUpd = { event_date: dObj };
+                      if (!reactData.prefMethod) {
+                        reactUpd.method = 'specific_date';
+                      };
+                      let checkedDays = [];
+                      checkedDays[dObj.dayOfWeek] = true;
+                      setCheckedDays(checkedDays);
+                      updateReactData(reactUpd, true);
+                    }
+                  }}
+                helperText='Event Date'
                 />
               </div>
-              {(typeof (eventAsADate) === 'object') && eventAsADate &&
+              {reactData.event_date && !reactData.event_date.error &&
                 <Box
                   display="flex"
                   pb={1}
+                  mt={1}
                   flexDirection='column'
                   justifyContent="center"
                 >
                   <FormControl className={classes.formControl} component="fieldset">
                     <RadioGroup
                       row
-                      defaultValue={prefMethod}
+                      defaultValue={reactData.prefMethod}
                       aria-label="PrefMethod"
                       name="method"
-                      value={prefMethod}
-                      onChange={handleChangeMethod}
+                      value={reactData.prefMethod}
+                      onChange={(event) => {
+                        updateReactData({ prefMethod: event.target.value }, true)
+                      }}
                     >
                       <FormControlLabel
                         className={classes.formControlLbl}
@@ -861,24 +819,6 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                         label={
                           <Typography className={classes.radioText}>
                             This date only
-                          </Typography>}
-                      />
-                      <FormControlLabel
-                        className={classes.formControlLbl}
-                        value="annually_on"
-                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                        label={
-                          <Typography className={classes.radioText}>
-                            {`Every year on ${eventAsADate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
-                          </Typography>}
-                      />
-                      <FormControlLabel
-                        className={classes.formControlLbl}
-                        value="semiannually_on"
-                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                        label={
-                          <Typography className={classes.radioText}>
-                            {`Twice a year (${eventAsADate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} and ${addMonths(eventAsADate, 6).date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})`}
                           </Typography>}
                       />
                       <FormControlLabel
@@ -901,21 +841,39 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                       />
                       <FormControlLabel
                         className={classes.formControlLbl}
+                        value="annually_on"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            {`Every year on ${reactData.event_date.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
+                          </Typography>}
+                      />
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="semiannually_on"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            {`Twice a year (${reactData.event_date.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} and ${addMonths(reactData.event_date.date, 6).date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})`}
+                          </Typography>}
+                      />
+                      <FormControlLabel
+                        className={classes.formControlLbl}
                         value="monthly_by_dayOfWeek"
                         control={<Radio disableRipple className={classes.radioButton} size='small' />}
                         label={
                           <Typography className={classes.radioText}>
-                            {`Every month on the ${ordinal[(Math.min(Math.floor(eventAsADate.getDate() / 7.1) + 1, 4)) - 1]} ${eventAsADate.toLocaleDateString(undefined, { weekday: 'long' })}`}
+                            {`Every month on the ${ordinal[(Math.min(Math.floor(reactData.event_date.date.getDate() / 7.1) + 1, 4)) - 1]} ${reactData.event_date.date.toLocaleDateString(undefined, { weekday: 'long' })}`}
                           </Typography>}
                       />
-                      {eventAsADate.getDate() < 29 &&
+                      {reactData.event_date.date.getDate() < 29 &&
                         <FormControlLabel
                           className={classes.formControlLbl}
                           value="monthly_by_date"
                           control={<Radio disableRipple className={classes.radioButton} size='small' />}
                           label={
                             <Typography className={classes.radioText}>
-                              {`Every month on the ${ordinal[(eventAsADate.getDate()) - 1]}`}
+                              {`Every month on the ${ordinal[(reactData.event_date.date.getDate()) - 1]}`}
                             </Typography>}
                         />
                       }
@@ -923,7 +881,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                   </FormControl>
                 </Box>
               }
-              {(prefMethod && ((prefMethod === 'weekly_on') || (prefMethod === 'bi-weekly_on'))) &&
+              {(reactData.prefMethod && ((reactData.prefMethod === 'weekly_on') || (reactData.prefMethod === 'bi-weekly_on'))) &&
                 <Box display={'flex'} flexDirection={'row'} className={classes.formControlDayRow} flexWrap={'wrap'} >
                   <Typography className={classes.radioText}>
                     {`Which days?`}
@@ -959,7 +917,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                   </FormControl>
                 </Box>
               }
-              {(prefMethod && (prefMethod !== 'specific_date')) &&
+              {(reactData.prefMethod && (reactData.prefMethod !== 'specific_date')) &&
                 <div>
                   <TextField
                     id='last_date'
@@ -971,7 +929,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                   />
                 </div>
               }
-              {prefMethod && (prefMethod !== 'specific_date') && !personalEvent &&
+              {reactData.prefMethod && (reactData.prefMethod !== 'specific_date') && !personalEvent &&
                 <Box
                   display="flex"
                   pt={2}
@@ -1039,7 +997,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                   helperText='End time'
                 />
               </div>
-              {!personalEvent &&
+              {!personalEvent && !isAppointment &&
                 <Box
                   display="flex"
                   pt={2}
@@ -1160,7 +1118,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                   </Box>
                 </Box>
               }
-              {!personalEvent &&
+              {!personalEvent && !isAppointment &&
                 <Box
                   display="flex"
                   pt={2}
@@ -1215,7 +1173,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                   }}
                 />
               }
-              {!personalEvent &&
+              {!personalEvent && !isAppointment &&
                 <Box
                   display="flex"
                   pt={2}

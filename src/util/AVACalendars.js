@@ -2151,7 +2151,11 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
         }
         else {
           response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[occurrenceRec.slotData.owner] =
-            found_events[occurrenceRec.event_id]?.slot_names?.[occurrenceRec.slotData.slot] || ((found_events[occurrenceRec.event_id].type === 'seats') ? '' : occurrenceRec.slotData.slot);
+            found_events[occurrenceRec.event_id]?.slot_names?.[occurrenceRec.slotData.slot]
+            || ((found_events[occurrenceRec.event_id].type === 'seats')
+              ? ''
+              : occurrenceRec.slotData.slot
+            );
         }
         if (!peopleInfo.hasOwnProperty(occurrenceRec.slotData.owner)) {
           peopleInfo[occurrenceRec.slotData.owner] = [];
@@ -2171,9 +2175,37 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
         if (!conflicts[occurrenceRec.slotData.owner].hasOwnProperty(occurrenceRec.occurrence_date)) {
           conflicts[occurrenceRec.slotData.owner][occurrenceRec.occurrence_date] = [{ time: 0, open: true }];
         }
+        let this_date = makeDate(occurrenceRec.occurrence_date);
+        let this_Sunday = makeDate(addDays(this_date.date, -(this_date.dayOfWeek)));
+        if (!conflicts[occurrenceRec.slotData.owner].hasOwnProperty('summaries')) {
+          conflicts[occurrenceRec.slotData.owner].summaries = {
+            [this_Sunday.numeric$]: {
+              description: this_Sunday.dateOnly,
+              minutes: 0
+            }
+          };
+        }
+        else if (!conflicts[occurrenceRec.slotData.owner].summaries.hasOwnProperty(this_Sunday.numeric$)) {
+          conflicts[occurrenceRec.slotData.owner].summaries[this_Sunday.numeric$] = {
+            description: this_Sunday.dateOnly,
+            minutes: 0
+          };
+        }
+        let start_time = makeTime(slotTimesResponse.start24);
+        let end_time = makeTime(slotTimesResponse.end24);
+        let minutes_booked = 0
+        if (end_time.minutesSinceMidnight < start_time.minutesSinceMidnight) {
+          minutes_booked = end_time.minutesSinceMidnight + (1440 - start_time.minutesSinceMidnight);
+        }
+        else {
+          minutes_booked = end_time.minutesSinceMidnight - start_time.minutesSinceMidnight;
+        }
+        if (minutes_booked < 1200) {
+          conflicts[occurrenceRec.slotData.owner].summaries[this_Sunday.numeric$].minutes += minutes_booked;
+        }
         conflicts[occurrenceRec.slotData.owner][occurrenceRec.occurrence_date].push(
-          { time: makeNumber(slotTimesResponse.start24), open: false, event_id: occurrenceRec.event_id, event_title: found_events[occurrenceRec.event_id].description },
-          { time: makeNumber(slotTimesResponse.end24), open: true }
+          { time: start_time.numeric24, open: false, event_id: occurrenceRec.event_id, event_title: found_events[occurrenceRec.event_id].description },
+          { time: end_time.numeric24, open: true }
         );
       }
     }
@@ -2263,14 +2295,16 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
   }
   for (let this_person in conflicts) {
     for (let this_date in conflicts[this_person]) {
-      conflicts[this_person][this_date].sort((a, b) => {
-        if (a.time === b.time) {
-          return (!a.open ? 1 : -1);
-        }
-        else {
-          return ((a.time < b.time) ? -1 : 1);
-        }
-      })
+      if (this_date !== 'summaries') {
+        conflicts[this_person][this_date].sort((a, b) => {
+          if (a.time === b.time) {
+            return (!a.open ? 1 : -1);
+          }
+          else {
+            return ((a.time < b.time) ? -1 : 1);
+          }
+        });
+      }
     }
   }
   response.conflicts = conflicts;
