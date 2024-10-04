@@ -260,6 +260,31 @@ export default ({ request = {}, onClose }) => {
     }
   };
 
+  const isIncomplete = (this_document) => {
+    if (!this_document.hasOwnProperty('incomplete')) {
+      return false;
+    }
+    else if (typeof this_document.incomplete === 'boolean') {
+      return this_document.incomplete;
+    }
+    else if ((this_document.incomplete === 'true') || (this_document.incomplete === 'incomplete')) {
+      return true;
+    }
+    else {
+      return false;
+    }
+  };
+
+  const isNotStarted = (this_document) => {
+    if ((!this_document.hasOwnProperty('incomplete'))
+      || (typeof this_document.incomplete === 'boolean')) {
+      return false;
+    }
+    else {
+      return (this_document.incomplete === 'not_started');
+    }
+  };
+
   React.useEffect(() => {
     async function initialize() {
       await loadDocuments();
@@ -391,7 +416,7 @@ export default ({ request = {}, onClose }) => {
             person_name: rememberedNames[this_document.person_id].display_name,
             person_last: rememberedNames[this_document.person_id].lastName,
             person_first: rememberedNames[this_document.person_id].firstName,
-            person_incompleteDoc_count: (this_document.incomplete ? 1 : 0),
+            person_incompleteDoc_count: (isIncomplete(this_document) ? 1 : 0),
             person_expanded: reactData?.rememberedSelections?.[this_document.person_id]?.expanded || false,
             formTypes: []
           };
@@ -412,7 +437,7 @@ export default ({ request = {}, onClose }) => {
               newPerson.formTypes.push({
                 form_id: this_form.form_id,
                 form_expanded: isExpanded,
-                form_incompleteDoc_count: (documentMatchesForm && this_document.incomplete) ? 1 : 0,
+                form_incompleteDoc_count: (documentMatchesForm && isIncomplete(this_document)) ? 1 : 0,
                 form_name: rememberedForms[this_form.form_id],
                 documentList: (documentMatchesForm ? [this_document] : [])
               });
@@ -434,18 +459,18 @@ export default ({ request = {}, onClose }) => {
             buildDocList[foundAt].formTypes.push({
               form_id: this_document.form_id,
               form_expanded: isExpanded,
-              form_incompleteDoc_count: (this_document.incomplete ? 1 : 0),
+              form_incompleteDoc_count: (isIncomplete(this_document) ? 1 : 0),
               form_name: rememberedForms[this_document.form_id],
               documentList: [this_document]
             });
-            if (this_document.incomplete) {
+            if (isIncomplete(this_document)) {
               buildDocList[foundAt].person_incompleteDoc_count++;
             }
           }
           else {
             // the person and the form were already here; add this_document to the list
             buildDocList[foundAt].formTypes[foundForm].documentList.push(this_document);
-            if (this_document.incomplete) {
+            if (isIncomplete(this_document)) {
               buildDocList[foundAt].person_incompleteDoc_count++;
               buildDocList[foundAt].formTypes[foundForm].form_incompleteDoc_count++;
             }
@@ -913,7 +938,7 @@ export default ({ request = {}, onClose }) => {
                                       : null
                                     ),
                                     selectedDoc_id: this_document.document_id,
-                                    incomplete: !!this_document.incomplete
+                                    incomplete: isIncomplete(this_document)
                                   }, true);
                                 }}
                                 style={AVATextStyle({
@@ -921,9 +946,9 @@ export default ({ request = {}, onClose }) => {
                                     bottom: 0.5,
                                     left: 2
                                   },
-                                  color: (this_document.incomplete ? 'red' : '')
+                                  color: (isIncomplete(this_document) ? 'red' : '')
                                 })}>
-                                {`${this_document.title || makeDate(this_document.completed_timestamp).absolute}${this_document.incomplete ? ' (incomplete)' : ''}`}
+                                {`${this_document.title || makeDate(this_document.completed_timestamp).absolute}${isIncomplete(this_document) ? ' (incomplete)' : ''}`}
                               </Typography>
                               <IconButton
                                 className={classes.AVAMicroButtonClean}
@@ -938,7 +963,7 @@ export default ({ request = {}, onClose }) => {
                                       : null
                                     ),
                                     selectedDoc_id: this_document.document_id,
-                                    incomplete: !!this_document.incomplete
+                                    incomplete: this_document.incomplete
                                   }, true);
                                 }}
                               >
@@ -973,6 +998,7 @@ export default ({ request = {}, onClose }) => {
           request={{
             document_id: reactData.selectedDoc_id,
             signatureImage: (!reactData.incomplete ? reactData.signatureData : null),
+            mode: ((reactData.stage === 'printDoc') ? 'print' : (reactData.incomplete ? 'incomplete' : 'view')),
             printMode: (reactData.stage === 'printDoc'),
             viewMode: !reactData.incomplete,
             incompleteMode: reactData.incomplete
@@ -988,7 +1014,9 @@ export default ({ request = {}, onClose }) => {
         <FormFill
           request={{
             form_id: reactData.selectedForm_id,
-            person_id: reactData.selectedPerson_id
+            person_id: reactData.selectedPerson_id,
+            mode: 'new'
+
           }}
           onClose={(formStatus) => {
             updateReactData({

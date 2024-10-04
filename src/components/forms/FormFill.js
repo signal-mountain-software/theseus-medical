@@ -140,9 +140,6 @@ export default ({ request = {}, onClose }) => {
     let docParts = options.document_id.split('%%');
     options.form_id = docParts[1];
   }
-  if (options.printMode) {
-    options.viewMode = true;
-  }
 
   /* 
    if options.changeMode, then
@@ -151,7 +148,7 @@ export default ({ request = {}, onClose }) => {
      - all defaults in form_id are ignored; values from incoming document_id are used as defaults
      - if saved, add replaced_by = <new document_id> to the incoming document_id and update that document
 
-   if options.viewMode, then
+   if (viewOnly()), then
      - expect options.document_id
      - the form_id comes from the document_id (person %% form_id %% version)
      - all fields rendered in view mode, including signature
@@ -173,7 +170,8 @@ export default ({ request = {}, onClose }) => {
     storedSignature: null,
     stage: 'initialize',
     version__number: 0,
-    savePending: !!options.incompleteMode,
+    mode: options.mode || 'new',
+    savePending: options.mode ? (options.mode === 'incomplete') : (!!options.incompleteMode),
     document: {},
     lastActiveTime: new Date(),
     values: {
@@ -213,6 +211,18 @@ export default ({ request = {}, onClose }) => {
     }
   };
 
+  const newDocument = () => {
+    return !(['view', 'incomplete', 'change', 'print', 'not_started'].includes(reactData.mode));
+  }
+
+  const viewOnly = () => {
+    return (['view', 'print'].includes(reactData.mode))
+  }
+
+  const loadInitialOptions = () => {
+    return (newDocument() || (reactData.mode === 'not_started'));
+  }
+
   const oneMinute = 1000 * 60;
   const msBeforeSleeping = 1 * oneMinute;
 
@@ -236,7 +246,7 @@ export default ({ request = {}, onClose }) => {
       enteredIdleStateTime: now,
     };
     if (!reactData.idleState) {
-      if (!options.viewMode) {
+      if (!viewOnly()) {
         cl(`Auto save at ${now.toLocaleString()}.`);
         let saveCallObj = {
           save_continue: true
@@ -371,7 +381,7 @@ export default ({ request = {}, onClose }) => {
       }
     }
     if (!reactData.formRec.fields[this_field].default) {
-      if (!options.changeMode && !options.viewMode && !options.incompleteMode) {
+      if (loadInitialOptions()) {
         return '';   // there is no default specified for this field (in change mode, ignore this - use value instead)
       }
       else {
@@ -383,7 +393,7 @@ export default ({ request = {}, onClose }) => {
       default_source = reactData.formRec.fields[this_field].default.source;
       default_ref = 'image';
     }
-    else if (options.changeMode || options.viewMode || options.incompleteMode) {
+    else if (!loadInitialOptions()) {
       default_source = 'form';
       default_ref = reactData.form_id;
       if (reactData.formRec.fields[this_field].default.source === 'form' && reactData.formRec.fields[this_field].default.ref !== 'recent') {
@@ -571,7 +581,7 @@ export default ({ request = {}, onClose }) => {
               case 'id': {
                 defaultValue = reactData?.document[default_ref][this_field];
                 if ((reactData.formRec.fields[this_field].choose)
-                  && !options.viewMode) {
+                  && (!viewOnly())) {
                   let foundPerson = default_peopleList.find(person => {
                     return (person.person_id === defaultValue);
                   });
@@ -890,7 +900,7 @@ export default ({ request = {}, onClose }) => {
                   aria-label={`${props.prop}_${tIndex}`}
                   name={`${props.prop}_${tIndex}`}
                   key={`CheckGroup__${props.prop}_${tIndex}`}
-                  disabled={options.viewMode}
+                  disabled={(viewOnly())}
                   size='small'
                   checked={reactValues[props.prop]?.valueList && reactValues[props.prop].valueList.includes(text)}
                   onClick={() => {
@@ -917,7 +927,7 @@ export default ({ request = {}, onClose }) => {
                   name={`${props.prop}_other`}
                   key={`CheckGroup__${props.prop}_other`}
                   size='small'
-                  disabled={options.viewMode}
+                  disabled={(viewOnly())}
                   checked={reactValues[props.prop]?.valueList && reactValues[props.prop].valueList.includes(reactValues[props.prop].valueText)}
                   onClick={() => {
                     handleClick({
@@ -995,7 +1005,7 @@ export default ({ request = {}, onClose }) => {
                   })}
                   className={classes.radioDays}
                   autoComplete='off'
-                  disabled={options.viewMode}
+                  disabled={(viewOnly())}
                   id={`${props.prop}_otherText`}
                   defaultValue={(reactValues[props.prop] && reactValues[props.prop].bonusText)
                     ? reactValues[props.prop].bonusText
@@ -1165,7 +1175,7 @@ export default ({ request = {}, onClose }) => {
         console.log(`caught error updating Documents; error is:`, error);
         putError.push(error);
       });
-    if (options.changeMode) {
+    if (reactData.mode === 'change') {
       await dbClient
         .update({
           Key: {
@@ -1306,7 +1316,7 @@ export default ({ request = {}, onClose }) => {
 
       }
       let documentsObj;
-      if ((options.changeMode || options.viewMode || options.incompleteMode) && options.document_id) {
+      if (!newDocument() && options.document_id) {
         documentsObj = await loadDocument({
           specific_document: options.document_id,
         });
@@ -1330,7 +1340,7 @@ export default ({ request = {}, onClose }) => {
         selectedPersonRec,
         document: documentsObj || { [this_form]: {} }
       };
-      if (options.incompleteMode) {
+      if (!newDocument()) {
         reactObj.document_id = options.document_id;
       }
       updateReactData(reactObj, true);
@@ -1347,7 +1357,7 @@ export default ({ request = {}, onClose }) => {
         stage: 'fill'
       }, true);
       setForceRedisplay('ready');
-      if (options.printMode) {
+      if (reactData.mode === 'print') {
         printDocument(
           {
             docData: reactData.formRec,
@@ -1427,7 +1437,7 @@ export default ({ request = {}, onClose }) => {
                               size: 0.75,
                               margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
                             })}
-                            disabled={options.viewMode}
+                          disabled={(viewOnly())}
                             autoComplete='off'
                             value={(reactValues[this_field] && reactValues[this_field].valueText)
                               ? reactValues[this_field].valueText
@@ -1488,7 +1498,7 @@ export default ({ request = {}, onClose }) => {
                               }
                             }}
                             helperText={reactData.formRec.fields[this_field].prompt.ref}
-                            disabled={options.viewMode}
+                          disabled={(viewOnly())}
                           />
                         }
                         {((reactData.formRec.fields[this_field].value.type === 'date')
@@ -1532,7 +1542,7 @@ export default ({ request = {}, onClose }) => {
                               }
                             }}
                             helperText={reactData.formRec.fields[this_field].prompt.ref}
-                            disabled={options.viewMode}
+                            disabled={(viewOnly())}
                           />
                         }
                         {(reactData.formRec.fields[this_field].value.type.startsWith('select')) &&
@@ -1599,7 +1609,7 @@ export default ({ request = {}, onClose }) => {
                           </React.Fragment>
                         }
                         {(reactData.formRec.fields[this_field].value.type === 'signature') &&
-                          (!options.viewMode) &&
+                          (!viewOnly()) &&
                           <Box
                             display='flex'
                             flexDirection='column'
@@ -1655,7 +1665,7 @@ export default ({ request = {}, onClose }) => {
                           </Box>
                         }
                         {(reactData.formRec.fields[this_field].value.type === 'signature') &&
-                          (options.viewMode) &&
+                          (viewOnly()) &&
                           <Box
                             display='flex'
                             flexDirection='column'
@@ -1698,7 +1708,7 @@ export default ({ request = {}, onClose }) => {
                             justifyContent='flex-start'
                             alignItems='flex-start'
                           >
-                            {(!options.viewMode) &&
+                            {(!viewOnly()) &&
                               <Box
                                 key={`selectBox-${this_field}`}
                                 display='flex' marginLeft={1} flexGrow={1} flexDirection='column'
@@ -1710,7 +1720,7 @@ export default ({ request = {}, onClose }) => {
                                   clearOnSelect={true}
                                   clearOnBlur={true}
                                   key={`selectOptions-${this_field}`}
-                                  disabled={options.viewMode}
+                                  disabled={(viewOnly())}
                                   searchable={true}
                                   create={false}
                                   closeOnClickInput={true}
@@ -1762,7 +1772,7 @@ export default ({ request = {}, onClose }) => {
                                 </Box>
                               </Box>
                             }
-                            {(options.viewMode) &&
+                            {(viewOnly()) &&
                               <Box display='flex'
                                 flexDirection='row'
                                 marginLeft={1}
@@ -1803,7 +1813,7 @@ export default ({ request = {}, onClose }) => {
                               key={`geoBox-${this_field}`}
                               display='flex' marginTop={1} flexGrow={1} flexDirection='column'
                             >
-                              {!options.viewMode &&
+                              {(!viewOnly()) &&
                                 <Button
                                   className={AVAClass.AVAButton}
                                   key={`geoButton-${this_field}`}
@@ -1905,7 +1915,7 @@ export default ({ request = {}, onClose }) => {
               style={{ backgroundColor: 'red', color: 'white' }}
               size='small'
               onClick={() => {
-                if (options.viewMode) {
+                if (viewOnly()) {
                   onClose();
                 }
                 else {
@@ -1918,7 +1928,7 @@ export default ({ request = {}, onClose }) => {
             >
               {'Exit'}
             </Button>
-            {!options.viewMode &&
+            {(!viewOnly()) &&
               <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
                 <Button
                   onClick={async () => {

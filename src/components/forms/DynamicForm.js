@@ -473,7 +473,7 @@ export default ({
             personalEvent = true;
           }
           Object.assign(defaultObj, dV);
-        })
+        });
       }
       return (
         <NewCalendarEvent
@@ -541,6 +541,7 @@ export default ({
         <FormFill
           request={defaultValue}
           onClose={onSave}
+          mode={'new'}
         />
       );
     case 'document_dashboard':
