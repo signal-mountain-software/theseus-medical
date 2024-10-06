@@ -114,7 +114,7 @@ const useStyles = makeStyles(theme => ({
 export default ({ request = {}, onClose }) => {
   const classes = useStyles();
   const AVAClass = AVAclasses();
-  const signatureRef = [React.useRef(null), React.useRef(null), React.useRef(null)]
+  const signatureRef = [React.useRef(null), React.useRef(null), React.useRef(null)];
 
   const { state } = useSession();
 
@@ -161,7 +161,7 @@ export default ({ request = {}, onClose }) => {
      - do not show "save" button
 
  */
-  
+
   const [reactData, setReactData] = React.useState({
     form_id: options.form_id,
     formRec: {},
@@ -171,6 +171,7 @@ export default ({ request = {}, onClose }) => {
     stage: 'initialize',
     version__number: 0,
     mode: options.mode || 'new',
+    assign_to: options.assign_to,
     savePending: options.mode ? (options.mode === 'incomplete') : (!!options.incompleteMode),
     document: {},
     lastActiveTime: new Date(),
@@ -213,15 +214,15 @@ export default ({ request = {}, onClose }) => {
 
   const newDocument = () => {
     return !(['view', 'incomplete', 'change', 'print', 'not_started'].includes(reactData.mode));
-  }
+  };
 
   const viewOnly = () => {
-    return (['view', 'print'].includes(reactData.mode))
-  }
+    return (['view', 'print'].includes(reactData.mode));
+  };
 
   const loadInitialOptions = () => {
     return (newDocument() || (reactData.mode === 'not_started'));
-  }
+  };
 
   const oneMinute = 1000 * 60;
   const msBeforeSleeping = 1 * oneMinute;
@@ -1437,7 +1438,7 @@ export default ({ request = {}, onClose }) => {
                               size: 0.75,
                               margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
                             })}
-                          disabled={(viewOnly())}
+                            disabled={(viewOnly())}
                             autoComplete='off'
                             value={(reactValues[this_field] && reactValues[this_field].valueText)
                               ? reactValues[this_field].valueText
@@ -1498,7 +1499,7 @@ export default ({ request = {}, onClose }) => {
                               }
                             }}
                             helperText={reactData.formRec.fields[this_field].prompt.ref}
-                          disabled={(viewOnly())}
+                            disabled={(viewOnly())}
                           />
                         }
                         {((reactData.formRec.fields[this_field].value.type === 'date')

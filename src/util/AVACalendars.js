@@ -430,6 +430,12 @@ export async function getCalendarEntries(body, statusUpdate) {
             qQ.ExpressionAttributeValues[':rV'] = `${rV.split('#')[0]}#`;
             break;
           }
+          case 'template': {
+            qQ.IndexName = 'record_type-index';
+            qQ.KeyConditionExpression += ' and record_type = :rT';
+            qQ.ExpressionAttributeValues[':rT'] = rT[t];
+            break;
+          }
           case 'event': {
             qQ.KeyConditionExpression += ' and event_key = :rV';
             qQ.ExpressionAttributeValues[':rV'] = `${rV.split('#')[0]}`;

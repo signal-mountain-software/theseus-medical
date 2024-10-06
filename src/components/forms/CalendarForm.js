@@ -279,6 +279,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     onlyRegistered - only show events that I am signed-up for
     assignmentView - show list of people you can assign to events
     allowAssign - required when assignmentView is true; this becomes assignment__list
+    template__List - a list of event templates to use when creatinf new appointments
     assignment__list - this is a list of people and groups that you may choose from to assign to events
     message_override - [list of IDs] or [*none*] (default if missing: added slots = message to the event owner)
     colorScheme: {   (if this exists at all, ALL colors are overridden; missing keys will be null/black color)
@@ -488,9 +489,14 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     if (!reactData.filterTextLower) {
       return true;
     }
+    else if (reactData.idFilter && (this_event.slot_owners.hasOwnProperty(reactData.idFilter))) {
+      return true;
+    }
+    else if (reactData.eventIDFilter && (this_event.event_id === reactData.eventIDFilter)) {
+      return true;
+    }
     else {
-      return ((reactData.idFilter && (this_event.slot_owners.hasOwnProperty(reactData.idFilter)))
-        || (`${this_event.description} ${this_event.location}`).toLowerCase().includes(reactData.filterTextLower));
+      return ((`${this_event.description} ${this_event.location}`).toLowerCase().includes(reactData.filterTextLower));
     }
   }
 
@@ -504,35 +510,73 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     dropTarget[target.type] = target.data;
   };
 
+  const isTemplate = (id) => {
+    return (id.startsWith('template:'));
+  };
+
+  const getTemplate = (id) => {
+    let template_id = id.split('%%')[1];
+    return (reactData.defaultValues.template__List.find(this_template => {
+      return this_template.event_data.event_id === template_id;
+    }));
+  };
+
   const handleDrop = async (ev, dropType) => {
     ev.preventDefault();
     let dragged_id = ev.dataTransfer.getData('id');
     console.log(`drop on ${dropType} with ${Object.keys(dropTarget)}`);
     switch (dropType) {
       case 'event': {
-        await eventSignup(dragged_id, dropTarget['event']);
-        dropTarget = {};
-        console.log('cleared dropTarget');
-        break;
+        if (!isTemplate(dragged_id)) {
+          await eventSignup(dragged_id, dropTarget['event']);
+          dropTarget = {};
+          break;
+        }
+        else {
+          dropTarget['calendar_cell'].this_date = { dateObj: makeDate(dropTarget['event'].droppedOn_event.occurrence_date) };
+        }
+        // intentionally drop through to calendar_cell case
       }
+      // eslint-disable-next-line
       case 'calendar_cell': {
         if (dropTarget.hasOwnProperty('calendar_cell')) {
-          let personRec = await getPerson(dragged_id);
-          updateReactData({
-            addPersonalEvent: true,
-            selectedPersonRec: personRec,
-            isAppointment: true,
-            appointmentDate: dropTarget['calendar_cell'].this_date
-          }, true);
+          if (isTemplate(dragged_id)) {
+            updateReactData({
+              addTemplateEvent: true,
+              selectedTemplate: getTemplate(dragged_id),
+              isAppointment: true,
+              appointmentDate: dropTarget['calendar_cell'].this_date
+            }, true);
+          }
+          else {
+            let personRec = await getPerson(dragged_id);
+            updateReactData({
+              addPersonalEvent: true,
+              selectedPersonRec: personRec,
+              isAppointment: true,
+              appointmentDate: dropTarget['calendar_cell'].this_date
+            }, true);
+          }
         }
         break;
       }
       case 'filter_button': {
-        let personRec = await getPerson(dragged_id);
-        updateReactData({
-          idFilter: dragged_id,
-          filterTextLower: personRec.name.last.toLowerCase()
-        }, true);
+        if (isTemplate(dragged_id)) {
+          let templateRec = getTemplate(dragged_id);
+          updateReactData({
+            eventIDFilter: templateRec.event_data.event_id,
+            idFilter: false,
+            filterTextLower: templateRec.event_data.generic_description.toLowerCase()
+          }, true);
+        }
+        else {
+          let personRec = await getPerson(dragged_id);
+          updateReactData({
+            eventIDFilter: false,
+            idFilter: dragged_id,
+            filterTextLower: personRec.name.last.toLowerCase()
+          }, true);
+        }
         break;
       }
       default: { }
@@ -1149,10 +1193,42 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
             </Box>
             {reactData.defaultValues.assignmentView &&
               <React.Fragment>
+                {reactData.defaultValues.template__List &&
+                  <Box
+                    key={`template_outer`}
+                    className={classes.peopleBox}
+                  >
+                    {reactData.defaultValues.template__List.map((this_template, tX) => (
+                      <Box
+                        key={`template-${tX}_inner`}
+                        mx={1}
+                        display='flex'
+                        justifyContent='center'
+                        alignItems='center'
+                        flexDirection='column'
+                        draggable={true}
+                        onDragStart={(e) =>
+                          handleDragStart(e, `template: ${tX}%%${this_template.event_data.event_id}`)
+                        }
+                      >
+                        <Avatar
+                          className={classes.assignment_avatar}
+                          src={this_template.event_data.image}
+                        />
+                        <Typography
+                          noWrap={true}
+                          className={classes.dragNamesLast}
+                        >
+                          {this_template.event_data.generic_description || this_template.event_data.description}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                }
                 {reactData.defaultValues.assignment__List.map((this_list, lX) => (
                   <Box
                     key={`candidate-${lX}`}
-                    className={(lX === 0) ? classes.peopleBox : classes.peopleBoxWithSpace} >
+                    className={((lX === 0) && !reactData.defaultValues.template__List) ? classes.peopleBox : classes.peopleBoxWithSpace} >
                     {this_list.assignmentList.map((this_candidate, cX) => (
                       <Box
                         key={`candidate-${lX}-${cX}`}
@@ -1581,9 +1657,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                           </Box>
                                           {showSlots() && this_event.slot_owners
                                             && (Object.keys(this_event.slot_owners).length > 0)
-                                              && (Object.keys(this_event.slot_owners).sort((a, b) => {
-                                                return ((this_event.slot_owners[a] > this_event.slot_owners[b]) ? 1 : -1);
-                                              })).map(this_owner => (
+                                            && (Object.keys(this_event.slot_owners).sort((a, b) => {
+                                              return ((this_event.slot_owners[a] > this_event.slot_owners[b]) ? 1 : -1);
+                                            })).map(this_owner => (
                                               <Typography
                                                 key={`event_${this_event}_slot_owner_${this_owner}`}
                                                 noWrap={true}
@@ -1637,6 +1713,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 if ((response.length === 0) || (response[0].length === 0) || (buttonPressed === 2)) {
                   reactUpdObj.filterTextLower = false;
                   reactUpdObj.idFilter = false;
+                  reactUpdObj.eventIDFilter = false;
                 }
                 else {
                   reactUpdObj.filterTextLower = response[0].toLowerCase();
@@ -1755,7 +1832,115 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         "sort24": (newEvent.eventData.event_data.time.from ? makeTime(newEvent.eventData.event_data.time.from).numeric24 : 0),
                         "slot_owners": slotObj,
                         "occurrence_date": newOccDate,
-                        "event_key": newEvent.event_key,
+                        "event_key": `${newEvent.event_key}#${newOccDate}`,
+                        "client": newEvent.client,
+                        "record_type": "occurrence"
+                      };
+                      let eventIndex = reactData.myCalendar[foundIt].eventList.push(newEntry) - 1;
+                      newEvent.slots.forEach(this_slot => {
+                        let dragged_id = this_slot.slot_owner;
+                        if (!reactData.conflictInfo.hasOwnProperty(dragged_id)) {
+                          reactData.conflictInfo[dragged_id] = {};
+                        }
+                        let this_date = makeDate(newOccDate);
+                        let this_Sunday = makeDate(addDays(this_date.date, -(this_date.dayOfWeek)));
+                        if (!reactData.conflictInfo[dragged_id].hasOwnProperty('summaries')) {
+                          reactData.conflictInfo[dragged_id].summaries = {
+                            [this_Sunday.numeric$]: {
+                              description: this_Sunday.dateOnly,
+                              minutes: 0
+                            }
+                          };
+                        }
+                        else if (!reactData.conflictInfo[dragged_id].summaries.hasOwnProperty(this_Sunday.numeric$)) {
+                          reactData.conflictInfo[dragged_id].summaries[this_Sunday.numeric$] = {
+                            description: this_Sunday.dateOnly,
+                            minutes: 0
+                          };
+                        }
+                        let start_time = makeTime(newEvent.eventData.event_data.time.from);
+                        let end_time = makeTime(newEvent.eventData.event_data.time.to);
+                        let minutes_booked = 0;
+                        if (end_time.minutesSinceMidnight < start_time.minutesSinceMidnight) {
+                          minutes_booked = end_time.minutesSinceMidnight + (1440 - start_time.minutesSinceMidnight);
+                        }
+                        else {
+                          minutes_booked = end_time.minutesSinceMidnight - start_time.minutesSinceMidnight;
+                        }
+                        if (minutes_booked < 1200) {
+                          reactData.conflictInfo[dragged_id].summaries[this_Sunday.numeric$].minutes += minutes_booked;
+                        }
+                        if (!reactData.conflictInfo[dragged_id].hasOwnProperty(newOccDate)) {
+                          reactData.conflictInfo[dragged_id][newOccDate] = [];
+                        }
+                        reactData.conflictInfo[dragged_id][newOccDate].push(
+                          {
+                            time: start_time.numeric24, open: false, event_id: reactData.myCalendar[foundIt].eventList[eventIndex].event_key,
+                            event_title: reactData.myCalendar[foundIt].eventList[eventIndex].description
+                          },
+                          { time: end_time.numeric24, open: true }
+                        );
+                        reactData.conflictInfo[dragged_id][newOccDate].sort((a, b) => {
+                          if (a.time === b.time) {
+                            return (!a.open ? 1 : -1);
+                          }
+                          else {
+                            return ((a.time < b.time) ? -1 : 1);
+                          }
+                        });
+                      });
+                      reactData.myCalendar[foundIt].eventList.sort((a, b) => {
+                        return ((a.sort24 < b.sort24) ? -1 : 1);
+                      });
+                    }
+                  });
+                  reactUpdObj.myCalendar = reactData.myCalendar;
+                  localStorage.setItem(`calendarChanged`, true);
+                }
+                updateReactData(reactUpdObj, true);
+              }}
+            />
+          }
+          {!reactData.loading && reactData.addTemplateEvent &&
+            <NewCalendarEvent
+              patient={state.session}
+              personalEvent={false}
+              showNewEvent={true}
+              options={{
+                setPerson: false,
+                setDuration: reactData.selectedTemplate.event_data.time.duration,
+                title: reactData.selectedTemplate.event_data.generic_description,
+                setDate: ((reactData.appointmentDate && !reactData.appointmentDate.error) ? reactData.appointmentDate : null)
+              }}
+              isAppointment={false}
+              onClose={(newEvent) => {
+                let reactUpdObj = {
+                  addTemplateEvent: false,
+                  isAppointment: false
+                };
+                if (newEvent) {
+                  let slotObj = {};
+                  newEvent.slots.forEach(this_slot => {
+                    slotObj[this_slot.slot_owner] = this_slot.slot_owner;
+                  });
+                  newEvent.occRecords.occArray.forEach(newOccDate => {
+                    let foundIt = reactData.myCalendar.findIndex(this_date => {
+                      return (this_date.dateObj.numeric === newOccDate);
+                    });
+                    if (foundIt > -1) {
+                      let newEntry = {
+                        "event_id": newEvent.event_id,
+                        "owner": [state.session.user_id],
+                        "image": null,
+                        "description": newEvent.eventData.event_data.description,
+                        "groups": newEvent.eventData.event_data.groups,
+                        "location": newEvent.eventData.event_data.location,
+                        "time": newEvent.eventData.event_data.time,
+                        "type": 'appointment',
+                        "sort24": (newEvent.eventData.event_data.time.from ? makeTime(newEvent.eventData.event_data.time.from).numeric24 : 0),
+                        "slot_owners": slotObj,
+                        "occurrence_date": newOccDate,
+                        "event_key": `${newEvent.event_key}#${newOccDate}`,
                         "client": newEvent.client,
                         "record_type": "occurrence"
                       };

@@ -235,7 +235,8 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     preReservationList: ((options.setPerson && isAppointment) ? [patient.person_id || patient.patient_id] : []),
     dateObj: { error: true },
     chosen_names: ((options.setPerson && isAppointment) ? patient.display_name : ''),
-    event_title: ((options.setPerson && isAppointment) ? (`${options.title ? titleCase(options.title.trim()) : 'Appointment'} for ${patient.display_name}`) : ''),
+    event_title: (options.title ? titleCase(options.title.trim())
+      : ((options.setPerson && isAppointment) ? (`Appointment for ${patient.display_name}`) : '')),
     title_override: false,
     event_location: ((options.setPerson && isAppointment) ? patient.location : ''),
     location_override: false
@@ -410,8 +411,15 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
       let madeTime = makeTime(time_from_display_string);
       setTimeFromAs24HourNumber(madeTime.numeric24);
       setTimeFromAsDisplayString(madeTime.time);
-      if ((!time_to_display_string) || (timeToAs24HourNumber && (timeToAs24HourNumber < madeTime.numeric24))) {
-        let calcTo = makeTime(madeTime.numeric24 + 100);
+      if (!time_to_display_string || (time_to_display_string.trim() === '') || (timeToAs24HourNumber && (timeToAs24HourNumber < madeTime.numeric24))) {
+        let calcTo;
+        if (options.setDuration) {
+          let tempTime = madeTime.minutesSinceMidnight + options.setDuration;
+          calcTo = makeTime((Math.round(tempTime / 60) * 100) + (tempTime % 60));
+        }
+        else {
+          calcTo = makeTime(madeTime.numeric24 + 100);
+        }
         setTimeToAs24HourNumber(calcTo.numeric24);
         setTimeToAsDisplayString(calcTo.time);
         if (displayTimes.length > 0) {

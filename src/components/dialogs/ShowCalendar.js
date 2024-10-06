@@ -4,7 +4,7 @@ import { useSnackbar } from 'notistack';
 
 import { getCalendarEntries, getAllOccurrences } from '../../util/AVACalendars';
 import { makeTime, addDays, makeDate } from '../../util/AVADateTime';
-import { isEmpty, isObject, deepCopy, makeArray } from '../../util/AVAUtilities';
+import { isEmpty, isObject, deepCopy, makeArray, array_in_array } from '../../util/AVAUtilities';
 import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
 import { getGroupsBelongTo, getMemberList, getGroupMembers } from '../../util/AVAGroups';
 
@@ -121,10 +121,11 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
     start_date - when building a calendar, start from this date
     end_date - when building a calendar, build through this date
     assignmentView - show list of people you can assign to events
-    allowAssign - required when assignmentView is true; this becomes assignment__list
+    allowAssign - required when assignmentView is true; this becomes assignment__list and template__list
    
    CREATED BY ShowCalendar and sent to CalendarForm
     assignment__list - this is a list of people and groups that you may choose from to assign to events
+    template__List - a list of event templates to use when creating new appointments
    
    PASSED THROUGH to CalendarForm without consideration
     slotsView - show all people that are signed up
@@ -376,11 +377,18 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
       return;
     }
     let oList = {};
+    let filterGroup = [];
+    if (reactData.defaultValues.hasOwnProperty('show_group')) {
+      filterGroup = makeArray(reactData.defaultValues.show_group);
+    }
+    else {
+      filterGroup = await getGroupsBelongTo(patient.client_id, patient.patient_id, { sort: true });
+    }
     if (isEmpty(reactData.myCalendar) || reactData.myCalendar.loadError || reactData.defaultValues.forceReload) {
       if (!reactData.loading) {
         updateReactData({
           loading: true
-        }, true)
+        }, true);
       }
       let startDate, endDate;
       if (reactData.defaultValues.start_date) {
@@ -394,13 +402,6 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
       }
       else {
         endDate = addDays(startDate, 35);
-      }
-      let filterGroup = [];
-      if (reactData.defaultValues.hasOwnProperty('show_group')) {
-        filterGroup = makeArray(reactData.defaultValues.show_group);
-      }
-      else {
-        filterGroup = await getGroupsBelongTo(patient.client_id, patient.patient_id, { sort: true });
       }
       oList = await getAllOccurrences(
         {
@@ -529,6 +530,32 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
       });
       reactUpdObj.defaultValues = reactData.defaultValues;
     }
+    if (reactData.defaultValues.assignmentView && reactData.defaultValues.templateList && !reactData.defaultValues.template__List) {
+      // templateList could include specific template_id(s) and/or group(s) from whom templates are selected
+      let workingTemplateList = [];
+      // get a list of all available templates in the Calendar table
+      let allTemplates = await getCalendarEntries({
+        client_id: state.session.client_id,
+        "type": 'template'
+      });
+      for (let t = 0; t < allTemplates.length; t++) {
+        let this_template = allTemplates[t].templateData;
+        if (reactData.defaultValues.templateList.includes(allTemplates[t].event_id)
+          ||
+          ((reactData.defaultValues.templateList.includes('*all')
+            || array_in_array(reactData.defaultValues.templateList, filterGroup))
+            && (this_template.availableTo_groups.includes('*all')
+              || array_in_array(this_template.availableTo_groups, filterGroup))
+          )
+        ) {
+          workingTemplateList.push(this_template);
+        }
+      }
+      reactData.defaultValues.template__List = workingTemplateList.sort((a, b) => {
+        return (a.generic_description < b.generic_description) ? -1 : 1;
+      });
+      reactUpdObj.defaultValues = reactData.defaultValues;
+    }
     localStorage.setItem(`calendarChanged`, false);
     let client_style = AVADefaults({ client_style: 'get' });
     if (isObject(client_style)) {
@@ -634,7 +661,7 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
                       selectDate: response.newStartDate || response.newEndDate || null
                     }
                   );
-                  updateReactData({ defaultValues: newDefaultValues }, true)
+                  updateReactData({ defaultValues: newDefaultValues }, true);
                   await initialize();
                 }
                 else {
