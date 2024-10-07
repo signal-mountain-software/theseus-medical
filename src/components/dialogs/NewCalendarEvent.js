@@ -234,6 +234,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     prefMethod: 'specific_date',
     preReservationList: ((options.setPerson && isAppointment) ? [patient.person_id || patient.patient_id] : []),
     dateObj: { error: true },
+    default_forms: options.forms,
     chosen_names: ((options.setPerson && isAppointment) ? patient.display_name : ''),
     event_title: (options.title ? titleCase(options.title.trim())
       : ((options.setPerson && isAppointment) ? (`Appointment for ${patient.display_name}`) : '')),
@@ -309,6 +310,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
         "schedule_type": reactData.prefMethod,
         "time_from": time_from_display_string,
         "time_to": time_to_display_string,
+        "default_forms": reactData.default_forms,
         "slots": reactData.slotObjList.map(s => { return s.key; }),
         "slot_object_list": reactData.slotObjList,
         "defaultSlotOwners": defaultSlotOwners,

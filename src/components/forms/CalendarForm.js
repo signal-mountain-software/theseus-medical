@@ -126,12 +126,12 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 0.8,
   },
   dragNamesFirst: {
-    fontSize: theme.typography.fontSize * 0.4,
+    fontSize: theme.typography.fontSize * 1.2,
     marginTop: '3px',
     marginBottom: '-10px'
   },
   dragNamesLast: {
-    fontSize: theme.typography.fontSize * 0.4,
+    fontSize: theme.typography.fontSize * 1.2,
     marginTop: '3px',
     fontWeight: 'bold',
     marginBottom: '-10px'
@@ -408,7 +408,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     }
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  });
 
   React.useEffect(() => {
     if (selectedDate && selectedDate.current) {
@@ -783,6 +783,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       "status": 'selected',
       "show_this_slot": true
     };
+    if (this_event.hasOwnProperty('default_forms')) {
+      writeRequest.default_forms = deepCopy(this_event.default_forms);
+    }
     if (!reactData.defaultValues.message_override) {
       writeRequest.no_messaging = false;
     }
@@ -1909,6 +1912,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               options={{
                 setPerson: false,
                 setDuration: reactData.selectedTemplate.event_data.time.duration,
+                forms: reactData.selectedTemplate.forms,
                 title: reactData.selectedTemplate.event_data.generic_description,
                 setDate: ((reactData.appointmentDate && !reactData.appointmentDate.error) ? reactData.appointmentDate : null)
               }}
@@ -1928,7 +1932,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                       return (this_date.dateObj.numeric === newOccDate);
                     });
                     if (foundIt > -1) {
-                      let newEntry = {
+                      let newEntry = Object.assign({}, newEvent, {
                         "event_id": newEvent.event_id,
                         "owner": [state.session.user_id],
                         "image": null,
@@ -1943,7 +1947,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         "event_key": `${newEvent.event_key}#${newOccDate}`,
                         "client": newEvent.client,
                         "record_type": "occurrence"
-                      };
+                      });
                       let eventIndex = reactData.myCalendar[foundIt].eventList.push(newEntry) - 1;
                       newEvent.slots.forEach(this_slot => {
                         let dragged_id = this_slot.slot_owner;

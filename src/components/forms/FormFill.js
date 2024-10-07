@@ -247,7 +247,11 @@ export default ({ request = {}, onClose }) => {
       enteredIdleStateTime: now,
     };
     if (!reactData.idleState) {
-      if (!viewOnly()) {
+      if (!viewOnly()
+        && (reactData.stage !== 'initialize')
+        && (reactData.stage !== 'still_initializing')
+        && !reactData.savePending
+      ) {
         cl(`Auto save at ${now.toLocaleString()}.`);
         let saveCallObj = {
           save_continue: true
@@ -410,10 +414,10 @@ export default ({ request = {}, onClose }) => {
         default_ref = reactData.formRec.fields[this_field].default.ref;
       }
     }
-    if (reactData.formRec.fields?.[this_field]?.default
-      && reactData.formRec.fields?.[this_field]?.default.hasOwnProperty('assigned_to')) {
-      default_ref += reactData.formRec.fields[this_field].default.assigned_to;
-    }
+//    if (reactData.formRec.fields?.[this_field]?.default
+//      && reactData.formRec.fields?.[this_field]?.default.hasOwnProperty('assigned_to')) {
+//      default_ref += reactData.formRec.fields[this_field].default.assigned_to;
+//    }
     if (!default_source) {
       defaultText = (default_ref || '');
     }
@@ -421,25 +425,10 @@ export default ({ request = {}, onClose }) => {
       switch (default_source) {
         case 'form': {
           if (!reactData?.document.hasOwnProperty(default_ref)) {
-            let documentsObj;
-            if (reactData.formRec.fields[this_field].default.hasOwnProperty('assigned_to')) {
-              let [this_form, this_assignTo] = default_ref.split('%%');
-              if (this_assignTo === 'person_id') {
-                this_assignTo = state.patient.person_id;
-                default_ref = `${this_form}%%${state.patient.person_id}`;
-              }
-              documentsObj = await loadDocument({
-                form_id: this_form,
-                assigned_to: this_assignTo,
-                recent: true
-              });
-            }
-            else {
-              documentsObj = await loadDocument({
-                form_id: default_ref,
-                recent: true
-              });
-            }
+            let documentsObj = await loadDocument({
+              form_id: default_ref,
+              recent: true
+            });
             updateReactData({
               document: documentsObj
             }, true);
@@ -453,13 +442,29 @@ export default ({ request = {}, onClose }) => {
               document: documentsObj
             }, true);
           }
-          if ((!reactData.document[default_ref])
-            || (!reactData.document[default_ref][this_field])) {
-            // no op - the refererenced form doesn't exist, or this field has no value on that form
+          if (!reactData.document[default_ref]) {
+            // no op - the refererenced form doesn't exist
             handleChangeValue({
               newList: [],
               prop: this_field
             });
+            return;
+          }
+          else if ((reactData?.formRec?.fields?.[this_field]?.default?.type === 'assigned_to')
+          && (reactData.document[default_ref].hasOwnProperty('assigned__to'))) {
+            handleChangeValue({
+              newList: reactData.document[default_ref].assigned__to,
+              prop: this_field
+            });
+            return;
+          }
+          else if (!reactData.document[default_ref][this_field]) {
+            // no op - the refererenced form field has no value on that form
+            handleChangeValue({
+              newList: [],
+              prop: this_field
+            });
+            return;
           }
           else {
             if (isObject(reactData.document[default_ref][this_field])) {
@@ -1122,7 +1127,7 @@ export default ({ request = {}, onClose }) => {
       let docParts = document_id.split('%%');
       documentRec.form_id = docParts[1];
       documentRec.person_id = docParts[0];
-      documentRec.completed_timestamp = docParts[2];
+      documentRec.completed_timestamp = new Date().getTime();
       documentRec.document_id = document_id;
     }
     else {
@@ -1261,12 +1266,6 @@ export default ({ request = {}, onClose }) => {
         queryObj.ExpressionAttributeValues[':dID'] = `${splitDoc[0]}%%${splitDoc[1]}%%${splitDoc[2]}`;
       }
     }
-    else if (assigned_to) {
-      queryObj.IndexName = 'assigned_to-index';
-      queryObj.KeyConditionExpression += ' and assigned_to = :a';
-      queryObj.ExpressionAttributeValues[':a'] = `${assigned_to || state.patient.person_id}`;
-      queryObj.ScanIndexForward = false;
-    }
     let queryResult = await dbClient
       .query(queryObj)
       .promise()
@@ -1301,6 +1300,9 @@ export default ({ request = {}, onClose }) => {
     documentsObj[form_id] = queryResult.Items[0].values;
     if (queryResult.Items[0].title) {
       documentsObj[form_id].document__title = queryResult.Items[0].title;
+    }
+    if (queryResult.Items[0].assigned_to) {
+      documentsObj[form_id].assigned__to = queryResult.Items[0].assigned_to;
     }
     return documentsObj;
   };
@@ -1734,9 +1736,21 @@ export default ({ request = {}, onClose }) => {
                                     borderWidth: 0
                                   }}
                                   noDataLabel={`No ${reactData.formRec.fields[this_field].prompt.ref}s match`}
-                                  values={(reactValues[this_field] && reactValues[this_field].valueText)
-                                    ? [{ label: reactValues[this_field].valueText, value: reactValues[this_field].value }]
-                                    : []
+                                  values={(reactValues[this_field]) ?
+                                    (reactValues[this_field].valueText
+                                      ? [{ label: reactValues[this_field].valueText, value: reactValues[this_field].value }]
+                                      : (reactValues[this_field].valueList
+                                        ? reactValues[this_field].valueList.map(this_value => {
+                                          return {
+                                            label: (reactData.peopleList[reactData.formRec.fields[this_field].choose.ref].find(this_person => {
+                                              return (this_person.value === this_value);
+                                            })).label,
+                                            value: this_value
+                                          }
+                                        })
+                                        : []
+                                      )
+                                    ) : []
                                   }
                                   placeholder={``}
                                   onChange={async (values) => {

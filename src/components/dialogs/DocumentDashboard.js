@@ -249,6 +249,14 @@ export default ({ request = {}, onClose }) => {
     version__number: 0,
   });
 
+  const determineMode = (this_document) => {
+    if (reactData.stage === 'printDoc') { return 'print'; };
+    if (reactData.stage === 'addDoc') { return 'add'; };
+    if (!isIncomplete(this_document)) { return 'view'; };
+    if (isNotStarted(this_document)) { return 'not_started'; };
+    return 'incomplete';
+  };
+
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const updateReactData = (newData, force = false) => {
     setReactData((prevValues) => (Object.assign(
@@ -267,7 +275,10 @@ export default ({ request = {}, onClose }) => {
     else if (typeof this_document.incomplete === 'boolean') {
       return this_document.incomplete;
     }
-    else if ((this_document.incomplete === 'true') || (this_document.incomplete === 'incomplete')) {
+    else if ((this_document.incomplete === 'true')
+      || (this_document.incomplete === 'incomplete')
+      || (this_document.incomplete === 'not_started')
+    ) {
       return true;
     }
     else {
@@ -539,33 +550,6 @@ export default ({ request = {}, onClose }) => {
         queryObj.FilterExpression += ')';
         queryObj = await peopleFilter(queryObj);
         queryObj = assignedToFilter(queryObj);
-      }
-      else if ((reactData.assignedTo_filter)
-        && (!reactData.assignedTo_filter.includes('*anybody'))
-        && (!reactData.assignedTo_filter.includes('*nobody'))
-      ) {
-        // selecting on assigned to but not form type - use assigned to index and filter on people
-        queryObj.IndexName = 'assigned_to-index';
-        queryObj.KeyConditionExpression += ' and assigned_to in (';
-        reactData.assignedTo_filter.forEach((filter, ndx) => {
-          queryObj.KeyConditionExpression += `${ndx > 0 ? ', ' : ''}:a${ndx}`;
-          switch (filter) {
-            case '*user':
-            case '*self': {
-              queryObj.ExpressionAttributeValues[`:a${ndx}`] = state.session.user_id;
-              break;
-            }
-            case '*person': {
-              queryObj.ExpressionAttributeValues[`:a${ndx}`] = state.patient.person_id;
-              break;
-            }
-            default: {
-              queryObj.ExpressionAttributeValues[`:a${ndx}`] = filter;
-            }
-          }
-        });
-        queryObj.KeyConditionExpression += ')';
-        queryObj = peopleFilter(queryObj);
       }
       else {
         if (!reactData.people_filter.includes('*all')) {
@@ -937,6 +921,8 @@ export default ({ request = {}, onClose }) => {
                                       })) : this_document.values[this_document.signature_field])
                                       : null
                                     ),
+                                    selectedDoc: this_document,
+                                    selectedPerson_id: this_person.person_id,
                                     selectedDoc_id: this_document.document_id,
                                     incomplete: isIncomplete(this_document)
                                   }, true);
@@ -962,6 +948,8 @@ export default ({ request = {}, onClose }) => {
                                       })) : this_document.values[this_document.signature_field])
                                       : null
                                     ),
+                                    selectedDoc: this_document,
+                                    selectedPerson_id: this_person.person_id,
                                     selectedDoc_id: this_document.document_id,
                                     incomplete: this_document.incomplete
                                   }, true);
@@ -997,11 +985,9 @@ export default ({ request = {}, onClose }) => {
         <FormFill
           request={{
             document_id: reactData.selectedDoc_id,
+            person_id: reactData.selectedPerson_id,
             signatureImage: (!reactData.incomplete ? reactData.signatureData : null),
-            mode: ((reactData.stage === 'printDoc') ? 'print' : (reactData.incomplete ? 'incomplete' : 'view')),
-            printMode: (reactData.stage === 'printDoc'),
-            viewMode: !reactData.incomplete,
-            incompleteMode: reactData.incomplete
+            mode: determineMode(reactData.selectedDoc),
           }}
           onClose={(formStatus) => {
             updateReactData({
