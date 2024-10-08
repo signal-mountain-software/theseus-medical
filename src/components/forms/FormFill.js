@@ -1123,6 +1123,14 @@ export default ({ request = {}, onClose }) => {
       });
       documentRec.title = results;
     }
+    else {
+      if (reactData?.document?.[reactData.form_id]?.document__title) {
+        documentRec.title = reactData.document[reactData.form_id].document__title;
+      }
+      else {
+        documentRec.title = `${reactData.formRec.form_name} - completed ${makeDate(new Date()).absolute}`
+      }
+    }
     if (document_id) {
       let docParts = document_id.split('%%');
       documentRec.form_id = docParts[1];

@@ -1,5 +1,5 @@
 import React from 'react';
-import { cl, dbClient, recordExists, makeArray } from '../../util/AVAUtilities';
+import { cl, dbClient, recordExists, makeArray, array_in_array } from '../../util/AVAUtilities';
 import { makeDate, addDays } from '../../util/AVADateTime';
 import { getPerson } from '../../util/AVAPeople';
 import AVAConfirm from '../forms/AVAConfirm';
@@ -230,18 +230,28 @@ export default ({ request = {}, onClose }) => {
       formTypeList []   when missing, use *all
       formNoAdd []    if a form is in this list, do not allow "create new"... view only for that form type
       peopleList []       can be *self, *user, *person, *all, or list of person_id's  (default *person)
-      assignedToList []      can be *nobody, *self, *user, *person, *anybody, or list of person_id's  (default null - don't care if assigned or not)
+      assignedToList []      can be *nobody, *self, *user, *person, *anybody, *nobody, or list of person_id's  (default null - don't care if assigned or not)
   */
 
   const handleAbort = () => {
     onClose();
   };
 
+  const makeAssignedList = () => {
+    if (!options.assignedToList) { return null; }
+    return makeArray(options.assignedToList).map(aList => {
+      if (aList === '*self') { return state.patient.person_id; }
+      if (aList === '*person') { return state.patient.person_id; }
+      if (aList === '*user') { return state.patient.user_id; }
+      return aList;
+    });
+  };
+
   const [reactData, setReactData] = React.useState({
     formType_filter: options.formTypeList || ['*all'],
     formNoAdd: (options.formNoAdd ? makeArray(options.formNoAdd) : []),
     people_filter: makeArray(options.peopleList) || ['*person'],
-    assignedTo_filter: options.assignedToList || null,
+    assignedTo_filter: makeAssignedList(),
     user_fontSize: AVADefaults({ fontSize: 'get' }) || 1.5,
     initialized: false,
     documentList: [],
@@ -322,32 +332,44 @@ export default ({ request = {}, onClose }) => {
     let rememberedNames = {};
     let rememberedPeople = {};
     let rememberedForms = {};
-    let formResult = await dbClient
-      .query({
-        TableName: 'Forms',
-        KeyConditionExpression: 'client_id = :c',
-        ExpressionAttributeValues: { ':c': state.session.client_id }
-      })
-      .promise()
-      .catch(error => {
-        if (error.code === 'NetworkingError') {
-          cl(`Security Violation or no Internet Connection`);
+    if (reactData.formType_filter.includes('*none')) {
+      formLibrary = [
+        {
+          form_id: '*all',
+          form_name: 'All Forms',
+          form_expanded: true
         }
-        cl(`Error reading ${queryObj.TableName} id ${error}`);
-      });
-    if (recordExists(formResult)) {
-      formResult.Items.forEach(this_form => {
-        if ((!this_form.hasOwnProperty('active') || this_form.active)
-          && ((reactData.formType_filter.includes('*all')) || (reactData.formType_filter.includes(this_form.form_id)))) {
-          formLibrary.push(this_form);
-          if (!rememberedForms.hasOwnProperty(this_form.form_id)) {
-            rememberedForms[this_form.form_id] = this_form.form_name;
+      ];
+      rememberedForms['*all'] = 'All Forms';
+    }
+    else {
+      let formResult = await dbClient
+        .query({
+          TableName: 'Forms',
+          KeyConditionExpression: 'client_id = :c',
+          ExpressionAttributeValues: { ':c': state.session.client_id }
+        })
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            cl(`Security Violation or no Internet Connection`);
           }
-        }
-      });
-      formLibrary.sort((a, b) => {
-        return (((a.sequence || 10) < (b.sequence || 10)) ? 1 : -1);
-      });
+          cl(`Error reading ${queryObj.TableName} id ${error}`);
+        });
+      if (recordExists(formResult)) {
+        formResult.Items.forEach(this_form => {
+          if ((!this_form.hasOwnProperty('active') || this_form.active)
+            && ((reactData.formType_filter.includes('*all')) || (reactData.formType_filter.includes(this_form.form_id)))) {
+            formLibrary.push(this_form);
+            if (!rememberedForms.hasOwnProperty(this_form.form_id)) {
+              rememberedForms[this_form.form_id] = this_form.form_name;
+            }
+          }
+        });
+        formLibrary.sort((a, b) => {
+          return (((a.sequence || 10) < (b.sequence || 10)) ? 1 : -1);
+        });
+      }
     }
     let queryResult;
     do {
@@ -389,7 +411,21 @@ export default ({ request = {}, onClose }) => {
       let rememberedSelections = {};
       let buildDocList = [];
       for (let d = 0; d < rawList.length; d++) {
+        // skip if necessary
         let this_document = rawList[d];
+        if (reactData.assignedTo_filter) {
+          if (this_document.assigned_to && (this_document.assigned_to.length > 0)) {
+            // this_document is assigned to one or more people
+            if (reactData.assignedTo_filter.includes('*nobody')) { continue; }
+            if (reactData.assignedTo_filter.includes('*anybody')) { }
+            else if (!array_in_array(reactData.assignedTo_filter, this_document.assigned_to)) { continue; }
+          }
+          else {
+            // this_document isn't assigned to anyone
+            if (!reactData.assignedTo_filter.includes('*nobody')) { continue; }
+          }
+        }
+        const documentMatchesForm = (this_form) => { return ((this_document.form_id === this_form.form_id) || (this_form.form_id === '*all')); };
         let foundAt = buildDocList.findIndex(this_docObj => {
           return (this_docObj.person_id === this_document.person_id);
         });
@@ -436,21 +472,22 @@ export default ({ request = {}, onClose }) => {
             formType_expanded: {}
           };
           formLibrary.forEach(this_form => {
-            if (!this_form.hasOwnProperty('valid_for') ||
-              (rememberedPeople.hasOwnProperty(this_document.person_id)
+            if ((this_form.form_id === '*all')
+              || !this_form.hasOwnProperty('valid_for')
+              || (rememberedPeople.hasOwnProperty(this_document.person_id)
                 && rememberedPeople[this_document.person_id].groups
                 && rememberedPeople[this_document.person_id].groups.some(this_group => {
                   return (this_form.valid_for.includes(this_group));
                 })
               )) {
               let isExpanded = reactData.rememberedSelections?.[this_document.person_id]?.formType_expanded?.[this_form.form_id] || false;
-              let documentMatchesForm = (this_document.form_id === this_form.form_id);
+
               newPerson.formTypes.push({
                 form_id: this_form.form_id,
                 form_expanded: isExpanded,
-                form_incompleteDoc_count: (documentMatchesForm && isIncomplete(this_document)) ? 1 : 0,
+                form_incompleteDoc_count: (documentMatchesForm(this_form) && isIncomplete(this_document)) ? 1 : 0,
                 form_name: rememberedForms[this_form.form_id],
-                documentList: (documentMatchesForm ? [this_document] : [])
+                documentList: (documentMatchesForm(this_form) ? [this_document] : [])
               });
               rememberedSelections[this_document.person_id].formType_expanded[this_form.form_id] = isExpanded;
             }
@@ -459,7 +496,7 @@ export default ({ request = {}, onClose }) => {
         }
         else {
           let foundForm = buildDocList[foundAt].formTypes.findIndex(this_form => {
-            return (this_form.form_id === this_document.form_id);
+            return documentMatchesForm(this_form);
           });
           if (foundForm < 0) {
             // this is the first time we've encoutered this form for this person; add the form to the buildDocList with this_document 
@@ -539,7 +576,7 @@ export default ({ request = {}, onClose }) => {
           people_filter []       *self, *user, *person, *all, or list of person_id's
           assignedTo_filter []     *none, *self, *user, *person, *all, or list of person_id's
       */
-      if (!reactData.formType_filter.includes('*all')) {
+      if (!reactData.formType_filter.includes('*all') && !reactData.formType_filter.includes('*none')) {
         // selecting on form type - use form id index and filter on people and assigned to
         //      queryObj.IndexName = 'form_id-index';
         queryObj.FilterExpression = 'form_id in (';
@@ -549,7 +586,6 @@ export default ({ request = {}, onClose }) => {
         });
         queryObj.FilterExpression += ')';
         queryObj = await peopleFilter(queryObj);
-        queryObj = assignedToFilter(queryObj);
       }
       else {
         if (!reactData.people_filter.includes('*all')) {
@@ -592,7 +628,6 @@ export default ({ request = {}, onClose }) => {
             queryObj.FilterExpression += ')';
           }
         }
-        queryObj = assignedToFilter(queryObj);
       }
       return queryObj;
     }
@@ -658,55 +693,205 @@ export default ({ request = {}, onClose }) => {
       }
       return queryObj;
     }
-
-    function assignedToFilter(queryObj) {
-      if (reactData.assignedTo_filter) {
-        let assignedToList = makeArray(reactData.assignedTo_filter);
-        if (queryObj.FilterExpression) {
-          queryObj.FilterExpression += ' and ';
-        }
-        else {
-          queryObj.FilterExpression = '';
-        }
-        if (assignedToList.includes('*anybody')) {
-          queryObj.ExpressionAttributeNames['#a'] = 'assigned_to';
-          queryObj.ExpressionAttributeValues[':zero'] = 0;
-          queryObj.FilterExpression += 'attribute_exists(#a) and (size (#a) > :zero)';
-        }
-        else if (assignedToList.includes('*nobody')) {
-          queryObj.ExpressionAttributeNames['#a'] = 'assigned_to';
-          queryObj.ExpressionAttributeValues[':zero'] = 0;
-          queryObj.FilterExpression += 'attribute_not_exists(#a) or (size (#a) = :zero)';
-        }
-        else {
-          queryObj.FilterExpression += 'assigned_to in (';
-          assignedToList.forEach((filter, ndx) => {
-            queryObj.FilterExpression += `${ndx > 0 ? ', ' : ''}a${ndx}`;
-            switch (filter) {
-              case '*user': {
-                queryObj.ExpressionAttributeValues[`:a${ndx}`] = state.session.user_id;
-                break;
-              }
-              case '*self':
-              case '*person': {
-                queryObj.ExpressionAttributeValues[`:a${ndx}`] = state.patient.person_id;
-                break;
-              }
-              default: {
-                queryObj.ExpressionAttributeValues[`:a${ndx}`] = filter;
-              }
-            }
-          });
-          queryObj.FilterExpression += ')';
-        }
-      }
-      return queryObj;
-    }
   };
 
 
   // **********************************
 
+  const personRow = ({ this_person, personNdx }) => {
+    return (
+      <Box
+        display='flex'
+        flexDirection='row'
+        alignItems={'center'}
+        justifyContent={'space-between'}
+        className={classes.personArea}
+        onClick={() => {
+          reactData.documentList[personNdx].person_expanded = !this_person.person_expanded;
+          reactData.rememberedSelections[this_person.person_id].expanded = reactData.documentList[personNdx].person_expanded;
+          updateReactData({
+            documentList: reactData.documentList,
+            rememberedSelections: reactData.rememberedSelections
+          }, true);
+        }}
+      >
+        <Box
+          display='flex'
+          flexDirection='row'
+          justifyContent='flex-start'
+          alignItems='flex-end'
+        >
+          <Typography
+            key={`person__${this_person.person_last}`}
+            style={AVATextStyle({
+              size: 1.3,
+              bold: true,
+              margin: {
+                left: 0
+              }
+            })}>
+            {this_person.person_last}
+          </Typography>
+          {this_person.person_first &&
+            <Typography
+              key={`person__${this_person.person_first}`}
+              style={AVATextStyle({
+                size: 1.2,
+                margin: {
+                  left: 0.2
+                }
+              })}>
+              {this_person.person_first}
+            </Typography>
+          }
+        </Box>
+        {(this_person.formTypes.length > 0) &&
+          <Typography
+            key={`person__hide_${this_person.person_name}`}
+            style={AVATextStyle({
+              size: 0.5,
+              bold: true,
+              margin: {
+                left: 0
+              },
+              color: (((this_person.person_incompleteDoc_count > 0) && !this_person.person_expanded) ? 'red' : '')
+            })}>
+            {`${this_person.formTypes.length} form${(this_person.formTypes.length > 1) ? 's' : ''}`}
+          </Typography>
+        }
+      </Box>
+    );
+  };
+
+  const formRow = ({ this_person, personNdx, this_form, formNdx }) => {
+    return (
+      <Box
+        display='flex'
+        flexDirection='row'
+        alignItems={'center'}
+        justifyContent={'space-between'}
+        marginTop={1}
+      >
+        <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+          <IconButton
+            className={classes.AVAMicroButton}
+            size={'small'}
+            onClick={() => {
+              if (!reactData.formNoAdd.includes(this_form.form_id)) {
+                updateReactData({
+                  stage: 'addDoc',
+                  selectedForm_id: this_form.form_id,
+                  selectedPerson_id: this_person.person_id
+                }, true);
+              }
+            }}
+          >
+            <AddIcon />
+          </IconButton>
+          <Typography
+            key={`form__${personNdx}_${formNdx}`}
+            onClick={() => {
+              reactData.documentList[personNdx].formTypes[formNdx].form_expanded = !this_form.form_expanded;
+              reactData.rememberedSelections[this_person.person_id].formType_expanded[this_form.form_id] = reactData.documentList[personNdx].formTypes[formNdx].form_expanded;
+              updateReactData({
+                documentList: reactData.documentList,
+                rememberedSelections: reactData.rememberedSelections
+              }, true);
+            }}
+            style={AVATextStyle({
+              size: 1,
+              margin: {
+                left: 0.5
+              }
+            })}>
+            {this_form.form_name}
+          </Typography>
+        </Box>
+        {(this_form.documentList.length > 0) &&
+          <Typography
+            key={`person__hide_${this_person.person_name}`}
+            onClick={() => {
+              reactData.documentList[personNdx].formTypes[formNdx].form_expanded = !this_form.form_expanded;
+              reactData.rememberedSelections[this_person.person_id].formType_expanded[this_form.form_id] = reactData.documentList[personNdx].formTypes[formNdx].form_expanded;
+              updateReactData({
+                documentList: reactData.documentList,
+                rememberedSelections: reactData.rememberedSelections
+              }, true);
+            }}
+            style={AVATextStyle({
+              size: 0.5,
+              bold: false,
+              margin: {
+                left: 0
+              },
+              color: (((this_form.form_incompleteDoc_count > 0) && !this_form.form_expanded) ? 'red' : '')
+            })}>
+            {`${this_form.documentList.length} document${(this_form.documentList.length > 1) ? 's' : ''}`}
+          </Typography>
+        }
+      </Box>
+    );
+  };
+
+  const documentRow = ({ this_document, documentNdx, this_person, personNdx, formNdx, shortForm }) => {
+    return (
+      <Box
+        key={`docFrag__${personNdx}_${formNdx}_${documentNdx}`}
+        display='flex'
+        flexDirection='row'
+        alignItems={'center'}
+        justifyContent={'space-between'}
+      >
+        <Typography
+          key={`doc__${personNdx}_${formNdx}_${documentNdx}`}
+          onClick={() => {
+            updateReactData({
+              stage: 'viewDoc',
+              signatureData: ((this_document.signature_field && (this_document.signature_field.length > 0))
+                ? (Array.isArray(this_document.signature_field) ? (this_document.signature_field.map(this_sig => {
+                  return this_document.values[this_sig];
+                })) : this_document.values[this_document.signature_field])
+                : null
+              ),
+              selectedDoc: this_document,
+              selectedPerson_id: this_person.person_id,
+              selectedDoc_id: this_document.document_id,
+              incomplete: isIncomplete(this_document)
+            }, true);
+          }}
+          style={AVATextStyle({
+            size: 0.8, margin: {
+              bottom: 0.5,
+              left: shortForm ? 0.5 : 2
+            },
+            color: ((isIncomplete(this_document) && !shortForm) ? 'red' : '')
+          })}>
+          {`${this_document.title || makeDate(this_document.completed_timestamp).absolute}${isIncomplete(this_document) ? ' (incomplete)' : ''}`}
+        </Typography>
+        <IconButton
+          className={classes.AVAMicroButtonClean}
+          size={'small'}
+          onClick={() => {
+            updateReactData({
+              stage: 'printDoc',
+              signatureData: ((this_document.signature_field && (this_document.signature_field.length > 0))
+                ? (Array.isArray(this_document.signature_field) ? (this_document.signature_field.map(this_sig => {
+                  return this_document.values[this_sig];
+                })) : this_document.values[this_document.signature_field])
+                : null
+              ),
+              selectedDoc: this_document,
+              selectedPerson_id: this_person.person_id,
+              selectedDoc_id: this_document.document_id,
+              incomplete: this_document.incomplete
+            }, true);
+          }}
+        >
+          <PrintIcon />
+        </IconButton>
+      </Box>
+    );
+  };
 
   // **********************************
 
@@ -750,139 +935,16 @@ export default ({ request = {}, onClose }) => {
               <React.Fragment
                 key={`personFrag__${this_person.person_name}`}
               >
-                <Box
-                  display='flex'
-                  flexDirection='row'
-                  alignItems={'center'}
-                  justifyContent={'space-between'}
-                  className={classes.personArea}
-                  onClick={() => {
-                    reactData.documentList[personNdx].person_expanded = !this_person.person_expanded;
-                    reactData.rememberedSelections[this_person.person_id].expanded = reactData.documentList[personNdx].person_expanded;
-                    updateReactData({
-                      documentList: reactData.documentList,
-                      rememberedSelections: reactData.rememberedSelections
-                    }, true);
-                  }}
-                >
-                  <Box
-                    display='flex'
-                    flexDirection='row'
-                    justifyContent='flex-start'
-                    alignItems='flex-end'
-                  >
-                    <Typography
-                      key={`person__${this_person.person_last}`}
-                      style={AVATextStyle({
-                        size: 1.3,
-                        bold: true,
-                        margin: {
-                          left: 0
-                        }
-                      })}>
-                      {this_person.person_last}
-                    </Typography>
-                    {this_person.person_first &&
-                      <Typography
-                        key={`person__${this_person.person_first}`}
-                        style={AVATextStyle({
-                          size: 1.2,
-                          margin: {
-                            left: 0.2
-                          }
-                        })}>
-                        {this_person.person_first}
-                      </Typography>
-                    }
-                  </Box>
-                  {(this_person.formTypes.length > 0) &&
-                    <Typography
-                      key={`person__hide_${this_person.person_name}`}
-                      style={AVATextStyle({
-                        size: 0.5,
-                        bold: true,
-                        margin: {
-                          left: 0
-                        },
-                        color: (((this_person.person_incompleteDoc_count > 0) && !this_person.person_expanded) ? 'red' : '')
-                      })}>
-                      {`${this_person.formTypes.length} form${(this_person.formTypes.length > 1) ? 's' : ''}`}
-                    </Typography>
-                  }
-                </Box>
-                {this_person.person_expanded &&
+                {personRow({ this_person, personNdx })}
+                {(reactData.assignedTo_filter || this_person.person_expanded) &&
                   this_person.formTypes.map((this_form, formNdx) => (
                     <React.Fragment
                       key={`formFrag__${personNdx}_${formNdx}`}
                     >
-                      <Box
-                        display='flex'
-                        flexDirection='row'
-                        alignItems={'center'}
-                        justifyContent={'space-between'}
-                        marginTop={1}
-                      >
-                        <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                          <IconButton
-                            className={classes.AVAMicroButton}
-                            size={'small'}
-                            onClick={() => {
-                              if (!reactData.formNoAdd.includes(this_form.form_id)) {
-                                updateReactData({
-                                  stage: 'addDoc',
-                                  selectedForm_id: this_form.form_id,
-                                  selectedPerson_id: this_person.person_id
-                                }, true);
-                              }
-                            }}
-                          >
-                            <AddIcon />
-                          </IconButton>
-                          <Typography
-                            key={`form__${personNdx}_${formNdx}`}
-                            onClick={() => {
-                              reactData.documentList[personNdx].formTypes[formNdx].form_expanded = !this_form.form_expanded;
-                              reactData.rememberedSelections[this_person.person_id].formType_expanded[this_form.form_id] = reactData.documentList[personNdx].formTypes[formNdx].form_expanded;
-                              updateReactData({
-                                documentList: reactData.documentList,
-                                rememberedSelections: reactData.rememberedSelections
-                              }, true);
-                            }}
-                            style={AVATextStyle({
-                              size: 1,
-                              margin: {
-                                left: 0.5
-                              }
-                            })}>
-                            {this_form.form_name}
-                          </Typography>
-                        </Box>
-                        {(this_form.documentList.length > 0) &&
-                          <Typography
-                            key={`person__hide_${this_person.person_name}`}
-                            onClick={() => {
-                              reactData.documentList[personNdx].formTypes[formNdx].form_expanded = !this_form.form_expanded;
-                              reactData.rememberedSelections[this_person.person_id].formType_expanded[this_form.form_id] = reactData.documentList[personNdx].formTypes[formNdx].form_expanded;
-                              updateReactData({
-                                documentList: reactData.documentList,
-                                rememberedSelections: reactData.rememberedSelections
-                              }, true);
-                            }}
-                            style={AVATextStyle({
-                              size: 0.5,
-                              bold: false,
-                              margin: {
-                                left: 0
-                              },
-                              color: (((this_form.form_incompleteDoc_count > 0) && !this_form.form_expanded) ? 'red' : '')
-                            })}>
-                            {`${this_form.documentList.length} document${(this_form.documentList.length > 1) ? 's' : ''}`}
-                          </Typography>
-                        }
-                      </Box>
-                      {this_form.form_expanded &&
+                      {!reactData.assignedTo_filter &&
                         <React.Fragment>
-                          {!reactData.formNoAdd.includes(this_form.form_id) &&
+                          {formRow({ this_person, personNdx, this_form, formNdx })}
+                          {this_form.form_expanded && !reactData.formNoAdd.includes(this_form.form_id) &&
                             <Typography
                               key={`doc__${personNdx}_${formNdx}_addNew`}
                               onClick={() => {
@@ -902,64 +964,11 @@ export default ({ request = {}, onClose }) => {
                               {`Add a new ${this_form.form_name}`}
                             </Typography>
                           }
-                          {this_form.documentList.map((this_document, documentNdx) => (
-                            <Box
-                              key={`docFrag__${personNdx}_${formNdx}_${documentNdx}`}
-                              display='flex'
-                              flexDirection='row'
-                              alignItems={'center'}
-                              justifyContent={'space-between'}
-                            >
-                              <Typography
-                                key={`doc__${personNdx}_${formNdx}_${documentNdx}`}
-                                onClick={() => {
-                                  updateReactData({
-                                    stage: 'viewDoc',
-                                    signatureData: ((this_document.signature_field && (this_document.signature_field.length > 0))
-                                      ? (Array.isArray(this_document.signature_field) ? (this_document.signature_field.map(this_sig => {
-                                        return this_document.values[this_sig];
-                                      })) : this_document.values[this_document.signature_field])
-                                      : null
-                                    ),
-                                    selectedDoc: this_document,
-                                    selectedPerson_id: this_person.person_id,
-                                    selectedDoc_id: this_document.document_id,
-                                    incomplete: isIncomplete(this_document)
-                                  }, true);
-                                }}
-                                style={AVATextStyle({
-                                  size: 0.8, margin: {
-                                    bottom: 0.5,
-                                    left: 2
-                                  },
-                                  color: (isIncomplete(this_document) ? 'red' : '')
-                                })}>
-                                {`${this_document.title || makeDate(this_document.completed_timestamp).absolute}${isIncomplete(this_document) ? ' (incomplete)' : ''}`}
-                              </Typography>
-                              <IconButton
-                                className={classes.AVAMicroButtonClean}
-                                size={'small'}
-                                onClick={() => {
-                                  updateReactData({
-                                    stage: 'printDoc',
-                                    signatureData: ((this_document.signature_field && (this_document.signature_field.length > 0))
-                                      ? (Array.isArray(this_document.signature_field) ? (this_document.signature_field.map(this_sig => {
-                                        return this_document.values[this_sig];
-                                      })) : this_document.values[this_document.signature_field])
-                                      : null
-                                    ),
-                                    selectedDoc: this_document,
-                                    selectedPerson_id: this_person.person_id,
-                                    selectedDoc_id: this_document.document_id,
-                                    incomplete: this_document.incomplete
-                                  }, true);
-                                }}
-                              >
-                                <PrintIcon />
-                              </IconButton>
-                            </Box>
-                          ))}
                         </React.Fragment>
+                      }
+                      {(reactData.assignedTo_filter || this_form.form_expanded) && this_form.documentList.map((this_document, documentNdx) => (
+                        documentRow({ this_document, documentNdx, this_person, personNdx, this_form, formNdx, shortForm: !!reactData.assignedTo_filter })
+                      ))
                       }
                     </React.Fragment>
                   ))}
