@@ -297,11 +297,16 @@ export async function getAllClients() {
     });
   let returnArray = [];
   if (recordExists(everyClient)) {
-    everyClient.Items.sort((a, b) => {      // sort by client name
+    let activeClients = everyClient.Items.filter(this_client => {
+      return (!this_client.disabled)
+    })
+    activeClients.sort((a, b) => {      // sort by client name
       if (a.customization_value > b.customization_value) { return 1; }
       else { return -1; }
     });
-    returnArray = everyClient.Items.map(c => { return c.client_id; });
+    returnArray = activeClients.map(c => {
+      return c.client_id;
+    });
   }
   return returnArray;
 }

@@ -1,25 +1,20 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
 
-import { makeTime, makeDate } from '../../util/AVADateTime';
-import { cl, isMobile, isObject, deepCopy, titleCase, makeArray, isEmpty } from '../../util/AVAUtilities';
+import { makeTime, makeDate, addDays } from '../../util/AVADateTime';
+import { isMobile, isObject, deepCopy, titleCase, makeArray, isEmpty } from '../../util/AVAUtilities';
 import { getCalendarEntries, writeSlot, getSlotList } from '../../util/AVACalendars';
 import { getImage, getPerson } from '../../util/AVAPeople';
+import AVATextInput from './AVATextInput';
 
 import { Box, Typography, Avatar } from '@material-ui/core';
 import Tooltip from '@material-ui/core/Tooltip';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import CloseIcon from '@material-ui/icons/ExitToApp';
-import HighlightOffIcon from '@material-ui/icons/HighlightOff';
-import HourglassEmptyIcon from '@material-ui/icons/HourglassEmpty';
-import CakeIcon from '@material-ui/icons/Cake';
-import SignedUp from '@material-ui/icons/HowToReg';
-import Flag from '@material-ui/icons/EmojiFlags';
+import FilterListIcon from '@material-ui/icons/FilterList';
 
 import CalendarEventEditForm from './CalendarEventEditForm';
-
-import TextField from '@material-ui/core/TextField';
 
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import HomeIcon from '@material-ui/icons/Home';
@@ -32,6 +27,10 @@ import GroupIcon from '@material-ui/icons/Group';
 import PersonAddDisabledIcon from '@material-ui/icons/PersonAddDisabled';
 import FormatAlignJustifyIcon from '@material-ui/icons/FormatAlignJustify';
 import FormatLineSpacingIcon from '@material-ui/icons/FormatLineSpacing';
+import TextureIcon from '@material-ui/icons/Texture';
+
+import ArrowBackIcon from '@material-ui/icons/ArrowBack';
+import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
 
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
@@ -85,19 +84,17 @@ const useStyles = makeStyles(theme => ({
   assignment_avatar: {
     marginTop: 0,
     marginBottom: 0,
-    height: 40,
-    width: 40,
+    height: 35,
+    width: 35,
     paddingTop: 0,
-    fontSize: '0.8rem',
+    fontSize: '0.6rem',
   },
   tooltipBody: {
     backgroundColor: 'rgba(245, 245, 249, 0.8)',
     color: 'rgba(0, 0, 0, 0.87)',
-    maxWidth: 500,
-    maxHeight: 300,
-    minHeight: 50,
+    minHeight: 30,
     paddingBottom: 1,
-    fontSize: theme.typography.pxToRem(12),
+    fontSize: theme.typography.pxToRem(6),
     border: '1px solid #242426',
   },
   arrowBody: {
@@ -128,9 +125,15 @@ const useStyles = makeStyles(theme => ({
   popUpFooter: {
     fontSize: theme.typography.fontSize * 0.8,
   },
-  dragNames: {
-    fontSize: theme.typography.fontSize * 0.8,
+  dragNamesFirst: {
+    fontSize: theme.typography.fontSize * 1.2,
     marginTop: '3px',
+    marginBottom: '-10px'
+  },
+  dragNamesLast: {
+    fontSize: theme.typography.fontSize * 1.2,
+    marginTop: '3px',
+    fontWeight: 'bold',
     marginBottom: '-10px'
   },
   AVAButton: {
@@ -153,14 +156,39 @@ const useStyles = makeStyles(theme => ({
   },
   peopleBox: {
     paddingTop: 0,
-    paddingLeft: 0,
+    paddingLeft: theme.spacing(2),
     paddingBottom: theme.spacing(2),
-    overflowX: 'scroll',
+    overflowX: 'auto',
+    scrollbarWidth: 'thin',
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
     display: 'flex',
     width: '100%',
     flexDirection: 'row'
+  },
+  peopleBoxWithSpace: {
+    paddingTop: theme.spacing(2),
+    paddingLeft: theme.spacing(2),
+    paddingBottom: theme.spacing(2),
+    overflowX: 'auto',
+    scrollbarWidth: 'thin',
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    display: 'flex',
+    width: '100%',
+    flexDirection: 'row'
+  },
+  dateCell: {
+    transform: `style(0.8)`,
+    display: 'flex',
+    flexDirection: 'column',
+    paddingLeft: theme.spacing(1),
+    paddingRight: theme.spacing(1),
+    paddingTop: theme.spacing(2),
+    paddingBottom: theme.spacing(2),
+    marginBottom: theme.spacing(1),
+    variant: 'outlined',
+    textAlign: 'center'
   },
   subDescriptionText2: {
     marginTop: 0,
@@ -191,7 +219,6 @@ const useStyles = makeStyles(theme => ({
   },
   dialogBox: {
     paddingBottom: theme.spacing(1),
-    marginTop: theme.spacing(-5),
     minWidth: '100%',
     minHeight: '100%',
   },
@@ -205,7 +232,7 @@ const useStyles = makeStyles(theme => ({
     marginBottom: '24px',
     maxWidth: '195px',
     justifyContent: 'flex-start',
-    overflow: 'scroll',
+    overflow: 'auto',
     overflowX: 'hidden',
   },
   relaxedView: {
@@ -229,8 +256,6 @@ const useStyles = makeStyles(theme => ({
   },
   client_backgroundCenter: {
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: theme.spacing(1.5),
     backgroundColor: isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_background : null
   },
   button_area: {
@@ -254,6 +279,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     onlyRegistered - only show events that I am signed-up for
     assignmentView - show list of people you can assign to events
     allowAssign - required when assignmentView is true; this becomes assignment__list
+    template__List - a list of event templates to use when creatinf new appointments
     assignment__list - this is a list of people and groups that you may choose from to assign to events
     message_override - [list of IDs] or [*none*] (default if missing: added slots = message to the event owner)
     colorScheme: {   (if this exists at all, ALL colors are overridden; missing keys will be null/black color)
@@ -274,14 +300,35 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   const { state } = useSession();
   const isDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
 
-  const selectedDate = React.useRef(null);
+  const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const [anchorEl, setAnchorEl] = React.useState(null);
 
-  let this_background;
-  let eventsToShow = true;
+  const selectedDate = React.useRef(null);
 
   if (defaultValues.assignmentView) {
     defaultValues.slotsView = true;
   }
+
+  const setInitialView = (defaultValues) => {
+    if (!defaultValues.hasOwnProperty('%%initialized%%')) {
+      if (defaultValues.weekView) {
+        return { '*all': true };
+      }
+      else if (defaultValues.agendaView) {
+        return { '*all': false };
+      }
+      defaultValues['%%initialized%%'] = true;
+      if ((!defaultValues.hasOwnProperty('denseView')
+        && defaultValues.hasOwnProperty('relaxedView')
+        && !defaultValues.relaxedView)
+        || (defaultValues.denseView && !defaultValues.relaxedView)) {
+        return { '*all': true };
+      }
+      else {
+        return { '*all': false };
+      }
+    }
+  };
 
   const defaultColorScheme = {
     owned: 'green',
@@ -305,6 +352,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       event_being_edited: false,
       pWidth: 60,
       defaultValues: defaultValues,
+      denseView: setInitialView(defaultValues),
+      factor7: defaultValues.weekView ? Math.min(((window.window.innerWidth - 220) / 1400), 1) : 1,
       conflictInfo: conflictInfo,
       colorScheme: defaultValues.colorScheme || defaultColorScheme,
       calendar_fill: isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_fill : null,
@@ -327,6 +376,40 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     //   return [];
   }
 
+  if ((reactData.defaultValues.start_date !== defaultValues.start_date)
+    || (reactData.defaultValues.end_date !== defaultValues.end_date)
+    || (reactData.myCalendar.length !== myCalendar.length)) {
+    updateReactData({
+      myCalendar,
+      defaultValues: Object.assign({},
+        reactData.defaultValues,
+        {
+          start_date: defaultValues.start_date,
+          end_date: defaultValues.end_date
+        }
+      )
+    }, true);
+  }
+
+  React.useEffect(() => {
+    if (reactData.defaultValues.selectDate) {
+      let checkDate = makeDate(reactData.defaultValues.selectDate).numeric$;
+      if (checkDate !== reactData.selectDate) {
+        updateReactData({
+          selectDate: checkDate,
+          needRef: true
+        }, true);
+      }
+    };
+    function handleResize() {
+      updateReactData({
+        factor7: defaultValues.weekView ? Math.min(((window.window.innerWidth - 220) / 1400), 1) : 1,
+      }, true);
+    }
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  });
+
   React.useEffect(() => {
     if (selectedDate && selectedDate.current) {
       selectedDate.current.scrollIntoView({
@@ -336,19 +419,18 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     }
   }, [reactData.needRef]);
 
-  const [forceRedisplay, setForceRedisplay] = React.useState(false);
-
-  const [anchorEl, setAnchorEl] = React.useState(null);
-
-  let user_fontSize = AVADefaults({ fontSize: 'get' });
-  let filterTimeOut;
-
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
   };
 
   const agendaView = () => {
     return reactData.defaultValues.agendaView;
+  };
+
+  const eventsToShow = (this_date) => {
+    return this_date.eventList.some((this_event) => {        // an array of events on this date
+      return okToShow(this_event);
+    });
   };
 
   const getPersonName = (idToFind) => {
@@ -407,8 +489,14 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     if (!reactData.filterTextLower) {
       return true;
     }
+    else if (reactData.idFilter && (this_event.slot_owners.hasOwnProperty(reactData.idFilter))) {
+      return true;
+    }
+    else if (reactData.eventIDFilter && (this_event.event_id === reactData.eventIDFilter)) {
+      return true;
+    }
     else {
-      return (`${this_event.description} ${this_event.location}`).toLowerCase().includes(reactData.filterTextLower);
+      return ((`${this_event.description} ${this_event.location}`).toLowerCase().includes(reactData.filterTextLower));
     }
   }
 
@@ -416,13 +504,87 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     ev.dataTransfer.setData('id', id);
   };
 
-  const handleDragOver = (ev) => {
+  let dropTarget = {};
+  const handleDragOver = (ev, target) => {
     ev.preventDefault();
+    dropTarget[target.type] = target.data;
   };
 
-  const handleDrop = async (ev, { droppedOn_event, eventIndex, dateIndex }) => {
+  const isTemplate = (id) => {
+    return (id.startsWith('template:'));
+  };
+
+  const getTemplate = (id) => {
+    let template_id = id.split('%%')[1];
+    return (reactData.defaultValues.template__List.find(this_template => {
+      return this_template.event_data.event_id === template_id;
+    }));
+  };
+
+  const handleDrop = async (ev, dropType) => {
     ev.preventDefault();
     let dragged_id = ev.dataTransfer.getData('id');
+    console.log(`drop on ${dropType} with ${Object.keys(dropTarget)}`);
+    switch (dropType) {
+      case 'event': {
+        if (!isTemplate(dragged_id)) {
+          await eventSignup(dragged_id, dropTarget['event']);
+          dropTarget = {};
+          break;
+        }
+        else {
+          dropTarget['calendar_cell'].this_date = { dateObj: makeDate(dropTarget['event'].droppedOn_event.occurrence_date) };
+        }
+        // intentionally drop through to calendar_cell case
+      }
+      // eslint-disable-next-line
+      case 'calendar_cell': {
+        if (dropTarget.hasOwnProperty('calendar_cell')) {
+          if (isTemplate(dragged_id)) {
+            updateReactData({
+              addTemplateEvent: true,
+              selectedTemplate: getTemplate(dragged_id),
+              isAppointment: true,
+              appointmentDate: dropTarget['calendar_cell'].this_date
+            }, true);
+          }
+          else {
+            let personRec = await getPerson(dragged_id);
+            updateReactData({
+              addPersonalEvent: true,
+              selectedPersonRec: personRec,
+              isAppointment: true,
+              appointmentDate: dropTarget['calendar_cell'].this_date
+            }, true);
+          }
+        }
+        break;
+      }
+      case 'filter_button': {
+        if (isTemplate(dragged_id)) {
+          let templateRec = getTemplate(dragged_id);
+          updateReactData({
+            eventIDFilter: templateRec.event_data.event_id,
+            idFilter: false,
+            filterTextLower: templateRec.event_data.generic_description.toLowerCase()
+          }, true);
+        }
+        else {
+          let personRec = await getPerson(dragged_id);
+          updateReactData({
+            eventIDFilter: false,
+            idFilter: dragged_id,
+            filterTextLower: personRec.name.last.toLowerCase()
+          }, true);
+        }
+        break;
+      }
+      default: { }
+    }
+    dropTarget = {};
+  };
+
+  async function eventSignup(dragged_id, { droppedOn_event, eventIndex, dateIndex }) {
     console.log(`dropped ${dragged_id} onto ${droppedOn_event.description}`);
     if (ownerOfSlots(droppedOn_event, dragged_id)) {
       enqueueSnackbar(`${dragged_id} is already included in ${droppedOn_event.description}`, { variant: 'warning' });
@@ -486,6 +648,34 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
         if (!reactData.conflictInfo.hasOwnProperty(dragged_id)) {
           reactData.conflictInfo[dragged_id] = {};
         }
+        let this_date = makeDate(droppedOn_event.occurrence_date);
+        let this_Sunday = makeDate(addDays(this_date.date, -(this_date.dayOfWeek)));
+        if (!reactData.conflictInfo[dragged_id].hasOwnProperty('summaries')) {
+          reactData.conflictInfo[dragged_id].summaries = {
+            [this_Sunday.numeric$]: {
+              description: this_Sunday.dateOnly,
+              minutes: 0
+            }
+          };
+        }
+        else if (!reactData.conflictInfo[dragged_id].summaries.hasOwnProperty(this_Sunday.numeric$)) {
+          reactData.conflictInfo[dragged_id].summaries[this_Sunday.numeric$] = {
+            description: this_Sunday.dateOnly,
+            minutes: 0
+          };
+        }
+        let start_time = makeTime(eventStart24);
+        let end_time = makeTime(eventEnd24);
+        let minutes_booked = 0;
+        if (end_time.minutesSinceMidnight < start_time.minutesSinceMidnight) {
+          minutes_booked = end_time.minutesSinceMidnight + (1440 - start_time.minutesSinceMidnight);
+        }
+        else {
+          minutes_booked = end_time.minutesSinceMidnight - start_time.minutesSinceMidnight;
+        }
+        if (minutes_booked < 1200) {
+          reactData.conflictInfo[dragged_id].summaries[this_Sunday.numeric$].minutes += minutes_booked;
+        }
         if (!reactData.conflictInfo[dragged_id].hasOwnProperty(droppedOn_event.occurrence_date)) {
           reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date] = [];
         }
@@ -509,7 +699,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
         }, true);
       }
     }
-  };
+  }
 
   async function orderWarning(status_message) {
     const showWarning = new Promise((resolve, reject) => {
@@ -593,6 +783,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       "status": 'selected',
       "show_this_slot": true
     };
+    if (this_event.hasOwnProperty('default_forms')) {
+      writeRequest.default_forms = deepCopy(this_event.default_forms);
+    }
     if (!reactData.defaultValues.message_override) {
       writeRequest.no_messaging = false;
     }
@@ -614,22 +807,37 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     return slotToUse;
   };
 
-  const handleChangePersonFilter = vCheck => {
-    clearTimeout(filterTimeOut);
-    cl(`set timeout with ${vCheck} at ${new Date().getTime()}`);
-    filterTimeOut = setTimeout(() => {
-      cl(`timeout ended ${vCheck} at ${new Date().getTime()}`);
-      if (vCheck.length === 0) {
-        updateReactData({
-          filterTextLower: ''
-        }, true);
-      }
-      else {
-        updateReactData({
-          filterTextLower: vCheck.toLowerCase()
-        }, true);
-      }
-    }, 500);
+  const isDense = (this_date) => {
+    if (reactData.denseView.hasOwnProperty(this_date)) {
+      return reactData.denseView[this_date];
+    }
+    else {
+      return reactData.denseView['*all'];
+    }
+  };
+
+  let alreadySummarized = {};
+  const showPersonSummary = (display_name) => {
+    alreadySummarized = {};
+    return display_name;
+  };
+
+  const showWeekTotal = (this_person, this_date) => {
+    let madeDate = makeDate(this_date);
+    let this_sunday = makeDate(addDays(madeDate.date, -(madeDate.dayOfWeek)));
+    if (alreadySummarized.hasOwnProperty(this_sunday.numeric$)) {
+      return null;
+    }
+    else {
+      alreadySummarized[this_sunday.numeric$] = true;
+      return (
+        <Typography
+          noWrap={true}
+          style={AVATextStyle({ bold: true, size: 0.4, margin: { top: 1 } })}>
+          {`Hrs wk of ${this_sunday.dateOnly} = ${Math.round((reactData.conflictInfo[this_person].summaries[this_sunday.numeric$].minutes / 60) * 10) / 10}`}
+        </Typography>
+      );
+    }
   };
 
   const setTextColor = (this_event) => {
@@ -675,7 +883,10 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
 
   function setBackgroundColor(this_date) {
     let this_background = reactData.calendar_fill;
-    if (this_date.dateObj.weekday === 'weekend') {
+    if (this_date.date_words === 'Today') {
+      this_background = 'white';
+    }
+    else if (this_date.dateObj.weekday === 'weekend') {
       this_background = (isDarkMode ? 'darkgoldenrod' : 'lightyellow');
     }
     return this_background;
@@ -710,17 +921,16 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     >
       {reactData.myCalendar &&
         <React.Fragment>
-
           <Box
             display='flex' flexDirection='column'
             className={classes.client_background}
+            style={{ paddingLeft: '8px', paddingRight: '8px' }}
             alignItems={'center'}
             key={'topBox'}
           >
-
             <Box
               display='flex' flexDirection='row'
-              className={classes.client_background}
+              className={classes.client_backgroundCenter}
               alignItems={'flex-start'} justifyContent={'space-between'}
               key={'topBox'}
               width={'100%'}
@@ -739,32 +949,23 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                   className={classes.client_backgroundCenter}
                   key={'nameBox'}
                 >
-                  <Tooltip
-                    className={classes.avatar}
-                    draggable={true}
-                    onDragStart={(e) => handleDragStart(e, reactData.selectedPerson_id)}
-                    title={
-                      <Typography variant='caption'>
-                        {`Drag to assign`}
-                      </Typography>
-                    }
-                    placement='bottom-start'>
-                    <Avatar src={getImage(reactData.selectedPerson_id)} />
-                  </Tooltip>
                   <Box
                     display='flex' flexDirection='column'
                     key={'nameRows'}
                   >
                     <Typography
                       className={classes.title}
-                      style={AVATextStyle({ size: 1.3, bold: true, margin: { left: 1, right: 1 } })}
+                      style={AVATextStyle({ size: 1.2, bold: true, margin: { left: 0.5, right: 1 } })}
                     >
-                      {`${reactData.display_name}${reactData.display_name.slice(-1) === 's' ? "'" : "'s"} Calendar`}
+                      {reactData.defaultValues.assignmentView
+                        ? `Calendar Management`
+                        : `${reactData.display_name}${reactData.display_name.slice(-1) === 's' ? "'" : "'s"} Calendar`
+                      }
                     </Typography>
                     {reactData.defaultValues.subtitle &&
                       <Typography
                         className={classes.title}
-                        style={AVATextStyle({ size: 1, margin: { top: 0, left: 1, right: 1 } })}
+                        style={AVATextStyle({ size: 0.8, margin: { top: 0, left: 0.5, right: 1 } })}
                       >
                         {reactData.defaultValues.subtitle}
                       </Typography>
@@ -783,32 +984,15 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                     </Typography>
                   </Box>
                 }
-                <Box display='flex'
-                  flexDirection='row'
-                  minWidth={'60%'}
-                  className={classes.client_background}
-                  key={'filterRow'}
-                >
-                  <TextField
-                    id='List Filter'
-                    onChange={event => (handleChangePersonFilter(event.target.value))}
-                    className={classes.freeInput}
-                    helperText={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
-                    inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                    FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                    variant={'standard'}
-                    autoComplete='off'
-                  />
-                </Box>
               </Box>
               <Box
                 component="img"
                 m={2}
                 aria-controls='hidden-menu'
                 aria-haspopup='true'
-                minWidth={50}
-                minHeight={50}
-                maxHeight={50}
+                minWidth={30}
+                minHeight={30}
+                maxHeight={30}
                 onClick={(event) => {
                   handleClick(event);
                   updateReactData({
@@ -850,8 +1034,16 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                   <MenuItem
                     onClick={() => {
                       reactData.defaultValues.agendaView = !reactData.defaultValues.agendaView;
+                      if (reactData.defaultValues.agendaView) {
+                        reactData.defaultValues.rememberedDenseData = deepCopy(reactData.denseView);
+                        reactData.denseView = { '*all': false };
+                      }
+                      else {
+                        reactData.denseView = deepCopy(reactData.defaultValues.rememberedDenseData);
+                      }
                       updateReactData({
                         defaultValues: reactData.defaultValues,
+                        denseView: reactData.denseView,
                         popUpOpen: false
                       }, true);
                     }}
@@ -867,9 +1059,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                   {!agendaView() &&
                     <MenuItem
                       onClick={() => {
-                        reactData.defaultValues.denseView = !reactData.defaultValues.denseView;
                         updateReactData({
-                          defaultValues: reactData.defaultValues,
+                          denseView: { '*all': !reactData.denseView['*all'] },
                           popUpOpen: false
                         }, true);
                       }}
@@ -878,8 +1069,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         display='flex' flexDirection='row' alignItems={'center'}
                         key={'vRowHome'}
                       >
-                        {reactData.defaultValues.denseView ? <FormatLineSpacingIcon /> : <FormatAlignJustifyIcon />}
-                        <Typography className={classes.popUpMenuRow} >{reactData.defaultValues.denseView ? 'Relaxed view' : 'Dense view'}</Typography>
+                        {reactData.denseView['*all'] ? <FormatLineSpacingIcon /> : <FormatAlignJustifyIcon />}
+                        <Typography className={classes.popUpMenuRow} >{reactData.denseView['*all'] ? 'Relaxed view' : 'Dense view'}</Typography>
                       </Box>
                     </MenuItem>
                   }
@@ -898,6 +1089,69 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                     >
                       {showSlots() ? <PersonAddDisabledIcon /> : <GroupIcon />}
                       <Typography className={classes.popUpMenuRow} >{showSlots() ? 'Hide people' : 'Show people'}</Typography>
+                    </Box>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      updateReactData({
+                        setFilter: true,
+                        popUpOpen: false
+                      }, true);
+                    }}
+                  >
+                    <Box
+                      display='flex' flexDirection='row' alignItems={'center'}
+                      key={'vRowHome'}
+                    >
+                      {<FilterListIcon />}
+                      <Typography className={classes.popUpMenuRow} >
+                        {'Filter entries'}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      updateReactData({
+                        setDates: true,
+                        popUpOpen: false
+                      }, true);
+                    }}
+                  >
+                    <Box
+                      display='flex' flexDirection='row' alignItems={'center'}
+                      key={'vRowHome'}
+                    >
+                      {<DateRangeIcon />}
+                      <Typography className={classes.popUpMenuRow} >
+                        {'Modify dates'}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={async () => {
+                      await printCalendar(
+                        {
+                          client_id: state.session.client_id,
+                          myCalendar: reactData.myCalendar,
+                          requestor: state.session.user_id,
+                          filterTextLower: reactData.filterTextLower,
+                          groupFilter: state.groups.belongsTo,
+                          onlyRegistered: reactData.defaultValues.onlyRegistered ? reactData.selectedPerson_id : null
+                        }
+                      );
+                      updateReactData({
+                        popUpOpen: false
+                      }, true);
+                    }}
+                  >
+                    <Box
+                      display='flex' flexDirection='row' alignItems={'center'}
+                      key={'vRowHome'}
+                    >
+                      {<PrintIcon />}
+                      <Typography className={classes.popUpMenuRow} >
+                        {'Print'}
+                      </Typography>
                     </Box>
                   </MenuItem>
                   <MenuItem
@@ -941,63 +1195,152 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               </Menu>
             </Box>
             {reactData.defaultValues.assignmentView &&
-              <Box className={classes.peopleBox} >
-                {reactData.defaultValues.assignment__List.map((this_candidate, cX) => (
-                  <Box key={`candidate-${cX}`} mx={1} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
-                    <Tooltip
-                      classes={{ tooltip: classes.tooltipBody, arrow: classes.arrowBody }}
-                      draggable={true}
-                      arrow
-                      enterDelay={500}
-                      onDragStart={(e) => handleDragStart(e, this_candidate.person_id)}
-                      title={
-                        <Box
-                          key={`conflict-${cX}`} mx={1} mb={1} maxHeight={'500px'} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
-                          <Typography
-                            style={AVATextStyle({ bold: true, size: 1, margin: { top: 0.2 } })}>
-                            {this_candidate.display_name}
-                          </Typography>
-                          {reactData.conflictInfo[this_candidate.person_id]
-                            ?
-                            Object.keys(reactData.conflictInfo[this_candidate.person_id]).map((conflict_date, cDateX) => (
-                              (cDateX < 7) &&
-                              <Box key={`conflict-${cX}_${conflict_date}`} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
-                                <Typography
-                                  style={AVATextStyle({ italic: true, size: 0.8, margin: { top: 0.2 } })}>
-                                  {makeDate(conflict_date).relative}
-                                </Typography>
-                                {reactData.conflictInfo[this_candidate.person_id][conflict_date].map(this_conflict => (
-                                  !this_conflict.open &&
-                                  <Typography
-                                    style={AVATextStyle({ size: 0.5 })}>
-                                    {`${(this_conflict.time > 0) ? makeTime(this_conflict.time).short : 'All Day'} - ${titleCase(this_conflict.event_title).slice(0, 30)}`}
-                                  </Typography>
-                                ))}
-                              </Box>
-                            ))
-                            :
-                            <Box key={`conflict-${cX}_noconflict`} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
+              <React.Fragment>
+                {reactData.defaultValues.template__List &&
+                  <Box
+                    key={`template_outer`}
+                    className={classes.peopleBox}
+                  >
+                    {reactData.defaultValues.template__List.map((this_template, tX) => (
+                      <Box
+                        key={`template-${tX}_inner`}
+                        mx={1}
+                        display='flex'
+                        justifyContent='center'
+                        alignItems='center'
+                        flexDirection='column'
+                        draggable={true}
+                        onDragStart={(e) =>
+                          handleDragStart(e, `template: ${tX}%%${this_template.event_data.event_id}`)
+                        }
+                      >
+                        <Avatar
+                          className={classes.assignment_avatar}
+                          src={this_template.event_data.image}
+                        />
+                        <Typography
+                          noWrap={true}
+                          className={classes.dragNamesLast}
+                        >
+                          {this_template.event_data.generic_description || this_template.event_data.description}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                }
+                {reactData.defaultValues.assignment__List.map((this_list, lX) => (
+                  <Box
+                    key={`candidate-${lX}`}
+                    className={((lX === 0) && !reactData.defaultValues.template__List) ? classes.peopleBox : classes.peopleBoxWithSpace} >
+                    {this_list.assignmentList.map((this_candidate, cX) => (
+                      <Box
+                        key={`candidate-${lX}-${cX}`}
+                        mx={1}
+                        display='flex'
+                        justifyContent='center'
+                        alignItems='center'
+                        flexDirection='column'
+                      >
+                        <Tooltip
+                          classes={{ tooltip: classes.tooltipBody, arrow: classes.arrowBody }}
+                          draggable={true}
+                          arrow
+                          enterDelay={500}
+                          onDragStart={(e) => handleDragStart(e, this_candidate.person_id)}
+                          title={
+                            <Box
+                              key={`conflict-${cX}`} mx={1} mb={1}
+                              display='flex' justifyContent='center' alignItems='center'
+                              flexDirection='column'
+                            >
                               <Typography
-                                style={AVATextStyle({ italic: true, size: 0.8, margin: { top: 0.2 } })}>
-                                {'No Conflicts'}
+                                noWrap={true}
+                                key={`conflict-${cX}_conflictName`}
+                                style={AVATextStyle({ bold: true, size: 0.8, margin: { top: 0.2 } })}
+                              >
+                                {showPersonSummary(this_candidate.display_name)}
                               </Typography>
+                              {reactData.conflictInfo[this_candidate.person_id]
+                                ?
+                                Object.keys(reactData.conflictInfo[this_candidate.person_id]).map((conflict_date, cDateX) => (
+                                  ((conflict_date !== 'summaries') &&
+                                    <Box
+                                      key={`conflict-${cX}_${cDateX}`}
+                                      display='flex' justifyContent='center'
+                                      alignItems='center' flexDirection='column'
+                                      textOverflow={'ellipsis'}
+                                    >
+                                      {showWeekTotal(this_candidate.person_id, conflict_date)}
+                                      <Typography
+                                        noWrap={true}
+                                        style={AVATextStyle({ italic: true, size: 0.4, margin: { top: 0.2 } })}>
+                                        {makeDate(conflict_date).relative}
+                                      </Typography>
+                                      {reactData.conflictInfo[this_candidate.person_id][conflict_date].map((this_conflict, tCN) => (
+                                        !this_conflict.open &&
+                                        <Typography
+                                          key={`conflict-${cX}_${tCN}`}
+                                          style={AVATextStyle({ size: 0.3 })}
+                                          noWrap={true}
+                                        >
+                                          {`${(this_conflict.time > 0) ? makeTime(this_conflict.time).short : 'All Day'} - ${titleCase(this_conflict.event_title).slice(0, 30)}`}
+                                        </Typography>
+                                      ))}
+                                    </Box>
+                                  )
+                                ))
+                                :
+                                <Box key={`conflict-${cX}_noconflict`} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
+                                  <Typography
+                                    style={AVATextStyle({ italic: true, size: 0.4, margin: { top: 0.2 } })}>
+                                    {'Nothing Scheduled'}
+                                  </Typography>
+                                </Box>
+                              }
                             </Box>
                           }
-                        </Box>
-                      }
-                      placement='top-end'
-                    >
-                      <Avatar className={classes.assignment_avatar} src={getImage(this_candidate.person_id)} />
-                    </Tooltip>
-                    <Typography className={classes.dragNames}>
-                      {this_candidate.display_name.split(' ')[0]}
-                    </Typography>
-                    <Typography className={classes.dragNames}>
-                      {this_candidate.display_name.split(' ').slice(-1)[0]}
-                    </Typography>
+                          placement='top-end'
+                        >
+                          <Avatar className={classes.assignment_avatar} src={getImage(this_candidate.person_id)} />
+                        </Tooltip>
+                        {(reactData.defaultValues.assignmentDisplayBy
+                          && reactData.defaultValues.assignmentDisplayBy.toLowerCase().includes('last'))
+                          ?
+                          <React.Fragment>
+                            <Typography
+                              noWrap={true}
+                              className={classes.dragNamesLast}
+                            >
+                              {this_candidate.last_name}
+                            </Typography>
+                            <Typography
+                              noWrap={true}
+                              className={classes.dragNamesFirst}
+                            >
+                              {this_candidate.first_name}
+                            </Typography>
+                          </React.Fragment>
+                          :
+                          <React.Fragment>
+                            <Typography
+                              noWrap={true}
+                              className={classes.dragNamesFirst}
+                            >
+                              {this_candidate.first_name}
+                            </Typography>
+                            <Typography
+                              noWrap={true}
+                              className={classes.dragNamesLast}
+                            >
+                              {this_candidate.last_name}
+                            </Typography>
+                          </React.Fragment>
+                        }
+                      </Box>
+                    ))}
                   </Box>
                 ))}
-              </Box>
+              </React.Fragment>
             }
 
           </Box>
@@ -1005,18 +1348,21 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
             <DialogContent
               dividers={true}
               classes={{ dividers: classes.client_background }}
-              style={{ paddingRight: '0px' }}
+              style={{ paddingLeft: '0px', paddingRight: '0px' }}
             >
-              <Box display='flex' flexDirection='column' key={`screen_box`} className={classes.dialogBox}>
-
+              <Box display='flex'
+                flexDirection='row'
+                key={`screen_box`}
+                className={classes.dialogBox}
+              >
                 <Box
                   display='flex'
                   alignItems='flex-start'
                   flexDirection={agendaView() ? 'column' : 'row'}
                   flexWrap={'wrap'}
-                  key={`category-detail-box-outside2`}
+                  key={`whole_calendar_${agendaView() ? 'A' : 'C'}`}
                   style={{
-                    paddingLeft: '4px',
+                    paddingLeft: '16px',
                     minHeight: `${Math.min(reactData.visible_y - 400, 350)}px`,
                   }}
                   id='dialog-content'
@@ -1024,250 +1370,390 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                   {reactData.myCalendar && (reactData.myCalendar.length > 0) &&
                     reactData.myCalendar.map((this_date, dateIndex) => (        // an array of dates
                       (!this_date.dateObj.error &&
-                        <React.Fragment>
-                          <Typography
-                            key={'hidden_row'}
-                            className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                            {this_background = setBackgroundColor(this_date)}
-                            {eventsToShow = this_date.eventList.some((this_event) => {        // an array of events on this date
-                              return okToShow(this_event);
-                            })}
-                          </Typography>
-                          {((!agendaView() && !reactData.defaultValues.onlyRegistered) || eventsToShow) &&
+                        <React.Fragment
+                          key={`dateBox_container-${dateIndex}`}
+                        >
+                          {((!agendaView() && !reactData.defaultValues.onlyRegistered) || eventsToShow(this_date)) &&
                             <Box
-                              key={this_date.dateObj.numeric$ + 'rhead' + dateIndex}
-                              ref={this_date.dateObj.numeric$ ? selectedDate : null}
-                              style={{
-                                marginBottom: '0px',
-                                minWidth: `${user_fontSize * (reactData.defaultValues.denseView ? 220 : 300)}px`,
-                                maxWidth: `${user_fontSize * (reactData.defaultValues.denseView ? 220 : 1000)}px`,
-                                marginTop: '50px'
+                              display='flex'
+                              key={`dateBox_cell-${dateIndex}_${agendaView() ? 'A' : 'C'}`}
+                              ref={(this_date.dateObj.numeric$ === reactData.selectDate)
+                                ? selectedDate
+                                : null
+                              }
+                              border={agendaView() ? 0 : 2}
+                              style={agendaView() ? {} : {
+                                minWidth: isDense(this_date.dateObj.numeric$) ? `${reactData.factor7 * 200}px` : `250px`,
+                                maxWidth: isDense(this_date.dateObj.numeric$) ? `${(reactData.factor7 < 1) ? (reactData.factor7 * 200) : 999}px` : '',
+                                minHeight: isDense(this_date.dateObj.numeric$) ? `${reactData.factor7 * 280}px` : null,
+                                maxHeight: isDense(this_date.dateObj.numeric$) ? `${reactData.factor7 * 280}px` : null,
+                                borderRadius: '30px 30px 30px 30px',
+                                marginTop: '10px',
+                                marginBottom: '10px',
+                                borderColor: reactData.calendar_fill_text,
+                                backgroundColor: setBackgroundColor(this_date),
+                                opacity: (this_date.dateObj.numeric < reactData.todayYMD ? 0.6 : 1)
                               }}
-                              cols={1}
+                              ml={1} mr={1} mt={1}
+                              justifyContent='flex-start'
+                              alignItems={agendaView() ? 'flex-start' : 'center'}
+                              flexDirection='column'
+                              zIndex={1900}
                             >
+                              { /* Date in calendar cell */}
                               <Box
                                 display='flex'
-                                border={agendaView() ? null : 2}
-                                style={agendaView() ? {} : {
-                                  minWidth: reactData.defaultValues.denseView ? `${user_fontSize * 200}px` : `${user_fontSize * 250}px`,
-                                  maxWidth: reactData.defaultValues.denseView ? `${user_fontSize * 200}px` : '',
-                                  borderRadius: '30px 30px 30px 30px',
+                                width='-webkit-fill-available'
+                                mb={0.5}
+                                mx={2} pt={1}
+                                px={agendaView() ? 0 : 2}
+                                borderBottom={(!isDense(this_date.dateObj.numeric$) || (reactData.factor7 > .45)) ? 2 : 0}
+                                mt={1}
+                                justifyContent={'center'}
+                                style={{
                                   borderColor: reactData.calendar_fill_text,
-                                  backgroundColor: this_background,
-                                  opacity: (this_date.dateObj.numeric < reactData.todayYMD ? 0.3 : 1)
                                 }}
-                                ml={2} mr={2}
-                                minHeight={agendaView() ? '' : '280px'}
-                                maxHeight={reactData.defaultValues.denseView ? '280px' : ''}
-                                justifyContent='flex-start'
-                                alignItems={agendaView() ? 'flex-start' : 'center'}
-                                flexDirection='column'
-                              >
-                                {(this_date.dateObj.date.getDate() === 1) &&
-                                  (!reactData.defaultValues.denseView) &&
-                                  <Typography
-                                    style={AVATextStyle({ size: 1.5, margin: { left: (agendaView() ? 1 : 0), top: 1, bottom: -1 }, color: reactData.calendar_fill_text })}
-                                    key={this_date.dateObj.numeric$ + 'head2' + dateIndex}
-                                  >
-                                    {this_date.dateObj.date.toLocaleString([], { month: 'long' })}
-                                  </Typography>
+                                onDragOver={(e) =>
+                                  handleDragOver(e, {
+                                    type: 'calendar_cell',
+                                    data: {
+                                      this_date,
+                                      dateIndex
+                                    }
+                                  })
                                 }
+                                onDrop={async (e) => {
+                                  await handleDrop(e, 'calendar_cell');
+                                }}
+                              >
                                 <Box
                                   display='flex'
-                                  width='-webkit-fill-available'
-                                  mb={0.5}
-                                  mx={2} pt={1}
-                                  px={agendaView() ? 0 : 2}
-                                  borderBottom={2} mt={1}
-                                  style={{
-                                    borderColor: reactData.calendar_fill_text,
+                                  flexGrow={1}
+                                  flexDirection={(!isDense(this_date.dateObj.numeric$) || (reactData.factor7 > .45)) ? 'row' : 'column'}
+                                  justifyContent={agendaView() ? 'flex-start' : 'center'}
+                                  alignItems={'center'}
+                                  onClick={() => {
+                                    let denseView = deepCopy(reactData.denseView);
+                                    if (denseView.hasOwnProperty(this_date.dateObj.numeric$)) {
+                                      denseView[this_date.dateObj.numeric$] = !denseView[this_date.dateObj.numeric$];
+                                    }
+                                    else {
+                                      denseView[this_date.dateObj.numeric$] = !denseView['*all'];
+                                    }
+                                    updateReactData({
+                                      denseView
+                                    }, true);
                                   }}
                                 >
-                                  <Box display='flex' flexGrow={1} flexDirection='row'
-                                    justifyContent={agendaView() ? 'flex-start' : 'center'}>
-                                    <Typography
-                                      style={AVATextStyle({
-                                        size: 1.5,
-                                        margin: { right: 1 },
-                                        color: reactData.calendar_fill_text,
-                                      })}
-                                      key={this_date.dateObj.numeric$ + 'head1' + dateIndex}
-                                    >
-                                      {reactData.defaultValues.denseView
-                                        ? this_date.dateObj.dayOfWeek_word.slice(0, 3)
-                                        : ['Today', 'Tomorrow'].includes(this_date.date_words) ? this_date.date_words : this_date.dateObj.dayOfWeek_word
-                                      }
-                                    </Typography>
-                                    <Typography
-                                      style={AVATextStyle({
-                                        size: 1.5,
-                                        color: reactData.calendar_fill_text,
-                                      })}
-                                      key={this_date.dateObj.numeric$ + 'head2' + dateIndex}
-                                    >
-                                      {ordinal(this_date.dateObj.date.getDate())}
-                                    </Typography>
-                                  </Box>
-                                </Box>
-                                {(this_date.eventList.length === 0) ?
-                                  <Box display='flex' flexDirection='column'
-                                    p={2}
-                                    mt={0} mb={1}
-                                    variant='outlined'
-                                    justifyContent='flex-start'
-                                    alignItems={agendaView() ? 'flex-start' : 'center'}
-                                    key={`details${this_date.dateObj.numeric$}_noEvents`}
-                                  >
-                                    <Typography style={AVATextStyle({
+                                  <Typography
+                                    style={AVATextStyle({
+                                      size: 1.2,
+                                      margin: { left: 0.2, right: 0.2 },
                                       color: reactData.calendar_fill_text,
-                                    })}>
-                                      {`No Events Scheduled`}
-                                    </Typography>
-                                  </Box>
-                                  :
-                                  <Box className={reactData.defaultValues.denseView ? classes.denseView : classes.relaxedView}
-                                    alignItems={agendaView() ? 'flex-start' : 'center'}
-                                    key={`details${this_date.dateObj.numeric$}_eventBox`}
+                                    })}
+                                    key={this_date.dateObj.numeric$ + 'head1' + dateIndex}
                                   >
-                                    {this_date.eventList.map((this_event, eventIndex) => (        // an array of events on this date
-                                      okToShow(this_event) &&
-                                      <Box
-                                        component={Box}
-                                        onDragOver={(e) => handleDragOver(e)}
-                                        onDrop={async (e) => {
-                                          await handleDrop(e, { droppedOn_event: this_event, eventIndex, dateIndex });
-                                        }}
-                                        display='flex' flexDirection='column'
-                                        py={2} px={1}
-                                        mt={0} mb={1}
-                                        variant='outlined'
-                                        textAlign={agendaView() ? 'flex-start' : 'center'}
-                                        key={`details${this_date.dateObj.numeric$}_${eventIndex}`}
-                                        onClick={async () => {
-                                          switch (this_event.type) {
-                                            case 'holiday': {
-                                              break;
-                                            }
-                                            case 'birthday': {
-                                              break;
-                                            }
-                                            case 'personal': {
-                                              break;
-                                            }
-                                            default: {
-                                              let [eventInfo, occInfo] = await getCalendarEntries({
-                                                person_id: reactData.selectedPerson_id,
-                                                client: this_event.client,
-                                                event_id: this_event.event_key
-                                              });
-                                              this_event.occData = Object.assign({},
-                                                eventInfo.eventData.event_data,
-                                                eventInfo.eventData,
-                                                { location: eventInfo.eventData.event_data.location.description },
-                                                { signup_type: eventInfo.eventData.sign_up.type },
-                                                occInfo,
-                                                { date: occInfo.occurrence_date },
-                                                { time$: `${eventInfo.eventData.event_data.time.from}${((eventInfo.eventData.event_data.time.to && eventInfo.eventData.event_data.time.to.trim() !== '') ? ' to ' + eventInfo.eventData.event_data.time.to : '')}` },
-                                                { time24: this_event.time24 }
-                                              );
-                                              this_event.date_index = dateIndex;
-                                              this_event.event_index = eventIndex;
-                                              updateReactData({
-                                                event_being_edited: this_event
-                                              }, true);
-                                            }
+                                    {isDense(this_date.dateObj.numeric$)
+                                      ? this_date.dateObj.dayOfWeek_word.slice(0, 3)
+                                      : this_date.dateObj.dayOfWeek_word
+                                    }
+                                  </Typography>
+                                  {(this_date.dateObj.date.getDate() === 1) &&
+                                    (!isDense(this_date.dateObj.numeric$)) &&
+                                    <Typography
+                                      style={AVATextStyle({
+                                        size: 1.2,
+                                        margin: { left: 0.2, right: 0.2 },
+                                        color: reactData.calendar_fill_text,
+                                      })}
+                                      key={this_date.dateObj.numeric$ + 'month2' + dateIndex}
+                                    >
+                                      {this_date.dateObj.date.toLocaleString([], { month: 'long' })}
+                                    </Typography>
+                                  }
+                                  <Typography
+                                    style={AVATextStyle({
+                                      size: 1.2,
+                                      color: reactData.calendar_fill_text,
+                                      margin: { left: 0.2, right: 0.2 }
+                                    })}
+                                    key={this_date.dateObj.numeric$ + 'head2' + dateIndex}
+                                  >
+                                    {ordinal(this_date.dateObj.date.getDate())}
+                                  </Typography>
+                                </Box>
+                              </Box>
+
+                              { /* Calendar cell contents */}
+                              {(!isDense(this_date.dateObj.numeric$) || (reactData.factor7 > .45)) &&
+                                <React.Fragment>
+                                  {((this_date.eventList.length === 0) || (!eventsToShow(this_date))) ?
+                                    <Box display='flex' flexDirection='column'
+                                      p={2}
+                                      mt={0} mb={1}
+                                      variant='outlined'
+                                      justifyContent='flex-start'
+                                      alignItems={agendaView() ? 'flex-start' : 'center'}
+                                      textAlign={agendaView() ? 'flex-start' : 'center'}
+                                      key={`details${this_date.dateObj.numeric$}_noEvents`}
+                                    >
+                                      <Typography style={AVATextStyle({
+                                        color: reactData.calendar_fill_text,
+                                        size: 1,
+                                      })}>
+                                        {`No Events Scheduled`}
+                                      </Typography>
+                                    </Box>
+                                    :
+                                    <Box style={isDense(this_date.dateObj.numeric$)
+                                      ? {
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        paddingLeft: '16px',
+                                        paddingRight: '16px',
+                                        marginTop: 0,
+                                        marginBottom: '24px',
+                                        maxWidth: `${((reactData.factor7 * 220)) - ((reactData.factor7 < 1) ? 25 : 0)}px`,
+                                        justifyContent: 'flex-start',
+                                        overflow: 'auto',
+                                        scrollbarWidth: 'thin',
+                                        overflowX: 'hidden',
+                                      } : {
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        padding: '16px',
+                                        marginTop: 0,
+                                        marginBottom: '8px',
+                                        variant: 'outlined',
+                                        justifyContent: 'flex-start',
+                                      }}
+                                      alignItems={agendaView() ? 'flex-start' : 'center'}
+                                      key={`details${this_date.dateObj.numeric$}_eventBox`}
+                                    >
+                                      {this_date.eventList.map((this_event, eventIndex) => (        // an array of events on this date
+                                        okToShow(this_event) &&
+                                        <Box
+                                          style={{
+                                            transform: `scale(${isDense(this_date.dateObj.numeric$) ? Math.min(reactData.factor7 * 1.5, 1) : 1})`
+                                          }}
+                                          zIndex={2000}
+                                          onDragOver={(e) =>
+                                            handleDragOver(e, {
+                                              type: 'event',
+                                              data: { droppedOn_event: this_event, eventIndex, dateIndex }
+                                            })
                                           }
-                                        }}
-                                      >
-                                        <Box display='flex' flexDirection='row'
-                                          justifyContent={agendaView() ? 'flex-start' : 'center'}
-                                          alignItems='center'
-                                          color={setTextColor(this_event, this_date).color}
+                                          onDrop={async (e) => {
+                                            await handleDrop(e, 'event');
+                                          }}
+                                          display='flex' flexDirection='column'
+                                          py={isDense(this_date.dateObj.numeric$) ? reactData.factor7 : 1}
+                                          px={1}
+                                          mt={0}
+                                          mb={isDense(this_date.dateObj.numeric$) ? reactData.factor7 : 1}
+                                          variant='outlined'
+                                          textAlign={agendaView() ? 'flex-start' : 'center'}
+                                          key={`details${this_date.dateObj.numeric$}_${eventIndex}`}
+                                          onClick={async () => {
+                                            switch (this_event.type) {
+                                              case 'holiday': {
+                                                break;
+                                              }
+                                              case 'birthday': {
+                                                break;
+                                              }
+                                              case 'personal': {
+                                                break;
+                                              }
+                                              default: {
+                                                let [eventInfo, occInfo] = await getCalendarEntries({
+                                                  person_id: reactData.selectedPerson_id,
+                                                  client: this_event.client,
+                                                  event_id: this_event.event_key
+                                                });
+                                                this_event.occData = Object.assign({},
+                                                  eventInfo.eventData.event_data,
+                                                  eventInfo.eventData,
+                                                  { location: eventInfo.eventData.event_data.location.description },
+                                                  { signup_type: eventInfo.eventData.sign_up.type },
+                                                  occInfo,
+                                                  { date: occInfo.occurrence_date },
+                                                  { time$: `${eventInfo.eventData.event_data.time.from}${((eventInfo.eventData.event_data.time.to && eventInfo.eventData.event_data.time.to.trim() !== '') ? ' to ' + eventInfo.eventData.event_data.time.to : '')}` },
+                                                  { time24: this_event.time24 }
+                                                );
+                                                this_event.date_index = dateIndex;
+                                                this_event.event_index = eventIndex;
+                                                updateReactData({
+                                                  event_being_edited: this_event
+                                                }, true);
+                                              }
+                                            }
+                                          }}
                                         >
-                                          {isWaitListed(this_event) && <HourglassEmptyIcon />}
-                                          {allSlotsFull(this_event) && <HighlightOffIcon />}
-                                          {ownerOfSlots(this_event) && !reactData.defaultValues.onlyRegistered && <SignedUp />}
-                                          {(this_event.type === 'holiday') && <Flag />}
-                                          {(this_event.type === 'birthday') && <CakeIcon />}
-                                          <Box display='flex' flexDirection='column'
-                                            justifyContent='center'
-                                            ml={1} mr={1}
+                                          <Box display='flex' flexDirection='row'
+                                            justifyContent={agendaView() ? 'flex-start' : 'center'}
                                             alignItems='center'
                                             color={setTextColor(this_event, this_date).color}
                                           >
-                                            <Typography style={AVATextStyle({
-                                              bold: true,
-                                            })}>
-                                              {titleCase(this_event.description)}
-                                            </Typography>
-                                            {isWaitListed(this_event) &&
-                                              <Typography style={AVATextStyle({ size: 1, italic: true })}>
-                                                {`You're on the Waitlist`}
-                                              </Typography>
-                                            }
-                                            {this_event.slot_owners.hasOwnProperty(reactData.selectedPerson_id)
-                                              ?
-                                              <React.Fragment>
-                                                {!reactData.defaultValues.onlyRegistered
-                                                  && (this_date.dateObj.numeric >= reactData.todayYMD)
-                                                  &&
-                                                  <Typography style={AVATextStyle({ size: 1, italic: true })}>
-                                                    {`You're on the list`}
-                                                  </Typography>
-                                                }
-                                                  <Typography style={AVATextStyle({
-                                                    size: 0.8,
-                                                  })}>
-                                                  {((this_event.type === 'time')
-                                                    ? (makeTime(this_event.slot_owners[reactData.selectedPerson_id]).time)
-                                                    : (makeCalendarTime(this_event.time)))
-                                                  }
-                                                </Typography>
-                                              </React.Fragment>
-                                              :
-                                              <React.Fragment>
-                                                {this_event.time
-                                                  &&
-                                                    <Typography style={AVATextStyle({
-                                                      size: 0.8,
-                                                    })}>
-                                                    {makeCalendarTime(this_event.time)}
-                                                  </Typography>
-                                                }
-                                              </React.Fragment>
-                                            }
-                                          </Box>
-                                          {(this_event.type === 'birthday') && <CakeIcon />}
-                                          {(this_event.type === 'holiday') && <Flag />}
-                                          {ownerOfSlots(this_event) && !reactData.defaultValues.onlyRegistered && <SignedUp />}
-                                          {allSlotsFull(this_event) && <HighlightOffIcon />}
-                                          {isWaitListed(this_event) && <HourglassEmptyIcon />}
-                                        </Box>
-                                        {showSlots() && this_event.slot_owners
-                                          && (Object.keys(this_event.slot_owners).length > 0)
-                                          && Object.keys(this_event.slot_owners).map(this_owner => (
-                                            <Typography
-                                              key={`event_${this_event}_slot_owner_${this_owner}`}
-                                              style={AVATextStyle({
-                                                size: 0.8,
+                                            <Box display='flex' flexDirection='column'
+                                              justifyContent={agendaView() ? 'flex-start' : 'center'}
+                                              ml={agendaView() ? 0 : 1}
+                                              mr={1}
+                                              alignItems={agendaView() ? 'flex-start' : 'center'}
+                                              color={setTextColor(this_event, this_date).color}
+                                            >
+                                              <Typography style={AVATextStyle({
+                                                size: 1,
+                                                bold: true,
                                               })}>
-                                              {getPersonName(this_owner.split('%%')[0])}
-                                            </Typography>
+                                                {titleCase(this_event.description)}
+                                              </Typography>
+                                              {isWaitListed(this_event) &&
+                                                <Typography
+                                                  noWrap={true}
+                                                  style={AVATextStyle({ size: 0.6, italic: true })}
+                                                >
+                                                  {`You're on the Waitlist`}
+                                                </Typography>
+                                              }
+                                              {this_event.slot_owners.hasOwnProperty(reactData.selectedPerson_id)
+                                                ?
+                                                <React.Fragment>
+                                                  {!reactData.defaultValues.onlyRegistered
+                                                    && (this_date.dateObj.numeric >= reactData.todayYMD)
+                                                    &&
+                                                    <Typography
+                                                      noWrap={true}
+                                                      style={AVATextStyle({ size: 0.6, italic: true })}
+                                                    >
+                                                      {`You're on the list`}
+                                                    </Typography>
+                                                  }
+                                                  <Typography
+                                                    noWrap={true}
+                                                    style={AVATextStyle({
+                                                      size: 0.4,
+                                                    })}
+                                                  >
+                                                    {((this_event.type === 'time')
+                                                      ? (makeTime(this_event.slot_owners[reactData.selectedPerson_id]).time)
+                                                      : (makeCalendarTime(this_event.time)))
+                                                    }
+                                                  </Typography>
+                                                </React.Fragment>
+                                                :
+                                                <React.Fragment>
+                                                  {this_event.time
+                                                    &&
+                                                    <Typography
+                                                      noWrap={true}
+                                                      style={AVATextStyle({
+                                                        size: 0.4,
+                                                      })}
+                                                    >
+                                                      {makeCalendarTime(this_event.time)}
+                                                    </Typography>
+                                                  }
+                                                </React.Fragment>
+                                              }
+                                            </Box>
+                                          </Box>
+                                          {showSlots() && this_event.slot_owners
+                                            && (Object.keys(this_event.slot_owners).length > 0)
+                                            && (Object.keys(this_event.slot_owners).sort((a, b) => {
+                                              return ((this_event.slot_owners[a] > this_event.slot_owners[b]) ? 1 : -1);
+                                            })).map(this_owner => (
+                                              <Typography
+                                                key={`event_${this_event}_slot_owner_${this_owner}`}
+                                                noWrap={true}
+                                                style={AVATextStyle({
+                                                  size: 0.4,
+                                                })}>
+                                                {`${(this_event.type === 'time') ? makeTime(this_event.slot_owners[this_owner]).short + ' ' : ''}${getPersonName(this_owner.split('%%')[0])}`}
+                                              </Typography>
 
-                                          ))}
-                                      </Box>
-                                    ))}
-                                  </Box>
-                                }
-                              </Box>
+                                            ))}
+                                        </Box>
+                                      ))}
+                                    </Box>
+                                  }
+                                </React.Fragment>
+                              }
                             </Box>
+                          }
+                          {(((dateIndex + 1) % 7) === 0)
+                            && reactData.defaultValues.weekView
+                            && !agendaView()
+                            &&
+                            <Box
+                              flexBasis={'100%'}
+                              width={0}
+                            />
                           }
                         </React.Fragment>
                       )
-                    ))}
+                    ))
+                  }
                 </Box>
               </Box>
             </DialogContent>
+          }
+          {!reactData.loading && reactData.setFilter &&
+            <AVATextInput
+              titleText={'Filter Calendar Entries'}
+              promptText={['Words to filter on']}
+              buttonText={['Set Filter', 'Cancel/Go Back', 'Clear Filter',]}
+              valueText={[reactData.filterTextLower]}
+              onCancel={() => {
+                updateReactData({
+                  setFilter: false
+                }, true);
+              }}
+              onSave={async (response, buttonPressed) => {
+                let reactUpdObj = {
+                  setFilter: false
+                };
+                if ((response.length === 0) || (response[0].length === 0) || (buttonPressed === 2)) {
+                  reactUpdObj.filterTextLower = false;
+                  reactUpdObj.idFilter = false;
+                  reactUpdObj.eventIDFilter = false;
+                }
+                else {
+                  reactUpdObj.filterTextLower = response[0].toLowerCase();
+                }
+                updateReactData(reactUpdObj, true);
+              }}
+            />
+          }
+          {!reactData.loading && reactData.setDates &&
+            <AVATextInput
+              titleText={'Set Calendar Dates'}
+              promptText={['Start date', 'End date']}
+              buttonText={'Set Dates'}
+              onCancel={() => {
+                updateReactData({
+                  setDates: false
+                }, true);
+              }}
+              onSave={async (response) => {
+                updateReactData({
+                  setDates: false
+                }, false);
+                if (response.length > 1) {
+                  let newStart = makeDate(response[0]);
+                  if (newStart.error) { }
+                  else if (defaultValues.weekView) {
+                    let revisedStart = addDays(newStart.date, -(newStart.dayOfWeek));
+                    newStart = makeDate(revisedStart);
+                  }
+                  onClose({
+                    action: 'reset',
+                    newStartDate: newStart.date,
+                    newEndDate: makeDate(response[1]).date
+                  });
+                }
+              }}
+            />
           }
           {!reactData.loading && reactData.event_being_edited &&
             <CalendarEventEditForm
@@ -1315,9 +1801,12 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           {!reactData.loading && reactData.addPersonalEvent &&
             <NewCalendarEvent
               patient={reactData.isAppointment ? reactData.selectedPersonRec : state.session}
-              personalEvent={true}
+              personalEvent={!reactData.isAppointment}
               showNewEvent={true}
-              options={reactData.isAppointment ? { setPerson: true } : {}}
+              options={{
+                setPerson: reactData.isAppointment,
+                setDate: ((reactData.appointmentDate && !reactData.appointmentDate.error) ? reactData.appointmentDate : null)
+              }}
               isAppointment={reactData.isAppointment}
               onClose={(newEvent) => {
                 let reactUpdObj = {
@@ -1342,15 +1831,176 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         "groups": newEvent.eventData.event_data.groups,
                         "location": newEvent.eventData.event_data.location,
                         "time": newEvent.eventData.event_data.time,
-                        "type": 'personal',
+                        "type": 'appointment',
                         "sort24": (newEvent.eventData.event_data.time.from ? makeTime(newEvent.eventData.event_data.time.from).numeric24 : 0),
                         "slot_owners": slotObj,
                         "occurrence_date": newOccDate,
-                        "event_key": newEvent.event_key,
+                        "event_key": `${newEvent.event_key}#${newOccDate}`,
                         "client": newEvent.client,
                         "record_type": "occurrence"
                       };
-                      reactData.myCalendar[foundIt].eventList.push(newEntry);
+                      let eventIndex = reactData.myCalendar[foundIt].eventList.push(newEntry) - 1;
+                      newEvent.slots.forEach(this_slot => {
+                        let dragged_id = this_slot.slot_owner;
+                        if (!reactData.conflictInfo.hasOwnProperty(dragged_id)) {
+                          reactData.conflictInfo[dragged_id] = {};
+                        }
+                        let this_date = makeDate(newOccDate);
+                        let this_Sunday = makeDate(addDays(this_date.date, -(this_date.dayOfWeek)));
+                        if (!reactData.conflictInfo[dragged_id].hasOwnProperty('summaries')) {
+                          reactData.conflictInfo[dragged_id].summaries = {
+                            [this_Sunday.numeric$]: {
+                              description: this_Sunday.dateOnly,
+                              minutes: 0
+                            }
+                          };
+                        }
+                        else if (!reactData.conflictInfo[dragged_id].summaries.hasOwnProperty(this_Sunday.numeric$)) {
+                          reactData.conflictInfo[dragged_id].summaries[this_Sunday.numeric$] = {
+                            description: this_Sunday.dateOnly,
+                            minutes: 0
+                          };
+                        }
+                        let start_time = makeTime(newEvent.eventData.event_data.time.from);
+                        let end_time = makeTime(newEvent.eventData.event_data.time.to);
+                        let minutes_booked = 0;
+                        if (end_time.minutesSinceMidnight < start_time.minutesSinceMidnight) {
+                          minutes_booked = end_time.minutesSinceMidnight + (1440 - start_time.minutesSinceMidnight);
+                        }
+                        else {
+                          minutes_booked = end_time.minutesSinceMidnight - start_time.minutesSinceMidnight;
+                        }
+                        if (minutes_booked < 1200) {
+                          reactData.conflictInfo[dragged_id].summaries[this_Sunday.numeric$].minutes += minutes_booked;
+                        }
+                        if (!reactData.conflictInfo[dragged_id].hasOwnProperty(newOccDate)) {
+                          reactData.conflictInfo[dragged_id][newOccDate] = [];
+                        }
+                        reactData.conflictInfo[dragged_id][newOccDate].push(
+                          {
+                            time: start_time.numeric24, open: false, event_id: reactData.myCalendar[foundIt].eventList[eventIndex].event_key,
+                            event_title: reactData.myCalendar[foundIt].eventList[eventIndex].description
+                          },
+                          { time: end_time.numeric24, open: true }
+                        );
+                        reactData.conflictInfo[dragged_id][newOccDate].sort((a, b) => {
+                          if (a.time === b.time) {
+                            return (!a.open ? 1 : -1);
+                          }
+                          else {
+                            return ((a.time < b.time) ? -1 : 1);
+                          }
+                        });
+                      });
+                      reactData.myCalendar[foundIt].eventList.sort((a, b) => {
+                        return ((a.sort24 < b.sort24) ? -1 : 1);
+                      });
+                    }
+                  });
+                  reactUpdObj.myCalendar = reactData.myCalendar;
+                  localStorage.setItem(`calendarChanged`, true);
+                }
+                updateReactData(reactUpdObj, true);
+              }}
+            />
+          }
+          {!reactData.loading && reactData.addTemplateEvent &&
+            <NewCalendarEvent
+              patient={state.session}
+              personalEvent={false}
+              showNewEvent={true}
+              options={{
+                setPerson: false,
+                setDuration: reactData.selectedTemplate.event_data.time.duration,
+                forms: reactData.selectedTemplate.forms,
+                title: reactData.selectedTemplate.event_data.generic_description,
+                setDate: ((reactData.appointmentDate && !reactData.appointmentDate.error) ? reactData.appointmentDate : null)
+              }}
+              isAppointment={false}
+              onClose={(newEvent) => {
+                let reactUpdObj = {
+                  addTemplateEvent: false,
+                  isAppointment: false
+                };
+                if (newEvent) {
+                  let slotObj = {};
+                  newEvent.slots.forEach(this_slot => {
+                    slotObj[this_slot.slot_owner] = this_slot.slot_owner;
+                  });
+                  newEvent.occRecords.occArray.forEach(newOccDate => {
+                    let foundIt = reactData.myCalendar.findIndex(this_date => {
+                      return (this_date.dateObj.numeric === newOccDate);
+                    });
+                    if (foundIt > -1) {
+                      let newEntry = Object.assign({}, newEvent, {
+                        "event_id": newEvent.event_id,
+                        "owner": [state.session.user_id],
+                        "image": null,
+                        "description": newEvent.eventData.event_data.description,
+                        "groups": newEvent.eventData.event_data.groups,
+                        "location": newEvent.eventData.event_data.location,
+                        "time": newEvent.eventData.event_data.time,
+                        "type": 'appointment',
+                        "sort24": (newEvent.eventData.event_data.time.from ? makeTime(newEvent.eventData.event_data.time.from).numeric24 : 0),
+                        "slot_owners": slotObj,
+                        "occurrence_date": newOccDate,
+                        "event_key": `${newEvent.event_key}#${newOccDate}`,
+                        "client": newEvent.client,
+                        "record_type": "occurrence"
+                      });
+                      let eventIndex = reactData.myCalendar[foundIt].eventList.push(newEntry) - 1;
+                      newEvent.slots.forEach(this_slot => {
+                        let dragged_id = this_slot.slot_owner;
+                        if (!reactData.conflictInfo.hasOwnProperty(dragged_id)) {
+                          reactData.conflictInfo[dragged_id] = {};
+                        }
+                        let this_date = makeDate(newOccDate);
+                        let this_Sunday = makeDate(addDays(this_date.date, -(this_date.dayOfWeek)));
+                        if (!reactData.conflictInfo[dragged_id].hasOwnProperty('summaries')) {
+                          reactData.conflictInfo[dragged_id].summaries = {
+                            [this_Sunday.numeric$]: {
+                              description: this_Sunday.dateOnly,
+                              minutes: 0
+                            }
+                          };
+                        }
+                        else if (!reactData.conflictInfo[dragged_id].summaries.hasOwnProperty(this_Sunday.numeric$)) {
+                          reactData.conflictInfo[dragged_id].summaries[this_Sunday.numeric$] = {
+                            description: this_Sunday.dateOnly,
+                            minutes: 0
+                          };
+                        }
+                        let start_time = makeTime(newEvent.eventData.event_data.time.from);
+                        let end_time = makeTime(newEvent.eventData.event_data.time.to);
+                        let minutes_booked = 0;
+                        if (end_time.minutesSinceMidnight < start_time.minutesSinceMidnight) {
+                          minutes_booked = end_time.minutesSinceMidnight + (1440 - start_time.minutesSinceMidnight);
+                        }
+                        else {
+                          minutes_booked = end_time.minutesSinceMidnight - start_time.minutesSinceMidnight;
+                        }
+                        if (minutes_booked < 1200) {
+                          reactData.conflictInfo[dragged_id].summaries[this_Sunday.numeric$].minutes += minutes_booked;
+                        }
+                        if (!reactData.conflictInfo[dragged_id].hasOwnProperty(newOccDate)) {
+                          reactData.conflictInfo[dragged_id][newOccDate] = [];
+                        }
+                        reactData.conflictInfo[dragged_id][newOccDate].push(
+                          {
+                            time: start_time.numeric24, open: false, event_id: reactData.myCalendar[foundIt].eventList[eventIndex].event_key,
+                            event_title: reactData.myCalendar[foundIt].eventList[eventIndex].description
+                          },
+                          { time: end_time.numeric24, open: true }
+                        );
+                        reactData.conflictInfo[dragged_id][newOccDate].sort((a, b) => {
+                          if (a.time === b.time) {
+                            return (!a.open ? 1 : -1);
+                          }
+                          else {
+                            return ((a.time < b.time) ? -1 : 1);
+                          }
+                        });
+                      });
                       reactData.myCalendar[foundIt].eventList.sort((a, b) => {
                         return ((a.sort24 < b.sort24) ? -1 : 1);
                       });
@@ -1392,57 +2042,92 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
         paddingBottom={'1.5'} px={isMobile ? 2 : 6}
         justifyContent='space-between' alignItems='center'
       >
-        <Box display='flex' flexWrap='wrap' flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center' />
+        <Box display='flex' flexWrap='wrap' flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
+          <Button
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'blue', color: 'white' }}
+            size='small'
+            startIcon={<ArrowBackIcon fontSize="small" />}
+            onClick={() => {
+              onClose({
+                action: 'reset',
+                newStartDate: addDays(reactData.defaultValues.start_date, -7)
+              });
+            }}
+          >
+            {'Back 1 week'}
+          </Button>
+        </Box>
         <Box display='flex' flexWrap='wrap' flexGrow={2} flexDirection='row' justifyContent='center' alignItems='center'>
           <Button
             className={AVAClass.AVAButton}
             style={{ backgroundColor: 'red', color: 'white' }}
             size='small'
             startIcon={<CloseIcon fontSize="small" />}
-            onClick={onClose}>
-            {'Done'}
-          </Button>
-        </Box>
-        <Box display='flex' flexWrap='wrap' flexGrow={2} flexDirection='row' justifyContent='center' alignItems='center'>
-          <Button
-            className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'green', color: 'white' }}
-            size='small'
-            startIcon={<AddEventIcon fontSize="small" />}
-            onClick={async () => {
-              let reactUpdObj = {
-                addPersonalEvent: true
-              };
-              if (reactData.selectedPerson_id !== state.session.person_id) {
-                reactUpdObj.selectedPersonRec = await getPerson(reactData.selectedPerson_id);
-                reactUpdObj.isAppointment = true;
-              }
-              updateReactData(reactUpdObj, true);
+            onClick={() => {
+              onClose();
             }}
           >
-            {(reactData.selectedPerson_id !== state.session.person_id) ? 'Make an Appointment' : 'Add a Personal Event'}
+            {'Done'}
           </Button>
+          <Button
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'gray', color: 'black' }}
+            size='small'
+            startIcon={<TextureIcon fontSize="small" />}
+            onClick={() => {
+              updateReactData({
+                setFilter: true,
+              }, true);
+            }}
+            onDragOver={(e) =>
+              handleDragOver(e, {
+                type: 'filter_button'
+              })
+            }
+            onDrop={async (e) => {
+              await handleDrop(e, 'filter_button');
+            }}
+          >
+            {'Filter'}
+          </Button>
+          {!reactData.defaultValues.assignmentView &&
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'green', color: 'white' }}
+              size='small'
+              startIcon={<AddEventIcon fontSize="small" />}
+              onClick={async () => {
+                let reactUpdObj = {
+                  addPersonalEvent: true
+                };
+                if (reactData.selectedPerson_id !== state.session.person_id) {
+                  reactUpdObj.selectedPersonRec = await getPerson(reactData.selectedPerson_id);
+                  reactUpdObj.isAppointment = true;
+                }
+                updateReactData(reactUpdObj, true);
+              }}
+            >
+              {(reactData.selectedPerson_id !== state.session.person_id) ? 'Make an Appointment' : 'Add a Personal Event'}
+            </Button>
+          }
+        </Box>
+        <Box display='flex' flexWrap='wrap' flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
           <Button
             className={AVAClass.AVAButton}
             style={{ backgroundColor: 'blue', color: 'white' }}
             size='small'
-            startIcon={<PrintIcon fontSize="small" />}
-            onClick={async () => {
-              await printCalendar(
-                {
-                  client_id: state.session.client_id,
-                  myCalendar: reactData.myCalendar,
-                  requestor: state.session.user_id,
-                  filterTextLower: reactData.filterTextLower,
-                  groupFilter: state.groups.belongsTo
-                }
-              );
+            endIcon={<ArrowForwardIcon fontSize="small" />}
+            onClick={() => {
+              onClose({
+                action: 'reset',
+                newEndDate: addDays(reactData.defaultValues.end_date, 7)
+              });
             }}
           >
-            {'Print'}
+            {'Forward 1 week'}
           </Button>
         </Box>
-        <Box display='flex' flexWrap='wrap' flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center' />
       </Box>
     </Dialog >
   );

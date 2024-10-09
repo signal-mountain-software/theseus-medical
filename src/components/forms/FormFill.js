@@ -114,7 +114,7 @@ const useStyles = makeStyles(theme => ({
 export default ({ request = {}, onClose }) => {
   const classes = useStyles();
   const AVAClass = AVAclasses();
-  const signatureRef = [React.useRef(null), React.useRef(null), React.useRef(null)]
+  const signatureRef = [React.useRef(null), React.useRef(null), React.useRef(null)];
 
   const { state } = useSession();
 
@@ -140,9 +140,6 @@ export default ({ request = {}, onClose }) => {
     let docParts = options.document_id.split('%%');
     options.form_id = docParts[1];
   }
-  if (options.printMode) {
-    options.viewMode = true;
-  }
 
   /* 
    if options.changeMode, then
@@ -151,7 +148,7 @@ export default ({ request = {}, onClose }) => {
      - all defaults in form_id are ignored; values from incoming document_id are used as defaults
      - if saved, add replaced_by = <new document_id> to the incoming document_id and update that document
 
-   if options.viewMode, then
+   if (viewOnly()), then
      - expect options.document_id
      - the form_id comes from the document_id (person %% form_id %% version)
      - all fields rendered in view mode, including signature
@@ -164,7 +161,7 @@ export default ({ request = {}, onClose }) => {
      - do not show "save" button
 
  */
-  
+
   const [reactData, setReactData] = React.useState({
     form_id: options.form_id,
     formRec: {},
@@ -173,7 +170,9 @@ export default ({ request = {}, onClose }) => {
     storedSignature: null,
     stage: 'initialize',
     version__number: 0,
-    savePending: !!options.incompleteMode,
+    mode: options.mode || 'new',
+    assign_to: options.assign_to,
+    savePending: options.mode ? (options.mode === 'incomplete') : (!!options.incompleteMode),
     document: {},
     lastActiveTime: new Date(),
     values: {
@@ -213,6 +212,18 @@ export default ({ request = {}, onClose }) => {
     }
   };
 
+  const newDocument = () => {
+    return !(['view', 'incomplete', 'change', 'print', 'not_started'].includes(reactData.mode));
+  };
+
+  const viewOnly = () => {
+    return (['view', 'print'].includes(reactData.mode));
+  };
+
+  const loadInitialOptions = () => {
+    return (newDocument() || (reactData.mode === 'not_started'));
+  };
+
   const oneMinute = 1000 * 60;
   const msBeforeSleeping = 1 * oneMinute;
 
@@ -236,7 +247,11 @@ export default ({ request = {}, onClose }) => {
       enteredIdleStateTime: now,
     };
     if (!reactData.idleState) {
-      if (!options.viewMode) {
+      if (!viewOnly()
+        && (reactData.stage !== 'initialize')
+        && (reactData.stage !== 'still_initializing')
+        && !reactData.savePending
+      ) {
         cl(`Auto save at ${now.toLocaleString()}.`);
         let saveCallObj = {
           save_continue: true
@@ -371,7 +386,7 @@ export default ({ request = {}, onClose }) => {
       }
     }
     if (!reactData.formRec.fields[this_field].default) {
-      if (!options.changeMode && !options.viewMode && !options.incompleteMode) {
+      if (loadInitialOptions()) {
         return '';   // there is no default specified for this field (in change mode, ignore this - use value instead)
       }
       else {
@@ -383,7 +398,7 @@ export default ({ request = {}, onClose }) => {
       default_source = reactData.formRec.fields[this_field].default.source;
       default_ref = 'image';
     }
-    else if (options.changeMode || options.viewMode || options.incompleteMode) {
+    else if (!loadInitialOptions()) {
       default_source = 'form';
       default_ref = reactData.form_id;
       if (reactData.formRec.fields[this_field].default.source === 'form' && reactData.formRec.fields[this_field].default.ref !== 'recent') {
@@ -399,10 +414,10 @@ export default ({ request = {}, onClose }) => {
         default_ref = reactData.formRec.fields[this_field].default.ref;
       }
     }
-    if (reactData.formRec.fields?.[this_field]?.default
-      && reactData.formRec.fields?.[this_field]?.default.hasOwnProperty('assigned_to')) {
-      default_ref += reactData.formRec.fields[this_field].default.assigned_to;
-    }
+//    if (reactData.formRec.fields?.[this_field]?.default
+//      && reactData.formRec.fields?.[this_field]?.default.hasOwnProperty('assigned_to')) {
+//      default_ref += reactData.formRec.fields[this_field].default.assigned_to;
+//    }
     if (!default_source) {
       defaultText = (default_ref || '');
     }
@@ -410,25 +425,10 @@ export default ({ request = {}, onClose }) => {
       switch (default_source) {
         case 'form': {
           if (!reactData?.document.hasOwnProperty(default_ref)) {
-            let documentsObj;
-            if (reactData.formRec.fields[this_field].default.hasOwnProperty('assigned_to')) {
-              let [this_form, this_assignTo] = default_ref.split('%%');
-              if (this_assignTo === 'person_id') {
-                this_assignTo = state.patient.person_id;
-                default_ref = `${this_form}%%${state.patient.person_id}`;
-              }
-              documentsObj = await loadDocument({
-                form_id: this_form,
-                assigned_to: this_assignTo,
-                recent: true
-              });
-            }
-            else {
-              documentsObj = await loadDocument({
-                form_id: default_ref,
-                recent: true
-              });
-            }
+            let documentsObj = await loadDocument({
+              form_id: default_ref,
+              recent: true
+            });
             updateReactData({
               document: documentsObj
             }, true);
@@ -442,13 +442,29 @@ export default ({ request = {}, onClose }) => {
               document: documentsObj
             }, true);
           }
-          if ((!reactData.document[default_ref])
-            || (!reactData.document[default_ref][this_field])) {
-            // no op - the refererenced form doesn't exist, or this field has no value on that form
+          if (!reactData.document[default_ref]) {
+            // no op - the refererenced form doesn't exist
             handleChangeValue({
               newList: [],
               prop: this_field
             });
+            return;
+          }
+          else if ((reactData?.formRec?.fields?.[this_field]?.default?.type === 'assigned_to')
+          && (reactData.document[default_ref].hasOwnProperty('assigned__to'))) {
+            handleChangeValue({
+              newList: reactData.document[default_ref].assigned__to,
+              prop: this_field
+            });
+            return;
+          }
+          else if (!reactData.document[default_ref][this_field]) {
+            // no op - the refererenced form field has no value on that form
+            handleChangeValue({
+              newList: [],
+              prop: this_field
+            });
+            return;
           }
           else {
             if (isObject(reactData.document[default_ref][this_field])) {
@@ -571,7 +587,7 @@ export default ({ request = {}, onClose }) => {
               case 'id': {
                 defaultValue = reactData?.document[default_ref][this_field];
                 if ((reactData.formRec.fields[this_field].choose)
-                  && !options.viewMode) {
+                  && (!viewOnly())) {
                   let foundPerson = default_peopleList.find(person => {
                     return (person.person_id === defaultValue);
                   });
@@ -890,7 +906,7 @@ export default ({ request = {}, onClose }) => {
                   aria-label={`${props.prop}_${tIndex}`}
                   name={`${props.prop}_${tIndex}`}
                   key={`CheckGroup__${props.prop}_${tIndex}`}
-                  disabled={options.viewMode}
+                  disabled={(viewOnly())}
                   size='small'
                   checked={reactValues[props.prop]?.valueList && reactValues[props.prop].valueList.includes(text)}
                   onClick={() => {
@@ -917,7 +933,7 @@ export default ({ request = {}, onClose }) => {
                   name={`${props.prop}_other`}
                   key={`CheckGroup__${props.prop}_other`}
                   size='small'
-                  disabled={options.viewMode}
+                  disabled={(viewOnly())}
                   checked={reactValues[props.prop]?.valueList && reactValues[props.prop].valueList.includes(reactValues[props.prop].valueText)}
                   onClick={() => {
                     handleClick({
@@ -995,7 +1011,7 @@ export default ({ request = {}, onClose }) => {
                   })}
                   className={classes.radioDays}
                   autoComplete='off'
-                  disabled={options.viewMode}
+                  disabled={(viewOnly())}
                   id={`${props.prop}_otherText`}
                   defaultValue={(reactValues[props.prop] && reactValues[props.prop].bonusText)
                     ? reactValues[props.prop].bonusText
@@ -1107,11 +1123,19 @@ export default ({ request = {}, onClose }) => {
       });
       documentRec.title = results;
     }
+    else {
+      if (reactData?.document?.[reactData.form_id]?.document__title) {
+        documentRec.title = reactData.document[reactData.form_id].document__title;
+      }
+      else {
+        documentRec.title = `${reactData.formRec.form_name} - completed ${makeDate(new Date()).absolute}`
+      }
+    }
     if (document_id) {
       let docParts = document_id.split('%%');
       documentRec.form_id = docParts[1];
       documentRec.person_id = docParts[0];
-      documentRec.completed_timestamp = docParts[2];
+      documentRec.completed_timestamp = new Date().getTime();
       documentRec.document_id = document_id;
     }
     else {
@@ -1165,7 +1189,7 @@ export default ({ request = {}, onClose }) => {
         console.log(`caught error updating Documents; error is:`, error);
         putError.push(error);
       });
-    if (options.changeMode) {
+    if (reactData.mode === 'change') {
       await dbClient
         .update({
           Key: {
@@ -1250,12 +1274,6 @@ export default ({ request = {}, onClose }) => {
         queryObj.ExpressionAttributeValues[':dID'] = `${splitDoc[0]}%%${splitDoc[1]}%%${splitDoc[2]}`;
       }
     }
-    else if (assigned_to) {
-      queryObj.IndexName = 'assigned_to-index';
-      queryObj.KeyConditionExpression += ' and assigned_to = :a';
-      queryObj.ExpressionAttributeValues[':a'] = `${assigned_to || state.patient.person_id}`;
-      queryObj.ScanIndexForward = false;
-    }
     let queryResult = await dbClient
       .query(queryObj)
       .promise()
@@ -1291,6 +1309,9 @@ export default ({ request = {}, onClose }) => {
     if (queryResult.Items[0].title) {
       documentsObj[form_id].document__title = queryResult.Items[0].title;
     }
+    if (queryResult.Items[0].assigned_to) {
+      documentsObj[form_id].assigned__to = queryResult.Items[0].assigned_to;
+    }
     return documentsObj;
   };
 
@@ -1306,7 +1327,7 @@ export default ({ request = {}, onClose }) => {
 
       }
       let documentsObj;
-      if ((options.changeMode || options.viewMode || options.incompleteMode) && options.document_id) {
+      if (!newDocument() && options.document_id) {
         documentsObj = await loadDocument({
           specific_document: options.document_id,
         });
@@ -1330,7 +1351,7 @@ export default ({ request = {}, onClose }) => {
         selectedPersonRec,
         document: documentsObj || { [this_form]: {} }
       };
-      if (options.incompleteMode) {
+      if (!newDocument()) {
         reactObj.document_id = options.document_id;
       }
       updateReactData(reactObj, true);
@@ -1347,7 +1368,7 @@ export default ({ request = {}, onClose }) => {
         stage: 'fill'
       }, true);
       setForceRedisplay('ready');
-      if (options.printMode) {
+      if (reactData.mode === 'print') {
         printDocument(
           {
             docData: reactData.formRec,
@@ -1427,7 +1448,7 @@ export default ({ request = {}, onClose }) => {
                               size: 0.75,
                               margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
                             })}
-                            disabled={options.viewMode}
+                            disabled={(viewOnly())}
                             autoComplete='off'
                             value={(reactValues[this_field] && reactValues[this_field].valueText)
                               ? reactValues[this_field].valueText
@@ -1488,7 +1509,7 @@ export default ({ request = {}, onClose }) => {
                               }
                             }}
                             helperText={reactData.formRec.fields[this_field].prompt.ref}
-                            disabled={options.viewMode}
+                            disabled={(viewOnly())}
                           />
                         }
                         {((reactData.formRec.fields[this_field].value.type === 'date')
@@ -1532,7 +1553,7 @@ export default ({ request = {}, onClose }) => {
                               }
                             }}
                             helperText={reactData.formRec.fields[this_field].prompt.ref}
-                            disabled={options.viewMode}
+                            disabled={(viewOnly())}
                           />
                         }
                         {(reactData.formRec.fields[this_field].value.type.startsWith('select')) &&
@@ -1599,7 +1620,7 @@ export default ({ request = {}, onClose }) => {
                           </React.Fragment>
                         }
                         {(reactData.formRec.fields[this_field].value.type === 'signature') &&
-                          (!options.viewMode) &&
+                          (!viewOnly()) &&
                           <Box
                             display='flex'
                             flexDirection='column'
@@ -1655,7 +1676,7 @@ export default ({ request = {}, onClose }) => {
                           </Box>
                         }
                         {(reactData.formRec.fields[this_field].value.type === 'signature') &&
-                          (options.viewMode) &&
+                          (viewOnly()) &&
                           <Box
                             display='flex'
                             flexDirection='column'
@@ -1698,7 +1719,7 @@ export default ({ request = {}, onClose }) => {
                             justifyContent='flex-start'
                             alignItems='flex-start'
                           >
-                            {(!options.viewMode) &&
+                            {(!viewOnly()) &&
                               <Box
                                 key={`selectBox-${this_field}`}
                                 display='flex' marginLeft={1} flexGrow={1} flexDirection='column'
@@ -1710,7 +1731,7 @@ export default ({ request = {}, onClose }) => {
                                   clearOnSelect={true}
                                   clearOnBlur={true}
                                   key={`selectOptions-${this_field}`}
-                                  disabled={options.viewMode}
+                                  disabled={(viewOnly())}
                                   searchable={true}
                                   create={false}
                                   closeOnClickInput={true}
@@ -1723,9 +1744,21 @@ export default ({ request = {}, onClose }) => {
                                     borderWidth: 0
                                   }}
                                   noDataLabel={`No ${reactData.formRec.fields[this_field].prompt.ref}s match`}
-                                  values={(reactValues[this_field] && reactValues[this_field].valueText)
-                                    ? [{ label: reactValues[this_field].valueText, value: reactValues[this_field].value }]
-                                    : []
+                                  values={(reactValues[this_field]) ?
+                                    (reactValues[this_field].valueText
+                                      ? [{ label: reactValues[this_field].valueText, value: reactValues[this_field].value }]
+                                      : (reactValues[this_field].valueList
+                                        ? reactValues[this_field].valueList.map(this_value => {
+                                          return {
+                                            label: (reactData.peopleList[reactData.formRec.fields[this_field].choose.ref].find(this_person => {
+                                              return (this_person.value === this_value);
+                                            })).label,
+                                            value: this_value
+                                          }
+                                        })
+                                        : []
+                                      )
+                                    ) : []
                                   }
                                   placeholder={``}
                                   onChange={async (values) => {
@@ -1762,7 +1795,7 @@ export default ({ request = {}, onClose }) => {
                                 </Box>
                               </Box>
                             }
-                            {(options.viewMode) &&
+                            {(viewOnly()) &&
                               <Box display='flex'
                                 flexDirection='row'
                                 marginLeft={1}
@@ -1803,7 +1836,7 @@ export default ({ request = {}, onClose }) => {
                               key={`geoBox-${this_field}`}
                               display='flex' marginTop={1} flexGrow={1} flexDirection='column'
                             >
-                              {!options.viewMode &&
+                              {(!viewOnly()) &&
                                 <Button
                                   className={AVAClass.AVAButton}
                                   key={`geoButton-${this_field}`}
@@ -1905,7 +1938,7 @@ export default ({ request = {}, onClose }) => {
               style={{ backgroundColor: 'red', color: 'white' }}
               size='small'
               onClick={() => {
-                if (options.viewMode) {
+                if (viewOnly()) {
                   onClose();
                 }
                 else {
@@ -1918,7 +1951,7 @@ export default ({ request = {}, onClose }) => {
             >
               {'Exit'}
             </Button>
-            {!options.viewMode &&
+            {(!viewOnly()) &&
               <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
                 <Button
                   onClick={async () => {

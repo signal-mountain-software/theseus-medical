@@ -1,9 +1,10 @@
-import { clt, cl, recordExists, getCustomizations, makeArray, makeString, makeNumber, uuid, dbClient, titleCase, isEmpty, isObject } from './AVAUtilities';
+import { clt, cl, recordExists, getCustomizations, makeArray, makeString, makeNumber, uuid, dbClient, titleCase, isEmpty, isObject, array_in_array } from './AVAUtilities';
 import { makeName, getPerson, formatPhone } from './AVAPeople';
 import { addDays, daysDiff, makeDate, makeTime, addMonths } from './AVADateTime';
 import { sendMessages, resolveMessageVariables } from './AVAMessages';
 
 import { jsPDF } from "jspdf";
+import { getGroupsBelongTo } from './AVAGroups';
 
 let eventCache = {};
 
@@ -45,6 +46,7 @@ export async function addEvent(body) {
     event_id: eventID,
     schedule_key: 'event_master',
     record_type: 'event',
+    default_forms: body.calendar_info.default_forms,
     eventData: {
       defaultSlotOwners: body.calendar_info.defaultSlotOwners,
       messaging: [],
@@ -428,6 +430,12 @@ export async function getCalendarEntries(body, statusUpdate) {
           case 'all': {
             qQ.KeyConditionExpression += ' and begins_with(event_key, :rV)';
             qQ.ExpressionAttributeValues[':rV'] = `${rV.split('#')[0]}#`;
+            break;
+          }
+          case 'template': {
+            qQ.IndexName = 'record_type-index';
+            qQ.KeyConditionExpression += ' and record_type = :rT';
+            qQ.ExpressionAttributeValues[':rT'] = rT[t];
             break;
           }
           case 'event': {
@@ -1138,6 +1146,7 @@ export async function writeSlot(body) {
     "event": <event_id>,
     "occurrence_date (optional, if occurrence is in event as event#occurrence": <string or number>
     "owner": <person>,
+    "default_forms"
     "override_name": <string or null>,
     "slot (alternate form = id)": <"0900 (time) or s#103 (seat) or r#12/s#103 (row and seat) or rsteele (user_id)">,
     "status": <"null (=selected), released, reserved, confirmed, attended, no-show, off_campus, left_campus, entered_campus... ">
@@ -1225,6 +1234,143 @@ export async function writeSlot(body) {
       cl(`caught error updating Calendar; error is:`, error);
     });
 
+  // assign a form?
+  if (body.default_forms) {
+    let slotDocs = {};
+    let formList = makeArray(body.default_forms);
+    // get all the slots after this write was completed
+    let ownerList = [];
+    let slotInfo = await getSlotList({
+      client: body.client,
+      event: event_key,
+    });
+    let slotList = Object.keys(slotInfo.slotObj).sort();
+    slotList.forEach(this_slot => {
+      if (slotInfo.slotObj[this_slot].status && ['selected', 'released', 'available'].includes(slotInfo.slotObj[this_slot].status)) {
+        ownerList.push(slotInfo.slotObj[this_slot].owner);
+        slotDocs[slotInfo.slotObj[this_slot].owner] = [];
+      };
+    });
+    for (let f = 0; f < formList.length; f++) {
+      let this_form = formList[f];
+      let pertains_to = [];
+      let owner_groups = {};
+      for (let oN = 0; oN < ownerList.length; oN++) {
+        // does this form pertain to one or more of the existing slot owners?
+        let this_owner = ownerList[oN];
+        owner_groups[this_owner] = await getGroupsBelongTo(body.client, this_owner);
+        if (array_in_array(this_form.pertains_to, Object.keys(owner_groups[this_owner]))) {
+          pertains_to.push(this_owner);
+        }
+      }
+      if (pertains_to.length > 0) {
+        let assigned_to = ownerList.filter(this_owner => {
+          // should this form be assigned to one or more slot owners?
+          return (array_in_array(this_form.assign_groups, Object.keys(owner_groups[this_owner])));
+        });
+        if (assigned_to.length > 0) {
+          for (let p = 0; p < pertains_to.length; p++) {
+            let this_document_id = `${pertains_to[p]}%%${this_form.form_id}%%${event_key}`;
+            // does the document already exist?
+            let documentRec = await dbClient
+              .get({
+                Key: {
+                  client_id: body.client,
+                  document_id: this_document_id
+                },
+                TableName: "Documents"
+              })
+              .promise()
+              .catch(error => {
+                cl({ 'Error reading Documents': error });
+              });
+            if (recordExists(documentRec)) {
+              // add to the assigned list; don't remove anyone
+              let newAssignmentList = documentRec.assigned_to || [];
+              assigned_to.forEach(this_assignment => {
+                if (!newAssignmentList.includes(this_assignment)) {
+                  newAssignmentList.push(this_assignment);
+                }
+              });
+              await dbClient
+                .update({
+                  Key: {
+                    client_id: body.client,
+                    document_id: this_document_id
+                  },
+                  UpdateExpression: 'set assigned_to = :a',
+                  ExpressionAttributeValues: { ':a': newAssignmentList },
+                  TableName: "Documents"
+                })
+                .promise()
+                .catch(error => { cl(`caught error updating Documents; error is: `, error); });
+            }
+            else {
+              let pName = await makeName(pertains_to[p]);
+              let title = `${pName} - ${slotInfo.eventRec.eventData.event_data.description} - ${makeDate(occurrence).absolute}`
+              let putDocument = {
+                client_id: body.client,
+                document_id: this_document_id,
+                form_id: this_form.form_id,
+                incomplete: 'not_started',
+                title,
+                person_id: pertains_to[p],
+                assigned_to: (assigned_to.includes(pertains_to[p]) ? [pertains_to[p]] : assigned_to),
+                values: {}
+              };
+              await dbClient
+                .put({
+                  Item: putDocument,
+                  TableName: "Documents",
+                })
+                .promise()
+                .catch(error => {
+                  cl(`caught error updating Calendar; error is:`, error);
+                });
+              slotDocs[pertains_to[p]].push(this_document_id);
+            }
+          }
+        }
+      }
+    }
+    // go back and update any slot to show the associated documents
+    for (let s = 0; s < ownerList.length; s++) {
+      let this_owner = ownerList[s];
+      if (slotDocs[this_owner]) {
+        let slotRec = await dbClient
+          .get({
+            Key: {
+              client: body.client,
+              event_key: `${event_key}`
+            },
+            TableName: "Calendar"
+          })
+          .promise()
+          .catch(error => {
+            cl({ 'Error reading Calendar': error });
+          });
+        if (!recordExists(slotRec)) {
+          cl(`Slot rec not found for ${event_key}#${this_owner}`);
+        }
+        else {
+          let newDocumentList = (slotRec.Item.documents || []);
+          newDocumentList.push(...slotDocs[this_owner]);
+          await dbClient
+            .update({
+              Key: {
+                client: body.client,
+                event_key: `${event_key}`
+              },
+              UpdateExpression: 'set documents = :d',
+              ExpressionAttributeValues: { ':d': newDocumentList },
+              TableName: "Calendar"
+            })
+            .promise()
+            .catch(error => { cl(`caught error updating Documents; error is: `, error); });
+        }
+      }
+    };
+  }
   // messaging
   if (body.no_messaging) {
     // no op here... just drop through
@@ -2078,6 +2224,9 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
         to_date: end_date
       });
       found_events[occurrenceRec.event_id] = newOcc.eventRec.eventData.event_data;
+      if (newOcc.eventRec.hasOwnProperty('default_forms')) {
+        found_events[occurrenceRec.event_id].default_forms = newOcc.eventRec.default_forms;
+      }
       if (newOcc.eventRec.eventData.slotPattern && (newOcc.eventRec.eventData.slotPattern.length > 0)) {
         found_events[occurrenceRec.event_id].slotPattern = newOcc.eventRec.eventData.slotPattern;
       }
@@ -2151,7 +2300,11 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
         }
         else {
           response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[occurrenceRec.slotData.owner] =
-            found_events[occurrenceRec.event_id]?.slot_names?.[occurrenceRec.slotData.slot] || ((found_events[occurrenceRec.event_id].type === 'seats') ? '' : occurrenceRec.slotData.slot);
+            found_events[occurrenceRec.event_id]?.slot_names?.[occurrenceRec.slotData.slot]
+            || ((found_events[occurrenceRec.event_id].type === 'seats')
+              ? ''
+              : occurrenceRec.slotData.slot
+            );
         }
         if (!peopleInfo.hasOwnProperty(occurrenceRec.slotData.owner)) {
           peopleInfo[occurrenceRec.slotData.owner] = [];
@@ -2171,9 +2324,37 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
         if (!conflicts[occurrenceRec.slotData.owner].hasOwnProperty(occurrenceRec.occurrence_date)) {
           conflicts[occurrenceRec.slotData.owner][occurrenceRec.occurrence_date] = [{ time: 0, open: true }];
         }
+        let this_date = makeDate(occurrenceRec.occurrence_date);
+        let this_Sunday = makeDate(addDays(this_date.date, -(this_date.dayOfWeek)));
+        if (!conflicts[occurrenceRec.slotData.owner].hasOwnProperty('summaries')) {
+          conflicts[occurrenceRec.slotData.owner].summaries = {
+            [this_Sunday.numeric$]: {
+              description: this_Sunday.dateOnly,
+              minutes: 0
+            }
+          };
+        }
+        else if (!conflicts[occurrenceRec.slotData.owner].summaries.hasOwnProperty(this_Sunday.numeric$)) {
+          conflicts[occurrenceRec.slotData.owner].summaries[this_Sunday.numeric$] = {
+            description: this_Sunday.dateOnly,
+            minutes: 0
+          };
+        }
+        let start_time = makeTime(slotTimesResponse.start24);
+        let end_time = makeTime(slotTimesResponse.end24);
+        let minutes_booked = 0;
+        if (end_time.minutesSinceMidnight < start_time.minutesSinceMidnight) {
+          minutes_booked = end_time.minutesSinceMidnight + (1440 - start_time.minutesSinceMidnight);
+        }
+        else {
+          minutes_booked = end_time.minutesSinceMidnight - start_time.minutesSinceMidnight;
+        }
+        if (minutes_booked < 1200) {
+          conflicts[occurrenceRec.slotData.owner].summaries[this_Sunday.numeric$].minutes += minutes_booked;
+        }
         conflicts[occurrenceRec.slotData.owner][occurrenceRec.occurrence_date].push(
-          { time: makeNumber(slotTimesResponse.start24), open: false, event_id: occurrenceRec.event_id, event_title: found_events[occurrenceRec.event_id].description },
-          { time: makeNumber(slotTimesResponse.end24), open: true }
+          { time: start_time.numeric24, open: false, event_id: occurrenceRec.event_id, event_title: found_events[occurrenceRec.event_id].description },
+          { time: end_time.numeric24, open: true }
         );
       }
     }
@@ -2263,14 +2444,16 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
   }
   for (let this_person in conflicts) {
     for (let this_date in conflicts[this_person]) {
-      conflicts[this_person][this_date].sort((a, b) => {
-        if (a.time === b.time) {
-          return (!a.open ? 1 : -1);
-        }
-        else {
-          return ((a.time < b.time) ? -1 : 1);
-        }
-      })
+      if (this_date !== 'summaries') {
+        conflicts[this_person][this_date].sort((a, b) => {
+          if (a.time === b.time) {
+            return (!a.open ? 1 : -1);
+          }
+          else {
+            return ((a.time < b.time) ? -1 : 1);
+          }
+        });
+      }
     }
   }
   response.conflicts = conflicts;

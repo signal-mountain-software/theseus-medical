@@ -4,7 +4,7 @@ import { useSnackbar } from 'notistack';
 
 import { getCalendarEntries, getAllOccurrences } from '../../util/AVACalendars';
 import { makeTime, addDays, makeDate } from '../../util/AVADateTime';
-import { isEmpty, isObject, deepCopy, makeArray } from '../../util/AVAUtilities';
+import { isEmpty, isObject, deepCopy, makeArray, array_in_array } from '../../util/AVAUtilities';
 import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
 import { getGroupsBelongTo, getMemberList, getGroupMembers } from '../../util/AVAGroups';
 
@@ -121,10 +121,11 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
     start_date - when building a calendar, start from this date
     end_date - when building a calendar, build through this date
     assignmentView - show list of people you can assign to events
-    allowAssign - required when assignmentView is true; this becomes assignment__list
+    allowAssign - required when assignmentView is true; this becomes assignment__list and template__list
    
    CREATED BY ShowCalendar and sent to CalendarForm
     assignment__list - this is a list of people and groups that you may choose from to assign to events
+    template__List - a list of event templates to use when creating new appointments
    
    PASSED THROUGH to CalendarForm without consideration
     slotsView - show all people that are signed up
@@ -354,133 +355,217 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
     return calendarList;
   };
 
-  React.useEffect(() => {
-    async function initialize() {
-      // single event you're looking for?  
-      if (reactData.selectedEvent) {
-        let calendarEntry = await setCalendar();
-        if (!calendarEntry || (calendarEntry.length === 0)) {
-          enqueueSnackbar(`AVA couldn't load that event`, { variant: 'error' });
-        }
-        else {
-          updateReactData({
-            myCalendar: calendarEntry
-          }, true);
-        }
-        return;
-      }
-      if (reactData.myCalendar && !reactData.myCalendar.loadError && reactData.birthdayList) {
-        return;
-      }
-      let oList = {};
-      if (isEmpty(reactData.myCalendar) || reactData.myCalendar.loadError || reactData.defaultValues.forceReload) {
-        let startDate, endDate;
-        if (reactData.defaultValues.start_date) {
-          startDate = makeDate(reactData.defaultValues.start_date).date;
-        }
-        else {
-          startDate = new Date();
-        }
-        if (reactData.defaultValues.end_date) {
-          endDate = makeDate(reactData.defaultValues.end_date).date;
-        }
-        else {
-          endDate = addDays(startDate, 35);
-        }
-        let filterGroup = [];
-        if (reactData.defaultValues.hasOwnProperty('show_group')) {
-          filterGroup = makeArray(reactData.defaultValues.show_group);
-        }
-        else {
-          filterGroup = await getGroupsBelongTo(patient.client_id, patient.patient_id, { sort: true });
-        }
-        oList = await getAllOccurrences(
-          {
-            client_id: patient.client_id,
-            this_person: patient.patient_id,
-            start_date: startDate,
-            end_date: endDate,
-            filter: { group: filterGroup }
-          }, onStatusUpdate
-        );
+  async function initialize() {
+    // single event you're looking for?  
+    if (reactData.selectedEvent) {
+      let calendarEntry = await setCalendar();
+      if (!calendarEntry || (calendarEntry.length === 0)) {
+        enqueueSnackbar(`AVA couldn't load that event`, { variant: 'error' });
       }
       else {
-        oList = deepCopy(reactData.myCalendar);
+        updateReactData({
+          myCalendar: calendarEntry
+        }, true);
       }
-      if (!reactData.birthdayList) {
-        if (state.accessList && state.accessList.birthdayList) {
-          for (let keyDate in state.accessList.birthdayList) {
-            if (oList.hasOwnProperty(keyDate)) {
-              state.accessList.birthdayList[keyDate].forEach(p => {
-                oList[keyDate].events[`#birthday_${p.person_id}#`] = {
-                  description: `Happy Birthday ${p.display_name}`,
-                  sort24: `0000z-${p.display_name}`,
-                  slot_owners: {},
-                  type: 'birthday'
-                };
-              });
-            }
+      return;
+    }
+    if (reactData.myCalendar
+      && !reactData.myCalendar.loadError
+      && reactData.birthdayList
+      && !reactData.defaultValues.forceReload
+    ) {
+      return;
+    }
+    let oList = {};
+    let filterGroup = [];
+    if (reactData.defaultValues.hasOwnProperty('show_group')) {
+      filterGroup = makeArray(reactData.defaultValues.show_group);
+    }
+    else {
+      filterGroup = await getGroupsBelongTo(patient.client_id, patient.patient_id, { sort: true });
+    }
+    if (isEmpty(reactData.myCalendar) || reactData.myCalendar.loadError || reactData.defaultValues.forceReload) {
+      if (!reactData.loading) {
+        updateReactData({
+          loading: true
+        }, true);
+      }
+      let startDate, endDate;
+      if (reactData.defaultValues.start_date) {
+        startDate = makeDate(reactData.defaultValues.start_date).date;
+      }
+      else {
+        startDate = new Date();
+      }
+      if (reactData.defaultValues.end_date) {
+        endDate = makeDate(reactData.defaultValues.end_date).date;
+      }
+      else {
+        endDate = addDays(startDate, 35);
+      }
+      oList = await getAllOccurrences(
+        {
+          client_id: patient.client_id,
+          this_person: patient.patient_id,
+          start_date: startDate,
+          end_date: endDate,
+          filter: { group: filterGroup }
+        }, onStatusUpdate
+      );
+    }
+    else {
+      oList = deepCopy(reactData.myCalendar);
+    }
+    if (!reactData.birthdayList) {
+      if (state.accessList && state.accessList.birthdayList) {
+        for (let keyDate in state.accessList.birthdayList) {
+          if (oList.hasOwnProperty(keyDate)) {
+            state.accessList.birthdayList[keyDate].forEach(p => {
+              oList[keyDate].events[`#birthday_${p.person_id}#`] = {
+                description: `Happy Birthday ${p.display_name}`,
+                sort24: `0000z-${p.display_name}`,
+                slot_owners: {},
+                type: 'birthday'
+              };
+            });
           }
         }
-        else {
-          let allPeople = await getMemberList('*all', patient.client_id, {});
-          let this_year = new Date().getFullYear();
-          let next_year = this_year + 1;
-          allPeople.peopleList.forEach(p => {
-            if (p.local_data?.['date of birth']) {
-              let keyDate;
-              let bDay = `${this_year}${p.local_data['date of birth'].slice(4)}`;
+      }
+      else {
+        let allPeople = await getMemberList('*all', patient.client_id, {});
+        let this_year = new Date().getFullYear();
+        let next_year = this_year + 1;
+        allPeople.peopleList.forEach(p => {
+          if (p.local_data?.['date of birth']) {
+            let keyDate;
+            let bDay = `${this_year}${p.local_data['date of birth'].slice(4)}`;
+            if (oList.hasOwnProperty(bDay)) {
+              keyDate = bDay;
+            }
+            else {
+              bDay = `${next_year}${p.local_data['date of birth'].slice(4)}`;
               if (oList.hasOwnProperty(bDay)) {
                 keyDate = bDay;
               }
-              else {
-                bDay = `${next_year}${p.local_data['date of birth'].slice(4)}`;
-                if (oList.hasOwnProperty(bDay)) {
-                  keyDate = bDay;
-                }
-              }
-              if (keyDate) {
-                oList[keyDate].events[`#birthday_${p.person_id}#`] = {
-                  description: `Happy Birthday ${p.name.first} ${p.name.last}`,
-                  sort24: `0000z-${p.name.first} ${p.name.last}`,
-                  slot_owners: {},
-                  type: 'birthday'
-                };
-              }
             }
-          });
-        }
-      }
-      let reactUpdObj = {
-        myCalendar: organizeCalendar(oList),
-        calendarPeople: oList.peopleInfo,
-        conflictInfo: oList.conflicts,
-        birthdayList: true,
-        loading: false
-      };
-      if (reactData.defaultValues.assignmentView && reactData.defaultValues.allowAssign) {
-        let assignmentList = await getGroupMembers({
-          groupList: [...makeArray(reactData.defaultValues.allowAssign), state.session.patient_id],
-          short: true
+            if (keyDate) {
+              oList[keyDate].events[`#birthday_${p.person_id}#`] = {
+                description: `Happy Birthday ${p.name.first} ${p.name.last}`,
+                sort24: `0000z-${p.name.first} ${p.name.last}`,
+                slot_owners: {},
+                type: 'birthday'
+              };
+            }
+          }
         });
-        if (assignmentList && (assignmentList.length > 0)) {
-          reactData.defaultValues.assignment__List = assignmentList.sort((a, b) => {
-            if (a.last_name < b.last_name) { return -1; }
-            else if (a.last_name > b.last_name) { return 1; }
-            else if (a.first_name < b.first_name) { return -1; }
-            else { return 1; }
-          });
-          reactUpdObj.defaultValues = reactData.defaultValues;
+      }
+    }
+    let reactUpdObj = {
+      myCalendar: organizeCalendar(oList),
+      calendarPeople: oList.peopleInfo,
+      conflictInfo: oList.conflicts,
+      birthdayList: true,
+      loading: false
+    };
+    if (reactData.defaultValues.assignmentView && reactData.defaultValues.allowAssign && !reactData.defaultValues.assignment__List) {
+      let assignmentRows = [];
+      if (typeof (reactData.defaultValues.allowAssign) === 'string') {         // string - what is listed is a group ID
+        assignmentRows = [{
+          title: '',
+          assignmentList: await getGroupMembers({
+            groupList: [...makeArray(reactData.defaultValues.allowAssign), state.session.patient_id],
+            short: true
+          })
+        }];
+      }
+      else {         // array (of objects) - what is listed is a group ID
+        for (let a = 0; a < reactData.defaultValues.allowAssign.length; a++) {
+          let this_row = reactData.defaultValues.allowAssign[a];
+          if (isObject(this_row)) {
+            assignmentRows.push({
+              title: (this_row.hasOwnProperty('title') ? this_row.title : Object.keys(this_row)[0]),
+              assignmentList: await getGroupMembers({
+                groupList: [...makeArray(this_row.groups || this_row.group), state.session.patient_id],
+                short: true
+              })
+            });
+          }
+          else {
+            assignmentRows.push({
+              title: `Group ${a}`,
+              assignmentList: await getGroupMembers({
+                groupList: [...makeArray(this_row), state.session.patient_id],
+                short: true
+              })
+            });
+          }
         }
       }
-      localStorage.setItem(`calendarChanged`, false);
-      let client_style = AVADefaults({ client_style: 'get' });
-      if (isObject(client_style)) {
-        reactUpdObj.calendar_background = client_style.calendar_background;
-        reactUpdObj.calendar_day = client_style.calendar_day;
-      }
-      updateReactData(reactUpdObj, true);
+      reactData.defaultValues.assignment__List = [];
+      assignmentRows.forEach(this_row => {
+        let assignmentList = this_row.assignmentList;
+        let sortedList = [];
+        if (assignmentList && (assignmentList.length > 0)) {
+          if (reactData.defaultValues.assignmentSortBy && reactData.defaultValues.assignmentSortBy.toLowerCase().includes('first')) {
+            sortedList = assignmentList.sort((a, b) => {
+              if (a.first_name < b.first_name) { return -1; }
+              else if (a.first_name > b.first_name) { return 1; }
+              else if (a.last_name < b.last_name) { return -1; }
+              else { return 1; }
+            });
+          }
+          else {
+            sortedList = assignmentList.sort((a, b) => {
+              if (a.last_name < b.last_name) { return -1; }
+              else if (a.last_name > b.last_name) { return 1; }
+              else if (a.first_name < b.first_name) { return -1; }
+              else { return 1; }
+            });
+          }
+        }
+        reactData.defaultValues.assignment__List.push({
+          title: this_row.title,
+          assignmentList: sortedList
+        });
+      });
+      reactUpdObj.defaultValues = reactData.defaultValues;
     }
+    if (reactData.defaultValues.assignmentView && reactData.defaultValues.templateList && !reactData.defaultValues.template__List) {
+      // templateList could include specific template_id(s) and/or group(s) from whom templates are selected
+      let workingTemplateList = [];
+      // get a list of all available templates in the Calendar table
+      let allTemplates = await getCalendarEntries({
+        client_id: state.session.client_id,
+        "type": 'template'
+      });
+      for (let t = 0; t < allTemplates.length; t++) {
+        let this_template = allTemplates[t].templateData;
+        if (reactData.defaultValues.templateList.includes(allTemplates[t].event_id)
+          ||
+          ((reactData.defaultValues.templateList.includes('*all')
+            || array_in_array(reactData.defaultValues.templateList, filterGroup))
+            && (this_template.availableTo_groups.includes('*all')
+              || array_in_array(this_template.availableTo_groups, filterGroup))
+          )
+        ) {
+          workingTemplateList.push(this_template);
+        }
+      }
+      reactData.defaultValues.template__List = workingTemplateList.sort((a, b) => {
+        return (a.generic_description < b.generic_description) ? -1 : 1;
+      });
+      reactUpdObj.defaultValues = reactData.defaultValues;
+    }
+    localStorage.setItem(`calendarChanged`, false);
+    let client_style = AVADefaults({ client_style: 'get' });
+    if (isObject(client_style)) {
+      reactUpdObj.calendar_background = client_style.calendar_background;
+      reactUpdObj.calendar_day = client_style.calendar_day;
+    }
+    updateReactData(reactUpdObj, true);
+  }
+
+  React.useEffect(() => {
     initialize();
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -561,9 +646,27 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
               conflictInfo={reactData.conflictInfo}
               person_id={patient.patient_id}
               peopleList={peopleList}
-              onClose={() => {
+              onClose={async (response) => {
                 setShowAll(!reactData.selectedEvent);
-                onClose();
+                if (!response) {
+                  onClose();
+                }
+                else if (response.action === 'reset') {
+                  let newDefaultValues = Object.assign({},
+                    reactData.defaultValues,
+                    {
+                      forceReload: true,
+                      start_date: response.newStartDate || reactData.defaultValues.start_date,
+                      end_date: response.newEndDate || reactData.defaultValues.end_date,
+                      selectDate: response.newStartDate || response.newEndDate || null
+                    }
+                  );
+                  updateReactData({ defaultValues: newDefaultValues }, true);
+                  await initialize();
+                }
+                else {
+                  onClose();
+                }
               }}
               defaultValues={reactData.defaultValues}
             />

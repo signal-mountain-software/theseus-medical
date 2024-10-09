@@ -1,6 +1,6 @@
 import { clt, cl, s3, titleCase } from './AVAUtilities';
 import { getCustomizations } from './AVAUtilities';
-import { makeDate, addDays} from './AVADateTime';
+import { makeDate, addDays } from './AVADateTime';
 
 import { jsPDF } from "jspdf";
 import 'jspdf-autotable';
@@ -37,7 +37,12 @@ export async function printCalendar(requestBody) {
 
   // make all calendar entries contain a ymd element
   myCalendar.forEach((entry, x) => {
-    myCalendar[x].ymd = makeDate(entry.date).ymd;
+    if (myCalendar[x].hasOwnProperty('dateObj')) {
+      myCalendar[x].ymd = myCalendar[x].dateObj.ymd;
+    }
+    else {
+      myCalendar[x].ymd = makeDate(entry.date).ymd;
+    }
   });
 
   let firstDate;
@@ -48,7 +53,7 @@ export async function printCalendar(requestBody) {
   }
   else {
     // find the Sunday on or before the first date in myCalendar
-    let calFirst = makeDate(myCalendar[0].date);
+    let calFirst = makeDate(myCalendar[0].date || myCalendar[0].dateObj.date);
     firstDate = addDays(calFirst.date, (-1 * calFirst.dayOfWeek));
   }
 
@@ -90,12 +95,26 @@ export async function printCalendar(requestBody) {
       }
       myCalendar.forEach(entry => {
         if (entry.ymd === this_day.ymd) {
-          if (okToShow(entry)) {
-            let showTime = '';
-            if (entry.time) {
-              showTime = entry.time.split(' ')[0].trim();
+          // new style?
+          if (entry.hasOwnProperty('eventList')) {
+            entry.eventList.forEach((this_event) => {
+              if (okToShow(this_event)) {
+                let showTime = '';
+                if (this_event.time && this_event.time.from) {
+                  showTime = this_event.time.from;
+                }
+                this_week[dayOfWeek] += `\n\r${showTime ? (showTime + ' ') : ''}${this_event.description}`;
+              }
+            });
+          }
+          else {
+            if (okToShow(entry)) {
+              let showTime = '';
+              if (entry.time) {
+                showTime = entry.time.split(' ')[0].trim();
+              }
+              this_week[dayOfWeek] += `\n\r${showTime ? (showTime + ' ') : ''}${entry.description}`;
             }
-            this_week[dayOfWeek] += `\n\r${showTime ? (showTime + ' ') : ''}${entry.description}`;
           }
         }
       });
@@ -142,7 +161,7 @@ export async function printCalendar(requestBody) {
   };
 
   // finish and save
-  pdfStyle('reset')
+  pdfStyle('reset');
   pdfStyle({ size: 'small', before: 1 });
   pdfLine(`***** END *****`, { align: 'center_bottom', noNewPage: true, noNewLine: true, before: 6 });
   let pdfResp = await savePDF(doc, pdfInfo, { local: true, S3: true });
@@ -160,11 +179,18 @@ export async function printCalendar(requestBody) {
         return false;
       }
     }
+    if (requestBody.onlyRegistered
+      && (!this_event.slot_owners.hasOwnProperty(requestBody.onlyRegistered))) {
+      return false;
+    }
     if (!requestBody.filterTextLower) {
       return true;
     }
-    else {
+    else if (typeof(this_event.location) === 'string') {
       return (`${this_event.description} ${this_event.location}`).toLowerCase().includes(requestBody.filterTextLower);
+    }
+    else {
+      return (`${this_event.description} ${this_event.location.description}`).toLowerCase().includes(requestBody.filterTextLower);
     }
   }
 
@@ -252,7 +278,7 @@ async function pdfLaunch(body) {
   page.centerPoint = page.width / 2;
   page.printableArea = page.width - page.margin.left - page.margin.right;
 
-  
+
   page.title = body.pdf.title || 'Calendar';
   page.info.title = page.title;
   clt({ page });
@@ -417,7 +443,7 @@ function pdfLine(text, options = {}) {
       doc.text(text, xOffset, pdfCurrent.yPos);
       pdfCurrent.xPos = page.centerPoint + (doc.getTextWidth(text) / 2) + pdfCurrent.fontSize;
     }
-    else if(pdfCurrent.align === 'center_bottom') {
+    else if (pdfCurrent.align === 'center_bottom') {
       let xOffset = page.centerPoint - (doc.getTextWidth(text) / 2);
       doc.text(text, xOffset, page.height - page.margin.bottom - 10);
       pdfCurrent.xPos = page.centerPoint + (doc.getTextWidth(text) / 2) + pdfCurrent.fontSize;

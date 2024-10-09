@@ -422,6 +422,13 @@ export function extract(string, left, right = null, options = {}) {
   return string.slice(f_left, f_right);
 };
 
+export function array_in_array(a1, a2) {
+  // return true if any member of array 1 appears anywhere in array 2
+  return a1.some(this_a => {
+    return a2.includes(this_a);
+  });
+}
+
 export function titleCase(pString) {
   if (!pString) { return ''; }
   let words = pString.split(/\s+/);
