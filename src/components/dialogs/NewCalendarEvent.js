@@ -235,6 +235,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     preReservationList: ((options.setPerson && isAppointment) ? [patient.person_id || patient.patient_id] : []),
     dateObj: { error: true },
     default_forms: options.forms,
+    customizations: options.customizations,
     chosen_names: ((options.setPerson && isAppointment) ? patient.display_name : ''),
     event_title: (options.title ? titleCase(options.title.trim())
       : ((options.setPerson && isAppointment) ? (`Appointment for ${patient.display_name}`) : '')),
@@ -311,6 +312,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
         "time_from": time_from_display_string,
         "time_to": time_to_display_string,
         "default_forms": reactData.default_forms,
+        "customizations": reactData.customizations,
         "slots": reactData.slotObjList.map(s => { return s.key; }),
         "slot_object_list": reactData.slotObjList,
         "defaultSlotOwners": defaultSlotOwners,

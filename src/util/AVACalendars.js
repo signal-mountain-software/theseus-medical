@@ -47,6 +47,7 @@ export async function addEvent(body) {
     schedule_key: 'event_master',
     record_type: 'event',
     default_forms: body.calendar_info.default_forms,
+    customizations: body.calendar_info.customizations,
     eventData: {
       defaultSlotOwners: body.calendar_info.defaultSlotOwners,
       messaging: [],
@@ -1235,6 +1236,7 @@ export async function writeSlot(body) {
     });
 
   // assign a form?
+  let ownerRec;
   if (body.default_forms) {
     let slotDocs = {};
     let formList = makeArray(body.default_forms);
@@ -1307,7 +1309,7 @@ export async function writeSlot(body) {
             }
             else {
               let pName = await makeName(pertains_to[p]);
-              let title = `${pName} - ${slotInfo.eventRec.eventData.event_data.description} - ${makeDate(occurrence).absolute}`
+              let title = `${pName} - ${slotInfo.eventRec.eventData.event_data.description} - ${makeDate(occurrence).absolute}`;
               let putDocument = {
                 client_id: body.client,
                 document_id: this_document_id,
@@ -1370,6 +1372,62 @@ export async function writeSlot(body) {
         }
       }
     };
+  }
+  // customize the title and/or location?
+  let newDescription;
+  let newLocation;
+  if (body.customizations) {
+    // does this customization pertain to the owner we are adding?
+    let owner_groups = await getGroupsBelongTo(body.client, body.owner);
+    if (!(array_in_array(body.customizations.pertains_to, Object.keys(owner_groups)))) {
+      // no op - skip all of this
+    }
+    else {
+      ownerRec = await getPerson(body.owner);
+      let updateExpression;
+      let expressionAttributeNames = {};
+      let expressionAttributeValues = {};
+      if (body.customizations.description) {
+        newDescription = resolve(body.customizations.description);
+        updateExpression = 'set #e1.#e2.#d = :d'
+        expressionAttributeNames['#e1'] = 'eventData';
+        expressionAttributeNames['#e2'] = 'event_data';
+        expressionAttributeNames['#d'] = 'description';
+        expressionAttributeValues[':d'] = newDescription;
+      }
+      if (body.customizations.location) {
+        newLocation = resolve(body.customizations.location);
+        if (updateExpression) {
+          updateExpression += ', ';
+        }
+        else {
+          updateExpression = 'set ';
+        }
+        updateExpression += '#e1.#e2.#l.#d = :l';
+        expressionAttributeNames['#e1'] = 'eventData';
+        expressionAttributeNames['#e2'] = 'event_data';
+        expressionAttributeNames['#d'] = 'description';
+        expressionAttributeNames['#l'] = 'location';
+        expressionAttributeValues[':l'] = newLocation;
+      }
+      updateExpression += ', customizations = :null';
+      expressionAttributeValues[':null'] = '';
+      await dbClient
+        .update({
+          Key: {
+            client: body.client,
+            event_key: event_id
+          },
+          UpdateExpression: updateExpression,
+          ExpressionAttributeValues: expressionAttributeValues,
+          ExpressionAttributeNames: expressionAttributeNames,
+          TableName: "Calendar"
+        })
+        .promise()
+        .catch(error => {
+          cl(`caught error updating Calendar; error is: `, error);
+        });
+    }
   }
   // messaging
   if (body.no_messaging) {
@@ -1456,8 +1514,43 @@ export async function writeSlot(body) {
     'message': (goodWrite ? `${body.requestType} request ${serviceRequestRec.request_id} added (${body.author} for ${serviceRequestRec.on_behalf_of})` : 'Request not added')
   };
   */
-
+  if (newDescription) {
+    putCalendar.newDescription = newDescription;
+  }
+  if (newLocation) {
+    putCalendar.newLocation = newLocation;
+  }
   return putCalendar;
+
+  function resolve(request) {
+    do {
+      let result = request.match(/(.*?)(%%)(.*?)(%%)(.*)/);
+      if (!result) {
+        break;
+      }
+      let [, front, , middle, , back] = result;
+      if (middle) {
+        switch (middle) {
+          case 'last_name': {
+            request = `${front}${ownerRec.name.last}${back}`;
+            break;
+          }
+          case 'first_name': {
+            request = `${front}${ownerRec.name.first}${back}`;
+            break;
+          }
+          case 'location': {
+            request = `${front}${ownerRec.location}${back}`;
+            break;
+          }
+          default: {
+            request = `${front}${middle}${back}`;
+          }
+        }
+      }
+    } while (request.includes('%%'));
+    return request;
+  }
 }
 
 export async function createNewOccurrences(request) {
@@ -2226,6 +2319,9 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       found_events[occurrenceRec.event_id] = newOcc.eventRec.eventData.event_data;
       if (newOcc.eventRec.hasOwnProperty('default_forms')) {
         found_events[occurrenceRec.event_id].default_forms = newOcc.eventRec.default_forms;
+      }
+      if (newOcc.eventRec.hasOwnProperty('customizations')) {
+        found_events[occurrenceRec.event_id].customizations = newOcc.eventRec.customizations;
       }
       if (newOcc.eventRec.eventData.slotPattern && (newOcc.eventRec.eventData.slotPattern.length > 0)) {
         found_events[occurrenceRec.event_id].slotPattern = newOcc.eventRec.eventData.slotPattern;

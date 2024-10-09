@@ -28,6 +28,7 @@ import PersonAddDisabledIcon from '@material-ui/icons/PersonAddDisabled';
 import FormatAlignJustifyIcon from '@material-ui/icons/FormatAlignJustify';
 import FormatLineSpacingIcon from '@material-ui/icons/FormatLineSpacing';
 import TextureIcon from '@material-ui/icons/Texture';
+import EventIcon from '@material-ui/icons/Event';
 
 import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
@@ -84,10 +85,10 @@ const useStyles = makeStyles(theme => ({
   assignment_avatar: {
     marginTop: 0,
     marginBottom: 0,
-    height: 35,
-    width: 35,
+    height: 40,
+    width: 40,
     paddingTop: 0,
-    fontSize: '0.6rem',
+    fontSize: '1.2rem',
   },
   tooltipBody: {
     backgroundColor: 'rgba(245, 245, 249, 0.8)',
@@ -634,12 +635,15 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           }
         }
       }
-      let slotAssigned = await handleAllocateSlot({
+      let { slotAssigned, slotUpdates } = await handleAllocateSlot({
         person_id: dragged_id,
         this_event: droppedOn_event,
         eventIndex,
         dateIndex
       });
+      if (slotUpdates.newDescription) {        
+        reactData.myCalendar[dateIndex].eventList[eventIndex].description = slotUpdates.newDescription;
+      }
       if (slotAssigned) {
         if (!reactData.myCalendar[dateIndex].eventList[eventIndex].hasOwnProperty('slot_owners')) {
           reactData.myCalendar[dateIndex].eventList[eventIndex].slot_owners = {};
@@ -786,6 +790,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     if (this_event.hasOwnProperty('default_forms')) {
       writeRequest.default_forms = deepCopy(this_event.default_forms);
     }
+    if (this_event.hasOwnProperty('customizations')) {
+      writeRequest.customizations = deepCopy(this_event.customizations);
+    }
     if (!reactData.defaultValues.message_override) {
       writeRequest.no_messaging = false;
     }
@@ -801,10 +808,10 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
         writeRequest.overrideRecipient = overrideList;
       }
     }
-    await writeSlot(writeRequest);
+    let slotUpdates = await writeSlot(writeRequest);
     localStorage.setItem(`calendarChanged`, true);
     console.log(`Added ${person_id} to ${this_event.description}${(slotToUse === person_id) ? '' : ' - ' + slotToUse}`);
-    return slotToUse;
+    return { slotAssigned: slotToUse, slotUpdates };
   };
 
   const isDense = (this_date) => {
@@ -1217,13 +1224,19 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         <Avatar
                           className={classes.assignment_avatar}
                           src={this_template.event_data.image}
-                        />
-                        <Typography
-                          noWrap={true}
-                          className={classes.dragNamesLast}
+                          variant={'square'}
                         >
-                          {this_template.event_data.generic_description || this_template.event_data.description}
-                        </Typography>
+                          <EventIcon />
+                        </Avatar>
+                        {(this_template.event_data.generic_description || this_template.event_data.description).split(' ').map((this_word) => (
+                          <Typography
+                            noWrap={true}
+                            className={classes.dragNamesLast}
+                          >
+                            {this_word}
+                          </Typography>
+                        ))
+                        }
                       </Box>
                     ))}
                   </Box>
@@ -1301,7 +1314,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                           }
                           placement='top-end'
                         >
-                          <Avatar className={classes.assignment_avatar} src={getImage(this_candidate.person_id)} />
+                          <Avatar className={classes.assignment_avatar} src={getImage(this_candidate.person_id)} >
+                            {`${this_candidate.first_name.slice(0, 1)}${this_candidate.last_name.slice(0, 1)}`}
+                          </Avatar>
                         </Tooltip>
                         {(reactData.defaultValues.assignmentDisplayBy
                           && reactData.defaultValues.assignmentDisplayBy.toLowerCase().includes('last'))
@@ -1496,6 +1511,18 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                       alignItems={agendaView() ? 'flex-start' : 'center'}
                                       textAlign={agendaView() ? 'flex-start' : 'center'}
                                       key={`details${this_date.dateObj.numeric$}_noEvents`}
+                                      onDragOver={(e) =>
+                                        handleDragOver(e, {
+                                          type: 'calendar_cell',
+                                          data: {
+                                            this_date,
+                                            dateIndex
+                                          }
+                                        })
+                                      }
+                                      onDrop={async (e) => {
+                                        await handleDrop(e, 'calendar_cell');
+                                      }}
                                     >
                                       <Typography style={AVATextStyle({
                                         color: reactData.calendar_fill_text,
@@ -1913,6 +1940,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 setPerson: false,
                 setDuration: reactData.selectedTemplate.event_data.time.duration,
                 forms: reactData.selectedTemplate.forms,
+                customizations: reactData.selectedTemplate.customizations,
                 title: reactData.selectedTemplate.event_data.generic_description,
                 setDate: ((reactData.appointmentDate && !reactData.appointmentDate.error) ? reactData.appointmentDate : null)
               }}
