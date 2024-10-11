@@ -1446,6 +1446,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                               >
                                 <Box
                                   display='flex'
+                                  flexWrap={'wrap'}
                                   flexGrow={1}
                                   flexDirection={(!isDense(this_date.dateObj.numeric$) || (reactData.factor7 > .45)) ? 'row' : 'column'}
                                   justifyContent={agendaView() ? 'flex-start' : 'center'}
@@ -1506,11 +1507,28 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                               {(!isDense(this_date.dateObj.numeric$) || (reactData.factor7 > .45)) &&
                                 <React.Fragment>
                                   {((this_date.eventList.length === 0) || (!eventsToShow(this_date))) ?
-                                    <Box display='flex' flexDirection='column'
-                                      p={2}
-                                      mt={0} mb={1}
-                                      variant='outlined'
-                                      justifyContent='flex-start'
+                                    <Box style={isDense(this_date.dateObj.numeric$)
+                                      ? {
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        paddingLeft: '16px',
+                                        paddingRight: '16px',
+                                        marginTop: 0,
+                                        marginBottom: '24px',
+                                        maxWidth: `${((reactData.factor7 * 220)) - ((reactData.factor7 < 1) ? 25 : 0)}px`,
+                                        justifyContent: 'flex-start',
+                                        overflow: 'auto',
+                                        scrollbarWidth: 'thin',
+                                        overflowX: 'hidden',
+                                      } : {
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        padding: '16px',
+                                        marginTop: 0,
+                                        marginBottom: '8px',
+                                        variant: 'outlined',
+                                        justifyContent: 'flex-start',
+                                      }}
                                       alignItems={agendaView() ? 'flex-start' : 'center'}
                                       textAlign={agendaView() ? 'flex-start' : 'center'}
                                       key={`details${this_date.dateObj.numeric$}_noEvents`}
@@ -1530,6 +1548,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                       <Typography style={AVATextStyle({
                                         color: reactData.calendar_fill_text,
                                         size: 1,
+                                        textWrap: 'wrap',
                                       })}>
                                         {`No Events Scheduled`}
                                       </Typography>
