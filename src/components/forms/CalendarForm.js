@@ -124,7 +124,8 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 1.0,
   },
   popUpFooter: {
-    fontSize: theme.typography.fontSize * 0.8,
+    fontSize: theme.typography.fontSize * 0.8
+    ,
   },
   dragNamesFirst: {
     fontSize: theme.typography.fontSize * 1.2,
@@ -180,7 +181,7 @@ const useStyles = makeStyles(theme => ({
     flexDirection: 'row'
   },
   dateCell: {
-    transform: `style(0.8)`,
+    transform: `style(1.4)`,
     display: 'flex',
     flexDirection: 'column',
     paddingLeft: theme.spacing(1),
@@ -196,14 +197,14 @@ const useStyles = makeStyles(theme => ({
     marginBottom: theme.spacing(2),
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
-    fontSize: '0.8rem',
+    fontSize: '1.4rem',
   },
   subDescriptionText: {
     marginTop: 0,
     marginBottom: 0,
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(1),
-    fontSize: '0.8rem',
+    fontSize: '1.4rem',
   },
   progressBar: {
     marginBottom: theme.spacing(3),
@@ -213,7 +214,7 @@ const useStyles = makeStyles(theme => ({
     height: '5px'
   },
   radioText: {
-    fontSize: theme.typography.fontSize * 0.8,
+    fontSize: theme.typography.fontSize * 1.4,
     marginLeft: 0,
     paddingLeft: 0,
     paddingRight: 10,
@@ -246,7 +247,7 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'flex-start',
   },
   idText: {
-    fontSize: theme.typography.fontSize * 0.8,
+    fontSize: theme.typography.fontSize * 1.4,
     marginTop: 10,
     marginLeft: 0,
     paddingLeft: 0,
@@ -840,7 +841,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       return (
         <Typography
           noWrap={true}
-          style={AVATextStyle({ bold: true, size: 0.4, margin: { top: 1 } })}>
+          style={AVATextStyle({ bold: true, size: 1.1, margin: { top: 1 } })}>
           {`Hrs wk of ${this_sunday.dateOnly} = ${Math.round((reactData.conflictInfo[this_person].summaries[this_sunday.numeric$].minutes / 60) * 10) / 10}`}
         </Typography>
       );
@@ -972,7 +973,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                     {reactData.defaultValues.subtitle &&
                       <Typography
                         className={classes.title}
-                        style={AVATextStyle({ size: 0.8, margin: { top: 0, left: 0.5, right: 1 } })}
+                        style={AVATextStyle({ size: 1.4, margin: { top: 0, left: 0.5, right: 1 } })}
                       >
                         {reactData.defaultValues.subtitle}
                       </Typography>
@@ -1022,22 +1023,24 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 keepMounted
               >
                 <MenuList className={classes.popUpMenu}>
-                  <MenuItem
-                    onClick={() => {
-                      updateReactData({
-                        selectPerson: true,
-                        popUpOpen: false
-                      }, true);
-                    }}
-                  >
-                    <Box
-                      display='flex' flexDirection='row' alignItems={'center'}
-                      key={'vRowHome'}
+                  {!reactData.defaultValues.assignmentView &&
+                    <MenuItem
+                      onClick={() => {
+                        updateReactData({
+                          selectPerson: true,
+                          popUpOpen: false
+                        }, true);
+                      }}
                     >
-                      <SwapHorizIcon />
-                      <Typography className={classes.popUpMenuRow} >{`View someone else's calendar`}</Typography>
-                    </Box>
-                  </MenuItem>
+                      <Box
+                        display='flex' flexDirection='row' alignItems={'center'}
+                        key={'vRowHome'}
+                      >
+                        <SwapHorizIcon />
+                        <Typography className={classes.popUpMenuRow} >{`View someone else's calendar`}</Typography>
+                      </Box>
+                    </MenuItem>
+                  }
                   <MenuItem
                     onClick={() => {
                       reactData.defaultValues.agendaView = !reactData.defaultValues.agendaView;
@@ -1269,7 +1272,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                               <Typography
                                 noWrap={true}
                                 key={`conflict-${cX}_conflictName`}
-                                style={AVATextStyle({ bold: true, size: 0.8, margin: { top: 0.2 } })}
+                                style={AVATextStyle({ bold: true, size: 1.2, margin: { top: 0.2 } })}
                               >
                                 {showPersonSummary(this_candidate.display_name)}
                               </Typography>
@@ -1286,14 +1289,14 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                       {showWeekTotal(this_candidate.person_id, conflict_date)}
                                       <Typography
                                         noWrap={true}
-                                        style={AVATextStyle({ italic: true, size: 0.4, margin: { top: 0.2 } })}>
+                                        style={AVATextStyle({ italic: true, size: 1.0, margin: { top: 0.2 } })}>
                                         {makeDate(conflict_date).relative}
                                       </Typography>
                                       {reactData.conflictInfo[this_candidate.person_id][conflict_date].map((this_conflict, tCN) => (
                                         !this_conflict.open &&
                                         <Typography
                                           key={`conflict-${cX}_${tCN}`}
-                                          style={AVATextStyle({ size: 0.3 })}
+                                          style={AVATextStyle({ size: 1.0 })}
                                           noWrap={true}
                                         >
                                           {`${(this_conflict.time > 0) ? makeTime(this_conflict.time).short : 'All Day'} - ${titleCase(this_conflict.event_title).slice(0, 30)}`}
@@ -1305,7 +1308,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                 :
                                 <Box key={`conflict-${cX}_noconflict`} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
                                   <Typography
-                                    style={AVATextStyle({ italic: true, size: 0.4, margin: { top: 0.2 } })}>
+                                    style={AVATextStyle({ italic: true, size: 1.0, margin: { top: 0.2 } })}>
                                     {'Nothing Scheduled'}
                                   </Typography>
                                 </Box>
@@ -1638,7 +1641,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                               {isWaitListed(this_event) &&
                                                 <Typography
                                                   noWrap={true}
-                                                  style={AVATextStyle({ size: 0.6, italic: true })}
+                                                  style={AVATextStyle({ size: 1.2, italic: true })}
                                                 >
                                                   {`You're on the Waitlist`}
                                                 </Typography>
@@ -1651,7 +1654,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                                     &&
                                                     <Typography
                                                       noWrap={true}
-                                                      style={AVATextStyle({ size: 0.6, italic: true })}
+                                                      style={AVATextStyle({ size: 1.2, italic: true })}
                                                     >
                                                       {`You're on the list`}
                                                     </Typography>
@@ -1659,7 +1662,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                                   <Typography
                                                     noWrap={true}
                                                     style={AVATextStyle({
-                                                      size: 0.4,
+                                                      size: 1.0,
                                                     })}
                                                   >
                                                     {((this_event.type === 'time')
@@ -1675,7 +1678,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                                     <Typography
                                                       noWrap={true}
                                                       style={AVATextStyle({
-                                                        size: 0.4,
+                                                        size: 1.0,
                                                       })}
                                                     >
                                                       {makeCalendarTime(this_event.time)}
@@ -1694,7 +1697,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                                 key={`event_${this_event}_slot_owner_${this_owner}`}
                                                 noWrap={true}
                                                 style={AVATextStyle({
-                                                  size: 0.4,
+                                                  size: 0.8,
                                                 })}>
                                                 {`${(this_event.type === 'time') ? makeTime(this_event.slot_owners[this_owner]).short + ' ' : ''}${getPersonName(this_owner.split('%%')[0])}`}
                                               </Typography>
