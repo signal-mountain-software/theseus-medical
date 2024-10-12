@@ -3,7 +3,7 @@ import { useSnackbar } from 'notistack';
 
 import { makeTime, makeDate, addDays } from '../../util/AVADateTime';
 import { isMobile, isObject, deepCopy, titleCase, makeArray, isEmpty } from '../../util/AVAUtilities';
-import { getCalendarEntries, writeSlot, getSlotList } from '../../util/AVACalendars';
+import { getCalendarEntries, writeSlot, getSlotList, publishCalendar } from '../../util/AVACalendars';
 import { getImage, getPerson } from '../../util/AVAPeople';
 import AVATextInput from './AVATextInput';
 
@@ -29,6 +29,7 @@ import FormatAlignJustifyIcon from '@material-ui/icons/FormatAlignJustify';
 import FormatLineSpacingIcon from '@material-ui/icons/FormatLineSpacing';
 import TextureIcon from '@material-ui/icons/Texture';
 import EventIcon from '@material-ui/icons/Event';
+import AssignmentTurnedInIcon from '@material-ui/icons/AssignmentTurnedIn';
 
 import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
@@ -279,6 +280,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     agendaView - show in straigh-line "agenda" format
     subtitle - if present, text to show under the person name
     onlyRegistered - only show events that I am signed-up for
+    onlyPublished - only show events that have alreasdy been published
     assignmentView - show list of people you can assign to events
     allowAssign - required when assignmentView is true; this becomes assignment__list
     template__List - a list of event templates to use when creatinf new appointments
@@ -486,6 +488,10 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     if (this_event.date === '29991231') { return false; }   // event was soft-deleted
     if (reactData.defaultValues.hasOwnProperty('onlyRegistered')
       && (!this_event.slot_owners.hasOwnProperty(reactData.selectedPerson_id))) {
+      return false;
+    }
+    if (reactData.defaultValues.hasOwnProperty('onlyPublished')
+      && (!this_event.published)) {
       return false;
     }
     if (!reactData.filterTextLower) {
@@ -1166,6 +1172,24 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                   </MenuItem>
                   <MenuItem
                     onClick={() => {
+                      updateReactData({
+                        setPublishDates: true,
+                        popUpOpen: false
+                      }, true);
+                    }}
+                  >
+                    <Box
+                      display='flex' flexDirection='row' alignItems={'center'}
+                      key={'vRowHome'}
+                    >
+                      {<AssignmentTurnedInIcon />}
+                      <Typography className={classes.popUpMenuRow} >
+                        {'Publish'}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
                       onClose();
                     }}
                   >
@@ -1804,6 +1828,43 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               }}
             />
           }
+          {!reactData.loading && reactData.setPublishDates &&
+            <AVATextInput
+              titleText={'Publish What Dates'}
+              promptText={['Start date', 'End date']}
+              buttonText={'Set Dates'}
+              onCancel={() => {
+                updateReactData({
+                  setPublishDates: false
+                }, true);
+              }}
+              onSave={async (response) => {
+                updateReactData({
+                  setPublishDates: false
+                }, false);
+                if (response.length > 1) {
+                  await publishCalendar(
+                    {
+                      client: {
+                        client_id: state.session.client_id,
+                        client_name: state.session.client_name
+                      },
+                      myCalendar: reactData.myCalendar,
+                      requestor: state.session.user_id,
+                      filters: {
+                        filterTextLower: reactData.filterTextLower,
+                        ownerFilter: reactData.idFilter,
+                        eventFilter: reactData.eventIDFilter
+                      },                      
+                      startDate: makeDate(response[0]).date,
+                      endDate: makeDate(response[1]).date
+                    }
+                  )
+                }
+              }}
+            />
+          }
+
           {!reactData.loading && reactData.event_being_edited &&
             <CalendarEventEditForm
               pEventCode={reactData.event_being_edited.event_key}

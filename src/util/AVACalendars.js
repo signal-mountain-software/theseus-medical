@@ -1389,7 +1389,7 @@ export async function writeSlot(body) {
       let expressionAttributeValues = {};
       if (body.customizations.description) {
         newDescription = resolve(body.customizations.description);
-        updateExpression = 'set #e1.#e2.#d = :d'
+        updateExpression = 'set #e1.#e2.#d = :d';
         expressionAttributeNames['#e1'] = 'eventData';
         expressionAttributeNames['#e2'] = 'event_data';
         expressionAttributeNames['#d'] = 'description';
@@ -2818,4 +2818,154 @@ export async function addOccurrence(body) {
     .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
 
   return putCalendar;
+}
+
+/************************************** 
+ * PUBLISH
+ * 
+ * 
+ * 
+*/
+
+
+export async function publishCalendar(request) {
+  /* 
+  {
+    client_id: state.session.client_id,
+    myCalendar: reactData.myCalendar,
+    requestor: state.session.user_id,
+    filterTextLower: reactData.filterTextLower,
+    startDate: makeDate(response[0]).date,
+    endDate: makeDate(response[1]).date
+  }
+  */
+
+  // make request dates into dateObj
+  request.startDateObj = makeDate(request.startDate);
+  request.endDateObj = makeDate(request.endDate);
+
+  // recipient object
+  let recipients = {};
+
+  // get a calendar date, check to see if the date is in the range
+  for (let dX = 0; dX < request.myCalendar.length; dX++) {
+    let this_date = request.myCalendar[dX]; 
+    if (this_date.dateObj.numeric < request.startDateObj.numeric) { continue; }
+    if (this_date.dateObj.numeric > request.endDateObj.numeric) { break; }
+    // good date, get events
+    for (let eX = 0; eX < this_date.eventList.length; eX++) {
+      let this_event = this_date.eventList[eX];
+      if (!okToShow(this_event)) { continue; }
+      // mark this occurrence as published
+      await dbClient
+        .update({
+          Key: {
+            client: this_event.client,
+            event_key: this_event.event_key
+          },
+          UpdateExpression: 'set published = :true',
+          ExpressionAttributeValues: { ':true': true },
+          TableName: "Calendar"
+        })
+        .promise()
+        .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
+      // we are making one message - each recipient will get the same event info
+      let event_message = `${this_event.description} `;
+      if (this_event.time) {
+        if ((this_event.time.from) && (this_event.time.from.trim() !== '')) {
+          if ((this_event.time.to) && (this_event.time.to.trim() !== '')) {
+            event_message += `from ${this_event.time.from} to ${this_event.time.to}`;
+          }
+          else {
+            event_message += `at ${this_event.time.from}`;
+          }
+        }
+      }
+      Object.values(this_event.slot_owners).forEach(this_slotOwner => {
+        if (!recipients.hasOwnProperty(this_slotOwner)) {
+          recipients[this_slotOwner] = {
+            event_count: 0,
+            dates: {}
+          };
+        }
+        if (!recipients[this_slotOwner].dates.hasOwnProperty(this_date.dateObj.numeric$)) {
+          recipients[this_slotOwner].dates[this_date.dateObj.numeric$] = {
+            dateObj: this_date.dateObj,
+            eventList: []
+          }
+        }
+        recipients[this_slotOwner].dates[this_date.dateObj.numeric$].eventList.push(event_message.trim());
+        recipients[this_slotOwner].event_count++;
+      })
+    }
+  }
+  // we've got the recipient object loaded, send one message to each recipient
+  for (const this_recipient in recipients) {
+    let messageText = `Hello!  `;
+    if (recipients[this_recipient].event_count > 1) {
+      messageText += `You are scheduled for these upcoming ${request.client.client_name} activities:`
+      for (const this_date in recipients[this_recipient].dates) {
+        messageText += `\n\rOn ${recipients[this_recipient].dates[this_date].dateObj.absolute_full} -`;
+        let eLL = recipients[this_recipient].dates[this_date].eventList.length;
+        for (let eX = 0; eX < eLL; eX++) {
+          if (eLL > 1) {
+            if (eX > 0) {
+              if ((eX === 1) && (eLL === 2)) {
+                messageText += ' and ';
+              }
+              else if (eX === (eLL - 1)) {
+                messageText += ', and ';
+              }
+              else {
+                messageText += ', ';
+              }
+            }
+          }
+          messageText += `${recipients[this_recipient].dates[this_date].eventList[eX]}`;
+        }
+      }
+    }
+    else {
+      messageText += `${request.client.client_name} has you scheduled for `;
+      for (const this_date in recipients[this_recipient].dates) {
+        let eLL = recipients[this_recipient].dates[this_date].eventList.length;
+        for (let eX = 0; eX < eLL; eX++) {
+          messageText += `${recipients[this_recipient].dates[this_date].eventList[eX]}`;
+          messageText += ` on ${recipients[this_recipient].dates[this_date].dateObj.absolute_full}`;
+        }
+      }
+    }
+    let nowTime = new Date().getTime();
+    let messageObj = {
+      client: request.client.client_id,
+      author: request.requestor,
+      messageText: messageText,
+      testMode: true,
+      thread_id: `calNotify_${this_recipient}/${nowTime}`,
+      recipientList: this_recipient,
+      subject: `${request.client.client_name} calendar notification`
+    };
+    await sendMessages(messageObj);
+  }
+
+  function okToShow(this_event) {
+    if (this_event.date === '29991231') { return false; }   // event was soft-deleted
+    if (!request.filters) {
+      return true;
+    }
+    else if ((!request.filters.ownerFilter) && (!request.filters.eventFilter) && (!request.filters.filterTextLower)) {
+      return true;
+    }
+    else if (request.filters.ownerFilter && (this_event.slot_owners.hasOwnProperty(request.filters.ownerFilter))) {
+      return true;
+    }
+    else if (request.filters.eventFilter && (this_event.event_id === request.filters.eventFilter)) {
+      return true;
+    }
+    else {
+      return ((`${this_event.description} ${this_event.location}`).toLowerCase().includes(request.filters.filterTextLower));
+    }
+  }
+
+
 }
