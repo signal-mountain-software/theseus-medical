@@ -1204,7 +1204,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 setPopupMenuOpen(true);
               }}
               alt=''
-              src={process.env.REACT_APP_AVA_LOGO}
+              src={state.session?.client_logo || process.env.REACT_APP_AVA_LOGO}
             />
             {!reactData.menu_reloaded &&
               <LinearProgress className={classes.pendingBar} style={{ width: 50 }} />

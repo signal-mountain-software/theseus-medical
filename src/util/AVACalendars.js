@@ -47,6 +47,7 @@ export async function addEvent(body) {
     schedule_key: 'event_master',
     record_type: 'event',
     default_forms: body.calendar_info.default_forms,
+    customizations: body.calendar_info.customizations,
     eventData: {
       defaultSlotOwners: body.calendar_info.defaultSlotOwners,
       messaging: [],
@@ -1235,6 +1236,7 @@ export async function writeSlot(body) {
     });
 
   // assign a form?
+  let ownerRec;
   if (body.default_forms) {
     let slotDocs = {};
     let formList = makeArray(body.default_forms);
@@ -1307,7 +1309,7 @@ export async function writeSlot(body) {
             }
             else {
               let pName = await makeName(pertains_to[p]);
-              let title = `${pName} - ${slotInfo.eventRec.eventData.event_data.description} - ${makeDate(occurrence).absolute}`
+              let title = `${pName} - ${slotInfo.eventRec.eventData.event_data.description} - ${makeDate(occurrence).absolute}`;
               let putDocument = {
                 client_id: body.client,
                 document_id: this_document_id,
@@ -1370,6 +1372,62 @@ export async function writeSlot(body) {
         }
       }
     };
+  }
+  // customize the title and/or location?
+  let newDescription;
+  let newLocation;
+  if (body.customizations) {
+    // does this customization pertain to the owner we are adding?
+    let owner_groups = await getGroupsBelongTo(body.client, body.owner);
+    if (!(array_in_array(body.customizations.pertains_to, Object.keys(owner_groups)))) {
+      // no op - skip all of this
+    }
+    else {
+      ownerRec = await getPerson(body.owner);
+      let updateExpression;
+      let expressionAttributeNames = {};
+      let expressionAttributeValues = {};
+      if (body.customizations.description) {
+        newDescription = resolve(body.customizations.description);
+        updateExpression = 'set #e1.#e2.#d = :d';
+        expressionAttributeNames['#e1'] = 'eventData';
+        expressionAttributeNames['#e2'] = 'event_data';
+        expressionAttributeNames['#d'] = 'description';
+        expressionAttributeValues[':d'] = newDescription;
+      }
+      if (body.customizations.location) {
+        newLocation = resolve(body.customizations.location);
+        if (updateExpression) {
+          updateExpression += ', ';
+        }
+        else {
+          updateExpression = 'set ';
+        }
+        updateExpression += '#e1.#e2.#l.#d = :l';
+        expressionAttributeNames['#e1'] = 'eventData';
+        expressionAttributeNames['#e2'] = 'event_data';
+        expressionAttributeNames['#d'] = 'description';
+        expressionAttributeNames['#l'] = 'location';
+        expressionAttributeValues[':l'] = newLocation;
+      }
+      updateExpression += ', customizations = :null';
+      expressionAttributeValues[':null'] = '';
+      await dbClient
+        .update({
+          Key: {
+            client: body.client,
+            event_key: event_id
+          },
+          UpdateExpression: updateExpression,
+          ExpressionAttributeValues: expressionAttributeValues,
+          ExpressionAttributeNames: expressionAttributeNames,
+          TableName: "Calendar"
+        })
+        .promise()
+        .catch(error => {
+          cl(`caught error updating Calendar; error is: `, error);
+        });
+    }
   }
   // messaging
   if (body.no_messaging) {
@@ -1456,8 +1514,43 @@ export async function writeSlot(body) {
     'message': (goodWrite ? `${body.requestType} request ${serviceRequestRec.request_id} added (${body.author} for ${serviceRequestRec.on_behalf_of})` : 'Request not added')
   };
   */
-
+  if (newDescription) {
+    putCalendar.newDescription = newDescription;
+  }
+  if (newLocation) {
+    putCalendar.newLocation = newLocation;
+  }
   return putCalendar;
+
+  function resolve(request) {
+    do {
+      let result = request.match(/(.*?)(%%)(.*?)(%%)(.*)/);
+      if (!result) {
+        break;
+      }
+      let [, front, , middle, , back] = result;
+      if (middle) {
+        switch (middle) {
+          case 'last_name': {
+            request = `${front}${ownerRec.name.last}${back}`;
+            break;
+          }
+          case 'first_name': {
+            request = `${front}${ownerRec.name.first}${back}`;
+            break;
+          }
+          case 'location': {
+            request = `${front}${ownerRec.location}${back}`;
+            break;
+          }
+          default: {
+            request = `${front}${middle}${back}`;
+          }
+        }
+      }
+    } while (request.includes('%%'));
+    return request;
+  }
 }
 
 export async function createNewOccurrences(request) {
@@ -2227,6 +2320,9 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       if (newOcc.eventRec.hasOwnProperty('default_forms')) {
         found_events[occurrenceRec.event_id].default_forms = newOcc.eventRec.default_forms;
       }
+      if (newOcc.eventRec.hasOwnProperty('customizations')) {
+        found_events[occurrenceRec.event_id].customizations = newOcc.eventRec.customizations;
+      }
       if (newOcc.eventRec.eventData.slotPattern && (newOcc.eventRec.eventData.slotPattern.length > 0)) {
         found_events[occurrenceRec.event_id].slotPattern = newOcc.eventRec.eventData.slotPattern;
       }
@@ -2722,4 +2818,175 @@ export async function addOccurrence(body) {
     .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
 
   return putCalendar;
+}
+
+/************************************** 
+ * PUBLISH
+ * 
+ * 
+ * 
+*/
+
+
+export async function publishCalendar(request) {
+  /* 
+  {
+    client_id: state.session.client_id,
+    myCalendar: reactData.myCalendar,
+    requestor: state.session.user_id,
+    filterTextLower: reactData.filterTextLower,
+    startDate: makeDate(response[0]).date,
+    endDate: makeDate(response[1]).date
+  }
+  */
+  
+  let ava_env = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
+
+  // make request dates into dateObj
+  request.startDateObj = makeDate(request.startDate);
+  request.endDateObj = makeDate(request.endDate);
+
+  // recipient object
+  let recipients = {};
+
+  // response
+  let response = {
+    dates: {
+      from: request.startDateObj.absolute,
+      to: request.endDateObj.absolute,
+    },
+    people_count: 0,
+    already_published: 0,
+    event_list: []
+  };
+
+  // get a calendar date, check to see if the date is in the range
+  for (let dX = 0; dX < request.myCalendar.length; dX++) {
+    let this_date = request.myCalendar[dX];
+    if (this_date.dateObj.numeric < request.startDateObj.numeric) { continue; }
+    if (this_date.dateObj.numeric > request.endDateObj.numeric) { break; }
+    // good date, get events
+    for (let eX = 0; eX < this_date.eventList.length; eX++) {
+      let this_event = this_date.eventList[eX];
+      if (!okToShow(this_event)) { continue; }
+      // mark this occurrence as published
+      response.event_list.push(this_event.event_key);
+      await dbClient
+        .update({
+          Key: {
+            client: this_event.client,
+            event_key: this_event.event_key
+          },
+          UpdateExpression: 'set published = :true',
+          ExpressionAttributeValues: { ':true': true },
+          TableName: "Calendar"
+        })
+        .promise()
+        .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
+      // we are making one message - each recipient will get the same event info
+      let event_message = `${this_event.description} `;
+      if (this_event.time) {
+        if ((this_event.time.from) && (this_event.time.from.trim() !== '')) {
+          if ((this_event.time.to) && (this_event.time.to.trim() !== '')) {
+            event_message += `from ${this_event.time.from} to ${this_event.time.to}`;
+          }
+          else {
+            event_message += `at ${this_event.time.from}`;
+          }
+        }
+      }
+      Object.values(this_event.slot_owners).forEach(this_slotOwner => {
+        if (!recipients.hasOwnProperty(this_slotOwner)) {
+          recipients[this_slotOwner] = {
+            event_count: 0,
+            dates: {}
+          };
+        }
+        if (!recipients[this_slotOwner].dates.hasOwnProperty(this_date.dateObj.numeric$)) {
+          recipients[this_slotOwner].dates[this_date.dateObj.numeric$] = {
+            dateObj: this_date.dateObj,
+            eventList: []
+          };
+        }
+        recipients[this_slotOwner].dates[this_date.dateObj.numeric$].eventList.push(event_message.trim());
+        recipients[this_slotOwner].event_count++;
+      });
+    }
+  }
+  // we've got the recipient object loaded, send one message to each recipient
+  for (const this_recipient in recipients) {
+    let messageText = `Hello!  `;
+    if (recipients[this_recipient].event_count > 1) {
+      messageText += `You are scheduled for these upcoming ${request.client.client_name} activities:`;
+      for (const this_date in recipients[this_recipient].dates) {
+        messageText += `\n\rOn ${recipients[this_recipient].dates[this_date].dateObj.absolute_full} -`;
+        let eLL = recipients[this_recipient].dates[this_date].eventList.length;
+        for (let eX = 0; eX < eLL; eX++) {
+          if (eLL > 1) {
+            if (eX > 0) {
+              if ((eX === 1) && (eLL === 2)) {
+                messageText += ' and ';
+              }
+              else if (eX === (eLL - 1)) {
+                messageText += ', and ';
+              }
+              else {
+                messageText += ', ';
+              }
+            }
+          }
+          messageText += `${recipients[this_recipient].dates[this_date].eventList[eX]}`;
+        }
+      }
+    }
+    else {
+      messageText += `${request.client.client_name} has you scheduled for `;
+      for (const this_date in recipients[this_recipient].dates) {
+        let eLL = recipients[this_recipient].dates[this_date].eventList.length;
+        for (let eX = 0; eX < eLL; eX++) {
+          messageText += `${recipients[this_recipient].dates[this_date].eventList[eX]}`;
+          messageText += ` on ${recipients[this_recipient].dates[this_date].dateObj.absolute_full}`;
+        }
+      }
+    }
+    let nowTime = new Date().getTime();
+    let messageObj = {
+      client: request.client.client_id,
+      author: request.requestor,
+      messageText: messageText,
+      testMode: (ava_env !== 'D'),
+      thread_id: `calNotify_${this_recipient}/${nowTime}`,
+      recipientList: this_recipient,
+      subject: `${request.client.client_name} calendar notification`
+    };
+    response.people_count++;
+    await sendMessages(messageObj);
+  }
+
+  return response;
+
+  function okToShow(this_event) {
+    if (this_event.published) {
+      response.already_published++;
+      return false;
+    }
+    if (this_event.date === '29991231') { return false; }   // event was soft-deleted
+    if (!request.filters) {
+      return true;
+    }
+    else if ((!request.filters.ownerFilter) && (!request.filters.eventFilter) && (!request.filters.filterTextLower)) {
+      return true;
+    }
+    else if (request.filters.ownerFilter && (this_event.slot_owners.hasOwnProperty(request.filters.ownerFilter))) {
+      return true;
+    }
+    else if (request.filters.eventFilter && (this_event.event_id === request.filters.eventFilter)) {
+      return true;
+    }
+    else {
+      return ((`${this_event.description} ${this_event.location}`).toLowerCase().includes(request.filters.filterTextLower));
+    }
+  }
+
+
 }

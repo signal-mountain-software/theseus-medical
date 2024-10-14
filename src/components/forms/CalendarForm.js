@@ -3,7 +3,7 @@ import { useSnackbar } from 'notistack';
 
 import { makeTime, makeDate, addDays } from '../../util/AVADateTime';
 import { isMobile, isObject, deepCopy, titleCase, makeArray, isEmpty } from '../../util/AVAUtilities';
-import { getCalendarEntries, writeSlot, getSlotList } from '../../util/AVACalendars';
+import { getCalendarEntries, writeSlot, getSlotList, publishCalendar } from '../../util/AVACalendars';
 import { getImage, getPerson } from '../../util/AVAPeople';
 import AVATextInput from './AVATextInput';
 
@@ -28,6 +28,8 @@ import PersonAddDisabledIcon from '@material-ui/icons/PersonAddDisabled';
 import FormatAlignJustifyIcon from '@material-ui/icons/FormatAlignJustify';
 import FormatLineSpacingIcon from '@material-ui/icons/FormatLineSpacing';
 import TextureIcon from '@material-ui/icons/Texture';
+import EventIcon from '@material-ui/icons/Event';
+import AssignmentTurnedInIcon from '@material-ui/icons/AssignmentTurnedIn';
 
 import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
@@ -84,10 +86,10 @@ const useStyles = makeStyles(theme => ({
   assignment_avatar: {
     marginTop: 0,
     marginBottom: 0,
-    height: 35,
-    width: 35,
+    height: 40,
+    width: 40,
     paddingTop: 0,
-    fontSize: '0.6rem',
+    fontSize: '1.2rem',
   },
   tooltipBody: {
     backgroundColor: 'rgba(245, 245, 249, 0.8)',
@@ -123,7 +125,8 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 1.0,
   },
   popUpFooter: {
-    fontSize: theme.typography.fontSize * 0.8,
+    fontSize: theme.typography.fontSize * 0.8
+    ,
   },
   dragNamesFirst: {
     fontSize: theme.typography.fontSize * 1.2,
@@ -179,7 +182,7 @@ const useStyles = makeStyles(theme => ({
     flexDirection: 'row'
   },
   dateCell: {
-    transform: `style(0.8)`,
+    transform: `style(1.4)`,
     display: 'flex',
     flexDirection: 'column',
     paddingLeft: theme.spacing(1),
@@ -195,14 +198,14 @@ const useStyles = makeStyles(theme => ({
     marginBottom: theme.spacing(2),
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
-    fontSize: '0.8rem',
+    fontSize: '1.4rem',
   },
   subDescriptionText: {
     marginTop: 0,
     marginBottom: 0,
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(1),
-    fontSize: '0.8rem',
+    fontSize: '1.4rem',
   },
   progressBar: {
     marginBottom: theme.spacing(3),
@@ -212,7 +215,7 @@ const useStyles = makeStyles(theme => ({
     height: '5px'
   },
   radioText: {
-    fontSize: theme.typography.fontSize * 0.8,
+    fontSize: theme.typography.fontSize * 1.4,
     marginLeft: 0,
     paddingLeft: 0,
     paddingRight: 10,
@@ -245,7 +248,7 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'flex-start',
   },
   idText: {
-    fontSize: theme.typography.fontSize * 0.8,
+    fontSize: theme.typography.fontSize * 1.4,
     marginTop: 10,
     marginLeft: 0,
     paddingLeft: 0,
@@ -277,6 +280,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     agendaView - show in straigh-line "agenda" format
     subtitle - if present, text to show under the person name
     onlyRegistered - only show events that I am signed-up for
+    onlyPublished - only show events that have alreasdy been published
     assignmentView - show list of people you can assign to events
     allowAssign - required when assignmentView is true; this becomes assignment__list
     template__List - a list of event templates to use when creatinf new appointments
@@ -486,6 +490,10 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       && (!this_event.slot_owners.hasOwnProperty(reactData.selectedPerson_id))) {
       return false;
     }
+    if (reactData.defaultValues.hasOwnProperty('onlyPublished')
+      && (!this_event.published)) {
+      return false;
+    }
     if (!reactData.filterTextLower) {
       return true;
     }
@@ -634,12 +642,15 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           }
         }
       }
-      let slotAssigned = await handleAllocateSlot({
+      let { slotAssigned, slotUpdates } = await handleAllocateSlot({
         person_id: dragged_id,
         this_event: droppedOn_event,
         eventIndex,
         dateIndex
       });
+      if (slotUpdates.newDescription) {        
+        reactData.myCalendar[dateIndex].eventList[eventIndex].description = slotUpdates.newDescription;
+      }
       if (slotAssigned) {
         if (!reactData.myCalendar[dateIndex].eventList[eventIndex].hasOwnProperty('slot_owners')) {
           reactData.myCalendar[dateIndex].eventList[eventIndex].slot_owners = {};
@@ -786,6 +797,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     if (this_event.hasOwnProperty('default_forms')) {
       writeRequest.default_forms = deepCopy(this_event.default_forms);
     }
+    if (this_event.hasOwnProperty('customizations')) {
+      writeRequest.customizations = deepCopy(this_event.customizations);
+    }
     if (!reactData.defaultValues.message_override) {
       writeRequest.no_messaging = false;
     }
@@ -801,10 +815,10 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
         writeRequest.overrideRecipient = overrideList;
       }
     }
-    await writeSlot(writeRequest);
+    let slotUpdates = await writeSlot(writeRequest);
     localStorage.setItem(`calendarChanged`, true);
     console.log(`Added ${person_id} to ${this_event.description}${(slotToUse === person_id) ? '' : ' - ' + slotToUse}`);
-    return slotToUse;
+    return { slotAssigned: slotToUse, slotUpdates };
   };
 
   const isDense = (this_date) => {
@@ -833,7 +847,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       return (
         <Typography
           noWrap={true}
-          style={AVATextStyle({ bold: true, size: 0.4, margin: { top: 1 } })}>
+          style={AVATextStyle({ bold: true, size: 1.1, margin: { top: 1 } })}>
           {`Hrs wk of ${this_sunday.dateOnly} = ${Math.round((reactData.conflictInfo[this_person].summaries[this_sunday.numeric$].minutes / 60) * 10) / 10}`}
         </Typography>
       );
@@ -965,7 +979,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                     {reactData.defaultValues.subtitle &&
                       <Typography
                         className={classes.title}
-                        style={AVATextStyle({ size: 0.8, margin: { top: 0, left: 0.5, right: 1 } })}
+                        style={AVATextStyle({ size: 1.4, margin: { top: 0, left: 0.5, right: 1 } })}
                       >
                         {reactData.defaultValues.subtitle}
                       </Typography>
@@ -1015,22 +1029,24 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 keepMounted
               >
                 <MenuList className={classes.popUpMenu}>
-                  <MenuItem
-                    onClick={() => {
-                      updateReactData({
-                        selectPerson: true,
-                        popUpOpen: false
-                      }, true);
-                    }}
-                  >
-                    <Box
-                      display='flex' flexDirection='row' alignItems={'center'}
-                      key={'vRowHome'}
+                  {!reactData.defaultValues.assignmentView &&
+                    <MenuItem
+                      onClick={() => {
+                        updateReactData({
+                          selectPerson: true,
+                          popUpOpen: false
+                        }, true);
+                      }}
                     >
-                      <SwapHorizIcon />
-                      <Typography className={classes.popUpMenuRow} >{`View someone else's calendar`}</Typography>
-                    </Box>
-                  </MenuItem>
+                      <Box
+                        display='flex' flexDirection='row' alignItems={'center'}
+                        key={'vRowHome'}
+                      >
+                        <SwapHorizIcon />
+                        <Typography className={classes.popUpMenuRow} >{`View someone else's calendar`}</Typography>
+                      </Box>
+                    </MenuItem>
+                  }
                   <MenuItem
                     onClick={() => {
                       reactData.defaultValues.agendaView = !reactData.defaultValues.agendaView;
@@ -1156,6 +1172,24 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                   </MenuItem>
                   <MenuItem
                     onClick={() => {
+                      updateReactData({
+                        setPublishDates: true,
+                        popUpOpen: false
+                      }, true);
+                    }}
+                  >
+                    <Box
+                      display='flex' flexDirection='row' alignItems={'center'}
+                      key={'vRowHome'}
+                    >
+                      {<AssignmentTurnedInIcon />}
+                      <Typography className={classes.popUpMenuRow} >
+                        {'Publish'}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
                       onClose();
                     }}
                   >
@@ -1217,13 +1251,19 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         <Avatar
                           className={classes.assignment_avatar}
                           src={this_template.event_data.image}
-                        />
-                        <Typography
-                          noWrap={true}
-                          className={classes.dragNamesLast}
+                          variant={'square'}
                         >
-                          {this_template.event_data.generic_description || this_template.event_data.description}
-                        </Typography>
+                          <EventIcon />
+                        </Avatar>
+                        {(this_template.event_data.generic_description || this_template.event_data.description).split(' ').map((this_word) => (
+                          <Typography
+                            noWrap={true}
+                            className={classes.dragNamesLast}
+                          >
+                            {this_word}
+                          </Typography>
+                        ))
+                        }
                       </Box>
                     ))}
                   </Box>
@@ -1256,7 +1296,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                               <Typography
                                 noWrap={true}
                                 key={`conflict-${cX}_conflictName`}
-                                style={AVATextStyle({ bold: true, size: 0.8, margin: { top: 0.2 } })}
+                                style={AVATextStyle({ bold: true, size: 1.2, margin: { top: 0.2 } })}
                               >
                                 {showPersonSummary(this_candidate.display_name)}
                               </Typography>
@@ -1273,14 +1313,14 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                       {showWeekTotal(this_candidate.person_id, conflict_date)}
                                       <Typography
                                         noWrap={true}
-                                        style={AVATextStyle({ italic: true, size: 0.4, margin: { top: 0.2 } })}>
+                                        style={AVATextStyle({ italic: true, size: 1.0, margin: { top: 0.2 } })}>
                                         {makeDate(conflict_date).relative}
                                       </Typography>
                                       {reactData.conflictInfo[this_candidate.person_id][conflict_date].map((this_conflict, tCN) => (
                                         !this_conflict.open &&
                                         <Typography
                                           key={`conflict-${cX}_${tCN}`}
-                                          style={AVATextStyle({ size: 0.3 })}
+                                          style={AVATextStyle({ size: 1.0 })}
                                           noWrap={true}
                                         >
                                           {`${(this_conflict.time > 0) ? makeTime(this_conflict.time).short : 'All Day'} - ${titleCase(this_conflict.event_title).slice(0, 30)}`}
@@ -1292,7 +1332,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                 :
                                 <Box key={`conflict-${cX}_noconflict`} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
                                   <Typography
-                                    style={AVATextStyle({ italic: true, size: 0.4, margin: { top: 0.2 } })}>
+                                    style={AVATextStyle({ italic: true, size: 1.0, margin: { top: 0.2 } })}>
                                     {'Nothing Scheduled'}
                                   </Typography>
                                 </Box>
@@ -1301,7 +1341,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                           }
                           placement='top-end'
                         >
-                          <Avatar className={classes.assignment_avatar} src={getImage(this_candidate.person_id)} />
+                          <Avatar className={classes.assignment_avatar} src={getImage(this_candidate.person_id)} >
+                            {`${this_candidate.first_name.slice(0, 1)}${this_candidate.last_name.slice(0, 1)}`}
+                          </Avatar>
                         </Tooltip>
                         {(reactData.defaultValues.assignmentDisplayBy
                           && reactData.defaultValues.assignmentDisplayBy.toLowerCase().includes('last'))
@@ -1428,6 +1470,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                               >
                                 <Box
                                   display='flex'
+                                  flexWrap={'wrap'}
                                   flexGrow={1}
                                   flexDirection={(!isDense(this_date.dateObj.numeric$) || (reactData.factor7 > .45)) ? 'row' : 'column'}
                                   justifyContent={agendaView() ? 'flex-start' : 'center'}
@@ -1488,18 +1531,48 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                               {(!isDense(this_date.dateObj.numeric$) || (reactData.factor7 > .45)) &&
                                 <React.Fragment>
                                   {((this_date.eventList.length === 0) || (!eventsToShow(this_date))) ?
-                                    <Box display='flex' flexDirection='column'
-                                      p={2}
-                                      mt={0} mb={1}
-                                      variant='outlined'
-                                      justifyContent='flex-start'
+                                    <Box style={isDense(this_date.dateObj.numeric$)
+                                      ? {
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        paddingLeft: '16px',
+                                        paddingRight: '16px',
+                                        marginTop: 0,
+                                        marginBottom: '24px',
+                                        maxWidth: `${((reactData.factor7 * 220)) - ((reactData.factor7 < 1) ? 25 : 0)}px`,
+                                        justifyContent: 'flex-start',
+                                        overflow: 'auto',
+                                        scrollbarWidth: 'thin',
+                                        overflowX: 'hidden',
+                                      } : {
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        padding: '16px',
+                                        marginTop: 0,
+                                        marginBottom: '8px',
+                                        variant: 'outlined',
+                                        justifyContent: 'flex-start',
+                                      }}
                                       alignItems={agendaView() ? 'flex-start' : 'center'}
                                       textAlign={agendaView() ? 'flex-start' : 'center'}
                                       key={`details${this_date.dateObj.numeric$}_noEvents`}
+                                      onDragOver={(e) =>
+                                        handleDragOver(e, {
+                                          type: 'calendar_cell',
+                                          data: {
+                                            this_date,
+                                            dateIndex
+                                          }
+                                        })
+                                      }
+                                      onDrop={async (e) => {
+                                        await handleDrop(e, 'calendar_cell');
+                                      }}
                                     >
                                       <Typography style={AVATextStyle({
                                         color: reactData.calendar_fill_text,
                                         size: 1,
+                                        textWrap: 'wrap',
                                       })}>
                                         {`No Events Scheduled`}
                                       </Typography>
@@ -1611,7 +1684,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                               {isWaitListed(this_event) &&
                                                 <Typography
                                                   noWrap={true}
-                                                  style={AVATextStyle({ size: 0.6, italic: true })}
+                                                  style={AVATextStyle({ size: 1.2, italic: true })}
                                                 >
                                                   {`You're on the Waitlist`}
                                                 </Typography>
@@ -1624,7 +1697,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                                     &&
                                                     <Typography
                                                       noWrap={true}
-                                                      style={AVATextStyle({ size: 0.6, italic: true })}
+                                                      style={AVATextStyle({ size: 1.2, italic: true })}
                                                     >
                                                       {`You're on the list`}
                                                     </Typography>
@@ -1632,7 +1705,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                                   <Typography
                                                     noWrap={true}
                                                     style={AVATextStyle({
-                                                      size: 0.4,
+                                                      size: 1.0,
                                                     })}
                                                   >
                                                     {((this_event.type === 'time')
@@ -1648,7 +1721,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                                     <Typography
                                                       noWrap={true}
                                                       style={AVATextStyle({
-                                                        size: 0.4,
+                                                        size: 1.0,
                                                       })}
                                                     >
                                                       {makeCalendarTime(this_event.time)}
@@ -1667,7 +1740,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                                 key={`event_${this_event}_slot_owner_${this_owner}`}
                                                 noWrap={true}
                                                 style={AVATextStyle({
-                                                  size: 0.4,
+                                                  size: 0.8,
                                                 })}>
                                                 {`${(this_event.type === 'time') ? makeTime(this_event.slot_owners[this_owner]).short + ' ' : ''}${getPersonName(this_owner.split('%%')[0])}`}
                                               </Typography>
@@ -1755,6 +1828,61 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               }}
             />
           }
+          {!reactData.loading && reactData.setPublishDates &&
+            <AVATextInput
+              titleText={'Publish What Dates'}
+              promptText={['Start date', 'End date']}
+              buttonText={'Set Dates'}
+              onCancel={() => {
+                updateReactData({
+                  setPublishDates: false
+                }, true);
+              }}
+              onSave={async (response) => {
+                if (response.length > 1) {
+                  let publishData = await publishCalendar(
+                    {
+                      client: {
+                        client_id: state.session.client_id,
+                        client_name: state.session.client_name
+                      },
+                      myCalendar: reactData.myCalendar,
+                      requestor: state.session.user_id,
+                      filters: {
+                        filterTextLower: reactData.filterTextLower,
+                        ownerFilter: reactData.idFilter,
+                        eventFilter: reactData.eventIDFilter
+                      },                      
+                      startDate: makeDate(response[0]).date,
+                      endDate: makeDate(response[1]).date
+                    }
+                  )
+                  let message = `Publish complete for ${publishData.dates.from}`;
+                  if (publishData.dates.from !== publishData.dates.to) {
+                    message += ` to ${publishData.dates.to}`
+                  }
+                  message += `.  ${(publishData.people_count === 0) ? 'No' : publishData.people_count} notification${(publishData.people_count > 1) ? 's' : ''} sent.`;
+                  if (publishData.already_published > 0) {
+                    message += `  ${publishData.already_published} event${(publishData.already_published > 1) ? 's' : ''} had already been published.`
+                  }
+                  reactData.myCalendar.forEach((pDate, pDx) => { 
+                    pDate.eventList.forEach((pEvent, pEx) => {
+                      if (publishData.event_list.includes(pEvent.event_key)) {
+                        reactData.myCalendar[pDx].eventList[pEx].published = true;
+                      }
+                    })
+                  })
+                  enqueueSnackbar(message, { variant: 'success' });
+                }
+                
+                updateReactData({
+                  myCalendar: reactData.myCalendar,
+                  setPublishDates: false
+                }, true);
+              }}
+            />
+          }
+
           {!reactData.loading && reactData.event_being_edited &&
             <CalendarEventEditForm
               pEventCode={reactData.event_being_edited.event_key}
@@ -1913,6 +2041,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 setPerson: false,
                 setDuration: reactData.selectedTemplate.event_data.time.duration,
                 forms: reactData.selectedTemplate.forms,
+                customizations: reactData.selectedTemplate.customizations,
                 title: reactData.selectedTemplate.event_data.generic_description,
                 setDate: ((reactData.appointmentDate && !reactData.appointmentDate.error) ? reactData.appointmentDate : null)
               }}

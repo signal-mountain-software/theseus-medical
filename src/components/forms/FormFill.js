@@ -414,10 +414,10 @@ export default ({ request = {}, onClose }) => {
         default_ref = reactData.formRec.fields[this_field].default.ref;
       }
     }
-//    if (reactData.formRec.fields?.[this_field]?.default
-//      && reactData.formRec.fields?.[this_field]?.default.hasOwnProperty('assigned_to')) {
-//      default_ref += reactData.formRec.fields[this_field].default.assigned_to;
-//    }
+    //    if (reactData.formRec.fields?.[this_field]?.default
+    //      && reactData.formRec.fields?.[this_field]?.default.hasOwnProperty('assigned_to')) {
+    //      default_ref += reactData.formRec.fields[this_field].default.assigned_to;
+    //    }
     if (!default_source) {
       defaultText = (default_ref || '');
     }
@@ -451,7 +451,7 @@ export default ({ request = {}, onClose }) => {
             return;
           }
           else if ((reactData?.formRec?.fields?.[this_field]?.default?.type === 'assigned_to')
-          && (reactData.document[default_ref].hasOwnProperty('assigned__to'))) {
+            && (reactData.document[default_ref].hasOwnProperty('assigned__to'))) {
             handleChangeValue({
               newList: reactData.document[default_ref].assigned__to,
               prop: this_field
@@ -460,6 +460,8 @@ export default ({ request = {}, onClose }) => {
           }
           else if (!reactData.document[default_ref][this_field]) {
             // no op - the refererenced form field has no value on that form
+            let newPrompt = reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', `** None **`);
+            reactData.formRec.fields[this_field].prompt.ref = newPrompt;
             handleChangeValue({
               newList: [],
               prop: this_field
@@ -1128,7 +1130,7 @@ export default ({ request = {}, onClose }) => {
         documentRec.title = reactData.document[reactData.form_id].document__title;
       }
       else {
-        documentRec.title = `${reactData.formRec.form_name} - completed ${makeDate(new Date()).absolute}`
+        documentRec.title = `${reactData.formRec.form_name} - completed ${makeDate(new Date()).absolute}`;
       }
     }
     if (document_id) {
@@ -1450,11 +1452,11 @@ export default ({ request = {}, onClose }) => {
                             })}
                             disabled={(viewOnly())}
                             autoComplete='off'
-                            value={(reactValues[this_field] && reactValues[this_field].valueText)
+                            defaultValue={(reactValues[this_field] && reactValues[this_field].valueText)
                               ? reactValues[this_field].valueText
                               : ''
                             }
-                            onChange={(event) => {
+                            onBlur={(event) => {
                               handleChangeValue({
                                 newText: event.target.value,
                                 prop: this_field,
@@ -1754,7 +1756,7 @@ export default ({ request = {}, onClose }) => {
                                               return (this_person.value === this_value);
                                             })).label,
                                             value: this_value
-                                          }
+                                          };
                                         })
                                         : []
                                       )
