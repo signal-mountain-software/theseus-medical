@@ -2856,7 +2856,8 @@ export async function publishCalendar(request) {
       to: request.endDateObj.absolute,
     },
     people_count: 0,
-    already_published: 0
+    already_published: 0,
+    event_list: []
   };
 
   // get a calendar date, check to see if the date is in the range
@@ -2869,6 +2870,7 @@ export async function publishCalendar(request) {
       let this_event = this_date.eventList[eX];
       if (!okToShow(this_event)) { continue; }
       // mark this occurrence as published
+      response.event_list.push(this_event.event_key);
       await dbClient
         .update({
           Key: {

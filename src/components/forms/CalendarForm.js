@@ -1865,10 +1865,18 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                   if (publishData.already_published > 0) {
                     message += `  ${publishData.already_published} event${(publishData.already_published > 1) ? 's' : ''} had already been published.`
                   }
-
+                  reactData.myCalendar.forEach((pDate, pDx) => { 
+                    pDate.eventList.forEach((pEvent, pEx) => {
+                      if (publishData.event_list.includes(pEvent.event_key)) {
+                        reactData.myCalendar[pDx].eventList[pEx].published = true;
+                      }
+                    })
+                  })
                   enqueueSnackbar(message, { variant: 'success' });
                 }
+                
                 updateReactData({
+                  myCalendar: reactData.myCalendar,
                   setPublishDates: false
                 }, true);
               }}
