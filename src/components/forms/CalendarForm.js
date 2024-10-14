@@ -1839,11 +1839,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 }, true);
               }}
               onSave={async (response) => {
-                updateReactData({
-                  setPublishDates: false
-                }, false);
                 if (response.length > 1) {
-                  await publishCalendar(
+                  let publishData = await publishCalendar(
                     {
                       client: {
                         client_id: state.session.client_id,
@@ -1860,7 +1857,20 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                       endDate: makeDate(response[1]).date
                     }
                   )
+                  let message = `Publish complete for ${publishData.dates.from}`;
+                  if (publishData.dates.from !== publishData.dates.to) {
+                    message += ` to ${publishData.dates.to}`
+                  }
+                  message += `.  ${(publishData.people_count === 0) ? 'No' : publishData.people_count} notification${(publishData.people_count > 1) ? 's' : ''} sent.`;
+                  if (publishData.already_published > 0) {
+                    message += `  ${publishData.already_published} event${(publishData.already_published > 1) ? 's' : ''} had already been published.`
+                  }
+
+                  enqueueSnackbar(message, { variant: 'success' });
                 }
+                updateReactData({
+                  setPublishDates: false
+                }, true);
               }}
             />
           }

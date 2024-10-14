@@ -2839,6 +2839,8 @@ export async function publishCalendar(request) {
     endDate: makeDate(response[1]).date
   }
   */
+  
+  let ava_env = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
 
   // make request dates into dateObj
   request.startDateObj = makeDate(request.startDate);
@@ -2847,9 +2849,19 @@ export async function publishCalendar(request) {
   // recipient object
   let recipients = {};
 
+  // response
+  let response = {
+    dates: {
+      from: request.startDateObj.absolute,
+      to: request.endDateObj.absolute,
+    },
+    people_count: 0,
+    already_published: 0
+  };
+
   // get a calendar date, check to see if the date is in the range
   for (let dX = 0; dX < request.myCalendar.length; dX++) {
-    let this_date = request.myCalendar[dX]; 
+    let this_date = request.myCalendar[dX];
     if (this_date.dateObj.numeric < request.startDateObj.numeric) { continue; }
     if (this_date.dateObj.numeric > request.endDateObj.numeric) { break; }
     // good date, get events
@@ -2892,18 +2904,18 @@ export async function publishCalendar(request) {
           recipients[this_slotOwner].dates[this_date.dateObj.numeric$] = {
             dateObj: this_date.dateObj,
             eventList: []
-          }
+          };
         }
         recipients[this_slotOwner].dates[this_date.dateObj.numeric$].eventList.push(event_message.trim());
         recipients[this_slotOwner].event_count++;
-      })
+      });
     }
   }
   // we've got the recipient object loaded, send one message to each recipient
   for (const this_recipient in recipients) {
     let messageText = `Hello!  `;
     if (recipients[this_recipient].event_count > 1) {
-      messageText += `You are scheduled for these upcoming ${request.client.client_name} activities:`
+      messageText += `You are scheduled for these upcoming ${request.client.client_name} activities:`;
       for (const this_date in recipients[this_recipient].dates) {
         messageText += `\n\rOn ${recipients[this_recipient].dates[this_date].dateObj.absolute_full} -`;
         let eLL = recipients[this_recipient].dates[this_date].eventList.length;
@@ -2940,15 +2952,22 @@ export async function publishCalendar(request) {
       client: request.client.client_id,
       author: request.requestor,
       messageText: messageText,
-      testMode: true,
+      testMode: (ava_env !== 'D'),
       thread_id: `calNotify_${this_recipient}/${nowTime}`,
       recipientList: this_recipient,
       subject: `${request.client.client_name} calendar notification`
     };
+    response.people_count++;
     await sendMessages(messageObj);
   }
 
+  return response;
+
   function okToShow(this_event) {
+    if (this_event.published) {
+      response.already_published++;
+      return false;
+    }
     if (this_event.date === '29991231') { return false; }   // event was soft-deleted
     if (!request.filters) {
       return true;
