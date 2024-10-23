@@ -473,7 +473,7 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
         assignmentRows = [{
           title: '',
           assignmentList: await getGroupMembers({
-            groupList: [...makeArray(reactData.defaultValues.allowAssign), state.session.patient_id],
+            groupList: [...makeArray(reactData.defaultValues.allowAssign)],
             short: true
           })
         }];
@@ -485,7 +485,7 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
             assignmentRows.push({
               title: (this_row.hasOwnProperty('title') ? this_row.title : Object.keys(this_row)[0]),
               assignmentList: await getGroupMembers({
-                groupList: [...makeArray(this_row.groups || this_row.group), state.session.patient_id],
+                groupList: [...makeArray(this_row.groups || this_row.group)],
                 short: true
               })
             });
@@ -494,7 +494,7 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
             assignmentRows.push({
               title: `Group ${a}`,
               assignmentList: await getGroupMembers({
-                groupList: [...makeArray(this_row), state.session.patient_id],
+                groupList: [...makeArray(this_row)],
                 short: true
               })
             });
