@@ -250,6 +250,7 @@ export default ({ request = {}, onClose }) => {
   const [reactData, setReactData] = React.useState({
     formType_filter: options.formTypeList || ['*all'],
     formNoAdd: (options.formNoAdd ? makeArray(options.formNoAdd) : []),
+    formMaxToShow: (options.formMaxToShow ? Number(options.formMaxToShow) : 999),
     people_filter: makeArray(options.peopleList) || ['*person'],
     assignedTo_filter: makeAssignedList(),
     user_fontSize: AVADefaults({ fontSize: 'get' }) || 1.5,
@@ -967,7 +968,9 @@ export default ({ request = {}, onClose }) => {
                         </React.Fragment>
                       }
                       {(reactData.assignedTo_filter || this_form.form_expanded) && this_form.documentList.map((this_document, documentNdx) => (
-                        documentRow({ this_document, documentNdx, this_person, personNdx, this_form, formNdx, shortForm: !!reactData.assignedTo_filter })
+                        (documentNdx < reactData.formMaxToShow)
+                        ? documentRow({ this_document, documentNdx, this_person, personNdx, this_form, formNdx, shortForm: !!reactData.assignedTo_filter })
+                        : null
                       ))
                       }
                     </React.Fragment>
