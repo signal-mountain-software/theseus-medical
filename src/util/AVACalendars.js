@@ -1272,23 +1272,59 @@ export async function writeSlot(body) {
         });
         if (assigned_to.length > 0) {
           for (let p = 0; p < pertains_to.length; p++) {
-            let this_document_id = `${pertains_to[p]}%%${this_form.form_id}%%${event_key}`;
-            // does the document already exist?
-            let documentRec = await dbClient
-              .get({
-                Key: {
-                  client_id: body.client,
-                  document_id: this_document_id
-                },
-                TableName: "Documents"
-              })
-              .promise()
-              .catch(error => {
-                cl({ 'Error reading Documents': error });
-              });
-            if (recordExists(documentRec)) {
+            let documentRec;
+            let this_document_id;
+            let goodGet = false;
+            let newAssignmentList = [];
+            // if you only have "view" access, find the most recent document of this type and assign the person to it
+            if (this_form.access === 'view') { 
+              let queryObj = {
+                TableName: 'Documents',
+                KeyConditionExpression: 'client_id = :c and begins_with(document_id, :dID)',
+                ScanIndexForward: false,
+                Limit: 1,
+                ExpressionAttributeValues: {
+                  ':c': body.client,
+                  ':dID': `${pertains_to[p]}%%${this_form.form_id}%%`
+                }
+              };
+              let queryResult = await dbClient
+                .query(queryObj)
+                .promise()
+                .catch(error => {
+                  if (error.code === 'NetworkingError') {
+                    cl(`Security Violation or no Internet Connection`);
+                  }
+                  cl(`Error reading ${queryObj.TableName} id ${error}`);
+                });
+              if (recordExists(queryResult)) {
+                goodGet = true;
+                newAssignmentList = queryResult.Items[0].assigned_to || [];
+                this_document_id = queryResult.Items[0].document_id;
+              }
+            }
+            else {
+              this_document_id = `${pertains_to[p]}%%${this_form.form_id}%%${event_key}`;
+              // does the document already exist?
+              documentRec = await dbClient
+                .get({
+                  Key: {
+                    client_id: body.client,
+                    document_id: this_document_id
+                  },
+                  TableName: "Documents"
+                })
+                .promise()
+                .catch(error => {
+                  cl({ 'Error reading Documents': error });
+                });
+              if (recordExists(documentRec)) {
+                goodGet = true;
+                newAssignmentList = documentRec.assigned_to || [];
+              }
+            }
+            if (goodGet) {
               // add to the assigned list; don't remove anyone
-              let newAssignmentList = documentRec.assigned_to || [];
               assigned_to.forEach(this_assignment => {
                 if (!newAssignmentList.includes(this_assignment)) {
                   newAssignmentList.push(this_assignment);
@@ -1308,8 +1344,14 @@ export async function writeSlot(body) {
                 .catch(error => { cl(`caught error updating Documents; error is: `, error); });
             }
             else {
-              let pName = await makeName(pertains_to[p]);
-              let title = `${pName} - ${slotInfo.eventRec.eventData.event_data.description} - ${makeDate(occurrence).absolute}`;
+              let title = '';
+              if (this_form.titleWords) {
+                title = this_form.titleWords;
+              }
+              else {
+                title = await makeName(pertains_to[p]);
+              }
+              title += ` - ${slotInfo.eventRec.eventData.event_data.description} - ${makeDate(occurrence).absolute}`;
               let putDocument = {
                 client_id: body.client,
                 document_id: this_document_id,
