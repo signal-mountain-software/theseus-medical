@@ -531,17 +531,23 @@ export function makeTime(pTime) {
     let inTime;
     let ampm, hh, hh$, mm$;
     let mm = 0;
+    let error = false;
+    let empty = false;
     if (isDate(pTime)) {
         hh = pTime.getHours();
         mm = pTime.getMinutes();
     }
     else {
         if (typeof (pTime) === 'string') {
+            if (pTime.trim() === '') {
+                empty = true;
+            }
             if (pTime.replace(/\D+/g, '') === '') {
                 ampm = 'am';
                 hh = 0;
                 mm$ = '00';
                 mm = 0;
+                empty = true;
             }
             else {
                 inTime = pTime.toLowerCase();
@@ -561,11 +567,13 @@ export function makeTime(pTime) {
         if (!ampm && (hh < 7)) { hh += 12; }
         if (mm$) { mm = Number(mm$.replace(/\D+/g, '')); }
         if (mm > 59) {
+            error = true;
             let hAdd = Math.floor(mm / 60);
             mm -= (hAdd * 60);
             hh += hAdd;
         }
         if (hh >= 23) {
+            error = true;
             hh = hh % 24;
         }
         if (hh > 12) {
@@ -604,6 +612,8 @@ export function makeTime(pTime) {
         numeric24,
         minutesSinceMidnight: ((hh24 * 60) + mm),
         string24: `0000${numeric24}`.slice(-4),
-        dayPart
+        dayPart,
+        empty,
+        error
     };
 }

@@ -289,7 +289,11 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
         handleSave();
       }
       else if (Array.isArray(promptText)) {
-        let currentFocus = reactData.focusOn + 1;
+        let currentIndex = promptText.findIndex(this_prompt => {
+          let promptParts = this_prompt.split(']');
+          return (promptParts[promptParts.length - 1] === event.currentTarget.innerText)
+        })
+        let currentFocus = currentIndex + 1;
         if (currentFocus >= promptText.length) {
           currentFocus = 0;
         }
@@ -451,6 +455,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                           <Box
                             key={`selectBox_${ndx}`}
                             display='flex' flexGrow={1} flexDirection='column'
+                            pt={1} pb={1}
                           >
                             <Select
                               options={selectionList[ndx].map(sel => {
@@ -482,6 +487,9 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                               onChange={(values) => {
                                 if (values.length > 0) {
                                   handleChangeTextInput(values, ndx);
+                                  updateReactData({
+                                    focusOn: (ndx + 1)
+                                  }, true);
                                 }
                               }}
                             />
@@ -496,7 +504,8 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                                 style={AVATextStyle({
                                   size: 0.8,
                                   margin: { left: 0, top: 0, bottom: 0.5 },
-                                  color: 'black'
+                                  color: 'black',
+                                  opacity: '54%',
                                 })}
                               >
                                 {prompt.split(']').pop()}

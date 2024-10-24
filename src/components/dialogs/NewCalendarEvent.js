@@ -240,8 +240,12 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     event_title: (options.title ? titleCase(options.title.trim())
       : ((options.setPerson && isAppointment) ? (`Appointment for ${patient.display_name}`) : '')),
     title_override: false,
-    event_location: ((options.setPerson && isAppointment) ? patient.location : ''),
-    location_override: false
+    event_location: (options.location
+      ? options.location
+      : ((options.setPerson && isAppointment) ? patient.location : '')
+    ),
+    location_override: false,
+    initialized: false
   });
 
   const updateReactData = (newData, force = false) => {
@@ -386,9 +390,13 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   }
 
   function OK2Save() {
+    let fromOK = !!timeFromAs24HourNumber;
+    let toOK = !!timeToAs24HourNumber;
     return ((reactData.event_date && !reactData.event_date.error)
       && (reactData.event_title.trim() !== '')
       && (!isAppointment || (reactData.preReservationList.length > 0))
+      && fromOK
+      && toOK
     );
   }
 
@@ -408,29 +416,33 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
 
   const handleChangeTimeFrom = event => {
     setTimeFromAsDisplayString(event.target.value);
+    setTimeFromAs24HourNumber(null);
   };
 
   const handleTimeFromExit = event => {
-    if ((event.key === 'Enter' || event.type === 'blur') && time_from_display_string) {
-      let madeTime = makeTime(time_from_display_string);
-      setTimeFromAs24HourNumber(madeTime.numeric24);
-      setTimeFromAsDisplayString(madeTime.time);
-      if (!time_to_display_string || (time_to_display_string.trim() === '') || (timeToAs24HourNumber && (timeToAs24HourNumber < madeTime.numeric24))) {
-        let calcTo;
-        if (options.setDuration) {
-          let tempTime = madeTime.minutesSinceMidnight + options.setDuration;
-          calcTo = makeTime((Math.round(tempTime / 60) * 100) + (tempTime % 60));
-        }
-        else {
-          calcTo = makeTime(madeTime.numeric24 + 100);
-        }
-        setTimeToAs24HourNumber(calcTo.numeric24);
-        setTimeToAsDisplayString(calcTo.time);
-        if (displayTimes.length > 0) {
-          handleExitInterval({ key: event.key, type: event.type, toTime: calcTo.numeric24 });
-        }
+    let madeTime = makeTime(time_from_display_string);
+    if (madeTime.error || madeTime.empty) {
+      setTimeFromAs24HourNumber(null);
+      return false;
+    }
+    setTimeFromAs24HourNumber(madeTime.numeric24);
+    setTimeFromAsDisplayString(madeTime.time);
+    if (!time_to_display_string || (time_to_display_string.trim() === '') || (timeToAs24HourNumber && (timeToAs24HourNumber < madeTime.numeric24))) {
+      let calcTo;
+      if (options.setDuration) {
+        let tempTime = madeTime.minutesSinceMidnight + options.setDuration;
+        calcTo = makeTime((Math.round(tempTime / 60) * 100) + (tempTime % 60));
+      }
+      else {
+        calcTo = makeTime(madeTime.numeric24 + 100);
+      }
+      setTimeToAs24HourNumber(calcTo.numeric24);
+      setTimeToAsDisplayString(calcTo.time);
+      if (displayTimes.length > 0) {
+        handleExitInterval({ toTime: calcTo.numeric24 });
       }
     }
+    return true;
   };
 
   function assumeToTime(pFromTime) {
@@ -442,18 +454,22 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   };
 
   const handleTimeToExit = event => {
-    if ((event.key === 'Enter' || event.type === 'blur') && time_to_display_string) {
-      let madeTime = makeTime(time_to_display_string);
-      setTimeToAs24HourNumber(madeTime.numeric24);
-      setTimeToAsDisplayString(madeTime.time);
-      if (displayTimes.length > 0) {
-        handleExitInterval({ key: event.key, type: event.type, toTime: madeTime.numeric24 });
-      }
+    let madeTime = makeTime(time_to_display_string);
+    if (madeTime.error || madeTime.empty) {
+      setTimeToAs24HourNumber(null);
+      return false;
     }
+    setTimeToAs24HourNumber(madeTime.numeric24);
+    setTimeToAsDisplayString(madeTime.time);
+    if (displayTimes.length > 0) {
+      handleExitInterval({ toTime: madeTime.numeric24 });
+    }
+    return true;
   };
 
   const handleChangeTimeTo = event => {
     setTimeToAsDisplayString(event.target.value);
+    setTimeToAs24HourNumber(null);
   };
 
   const handleChangeLastDate = event => {
@@ -548,9 +564,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
 
   const handleExitInterval = event => {
     let intervals = [];
-    if (
-      (event.key === 'Enter' || event.type === 'blur')
-      && (timeFromAs24HourNumber || event.hasOwnProperty('fromTime'))
+    if ((timeFromAs24HourNumber || event.hasOwnProperty('fromTime'))
       && (timeToAs24HourNumber || event.hasOwnProperty('toTime'))
     ) {
       let useFromTime = event.fromTime || timeFromAs24HourNumber;
@@ -613,6 +627,37 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     }
   };
 
+  React.useEffect(() => {
+    async function initialize() {
+      if (options.setStart) {
+        let startTime = makeTime(options.setStart);
+        if (!startTime.empty && !startTime.error) {
+          setTimeFromAsDisplayString(startTime.time);
+          setTimeFromAs24HourNumber(startTime.numeric24);
+        }
+        if ((!options.setEnd || (options.setEnd.trim() === '')) && options.setDuration) {
+          let tempTime = startTime.minutesSinceMidnight + options.setDuration;
+          options.setEnd = (Math.floor(tempTime / 60) * 100) + (tempTime % 60);
+        }
+      }
+      if (options.setEnd) {
+        let endTime = makeTime(options.setEnd);
+        if (!endTime.empty && !endTime.error) {
+          setTimeToAsDisplayString(endTime.time);
+          setTimeToAs24HourNumber(endTime.numeric24);
+        }
+      }
+      let allGood = OK2Save();
+      if (allGood && options.noDisplay) {
+        handleUpdate();
+      }
+    }
+    if (!reactData.initialized) {
+      initialize();
+      updateReactData({ initialized: true }, false);
+    }
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
   // **************************
 
   return (
@@ -639,7 +684,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
       }
       {showNewEvent && !customizeButton &&
         <React.Fragment>
-          <Box mt={1} py={1} px={3} borderBottom={2}>
+          <Box mt={1} py={1} px={2} borderBottom={2}>
             <Typography variant='h6'>
               {`${options.title || (isAppointment ? 'Appointment' : 'Event')} Details`}
             </Typography>
@@ -802,7 +847,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                       updateReactData(reactUpd, true);
                     }
                   }}
-                helperText='Event Date'
+                  helperText='Event Date'
                 />
               </div>
               {reactData.event_date && !reactData.event_date.error &&
@@ -821,7 +866,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                       name="method"
                       value={reactData.prefMethod}
                       onChange={(event) => {
-                        updateReactData({ prefMethod: event.target.value }, true)
+                        updateReactData({ prefMethod: event.target.value }, true);
                       }}
                     >
                       <FormControlLabel
@@ -995,7 +1040,11 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                   id='time_from_display_string'
                   value={time_from_display_string}
                   onChange={handleChangeTimeFrom}
-                  onKeyPress={handleTimeFromExit}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleTimeFromExit(e);
+                    }
+                  }}
                   onBlur={handleTimeFromExit}
                   helperText='Start time'
                 />
@@ -1004,12 +1053,16 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                   id='time_to_display_string'
                   value={time_to_display_string}
                   onChange={handleChangeTimeTo}
-                  onKeyPress={handleTimeToExit}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleTimeToExit(e);
+                    }
+                  }}
                   onBlur={handleTimeToExit}
                   helperText='End time'
                 />
               </div>
-              {!personalEvent && !isAppointment &&
+              {!personalEvent && !isAppointment && !options.simpleForm &&
                 <Box
                   display="flex"
                   pt={2}
@@ -1074,7 +1127,11 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                     id='slot_interval'
                     value={slot_interval}
                     onChange={handleChangeInterval}
-                    onKeyPress={handleExitInterval}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        handleExitInterval(e);
+                      }
+                    }}
                     onBlur={handleExitInterval}
                     helperText='How long between appointment times? (in minutes)'
                   />
@@ -1130,7 +1187,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                   </Box>
                 </Box>
               }
-              {!personalEvent && !isAppointment &&
+              {!personalEvent && !isAppointment && !options.simpleForm &&
                 <Box
                   display="flex"
                   pt={2}
