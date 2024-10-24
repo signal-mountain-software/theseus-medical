@@ -458,7 +458,7 @@ export default ({ request = {}, onClose }) => {
             });
             return;
           }
-          else if (!reactData.document[default_ref][this_field]) {
+          else if (!reactData.document[default_ref][this_field] && loadInitialOptions()) {
             // no op - the refererenced form field has no value on that form
             let newPrompt = reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', `** None **`);
             reactData.formRec.fields[this_field].prompt.ref = newPrompt;
@@ -499,12 +499,18 @@ export default ({ request = {}, onClose }) => {
                         else {
                           promptText = reactData.document[prompt_ref][this_field];
                         }
+                        if (!promptText) {
+                          promptText = '* no value *';
+                        }
                         reactData.formRec.fields[this_field].prompt.ref =
-                          reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', promptText.join('; '));
+                          reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', makeArray(promptText).join('; '));
                       }
                       else {
+                        if (!defaultText) {
+                          defaultText = '* no value *';
+                        }
                         reactData.formRec.fields[this_field].prompt.ref =
-                          reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', defaultText.join('; '));
+                          reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', makeArray(defaultText).join('; '));
                       }
                     }
                     if (reactData.formRec.fields[this_field].prompt.ignore_if) {
@@ -559,8 +565,10 @@ export default ({ request = {}, onClose }) => {
                 break;
               }
               case 'geolocation': {
-                defaultText = `${reactData.formRec.fields[this_field].prompt.ref}: ${defaultText}`;
-                defaultValue = reactData.document[default_ref][this_field];
+                if (defaultText) {
+                  defaultText = `${reactData.formRec.fields[this_field].prompt.ref}: ${defaultText}`;
+                  defaultValue = reactData.document[default_ref][this_field];
+                }
                 break;
               }
               case 'phone': {
@@ -804,10 +812,10 @@ export default ({ request = {}, onClose }) => {
     }
     let tempObj = {};
     if (reactValues.hasOwnProperty(prop)) {
-      tempObj = deepCopy(reactValues[prop]);
+      tempObj = deepCopy(reactValues[prop]) || {};
     }
     else {
-      tempObj = deepCopy(reactValues.defaultObj);
+      tempObj = deepCopy(reactValues.defaultObj) || {};
     }
     tempObj.valueText = newText;
     tempObj.valueList = newList;
@@ -1102,14 +1110,41 @@ export default ({ request = {}, onClose }) => {
   };
 
   const handleSave = async ({ document_id, save_continue }) => {
-    let documentRec = {
-      client_id: state.session.client_id,
-      completed_by: state.session.user_id,
-    };
-    if (reactData.assign_to) {
-      documentRec.assigned_to = reactData.assign_to;
+    let documentRec;
+    let foundDoc = await dbClient
+      .get({
+        Key: {
+          client_id: state.session.client_id,
+          document_id
+        },
+        TableName: "Documents"
+      })
+      .promise()
+      .catch(error => {
+        cl(`***ERR reading Groups*** caught error is: ${error}`, document_id);
+      });
+    if (!recordExists(foundDoc)) {
+      documentRec = {
+        client_id: state.session.client_id,
+        document_id
+      };
     }
-    if (reactData.formRec.title) {
+    else {
+      documentRec = foundDoc.Item;
+    }
+    documentRec.completed_by = state.session.user_id;
+    if (reactData.assign_to) {
+      if (!documentRec.assigned_to) {
+        documentRec.assigned_to = [reactData.assign_to];
+      }
+      else if (!Array.isArray(documentRec.assigned_to)) {
+        documentRec.assigned_to = [documentRec.assigned_to];
+      }
+      else {
+        documentRec.assigned_to.push(reactData.assign_to);
+      }
+    }
+    if (reactData.formRec.title && !reactData.document[reactData.form_id].document__title) {
       let titleFields = reactData.formRec.title.split('%%');
       let results = '';
       titleFields.forEach(titleWord => {
@@ -1847,7 +1882,7 @@ export default ({ request = {}, onClose }) => {
                                     textWrap: 'wrap'
                                   },
                                     reactData.formRec.fields[this_field].prompt?.options?.button || {},
-                                    ((!!(reactValues[this_field] && reactValues[this_field].value))
+                                    ((!!(reactValues[this_field] && reactValues[this_field].valueText))
                                       ? {
                                         color: (reactData.formRec.fields[this_field].prompt?.options?.button?.backgroundColor || 'blue'),
                                         backgroundColor: 'white'
