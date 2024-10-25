@@ -2134,14 +2134,14 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                   isAppointment: false
                 };
                 if (newEvent) {
-                  let slotObj = {};
-                  newEvent.slots.forEach(this_slot => {
-                    slotObj[this_slot.slot_owner] = this_slot.slot_owner;
-                  });
                   for (let o = 0; o < newEvent.occRecords.occArray.length; o++) {
                     let newOccDate = newEvent.occRecords.occArray[o];
                     let foundIt = reactData.myCalendar.findIndex(this_date => {
                       return (this_date.dateObj.numeric === newOccDate);
+                    });
+                    let slotObj = {};
+                    newEvent.slots.forEach(this_slot => {
+                      slotObj[this_slot.slot_owner] = this_slot.slot_owner;
                     });
                     if (foundIt > -1) {
                       let newEntry = Object.assign({}, newEvent, {
