@@ -12,7 +12,7 @@ import CloseIcon from '@material-ui/icons/Close';
 import TextField from '@material-ui/core/TextField';
 
 import Paper from '@material-ui/core/Paper';
-import { switchActiveAccount, cl } from '../../util/AVAUtilities';
+import { switchActiveAccount, cl, array_in_array } from '../../util/AVAUtilities';
 import { getImage } from '../../util/AVAPeople';
 
 import useSession from '../../hooks/useSession';
@@ -157,6 +157,7 @@ export default ({ open, roles, onClose }) => {
     if (!pLine) { return false; }
     if (pLine.access === 'none') { return false; }
     if (pLine.access === 'view') { return false; }
+    if (array_in_array(state?.session?.group_assignments?.inactive, pLine.groups)) { return false; }
     if (!person_filter) { return true; }
     return Object.values(pLine).toString().toLowerCase().includes(person_filter);
   };
