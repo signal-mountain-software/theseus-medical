@@ -50,6 +50,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
   let myPeopleRec = await getPerson(person_id);
   let myClass;
   let accessList = {};
+  let respList = {};
   let proxyList = [];
   let birthdayList = {};
   if (myPeopleRec.account_class) {
@@ -82,6 +83,9 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
   if (myClass !== 'inactive') {
     if (!session || (session.session_id !== person_id)) {
       session = await getSession(person_id);
+    }
+    if (!session.hasOwnProperty('responsible_for')) {
+      session.responsible_for = [];
     }
     let accessLevelTable = ['none', 'restricted', 'view', 'proxy', 'full'];
     let clientList = [pClient_id];
@@ -122,6 +126,12 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         count: {},
         list: []
       };
+      respList[client_id] = {
+        name: clientName.customization_value,
+        logo: clientLogo.icon,
+        count: {},
+        list: []
+      };
       let options = {};
       accessLevelTable.forEach(a => { accessList[client_id].count[a] = 0; });
       if (['master', 'support', 'admin'].includes(myClass)) {
@@ -153,8 +163,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
                 continue;
               }
               // am I specificaly responsible for this person?
-              if (session.hasOwnProperty('responsible_for')
-                && session.responsible_for.includes(p.person_id)
+              if (session.responsible_for.includes(p.person_id)
                 && ((myClass !== 'family') || !(['none', 'na', 'cancelled', 'inactive'].includes(session.subscription_status)))
               ) {
                 myMaxAccessLevelToThisPerson = 3;
@@ -233,7 +242,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
             display_name: `${p.name.first} ${p.name.last}`,
             preferred_method: p.preferred_method,
             id: p.person_id,
-            access: accessLevel
+            access: accessLevel,
           };
           if (client_id === session.client_id) {
             pRec2Push.directory_option = p.directory_option;
@@ -244,7 +253,12 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
             pRec2Push.search_data = p.search_data;
             pRec2Push.session = p.session;
           };
-          accessList[client_id].list.push(pRec2Push);
+          if (session.responsible_for.includes(p.person_id) || (p.person_id === person_id)) {
+            respList[client_id].list.push(pRec2Push);
+          }
+          else {
+            accessList[client_id].list.push(pRec2Push);
+          }
         }
       };
       // sort names within this client
@@ -255,6 +269,14 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         else if (a.first < b.first) { return -1; }
         else { return 0; }
       });
+      respList[client_id].list.sort((a, b) => {
+        if (a.last > b.last) { return 1; }
+        else if (a.last < b.last) { return -1; }
+        else if (a.first > b.first) { return 1; }
+        else if (a.first < b.first) { return -1; }
+        else { return 0; }
+      });
+      accessList[client_id].list.unshift(...respList[client_id].list);
       accessList[client_id].shortList = accessList[client_id].list.map(p => {
         accessList[client_id].count[p.access]++;
         let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
@@ -298,8 +320,8 @@ export async function getAllClients() {
   let returnArray = [];
   if (recordExists(everyClient)) {
     let activeClients = everyClient.Items.filter(this_client => {
-      return (!this_client.disabled)
-    })
+      return (!this_client.disabled);
+    });
     activeClients.sort((a, b) => {      // sort by client name
       if (a.customization_value > b.customization_value) { return 1; }
       else { return -1; }
@@ -849,29 +871,29 @@ export async function getGroupMembers(request = {}) {
     });
   if (recordExists(gPeopleRecs)) {
     gPeopleRecs.Items.forEach(personRec => {
-        if (personRec.groups.some(this_group => {
-          return (all_groups || request.groupList.includes(this_group) || request.groupList.includes(personRec.person_id));
-        })) {
-          let this_response = {
-            person_id: personRec.person_id,
-            display_name: (`${personRec.name.first.trim()} ${personRec.name.last.trim()}`),
-            first_name: personRec.name.first,
-            last_name: personRec.name.last,
-            search_data: personRec.search_data
-          };
-          if (!request.short) {
-            this_response.member_of = deepCopy(personRec.groups);
-            for (const mType in personRec.messaging) {
-              if (!mType.includes('_private')) {
-                if (request.ignore_unlisted || !personRec.messaging[`${mType}_private`]) {
-                  this_response[mType] = personRec.messaging[mType];
-                }
+      if (personRec.groups.some(this_group => {
+        return (all_groups || request.groupList.includes(this_group) || request.groupList.includes(personRec.person_id));
+      })) {
+        let this_response = {
+          person_id: personRec.person_id,
+          display_name: (`${personRec.name.first.trim()} ${personRec.name.last.trim()}`),
+          first_name: personRec.name.first,
+          last_name: personRec.name.last,
+          search_data: personRec.search_data
+        };
+        if (!request.short) {
+          this_response.member_of = deepCopy(personRec.groups);
+          for (const mType in personRec.messaging) {
+            if (!mType.includes('_private')) {
+              if (request.ignore_unlisted || !personRec.messaging[`${mType}_private`]) {
+                this_response[mType] = personRec.messaging[mType];
               }
             }
           }
-          response.push(this_response);
         }
-    });    
+        response.push(this_response);
+      }
+    });
     if (request.withResponsible) {
       for (let rN = 0; rN < response.length; rN++) {
         let sessionRec = await getSession(response[rN].person_id);

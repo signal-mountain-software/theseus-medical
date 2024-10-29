@@ -574,11 +574,14 @@ export default ({
     case 'show_groups':
       return (
         <ShowGroup
-          pSession={session}
-          pGroup_id={defaultObject?.groups || defaultValue}
-          pGroup_name={message}
-          peopleList={values}
-          showList={defaultObject?.mode || 'full'}
+          options={{
+            pSession: session,
+            pGroup_id: (defaultObject?.groups || defaultValue),
+            pGroup_name: message,
+            peopleList: values,
+            showList: (defaultObject?.mode || 'full'),
+            safeMode: defaultObject.safeMode
+          }}
           onClose={(updatesMade) => {
             if (updatesMade) {
               window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
@@ -603,11 +606,13 @@ export default ({
     case 'group_form':
       return (
         <GroupForm
-          groupMemberList={state.accessList}
-          peopleList={defaultValue || values}
-          pPatient={session.patient_id}
-          pPatientName={session.patient_display_name}
-          pClient={session.client_id}
+          options={{
+            groupMemberList: state.accessList,
+            peopleList: defaultValue || values,
+            pPatient: session.patient_id,
+            pPatientName: session.patient_display_name,
+            pClient: session.client_id
+          }}
           onReset={(updatesMade) => {
             if (updatesMade) {
               window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);

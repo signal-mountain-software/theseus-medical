@@ -196,7 +196,9 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, pGroup, pGroupRec, pGroupName, pStyle = 'full', pRole = '', onReset }) => {
+export default ({ options, onReset }) => {
+
+  let { groupMemberList, peopleList, pPatient, pPatientName, pClient, pGroup, pGroupRec, pGroupName, pStyle, pRole } = options;
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -226,9 +228,10 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const [messageType, setMessageType] = React.useState();
   const [choiceList, setChoiceList] = React.useState([]);
 
-  /*
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
+
   const [reactData, setReactData] = React.useState({
-    listXRef: [],
+    imageSize: options.safeMode ? 50 : (isMobile ? 100 : 150),
   });
   const updateReactData = (newData, force = false) => {
     setReactData((prevValues) => (Object.assign(
@@ -237,7 +240,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     )));
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
-  */
+  
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   if (peopleList && !showSuperSize) {
@@ -290,8 +293,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     || (pRole === 'responsible');
 
   const { enqueueSnackbar } = useSnackbar();
-
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
@@ -675,10 +676,10 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                 ml={isMobile ? 2 : 5}
                                 mr={1}
                                 border={1}
-                                minHeight={isMobile ? 100 : 150}
-                                maxHeight={isMobile ? 100 : 150}
-                                minWidth={isMobile ? 100 : 150}
-                                maxWidth={isMobile ? 100 : 150}
+                                minHeight={reactData.imageSize}
+                                maxHeight={reactData.imageSize}
+                                minWidth={reactData.imageSize}
+                                maxWidth={reactData.imageSize}
                                 alt={''}
                                 src={getImage(this_item.person_id)}
                               />
@@ -701,7 +702,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                             {(pStyle !== 'short')
                               ?
                               <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                                <Typography style={AVATextVariableStyle((this_item.name.last || this_item.display_name), { size: 1.5, bold: true, margin: { top: 1, right: 1 } })} >{this_item.name.last || this_item.display_name}</Typography>
+                                <Typography style={AVATextVariableStyle((this_item.name.last || this_item.display_name), { size: 1.5, bold: true, margin: { top: (options.safeMode ? 0 : 1), right: 1 } })} >{this_item.name.last || this_item.display_name}</Typography>
                                 <Typography style={AVATextStyle({ size: 1.5 })}>{this_item.name.first}</Typography>
                               </Box>
                               :
@@ -721,35 +722,37 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                             {(pStyle !== 'short') && multiGroups && this_item.hasOwnProperty('member_of') &&
                               <Typography key={`member_of-${index}`} style={AVATextStyle({ bold: true, margin: { top: 0.5, bottom: 1 } })}>{sentenceCase(this_item.member_of)}</Typography>
                             }
-                            {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (
+                            {!options.safeMode && this_item.location && this_item.location.split('~').map((locLine, locIndex) => (
                               <Typography key={`locationLine-${index}.${locIndex}`} style={AVATextStyle({ margin: { bottom: 0.5 } })}>{locLine.trim()}</Typography>
                             ))}
                             {(this_item.directory_option === 'exclude') &&
                               <Typography key={`excluded-${index}`} style={AVATextStyle({ margin: { bottom: 0.5 } })}>{'** Excluded from Directory **'}</Typography>
                             }
-                            <Box
-                              display='flex'
-                              flexDirection='row'
-                              justifyContent='flex-start'
-                              alignItems='center'
-                              key={`contactRows.${index}`}
-                            >
-                              <Box display='flex' flexDirection='column'>
-                                {(makeContactLines(this_item.messaging, this_item.preferred_method, this_item)
-                                  .map((prefLine, prefIndex) => (
-                                    <a href={prefLine.action[0]}
-                                      key={`prefLink-${index}.${prefIndex}`}
-                                      style={{ color: 'inherit', textDecoration: 'none' }}>
-                                      <Typography
-                                        key={`prefLine-${index}.${prefIndex}`}
-                                        style={AVATextVariableStyle(prefLineText(prefLine), { margin: { bottom: 0.5 } })}
-                                      >
-                                        {prefLineText(prefLine)}
-                                      </Typography>
-                                    </a>
-                                  )))}
+                            {!options.safeMode &&
+                              <Box
+                                display='flex'
+                                flexDirection='row'
+                                justifyContent='flex-start'
+                                alignItems='center'
+                                key={`contactRows.${index}`}
+                              >
+                                <Box display='flex' flexDirection='column'>
+                                  {(makeContactLines(this_item.messaging, this_item.preferred_method, this_item)
+                                    .map((prefLine, prefIndex) => (
+                                      <a href={prefLine.action[0]}
+                                        key={`prefLink-${index}.${prefIndex}`}
+                                        style={{ color: 'inherit', textDecoration: 'none' }}>
+                                        <Typography
+                                          key={`prefLine-${index}.${prefIndex}`}
+                                          style={AVATextVariableStyle(prefLineText(prefLine), { margin: { bottom: 0.5 } })}
+                                        >
+                                          {prefLineText(prefLine)}
+                                        </Typography>
+                                      </a>
+                                    )))}
+                                </Box>
                               </Box>
-                            </Box>
+                            }
                           </Box>
                         </Box>
                       </Box>

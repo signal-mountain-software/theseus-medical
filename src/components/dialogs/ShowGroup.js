@@ -63,12 +63,15 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full', onClose, onAbort }) => {
+export default ({ options, onClose, onAbort }) => {
+
+  let { pSession, pGroup_id, pGroup_name, peopleList, showList, safeMode } = options;
 
   const [reactData, setReactData] = React.useState({
     groupMemberList: [],
     groupsManagedObject: [],
     showGroupSelect: false,
+    safeMode: safeMode || false,
     groupName: pGroup_name,
     groupID: '',
     groupRole: '',
@@ -103,7 +106,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
     let memberInfo;
     let groupList = {};
     let tClient, tGroup;
-    let peopleList = []
+    let peopleList = [];
     pGroupArray.forEach(this_group => {
       if (this_group.includes('//')) {
         [tClient, tGroup] = this_group.split('//');
@@ -118,17 +121,17 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
       groupList[tClient].push(tGroup);
     });
     if ((state.hasOwnProperty('accessList') && state.accessList[state.session.client_id])) {
-      Object.keys(groupList).forEach(this_client => {       
+      Object.keys(groupList).forEach(this_client => {
         if (groupList[this_client].includes('*all') || (this_client !== state.session.client_id)) {
           let thisList = state.accessList?.[this_client]?.list || ((this_client === state.session.client_id) ? state.session.last_state.list : []);
           peopleList = peopleList.concat(thisList);
         }
         else {
           peopleList = peopleList.concat(state.accessList?.[this_client]?.list || ((this_client === state.session.client_id) ? state.session.last_state.list : [])).filter((p, pX) => {
-              return makeArray(p.groups).some(g => {
-                return groupList[this_client].includes(g);
-              });
+            return makeArray(p.groups).some(g => {
+              return groupList[this_client].includes(g);
             });
+          });
         }
       });
       memberInfo = { peopleList };
@@ -312,16 +315,18 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
         <DialogContent dividers={true} className={classes.dialogBox}>
           {!reactData.showGroupSelect && (reactData.building === 'done') &&
             <GroupForm
-              groupMemberList={reactData.groupMemberList}
-              peopleList={peopleList}
-              pPatient={pSession.patient_id}
-              pPatientName={pSession.patient_display_name}
-              pClient={pSession.client_id}
-              pGroup={reactData.groupID}
-              pGroupRec={reactData.groupRec}
-              pGroupName={reactData.groupName}
-              pRole={reactData.groupRole}
-              pStyle={showList}
+              options={Object.assign(options, {
+                groupMemberList: reactData.groupMemberList,
+                peopleList: peopleList,
+                pPatient: pSession.patient_id,
+                pPatientName: pSession.patient_display_name,
+                pClient: pSession.client_id,
+                pGroup: reactData.groupID,
+                pGroupRec: reactData.groupRec,
+                pGroupName: reactData.groupName,
+                pRole: reactData.groupRole,
+                pStyle: showList
+              })}
               onReset={(updatesMade) => {
                 if (pGroup_id && (showList !== 'select')) {
                   handleAbort(updatesMade);

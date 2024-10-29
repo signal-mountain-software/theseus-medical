@@ -281,6 +281,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     subtitle - if present, text to show under the person name
     onlyRegistered - only show events that I am signed-up for
     onlyPublished - only show events that have alreasdy been published
+    viewOnly - do not allow updates to event details
     assignmentView - show list of people you can assign to events
     allowAssign - required when assignmentView is true; this becomes assignment__list
     template__List - a list of event templates to use when creatinf new appointments
@@ -315,11 +316,11 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
 
   const setInitialView = (defaultValues) => {
     if (!defaultValues.hasOwnProperty('%%initialized%%')) {
-      if (defaultValues.weekView) {
-        return { '*all': true };
-      }
-      else if (defaultValues.agendaView) {
+      if (defaultValues.agendaView) {
         return { '*all': false };
+      }
+      else if (defaultValues.weekView) {
+        return { '*all': true };
       }
       defaultValues['%%initialized%%'] = true;
       if ((!defaultValues.hasOwnProperty('denseView')
@@ -1083,13 +1084,18 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                   }
                   <MenuItem
                     onClick={() => {
-                      reactData.defaultValues.agendaView = !reactData.defaultValues.agendaView;
-                      if (reactData.defaultValues.agendaView) {
-                        reactData.defaultValues.rememberedDenseData = deepCopy(reactData.denseView);
-                        reactData.denseView = { '*all': false };
+                      if (agendaView()) {
+                        // switching to calendar view, use rememberedDenseData
+                        reactData.defaultValues.agendaView = false;
+                        if (reactData.defaultValues.rememberedDenseData) {
+                          reactData.denseView = deepCopy(reactData.defaultValues.rememberedDenseData);
+                        }
                       }
                       else {
-                        reactData.denseView = deepCopy(reactData.defaultValues.rememberedDenseData);
+                        // switching to agendaView, dense should be false
+                        reactData.defaultValues.agendaView = true;
+                        reactData.defaultValues.rememberedDenseData = deepCopy(reactData.denseView);
+                        reactData.denseView = { '*all': false };
                       }
                       updateReactData({
                         defaultValues: reactData.defaultValues,
@@ -1119,7 +1125,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         display='flex' flexDirection='row' alignItems={'center'}
                         key={'vRowHome'}
                       >
-                        {reactData.denseView['*all'] ? <FormatLineSpacingIcon /> : <FormatAlignJustifyIcon />}
+                        {(reactData.denseView && reactData.denseView['*all']) ? <FormatLineSpacingIcon /> : <FormatAlignJustifyIcon />}
                         <Typography className={classes.popUpMenuRow} >{reactData.denseView['*all'] ? 'Relaxed view' : 'Dense view'}</Typography>
                       </Box>
                     </MenuItem>
@@ -1871,14 +1877,14 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 this_selection.value = this_selection.event_data.event_id;
                 this_selection.label = this_selection.event_data.description;
                 return this_selection;
-              }).concat([{value: '%%no_template%%', label: 'No Appointment Type'}]), null, null]}
+              }).concat([{ value: '%%no_template%%', label: 'No Appointment Type' }]), null, null]}
               onCancel={() => {
                 updateReactData({
                   getAppointmentType: false
                 }, true);
               }}
               onSave={async (response) => {
-                if ((response[0] === '%%no_template%%') || (!response[0])) { 
+                if ((response[0] === '%%no_template%%') || (!response[0])) {
                   updateReactData({
                     addPersonalEvent: true,
                     getAppointmentType: false,
@@ -1961,7 +1967,11 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               peopleList={peopleList}
               pPatient={reactData.selectedPerson_id}
               pClient={reactData.event_being_edited.client}
-              pViewOnly={reactData.event_being_edited.owner_only || false}
+              pViewOnly={
+                defaultValues.hasOwnProperty('viewOnly')
+                  ? defaultValues.viewOnly
+                  : (reactData.event_being_edited.owner_only || false)
+              }
               pSignUps={calendarPeople}
               pOccData={reactData.event_being_edited.occData}
               defaultValues={reactData.defaultValues}
