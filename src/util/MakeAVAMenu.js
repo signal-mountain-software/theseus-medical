@@ -221,6 +221,25 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       for (let a = 0; a < aL; a++) {
         screenStatus('Priority Items', ((a / aL) * 100), ((aL / 40) + .75), returnArray);
         let this_activity = requestor.priority_activities[a];
+        if ((typeof (this_activity) === 'string') && (this_activity.startsWith('~~'))) {
+          let sectionKeys = this_activity.split('~~');
+          if (sectionKeys.length > 2) {
+            sectionSort = sectionKeys[1];
+            sectionName = sectionKeys[2];
+          }
+          else {
+            sectionSort = sectionKeys[1];
+            sectionName = sectionKeys[1];
+          }
+          if (!(sectionName in sectionDetails)) {
+            [sectionColor, sectionIcon] = await getCustomizations(sectionName);
+            sectionDetails[sectionName] = {
+              color: sectionColor,
+              icon: sectionIcon,
+              sort_key: sectionSort
+            };
+          }
+        }
         let this_row = await addRow(this_activity, 'main', null, null, sectionSort, sectionName, sectionColor, sectionIcon, 'Priorities');
         if (this_row) { returnArray.push(this_row); }
       }
