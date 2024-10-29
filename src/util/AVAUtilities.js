@@ -423,6 +423,7 @@ export function extract(string, left, right = null, options = {}) {
 };
 
 export function array_in_array(a1, a2) {
+  if (!a1 || !a2) { return false; }
   // return true if any member of array 1 appears anywhere in array 2
   return a1.some(this_a => {
     return a2.includes(this_a);
