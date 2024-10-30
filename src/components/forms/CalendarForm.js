@@ -2224,9 +2224,6 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                           }
                         });
                       };
-                      reactData.myCalendar[foundIt].eventList.sort((a, b) => {
-                        return ((a.sort24 < b.sort24) ? -1 : 1);
-                      });
                       if (reactData.selectedPersonRec) {
                         await eventSignup(reactData.selectedPersonRec.person_id, {
                           droppedOn_event: newEntry,
@@ -2234,6 +2231,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                           dateIndex: foundIt
                         });
                       }
+                      reactData.myCalendar[foundIt].eventList.sort((a, b) => {
+                        return ((a.sort24 < b.sort24) ? -1 : 1);
+                      });
                     }
                   };
                   reactUpdObj.myCalendar = reactData.myCalendar;
