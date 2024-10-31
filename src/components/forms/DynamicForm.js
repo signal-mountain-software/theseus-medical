@@ -1,8 +1,6 @@
 import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
-
-import FormControl from '@material-ui/core/FormControl';
-import FormGroup from '@material-ui/core/FormGroup';
+import { Box, FormGroup, FormControl } from '@material-ui/core';
 
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageForm from '../forms/MessageForm';
@@ -34,13 +32,14 @@ import { createPutFact } from '../../graphql/mutations';
 import { useSnackbar } from 'notistack';
 import useSession from '../../hooks/useSession';
 
-import Box from '@material-ui/core/Box';
-
 import VideoRecorder from 'react-video-recorder';
 import ReactPlayer from 'react-player';
 import AVAInHome from '../sections/AVAInHome';
 import ShowMenuB from '../dialogs/ShowMenuB';
 import BulletinBoard from '../dialogs/BulletinBoard';
+
+import ImageGallery from 'react-image-gallery';
+import "react-image-gallery/styles/css/image-gallery.css";
 
 export default ({
   open,
@@ -61,6 +60,8 @@ export default ({
 }) => {
 
   const { state } = useSession();
+
+  const gallery = React.useRef(null);
 
   const [value, setValue] = React.useState(defaultValue || '');
   const [nums, setNums] = React.useState(['', '']);
@@ -248,13 +249,54 @@ export default ({
           }}
         />
       );
-    case 'show_image':
+    case 'show_image': {
+      let defaultValueObj = {};
+      if (!defaultValue) {
+        defaultValueObj = { images: [] };
+      }
+      else {
+        if (Array.isArray(defaultValue)) {
+          defaultValue.forEach(d => {
+            if (typeof d === 'string') {
+              let [dKey, dVal] = d.split('=');
+              defaultValueObj[dKey] = dVal;
+            }
+            else {
+              for (let dKey in d) {
+                defaultValueObj[dKey] = d[dKey];
+              }
+            }
+          });
+        }
+        else {
+          try { defaultValueObj = JSON.parse(defaultValue); }
+          catch { console.log(defaultValue); }
+        }
+      }
       return (
-        <Box alignItems="center" justifyContent="center" width="1">
-          <img src={defaultValue} width='100%'
-            height='100%' alt="" />
+        <Box
+          key={'ImageBox'}
+          onContextMenu={defaultValueObj.allowDownload
+            ? null
+            : async (e) => {
+              e.preventDefault();
+          }}
+        >
+          <ImageGallery
+            ref={gallery}
+            items={defaultValueObj.images}
+            showThumbnails={false}
+            slideInterval={10000}
+            showNav={true}
+            showFullscreenButton={false}
+            autoPlay={true}
+            startIndex={0}
+            onClick={() => {
+            }}
+          />
         </Box>
       );
+    };
     case 'characteristic_num2':
       return (
         <Number2Form

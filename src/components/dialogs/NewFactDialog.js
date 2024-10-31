@@ -111,9 +111,8 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
   const AVAClass = AVAclasses();
 
   const { enqueueSnackbar } = useSnackbar();
-
+  const [factImageClass, setFactImageClass] = React.useState(false);
   const [factIOClass, setFactIOClass] = React.useState(false);
-  const [factPromoClass, setFactPromoClass] = React.useState(false);
   const [factEventClass, setFactEventClass] = React.useState(false);
   const [factMessageClass, setFactMessageClass] = React.useState(false);
 
@@ -144,23 +143,6 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       withNext = false;
       handleExit();
     }
-  };
-
-  const handlePromoSignup = () => {
-    withNext = false;
-    onSelected(fact.valid_values_list[1]);
-  };
-
-  const handlePromoMore = () => {
-    withNext = false;
-    window.open(fact.valid_values_list[2]);
-  };
-
-  const handlePromoNext = () => {
-    withNext = false;
-    onSelected(fact.valid_values_list[3]);
-    open = false;
-    onClose('next');
   };
 
   /*
@@ -266,9 +248,10 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         case 'query':
         case 'action':
         case 'list': { break; }
+        case 'images':
+        case 'promo': { setFactImageClass(true); break; }
         case 'media': { setFactIOClass(true); break; }
         case 'message': { setFactMessageClass(true); setFactIOClass(true); break; }
-        case 'promo': { setFactPromoClass(true); break; }
         case 'search': { setFactEventClass(true); break; }
         default: {
           setFactIOClass(true);
@@ -502,6 +485,18 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             {!factIOClass ? 'Done' : 'Cancel'}
           </Button>
         }
+        {factImageClass &&
+          <Button
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'red', color: 'white' }}
+            size='small'
+            onClick={(response) => {
+              handleClose(response);
+            }}
+          >
+            Done
+          </Button>
+        }
         {factIOClass
           ? (<Button
             className={AVAClass.AVAButton}
@@ -512,32 +507,6 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             {factMessageClass ? 'Send' : 'Save'}
           </Button>
           )
-          : null
-        }
-        {factPromoClass
-          ? (<React.Fragment>
-            <Button
-              className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'green', color: 'white' }}
-              size='small'
-              onClick={handlePromoSignup}>
-              Sign-up
-            </Button>
-            <Button
-              className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'blue', color: 'white' }}
-              size='small'
-              onClick={handlePromoMore}>
-              More info
-            </Button>
-            <Button
-              className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'blue', color: 'white' }}
-              size='small'
-              onClick={handlePromoNext}>
-              Next
-            </Button>
-          </React.Fragment>)
           : null
         }
         {factEventClass
