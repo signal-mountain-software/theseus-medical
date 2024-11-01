@@ -1,7 +1,6 @@
 import React from 'react';
-import { dbClient, lambda, makeArray, getCustomizations, deepCopy } from '../util/AVAUtilities';
+import { dbClient, lambda, makeArray, getCustomizations, deepCopy, uuid } from '../util/AVAUtilities';
 import { accountAccess, getAllGroups, getGroupsBelongTo } from '../util/AVAGroups';
-import { makeName } from '../util/AVAPeople';
 import { getAllOccurrences } from '../util/AVACalendars';
 import { sendMessages } from '../util/AVAMessages';
 import { addDays } from '../util/AVADateTime';
@@ -12,6 +11,7 @@ import { AVAclasses, AVADefaults } from '../util/AVAStyles';
 import AVAConfirm from '../components/forms/AVAConfirm';
 import MakeAVAMenu from '../util/MakeAVAMenu';
 import PatientDialog from '../components/dialogs/PatientDialog';
+import SelectAccount from '../components/dialogs/SelectAccount';
 
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
@@ -93,7 +93,8 @@ export default Component => props => {
     customizationData: {
       client_name: 'AVA Sign-in'
     },
-    urlData: {}
+    urlData: {},
+    multipleAccountList: false
   });
 
   const updateReactData = (newData) => {
@@ -171,10 +172,10 @@ export default Component => props => {
         let urlData = getParamsFromURL();
         if (urlData) {
           updateReactData({
-            urlData: {
+            urlData: Object.assign({}, urlData, {
               client_id: urlData.client || urlData.client_id,
               user_id: urlData.user || urlData.user_id
-            }
+            })
           });
           if (reactData.urlData.client_id) {
             let cData = await getCustomizations('*all', reactData.urlData.client_id);
@@ -204,7 +205,7 @@ export default Component => props => {
               currentClientLogo: cData.logo
             });
           }
-          if (cookieValues.user_id && (!reactData.urlData.user_id)) {
+          if (cookieValues.user_id && (!reactData.urlData.user_id) && (!reactData.urlData.tfa)) {
             await tryUser(cookieValues.user_id, cookieValues.client, 'cookie');
             return;
           }
@@ -216,7 +217,7 @@ export default Component => props => {
     checkUser();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function tryUser(pUser, pClient, pSource) {
+  async function tryUser(pUser, pClient, pSource, options = {}) {
     // return values:
     //    good - locked and loaded.  AVA signed-in and ready
     //    invalid - not a valid user ID
@@ -232,127 +233,140 @@ export default Component => props => {
       }
       await logAccessAttempt(pUser, '', false, `${pUser} is not a valid User ID (no SessionV2).`);
       closeSnackbar();
-      const valideMail = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/;
-      if (pUser.match(valideMail) && pClient) {
-        setAVAFollowUpData({
-          'PromptSignUp': true,
-          'link': 'https://buy.stripe.com/3cs5lzbSS9RXecwcMN',
-          pClient,
-          pUser,
-          pSource
-        });
-        setDoneTrying(true);
-        return 'promptSubscribe';
+      // does the entered information show up in the PeopleAccount table (used for alternate IDs)?
+      updateReactData({
+        enteredID: pUser
+      }, false);
+      let [accountFound, foundPerson] = await getByAlternateID(pUser);
+      if (accountFound) {
+        [goodSessionV2, foundSession, dbError] = await getSessionV2(foundPerson.person_id);
       }
-      else {
+      else if (Array.isArray(foundPerson)) {
+        if (foundPerson.length === 1) {
+          [goodSessionV2, foundSession, dbError] = await getSessionV2(foundPerson[0].person_id);
+        }
+        else {
+          enqueueSnackbar(`"${pUser}" matches ${foundPerson.length} accounts.`, { variant: 'error', persist: true });
+          updateReactData({ multipleAccountList: foundPerson });
+          setDoneTrying(true);
+          setAVAFollowUpData({ 'NeedUser': false, 'SelectfromList': true });
+          return 'ambiguous';
+        }
+      }
+      if (!goodSessionV2) {  // either !accountFound and null returned from getAlternate ID OR (accountFound and !goodSessionV2) will arrive here 
         enqueueSnackbar(`"${pUser}" is not a User ID or Name that AVA recognizes. Please try again.`, { variant: 'error', persist: true });
         setDoneTrying(true);
         setAVAFollowUpData({ 'NeedUser': true });
         return 'invalid';
       }
+      else {
+        pUser = foundSession.session_id;
+      }
     }
-    else {
-      if (reactData.urlData.client_id && (reactData.urlData.client_id !== foundSession.client_id)) {
-        // good account, but not in the client that was requested
-        await logAccessAttempt(pUser, '', true, 'Good UserID entered, but it was not in the URL Client');
-        closeSnackbar();
-        enqueueSnackbar(`This account does not exist in ${reactData.customizationData.client_name}.`, { variant: 'error', persist: true });
-        setDoneTrying(true);
-        setAVAFollowUpData({ 'NeedUser': true });
-        return 'invalid';
-      }
-      if ((foundSession.hasOwnProperty('subscription_status'))
-        && (foundSession.hasOwnProperty('responsible_for'))) {
-        switch (foundSession.subscription_status) {
-          case 'na':
-          case 'active': {
-            break;
-          }
-          case 'none':
-          case 'new': {
-            let respID = makeArray(foundSession.responsible_for)[0];
-            let respName = await makeName(respID);
-            setAVAFollowUpData({
-              'newSubscription': true,
-              'prompt': [
-                'Welcome to AVA!',
-                '[style={size:1.2}]Subscribe now to gain access to Community services, information, and direct communication with Community Leaders and Staff',
-                '',
-                `[style={size:1.2}]You will be redirected to our subscription partner site.  Return here after you've completed that form.`,
-                '',
-                '[style={size:1.2}]Thank you!',
-                '',
-              ],
-              'link': 'https://buy.stripe.com/3cs5lzbSS9RXecwcMN',
-              pUser,
-              pSource,
-              client_id: foundSession.client_id,
-              responsible_for: respID,
-              responsible_name: respName
-            });
-            setDoneTrying(true);
-            return 'subscription';
-          }
-          case 'pending': {
-            break;
-          }
-          case 'cancelled': {
-            break;
-          }
-          case 'suspended': {
-            break;
-          }
-          case 'inactive': {
-            break;
-          }
-          default: { }
+    // if the entry was bad, we should have bailed out by now...
+    if (reactData.urlData.client_id && (reactData.urlData.client_id !== foundSession.client_id)) {
+      // good account, but not in the client that was requested
+      await logAccessAttempt(pUser, '', true, 'Good UserID entered, but it was not in the URL Client');
+      closeSnackbar();
+      enqueueSnackbar(`This account does not exist in ${reactData.customizationData.client_name}.`, { variant: 'error', persist: true });
+      setDoneTrying(true);
+      setAVAFollowUpData({ 'NeedUser': true });
+      return 'invalid';
+    }
+    let tempURLOBj = getParamsFromURL();
+    if (tempURLOBj.tfa && !options.waiveTFA) {
+      await logAccessAttempt(pUser, '', true, 'Two-factor authentication required.');
+      closeSnackbar();
+      let [goodUser, foundPatient] = await getPerson(pUser);
+      foundPatient.sessionRec = foundSession;
+      if (goodUser) {
+        let cRec = await getCustomizations('client_name', foundPatient.client_id);
+        let client_name = cRec.customization_value;
+        let tempPass = uuid(6);
+        foundPatient.sessionRec.last_login = tempPass;
+        let source = reactData.enteredID;
+        let prefMethod;
+        let expectedAddress;
+        if (source.includes('@')) {
+          prefMethod = 'email';
+          expectedAddress = foundPatient.messaging.email;
+          enqueueSnackbar(
+            `We've sent an e-Mail to ${expectedAddress}. Look for a security code in that message and enter it here.`,
+            { variant: 'success', persist: true });
         }
-      }
-      if (foundSession.requirePassword && (pSource === 'entered')) {
-        await logAccessAttempt(pUser, '', true, 'Good UserID entered.  Password is required for this account.');
-        closeSnackbar();
-        enqueueSnackbar(`This account requires a password.`, { variant: 'error', persist: true });
-        let [goodUser, foundPatient] = await getPerson(pUser);
-        if (!goodUser) {
-          let eMessage = `When fetching People account for this password-required Session, ${pUser} is not found`;
-          await logAccessAttempt(pUser, '', false, eMessage);
-          setDoneTrying(true);
-          enqueueSnackbar(`${eMessage}.  This is an unusual situation.  AVA Support has been notified.`, { variant: 'error', persist: true });
-          sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
-          setAVAFollowUpData({ 'NeedUser': true });
-          return 'invalid';
+        else {
+          prefMethod = 'sms';
+          expectedAddress = foundPatient.messaging.sms;
+          enqueueSnackbar(
+            `We've sent a text to (${expectedAddress.slice(2, 5)}) ${expectedAddress.slice(5, 8)}-${expectedAddress.slice(8)}. Look for a security code in that message and enter it here.`,
+            { variant: 'success', persist: true });
         }
-        foundPatient.sessionRec = foundSession;
+        await sendMessages({
+          client: foundPatient.client_id,
+          author: foundSession.user_id,
+          person_id: foundSession.person_id,
+          preferred_method: prefMethod,
+          messageText: `To access your ${client_name} account, use this code: ${tempPass}`,
+          recipientList: [foundPatient.person_id],
+          subject: `Security message from ${client_name}`
+        });
         setAVAFollowUpData({ 'passwordRequired': true, 'enteredUserID': pUser, 'possibleUserRecs': [foundPatient] });
         return 'password';
       }
-      else if (foundSession.last_login) {   // Yes!  We have a User and a Password
-        let [goodLogin, ,] = await cognitoLogin(pUser, foundSession.last_login);
-        if (goodLogin) {
-          await logAccessAttempt(pUser, foundSession.last_login, true, `Successful Log-in using stored password; user ID supplied from ${pSource}`);
-          await launchAVA(pUser);
-          return 'good';
-        }
-        else {
-          await logAccessAttempt(pUser, foundSession.last_login, false, `Failed Log-in.  Attempted stored password; user ID supplied from ${pSource}`);
-          setDoneTrying(false);
-          // intentionally fall through to attempt default credentials
-        }
+      else {
+        let eMessage = `When fetching People account for this two factor authentication request, ${pUser} is not found`;
+        await logAccessAttempt(pUser, '', false, eMessage);
+        setDoneTrying(true);
+        enqueueSnackbar(`${eMessage}.  This is an unusual situation.  AVA Support has been notified.`, { variant: 'error', persist: true });
+        sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
+        setAVAFollowUpData({ 'NeedUser': true });
+        return 'invalid';
       }
-      // We know the person, but have not been able to log them in yet
-      // Attempt to log person is with generic credentials
-      let result = await genericLogin(pUser, pSource);
-      if (result === 'good') {
-        return 'good';
-      }
-      // If we got to here...  we had a good User, but did not get that user authenticated
-      // Let's ask for the password and try to get in that way...
+    }
+    if (foundSession.requirePassword && ((pSource === 'entered') || (pSource === 'selection'))) {
+      await logAccessAttempt(pUser, '', true, 'Good UserID entered.  Password is required for this account.');
       closeSnackbar();
-      enqueueSnackbar(`We're having trouble logging you in automatically.  Please enter your password.`, { variant: 'error', persist: true });
-      setAVAFollowUpData({ 'enteredUserID': pUser, 'NeedUser': false });
-      setDoneTrying(true);
+      enqueueSnackbar(`This account requires a password.`, { variant: 'error', persist: true });
+      let [goodUser, foundPatient] = await getPerson(pUser);
+      if (!goodUser) {
+        let eMessage = `When fetching People account for this password-required Session, ${pUser} is not found`;
+        await logAccessAttempt(pUser, '', false, eMessage);
+        setDoneTrying(true);
+        enqueueSnackbar(`${eMessage}.  This is an unusual situation.  AVA Support has been notified.`, { variant: 'error', persist: true });
+        sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
+        setAVAFollowUpData({ 'NeedUser': true });
+        return 'invalid';
+      }
+      foundPatient.sessionRec = foundSession;
+      setAVAFollowUpData({ 'passwordRequired': true, 'enteredUserID': pUser, 'possibleUserRecs': [foundPatient] });
       return 'password';
     }
+    else if (foundSession.last_login) {   // Yes!  We have a User and a Password
+      let [goodLogin, ,] = await cognitoLogin(pUser, foundSession.last_login);
+      if (goodLogin) {
+        await logAccessAttempt(pUser, foundSession.last_login, true, `Successful Log-in using stored password; user ID supplied from ${pSource}`);
+        await launchAVA(pUser);
+        return 'good';
+      }
+      else {
+        await logAccessAttempt(pUser, foundSession.last_login, false, `Failed Log-in.  Attempted stored password; user ID supplied from ${pSource}`);
+        setDoneTrying(false);
+        // intentionally fall through to attempt default credentials
+      }
+    }
+    // We know the person, but have not been able to log them in yet
+    // Attempt to log person is with generic credentials
+    let result = await genericLogin(pUser, pSource);
+    if (result === 'good') {
+      return 'good';
+    }
+    // If we got to here...  we had a good User, but did not get that user authenticated
+    // Let's ask for the password and try to get in that way...
+    closeSnackbar();
+    enqueueSnackbar(`We're having trouble logging you in automatically.  Please enter your password.`, { variant: 'error', persist: true });
+    setAVAFollowUpData({ 'enteredUserID': pUser, 'NeedUser': false });
+    setDoneTrying(true);
+    return 'password';
   }
 
   async function genericLogin(pUser, pSource) {
@@ -389,13 +403,17 @@ export default Component => props => {
 
   function promptForUser() {
     if (testModeErrorTrap()) { return false; }
-    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('NeedUser'));
+    return (AVAFollowUpData && AVAFollowUpData.NeedUser);
   }
 
   function promptForPassword() {
     if (testModeErrorTrap()) { return false; }
     return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID'));
   }
+
+  const selectFromMultipleAccounts = () => {
+    return (!!reactData.multipleAccountList);
+  };
 
   function newSubscriptionPrompt() {
     return (AVAFollowUpData && (AVAFollowUpData.hasOwnProperty('newSubscription') || AVAFollowUpData.hasOwnProperty('addAccount')));
@@ -549,7 +567,7 @@ export default Component => props => {
             options={{ 'save_on_enter': true }}
             buttonText='Sign In'
             onCancel={() => {
-              enqueueSnackbar(`Please enter your AVA ID`, { variant: 'info', persist: true });
+              enqueueSnackbar(`Please enter your ID`, { variant: 'info', persist: true });
               setMessageList([]);
             }}
             onSave={async (enteredUserID) => {
@@ -571,11 +589,11 @@ export default Component => props => {
               else {
                 setMessageList([]);
                 closeSnackbar();
-                enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID.toLowerCase()}"`, { variant: 'info' });
+                enqueueSnackbar(`Signing in with "${enteredUserID.toLowerCase()}"`, { variant: 'info' });
                 let result = await tryUser(enteredUserID.toLowerCase(), reactData.customizationData.client_id, 'entered');
                 if ((result === 'invalid') && (enteredUserID.toLowerCase() !== enteredUserID)) {
                   closeSnackbar();
-                  enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID}"`, { variant: 'info' });
+                  enqueueSnackbar(`Signing in with "${enteredUserID}"`, { variant: 'info' });
                   await tryUser(enteredUserID, reactData.customizationData.client_id, 'entered');
                 }
               }
@@ -634,7 +652,7 @@ export default Component => props => {
               for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
                 let possibility = AVAFollowUpData.possibleUserRecs[p];
                 if (AVAFollowUpData.possibleUserRecs[p].sessionRec.last_login.toLowerCase() === enteredPass.toLowerCase()) {
-                  let result = await tryUser(possibility.person_id, possibility.client_id, 'stored password match');
+                  let result = await tryUser(possibility.person_id, possibility.client_id, 'stored password match', { waiveTFA: true });
                   if (result === 'good') {
                     let eMessage = `Successful Login for ${possibility.person_id}`;
                     enqueueSnackbar(eMessage, { variant: 'info', persist: false });
@@ -672,6 +690,29 @@ export default Component => props => {
               enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
               setDoneTrying(true);
               return;
+            }}
+          />
+        }
+        {selectFromMultipleAccounts() &&
+          <SelectAccount
+            selectionList={reactData.multipleAccountList}
+            onCancel={() => {
+              setAVAFollowUpData({ 'NeedUser': true });
+              updateReactData({
+                multipleAccountList: false
+              }, true);
+            }}
+            onSelect={async (response) => {
+              updateReactData({
+                multipleAccountList: false
+              }, false);
+              let result = await tryUser(response.person_id, response.client_id, "selection");
+              if (result === 'good') {
+                let eMessage = `Successful Login for ${response.person_id}`;
+                await logAccessAttempt(response.person_id, '', true, eMessage);
+                launchAVA(response.person_id);
+                return;
+              }
             }}
           />
         }
@@ -1071,6 +1112,37 @@ export default Component => props => {
       });
     if (recordExists(peopleRec)) { return [true, peopleRec.Item]; }
     else { return [false, null]; }
+  }
+
+  async function getByAlternateID(pInput) {
+    var altIDs = await dbClient
+      .query({
+        KeyConditionExpression: 'identifier = :i',
+        ExpressionAttributeValues: { ':i': pInput },
+        TableName: "PeopleAccounts",
+        IndexName: 'alternate_id-index'
+      })
+      .promise()
+      .catch(error => { console.log(`getGroup ERROR reading Customizations; caught error is: ${error}`); });
+    if (recordExists(altIDs)) {
+      let foundIDs = [];
+      for (let p = 0; p < altIDs.Items.length; p++) {
+        let [goodGet, this_person] = await getPerson(altIDs.Items[p].person_id);
+        if (goodGet &&
+          ((!reactData.urlData.client_id)
+          || (this_person.client_id === reactData.urlData.client_id)
+        )) {
+          foundIDs.push(this_person);
+        }
+      }
+      if (foundIDs.length === 0) {
+        return [false, null];
+      }
+      else {
+        return [false, foundIDs];
+      }
+    }
+    return [false, null];
   }
 
   async function getSessions(pSession) {
