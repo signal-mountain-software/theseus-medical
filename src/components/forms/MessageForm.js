@@ -805,7 +805,9 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
               }}
               allowCancel={true}
               thread_id={(recipientIndex >= 0) ? messageList[recipientIndex].thread_id : ''}
-              seedText={[((recipientIndex >= 0) ? messageList[recipientIndex].subject : ''), '']}
+              seedText={[((recipientIndex >= 0)
+                ? `${pSession.user_display_name}'s reply to ${messageList[recipientIndex].subject}`
+                : ''), '']}
             />
           }
           {
