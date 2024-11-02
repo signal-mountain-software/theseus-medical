@@ -226,7 +226,10 @@ export default Component => props => {
     // Do we know this person's password?
     pUser = pUser.trim();
     let [goodSessionV2, foundSession, dbError] = await getSessionV2(pUser);
-    if (!goodSessionV2) {     // That is not a valid User ID, maybe it's a name?
+    if (goodSessionV2) {
+      options.waiveTFA = true;
+    }
+    else {     // That is not a valid User ID, maybe it's a name?
       if (dbError) {
         setDoneTrying(true);
         return 'network';
@@ -254,7 +257,7 @@ export default Component => props => {
         }
       }
       if (!goodSessionV2) {  // either !accountFound and null returned from getAlternate ID OR (accountFound and !goodSessionV2) will arrive here 
-        enqueueSnackbar(`"${pUser}" is not a User ID or Name that AVA recognizes. Please try again.`, { variant: 'error', persist: true });
+        enqueueSnackbar(`"${pUser}" can't be used to log in. Please try again.`, { variant: 'error', persist: true });
         setDoneTrying(true);
         setAVAFollowUpData({ 'NeedUser': true });
         return 'invalid';
@@ -1136,6 +1139,7 @@ export default Component => props => {
         }
       }
       if (foundIDs.length === 0) {
+        enqueueSnackbar(`This account does not exist in ${reactData.customizationData.client_name}.`, { variant: 'error', persist: true });
         return [false, null];
       }
       else {
