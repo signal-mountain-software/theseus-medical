@@ -2,11 +2,12 @@ import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
 import { Box, FormGroup, FormControl } from '@material-ui/core';
 
+
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageForm from '../forms/MessageForm';
 import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
-
+import FamilyMaintenance from './FamilyMaintenance';
 import FormFill from './FormFill';
 import DocumentDashboard from '../dialogs/DocumentDashboard';
 import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
@@ -280,7 +281,7 @@ export default ({
             ? null
             : async (e) => {
               e.preventDefault();
-          }}
+            }}
         >
           <ImageGallery
             ref={gallery}
@@ -575,6 +576,21 @@ export default ({
       return (
         <LoadNamesFromFile
           options={defaultValue}
+          onClose={onSave}
+        />
+      );
+    case 'family_maintenance':
+      return (
+        <FamilyMaintenance
+          family_id={'family_1'}
+          forms={{
+            header: { master: [{ form_id: 'familyRec_1' }] },
+            person: {
+              caregiver: [{ form_id: 'caregiverRec_1' }],
+              member: [{ form_id: 'personRec_1' }, { form_id: 'techInfo_1' }]
+            }
+          }}
+          onSave={onSave}
           onClose={onSave}
         />
       );
