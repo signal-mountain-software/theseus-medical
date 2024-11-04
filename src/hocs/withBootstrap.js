@@ -277,7 +277,7 @@ export default Component => props => {
       return 'invalid';
     }
     let tempURLOBj = getParamsFromURL();
-    if (tempURLOBj.tfa && !options.waiveTFA) {
+    if (tempURLOBj && tempURLOBj.tfa && !options.waiveTFA) {
       await logAccessAttempt(pUser, '', true, 'Two-factor authentication required.');
       closeSnackbar();
       let [goodUser, foundPatient] = await getPerson(pUser);
