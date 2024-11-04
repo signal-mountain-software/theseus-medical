@@ -226,12 +226,12 @@ export default ({ options, onReset }) => {
   const [singlePersonMode, setsinglePersonMode] = React.useState(false);
   const [recipient, setRecipient] = React.useState();
   const [messageType, setMessageType] = React.useState();
-  const [choiceList, setChoiceList] = React.useState([]);
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
 
   const [reactData, setReactData] = React.useState({
     imageSize: options.safeMode ? 50 : (isMobile ? 100 : 150),
+    choiceList: []
   });
   const updateReactData = (newData, force = false) => {
     setReactData((prevValues) => (Object.assign(
@@ -503,7 +503,7 @@ export default ({ options, onReset }) => {
         }
       };
     }
-    setChoiceList(response);
+    updateReactData({ choiceList: response });
     setShowAddPrompt(true);
   };
 
@@ -770,7 +770,7 @@ export default ({ options, onReset }) => {
           {showAddPrompt &&
             <PersonFilter
               prompt={'Tap the name of the person you wish to add'}
-              peopleList={choiceList}
+              peopleList={reactData.choiceList}
               onCancel={() => {
                 setShowAddPrompt(false);
               }}

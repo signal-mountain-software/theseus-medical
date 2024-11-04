@@ -358,7 +358,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       pWidth: 60,
       defaultValues: defaultValues,
       selectedPersonRec: {},
-      denseView: setInitialView(defaultValues),
+      denseView: setInitialView(defaultValues) || {'*all': false},
       factor7: defaultValues.weekView ? Math.min(((window.window.innerWidth - 220) / 1400), 1) : 1,
       conflictInfo: conflictInfo,
       colorScheme: defaultValues.colorScheme || defaultColorScheme,
@@ -1455,7 +1455,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         <React.Fragment
                           key={`dateBox_container-${dateIndex}`}
                         >
-                          {((!agendaView() && !reactData.defaultValues.onlyRegistered) || eventsToShow(this_date)) &&
+                          {((!agendaView()) || eventsToShow(this_date)) &&
                             <Box
                               display='flex'
                               key={`dateBox_cell-${dateIndex}_${agendaView() ? 'A' : 'C'}`}
