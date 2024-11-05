@@ -587,7 +587,12 @@ export default ({
             header: { master: [{ form_id: 'familyRec_1' }] },
             person: {
               caregiver: [{ form_id: 'caregiverRec_1' }],
-              member: [{ form_id: 'personRec_1' }, { form_id: 'techInfo_1' }]
+              member: [
+                { form_id: 'personRec_1' },
+                { form_id: 'techInfo_1' },
+                { form_id: 'medInfo_1' },
+                { form_id: 'slidingscale_1' }
+              ]
             }
           }}
           onSave={onSave}
