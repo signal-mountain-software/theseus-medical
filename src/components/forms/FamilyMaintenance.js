@@ -930,7 +930,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                         <React.Fragment
                           key={`familyHeader_${this_columnNumber}`}
                         >
-                          {this_column.family_name.split(/\s+/).map((this_word, wX) => (
+                          {(this_column.family_name || 'My Family').split(/\s+/).map((this_word, wX) => (
                             <Typography key={`name-${this_columnNumber}_${wX}`} className={classes.smallTextLine}>
                               {this_word.slice(0, 10)}
                             </Typography>
@@ -1017,8 +1017,8 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
         { /* Data rows */}
         <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
           <Box
-            key={`thewholething`}
-            id={`thewholething`}
+            key={`thewholething-${reactData.selectedColumn || 99}`}
+            id={`thewholething-${reactData.selectedColumn || 99}`}
             display="flex"
             flexDirection='column'
             flexWrap={'wrap'}
@@ -1027,7 +1027,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
           >
             {(reactData.familyMembers.length > 0)
               && reactData.formList
-              && reactData.selectedColumn
+              && (reactData.selectedColumn != null)
               &&
               reactData.formList.map((this_form, form_index) => (
                 <Box
