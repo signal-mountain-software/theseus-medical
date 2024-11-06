@@ -215,6 +215,8 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   const [slot_max_seats, setSlotMaxSeats] = React.useState(' ');
   const [slot_interval, setSlotInterval] = React.useState(' ');
   const [time_from_display_string, setTimeFromAsDisplayString] = React.useState(' ');
+  const [eventDateAsDisplayString, setEventDateAsDisplayString] = React.useState((options.setDate ? options.setDate.dateObj.absolute : ' '));
+  const [eventDateAsADate, setEventDateAsADate] = React.useState();
   const [timeFromAs24HourNumber, setTimeFromAs24HourNumber] = React.useState();
   const [displayTimes, setIntervalDisplay] = React.useState([]);
   const [time_to_display_string, setTimeToAsDisplayString] = React.useState(' ');
@@ -413,6 +415,11 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
       location_override: true
     }, true);
   };
+
+  const handleChangeEventDate = event => {
+    setEventDateAsADate(null);
+    setEventDateAsDisplayString(event.target.value);
+  }
 
   const handleChangeTimeFrom = event => {
     setTimeFromAsDisplayString(event.target.value);
@@ -833,11 +840,15 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
               <div>
                 <TextField
                   id='event_date'
-                  value={reactData.event_date ? reactData.event_date.absolute : ''}
+                  // defaultValue={reactData.event_date ? reactData.event_date.absolute : ''}
+                  value={eventDateAsDisplayString}
+                  onKeyPress={handleChangeEventDate}
+                  onChange={handleChangeEventDate}
                   onBlur={(event) => {
                     if (event.target.value) {
                       let dObj = makeDate(event.target.value, { noTime: true });
                       let reactUpd = { event_date: dObj };
+                      setEventDateAsDisplayString(dObj.absolute);
                       if (!reactData.prefMethod) {
                         reactUpd.method = 'specific_date';
                       };
