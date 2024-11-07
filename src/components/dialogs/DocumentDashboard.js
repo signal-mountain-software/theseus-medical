@@ -5,7 +5,7 @@ import { getPerson } from '../../util/AVAPeople';
 import AVAConfirm from '../forms/AVAConfirm';
 import FormFill from '../forms/FormFill';
 import useSession from '../../hooks/useSession';
-import { getAllOccurrences } from '../../util/AVACalendars';
+import { getAllOccurrences, getCalendarEntries } from '../../util/AVACalendars';
 import PrintIcon from '@material-ui/icons/Print';
 
 import CloseIcon from '@material-ui/icons/HighlightOff';
@@ -229,6 +229,7 @@ export default ({ request = {}, onClose }) => {
     expect options to contain
       formTypeList []   when missing, use *all
       formNoAdd []    if a form is in this list, do not allow "create new"... view only for that form type
+       formNotAlone []    if this is the only form type in the list, ignore it
       peopleList []       can be *self, *user, *person, *all, or list of person_id's  (default *person)
       assignedToList []      can be *nobody, *self, *user, *person, *anybody, *nobody, or list of person_id's  (default null - don't care if assigned or not)
   */
@@ -250,10 +251,16 @@ export default ({ request = {}, onClose }) => {
   const [reactData, setReactData] = React.useState({
     formType_filter: options.formTypeList || ['*all'],
     formNoAdd: (options.formNoAdd ? makeArray(options.formNoAdd) : []),
+    formNotAlone: (options.formNotAlone ? makeArray(options.formNotAlone) : []),
     formMaxToShow: (options.formMaxToShow ? Number(options.formMaxToShow) : 999),
     people_filter: makeArray(options.peopleList) || ['*person'],
     assignedTo_filter: makeAssignedList(),
     user_fontSize: AVADefaults({ fontSize: 'get' }) || 1.5,
+    publishedOnly: (options.hasOwnProperty('publishedOnly') ? options.publishedOnly : false),
+    document_date: {
+      from_date: (options.hasOwnProperty('document_date') ? makeDate(options.document_date.from_date).numeric : 0),
+      to_date: (options.hasOwnProperty('document_date') ? makeDate(options.document_date.to_date).numeric : 99990000),
+    },
     initialized: false,
     documentList: [],
     stage: 'initialize',
@@ -426,6 +433,34 @@ export default ({ request = {}, onClose }) => {
             if (!reactData.assignedTo_filter.includes('*nobody')) { continue; }
           }
         }
+        let this_slot, this_event, this_date, this_person;
+        this_slot = this_document.document_id.split('%%').pop();
+        if (this_slot) {
+          [this_event, this_date, this_person] = this_slot.split('#');
+          if (reactData.document_date.from_date) {
+            if ((reactData.document_date.from_date > this_date) || (reactData.document_date.to_date < this_date)) {
+              continue;
+            }
+          }
+        }
+        if (reactData.publishedOnly) {
+          if (this_slot) {
+            if (this_person) {
+              let this_eventOccurrence = await getCalendarEntries({
+                client_id: this_document.client_id,
+                event_id: this_event,
+                occurrence_id: this_date,
+                type: 'occurrence'
+              });
+              if (!this_eventOccurrence[0] || !this_eventOccurrence[0].published) {
+                continue;
+              }
+              else {
+                cl('doc found');
+              }
+            }
+          }
+        }
         const documentMatchesForm = (this_form) => { return ((this_document.form_id === this_form.form_id) || (this_form.form_id === '*all')); };
         let foundAt = buildDocList.findIndex(this_docObj => {
           return (this_docObj.person_id === this_document.person_id);
@@ -526,10 +561,17 @@ export default ({ request = {}, onClose }) => {
           }
         }
       };
-      buildDocList.forEach(personObj => {
+      buildDocList.forEach((personObj, pNdx) => {
+        let typeList = [];
         personObj.formTypes.forEach(this_type => {
+          if (this_type.documentList.length > 0) {
+            typeList.push(this_type.form_id)
+          }
           this_type.documentList.sort((a, b) => { return ((a.completed_timestamp > b.completed_timestamp) ? -1 : 1); });
         });
+        if ((typeList.length === 1) && (reactData.formNotAlone.includes(typeList[0]))) {
+          buildDocList.splice(pNdx, 1);
+        }
       });
       buildDocList.sort((a, b) => {
         if ((a.person_last < b.person_last)) {
@@ -865,7 +907,7 @@ export default ({ request = {}, onClose }) => {
               bottom: 0.5,
               left: shortForm ? 0.5 : 2
             },
-            color: ((isIncomplete(this_document) && !shortForm) ? 'red' : '')
+            color: (isIncomplete(this_document) ? 'red' : '')
           })}>
           {`${this_document.title || makeDate(this_document.completed_timestamp).absolute}${isIncomplete(this_document) ? ' (incomplete)' : ''}`}
         </Typography>
@@ -969,8 +1011,8 @@ export default ({ request = {}, onClose }) => {
                       }
                       {(reactData.assignedTo_filter || this_form.form_expanded) && this_form.documentList.map((this_document, documentNdx) => (
                         (documentNdx < reactData.formMaxToShow)
-                        ? documentRow({ this_document, documentNdx, this_person, personNdx, this_form, formNdx, shortForm: !!reactData.assignedTo_filter })
-                        : null
+                          ? documentRow({ this_document, documentNdx, this_person, personNdx, this_form, formNdx, shortForm: !!reactData.assignedTo_filter })
+                          : null
                       ))
                       }
                     </React.Fragment>
