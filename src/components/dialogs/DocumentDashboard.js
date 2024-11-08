@@ -326,6 +326,9 @@ export default ({ request = {}, onClose }) => {
     if (reactData.stage === 'initialize') {
       initialize();
     }
+    else if (reactData.stage === 'exit') {
+      console.log('exit')
+    }
   }, [reactData.stage]);  // eslint-disable-line react-hooks/exhaustive-deps
 
 
@@ -563,11 +566,30 @@ export default ({ request = {}, onClose }) => {
       };
       buildDocList.forEach((personObj, pNdx) => {
         let typeList = [];
-        personObj.formTypes.forEach(this_type => {
+        personObj.formTypes.forEach((this_type, fX) => {
           if (this_type.documentList.length > 0) {
-            typeList.push(this_type.form_id)
+            typeList.push(this_type.form_id);
           }
-          this_type.documentList.sort((a, b) => { return ((a.completed_timestamp > b.completed_timestamp) ? -1 : 1); });
+          this_type.documentList = this_type.documentList.map(this_doc => {
+            let aSplit = this_doc.document_id.split('%%');
+            if (aSplit[2]) {
+              this_doc.sort = aSplit[2].split('#')[1];
+            }
+            else if (this_doc.completed_timestamp) {
+              this_doc.sort = this_doc.completed_timestamp;
+            }
+            else if (this_doc.title) {
+              this_doc.sort = this_doc.title;
+            }
+            else {
+              this_doc.sort = this_doc.document_id;
+            }
+            return this_doc;
+          });
+          let sortedForms = this_type.documentList.sort((a, b) => {
+            return ((a.sort > b.sort) ? 1 : -1);
+          });
+          buildDocList[pNdx].formTypes[fX].documentList = sortedForms;
         });
         if ((typeList.length === 1) && (reactData.formNotAlone.includes(typeList[0]))) {
           buildDocList.splice(pNdx, 1);
@@ -1009,11 +1031,12 @@ export default ({ request = {}, onClose }) => {
                           }
                         </React.Fragment>
                       }
-                      {(reactData.assignedTo_filter || this_form.form_expanded) && this_form.documentList.map((this_document, documentNdx) => (
-                        (documentNdx < reactData.formMaxToShow)
-                          ? documentRow({ this_document, documentNdx, this_person, personNdx, this_form, formNdx, shortForm: !!reactData.assignedTo_filter })
-                          : null
-                      ))
+                      {(reactData.assignedTo_filter || this_form.form_expanded)
+                        && this_form.documentList.map((this_document, documentNdx) => (
+                          (documentNdx < reactData.formMaxToShow)
+                            ? documentRow({ this_document, documentNdx, this_person, personNdx, this_form, formNdx, shortForm: !!reactData.assignedTo_filter })
+                            : null
+                        ))
                       }
                     </React.Fragment>
                   ))}
@@ -1044,9 +1067,17 @@ export default ({ request = {}, onClose }) => {
             mode: determineMode(reactData.selectedDoc),
           }}
           onClose={(formStatus) => {
-            updateReactData({
-              stage: ((formStatus === 'docAdded') ? 'initialize' : 'fill')
-            }, true);
+            if (formStatus === 'timeout') {
+              updateReactData({
+                stage: 'exit'
+              }, true);
+              handleAbort();
+            }
+            else {
+              updateReactData({
+                stage: ((formStatus === 'docAdded') ? 'initialize' : 'fill')
+              }, true);
+            }
           }}
         />
       }
@@ -1059,9 +1090,17 @@ export default ({ request = {}, onClose }) => {
 
           }}
           onClose={(formStatus) => {
-            updateReactData({
-              stage: ((formStatus === 'docAdded') ? 'initialize' : 'fill')
-            }, true);
+            if (formStatus === 'timeout') {
+              updateReactData({
+                stage: 'exit'
+              }, true);
+              handleAbort();
+            }
+            else {
+              updateReactData({
+                stage: ((formStatus === 'docAdded') ? 'initialize' : 'fill')
+              }, true);
+            }
           }}
         />
       }

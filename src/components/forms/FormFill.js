@@ -36,8 +36,6 @@ const useStyles = makeStyles(theme => ({
     overflowX: 'hidden',
     marginLeft: theme.spacing(2),
   },
-  radius_rounded: {
-  },
   buttonArea: {
     justifyContent: 'space-around',
     minWidth: '100%',
@@ -90,6 +88,12 @@ const useStyles = makeStyles(theme => ({
     '&.MuiInputBase-input': {
       paddingBottom: '0px'
     }
+  },
+  clientBackground: {
+    borderRadius: '30px',
+    maxWidth: '90%',
+    paddingLeft: '16px',
+    paddingRight: '16px',
   },
   reject: {
     backgroundColor: theme.palette.reject[theme.palette.type],
@@ -202,11 +206,13 @@ export default ({ request = {}, onClose }) => {
     }
   };
 
+  const [valuesChangedSinceLastSave, setValuesChangedSinceLastSave] = React.useState(false);
   const updateReactValues = (newData, force = false) => {
     setReactValues((prevValues) => (Object.assign(
       prevValues,
       newData
     )));
+    setValuesChangedSinceLastSave(true);
     if (force) {
       setForceRedisplay(!forceRedisplay);
     }
@@ -250,7 +256,7 @@ export default ({ request = {}, onClose }) => {
       if (!viewOnly()
         && (reactData.stage !== 'initialize')
         && (reactData.stage !== 'still_initializing')
-        && !reactData.savePending
+        && valuesChangedSinceLastSave
       ) {
         cl(`Auto save at ${now.toLocaleString()}.`);
         let saveCallObj = {
@@ -271,7 +277,7 @@ export default ({ request = {}, onClose }) => {
       cl(`Still idle at ${new Date().toLocaleString()}.  Idle for ${minutesSinceActive} minutes.`);
     }
     if (minutesSinceActive > 5) {
-      onClose((reactData.savePending) ? 'docAdded' : '');
+      onClose('timeout');
     }
     reset();
   };
@@ -1110,27 +1116,31 @@ export default ({ request = {}, onClose }) => {
   };
 
   const handleSave = async ({ document_id, save_continue }) => {
-    let documentRec;
-    let foundDoc = await dbClient
-      .get({
-        Key: {
+    let documentRec = {
+      client_id: state.session.client_id,
+    };
+    if (document_id) {
+      let foundDoc = await dbClient
+        .get({
+          Key: {
+            client_id: state.session.client_id,
+            document_id
+          },
+          TableName: "Documents"
+        })
+        .promise()
+        .catch(error => {
+          cl(`Error reading Documents as part of handleSave: ${error}`, document_id);
+        });
+      if (!recordExists(foundDoc)) {
+        documentRec = {
           client_id: state.session.client_id,
           document_id
-        },
-        TableName: "Documents"
-      })
-      .promise()
-      .catch(error => {
-        cl(`***ERR reading Groups*** caught error is: ${error}`, document_id);
-      });
-    if (!recordExists(foundDoc)) {
-      documentRec = {
-        client_id: state.session.client_id,
-        document_id
-      };
-    }
-    else {
-      documentRec = foundDoc.Item;
+        };
+      }
+      else {
+        documentRec = foundDoc.Item;
+      }
     }
     documentRec.completed_by = state.session.user_id;
     if (reactData.assign_to) {
@@ -1247,6 +1257,7 @@ export default ({ request = {}, onClose }) => {
           cl(`caught error updating Documents; error is: `, error);
         });
     }
+    setValuesChangedSinceLastSave(false);
     return {
       goodPut: (putError.length === 0),
       putError,
@@ -1435,8 +1446,7 @@ export default ({ request = {}, onClose }) => {
       open={(reactData.version > 0) || true}
       key={`wholeScreen__${reactData?.formRec?.form_name || 'notReady'}`}
       onClose={handleAbort}
-      classes={{ paper: classes.radius_rounded }}
-      fullScreen
+      classes={{ paper: classes.clientBackground }}
     >
       {(reactData.stage !== 'initialize') && (reactData.stage !== 'still_initializing') &&
         <React.Fragment>
@@ -2060,7 +2070,7 @@ export default ({ request = {}, onClose }) => {
       }
       {(reactData.stage === 'exit') &&
         <AVAConfirm
-          promptText={[`Are you sure you want to exit?`]}
+          promptText={[`${valuesChangedSinceLastSave ? 'Warning! You have unsaved changes!  ' : ''}Are you sure you want to exit?`]}
           cancelText={`No, keep going`}
           confirmText={`Yes, exit`}
           onCancel={() => {
