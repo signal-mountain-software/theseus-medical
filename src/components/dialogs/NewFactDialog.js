@@ -216,8 +216,8 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       }
     }
     if (!badData) {
-      setMessage('');
-      setStatusMessage('');
+      // setMessage('');
+      // setStatusMessage('');
       if (!factIOClass) { handleClose(); }
       else if (withNext) { onNext(newFact); }
       else { onSave(newFact); }
