@@ -3,15 +3,17 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 
 import { getImage, getPerson, getSession } from '../../util/AVAPeople';
-import { deepCopy, makeArray, cl, recordExists, dbClient } from '../../util/AVAUtilities';
+import { deepCopy, makeArray, cl, recordExists, dbClient, isEmpty } from '../../util/AVAUtilities';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
+import FormFill from './FormFill';
 
 import { Button, IconButton, TextField } from '@material-ui/core';
 import { Dialog, DialogContent, DialogActions } from '@material-ui/core';
-import { Box, Typography, Radio, Avatar } from '@material-ui/core';
+import { Box, Typography, Radio, Avatar, Checkbox } from '@material-ui/core';
 import { Menu, MenuList, MenuItem } from '@material-ui/core';
+import { FormGroup, FormControlLabel, FormControl, FormLabel } from '@material-ui/core';
 
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/Check';
@@ -78,6 +80,24 @@ const useStyles = makeStyles(theme => ({
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
   },
+  formControlTitle: {
+    margin: 0,
+    marginLeft: 0,
+    marginRight: '2px',
+    paddingTop: '16px',
+    paddingBottom: 0,
+    height: 1,
+    fontSize: theme.typography.fontSize * 0.8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 0,
+    marginBottom: '8px',
+  },
+  formControlCheckGroup: {
+    marginTop: 0,
+    paddingTop: 0,
+    marginLeft: '32px'
+  },
   listItemSticky: {   // keep
     position: 'sticky',
     top: 0,
@@ -105,8 +125,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
   /*
   forms as 
   { 
-    <member.record_type>: { <role>: [ {form_id: xxx}, {form_id: xxx}, ... ], <role>: [ {form_id: xxx}, {form_id: xxx}, ... ], ... },
-    <member.record_type>: { <role>: [ {form_id: xxx}, {form_id: xxx}, ... ], <role>: [ {form_id: xxx}, {form_id: xxx}, ... ], ... },
+    : { <record_type>: [ {form_id: xxx}, {form_id: xxx}, ... ], <role>: [ {form_id: xxx}, {form_id: xxx}, ... ], ... },
     ...
   }
   */
@@ -125,7 +144,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     family_id,
     familyMembers: [],
     restrict_to_client_id: options.client_id || null,
-    selectedColumn: null,
+    selectedColumn: 0,
     formInfoForThisPerson: [],
     forms,
     formList: []
@@ -174,17 +193,20 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
           let sessionRec = await getSession(this_familyRec.person_id);
           delete sessionRec.last_state;
           delete personRec.last_state;
-          familyMembers.push(Object.assign({}, this_familyRec, sessionRec, personRec));
+          let this_columnNumber = familyMembers.push(Object.assign({}, this_familyRec, sessionRec, personRec)) - 1;
+          if (this_familyRec.person_id === state.session.person_id) {
+            reactData.selectedColumn = this_columnNumber;
+          }
         }
       };
     }
     updateReactData({
-      familyMembers: [familyHeader].concat(familyMembers)
+      familyMembers: [familyHeader].concat(familyMembers),
+      selectedColumn: reactData.selectedColumn,
     }, false);
     const this_formList = await makeFormList({
-      selectedColumn: 0,
-      client_id: reactData.familyMembers[0].client_id,
-      record_type: reactData.familyMembers[0].record_type,
+      selectedColumn: reactData.selectedColumn,
+      client_id: state.session.client_id,
       role: reactData.familyMembers[0].role
     });
     updateReactData({
@@ -212,7 +234,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
       // does it exist anywhere in the family column?
       for (let ndx = 0; ((ndx < reactData.formInfoForThisPerson[0].length) && !refValue); ndx++) {
         refValue = reactData.formInfoForThisPerson[0][ndx].fields[refField]?.value?.data_value;
-      }      
+      }
     }
     if (!refValue) {
       // does it exist on another form in this column?
@@ -222,12 +244,16 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
         }
       }
     }
+    return refValue;
   }
 
   function prepareField({ selectedColumn, form_index, field_name, editMode }) {
     let fieldData = reactData.formInfoForThisPerson[selectedColumn][form_index].fields[field_name];
     let prompt = fieldData.prompt.ref;
     let data_value = fieldData.value.data_value;
+    if (fieldData.value.hidden && fieldData.edit && fieldData.edit.reset && editMode) { 
+      data_value = null;
+    }
     if ((!fieldData.value) || (!data_value)) {
       // in edit mode, default value comes from fieldData.edit
       if (editMode || fieldData.loaded) {
@@ -236,39 +262,13 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
       // No value; does it have a default value?
       if (fieldData.default) {
         if (!data_value) {
-          // does this field exist on ANY other form?
-          data_value = getRefValue({ selectedColumn, form_index, refField: fieldData.default.ref });
-        }
-        if (!data_value) {
-          if (fieldData.default.type === 'ID') {
-            const refField = fieldData.default.ref;
-            const refValue = getRefValue({ selectedColumn, form_index, refField });
-            if (refValue) {
-              let refWords = refValue.split(/\s+/);
-              data_value = (refWords[0].replace(/[^a-zA-Z]/, '').slice(0, 1)
-                + (refWords[1] ? refWords[1].replace(/[^a-zA-Z]/, '') : '')
-                + '-' + reactData.familyMembers[selectedColumn].client_id).toLowerCase();
-            }
-          }
-          else if (fieldData.default.type === 'first') {
-            const refField = fieldData.default.ref;
-            const refValue = getRefValue({ selectedColumn, form_index, refField });
-            if (refValue) {
-              let refWords = refValue.split(/\s+/);
-              data_value = refWords[0];
-            }
-          }
-          else if (fieldData.default.type === 'last') {
-            const refField = fieldData.default.ref;
-            const refValue = getRefValue({ selectedColumn, form_index, refField });
-            if (refValue) {
-              let refWords = refValue.split(/\s+/);
-              refWords.shift();
-              data_value = refWords.join(' ');
-            }
+          // does the referenced field exist on ANY other form?  (default ref must be a string)
+          if (typeof(fieldData.default.ref) === 'string') {
+            data_value = getRefValue({ selectedColumn, form_index, refField: fieldData.default.ref });
           }
         }
         if (!data_value) {
+          // does the default reference exist in a database table we retrieved?
           // refs gives you the name of the field - or array with structure as in name.first is ['name','first'] 
           let refs = makeArray(fieldData.default.ref);
           if (refs.length > 0) {
@@ -289,6 +289,31 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                 return remainingData[this_ref];
               }, reactData.familyMembers[0]);
             }
+          }
+        }
+        if (data_value) {
+          // we got a value from the default.ref
+          // does that value need to be manipulated based on the default type?
+          switch (fieldData.default.type) {
+            case 'ID': {
+              let refWords = data_value.split(/\s+/);
+              data_value = (refWords[0].replace(/[^a-zA-Z]/, '').slice(0, 1)
+                + (refWords[1] ? refWords[1].replace(/[^a-zA-Z]/, '') : '')
+                + '-' + state.session.client_id).toLowerCase();
+              break;
+            }
+            case 'first': {
+              let refWords = data_value.split(/\s+/);
+              data_value = refWords[0];
+              break;
+            }
+            case 'last': {
+              let refWords = data_value.split(/\s+/);
+              refWords.shift();
+              data_value = refWords.join(' ');
+              break;
+            }
+            default: { }
           }
         }
         Object.assign(
@@ -318,10 +343,6 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     fieldData.loaded = true;
     let response = [Object.assign({},
       fieldData.value,
-      cleanValue({
-        type: fieldData.value.type || 'text',
-        value: fieldData.value.raw_value
-      }),
       {
         prompt,
         error,
@@ -369,8 +390,10 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
         value: newValue
       })
     );
+    prepareField({ selectedColumn, form_index, field_name, editMode: true });
     updateReactData({
-      formInfoForThisPerson: reactData.formInfoForThisPerson
+      formInfoForThisPerson: reactData.formInfoForThisPerson,
+      familyMembers: reactData.familyMembers
     }, true);
   }
 
@@ -387,15 +410,17 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     updateReactData({ formInfoForThisPerson: reactData.formInfoForThisPerson }, true);
   }
 
-  async function editForm({ selectedColumn, form_index }) {
+  async function editColumn({ selectedColumn }) {
+    for (let form_index = 0; form_index < reactData.formInfoForThisPerson[selectedColumn].length; form_index++) {
+      await editForm({ selectedColumn, form_index, editMode: true })
+    }
+  }
+
+  async function editForm({ selectedColumn, form_index, editMode }) {    
     for (const field_name in reactData.formInfoForThisPerson[selectedColumn][form_index].fields) {
       const beforeValue = reactData.formInfoForThisPerson[selectedColumn][form_index].fields[field_name]?.value?.data_value;
-      const [afterObj] = prepareField({ selectedColumn, form_index, field_name, editMode: true });
-      Object.assign(
-        reactData.formInfoForThisPerson[selectedColumn][form_index].fields[field_name].value,
-        afterObj
-      );
-      if (reactData.formInfoForThisPerson[selectedColumn][form_index].fields[field_name].value.version) {
+      const [afterObj] = prepareField({ selectedColumn, form_index, field_name, editMode });
+      if (!reactData.formInfoForThisPerson[selectedColumn][form_index].fields[field_name].value.version) {
         reactData.formInfoForThisPerson[selectedColumn][form_index].fields[field_name].value.version = 1;
       }
       else {
@@ -413,16 +438,35 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
       formInfoForThisPerson: reactData.formInfoForThisPerson,
       familyMembers: reactData.familyMembers
     }, true);
+    return ({
+      formInfoForThisPerson: reactData.formInfoForThisPerson,
+      familyMembers: reactData.familyMembers
+    });
   }
 
-  async function makeFormList({ selectedColumn, client_id, record_type, role }) {
+  function reMap({ form, fieldList }) {
+    let response = fieldList.map(this_field => {
+      return Object.assign({},
+        { field_name: this_field },
+        form.fields[this_field],
+        form.fields[this_field].value,
+        { prompt: form.fields[this_field].prompt.ref }
+      );
+    });
+    return response;
+  }
+
+  async function makeFormList({ selectedColumn, client_id, role }) {
+    if (!isEmpty(reactData.formInfoForThisPerson[selectedColumn])) {
+      return reactData.formInfoForThisPerson[selectedColumn];
+    }
     reactData.formInfoForThisPerson[selectedColumn] = [];
     let form_index = -1;
-    if (!reactData.forms[record_type].hasOwnProperty(role)) {
+    if (!reactData.forms.hasOwnProperty(role)) {
       // you are asking for a form that was not named in the passed-in defaults,
       // build out a basic form with minimal info
       reactData.formInfoForThisPerson[selectedColumn] = [{
-        client_id: reactData.familyMembers[selectedColumn].client_id,
+        client_id: state.session.client_id,
         fields: {
           display_name: {
             prompt: { type: 'text', ref: 'Name' },
@@ -446,19 +490,31 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
           section_name: 'New Person Information'
         }]
       }];
+      updateReactData({ formInfoForThisPerson: reactData.formInfoForThisPerson }, false);
     }
     else {
-      for (const formObj of reactData.forms[record_type][role]) {
-        form_index++;
-        let this_form = await getForm(formObj.form_id);
-        if (!!this_form) {
-          reactData.formInfoForThisPerson[selectedColumn][form_index] = deepCopy(this_form);
+      for (const formObj of reactData.forms[role]) {
+        let this_form = await getForm(formObj.form_id);  
+        if (isEmpty(this_form)) {
+          if (!formObj.asForm) { continue; }
+          form_index++;
+          reactData.formInfoForThisPerson[selectedColumn][form_index] = { asForm: true };
         }
-        reactData.formInfoForThisPerson[selectedColumn][form_index].isChecked = (form_index === 0); 
+        else {
+          form_index++;
+          reactData.formInfoForThisPerson[selectedColumn][form_index] = deepCopy(this_form);
+          reactData.formInfoForThisPerson[selectedColumn][form_index].asForm = !!formObj.asForm;
+          let response = await editForm({ selectedColumn, form_index, editMode: false });
+          reactData.formInfoForThisPerson = response.formInfoForThisPerson;
+        }
+        reactData.formInfoForThisPerson[selectedColumn][form_index].isChecked = (form_index === 0);
       }
     }
-    updateReactData({ formInfoForThisPerson: reactData.formInfoForThisPerson }, false);
+    // updateReactData({ formInfoForThisPerson: reactData.formInfoForThisPerson }, false);
     return reactData.formInfoForThisPerson[selectedColumn];
+    //
+    /* Functions used exclusively in makeFormList */
+    //
     async function getForm(form_id) {
       let formRec = await dbClient
         .get({
@@ -538,6 +594,9 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                 });
               }
             });
+          }
+          if (!saveObj.personRec.person_id) {
+            // new account => 
           }
           let personIn = await dbClient
             .get({
@@ -698,45 +757,58 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     onClose();
 
     function makeHandlerArray({ this_field, valueObj }) {
-      let workList = [];
+      let workList;
       if (!valueObj.saveAs) { workList = [['personRec', this_field]]; }
       else if (typeof (valueObj.saveAs) === 'string') {
         workList = [['personRec', valueObj.saveAs]];
       }
       else {
-        handleArray(valueObj.saveAs);
+        workList = handleArray(valueObj.saveAs);
       };
       return workList;
 
       function handleArray(arrayToHandle) {
-        let workIndex = workList.push([]) - 1;
+        let workIndex = 0;
+        let response = [];
         arrayToHandle.forEach(this_entry => {
           if (typeof (this_entry) === 'string') {
-            if (workList[workIndex].length === 0) {
+            if (!response[workIndex] || (response[workIndex].length === 0)) {
               if (!['personRec', 'person', 'sessionRec', 'session', 'familyRec', 'family'].includes(this_entry)) {
-                workList[workIndex] = ['personRec', this_entry];
+                response[workIndex] = ['personRec', this_entry];
               }
               else {
-                workList[workIndex][0] = this_entry + ((this_entry.slice(-3) !== 'Rec') ? 'Rec' : '');
+                response[workIndex] = [`${this_entry}${((this_entry.slice(-3) !== 'Rec') ? 'Rec' : '')}`];
               }
             }
             else {
-              workList[workIndex].push(this_entry);
+              response[workIndex].push(this_entry);
             }
           }
           else {
             // this_entry is an array
-            handleArray(this_entry);
+            let subArray = handleArray(this_entry);
+            if (!response[workIndex] || (response[workIndex].length === 0)) {
+              response[workIndex] = subArray;
+            }
+            else {
+              response[workIndex].push(subArray);
+            }
           }
         });
+        return response;
       }
     }
 
     function resolveValues(obj, ar, v) {
       let oWork = obj;
       ar.forEach((o, nDx) => {
-        const last = (nDx === (ar.length - 1));
-        oWork = checkObj(oWork, o, last, v);
+        if (Array.isArray(o)) {
+          resolveValues(obj, o, v);
+        }
+        else {
+          const last = (nDx === (ar.length - 1));
+          oWork = checkObj(oWork, o, last, v);
+        }
       });
       console.log(oWork);
       oWork = v;
@@ -756,6 +828,70 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     }
   };
 
+  // **************************
+
+  const AVACheckBoxGroup = (props) => {
+    // props should contain
+    //   prop
+    //   choices - an array of options, each can independently go true or false
+    //   selected - currently selected prop
+    //   response - send back the selected value as a parm to this function
+    let choiceList = props.choices.map(this_choice => {
+      return Object.assign({},
+        this_choice,
+        { isSelected: (this_choice.value === props.selected) }
+      );
+    });
+    return (
+      <FormControl
+        className={classes.formControlCheckGroup}
+        component="fieldset"
+        key={props.myKey}
+        id={props.myKey}
+      >
+        <FormLabel
+          className={classes.formControlTitle}
+          key={`${props.myKey}_label`}
+          id={`${props.myKey}_label`}
+          style={{ fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` }}
+        >
+          {props.prompt}
+        </FormLabel>
+        <FormGroup row aria-label={`CheckGroup__${props.prop}`} name="method">
+          {(choiceList).map((this_choice, tIndex) => (
+            <FormControlLabel
+              className={classes.formControlDays}
+              key={`${props.myKey}_${tIndex}`}
+              id={`${props.myKey}_${tIndex}`}
+              control={
+                <Checkbox
+                  aria-label={`${props.prop}_${tIndex}`}
+                  name={`${props.prop}_${tIndex}`}
+                  key={`CheckGroup__${props.myKey}_${tIndex}`}
+                  id={`CheckGroup__${props.myKey}_${tIndex}`}
+                  size='small'
+                  checked={this_choice.isSelected}
+                  value={this_choice.isSelected}
+                  onClick={() => {
+                    props.response(this_choice.value);
+                  }}
+                  onMouseDown={() => {
+                    props.response(this_choice.value);
+                  }}
+                  disableRipple
+                  inputProps={{ 'aria-labelledby': `message_routing_3` }}
+                />
+              }
+              label={<Typography className={classes.radioDays}>{this_choice.label}</Typography>}
+              labelPlacement='end'
+            />
+          ))}
+        </FormGroup>
+      </FormControl>
+    );
+  };
+
+  // **************************
 
 
   return (
@@ -809,6 +945,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
             marginTop={1}
             aria-controls='hidden-menu'
             aria-haspopup='true'
+            key={'logoBox'}
             onClick={(event) => {
               handleClick(event);
               setPopupMenuOpen(true);
@@ -972,12 +1109,15 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                       }
                       <Radio
                         key={`radio-rowP-col${this_columnNumber}`}
+                        id={`radio-rowP-col${this_columnNumber}`}
                         checked={(reactData.selectedColumn === this_columnNumber)}
                         value={(reactData.selectedColumn === this_columnNumber)}
                         onClick={async () => {
+                          // changing columns - run a final edit on the one you are leaving
+                          await editColumn({ selectedColumn: reactData.selectedColumn });
                           const this_formList = await makeFormList({
                             selectedColumn: this_columnNumber,
-                            client_id: reactData.familyMembers[this_columnNumber].client_id,
+                            client_id: state.session.client_id,
                             record_type: reactData.familyMembers[this_columnNumber].record_type,
                             role: reactData.familyMembers[this_columnNumber].role
                           });
@@ -1015,7 +1155,11 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
         }
 
         { /* Data rows */}
-        <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
+        <DialogContent
+          dividers={true}
+          classes={{ dividers: classes.dialogBox }}
+          key={`dialogcontent-${reactData.selectedColumn || 99}`}
+        >
           <Box
             key={`thewholething-${reactData.selectedColumn || 99}`}
             id={`thewholething-${reactData.selectedColumn || 99}`}
@@ -1029,107 +1173,167 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
               && reactData.formList
               && (reactData.selectedColumn != null)
               &&
-              reactData.formList.map((this_form, form_index) => (
-                <Box
-                  display='flex'
-                  flexGrow={1}
-                  maxWidth={'80%'}
-                  minWidth={'80%'}
-                  flexDirection='column'
-                  key={`radio-col${reactData.selectedColumn}_form${form_index}`}
-                  className={classes.listItem}
-                  justifyContent='center'
-                  alignItems='flex-start'
-                >
-                  <Box
-                    display='flex'
-                    flexDirection='row'
-                    key={`radio-col${reactData.selectedColumn}_form${form_index}`}
-                    className={classes.listItem}
-                    style={AVATextStyle({ margin: { top: 2 } })}
-                    justifyContent='flex-start'
-                    alignItems='center'
+              <React.Fragment
+                key={`Colfrag${reactData.selectedColumn}`}
+              >
+                {reactData.formList.map((this_form, form_index) => (
+                  <React.Fragment
+                    key={`wrapperFrag-col${reactData.selectedColumn}_form${form_index}`}
                   >
-                    <Radio
-                      key={`radio-col${reactData.selectedColumn}_form${form_index}`}
-                      checked={reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].isChecked}
-                      value={reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].isChecked}
-                      onClick={() => {
-                        selectAForm({ selectedColumn: reactData.selectedColumn, form_index });
-                      }}
-                      disableRipple
-                      className={classes.radioButton}
-                      size='small'
-                    />
-                    <Typography key={`name-col${reactData.selectedColumn}_form${form_index}`}
-                      style={AVATextStyle({ size: 1.5, bold: true, margin: { left: 1 } })}
+                    <Box
+                      display='flex'
+                      flexGrow={1}
+                      maxWidth={'80%'}
+                      minWidth={'80%'}
+                      flexDirection='column'
+                      key={`wrapper-col${reactData.selectedColumn}_form${form_index}`}
+                      className={classes.listItem}
+                      justifyContent='center'
+                      alignItems='flex-start'
                     >
-                      {this_form.form_name}
-                    </Typography>
-                  </Box>
-                  {reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].isChecked &&
-                    this_form.sections.map((this_section, section_index) => (
-                      <React.Fragment>
+                      <Box
+                        display='flex'
+                        flexDirection='row'
+                        key={`radio-col${reactData.selectedColumn}_form${form_index}`}
+                        className={classes.listItem}
+                        style={AVATextStyle({ margin: { top: 2 } })}
+                        justifyContent='flex-start'
+                        alignItems='center'
+                      >
+                        <Radio
+                          key={`radio-button${reactData.selectedColumn}_form${form_index}`}
+                          id={`radio-button${reactData.selectedColumn}_form${form_index}`}
+                          checked={reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].isChecked}
+                          value={reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].isChecked}
+                          onClick={() => {
+                            selectAForm({ selectedColumn: reactData.selectedColumn, form_index });
+                          }}
+                          disableRipple
+                          className={classes.radioButton}
+                          size='small'
+                        />
                         <Typography
-                          key={`sectionHeader_${reactData.selectedColumn}.${form_index}.${section_index}`}
-                          id={`sectionHeader_${reactData.selectedColumn}.${form_index}.${section_index}`}
-                          style={AVATextStyle({ size: 1, italic: true, margin: { left: 1.5, top: 0.5 } })}
+                          key={`name-col${reactData.selectedColumn}_form${form_index}`}
+                          style={AVATextStyle({ size: 1.5, bold: true, margin: { left: 1 } })}
                         >
-                          {this_section.section_name}
+                          {this_form.form_name}
                         </Typography>
-                        {this_section.fields.map((field_name, sFnDX) => (
-                          prepareField({ selectedColumn: reactData.selectedColumn, form_index, section_index, field_name }).map((this_field) => (
-                            (!this_field.hidden &&
-                              <Box display='flex'
-                                flexDirection='row'
-                                borderRadius={'16px'}
-                                marginLeft={2}
-                                marginRight={2}
-                                maxWidth={this_field.checkbox ? 400 : 'auto'}
-                                width={!this_field.checkbox ? '100%' : 'auto'}
-                                marginTop={1}
-                                marginBottom={0}
-                                padding={1}
-                                border={(!!this_field.error || (this_field.isBlank && this_field.required))
-                                  ? 4
-                                  : (this_field.checkbox ? 4 : 'none')
-                                }
-                                className={classes.backGroundNone}
-                                borderColor={!!this_field.error ? 'red' : (this_field.isChecked ? 'green' : 'lightgray')}
-                                key={`box_${reactData.selectedColumn}.${form_index}.${section_index}.${sFnDX}`}
-                                id={`box_${reactData.selectedColumn}.${form_index}.${section_index}.${sFnDX}`}
+                      </Box>
+                      {reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].isChecked &&
+                        !reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].asForm &&
+                        this_form.sections.map((this_section, section_index) => (
+                          <React.Fragment
+                            key={`Formfrag${reactData.selectedColumn}${reactData.selectedColumn}_${form_index}_${section_index}`}
+                          >
+                            <Typography
+                              key={`sectionHeader_${reactData.selectedColumn}.${form_index}.${section_index}`}
+                              id={`sectionHeader_${reactData.selectedColumn}.${form_index}.${section_index}`}
+                              style={AVATextStyle({ size: 1, italic: true, margin: { left: 1.5, top: 0.5 } })}
+                            >
+                              {this_section.section_name}
+                            </Typography>
+                            {reMap({ form: this_form, fieldList: this_section.fields }).map((this_field, sFnDX) => (
+                              <React.Fragment
+                                key={`tempFrag_${reactData.selectedColumn}.${form_index}.${section_index}_${sFnDX}_${this_field.version}`}
                               >
-                                <TextField
-                                  className={classes.freeInput}
-                                  variant={'standard'}
-                                  key={`inputtextprompt_${reactData.selectedColumn}.${form_index}.${section_index}.${sFnDX}.${this_field.version || 0}`}
-                                  id={`inputtextprompt_${reactData.selectedColumn}.${form_index}.${section_index}.${sFnDX}.${this_field.version || 0}`}
-                                  helperText={this_field.prompt}
-                                  multiline
-                                  inputProps={{ style: { fontSize: `${user_fontSize * 1}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                                  onChange={event => {
-                                    handleChange({
-                                      newValue: event.target.value,
-                                      selectedColumn: reactData.selectedColumn,
-                                      form_index, section_index, field_name
-                                    });
-                                  }}
-                                  onBlur={async () => {
-                                    await editForm({ selectedColumn: reactData.selectedColumn, form_index });
-                                  }}
-                                  FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                                  autoComplete='off'
-                                  value={this_field.visible_value || ''}
-                                />
-                              </Box>
-                            )
-                          ))
-                        ))}
-                      </React.Fragment>
-                    ))
-                  }
-                </Box>
-              ))
+                                <Typography
+                                  key={`temp_${reactData.selectedColumn}.${form_index}.${section_index}_${sFnDX}_${this_field.version}`}
+                                  id={`temp_${reactData.selectedColumn}.${form_index}.${section_index}_${sFnDX}_${this_field.version}`}
+                                >
+                                  {console.log(`${this_field.field_name}/${this_field.type}/${this_field.data_value}/v${this_field.version}`)}
+                                </Typography>
+                                {!this_field.hidden && (this_field.type !== 'select') &&
+                                  <Box display='flex'
+                                    flexDirection='row'
+                                    borderRadius={'16px'}
+                                    marginLeft={2}
+                                    marginRight={2}
+                                    maxWidth={this_field.checkbox ? 400 : 'auto'}
+                                    width={!this_field.checkbox ? '100%' : 'auto'}
+                                    marginTop={1}
+                                    marginBottom={0}
+                                    padding={1}
+                                    border={(!!this_field.error || (this_field.isBlank && this_field.required))
+                                      ? 4
+                                      : (this_field.checkbox ? 4 : 'none')
+                                    }
+                                    className={classes.backGroundNone}
+                                    borderColor={!!this_field.error ? 'red' : (this_field.isChecked ? 'green' : 'lightgray')}
+                                    key={`box_${reactData.selectedColumn}.${form_index}.${section_index}.${sFnDX}`}
+                                    id={`box_${reactData.selectedColumn}.${form_index}.${section_index}.${sFnDX}`}
+                                  >
+                                    <TextField
+                                      className={classes.freeInput}
+                                      variant={'standard'}
+                                      key={`inputtextprompt_${reactData.selectedColumn}.${form_index}.${section_index}.${sFnDX}.${this_field.version || 0}`}
+                                      id={`inputtextprompt_${reactData.selectedColumn}.${form_index}.${section_index}.${sFnDX}.${this_field.version || 0}`}
+                                      helperText={this_field.prompt}
+                                      multiline
+                                      onChange={async (event) => {
+                                        handleChange({
+                                          newValue: event.target.value,
+                                          selectedColumn: reactData.selectedColumn,
+                                          form_index,
+                                          section_index,
+                                          field_name: this_field.field_name
+                                        });
+                                      }}
+                                      FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                                      autoComplete='off'
+                                      defaultValue={this_field.visible_value || ''}
+                                    />
+                                  </Box>
+                                }
+                                {!this_field.hidden && (this_field.type === 'select') &&
+                                  <React.Fragment
+                                    key={`Checkfrag${reactData.selectedColumn}_${form_index}_${section_index}_${sFnDX}${this_field.data_value}`}
+                                  >
+                                    {true && (this_field.data_value !== null) &&
+                                      <AVACheckBoxGroup
+                                        prop={this_field.field_name}
+                                        myKey={`cbox_${reactData.selectedColumn}.${form_index}.${section_index}_${sFnDX}_${this_field.version || '-1'}`}
+                                        prompt={this_field.prompt}
+                                        choices={this_field.selectList}
+                                        selected={this_field.data_value}
+                                        response={async (response) => {
+                                          handleChange({
+                                            newValue: response,
+                                            selectedColumn: reactData.selectedColumn,
+                                            form_index,
+                                            section_index,
+                                            field_name: this_field.field_name
+                                          });
+                                        }}
+                                      />
+                                    }
+                                  </React.Fragment>
+                                }
+                              </React.Fragment>
+                            ))}
+                          </React.Fragment>
+                        ))
+                      }
+                      {reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].isChecked &&
+                        reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].asForm &&
+                        <FormFill
+                          request={{
+                            form_id: reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].form_id,
+                            person_id: reactData.familyMembers[reactData.selectedColumn].person_id,
+                            mode: 'not_started',
+                            canvas: true
+                          }}
+                          onClose={(formStatus) => {
+                            reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].isChecked = false;
+                            updateReactData({
+                              formInfoForThisPerson: reactData.formInfoForThisPerson
+                            }, true);
+                          }}
+                        />
+                      }
+                    </Box>
+                  </React.Fragment>
+                ))}
+              </React.Fragment>
             }
           </Box>
         </DialogContent>
@@ -1146,6 +1350,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
         >
           <Button
             className={AVAClass.AVAButton}
+            key={`Exit_Button`}
             style={{ backgroundColor: 'red', color: 'white', marginRight: '96px' }}
             size='small'
             onClick={() => { onClose(); }}
@@ -1155,6 +1360,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
           </Button>
           <Button
             className={AVAClass.AVAButton}
+            key={`Finish_Button`}
             style={reactData.errorOnScreen
               ? { backgroundColor: 'white', color: 'green', marginLeft: '96px' }
               : { backgroundColor: 'green', color: 'white', marginLeft: '96px' }
@@ -1162,6 +1368,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
             size='small'
             disabled={reactData.errorOnScreen}
             onClick={async () => {
+              await editColumn({ selectedColumn: reactData.selectedColumn });
               await saveAndClose();
             }}
             startIcon={<CheckIcon size="small" />}
