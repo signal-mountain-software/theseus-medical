@@ -1,10 +1,10 @@
 import React from 'react';
 import { lambda, cl, sentenceCase, switchActiveAccount, listFromArray, makeArray } from '../../util/AVAUtilities';
-
+import AVATextInput from './AVATextInput';
 import { useSnackbar } from 'notistack';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
-import { getMemberList, addMember, getPublicGroupList, getPrivateGroupList, determineClass, getRole, getAllGroups, removeMember, removeAdministrator, addAdministrator } from '../../util/AVAGroups';
+import { createNewGroup, getMemberList, addMember, getPublicGroupList, getPrivateGroupList, determineClass, getRole, getAllGroups, removeMember, removeAdministrator, addAdministrator } from '../../util/AVAGroups';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import useSession from '../../hooks/useSession';
 
@@ -221,6 +221,7 @@ export default ({ options, onReset }) => {
   const [promptForMessage, setPromptForMessage] = React.useState('');
   const [showSuperSize, setshowSuperSize] = React.useState(false);
   const [showAccountHistory, setShowAccountHistory] = React.useState(false);
+  const [promptForName, setPromptForName] = React.useState(false);
   const [superSizeData, setSuperSizeData] = React.useState(false);
   const [updatesMade, setUpdatesMade] = React.useState(false);
   const [singlePersonMode, setsinglePersonMode] = React.useState(false);
@@ -240,7 +241,7 @@ export default ({ options, onReset }) => {
     )));
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
-  
+
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   if (peopleList && !showSuperSize) {
@@ -279,6 +280,7 @@ export default ({ options, onReset }) => {
   const [rowLimit, setRowLimit] = React.useState(5);
   const scrollValue = 5;
   var rowsWritten;
+  var writtenRows = [];
   let filterTimeOut;
 
   const multiGroups = (
@@ -649,13 +651,14 @@ export default ({ options, onReset }) => {
           <Paper component={Box} variant='outlined' overflow='auto' square>
             <List>
               <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                {writtenRows = []}
                 {rowsWritten = 0}
               </Typography>
               {workingMemberList.map((this_item, index) => (
                 ((rowsWritten <= rowLimit) && (okToShow(this_item)) &&
                   <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                      {rowsWritten++}
+                      {rowsWritten = writtenRows.push(this_item.person_id)}
                     </Typography>
                     <Box display='flex' flexDirection='column' >
                       <Box
@@ -762,7 +765,12 @@ export default ({ options, onReset }) => {
               ))}
               {(rowsWritten === 0) &&
                 <Box display='flex' marginLeft={3} flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                  <Typography style={AVATextStyle({ size: 1.5, margin: { bottom: 1 } })}>{'No Directory entries match your search!'}</Typography>
+                  <Typography style={AVATextStyle({ size: 1.5, margin: { bottom: 2, top: 2 } })}>
+                    {(workingMemberList.length === 0)
+                      ? `There are no members in this Group yet`
+                      : `Your selection didn't find anything`
+                    }
+                  </Typography>
                 </Box>
               }
             </List>
@@ -842,7 +850,7 @@ export default ({ options, onReset }) => {
                     startIcon={<CloseIcon size="small" />}
                     onClick={() => {
                       setOverrideRole(null);
-                      onReset(updatesMade);
+                      onReset({ updatesMade });
                     }}
                   >
                     {'Close'}
@@ -881,6 +889,19 @@ export default ({ options, onReset }) => {
                     >
                       {'Roster'}
                     </Button>
+                    {(workingMemberList.length > rowsWritten) && (rowsWritten > 0) &&
+                      <Button
+                        onClick={() => {
+                          setPromptForName(true);
+                        }}
+                        className={AVAClass.AVAButton}
+                        style={{ backgroundColor: 'green', color: 'white' }}
+                        size='small'
+                        startIcon={<GroupAddIcon fontSize="small" />}
+                      >
+                        {'Create a new Group'}
+                      </Button>
+                    }
                   </Box>
                 }
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
@@ -979,6 +1000,24 @@ export default ({ options, onReset }) => {
             </DialogActions>
           }
         </React.Fragment>
+        {promptForName &&
+          <AVATextInput
+            promptText="Enter a Name for the Group you're creating"
+            buttonText='Create'
+            onCancel={() => { setPromptForName(false); }}
+            onSave={async (newGroupName) => {
+              setPromptForName(false);
+              let newGroupID = await createNewGroup({
+                client_id: state.session.client_id,
+                madeFromGroup: pGroupRec,
+                group_name: newGroupName,
+                adminList: pPatient,
+                memberList: writtenRows
+              });
+              onReset({ updatesMade: true, newGroupID, newGroupName, newMemberList: writtenRows } );
+            }}
+          />
+        }
         {showSuperSize &&
           <List classes={{ root: classes.superSizeArea }}   >
             <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
@@ -1098,7 +1137,7 @@ export default ({ options, onReset }) => {
                   startIcon={<CloseIcon size="small" />}
                   onClick={() => {
                     if (singlePersonMode) {
-                      onReset(false);
+                      onReset({ updatesMade: false });
                     }
                     else {
                       setshowSuperSize(false);
