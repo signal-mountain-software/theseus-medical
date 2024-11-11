@@ -96,7 +96,11 @@ export async function getLocalWeather(client_weather = {
     return `Forecast for ${client_weather.place_name} not available at this time`;
   }
   else {
-    return `Forecast for ${client_weather.place_name} ${weather.properties.periods[0].name.toLowerCase()} - ${weather.properties.periods[0].detailedForecast}`;
+    let periodWords = weather.properties.periods[0].name;
+    if (periodWords.startsWith('this') || periodWords.startsWith('today')) {
+      periodWords = `t${periodWords.slice(1)}`;
+    }
+    return `Forecast for ${client_weather.place_name} ${periodWords} - ${weather.properties.periods[0].detailedForecast}`;
   };
 }
 
