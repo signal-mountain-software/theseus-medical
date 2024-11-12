@@ -40,6 +40,100 @@ export async function addEvent(body) {
   // Prepare Event record
   let eventID = `${body.calendar_info.description.replace(/\W/g, '').slice(0, 8)}_${uuid(6)}`.toLowerCase();
   let occPattern = Object.assign({}, setRecurrence(body.calendar_info.schedule_type));
+
+  body.calendar_info.timeObj = Object.assign(
+    {
+      allDay: body.calendar_info.allDay,
+      from: body.calendar_info.time_from,
+      to: body.calendar_info.time_to,
+      from_minutesSinceMidnight: body.calendar_info.from_minutesSinceMidnight,
+      duration: body.calendar_info.time_duration || body.calendar_info.duration
+    },
+    body.calendar_info.timeObj
+  );
+  // if allDay sent in, ignore everything else
+  if (body.calendar_info.timeObj.allDay) {
+    body.calendar_info.timeObj = {
+      from_minutesSinceMidnight: 0,
+      allDay: true,
+      duration: 1440
+    };
+  }
+  else {
+    body.calendar_info.timeObj.allDay = false;
+    let fromObj = makeTime(body.calendar_info.timeObj.from);
+    let toObj = makeTime(body.calendar_info.timeObj.to);
+    // if duration sent in, use it instead of both from and to
+    if (body.calendar_info.timeObj.duration) {
+      if (fromObj.good) {
+        let tempTime = fromObj.minutesSinceMidnight + body.calendar_info.timeObj.duration;
+        if (tempTime > 1440) {
+          tempTime -= 1440;
+        }
+        toObj = makeTime(`${(Math.floor(tempTime / 60) * 100)}:${(tempTime % 60)}`);
+        body.calendar_info.timeObj.from_minutesSinceMidnight = fromObj.minutesSinceMidnight;
+        body.calendar_info.timeObj.from = fromObj.time;
+        body.calendar_info.timeObj.to = toObj.time;
+      }
+      // from not good, is "to" good?
+      else if (toObj.good) {
+        let tempTime = toObj.minutesSinceMidnight - body.calendar_info.timeObj.duration;
+        if (tempTime < 0) {
+          tempTime += 1440;
+        }
+        fromObj = makeTime(`${(Math.floor(tempTime / 60) * 100)}:${(tempTime % 60)}`);
+        body.calendar_info.timeObj.from_minutesSinceMidnight = fromObj.minutesSinceMidnight;
+        body.calendar_info.timeObj.from = fromObj.time;
+        body.calendar_info.timeObj.to = toObj.time;
+      }
+      else {
+        // we got a duration without EITHER from or to-time being good
+        // create an event that goes for "duration" minutes, half before and half after 12noon
+        let tempTime = 720 - (body.calendar_info.timeObj.duration / 2);
+        fromObj = makeTime(`${(Math.floor(tempTime / 60) * 100)}:${(tempTime % 60)}`);
+        tempTime = 720 + (body.calendar_info.timeObj.duration / 2);
+        toObj = makeTime(`${(Math.floor(tempTime / 60) * 100)}:${(tempTime % 60)}`);
+        body.calendar_info.timeObj.from_minutesSinceMidnight = fromObj.minutesSinceMidnight;
+        body.calendar_info.timeObj.from = fromObj.time;
+        body.calendar_info.timeObj.to = toObj.time;
+      }
+    }
+    else {
+      // no duration sent in; calculate what we need
+      if (fromObj.good) { 
+        body.calendar_info.timeObj.from_minutesSinceMidnight = fromObj.minutesSinceMidnight;
+        body.calendar_info.timeObj.from = fromObj.time;
+        if (toObj.good) {
+          body.calendar_info.timeObj.to = toObj.time;
+          body.calendar_info.timeObj.duration = toObj.minutesSinceMidnight - fromObj.minutesSinceMidnight;
+          if (body.calendar_info.timeObj.duration < 0) {
+            body.calendar_info.timeObj.duration += 1440;
+          }
+        }
+        else {
+          // good from, no good to-time, set duration as from-time to midnight
+          body.calendar_info.timeObj.duration = 1440 - fromObj.minutesSinceMidnight;
+        }
+      }
+      else {
+        // from is bad
+        if (!toObj.good) {
+          // from is bad, to is bad, no duration...  nothing to do here except make an all day
+          body.calendar_info.timeObj = {
+            from_minutesSinceMidnight: 0,
+            allDay: true,
+            duration: 1440
+          };
+        }
+        else {
+          body.calendar_info.timeObj.from_minutesSinceMidnight = 0;
+          body.calendar_info.timeObj.duration = toObj.minutesSinceMidnight;
+          body.calendar_info.timeObj.to = toObj.time;
+          body.calendar_info.timeObj.from = 'Midnight';
+        }
+      }
+    }
+  }
   let eventRec = {
     client: body.clientId,
     event_key: eventID,
@@ -61,10 +155,7 @@ export async function addEvent(body) {
           // code:  (future)
           description: body.calendar_info.location
         },
-        time: {
-          from: body.calendar_info.time_from,
-          to: body.calendar_info.time_to,
-        }
+        time: body.calendar_info.timeObj
       },
       occPattern,
       start_Date: occPattern.first_date || (occPattern.specified ? occPattern.specified[0] : makeDate('today').numeric),
@@ -1277,7 +1368,7 @@ export async function writeSlot(body) {
             let goodGet = false;
             let newAssignmentList = [];
             // if you only have "view" access, find the most recent document of this type and assign the person to it
-            if (this_form.access === 'view') { 
+            if (this_form.access === 'view') {
               let queryObj = {
                 TableName: 'Documents',
                 KeyConditionExpression: 'client_id = :c and begins_with(document_id, :dID)',
@@ -2881,7 +2972,7 @@ export async function publishCalendar(request) {
     endDate: makeDate(response[1]).date
   }
   */
-  
+
   let ava_env = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
 
   // make request dates into dateObj

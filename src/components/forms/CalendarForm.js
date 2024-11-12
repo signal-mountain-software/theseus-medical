@@ -558,6 +558,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               addTemplateEvent: true,
               selectedTemplate: getTemplate(dragged_id),
               isAppointment: true,
+              appointmentStart: null,
+              appointmentEnd: null,
               appointmentDate: dropTarget['calendar_cell'].this_date
             }, true);
           }
@@ -565,6 +567,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
             let personRec = await getPerson(dragged_id);
             updateReactData({
               getAppointmentType: true,
+              appointmentStart: null,
+              appointmentEnd: null,
               appointmentDate: dropTarget['calendar_cell'].this_date,
               selectedPersonRec: personRec,
             }, true);
@@ -2125,11 +2129,11 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 setDuration: reactData.selectedTemplate.event_data.time.duration,
                 forms: reactData.selectedTemplate.forms,
                 customizations: reactData.selectedTemplate.customizations,
-                title: (reactData.selectedPersonRec
+                title: (!isEmpty(reactData.selectedPersonRec)
                   ? resolve(reactData.selectedTemplate.customizations.description, reactData.selectedPersonRec)
                   : reactData.selectedTemplate.event_data.generic_description
                 ),
-                location: (reactData.selectedPersonRec
+                location: (!isEmpty(reactData.selectedPersonRec)
                   ? (resolve(reactData.selectedTemplate.customizations.location, reactData.selectedPersonRec) || '')
                   : ''
                 ),

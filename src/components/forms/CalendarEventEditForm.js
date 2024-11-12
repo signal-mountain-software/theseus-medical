@@ -802,7 +802,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
             </Typography>
             {pOccData.date &&
               <Typography className={classes.standardIndent} style={AVATextStyle({ margin: { left: 1, right: 1 } })} >
-                {`${makeDate(pOccData.date).relative}${(pOccData.time$ && (pOccData.time$.trim() !== '')) ? ' - ' + pOccData.time$ : ''}`}
+                {`${makeDate(pOccData.date).relative}${(!isEmpty(pOccData.time)) ? ' - ' + pOccData.time$ : ''}`}
               </Typography>
             }
             {pOccData.location &&
@@ -1374,7 +1374,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
               pOccData.description,
               pOccData.location || '',
               (pOccData.date ? makeDate(pOccData.date).absolute : null),
-              (pOccData.date ? pOccData.time$ : null)
+              (isEmpty(pOccData.time) ? null : pOccData.time$)
             ]}
             onCancel={() => {
               reactData.editInfoErrorList = [];
@@ -1384,7 +1384,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
             }}
             onSave={async (updatedValues) => {
               reactData.editInfoErrorList = [];
-              let updatedDate = makeDate(updatedValues[2]);
+              let updatedDate = makeDate(updatedValues[2], { noTime: true });
               let reactUpdates = {};
               if (updatedDate.error) {
                 reactUpdates.editInfoErrorList = ['', '', 'Please enter a valid date'];
@@ -1393,7 +1393,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                 reactUpdates.editEventInfo = false;
                 let newDescription = ((pOccData.description !== updatedValues[0]) ? updatedValues[0] : null);
                 let newLocation = ((pOccData.location !== updatedValues[1]) ? updatedValues[1] : null);
-                let OGDate = (pOccData.date ? makeDate(pOccData.date) : { error: true });
+                let OGDate = (pOccData.date ? makeDate(pOccData.date, { noTime: true }) : { error: true });
                 let newDate = ((OGDate.numeric$ !== updatedDate.numeric$) ? updatedDate.numeric$ : null);
                 let newTime = ((pOccData.time$ !== updatedValues[3]) ? updatedValues[3] : null);
                 if (newDescription || newLocation || newDate || newTime) {

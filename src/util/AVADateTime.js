@@ -564,7 +564,7 @@ export function makeTime(pTime) {
             if (!mm$) { mm = hh % 100; }
             hh = Math.floor(hh / 100);
         }
-        if (!ampm && (hh < 7)) { hh += 12; }
+        if (!ampm && (hh < 7) && (hh > 0)) { hh += 12; }
         if (mm$) { mm = Number(mm$.replace(/\D+/g, '')); }
         if (mm > 59) {
             error = true;
@@ -614,6 +614,7 @@ export function makeTime(pTime) {
         string24: `0000${numeric24}`.slice(-4),
         dayPart,
         empty,
-        error
+        error,
+        good: (!empty && !error)
     };
 }
