@@ -825,6 +825,10 @@ export const isMobile = () => {
   return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 };
 
+export const isSmallScreen = () => {
+  return isMobile() || (window.window.innerWidth < 800);
+}
+
 export async function switchActiveAccount(session, newClient, newPatient) {
   await dbClient
     .update({

@@ -358,7 +358,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       pWidth: 60,
       defaultValues: defaultValues,
       selectedPersonRec: {},
-      denseView: setInitialView(defaultValues) || {'*all': false},
+      denseView: setInitialView(defaultValues) || { '*all': false },
       factor7: defaultValues.weekView ? Math.min(((window.window.innerWidth - 220) / 1400), 1) : 1,
       conflictInfo: conflictInfo,
       colorScheme: defaultValues.colorScheme || defaultColorScheme,
@@ -430,7 +430,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   };
 
   const agendaView = () => {
-    return reactData.defaultValues.agendaView;
+    return reactData.defaultValues.agendaView || (window.window.innerWidth < 800);
   };
 
   const eventsToShow = (this_date) => {
@@ -861,7 +861,10 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   };
 
   const isDense = (this_date) => {
-    if (reactData.denseView.hasOwnProperty(this_date)) {
+    if (window.window.innerWidth < 800) {
+      return false;
+    }
+    else if (reactData.denseView.hasOwnProperty(this_date)) {
       return reactData.denseView[this_date];
     }
     else {
@@ -2293,7 +2296,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               });
             }}
           >
-            {'Back 1 week'}
+            {(window.window.innerWidth < 800) ? '' : 'Back 1 week'}
           </Button>
         </Box>
         <Box display='flex' flexWrap='wrap' flexGrow={2} flexDirection='row' justifyContent='center' alignItems='center'>
@@ -2363,7 +2366,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               });
             }}
           >
-            {'Forward 1 week'}
+            {(window.window.innerWidth < 800) ? '' : 'Forward 1 week'}
           </Button>
         </Box>
       </Box>
