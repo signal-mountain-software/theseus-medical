@@ -839,7 +839,7 @@ export async function getSlotList(request) {
             slot_sort = found.sort;
           }
         }
-        slotObj[slotKey] = Object.assign(r.slotData, {
+        slotObj[slotKey] = Object.assign(r, r.slotData, {
           status: (r.slotData.status ? r.slotData.status.current : "undefined"),
           show_this_slot: (r.slotData.hasOwnProperty('show_this_slot') ? r.slotData.show_this_slot : true),
           owner: r.slotData.owner,
