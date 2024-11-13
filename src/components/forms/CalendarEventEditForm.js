@@ -98,7 +98,7 @@ const useStyles = makeStyles(theme => ({
   buttonArea: {
     justifyContent: 'center',
     marginTop: theme.spacing(1),
-    marginBottom: theme.spacing(1)
+    marginBottom: theme.spacing(1),
   },
   idText: {
     display: 'inline',
@@ -1182,9 +1182,9 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                     >
                       <Box display='flex' mr={0} flexDirection='row' justifyContent='flex-start' alignItems='center'>
                         {/* Mark an item - Radio button */}
-                        {(isEventOwner || isSlotOwner(this_item.slotData)) &&
-                          <Box width={40} display='flex' mr={0} flexDirection='column' justifyContent='center' alignItems='center'>
-                            <Tooltip mr={0} ml={0} title={`Mark ${this_item.marked ? 'not ' : ''}attended`} >
+                        
+                          <Box minWidth={40} maxWidth={40} display='flex' mr={0} flexDirection='column' justifyContent='center' alignItems='center'>
+                            {(isEventOwner || isSlotOwner(this_item.slotData)) && <Tooltip mr={0} ml={0} title={`Mark ${this_item.marked ? 'not ' : ''}attended`} >
                               <IconButton mr={0} ml={0}
                                 onClick={async () => {
                                   let { timestamp, location } = await getMarker();
@@ -1238,9 +1238,8 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                                   )
                                 }
                               </IconButton>
-                            </Tooltip>
+                            </Tooltip>}
                           </Box>
-                        }
                         {/* Image and Name */}
                         {(!(state.user.account_class
                           && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)

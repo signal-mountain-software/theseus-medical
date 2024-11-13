@@ -159,7 +159,6 @@ const useStyles = makeStyles(theme => ({
   },
   peopleBox: {
     paddingTop: 0,
-    paddingLeft: theme.spacing(2),
     paddingBottom: theme.spacing(2),
     overflowX: 'auto',
     scrollbarWidth: 'thin',
@@ -171,7 +170,6 @@ const useStyles = makeStyles(theme => ({
   },
   peopleBoxWithSpace: {
     paddingTop: theme.spacing(2),
-    paddingLeft: theme.spacing(2),
     paddingBottom: theme.spacing(2),
     overflowX: 'auto',
     scrollbarWidth: 'thin',
@@ -2280,7 +2278,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       }
       <Box display='flex' flexDirection='row'
         className={classes.button_area}
-        paddingBottom={'1.5'} px={isMobile ? 2 : 6}
+        paddingBottom={'1.5'} px={0}
         justifyContent='space-between' alignItems='center'
       >
         <Box display='flex' flexWrap='wrap' flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
