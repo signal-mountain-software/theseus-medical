@@ -358,7 +358,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       ];
       marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
       let urgentMessage = marqueeData.find(m => {
-        return (m.criticalMessage);
+        return (m.criticalMessage || m.priorityMessage);
       });
       if (urgentMessage) {
         marqueeData = [urgentMessage];
@@ -412,7 +412,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       ];
       marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
       let urgentMessage = marqueeData.find(m => {
-        return (m.criticalMessage);
+        return (m.criticalMessage || m.priorityMessage);
       });
       if (urgentMessage) {
         marqueeData = [urgentMessage];
@@ -924,7 +924,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         ];
         marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
         let urgentMessage = marqueeData.find(m => {
-          return (m.criticalMessage);
+          return (m.criticalMessage || m.priorityMessage);
         });
         if (urgentMessage) {
           marqueeData = [urgentMessage];

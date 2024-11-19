@@ -153,9 +153,10 @@ export async function getMarqueeMessage(client_id, options = {}) {
       response.push({
         style: sRec.style,
         message: sRec.message,
-        criticalMessage: sRec.criticalMessage
+        criticalMessage: sRec.criticalMessage,
+        priorityMessage: sRec.priorityMessage
       });
-      if (sRec.criticalMessage) {
+      if ((sRec.criticalMessage) || (sRec.priorityMessage)) {
         urgentMessage = sRec.message;
       }
     });
@@ -827,7 +828,7 @@ export const isMobile = () => {
 
 export const isSmallScreen = () => {
   return isMobile() || (window.window.innerWidth < 800);
-}
+};
 
 export async function switchActiveAccount(session, newClient, newPatient) {
   await dbClient
