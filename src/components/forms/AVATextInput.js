@@ -686,7 +686,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
               </Button>
             ))
           }
-          {options.allowAttach &&
+          {options.allowAttach && (!options.maxAttach || (options.maxAttach > reactData.attachmentList.length)) &&
             <Box display='flex' flexDirection='row' justifyContent='flex-start'
               alignItems='center' key={'qrOpt_attachmentbox'}
             >
