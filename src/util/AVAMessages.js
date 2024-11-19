@@ -776,6 +776,304 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
   doc.save(docDocument.document_id);
 }
 
+export async function printDocumentB({ documentList, options = {} }) {
+  let response = [];
+  if (!Array.isArray(documentList)) {
+    documentList = [documentList];
+  }
+  let numberOfDocuments = documentList.length;
+  // Prep the PDF output
+  let docIndex = 0;
+  for (const docInfo of documentList) {
+    docIndex++;
+    let { sections, fields, docID, client_id, title, signatures } = docInfo;
+    await pdfLaunch({ client_id });
+    page.title = title;
+    page.document_id = docID;
+    page.client_id = client_id;
+    page.footerText = `AVA reference: ${page.client_id}_${page.document_id}`;
+    pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
+    pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
+
+    sections.forEach((sectionObj, sectionNdx) => {
+      pdfLine(sectionObj.section_name, { style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
+      sectionObj.fields.forEach((this_field, fieldNdx) => {
+        if (fields.hasOwnProperty(this_field)) {
+          let printType = fields[this_field].type;
+          switch (printType) {
+            case 'image': {
+              pdfLine('', { image: fields[this_field].valueText, style: 'normal', size: 'medium', align: 'left', after: 1 });
+              break;
+            }
+            case 'select&text':
+            case 'select': {
+              pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+              fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
+                let radioSelected = fields[this_field].value.includes(text);
+                if (tIndex === 0) {
+                  pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
+                }
+                else {
+                  pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                }
+              });
+              pdfDown(1);
+              pdfStyle('reset');
+              break;
+            }
+            case 'html': {
+              pdfLine(`<doc>${fields[this_field].prompt.value}</ doc>`, { html: true, style: 'normal', size: 'medium', align: 'left', after: 1 });
+              break;
+            }
+            case 'signature': {
+              pdfLine(fields[this_field].prompt.value, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
+              break;
+            }
+            default: {
+              if (fields.hasOwnProperty(this_field)) {
+                if (fields[this_field].prompt.value.includes(fields[this_field].valueText)) {
+                  pdfLine(`${fields[this_field].prompt.value}`,
+                    { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                }
+                else {
+                  pdfLine(`${fields[this_field].prompt.value}: ${fields[this_field].valueText}`,
+                    { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                }
+              }
+            }
+          }
+        }
+      });
+    });
+
+    // Finish
+    pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
+    doc.save(docID);
+    if (!options.multiPrint || (numberOfDocuments === docIndex)) {
+      let pdfInfo = {
+        s3Key: (`${page.client_id}_${page.document_id}.pdf`),
+        s3Bucket: (options.S3_bucket || 'theseus-medical-storage')
+      };
+      pdfLine(`***** END *****`, { noNewPage: true, noNewLine: true, before: 1 });
+      let pdfResp = await savePDF(doc, pdfInfo, { local: false, S3: true, onSave: false });
+      if (pdfResp.responseData.s3Resp) {
+        pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
+      }
+      response.push(pdfInfo);
+    }
+  }
+  return response;
+}
+
+export async function printEmptyDocument({ documentList, options = {} }) {
+  let response = [];
+  if (!Array.isArray(documentList)) {
+    documentList = [documentList];
+  }
+  let numberOfDocuments = documentList.length;
+  // Prep the PDF output
+  let docIndex = 0;
+  for (const docInfo of documentList) {
+    docIndex++;
+    let { sections, fields, docID, client_id, title } = docInfo;
+    await pdfLaunch({ client_id });
+    page.title = title;
+    page.document_id = docID;
+    page.client_id = client_id;
+    page.footerText = `AVA reference: ${page.client_id}_${page.document_id}`;
+    pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
+    pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
+    // eslint-disable-next-line
+    sections.forEach((sectionObj) => {
+      pdfLine(sectionObj.section_name, { style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
+      sectionObj.fields.forEach((this_field) => {
+        if (fields.hasOwnProperty(this_field)) {
+          let printType = fields[this_field].type;
+          switch (printType) {
+            case 'image': {
+              pdfLine('', { image: fields[this_field].valueText, style: 'normal', size: 'medium', align: 'left', after: 1 });
+              break;
+            }
+            case 'select&text':
+            case 'select': {
+              pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+              fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
+                let radioSelected = false;
+                if (tIndex === 0) {
+                  pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
+                }
+                else {
+                  pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                }
+              });
+              pdfDown(1);
+              pdfStyle('reset');
+              break;
+            }
+            case 'html': {
+              pdfLine(`<doc>${fields[this_field].prompt.value}</ doc>`, { html: true, style: 'normal', size: 'medium', align: 'left', after: 1 });
+              break;
+            }
+            case 'signature': {
+              pdfCurrent.yPos += 12;
+              pdfLine(`${fields[this_field].prompt.value}:  `, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+              pdfCurrent.xPos = page.margin.left;
+              let endX = doc.getTextWidth('Sample text long enough to accomodate most situations');
+              doc.rect(pdfCurrent.xPos, pdfCurrent.yPos - 4, endX, 40, 'S');
+              pdfCurrent.xPos += endX;
+              pdfCurrent.yPos += 42;
+              break;
+            }
+            default: {
+              if (fields.hasOwnProperty(this_field)) {
+                const this_text = fields[this_field].prompt.value.split(/%%.*?%%/gm).join("").replace("  ", " ");
+                pdfCurrent.yPos += 12;
+                pdfLine(`${this_text}:  `, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                let promptWidth = doc.getTextWidth(`${this_text}:  `);
+                pdfCurrent.xPos += promptWidth;
+                let endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accomodate most situations');
+                doc.line(pdfCurrent.xPos, pdfCurrent.yPos - 8, endX, pdfCurrent.yPos - 8, 'DF');
+                pdfCurrent.xPos = endX;
+              }
+            }
+          }
+        }
+      });
+    });
+
+    // Finish
+    pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
+    doc.save(docID);
+    if (!options.multiPrint || (numberOfDocuments === docIndex)) {
+      let pdfInfo = {
+        s3Key: (`${page.client_id}_${page.document_id}.pdf`),
+        s3Bucket: (options.S3_bucket || 'theseus-medical-storage')
+      };
+      pdfLine(`***** END *****`, { noNewPage: true, noNewLine: true, before: 1 });
+      let pdfResp = await savePDF(doc, pdfInfo, { local: false, S3: true, onSave: false });
+      if (pdfResp.responseData.s3Resp) {
+        pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
+      }
+      response.push(pdfInfo);
+    }
+  }
+  return response;
+}
+
+export async function printDocumentHybrid({ documentList, options = {} }) {
+  let response = [];
+  if (!Array.isArray(documentList)) {
+    documentList = [documentList];
+  }
+  let numberOfDocuments = documentList.length;
+  // Prep the PDF output
+  let docIndex = 0;
+  for (const docInfo of documentList) {
+    docIndex++;
+    let { sections, fields, docID, client_id, title, signatures } = docInfo;
+    await pdfLaunch({ client_id });
+    page.title = title;
+    page.document_id = docID;
+    page.client_id = client_id;
+    page.footerText = `AVA reference: ${page.client_id}_${page.document_id}`;
+    pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
+    pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
+    // eslint-disable-next-line
+    sections.forEach((sectionObj, sectionNdx) => {
+      pdfLine(sectionObj.section_name, { style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
+      sectionObj.fields.forEach((this_field, fieldNdx) => {
+        if (fields.hasOwnProperty(this_field)) {
+          let printType = fields[this_field].type;
+          switch (printType) {
+            case 'image': {
+              pdfLine('', { image: fields[this_field].valueText, style: 'normal', size: 'medium', align: 'left', after: 1 });
+              break;
+            }
+            case 'select&text':
+            case 'select': {
+              pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+              fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
+                let radioSelected = fields[this_field].value && fields[this_field].value.includes(text);
+                if (tIndex === 0) {
+                  pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
+                }
+                else {
+                  pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                }
+              });
+              pdfDown(1);
+              pdfStyle('reset');
+              break;
+            }
+            case 'html': {
+              pdfLine(`<doc>${fields[this_field].prompt.value}</ doc>`, { html: true, style: 'normal', size: 'medium', align: 'left', after: 1 });
+              break;
+            }
+            case 'signature': {
+              if (signatures[fields[this_field].options.sigRefNumber]) {
+                pdfLine(fields[this_field].prompt.value, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
+              }
+              else {
+                pdfCurrent.yPos += 12;
+                pdfLine(`${fields[this_field].prompt.value}:  `, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                pdfCurrent.xPos = page.margin.left;
+                let endX = doc.getTextWidth('Sample text long enough to accomodate most situations');
+                doc.rect(pdfCurrent.xPos, pdfCurrent.yPos - 4, endX, 40, 'S');
+                pdfCurrent.xPos += endX;
+                pdfCurrent.yPos += 42;
+              }
+              break;
+            }
+            default: {
+              if (fields.hasOwnProperty(this_field)) {
+                if (fields[this_field].valueText) {
+                  pdfCurrent.yPos += 12;
+                  if (fields[this_field].prompt.value.includes(fields[this_field].valueText)) {
+                    pdfLine(`${fields[this_field].prompt.value}`,
+                      { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                  }
+                  else {
+                    pdfLine(`${fields[this_field].prompt.value}: ${fields[this_field].valueText}`,
+                      { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                  }
+                }
+                else {
+                  const this_text = fields[this_field].prompt.value.split(/%%.*?%%/gm).join("").replace("  ", " ");
+                  pdfCurrent.yPos += 12;
+                  pdfLine(`${this_text}:  `, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                  let promptWidth = doc.getTextWidth(`${this_text}:  `);
+                  pdfCurrent.xPos += promptWidth;
+                  let endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accomodate most situations');
+                  doc.line(pdfCurrent.xPos, pdfCurrent.yPos - 8, endX, pdfCurrent.yPos - 8, 'DF');
+                  pdfCurrent.xPos = endX;
+                }
+              }
+            }
+          }
+        }
+      });
+    });
+
+    // Finish
+    pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
+    doc.save(docID);
+    if (!options.multiPrint || (numberOfDocuments === docIndex)) {
+      let pdfInfo = {
+        s3Key: (`${page.client_id}_${page.document_id}.pdf`),
+        s3Bucket: (options.S3_bucket || 'theseus-medical-storage')
+      };
+      pdfLine(`***** END *****`, { noNewPage: true, noNewLine: true, before: 1 });
+      let pdfResp = await savePDF(doc, pdfInfo, { local: false, S3: true, onSave: false });
+      if (pdfResp.responseData.s3Resp) {
+        pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
+      }
+      response.push(pdfInfo);
+    }
+  }
+  return response;
+}
+
+
 export async function factForm(serviceRequestRec) {
   /*
   serviceRequestRec.original_request: {
@@ -1428,7 +1726,7 @@ async function pdfLaunch(body) {
     border: (body.pdf.hasOwnProperty('border')) ? body.pdf.border : true,
     font: {
       family: 'Helvetica',
-      size: { large: 20, medium: 16, small: 12, tiny: 8 }
+      size: { large: 14, medium: 12, small: 10, tiny: 8 }
     },
     layout: (body.pdf.hasOwnProperty('orientation')) ? body.pdf.orientation : 'portrait',
     info: { author: 'AVA Senior Living' },
@@ -1578,7 +1876,7 @@ function pdfLine(text, options = {}) {
     pdfHeader(++pdfCurrent.pageNumber);
   }
   if (options.image) {
-    let imageSize = pdfCurrent.fontSize * 5;
+    let imageSize = pdfCurrent.fontSize * 2 * (pdfCurrent.fontSize / page.font.size['medium']);
     let xOffset;
     try {
       switch (pdfCurrent.align) {
@@ -1596,11 +1894,9 @@ function pdfLine(text, options = {}) {
         }
         default: {
           xOffset = pdfCurrent.xPos + pdfCurrent.indent;
-          // doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, (page.width / 4));
-          let imageProps = doc.getImageProperties(options.image);
-          let shrink = (page.width / 4) / imageProps.width;
-          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, (page.width / 4), (imageProps.height * shrink));
-          pdfCurrent.yPos += (imageProps.height * shrink);
+          //    let imageProps = doc.getImageProperties(options.image);
+          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
+          pdfCurrent.yPos += imageSize;
           pdfDown(1);
         }
       }
@@ -1632,23 +1928,21 @@ function pdfLine(text, options = {}) {
     // pdfLine(htmlToFormattedText(text), options);
     doc.html(text);
   }
-  else {
+  else if (text && (text.length > 0)) {
     // this little chunk deals with text overflow
-    {
-      let tWords = [];
-      if ((pdfCurrent.align === 'center') && (doc.getTextWidth(text) > page.printableArea)) {
-        tWords = doc.splitTextToSize(text, page.printableArea);
+    let tWords = [];
+    if ((pdfCurrent.align === 'center') && (doc.getTextWidth(text) > page.printableArea)) {
+      tWords = doc.splitTextToSize(text, page.printableArea);
+    }
+    else if ((pdfCurrent.align !== 'center') && ((doc.getTextWidth(text) + pdfCurrent.xPos + pdfCurrent.indent) > page.right)) {
+      tWords = doc.splitTextToSize(text, (page.right - (pdfCurrent.xPos + pdfCurrent.indent)));
+    }
+    if (tWords.length > 0) {
+      for (let t = 0; t < tWords.length - 1; t++) {
+        pdfLine(tWords[t], Object.assign({}, options, { after: 0 }));
       }
-      else if ((pdfCurrent.align !== 'center') && ((doc.getTextWidth(text) + pdfCurrent.xPos + pdfCurrent.indent) > page.right)) {
-        tWords = doc.splitTextToSize(text, (page.right - (pdfCurrent.xPos + pdfCurrent.indent)));
-      }
-      if (tWords.length > 0) {
-        for (let t = 0; t < tWords.length - 1; t++) {
-          pdfLine(tWords[t], Object.assign({}, options, { after: 0 }));
-        }
-        pdfDown(1);
-        text = tWords[tWords.length - 1];
-      }
+      pdfDown(1);
+      text = tWords[tWords.length - 1];
     }
     if (pdfCurrent.align === 'center') {
       let xOffset = page.centerPoint - (doc.getTextWidth(text) / 2);

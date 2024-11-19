@@ -945,6 +945,21 @@ export async function deleteDbRec(pData) {
   return response;
 }
 
+export async function getDb(getSpec) {
+  const foundDoc = await dbClient
+    .get(getSpec)
+    .promise()
+    .catch(error => {
+      cl(`Error reading ${getSpec.TableName} in getDb with key of ${getSpec.Key}: ${error}`);
+    });
+  if (recordExists(foundDoc)) {
+    return foundDoc.Item;
+  }
+  else {
+    return false;
+  }
+}
+
 export async function restAPI(pRequest, api_data) {
   let finalReturn = {};
   const TELSdefaults = {

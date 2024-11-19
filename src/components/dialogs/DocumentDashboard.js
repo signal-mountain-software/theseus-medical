@@ -4,9 +4,11 @@ import { makeDate, addDays } from '../../util/AVADateTime';
 import { getPerson } from '../../util/AVAPeople';
 import AVAConfirm from '../forms/AVAConfirm';
 import FormFill from '../forms/FormFill';
+import FormFillB from '../forms/FormFillB';
 import useSession from '../../hooks/useSession';
 import { getAllOccurrences, getCalendarEntries } from '../../util/AVACalendars';
 import PrintIcon from '@material-ui/icons/Print';
+import { useSnackbar } from 'notistack';
 
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import AddIcon from '@material-ui/icons/Add';
@@ -205,6 +207,8 @@ export default ({ request = {}, onClose }) => {
   const AVAClass = AVAclasses();
 
   const { state } = useSession();
+
+  const { enqueueSnackbar } = useSnackbar();
 
   let options = {};
   if (Array.isArray(request)) {
@@ -787,7 +791,7 @@ export default ({ request = {}, onClose }) => {
           alignItems='flex-end'
         >
           <Typography
-            key={`person__${this_person.person_last}`}
+            key={`person__${this_person.person_last}.${personNdx}`}
             style={AVATextStyle({
               size: 1.3,
               bold: true,
@@ -799,7 +803,7 @@ export default ({ request = {}, onClose }) => {
           </Typography>
           {this_person.person_first &&
             <Typography
-              key={`person__${this_person.person_first}`}
+              key={`person_first_${this_person.person_first}.${personNdx}`}
               style={AVATextStyle({
                 size: 1.2,
                 margin: {
@@ -906,6 +910,14 @@ export default ({ request = {}, onClose }) => {
         flexDirection='row'
         alignItems={'center'}
         justifyContent={'space-between'}
+        onContextMenu={async (e) => {
+          e.preventDefault();
+          enqueueSnackbar(<div>
+            1. Doc ID {this_document.document_id}<br />
+            2. Pers {this_person.person_id}<br />
+            </div>,
+            { variant: 'info', persist: true });
+        }}
       >
         <Typography
           key={`doc__${personNdx}_${formNdx}_${documentNdx}`}
@@ -1082,7 +1094,7 @@ export default ({ request = {}, onClose }) => {
         />
       }
       {(reactData.stage === 'addDoc') &&
-        <FormFill
+        <FormFillB
           request={{
             form_id: reactData.selectedForm_id,
             person_id: reactData.selectedPerson_id,

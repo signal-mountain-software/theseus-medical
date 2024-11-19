@@ -9,7 +9,7 @@ import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
 import FamilyMaintenance from './FamilyMaintenance';
 import FormFill from './FormFill';
-import DocumentDashboard from '../dialogs/DocumentDashboard';
+import DocumentDashboardB from '../dialogs/DocumentDashboardB';
 import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
 import MultiObservationFormC from '../forms/MultiObservationFormC';
 import MultiObservationFormD from '../forms/MultiObservationFormD';
@@ -598,7 +598,7 @@ export default ({
       );
     case 'document_dashboard':
       return (
-        <DocumentDashboard
+        <DocumentDashboardB
           request={defaultValue}
           onClose={onSave}
         />
