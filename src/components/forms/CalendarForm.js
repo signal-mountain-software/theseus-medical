@@ -1300,9 +1300,10 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         >
                           <EventIcon />
                         </Avatar>
-                        {(this_template.event_data.generic_description || this_template.event_data.description).split(' ').map((this_word) => (
+                        {(this_template.event_data.generic_description || this_template.event_data.description).split(' ').map((this_word, wX) => (
                           <Typography
                             noWrap={true}
+                            key={`name_word_${wX}`}
                             className={classes.dragNamesLast}
                           >
                             {this_word}

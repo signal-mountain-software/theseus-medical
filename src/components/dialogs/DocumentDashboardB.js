@@ -1,9 +1,8 @@
 import React from 'react';
 import useSession from '../../hooks/useSession';
 
-import { titleCase, sentenceCase, dbClient, cl, makeArray, recordExists, getDb } from '../../util/AVAUtilities';
+import { dbClient, cl, makeArray, recordExists, getDb, array_in_array } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
-import { getBulletinBoard } from '../../util/AVAObservations';
 import AVATextInput from '../forms/AVATextInput';
 import FormFillB from '../forms/FormFillB';
 
@@ -19,15 +18,10 @@ import Button from '@material-ui/core/Button';
 import EditIcon from '@material-ui/icons/Edit';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import PrintIcon from '@material-ui/icons/Print';
-import LinkIcon from '@material-ui/icons/Link';
-import SaveIcon from '@material-ui/icons/Save';
-import CancelIcon from '@material-ui/icons/Cancel';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import DeleteIcon from '@material-ui/icons/Delete';
 import PlaylistAddCheckIcon from '@material-ui/icons/PlaylistAddCheck';
 import ExpandMoreIcon from '@material-ui/icons/Visibility';
-import AVAConfirm from '../forms/AVAConfirm';
 
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import AVAUploadFile from '../../util/AVAUploadFile';
@@ -403,7 +397,8 @@ export default ({ client, formTypes = '*all', onClose }) => {
                             pendingInstructions: {
                               action: 'upload',
                               formType: this_form.form_id,
-                              formName: this_form.form_name
+                              formName: this_form.form_name,
+                              formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
                             }
                           }, true);
                         }}
@@ -419,7 +414,8 @@ export default ({ client, formTypes = '*all', onClose }) => {
                             pendingInstructions: {
                               action: 'addNew',
                               formType: this_form.form_id,
-                              formName: this_form.form_name
+                              formName: this_form.form_name,
+                              formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
                             }
                           }, true);
                         }}
@@ -435,6 +431,7 @@ export default ({ client, formTypes = '*all', onClose }) => {
                             pendingInstructions: {
                               action: 'printEmpty',
                               formType: this_form.form_id,
+                              formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
                             }
                           }, true);
                         }}
@@ -488,6 +485,7 @@ export default ({ client, formTypes = '*all', onClose }) => {
                                           action: 'edit',
                                           formType: this_form.form_id,
                                           formName: this_form.form_name,
+                                          formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); }),
                                           document_id: this_doc.document_id,
                                           person_id: this_doc.pertains_to,
                                           docIndex: docNdx
@@ -628,11 +626,15 @@ export default ({ client, formTypes = '*all', onClose }) => {
                 ]}
                 options={{ allowAttach: true, maxAttach: 1 }}
                 selectionList={[
-                  state.accessList[state.session.client_id].list.map(a => {
+                  state.accessList[state.session.client_id].list.filter(p => {
+                    return (!reactData.pendingInstructions.formRec.valid_for
+                      || reactData.pendingInstructions.formRec.valid_for.includes('ALL')
+                      || (array_in_array(p.groups, reactData.pendingInstructions.formRec.valid_for)));
+                  }).map(a => {
                     const label = (!a.name ? a.display_name : (`${a.name.first} ${a.name.last}`).trim());
                     return {
                       label,
-                      value: `${a.person_id}%%${label}`
+                      value: a.person_id
                     };
                   })
                 ]}
@@ -740,7 +742,11 @@ export default ({ client, formTypes = '*all', onClose }) => {
                   '',
                 ]}
                 selectionList={[
-                  state.accessList[state.session.client_id].list.map(a => {
+                  state.accessList[state.session.client_id].list.filter(p => {
+                    return (!reactData.pendingInstructions.formRec.valid_for
+                      || reactData.pendingInstructions.formRec.valid_for.includes('ALL')
+                      || (array_in_array(p.groups, reactData.pendingInstructions.formRec.valid_for)));
+                  }).map(a => {
                     const label = (!a.name ? a.display_name : (`${a.name.first} ${a.name.last}`).trim());
                     return {
                       label,
@@ -833,7 +839,7 @@ export default ({ client, formTypes = '*all', onClose }) => {
                   }
                   updateReactData({
                     docObj: reactData.docObj,
-                    editDoc: false,               
+                    editDoc: false,
                     pendingInstructions: false
                   }, true);
 

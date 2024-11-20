@@ -100,7 +100,7 @@ export async function addEvent(body) {
     }
     else {
       // no duration sent in; calculate what we need
-      if (fromObj.good) { 
+      if (fromObj.good) {
         body.calendar_info.timeObj.from_minutesSinceMidnight = fromObj.minutesSinceMidnight;
         body.calendar_info.timeObj.from = fromObj.time;
         if (toObj.good) {
@@ -1329,7 +1329,7 @@ export async function writeSlot(body) {
   // assign a form?
   let ownerRec;
   if (body.default_forms) {
-    let slotDocs = {};
+    let documentsAssignedToThisPerson = {};
     let formList = makeArray(body.default_forms);
     // get all the slots after this write was completed
     let ownerList = [];
@@ -1337,15 +1337,22 @@ export async function writeSlot(body) {
       client: body.client,
       event: event_key,
     });
+    // slotList will contain the IDs of everyone that has any slot in the referenced event
+    // ownerList will contain the IDs of everyone who owns a CURRENTLY good slot (eliminating slots that are open or released)
     let slotList = Object.keys(slotInfo.slotObj).sort();
     slotList.forEach(this_slot => {
       if (slotInfo.slotObj[this_slot].status && ['selected', 'released', 'available'].includes(slotInfo.slotObj[this_slot].status)) {
         ownerList.push(slotInfo.slotObj[this_slot].owner);
-        slotDocs[slotInfo.slotObj[this_slot].owner] = [];
+        documentsAssignedToThisPerson[slotInfo.slotObj[this_slot].owner] = [];
+        // every owner may need to have one or more forms added to their list based on the slot we're adding here
       };
     });
+    // documentsAssignedToThisPerson is an object; each person in the ownerList (all people that own slots) will have a key here;
     for (let f = 0; f < formList.length; f++) {
       let this_form = formList[f];
+      // for every form in the default form list, check the form to see if it applies
+      // this is based on pertains_to (the form is all ABOUT this person)
+      // and on assigned_to (a person that is RESPONSIBLE FOR completing a form)
       let pertains_to = [];
       let owner_groups = {};
       for (let oN = 0; oN < ownerList.length; oN++) {
@@ -1356,29 +1363,104 @@ export async function writeSlot(body) {
           pertains_to.push(this_owner);
         }
       }
+      // the pertains_to array ends up holding the IDs of any slot owner
+      // for whom the current form applies
+      // if the array is empty, then this form pertains to no one at all and should be skipped
       if (pertains_to.length > 0) {
         let assigned_to = ownerList.filter(this_owner => {
           // should this form be assigned to one or more slot owners?
           return (array_in_array(this_form.assign_groups, Object.keys(owner_groups[this_owner])));
         });
+        // the assigned_to array contains the IDs of any slot owner that should be ASSIGNED TO this form
+        // if the array is empty, there is no one on the appointment that is allowed to update this form
+        //  so skip it
         if (assigned_to.length > 0) {
           for (let p = 0; p < pertains_to.length; p++) {
+            // for each PERTAINS_TO person...
             let documentRec;
-            let this_document_id;
+            let document_id_toBeAssigned;
             let goodGet = false;
-            let newAssignmentList = [];
+            let foundDocumentAlreadyCompleted = false;
             // if you only have "view" access, find the most recent document of this type and assign the person to it
             if (this_form.access === 'view') {
+              // try documentsCompleted table first
               let queryObj = {
-                TableName: 'Documents',
-                KeyConditionExpression: 'client_id = :c and begins_with(document_id, :dID)',
+                KeyConditionExpression: 'pertains_to = :p and begins_with(formType_date, :f)',
+                ScanIndexForward: false,
+                IndexName: 'pertains_to-formType_date-index',
+                Limit: 1,
+                ExpressionAttributeValues: {
+                  ':p': pertains_to[p],
+                  ':f': this_form.form_id
+                }
+              };
+              queryObj.TableName = 'CompletedDocuments';
+              let queryResult = await dbClient
+                .query(queryObj)
+                .promise()
+                .catch(error => {
+                  if (error.code === 'NetworkingError') {
+                    cl(`Security Violation or no Internet Connection`);
+                  }
+                  cl(`Error reading ${queryObj.TableName} id ${error}`);
+                });
+              if (!recordExists(queryResult)) {
+                queryObj.TableName = 'DocumentsInProcess';
+                queryResult = await dbClient
+                  .query(queryObj)
+                  .promise()
+                  .catch(error => {
+                    if (error.code === 'NetworkingError') {
+                      cl(`Security Violation or no Internet Connection`);
+                    }
+                    cl(`Error reading ${queryObj.TableName} id ${error}`);
+                  });
+                if (!recordExists(queryResult)) {
+                  queryObj.TableName = 'DocumentsAssigned';
+                  queryResult = await dbClient
+                    .query(queryObj)
+                    .promise()
+                    .catch(error => {
+                      if (error.code === 'NetworkingError') {
+                        cl(`Security Violation or no Internet Connection`);
+                      }
+                      cl(`Error reading ${queryObj.TableName} id ${error}`);
+                    });
+                  if (!recordExists(queryResult)) {
+                    queryObj.TableName = 'Documents';
+                    queryResult = await dbClient
+                      .query(queryObj)
+                      .promise()
+                      .catch(error => {
+                        if (error.code === 'NetworkingError') {
+                          cl(`Security Violation or no Internet Connection`);
+                        }
+                        cl(`Error reading ${queryObj.TableName} id ${error}`);
+                      });
+                  }
+                }
+              }
+              if (recordExists(queryResult)) {
+                goodGet = true;
+                document_id_toBeAssigned = queryResult.Items[0].document_id;
+              }
+            }
+            else {
+              // if you are here, the document is to be UPDATED by the person assigned,
+              // it will be a version of the document that references this specific appointment
+              // contruct the document_id for this situation and look to see if it exists already
+              document_id_toBeAssigned = `${pertains_to[p]}%%${this_form.form_id}%%${event_id}#${occurrence}`;
+              // does the document already exist?
+              let queryObj = {
+                KeyConditionExpression: 'client_id = :c and document_id = :dID',
                 ScanIndexForward: false,
                 Limit: 1,
                 ExpressionAttributeValues: {
                   ':c': body.client,
-                  ':dID': `${pertains_to[p]}%%${this_form.form_id}%%`
+                  ':dID': document_id_toBeAssigned
                 }
               };
+              queryObj.TableName = 'CompletedDocuments';
               let queryResult = await dbClient
                 .query(queryObj)
                 .promise()
@@ -1389,120 +1471,191 @@ export async function writeSlot(body) {
                   cl(`Error reading ${queryObj.TableName} id ${error}`);
                 });
               if (recordExists(queryResult)) {
-                goodGet = true;
-                newAssignmentList = queryResult.Items[0].assigned_to || [];
-                this_document_id = queryResult.Items[0].document_id;
-              }
-            }
-            else {
-              this_document_id = `${pertains_to[p]}%%${this_form.form_id}%%${event_key}`;
-              // does the document already exist?
-              documentRec = await dbClient
-                .get({
-                  Key: {
-                    client_id: body.client,
-                    document_id: this_document_id
-                  },
-                  TableName: "Documents"
-                })
-                .promise()
-                .catch(error => {
-                  cl({ 'Error reading Documents': error });
-                });
-              if (recordExists(documentRec)) {
-                goodGet = true;
-                newAssignmentList = documentRec.assigned_to || [];
-              }
-            }
-            if (goodGet) {
-              // add to the assigned list; don't remove anyone
-              assigned_to.forEach(this_assignment => {
-                if (!newAssignmentList.includes(this_assignment)) {
-                  newAssignmentList.push(this_assignment);
-                }
-              });
-              await dbClient
-                .update({
-                  Key: {
-                    client_id: body.client,
-                    document_id: this_document_id
-                  },
-                  UpdateExpression: 'set assigned_to = :a',
-                  ExpressionAttributeValues: { ':a': newAssignmentList },
-                  TableName: "Documents"
-                })
-                .promise()
-                .catch(error => { cl(`caught error updating Documents; error is: `, error); });
-            }
-            else {
-              let title = '';
-              if (this_form.titleWords) {
-                title = this_form.titleWords;
+                // if this record was found in CompletedDocuments, there is no need to assign anyone... bail out
+                foundDocumentAlreadyCompleted = true;
               }
               else {
-                title = await makeName(pertains_to[p]);
+                queryObj.TableName = 'DocumentsInProcess';
+                queryResult = await dbClient
+                  .query(queryObj)
+                  .promise()
+                  .catch(error => {
+                    if (error.code === 'NetworkingError') {
+                      cl(`Security Violation or no Internet Connection`);
+                    }
+                    cl(`Error reading ${queryObj.TableName} id ${error}`);
+                  });
+                if (!recordExists(queryResult)) {
+                  queryObj.TableName = 'DocumentsAssigned';
+                  queryResult = await dbClient
+                    .query(queryObj)
+                    .promise()
+                    .catch(error => {
+                      if (error.code === 'NetworkingError') {
+                        cl(`Security Violation or no Internet Connection`);
+                      }
+                      cl(`Error reading ${queryObj.TableName} id ${error}`);
+                    });
+                  if (!recordExists(queryResult)) {
+                    queryObj.TableName = 'Documents';
+                    queryResult = await dbClient
+                      .query(queryObj)
+                      .promise()
+                      .catch(error => {
+                        if (error.code === 'NetworkingError') {
+                          cl(`Security Violation or no Internet Connection`);
+                        }
+                        cl(`Error reading ${queryObj.TableName} id ${error}`);
+                      });
+                  }
+                }
+                if (recordExists(documentRec)) {
+                  goodGet = true;
+                }
               }
-              title += ` - ${slotInfo.eventRec.eventData.event_data.description} - ${makeDate(occurrence).absolute}`;
-              let putDocument = {
-                client_id: body.client,
-                document_id: this_document_id,
-                form_id: this_form.form_id,
-                incomplete: 'not_started',
-                title,
-                person_id: pertains_to[p],
-                assigned_to: (assigned_to.includes(pertains_to[p]) ? [pertains_to[p]] : assigned_to),
-                values: {}
-              };
-              await dbClient
-                .put({
-                  Item: putDocument,
-                  TableName: "Documents",
-                })
-                .promise()
-                .catch(error => {
-                  cl(`caught error updating Calendar; error is:`, error);
-                });
-              slotDocs[pertains_to[p]].push(this_document_id);
+            }
+            if (!foundDocumentAlreadyCompleted) {
+              assigned_to.forEach(personThatNeedsToBeAssigned => {
+                documentsAssignedToThisPerson[personThatNeedsToBeAssigned].push(document_id_toBeAssigned);
+              });
+              if (goodGet) {
+                // at this point, we know that we are going to assign document_id_toBeAssigned to each person
+                // that is in the assigned_to list              
+              }
+              else {
+                // there was NOT an existing document for this form,
+                // if this is VIEW only, the document_id_toBeAssigned
+                // will be null;  we should not be creating a document just for the purpose of viewing it (it would be empty)
+                // skip all of this in this circumstance
+                if (document_id_toBeAssigned) {
+                  let title = '';
+                  if (this_form.titleWords) {
+                    title = this_form.titleWords;
+                  }
+                  else {
+                    title = await makeName(pertains_to[p]);
+                  }
+                  title += ` - ${slotInfo.eventRec.eventData.event_data.description} - ${makeDate(occurrence).absolute}`;
+                  const timestamp = new Date().getTime();
+                  let putDocument = {
+                    client_id: body.client,
+                    document_id: document_id_toBeAssigned,
+                    form_id: this_form.form_id,
+                    incomplete: 'not_started',
+                    title,
+                    person_id: pertains_to[p],
+                    values: {}
+                  };
+                  await dbClient
+                    .put({
+                      Item: putDocument,
+                      TableName: "Documents",
+                    })
+                    .promise()
+                    .catch(error => {
+                      cl(`caught error updating Calendar; error is:`, error);
+                    });
+                  await dbClient
+                    .put({
+                      Item: {
+                        client_id: body.client,
+                        document_id: document_id_toBeAssigned,
+                        form_id: this_form.form_id,
+                        formType: this_form.form_id,
+                        formType_date: `${this_form.form_id}%%${timestamp}`,
+                        title,
+                        pertains_to: pertains_to[p],
+                        date_assigned: timestamp
+                      },
+                      TableName: "DocumentsAssigned",
+                    })
+                    .promise()
+                    .catch(error => {
+                      cl(`caught error updating DocumentsAssigned; error is:`, error);
+                    });
+                  await dbClient
+                    .put({
+                      Item: {
+                        document_id: document_id_toBeAssigned,
+                        person_id: '*status',
+                        formType: this_form.form_id,
+                        last_update: timestamp,
+                        status: 'assigned'
+                      },
+                      TableName: "DocumentXRef",
+                    })
+                    .promise()
+                    .catch(error => {
+                      cl(`caught error updating DocumentXRef; error is:`, error);
+                    });
+                  await dbClient
+                    .put({
+                      Item: {
+                        document_id: document_id_toBeAssigned,
+                        person_id: pertains_to[p],
+                        role: 'pertains_to'
+                      },
+                      TableName: "DocumentXRef",
+                    })
+                    .promise()
+                    .catch(error => {
+                      cl(`caught error updating Calendar; error is:`, error);
+                    });
+                }
+              }
             }
           }
         }
       }
     }
+    // at this point, documentsAssignedToThisPerson contains people IDs as keys and a list of documents as
+    // the key's value.  These are all NEWLY ASSIGNED documents.
     // go back and update any slot to show the associated documents
-    for (let s = 0; s < ownerList.length; s++) {
-      let this_owner = ownerList[s];
-      if (slotDocs[this_owner]) {
-        let slotRec = await dbClient
-          .get({
+    // AND add an entry to DocumentsXRef that shows this relationship
+    for (const this_person in documentsAssignedToThisPerson) {
+      for (const this_document in documentsAssignedToThisPerson[this_person]) {
+        await dbClient
+          .put({
+            Item: {
+              document_id: this_document,
+              person_id: this_person,
+              role: 'assigned'
+            },
+            TableName: "DocumentXRef",
+          })
+          .promise()
+          .catch(error => {
+            cl(`caught error updating Calendar; error is:`, error);
+          });
+      }
+      let slotRec = await dbClient
+        .get({
+          Key: {
+            client: body.client,
+            event_key: `${event_id}#${occurrence}#${this_person}`
+          },
+          TableName: "Calendar"
+        })
+        .promise()
+        .catch(error => {
+          cl({ 'Error reading Calendar': error });
+        });
+      if (!recordExists(slotRec)) {
+        cl(`Slot rec not found for ${event_id}#${occurrence}#${this_person}`);
+      }
+      else {
+        await dbClient
+          .update({
             Key: {
               client: body.client,
               event_key: `${event_key}`
             },
+            UpdateExpression: 'set documents = :d',
+            ExpressionAttributeValues: { ':d': documentsAssignedToThisPerson[this_person].concat(slotRec.Item.documents) },
             TableName: "Calendar"
           })
           .promise()
-          .catch(error => {
-            cl({ 'Error reading Calendar': error });
-          });
-        if (!recordExists(slotRec)) {
-          cl(`Slot rec not found for ${event_key}#${this_owner}`);
-        }
-        else {
-          let newDocumentList = (slotRec.Item.documents || []);
-          newDocumentList.push(...slotDocs[this_owner]);
-          await dbClient
-            .update({
-              Key: {
-                client: body.client,
-                event_key: `${event_key}`
-              },
-              UpdateExpression: 'set documents = :d',
-              ExpressionAttributeValues: { ':d': newDocumentList },
-              TableName: "Calendar"
-            })
-            .promise()
-            .catch(error => { cl(`caught error updating Documents; error is: `, error); });
-        }
+          .catch(error => { cl(`caught error updating Documents; error is: `, error); });
       }
     };
   }

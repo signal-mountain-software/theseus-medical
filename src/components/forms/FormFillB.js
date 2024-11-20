@@ -337,7 +337,6 @@ export default ({ request = {}, onClose }) => {
               response.fields[this_field].value = makeDate(defaultObj.value_path[1])[defaultObj.value_path[2]];
             }
             else if (defaultObj.value_path[0].toLowerCase() === 'name') {
-              let pertains_to;
               if (['person', 'patient', 'pertains', 'pertain_to'].includes(defaultObj.value_path[1])) {
                 response.fields[this_field].value = makeName(reactData.pertains_to);
               }
@@ -836,6 +835,8 @@ export default ({ request = {}, onClose }) => {
         document_title: reactData.document_title,
         pertains_to: reactData.pertains_to,
         form_id: reactData.form_id,
+        formType: reactData.form_id,
+        formType_date: `${reactData.form_id}%%${new Date().getTime()}`,
         fields: reactData.fields,
         sections: reactData.sections,
       };
@@ -1063,12 +1064,15 @@ export default ({ request = {}, onClose }) => {
           title: reactData.document_title
         }]
       });
+      let timestamp = new Date().getTime();
       let CRec = {
         client_id: state.session.client_id,
         document_id,
         document_title: reactData.document_title,
         pertains_to: reactData.pertains_to,
-        date_completed: new Date().getTime(),
+        date_completed: timestamp,
+        formType: reactData.form_id,
+        formType_date: `${reactData.form_id}%%${timestamp}`,
         save_info: s3Results,
         file_location: s3Results[0].s3Location
       };
