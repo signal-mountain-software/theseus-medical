@@ -1,3 +1,4 @@
+
 import { clt, cl, s3, recordExists, titleCase, uuid, isObject, listFromArray, makeArray, sentenceCase, dbClient, deepCopy, getObject } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
@@ -720,9 +721,11 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
   pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
   pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
 
-  docData.sections.forEach((sectionObj, sectionNdx) => {
+  // docData.sections.forEach((sectionObj, sectionNdx) => {
+  for (const sectionObj of docData.sections) {
     pdfLine(sectionObj.section_name, { style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
-    sectionObj.fields.forEach((this_field, fieldNdx) => {
+    // sectionObj.fields.forEach((this_field, fieldNdx) => {
+    for (const this_field of sectionObj.fields) {
       if (docData.fields.hasOwnProperty(this_field)) {
         let printType = (docData.fields[this_field].value.type === 'view') ? docData.fields[this_field].prompt.type : docData.fields[this_field].value.type;
         switch (printType) {
@@ -747,7 +750,7 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
             break;
           }
           case 'html': {
-            pdfLine(docData.fields[this_field].prompt.ref, { html: true, style: 'normal', size: 'medium', align: 'left', after: 1 });
+            await pdfHTML(docData.fields[this_field].prompt.ref, { before: -2, html: true, style: 'normal', size: 'medium', align: 'left', after: 1 });
             break;
           }
           case 'signature': {
@@ -768,8 +771,8 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
           }
         }
       }
-    });
-  });
+    };
+  };
 
   // Finish
   pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
@@ -795,9 +798,11 @@ export async function printDocumentB({ documentList, options = {} }) {
     pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
     pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
 
-    sections.forEach((sectionObj, sectionNdx) => {
+    //   sections.forEach((sectionObj, sectionNdx) => {
+    for (const sectionObj of sections) {
       pdfLine(sectionObj.section_name, { style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
-      sectionObj.fields.forEach((this_field, fieldNdx) => {
+      //  sectionObj.fields.forEach((this_field, fieldNdx) => {
+      for (const this_field of sectionObj.fields) {
         if (fields.hasOwnProperty(this_field)) {
           let printType = fields[this_field].type;
           switch (printType) {
@@ -822,7 +827,7 @@ export async function printDocumentB({ documentList, options = {} }) {
               break;
             }
             case 'html': {
-              pdfLine(`<doc>${fields[this_field].prompt.value}</ doc>`, { html: true, style: 'normal', size: 'medium', align: 'left', after: 1 });
+              await pdfHTML(`${fields[this_field].prompt.value}`, { before: -2, html: true, style: 'normal', size: 'medium', align: 'left', after: 1 });
               break;
             }
             case 'signature': {
@@ -843,8 +848,8 @@ export async function printDocumentB({ documentList, options = {} }) {
             }
           }
         }
-      });
-    });
+      };
+    };
 
     // Finish
     pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
@@ -884,9 +889,11 @@ export async function printEmptyDocument({ documentList, options = {} }) {
     pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
     pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
     // eslint-disable-next-line
-    sections.forEach((sectionObj) => {
+    //  sections.forEach((sectionObj) => {
+    for (const sectionObj of sections) {
       pdfLine(sectionObj.section_name, { style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
-      sectionObj.fields.forEach((this_field) => {
+      //   sectionObj.fields.forEach((this_field) => {
+      for (const this_field of sectionObj.fields) {
         if (fields.hasOwnProperty(this_field)) {
           let printType = fields[this_field].type;
           switch (printType) {
@@ -911,7 +918,7 @@ export async function printEmptyDocument({ documentList, options = {} }) {
               break;
             }
             case 'html': {
-              pdfLine(`<doc>${fields[this_field].prompt.value}</ doc>`, { html: true, style: 'normal', size: 'medium', align: 'left', after: 1 });
+              await pdfHTML(`${fields[this_field].prompt.value}`, { before: -2, html: true, style: 'normal', size: 'medium', align: 'left', after: 1 });
               break;
             }
             case 'signature': {
@@ -938,8 +945,8 @@ export async function printEmptyDocument({ documentList, options = {} }) {
             }
           }
         }
-      });
-    });
+      };
+    };
 
     // Finish
     pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
@@ -979,9 +986,11 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
     pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
     pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
     // eslint-disable-next-line
-    sections.forEach((sectionObj, sectionNdx) => {
+    //  sections.forEach((sectionObj, sectionNdx) => {
+    for (const sectionObj of sections) {
       pdfLine(sectionObj.section_name, { style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
-      sectionObj.fields.forEach((this_field, fieldNdx) => {
+      //      sectionObj.fields.forEach((this_field, fieldNdx) => {
+      for (const this_field of sectionObj.fields) {
         if (fields.hasOwnProperty(this_field)) {
           let printType = fields[this_field].type;
           switch (printType) {
@@ -1006,7 +1015,7 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
               break;
             }
             case 'html': {
-              pdfLine(`<doc>${fields[this_field].prompt.value}</ doc>`, { html: true, style: 'normal', size: 'medium', align: 'left', after: 1 });
+              await pdfHTML(`${fields[this_field].prompt.value}`, { before: -2, html: true, style: 'normal', size: 'medium', align: 'left', after: 1 });
               break;
             }
             case 'signature': {
@@ -1051,8 +1060,8 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
             }
           }
         }
-      });
-    });
+      };
+    };
 
     // Finish
     pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
@@ -1849,7 +1858,7 @@ function pdfHeader(pageN) {
   }
 }
 
-function pdfLine(text, options = {}) {
+async function pdfHTML(text, options = {}) {
   clt({ pdfLine: text, options });
   if (options) { pdfStyle(options); }
   if (options.before) { pdfDown(options.before); }
@@ -1868,7 +1877,54 @@ function pdfLine(text, options = {}) {
   else if (!options.noNewLine) {
     pdfDown(1);
   }
-  if (!options.noNewPage && (pdfCurrent.yPos >= (page.bottom - page.margin.bottom))) {
+  if (!options.noNewPage && (pdfCurrent.yPos >= page.bottom)) {
+    let savedStyle = Object.assign({}, pdfCurrent);
+    pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
+    pdfCurrent = Object.assign({}, savedStyle, { yPos: pdfCurrent.yPos });
+    pdfStyle(pdfCurrent);
+    pdfHeader(++pdfCurrent.pageNumber);
+  }
+  let sizeEstimate = doc.getTextWidth(text);
+  let heightEstimate = Math.ceil(sizeEstimate / page.width) + (text.split('<p').length * 2);  
+  console.log(`html at right:${pdfCurrent.xPos}; top:${pdfCurrent.yPos}; width:${page.width - page.margin.right}`);
+  await doc.html(text, {
+    callback: function (doc) {
+      return doc;
+    },
+    width: page.width - page.margin.right,
+    windowWidth: page.width,
+    html2canvas: {
+      width: (page.width / 0.75),
+      scale: 0.75
+    },
+    x: pdfCurrent.xPos,
+    y: pdfCurrent.yPos,
+    autoPaging: true
+  });
+  pdfDown(heightEstimate);
+  if (options.after) { pdfDown(options.after); }
+}
+
+function pdfLine(text, options = {}) {
+  clt({ pdfLine: text, options });
+  if (options) { pdfStyle(options); }
+  if (options.before) { pdfDown(options.before); }
+  if (options.yPos && !isNaN(options.yPos)) {
+    pdfCurrent.yPos = options.yPos;
+  }
+  else if (options.yPos && (options.yPos === 'footer')) {
+    pdfCurrent.yPos = Math.max((page.height - page.margin.bottom - 20), pdfCurrent.yPos);
+    pdfCurrent.xPos = page.margin.left;
+    options.noNewPage = true;
+  }
+  else if (options.yPos && (options.yPos === 'header')) {
+    pdfCurrent.yPos = page.margin.top;
+    options.noNewPage = true;
+  }
+  else if (!options.noNewLine) {
+    pdfDown(1);
+  }
+  if (!options.noNewPage && (pdfCurrent.yPos >= page.bottom)) {
     let savedStyle = Object.assign({}, pdfCurrent);
     pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
     pdfCurrent = Object.assign({}, savedStyle, { yPos: pdfCurrent.yPos });
@@ -1924,9 +1980,20 @@ function pdfLine(text, options = {}) {
     pdfCurrent.xPos = (pdfCurrent.xPos + pdfCurrent.indent + 8) + doc.getTextWidth(text) + pdfCurrent.fontSize;
   }
   else if (options.html) {
-    // delete options.html;
-    // pdfLine(htmlToFormattedText(text), options);
-    doc.html(text);
+    console.log(`html at right:${pdfCurrent.xPos}; top:${pdfCurrent.yPos}; width:${page.width - page.margin.right}`);
+    doc.html(text, {
+      callback: function (doc) {
+        return doc;
+      },
+      width: page.width - page.margin.right,
+      windowWidth: page.width,
+      html2canvas: {
+        width: page.width,
+      },
+      x: pdfCurrent.xPos,
+      y: pdfCurrent.yPos,
+      autoPaging: 'text'
+    });
   }
   else if (text && (text.length > 0)) {
     // this little chunk deals with text overflow
