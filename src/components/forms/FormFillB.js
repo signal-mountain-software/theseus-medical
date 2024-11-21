@@ -175,7 +175,7 @@ export default ({ request = {}, onClose }) => {
     formUpdates: 0,
     lastActiveTime: nowObj,
     version: 1,
-    idleState: true,
+    idleState: false,
     pertains_to: options.person_id || state.session.patient_id
   });
 
