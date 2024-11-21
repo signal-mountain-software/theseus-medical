@@ -1,7 +1,7 @@
 import React from 'react';
 import useSession from '../../hooks/useSession';
 
-import { dbClient, cl, makeArray, recordExists, getDb, array_in_array } from '../../util/AVAUtilities';
+import { dbClient, cl, makeArray, recordExists, getDb, array_in_array, listFromArray } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import AVATextInput from '../forms/AVATextInput';
 import FormFillB from '../forms/FormFillB';
@@ -20,11 +20,10 @@ import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import PrintIcon from '@material-ui/icons/Print';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import PlaylistAddCheckIcon from '@material-ui/icons/PlaylistAddCheck';
 import ExpandMoreIcon from '@material-ui/icons/Visibility';
+import TextureIcon from '@material-ui/icons/Texture';
 
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
-import AVAUploadFile from '../../util/AVAUploadFile';
 
 const useStyles = makeStyles(theme => ({
   pageHead: {
@@ -117,24 +116,38 @@ export default ({ client, formTypes = '*all', onClose }) => {
   const { state } = useSession();
 
   var rowsWritten;
+  var completed_and_displayed = [];
 
   const formType_filter = makeArray(formTypes);
 
   const [reactData, setReactData] = React.useState({
-    formType_filter: formType_filter.includes('*all') ? false : formType_filter,
+    filter: {
+      formType: formType_filter.includes('*all') ? false : formType_filter,
+      title_words: false,
+      document_status: false,
+      time_frame: false,
+      person: false
+    },
+    filtered_results: !formType_filter.includes('*all'),
+    filter_description: 'Documents',
     client_id: client || state.session.client_id,
     formList: [],
     initialized: false,
     docObj: {},
     deletePending: false,
-    spliceAt: -1,
-    confirmMessage: '',
+    recentlyExpandedForm: null,
     textInput: {},
-    editMode: {},
-    addAttachment: false,
-    addLink: false,
-    needsHeader: false,
-    changesMade: false
+    setFilter: false,
+    documentStatusOptions: [
+      { label: 'Complete', value: 'complete%%Complete' },
+      { label: 'In Process', value: 'work_in_process%%In Process' },
+      { label: 'Not Started', value: 'assigned%%Not Started' },
+    ],
+    filterTimeFrames: [
+      { label: 'This Week', value: 'sunday - 7' },
+      { label: 'Last 10 days', value: 'today - 10' },
+      { label: 'This Month', value: '1st' },
+    ]
   });
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -150,6 +163,8 @@ export default ({ client, formTypes = '*all', onClose }) => {
     )));
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
+
+  const formRowRef = React.useRef(null);
 
   async function setFormList() {
     // get all Form Types
@@ -169,12 +184,9 @@ export default ({ client, formTypes = '*all', onClose }) => {
       });
     if (recordExists(formResult)) {
       formResult.Items.forEach(this_form => {
-        if ((!this_form.hasOwnProperty('active') || this_form.active)
-          && (!reactData.formType_filter || (reactData.formType_filter.includes(this_form.form_id)))) {
-          formList.push(Object.assign((this_form), {
-            isExpanded: false
-          }));
-        }
+        formList.push(Object.assign((this_form), {
+          isExpanded: false
+        }));
       });
       if (formList.length === 1) {
         formList[0].isExpanded = true;
@@ -193,6 +205,30 @@ export default ({ client, formTypes = '*all', onClose }) => {
     return { formList };
   }
 
+  async function printAll({ document_list }) {
+    let w = [];
+    document_list.forEach((this_document, ndx) => {
+      try {
+        w[ndx] = window.open(
+          this_document,
+          `Print Document ${ndx}`,
+          `name=Print Document - ${ndx + 1} of ${document_list.length}, left=${(ndx * 40) + 10}, top=${(ndx * 20) + 10}, height=400, width=600`
+        );
+        w[ndx].addEventListener("afterprint", (e) => {
+          console.log("After print");
+        });
+        w[ndx].print();
+        w[ndx].focus();
+        w[ndx].onafterprint = (e) => {
+          console.log("onAfterprint");
+        };
+      }
+      catch (er) {
+        console.log(`caught error ${er} on ${ndx}`);
+      }
+    });
+  }
+
   async function setDocObj({ formTypes, options }) {
     // get Documents for a form type
     // list will look in DocumentXRef 
@@ -206,21 +242,14 @@ export default ({ client, formTypes = '*all', onClose }) => {
     },
     */
     let docObj = {};
-    let allForms;
-    let formList;
-    if (!formTypes) {
-      allForms = true;
-    }
-    else {
+    let formList = [];
+    if (formTypes) {
       formList = makeArray(formTypes);
-      allForms = (formList.includes('*all'));
     }
-    for (const this_form of reactData.formList) {
-      if (allForms || formList.includes(this_form.form_id)) {
-        docObj[this_form.form_id] = {
-          docList: []
-        };
-      }
+    for (const this_form of formList) {
+      docObj[this_form.form_id] = {
+        docList: []
+      };
     }
     let docResult = await dbClient
       .query({
@@ -237,11 +266,11 @@ export default ({ client, formTypes = '*all', onClose }) => {
       });
     if (recordExists(docResult)) {
       for (const this_doc of docResult.Items) {
-        if (allForms || formList.includes(this_doc.formType)) {
-          let docRec = await getDocRec({
-            document_id: this_doc.document_id,
-            doc_status: this_doc.status
-          });
+        let docRec = await getDocRec({
+          document_id: this_doc.document_id,
+          doc_status: this_doc.status
+        });
+        if (docRec) {
           docObj[this_doc.formType].docList.push(
             Object.assign(docRec, this_doc)
           );
@@ -255,6 +284,49 @@ export default ({ client, formTypes = '*all', onClose }) => {
     }
     return { docObj };
   }
+
+  React.useEffect(() => {
+    if (formRowRef && formRowRef.current) {
+      formRowRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }
+  }, [reactData.recentlyExpandedForm, formRowRef]);
+
+  const okToShowForm = (this_form) => {
+    if (!reactData.filtered_results) { return true; }
+    if (!reactData.filter.formType || (reactData.filter.formType.includes(this_form.form_id))) {
+      return reactData.docObj[this_form.form_id].docList.some(this_doc => {
+        return okToShowDoc(this_doc);
+      });
+    }
+    return false;
+  };
+
+  const okToShowDoc = (this_doc) => {
+    if (!reactData.filtered_results) { return true; }
+    /* 
+      title_words: false,
+      document_status: false,
+      time_frame: false,
+      person: false
+    */
+    if (reactData.filter.title_words && (!(this_doc.document_title || this_doc.title || ' ').toLowerCase().includes(reactData.filter.title_words))) {
+      return false;
+    }
+    if (reactData.filter.document_status && (!reactData.filter.document_status.includes(this_doc.status))) {
+      return false;
+    }
+    if (reactData.filter.time_frame && (this_doc.last_update < reactData.filter.time_frame.timestamp)) {
+      return false;
+    }
+    if (reactData.filter.person && (this_doc.pertains_to !== reactData.filter.person.id)) {
+      return false;
+    }
+    return true;
+  };
+
 
   const getDocRec = async ({ document_id, doc_status }) => {
     let docFile;
@@ -281,8 +353,10 @@ export default ({ client, formTypes = '*all', onClose }) => {
   React.useEffect(() => {
     async function initialize() {
       let { formList } = await setFormList();
+      let { docObj } = await setDocObj({ formTypes: formList });
       updateReactData({
         formList,
+        docObj,
         initialized: true
       }, true);
     }
@@ -290,7 +364,6 @@ export default ({ client, formTypes = '*all', onClose }) => {
       initialize();
     }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
-
 
   return (
     (reactData.initialized &&
@@ -322,6 +395,15 @@ export default ({ client, formTypes = '*all', onClose }) => {
             <DialogContentText className={classes.title} id='scroll-dialog-title'>
               {`Document Management`}
             </DialogContentText>
+            {reactData.filtered_results &&
+              <Typography
+                key={`filter_words-box-title`}
+                id={`filter_words-box-title`}
+                style={AVATextStyle({ size: 1, margin: { left: 1, bottom: 0.8, top: 0 } })}
+              >
+                {reactData.filter_description}
+              </Typography>
+            }
           </Box>
         </Box>
 
@@ -340,280 +422,301 @@ export default ({ client, formTypes = '*all', onClose }) => {
             >
               <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                 {rowsWritten = 0}
+                {completed_and_displayed = []}
               </Typography>
               {reactData.formList.map((this_form, formNdx) => (
-                <React.Fragment key={`form_list-${formNdx}`}>
-                  { /* Form Name */}
-                  <Box
-                    display='flex'
-                    flexDirection='row'
-                    key={`form_list-box-${formNdx}-titlebox`}
-                    id={`form_list-box-${formNdx}-titlebox`}
-                    paddingTop={2} paddingBottom={2}
-                    marginTop={(rowsWritten > 0) ? 2 : 4}
-                    justifyContent='space-between'
-                    alignItems='center'
-                  >
-                    <Box
-                      key={`formNameBox_${this_form.form_id}`}
-                      display='flex' flexDirection='row'
-                      flexGrow={1}
-                      alignItems={'center'} justifyContent={'flex-start'}
-                      onClick={async () => {
-                        reactData.formList[formNdx].isExpanded = !reactData.formList[formNdx].isExpanded;
-                        if (!reactData.docObj.hasOwnProperty(this_form.form_id)) {
-                          let { docObj } = await setDocObj({ formTypes: [this_form.form_id] });
-                          reactData.docObj[this_form.form_id] = docObj[this_form.form_id];
-                        }
-                        updateReactData({
-                          formList: reactData.formList,
-                          docObj: reactData.docObj
-                        }, true);
-                      }}
-                    >
-                      <Typography
-                        key={`form_list-box-${formNdx}-title`}
-                        id={`form_list-box-${formNdx}-title`}
-                        style={AVATextStyle({ size: 1.3, bold: true, margin: { bottom: 0.8, top: 0 } })}
-                      >
-                        {this_form.form_name}
-                      </Typography>
-                      <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                        {rowsWritten++}
-                      </Typography>
-                    </Box>
-                    <Box
-                      key={`selectBox_${this_form.form_id}`}
-                      display='flex' alignSelf='center' flexDirection='row'
-                      alignItems={'center'} justifyContent={'center'}
-                    >
-                      <CloudUploadIcon
-                        classes={{ root: classes.rowButton }}
-                        size='medium'
-                        aria-label="attach_icon"
-                        onClick={() => {
-                          updateReactData({
-                            uploadDoc: true,
-                            pendingInstructions: {
-                              action: 'upload',
-                              formType: this_form.form_id,
-                              formName: this_form.form_name,
-                              formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
-                            }
-                          }, true);
-                        }}
-                        edge="start"
-                      />
-                      <EditIcon
-                        classes={{ root: classes.rowButton }}
-                        size='medium'
-                        aria-label="penciladd_icon"
-                        onClick={() => {
-                          updateReactData({
-                            addDocPrompt: true,
-                            pendingInstructions: {
-                              action: 'addNew',
-                              formType: this_form.form_id,
-                              formName: this_form.form_name,
-                              formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
-                            }
-                          }, true);
-                        }}
-                        edge="start"
-                      />
-                      <PrintIcon
-                        classes={{ root: classes.rowButton }}
-                        size='medium'
-                        aria-label="penciladd_icon"
-                        onClick={() => {
-                          updateReactData({
-                            printEmptyForm: true,
-                            pendingInstructions: {
-                              action: 'printEmpty',
-                              formType: this_form.form_id,
-                              formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
-                            }
-                          }, true);
-                        }}
-                        edge="start"
-                      />
-                    </Box>
-                  </Box>
-                  {this_form.isExpanded &&
+                (okToShowForm(this_form) &&
+                  <React.Fragment key={`form_list-${formNdx}`}>
+                    { /* Form Name */}
                     <Box
                       display='flex'
                       flexDirection='row'
-                      key={`Group-title-box-${this_form.form_id}`}
-                      id={`Group-title-box-${this_form.form_id}`}
-                      minWidth={'95%'}
-                      flexGrow={1}
-                      marginBottom={5}
-                      justifyContent='flex-start'
-                      alignItems='flex-start'
+                      key={`form_list-box-${formNdx}-titlebox`}
+                      id={`form_list-box-${formNdx}-titlebox`}
+                      paddingTop={2} paddingBottom={2}
+                      marginTop={(rowsWritten > 0) ? 2 : 4}
+                      justifyContent='space-between'
+                      alignItems='center'
+                      ref={(this_form.form_id === reactData.recentlyExpandedForm) ? formRowRef : null}
                     >
                       <Box
-                        key={`selectBox_${this_form.form_id}`}
-                        display='flex' flexGrow={1} flexDirection='column'
+                        key={`formNameBox_${this_form.form_id}`}
+                        display='flex' flexDirection='row'
+                        flexGrow={1}
+                        alignItems={'center'} justifyContent={'flex-start'}
+                        onClick={async () => {
+                          reactData.formList[formNdx].isExpanded = !reactData.formList[formNdx].isExpanded;
+                          updateReactData({
+                            formList: reactData.formList,
+                            docObj: reactData.docObj,
+                            recentlyExpandedForm: this_form.form_id
+                          }, true);
+                        }}
                       >
-                        { /* Existing items in this Section */}
-                        {reactData.docObj[this_form.form_id].docList.map((this_doc, docNdx) => (
-                          <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
-                            key={`row_box_grandparent-${docNdx}`}
-                          >
-                            <Box display='flex' flexDirection='column' mb={'8px'} width='100%' textOverflow='ellipsis'
-                              key={`row_box_parent-${docNdx}`}
-                            >
-                              <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
-                                key={`row_box-${docNdx}`}
-                              >
-                                {this_doc.file_location &&
-                                  <ExpandMoreIcon
-                                    classes={{ root: classes.rowButton }}
-                                    onClick={() => {
-                                      let nowJ = new Date().getTime();
-                                      window.open(`${this_doc.file_location}?qt=${nowJ.toString()}`, this_doc.document_title);
-                                    }}
-                                  />
-                                }
-                                {!this_doc.file_location && (this_doc.status === 'work_in_process') &&
-                                  <EditIcon
-                                    classes={{ root: classes.rowButton }}
-                                    onClick={() => {
-                                      updateReactData({
-                                        editDoc: true,
-                                        pendingInstructions: {
-                                          action: 'edit',
-                                          formType: this_form.form_id,
-                                          formName: this_form.form_name,
-                                          formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); }),
-                                          document_id: this_doc.document_id,
-                                          person_id: this_doc.pertains_to,
-                                          docIndex: docNdx
-                                        }
-                                      }, true);
-                                    }}
-                                  />
-                                }
-                                <TextField
-                                  className={classes.editInput}
-                                  disabled
-                                  InputProps={{ disableUnderline: true, className: classes.inputDisplay }}
-                                  variant={'standard'}
-                                  id={`prompt-${this_doc.document_id}_${docNdx}`}
-                                  key={`prompt-${this_doc.document_id}_${docNdx}`}
-                                  value={this_doc.document_title}
-                                />
-                              </Box>
-                            </Box>
-                          </Box>
-                        ))
-                        }
+                        <Typography
+                          key={`form_list-box-${formNdx}-title`}
+                          id={`form_list-box-${formNdx}-title`}
+                          style={AVATextStyle({ size: 1.3, bold: true, margin: { bottom: 0.8, top: 0 } })}
+                        >
+                          {this_form.form_name}
+                        </Typography>
+                        <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                          {rowsWritten++}
+                        </Typography>
+                      </Box>
+                      <Box
+                        key={`selectBox_${this_form.form_id}`}
+                        display='flex' alignSelf='center' flexDirection='row'
+                        alignItems={'center'} justifyContent={'center'}
+                      >
+                        <CloudUploadIcon
+                          classes={{ root: classes.rowButton }}
+                          size='medium'
+                          aria-label="attach_icon"
+                          onClick={() => {
+                            updateReactData({
+                              uploadDoc: true,
+                              pendingInstructions: {
+                                action: 'upload',
+                                formType: this_form.form_id,
+                                formName: this_form.form_name,
+                                formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
+                              }
+                            }, true);
+                          }}
+                          edge="start"
+                        />
+                        <EditIcon
+                          classes={{ root: classes.rowButton }}
+                          size='medium'
+                          aria-label="penciladd_icon"
+                          onClick={() => {
+                            updateReactData({
+                              addDocPrompt: true,
+                              pendingInstructions: {
+                                action: 'addNew',
+                                formType: this_form.form_id,
+                                formName: this_form.form_name,
+                                formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
+                              }
+                            }, true);
+                          }}
+                          edge="start"
+                        />
+                        <PrintIcon
+                          classes={{ root: classes.rowButton }}
+                          size='medium'
+                          aria-label="penciladd_icon"
+                          onClick={() => {
+                            updateReactData({
+                              printEmptyForm: true,
+                              pendingInstructions: {
+                                action: 'printEmpty',
+                                formType: this_form.form_id,
+                                formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
+                              }
+                            }, true);
+                          }}
+                          edge="start"
+                        />
                       </Box>
                     </Box>
-                  }
-                </React.Fragment>
+                    {(this_form.isExpanded || reactData.filtered_results) &&
+                      <Box
+                        display='flex'
+                        flexDirection='row'
+                        key={`Group-title-box-${this_form.form_id}`}
+                        id={`Group-title-box-${this_form.form_id}`}
+                        minWidth={'95%'}
+                        flexGrow={1}
+                        marginBottom={5}
+                        justifyContent='flex-start'
+                        alignItems='flex-start'
+                      >
+                        <Box
+                          key={`selectBox_${this_form.form_id}`}
+                          display='flex' flexGrow={1} flexDirection='column'
+                        >
+                          { /* Existing items in this Section */}
+                          {reactData.docObj[this_form.form_id].docList.map((this_doc, docNdx) => (
+                            (okToShowDoc(this_doc) &&
+                              <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
+                                key={`row_box_grandparent-${docNdx}`}
+                              >
+                                {(this_doc.status = 'complete') && (reactData.filtered_results) &&
+                                  <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                                    {completed_and_displayed.push(this_doc.file_location || this_doc.location)}
+                                  </Typography>
+                                }
+                                <Box display='flex' flexDirection='column' mb={'8px'} width='100%' textOverflow='ellipsis'
+                                  key={`row_box_parent-${docNdx}`}
+                                >
+                                  <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
+                                    key={`row_box-${docNdx}`}
+                                  >
+                                    {this_doc.file_location &&
+                                      <React.Fragment>
+                                        <ExpandMoreIcon
+                                          classes={{ root: classes.rowButton }}
+                                          onClick={() => {
+                                            let nowJ = new Date().getTime();
+                                            window.open(`${this_doc.file_location}?qt=${nowJ.toString()}`, this_doc.document_title);
+                                          }}
+                                        />
+                                        <PrintIcon
+                                          classes={{ root: classes.rowButton }}
+                                          onClick={() => {
+                                            printAll({ document_list: [this_doc.file_location || this_doc.location] });
+                                          }}
+                                        />
+                                      </React.Fragment>
+                                    }
+                                    {!this_doc.file_location &&
+                                      <EditIcon
+                                        classes={{ root: classes.rowButton }}
+                                        onClick={() => {
+                                          updateReactData({
+                                            editDoc: true,
+                                            pendingInstructions: {
+                                              action: 'edit',
+                                              formType: this_form.form_id,
+                                              formName: this_form.form_name,
+                                              formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); }),
+                                              document_id: this_doc.document_id,
+                                              person_id: this_doc.pertains_to,
+                                              docIndex: docNdx
+                                            }
+                                          }, true);
+                                        }}
+                                      />
+                                    }
+                                    <TextField
+                                      className={classes.editInput}
+                                      disabled
+                                      InputProps={{ disableUnderline: true, className: classes.inputDisplay }}
+                                      variant={'standard'}
+                                      id={`prompt-${this_doc.document_id}_${docNdx}`}
+                                      key={`prompt-${this_doc.document_id}_${docNdx}`}
+                                      value={this_doc.document_title || this_doc.title}
+                                    />
+                                  </Box>
+                                </Box>
+                              </Box>
+                            )
+                          ))
+                          }
+                        </Box>
+                      </Box>
+                    }
+                  </React.Fragment>
+                )
               ))}
+              {(rowsWritten === 0) &&
+                <Box
+                  display='flex'
+                  marginTop={3}
+                  flexDirection='row'
+                  justifyContent='center'
+                  alignItems='center'
+                >
+                  <Typography
+                    key={`nothing_found`}
+                    id={`nothing_found`}
+                    style={AVATextStyle({ size: 1.2, bold: true, margin: { left: 1, bottom: 0.8, top: 0 } })}
+                  >
+                    {reactData.filtered_results
+                      ? `No Documents match that search`
+                      : `Nothing found`
+                    }
+                  </Typography>
+                </ Box>
+              }
             </Box>
-            {reactData.addAttachment &&
-              <AVAUploadFile
-                options={{
-                  buttonText: ['Choose', 'Save & Continue'],
-                  title: 'Link this menu option to what file?',
-                  oneOnly: true
-                }}
-                onCancel={() => {
-                  updateReactData({
-                    addAttachment: false
-                  }, true);
-                }}
-                onLoad={async (response) => {
-                  // where is the first entry on this section?
-                  let first_entry = reactData.docList[reactData.group_id][reactData.selectedSection].document_list[0].group_list_index;
-                  let updatedLine = [`render.generic~[default=${response[0].fLoc}]~[title=${reactData.textInput[reactData.selectedSection]['new']}]`];
-                  if (reactData.needsHeader) {
-                    updatedLine.unshift(`~~${reactData.selectedSection}`);
-                  }
-                  reactData.docList[reactData.group_id].groupRec.common_activities.splice(first_entry, 0, ...updatedLine);
-                  await dbClient
-                    .update({
-                      Key: {
-                        client_id: reactData.client_id,
-                        group_id: reactData.group_id
-                      },
-                      UpdateExpression: 'set #c = :c',
-                      ExpressionAttributeValues: {
-                        ':c': reactData.docList[reactData.group_id].groupRec.common_activities
-                      },
-                      ExpressionAttributeNames: {
-                        '#c': 'common_activities'
-                      },
-                      TableName: "Groups",
-                    })
-                    .promise()
-                    .catch(error => {
-                      cl(`caught error updating Group; error is: `, error);
-                    });
-                  let bbResponse = await setFormList();
-                  reactData.textInput[reactData.selectedSection]['new'] = '';
-                  updateReactData({
-                    docList: bbResponse,
-                    textInput: reactData.textInput,
-                    addAttachment: false,
-                    needsHeader: false,
-                    changesMade: true
-                  }, true);
-                }}
-              />
-            }
-            {reactData.addLink &&
+            {reactData.setFilter &&
               <AVATextInput
-                titleText={'Link this menu option to what web address?'}
-                promptText={['Web address']}
-                buttonText={'Add Link & Save'}
+                titleText={'Filter Entries'}
+                promptText={['Words in Title', '[selectmulti]Document Status', '[select]Pertains To', '[select]Time Frame']}
+                buttonText={['Set Filter', 'Cancel/Go Back', 'Clear Filter',]}
+                valueText={[
+                  reactData.filter.title_words,
+                  (reactData.filter.document_status
+                    ? reactData.documentStatusOptions
+                      .filter(d => { return (reactData.filter.document_status.includes(d.value.split('%%')[0])); })
+                      .map(d => { return d.value; })
+                    : false
+                  ),
+                  (reactData.filter.person
+                    ? `${reactData.filter.person.id}%%${reactData.filter.person.name}`
+                    : false
+                  ),
+                  (reactData.filter.time_frame
+                    ? reactData.filter.time_frame.selectValue
+                    : false
+                  )
+                ]}
+                selectionList={[
+                  '',
+                  reactData.documentStatusOptions,
+                  state.accessList[state.session.client_id].list.map(a => {
+                    const label = (!a.name ? a.display_name : (`${a.name.last} ${a.name.first}`).trim());
+                    return {
+                      label,
+                      value: `${a.person_id}%%${label}`
+                    };
+                  }),
+                  reactData.filterTimeFrames
+                ]}
                 onCancel={() => {
                   updateReactData({
-                    addLink: false
+                    setFilter: false
                   }, true);
                 }}
-                onSave={async (response) => {
-                  // where is the first entry on this section?
-                  if (!response[0].startsWith('http')) {
-                    response[0] = `https://${response[0]}`;
+                onSave={async (response, buttonPressed) => {
+                  let reactUpdObj = {
+                    setFilter: false,
+                    filter: {
+                      formType: reactData.filter.formType,
+                      title_words: false,
+                      document_status: false,
+                      time_frame: false,
+                      person: false
+                    },
+                    filtered_results: !!reactData.filter.formType,
+                    filter_description: 'Documents'
+                  };
+                  if (buttonPressed !== 2) {
+                    if (!!response[0]) {
+                      reactUpdObj.filter.title_words = response[0].toLowerCase();
+                      reactUpdObj.filtered_results = true;
+                    }
+                    if (!!response[1]) {
+                      reactUpdObj.filter.document_status = [];
+                      let wordList = [];
+                      makeArray(response[1]).forEach(status_response => {
+                        let [status_key, status_descripition] = status_response.split('%%');
+                        reactUpdObj.filter.document_status.push(status_key);
+                        wordList.push(status_descripition);
+                      });
+                      reactUpdObj.filter_description = `${listFromArray(wordList)} ${reactUpdObj.filter_description}`;
+                      reactUpdObj.filtered_results = true;
+                    }
+                    if (!!response[2]) {
+                      let [id, name] = response[2].split('%%');
+                      reactUpdObj.filter.person = {
+                        id,
+                        name
+                      };
+                      reactUpdObj.filtered_results = true;
+                      reactUpdObj.filter_description += ` for ${name}`;
+                    }
+                    if (!!response[3]) {
+                      let sinceDate = makeDate(response[3], { noFuture: true });
+                      reactUpdObj.filter.time_frame = Object.assign({}, sinceDate, { selectValue: response[3] });
+                      reactUpdObj.filtered_results = true;
+                      reactUpdObj.filter_description += ` since ${sinceDate.absolute}`;
+                    }
                   }
-                  let first_entry = reactData.docList[reactData.group_id][reactData.selectedSection].document_list[0].group_list_index;
-                  let updatedLine = [`render.generic~[default=${response[0]}]~[title=${reactData.textInput[reactData.selectedSection]['new']}]`];
-                  if (reactData.needsHeader) {
-                    updatedLine.unshift(`~~${reactData.selectedSection}`);
-                  }
-                  reactData.docList[reactData.group_id].groupRec.common_activities.splice(first_entry, 0, ...updatedLine);
-                  await dbClient
-                    .update({
-                      Key: {
-                        client_id: reactData.client_id,
-                        group_id: reactData.group_id
-                      },
-                      UpdateExpression: 'set #c = :c',
-                      ExpressionAttributeValues: {
-                        ':c': reactData.docList[reactData.group_id].groupRec.common_activities
-                      },
-                      ExpressionAttributeNames: {
-                        '#c': 'common_activities'
-                      },
-                      TableName: "Groups",
-                    })
-                    .promise()
-                    .catch(error => {
-                      cl(`caught error updating Group; error is: `, error);
-                    });
-                  let bbResponse = await setFormList();
-                  reactData.textInput[reactData.selectedSection]['new'] = '';
-                  updateReactData({
-                    docList: bbResponse,
-                    textInput: reactData.textInput,
-                    addLink: false,
-                    needsHeader: false,
-                    changesMade: true
-                  }, true);
+                  updateReactData(reactUpdObj, true);
                 }}
               />
             }
@@ -656,6 +759,9 @@ export default ({ client, formTypes = '*all', onClose }) => {
                     document_title,
                     pertains_to: selectedPerson,
                     date_completed: nowTime.timestamp,
+                    formType: reactData.form_id,
+                    formType_date: `${reactData.form_id}%%${new Date().getTime()}`,
+                    fields: reactData.fields,
                     save_info: {
                       s3Bucket: 'theseus-medical-storage',
                       s3Key: response[1].split('/').pop(),
@@ -852,21 +958,40 @@ export default ({ client, formTypes = '*all', onClose }) => {
         <DialogActions style={{ justifyContent: 'center' }}>
           <Button
             className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'green', color: 'white' }}
+            style={{ backgroundColor: 'red', color: 'white' }}
             size='small'
             onClick={() => {
-              if (reactData.changesMade) {
-                sessionStorage.removeItem('AVASessionData');
-                window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
-              }
-              else {
-                onClose();
-              }
+              onClose();
             }}
-            startIcon={<PlaylistAddCheckIcon size="small" />}
           >
-            {'Done'}
+            {'Exit'}
           </Button>
+          <Button
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'gray', color: 'black' }}
+            size='small'
+            startIcon={<TextureIcon fontSize="small" />}
+            onClick={() => {
+              updateReactData({
+                setFilter: true,
+              }, true);
+            }}
+          >
+            {'Filter'}
+          </Button>
+          {(completed_and_displayed.length > 0) &&
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'blue', color: 'white', paddingRight: (reactData.isMobile ? '4px' : '') }}
+              size='small'
+              onClick={async () => {
+                await printAll({ document_list: completed_and_displayed });
+              }}
+              startIcon={<PrintIcon size="small" />}
+            >
+              {`Print ${completed_and_displayed.length}`}
+            </Button>
+          }
         </DialogActions>
 
       </Dialog>

@@ -779,6 +779,10 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
   doc.save(docDocument.document_id);
 }
 
+export async function consolidatePDFs({ documentList, options = {} }) {
+
+}
+
 export async function printDocumentB({ documentList, options = {} }) {
   let response = [];
   if (!Array.isArray(documentList)) {
@@ -1727,7 +1731,7 @@ async function pdfLaunch(body) {
       format: ((body.pdf.pageWidth) ? [body.pdf.pageWidth, (body.pdf.pageHeight || 9999)] : [563, 750])
     });
   }
-  doc.autoPrint();
+  // doc.autoPrint();
   page = {
     width: doc.internal.pageSize.width,
     height: doc.internal.pageSize.height,

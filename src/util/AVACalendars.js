@@ -1377,7 +1377,6 @@ export async function writeSlot(body) {
         if (assigned_to.length > 0) {
           for (let p = 0; p < pertains_to.length; p++) {
             // for each PERTAINS_TO person...
-            let documentRec;
             let document_id_toBeAssigned;
             let goodGet = false;
             let foundDocumentAlreadyCompleted = false;
@@ -1426,18 +1425,6 @@ export async function writeSlot(body) {
                       }
                       cl(`Error reading ${queryObj.TableName} id ${error}`);
                     });
-                  if (!recordExists(queryResult)) {
-                    queryObj.TableName = 'Documents';
-                    queryResult = await dbClient
-                      .query(queryObj)
-                      .promise()
-                      .catch(error => {
-                        if (error.code === 'NetworkingError') {
-                          cl(`Security Violation or no Internet Connection`);
-                        }
-                        cl(`Error reading ${queryObj.TableName} id ${error}`);
-                      });
-                  }
                 }
               }
               if (recordExists(queryResult)) {
@@ -1509,7 +1496,7 @@ export async function writeSlot(body) {
                       });
                   }
                 }
-                if (recordExists(documentRec)) {
+                if (recordExists(queryResult)) {
                   goodGet = true;
                 }
               }
@@ -1613,7 +1600,7 @@ export async function writeSlot(body) {
     // go back and update any slot to show the associated documents
     // AND add an entry to DocumentsXRef that shows this relationship
     for (const this_person in documentsAssignedToThisPerson) {
-      for (const this_document in documentsAssignedToThisPerson[this_person]) {
+      for (const this_document of documentsAssignedToThisPerson[this_person]) {
         await dbClient
           .put({
             Item: {
@@ -1644,18 +1631,33 @@ export async function writeSlot(body) {
         cl(`Slot rec not found for ${event_id}#${occurrence}#${this_person}`);
       }
       else {
-        await dbClient
-          .update({
-            Key: {
-              client: body.client,
-              event_key: `${event_key}`
-            },
-            UpdateExpression: 'set documents = :d',
-            ExpressionAttributeValues: { ':d': documentsAssignedToThisPerson[this_person].concat(slotRec.Item.documents) },
-            TableName: "Calendar"
+        let docRef = [];
+        if (slotRec.Item.documents && (slotRec.Item.documents.length > 0)) {
+          docRef.push(...slotRec.Item.documents)
+        }
+        let needsUpdate = false;
+        if (documentsAssignedToThisPerson[this_person].length > 0) {
+          documentsAssignedToThisPerson[this_person].forEach(d => {
+            if (d) {
+              docRef.push(d);
+              needsUpdate = true;
+            }
           })
-          .promise()
-          .catch(error => { cl(`caught error updating Documents; error is: `, error); });
+        }
+        if (needsUpdate) {
+          await dbClient
+            .update({
+              Key: {
+                client: body.client,
+                event_key: `${event_key}`
+              },
+              UpdateExpression: 'set documents = :d',
+              ExpressionAttributeValues: { ':d': docRef },
+              TableName: "Calendar"
+            })
+            .promise()
+            .catch(error => { cl(`caught error updating Documents; error is: `, error); });
+        }
       }
     };
   }

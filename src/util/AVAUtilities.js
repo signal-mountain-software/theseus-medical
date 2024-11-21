@@ -369,6 +369,58 @@ export function makeArray(input, delimiter = null) {
   return response;
 }
 
+export function makeCustomArray(input, options = {}) {
+  let response = [];
+  if (!input) { return []; };
+  let { delimiter, toLowerCase, notAlone } = options;
+  if ((typeof (input) === 'string')) {
+    if (toLowerCase) {
+      return (notAlone ? input.toLowerCase() : [input.toLowerCase()]);
+    }
+    else {
+      return (notAlone ? input : [input]);
+    }
+  }
+  else if (Array.isArray(input)) {
+    for (const this_item of input) {
+      response.push(makeArray(this_item, Object.assign({}, options, { notAlone: true })));
+    }
+  }
+  else if (typeof input === 'object') {
+    for (const this_key in input) {
+      response.push({ [(toLowerCase ? this_key.toLowerCase() : this_key)]: makeArray(input[this_key], Object.assign({}, options, { notAlone: true })) });
+    }
+  }
+  else if (typeof input === 'number') {
+    response.push(input);
+  }
+  else if ((input.charAt(0) === '{') && (input.charAt(input.length - 1) === '}')) {
+    try {
+      let rObj = JSON.parse(input);
+      Object.keys(rObj).forEach(o => {
+        response.push(`${o}=${rObj[o]}`);
+      });
+    }
+    catch {
+      let outObj = {};
+      let keyValuePairs = input.replace(/[{}]/g, '').split(',');
+      keyValuePairs.forEach(pair => {
+        let [key, value] = pair.split(':');
+        outObj[key.trim()] = value.trim();
+      });
+      response.push(outObj);
+    }
+  }
+  else if (input.charAt(0) === '[') {
+    response = input.replace(/[[\]]/, '').split(',');
+  }
+  else if (delimiter) {
+    response = input.split(delimiter).map(e => { return e.trim(); });
+  }
+  else { response.push(input); }
+  return response;
+}
+
 export function makeObject(input) {
   if (isObject(input)) {
     return input;

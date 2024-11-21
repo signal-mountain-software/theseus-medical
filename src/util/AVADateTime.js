@@ -359,10 +359,10 @@ export function makeDate(pInput, optionIn = {}) {
                     if (pStringPieces.length > 2) {
                         let twoDigYr = parseInt(pStringPieces[2], 10);
                         if (twoDigYr < 30) {
-                            yearPiece = twoDigYr + 2000    
+                            yearPiece = twoDigYr + 2000;
                         }
                         else {
-                            yearPiece = twoDigYr + 1900    
+                            yearPiece = twoDigYr + 1900;
                         }
                     }
                     else {
@@ -477,7 +477,9 @@ export function makeDate(pInput, optionIn = {}) {
                     }
                 }
                 else {
-                    if (daysDiff(thisMonth_target, now) < 7) { return thisMonth_target; }
+                    if ((daysDiff(thisMonth_target, now) < 7) || (options.noFuture)) {
+                        return thisMonth_target;
+                    }
                     else {
                         let nextMonth_target = new Date();
                         nextMonth_target.setMonth(now.getMonth() + 1, n);

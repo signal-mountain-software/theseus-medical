@@ -3,12 +3,12 @@ import { useSnackbar } from 'notistack';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getSlotList, writeSlot, makeSlotName, myAvailability, printOccurrenceSheet } from '../../util/AVACalendars';
 import { getMemberList } from '../../util/AVAGroups';
-import { cl, makeArray, dbClient, isEmpty, deepCopy, titleCase, isMobile } from '../../util/AVAUtilities';
+import { cl, makeArray, dbClient, isEmpty, deepCopy, titleCase, isMobile, recordExists } from '../../util/AVAUtilities';
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
 import { sendMessages } from '../../util/AVAMessages';
 import { putServiceRequest } from '../../util/AVAServiceRequest';
 import MakeMessage from './MakeMessage';
-import FormFill from './FormFill';
+import FormFillB from './FormFillB';
 
 import { useGeolocated } from "react-geolocated";
 import { SearchPlaceIndexForPositionCommand, LocationClient } from '@aws-sdk/client-location';
@@ -359,19 +359,68 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
   };
 
   async function getDoc(this_doc) {
-    let response = await dbClient
-      .get({
-        Key: {
-          client_id: state.session.client_id,
-          document_id: this_doc
-        },
-        TableName: "Documents"
-      })
+    let queryObj = {
+      KeyConditionExpression: 'client_id = :c and document_id = :dID',
+      ScanIndexForward: false,
+      Limit: 1,
+      ExpressionAttributeValues: {
+        ':c': state.session.client_id,
+        ':dID': this_doc
+      }
+    };
+    queryObj.TableName = 'CompletedDocuments';
+    let queryResult = await dbClient
+      .query(queryObj)
       .promise()
       .catch(error => {
-        cl(`Error reading Documents - ${error}`, this_doc);
+        if (error.code === 'NetworkingError') {
+          cl(`Security Violation or no Internet Connection`);
+        }
+        cl(`Error reading ${queryObj.TableName} id ${error}`);
       });
-    return response.Item || null;
+    if (recordExists(queryResult)) {
+      return queryResult.Items[0];
+    }
+    queryObj.TableName = 'DocumentsInProcess';
+    queryResult = await dbClient
+      .query(queryObj)
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          cl(`Security Violation or no Internet Connection`);
+        }
+        cl(`Error reading ${queryObj.TableName} id ${error}`);
+      });
+    if (recordExists(queryResult)) {
+      return queryResult.Items[0];
+    }
+    queryObj.TableName = 'DocumentsAssigned';
+    queryResult = await dbClient
+      .query(queryObj)
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          cl(`Security Violation or no Internet Connection`);
+        }
+        cl(`Error reading ${queryObj.TableName} id ${error}`);
+      });
+    if (recordExists(queryResult)) {
+      return queryResult.Items[0];
+    }
+    queryObj.TableName = 'Documents';
+    queryResult = await dbClient
+      .query(queryObj)
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          cl(`Security Violation or no Internet Connection`);
+        }
+        cl(`Error reading ${queryObj.TableName} id ${error}`);
+      });
+    if (recordExists(queryResult)) {
+      return queryResult.Items[0];
+    }
+    return null;
   }
 
   const handlePrint = async (pEvent, pType) => {
@@ -1182,64 +1231,64 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                     >
                       <Box display='flex' mr={0} flexDirection='row' justifyContent='flex-start' alignItems='center'>
                         {/* Mark an item - Radio button */}
-                        
-                          <Box minWidth={40} maxWidth={40} display='flex' mr={0} flexDirection='column' justifyContent='center' alignItems='center'>
-                            {(isEventOwner || isSlotOwner(this_item.slotData)) && <Tooltip mr={0} ml={0} title={`Mark ${this_item.marked ? 'not ' : ''}attended`} >
-                              <IconButton mr={0} ml={0}
-                                onClick={async () => {
-                                  let { timestamp, location } = await getMarker();
-                                  let currentHistory = this_item.slotData.slotData.status.history;
-                                  if (!currentHistory || isEmpty(currentHistory)) {
-                                    currentHistory = [];
-                                  }
-                                  currentHistory.unshift({
-                                    timestamp,
-                                    user: state.session.patient_id,
-                                    action: `Checked ${this_item.marked ? 'out' : 'in'}`,
-                                    location
-                                  });
-                                  await dbClient
-                                    .update({
-                                      Key: {
-                                        "client": pClient,
-                                        "event_key": `${pEventCode}#${this_item.slotData.id}`
-                                      },
-                                      UpdateExpression: 'set marked = :m, #sd.#st.#h = :h, check_in = :t',
-                                      ExpressionAttributeValues: {
-                                        ':m': !this_item.marked,
-                                        ':h': currentHistory,
-                                        ':t': timestamp
-                                      },
-                                      ExpressionAttributeNames: {
-                                        '#sd': 'slotData',
-                                        '#st': 'status',
-                                        '#h': 'history'
-                                      },
-                                      TableName: "Calendar"
-                                    })
-                                    .promise()
-                                    .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
-                                  eventSlotList[index].marked = !this_item.marked;
-                                  eventSlotList[index].check_in = timestamp;
-                                  setEventSlotList(eventSlotList);
-                                  setForceRedisplay(!forceRedisplay);
-                                }}
-                              >
-                                {this_item.marked
-                                  ? ((isSlotOwner(this_item.slotData)
-                                    || (this_item.slotData.documents && (this_item.slotData.documents.length > 0)))
-                                    ? <TimerOffIcon mr={0} ml={0} />
-                                    : <RadioButtonCheckedIcon mr={0} ml={0} />
-                                  )
-                                  : ((isSlotOwner(this_item.slotData)
-                                    || (this_item.slotData.documents && (this_item.slotData.documents.length > 0)))
-                                    ? <AlarmAddIcon mr={0} ml={0} />
-                                    : <RadioButtonUncheckedIcon mr={0} ml={0} />
-                                  )
+
+                        <Box minWidth={40} maxWidth={40} display='flex' mr={0} flexDirection='column' justifyContent='center' alignItems='center'>
+                          {(isEventOwner || isSlotOwner(this_item.slotData)) && <Tooltip mr={0} ml={0} title={`Mark ${this_item.marked ? 'not ' : ''}attended`} >
+                            <IconButton mr={0} ml={0}
+                              onClick={async () => {
+                                let { timestamp, location } = await getMarker();
+                                let currentHistory = this_item.slotData.slotData.status.history;
+                                if (!currentHistory || isEmpty(currentHistory)) {
+                                  currentHistory = [];
                                 }
-                              </IconButton>
-                            </Tooltip>}
-                          </Box>
+                                currentHistory.unshift({
+                                  timestamp,
+                                  user: state.session.patient_id,
+                                  action: `Checked ${this_item.marked ? 'out' : 'in'}`,
+                                  location
+                                });
+                                await dbClient
+                                  .update({
+                                    Key: {
+                                      "client": pClient,
+                                      "event_key": `${pEventCode}#${this_item.slotData.id}`
+                                    },
+                                    UpdateExpression: 'set marked = :m, #sd.#st.#h = :h, check_in = :t',
+                                    ExpressionAttributeValues: {
+                                      ':m': !this_item.marked,
+                                      ':h': currentHistory,
+                                      ':t': timestamp
+                                    },
+                                    ExpressionAttributeNames: {
+                                      '#sd': 'slotData',
+                                      '#st': 'status',
+                                      '#h': 'history'
+                                    },
+                                    TableName: "Calendar"
+                                  })
+                                  .promise()
+                                  .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
+                                eventSlotList[index].marked = !this_item.marked;
+                                eventSlotList[index].check_in = timestamp;
+                                setEventSlotList(eventSlotList);
+                                setForceRedisplay(!forceRedisplay);
+                              }}
+                            >
+                              {this_item.marked
+                                ? ((isSlotOwner(this_item.slotData)
+                                  || (this_item.slotData.documents && (this_item.slotData.documents.length > 0)))
+                                  ? <TimerOffIcon mr={0} ml={0} />
+                                  : <RadioButtonCheckedIcon mr={0} ml={0} />
+                                )
+                                : ((isSlotOwner(this_item.slotData)
+                                  || (this_item.slotData.documents && (this_item.slotData.documents.length > 0)))
+                                  ? <AlarmAddIcon mr={0} ml={0} />
+                                  : <RadioButtonUncheckedIcon mr={0} ml={0} />
+                                )
+                              }
+                            </IconButton>
+                          </Tooltip>}
+                        </Box>
                         {/* Image and Name */}
                         {(!(state.user.account_class
                           && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
@@ -1333,14 +1382,40 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                                   <Tooltip title={`View documents`} >
                                     <AssignmentTurnedInIcon
                                       onClick={async () => {
-                                        let docRec = await getDoc(this_item.slotData.documents[0]);
-                                        if (!isEmpty(docRec)) {
-                                          updateReactData({
-                                            editForm: true,
-                                            selectedDoc_id: this_item.slotData.documents[0],
-                                            selectedPerson_id: docRec.person_id,
-                                            selectedDocMode: determineMode(docRec)
-                                          }, true);
+                                        if (this_item.slotData.documents.length > 1) {
+                                          let docRecs = [];
+                                          for (const this_doc of this_item.slotData.documents) {
+                                            let dR = await getDoc(this_doc);
+                                            if (!isEmpty(dR)) {
+                                              docRecs.push(dR);
+                                            }
+                                          }
+                                          if (docRecs.length > 1) {
+                                            updateReactData({
+                                              selectForm: true,
+                                              selectedDoc_id: docRecs,
+                                            }, true);
+                                            return;
+                                          }
+                                          else if (docRecs.length === 1) {
+                                            updateReactData({
+                                              editForm: true,
+                                              selectedDoc_id: docRecs[0].document_id,
+                                              selectedPerson_id: docRecs[0].person_id,
+                                              selectedDocMode: determineMode(docRecs[0])
+                                            }, true);
+                                          }
+                                        }
+                                        else {
+                                          let docRec = await getDoc(this_item.slotData.documents[0]);
+                                          if (!isEmpty(docRec)) {
+                                            updateReactData({
+                                              editForm: true,
+                                              selectedDoc_id: this_item.slotData.documents[0],
+                                              selectedPerson_id: docRec.person_id,
+                                              selectedDocMode: determineMode(docRec)
+                                            }, true);
+                                          }
                                         }
                                       }}
                                     />
@@ -1437,7 +1512,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
           </List>
         </Paper>
         {reactData.editForm &&
-          <FormFill
+          <FormFillB
             request={{
               document_id: reactData.selectedDoc_id,
               person_id: reactData.selectedPerson_id,
@@ -1446,6 +1521,32 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
             onClose={() => {
               updateReactData({
                 editForm: false
+              }, true);
+            }}
+          />
+        }
+        {reactData.selectForm &&
+          <AVATextInput
+            titleText='Which form?'
+            buttonText='Continue'
+            promptText={reactData.selectedDoc_id.map(d => {
+              return `[checkbox]${d.title || d.document_title}`;
+            })}
+            options={{ selectOne: true }}
+            onCancel={() => {
+              updateReactData({
+                selectForm: false
+              }, true);
+            }}
+            onSave={async (selectedForm) => {
+              let ndx = selectedForm.findIndex(f => f === 'checked');
+              let foundDoc = reactData.selectedDoc_id[ndx];
+              updateReactData({
+                selectForm: false,
+                editForm: true,
+                selectedDoc_id: foundDoc.document_id,
+                selectedPerson_id: foundDoc.pertains_to || foundDoc.person_id || state.session.patient_id,
+                selectedDocMode: determineMode(foundDoc)
               }, true);
             }}
           />

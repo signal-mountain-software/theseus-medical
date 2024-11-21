@@ -1208,7 +1208,7 @@ export default ({ request = {}, onClose }) => {
       });
       if (AssignedDocRec) {
         // this document_id was assigned to someone, but hasn't been started yet
-        const { WIP_Fields, WIP_Sections } = await initializeDoc({
+        const { fields, sections } = await initializeDoc({
           form_id: AssignedDocRec.form_id,
           pertains_to: AssignedDocRec.pertains_to
         });
@@ -1216,8 +1216,8 @@ export default ({ request = {}, onClose }) => {
           document_title: AssignedDocRec.document_title,
           pertains_to: AssignedDocRec.pertains_to,
           form_id: AssignedDocRec.form_id,
-          fields: WIP_Fields,
-          sections: WIP_Sections,
+          fields,
+          sections,
           stage: 'fill'
         }, true);
         return;
@@ -1230,8 +1230,12 @@ export default ({ request = {}, onClose }) => {
         TableName: "CompletedDocuments"
       });
       if (CompletedDocRec) {
-        window.open(`${CompletedDocRec.fileRef}?qt=${Date().getTime()}`, CompletedDocRec.title);
-        return;
+        window.open(
+          CompletedDocRec.file_location,
+          CompletedDocRec.title,
+          `name=${CompletedDocRec.title}, left=${20}, top=${20}`
+        );
+        handleAbort();
       }
     }
     // if we got here, there was no existing document found with the passed in document_id
