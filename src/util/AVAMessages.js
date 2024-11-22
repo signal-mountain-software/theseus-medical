@@ -726,7 +726,7 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
     pdfLine(sectionObj.section_name, { style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
     // sectionObj.fields.forEach((this_field, fieldNdx) => {
     for (const this_field of sectionObj.fields) {
-      if (docData.fields.hasOwnProperty(this_field)) {
+      if (docData.fields.hasOwnProperty(this_field) && !(docData.fields.ignore)) {
         let printType = (docData.fields[this_field].value.type === 'view') ? docData.fields[this_field].prompt.type : docData.fields[this_field].value.type;
         switch (printType) {
           case 'image': {
@@ -807,7 +807,7 @@ export async function printDocumentB({ documentList, options = {} }) {
       pdfLine(sectionObj.section_name, { style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
       //  sectionObj.fields.forEach((this_field, fieldNdx) => {
       for (const this_field of sectionObj.fields) {
-        if (fields.hasOwnProperty(this_field)) {
+        if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore)) {
           let printType = fields[this_field].type;
           switch (printType) {
             case 'image': {
@@ -826,6 +826,10 @@ export async function printDocumentB({ documentList, options = {} }) {
                   pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
                 }
               });
+              if (fields[this_field].bonusText) {
+                const text = `${fields[this_field].prompt.other || 'other'}: ${fields[this_field].bonusText}`;
+                pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+              }
               pdfDown(1);
               pdfStyle('reset');
               break;
@@ -898,7 +902,7 @@ export async function printEmptyDocument({ documentList, options = {} }) {
       pdfLine(sectionObj.section_name, { style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
       //   sectionObj.fields.forEach((this_field) => {
       for (const this_field of sectionObj.fields) {
-        if (fields.hasOwnProperty(this_field)) {
+        if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore)) {
           let printType = fields[this_field].type;
           switch (printType) {
             case 'image': {
@@ -917,6 +921,13 @@ export async function printEmptyDocument({ documentList, options = {} }) {
                   pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
                 }
               });
+              if (printType === 'select&text') {
+                const text = `${fields[this_field].prompt.other || 'other'}:`;
+                pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                let endX = pdfCurrent.xPos + doc.getTextWidth('Sample text thats not too long');
+                doc.line(pdfCurrent.xPos - 6, pdfCurrent.yPos + 1, endX, pdfCurrent.yPos + 1, 'DF');
+                pdfCurrent.xPos = endX;
+              }
               pdfDown(1);
               pdfStyle('reset');
               break;
@@ -995,7 +1006,7 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
       pdfLine(sectionObj.section_name, { style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
       //      sectionObj.fields.forEach((this_field, fieldNdx) => {
       for (const this_field of sectionObj.fields) {
-        if (fields.hasOwnProperty(this_field)) {
+        if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore)) {
           let printType = fields[this_field].type;
           switch (printType) {
             case 'image': {
@@ -1014,6 +1025,10 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
                   pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
                 }
               });
+              if (fields[this_field].bonusText) {
+                const text = `${fields[this_field].prompt.other || 'other'}: ${fields[this_field].bonusText}`;
+                pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+              }
               pdfDown(1);
               pdfStyle('reset');
               break;
@@ -1890,6 +1905,7 @@ async function pdfHTML(text, options = {}) {
   }
   let sizeEstimate = doc.getTextWidth(text);
   let heightEstimate = Math.ceil(sizeEstimate / page.width) + (text.split('<p').length * 2);  
+  const this_page = doc.internal.getNumberOfPages();
   console.log(`html at right:${pdfCurrent.xPos}; top:${pdfCurrent.yPos}; width:${page.width - page.margin.right}`);
   await doc.html(text, {
     callback: function (doc) {
@@ -1902,7 +1918,7 @@ async function pdfHTML(text, options = {}) {
       scale: 0.75
     },
     x: pdfCurrent.xPos,
-    y: pdfCurrent.yPos,
+    y: ((this_page - 1) * page.height ) + pdfCurrent.yPos,
     autoPaging: true
   });
   pdfDown(heightEstimate);

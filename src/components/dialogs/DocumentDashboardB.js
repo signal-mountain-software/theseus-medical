@@ -583,6 +583,7 @@ export default ({ client, formTypes = '*all', onClose }) => {
                                               formName: this_form.form_name,
                                               formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); }),
                                               document_id: this_doc.document_id,
+                                              document_title: this_doc.title || this_doc.document_title,
                                               person_id: this_doc.pertains_to,
                                               docIndex: docNdx
                                             }
@@ -926,7 +927,8 @@ export default ({ client, formTypes = '*all', onClose }) => {
             {reactData.editDoc &&
               <FormFillB
                 request={{
-                  document_id: reactData.pendingInstructions.document_id,
+                document_id: reactData.pendingInstructions.document_id,
+                document_title: reactData.pendingInstructions.document_title,
                   person_id: reactData.pendingInstructions.person_id,
                 }}
                 onClose={(ignore_me, statusObj) => {
@@ -936,12 +938,14 @@ export default ({ client, formTypes = '*all', onClose }) => {
                         docList: []
                       };
                     }
-                    reactData.docObj[reactData.pendingInstructions.formType].docList[reactData.pendingInstructions.docIndex] =
-                      Object.assign(
-                        reactData.docObj[reactData.pendingInstructions.formType].docList[reactData.pendingInstructions.docIndex],
-                        statusObj.recWritten,
-                        { last_update: new Date().getTime(), status: statusObj.document_status }
-                      );
+                    if (statusObj.recWritten) {
+                      reactData.docObj[reactData.pendingInstructions.formType].docList[reactData.pendingInstructions.docIndex] =
+                        Object.assign(
+                          reactData.docObj[reactData.pendingInstructions.formType].docList[reactData.pendingInstructions.docIndex],
+                          statusObj.recWritten || {},
+                          { last_update: new Date().getTime(), status: statusObj.document_status }
+                        );
+                    }
                   }
                   updateReactData({
                     docObj: reactData.docObj,

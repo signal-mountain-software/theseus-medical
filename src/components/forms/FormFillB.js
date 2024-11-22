@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { dbClient, cl, makeArray, isEmpty, getDb, sentenceCase } from '../../util/AVAUtilities';
+import { dbClient, cl, makeArray, isEmpty, getDb, sentenceCase, listFromArray, array_in_array } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { formatPhone, makeName } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
@@ -96,18 +96,18 @@ const useStyles = makeStyles(theme => ({
     backgroundColor: theme.palette.reject[theme.palette.type],
   },
   inputDisplay: {
-    root: {
-      '&.MuiInputBase-input': {
-        paddingBottom: '0px',
-        color: 'red'
-      },
-      '&.MuiInput-input': {
-        paddingBottom: '22px',
-        color: 'red'
-      },
-      '&.Mui-disabled': {
+    '&.MuiInputBase-input': {
+      paddingBottom: '0px',
+      color: 'red'
+    },
+    '&.MuiInput-input': {
+      paddingBottom: '22px',
+      color: 'red'
+    },
+    '&.MuiInputBase-root': {
+      'Mui-disabled': {
         color: 'black'
-      },
+      }
     }
   }
 }));
@@ -145,7 +145,7 @@ export default ({ request = {}, onClose }) => {
     form_id: options.form_id,
     options,
     document_id: options.document_id,
-    document_title: null,
+    document_title: options.document_title,
     fields: {},
     /* 
     fields is keyed by field_name: {
@@ -242,7 +242,7 @@ export default ({ request = {}, onClose }) => {
     }
     if (minutesSinceActive > 5) {
       onClose('timeout', {
-        document_id: reactUpdObj.document_id,
+        document_id: reactData.document_id,
         document_title: reactData.document_title,
         document_status: 'work_in_process',
         recWritten: reactData.recWritten
@@ -288,6 +288,10 @@ export default ({ request = {}, onClose }) => {
         response.fields[this_field] = {};
         // Set default value
         const defaultObj = {};
+        if (!formRec.fields.hasOwnProperty(this_field)) {
+          response.fields[this_field].ignore = true;
+          continue;
+        }
         if (formRec.fields[this_field].default) {
           if (formRec.fields[this_field].default.source) {
             defaultObj.source_path = makeArray(formRec.fields[this_field].default.source, '.');
@@ -351,10 +355,24 @@ export default ({ request = {}, onClose }) => {
               response.fields[this_field].value = defaultObj.value_path[0];
             }
           }
-          else if (formRec.fields[this_field]?.prompt && formRec.fields[this_field]?.prompt.value) {
+          else if (formRec.fields[this_field]?.prompt && formRec.fields[this_field]?.prompt?.value) {
             if (['image', 'html'].includes(formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type)) {
-              response.fields[this_field].value = formRec.fields[this_field]?.prompt.value;
+              response.fields[this_field].value = formRec.fields[this_field]?.prompt?.value;
             }
+          }
+        }
+        // if prompt.ignore_if exists, check the value
+        if (formRec.fields[this_field]?.prompt?.ignore_if) {
+          const ignoreList = makeArray(formRec.fields[this_field]?.prompt?.ignore_if);
+          if (!response.fields[this_field].value) {
+            if (ignoreList.includes('%%no_data%%')) {
+              response.fields[this_field].ignore = true;
+              continue;
+            }
+          }
+          else if (ignoreList.includes(response.fields[this_field].value)) {
+            response.fields[this_field].ignore = true;
+            continue;
           }
         }
         // Set type
@@ -426,6 +444,10 @@ export default ({ request = {}, onClose }) => {
         response.fields[this_field] = {};
         // Set default value
         const defaultObj = {};
+        if (!formRec.fields.hasOwnProperty(this_field)) {
+          response.fields[this_field].ignore = true;
+          continue;
+        }
         if (formRec.fields[this_field].default) {
           if (formRec.fields[this_field].default.source) {
             // if defaultObj has a source, the source is going to tell you where to find the default data
@@ -532,10 +554,24 @@ export default ({ request = {}, onClose }) => {
               response.fields[this_field].value = defaultObj.value_path[0];
             }
           }
-          else if (formRec.fields[this_field]?.prompt && formRec.fields[this_field]?.prompt.value) {
+          else if (formRec.fields[this_field]?.prompt && formRec.fields[this_field]?.prompt?.value) {
             if (['image', 'html'].includes(formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type)) {
-              response.fields[this_field].value = formRec.fields[this_field]?.prompt.value;
+              response.fields[this_field].value = formRec.fields[this_field]?.prompt?.value;
             }
+          }
+        }
+        // if prompt.ignore_if exists, check the value
+        if (formRec.fields[this_field]?.prompt?.ignore_if) {
+          const ignoreList = makeArray(formRec.fields[this_field]?.prompt?.ignore_if);
+          if (!response.fields[this_field].value) {
+            if (ignoreList.includes('%%no_data%%')) {
+              response.fields[this_field].ignore = true;
+              continue;
+            }
+          }
+          else if (array_in_array(ignoreList, response.fields[this_field].value)) {
+            response.fields[this_field].ignore = true;
+            continue;
           }
         }
         // Set type
@@ -669,12 +705,17 @@ export default ({ request = {}, onClose }) => {
 
   const reconcilePrompt = ({ rawValue, this_field }) => {
     let response = rawValue;
+    if (!rawValue) { return this_field; }
     let answer = response.match(/%%.*?%%/);
+    let rememberAnswer = false;
     if (answer) {
       do {
         let variable = answer[0];
-        if ((variable === '%%default%%') || (variable === '%%value%%')) {
+        if ((variable === '%%default%%') || (variable === '%%OG_default%%') || (variable === '%%value%%')) {
           response = response.replace(variable, reactData.fields[this_field].valueText);
+          if (variable === '%%OG_default%%') {
+            rememberAnswer = true;
+          }
         }
         else {
           let extracted_field = variable.slice(2, -2);
@@ -688,6 +729,9 @@ export default ({ request = {}, onClose }) => {
         answer = response.match(/%%.*?%%/);
       }
       while (answer);
+    }
+    if (rememberAnswer) {
+      reactData.fields[this_field].prompt.value = response;
     }
     return response;
   };
@@ -732,6 +776,41 @@ export default ({ request = {}, onClose }) => {
               labelPlacement='end'
             />
           ))}
+          {(props.withPrompt) &&
+            <FormControlLabel
+              className={classes.formControlDays}
+              key={`${props.prop}_other`}
+              control={
+                <TextField
+                  style={AVATextStyle({
+                    lineHeight: 1,
+                    padding: { bottom: 0 },
+                    size: 0.75,
+                    margin: { top: 0, bottom: 0.5, left: 0.5, right: 3 }
+                  })}
+                  className={classes.radioDays}
+                  autoComplete='off'
+                  disabled={reactData.fields[props.prop].options.viewOnly}
+                  id={`${props.prop}_otherText`}
+                  defaultValue={(reactData.fields[props.prop].value && reactData.fields[props.prop].bonusText)
+                    ? reactData.fields[props.prop].bonusText
+                    : ''
+                  }
+                  onBlur={(event) => {
+                    if (!reactData.fields[props.prop].value) {
+                      reactData.fields[props.prop].value = [];
+                    }
+                    reactData.fields[props.prop].bonusText = event.target.value;
+                    updateReactData({
+                      formUpdates: reactData.formUpdates++,
+                      fields: reactData.fields
+                    }, true);
+                  }}
+                  helperText={props.withPrompt}
+                />
+              }
+            />
+          }
         </FormGroup>
       </FormControl>
     );
@@ -753,8 +832,11 @@ export default ({ request = {}, onClose }) => {
     let messageList = ['There are problems with this form'];
     let errorsOnForm = 0;
     for (const this_field in reactData.fields) {
+      if (reactData.fields[this_field].ignore) {
+        continue;
+      }
       reactData.fields[this_field].isError = false;
-      if (reactData.fields[this_field].options.required) {
+      if (reactData.fields[this_field]?.options?.required || reactData.fields[this_field]?.value?.required) {
         if (((reactData.fields[this_field].type === 'signature')
           && ((signatureRef[reactData.fields[this_field].options.sigRefNumber].current.isEmpty())))
           || ((reactData.fields[this_field].type !== 'signature')
@@ -769,8 +851,14 @@ export default ({ request = {}, onClose }) => {
         }
       }
       else if (reactData.fields[this_field].type.startsWith('select')) {
+        let mySelections = [];
+        if (reactData.fields[this_field].value) {
+          mySelections = reactData.fields[this_field].value.filter(v => {
+            return (reactData.fields[this_field].selectionObj.selectionList.includes(v));
+          });
+        }
         if (reactData.fields[this_field].selectionObj.min) {
-          if (isEmpty(reactData.fields[this_field].value)) {
+          if (isEmpty(mySelections)) {
             reactData.fields[this_field].errorMessage = `Please make a selection for ${reconcilePrompt({
               rawValue: reactData.fields[this_field].prompt.value,
               this_field
@@ -779,7 +867,7 @@ export default ({ request = {}, onClose }) => {
             messageList.push(reactData.fields[this_field].errorMessage);
             errorsOnForm++;
           }
-          else if (reactData.fields[this_field].value.length < reactData.fields[this_field].selectionObj.min) {
+          else if (mySelections.length < reactData.fields[this_field].selectionObj.min) {
             reactData.fields[this_field].errorMessage = `You must make at least ${reactData.fields[this_field].selectionObj.min} selections for ${reconcilePrompt({
               rawValue: reactData.fields[this_field].prompt.value,
               this_field
@@ -910,98 +998,113 @@ export default ({ request = {}, onClose }) => {
       familyRec: false
     };
     for (const this_field in reactData.fields) {
-      if (reactData.fields[this_field].saveAs) {
-        const save_instructions = reactData.fields[this_field].saveAs;
-        const save_file = save_instructions.shift();
-        if (save_file === 'peopleRec') {
-          if (!reactData.peopleRec.hasOwnProperty(reactData.pertains_to)) {
-            reactData.peopleRec[reactData.pertains_to] = await getDb({
-              Key: {
-                person_id: reactData.pertains_to
-              },
-              TableName: "People"
-            });
-            updateReactData({
-              peopleRec: reactData.peopleRec
-            }, false);
+      if (!reactData.fields[this_field].ignore) {
+        if (reactData.fields[this_field].bonusText) {
+          if (reactData.fields[this_field].value) {
+            let valueArray = makeArray(reactData.fields[this_field].value);
+            valueArray.push(reactData.fields[this_field].bonusText);
+            reactData.fields[this_field].value = valueArray;
+            reactData.fields[this_field].valueText = listFromArray(valueArray);
           }
-          reactData.peopleRec[reactData.pertains_to] = resolveValue(
-            reactData.peopleRec[reactData.pertains_to],
-            save_instructions,
-            reactData.fields[this_field].value
-          );
-          needsUpdate.peopleRec = true;
+          else {
+            reactData.fields[this_field].value = reactData.fields[this_field].bonusText;
+            reactData.fields[this_field].valueText = reactData.fields[this_field].bonusText;
+          }
+
         }
-        else if (save_file === 'sessionRec') {
-          if (!reactData.sessionRec.hasOwnProperty(reactData.pertains_to)) {
-            reactData.sessionRec[reactData.pertains_to] = await getDb({
-              Key: {
-                person_id: reactData.pertains_to
-              },
-              TableName: "SessionsV2"
-            });
-            updateReactData({
-              sessionRec: reactData.sessionRec
-            }, false);
-          }
-          reactData.sessionRec[reactData.pertains_to] = resolveValue(
-            reactData.sessionRec[reactData.pertains_to],
-            save_instructions,
-            reactData.fields[this_field].value
-          );
-          needsUpdate.sessionRec = true;
-        }
-        else if (save_file === 'familyRec') {
-          if (!reactData.familyRec.hasOwnProperty(reactData.pertains_to)) {
-            let familyResponse = await getDb({
-              Key: {
-                client_id: state.session.client_id,
-                person_id: reactData.pertains_to
-              },
-              TableName: "FamilyGroups",
-              IndexName: "person_id-index"
-            });
-            if (familyResponse) {
-              reactData.familyRec[reactData.pertains_to] = familyResponse[0];
+        if (reactData.fields[this_field].saveAs) {
+          const save_instructions = reactData.fields[this_field].saveAs;
+          const save_file = save_instructions.shift();
+          if (save_file === 'peopleRec') {
+            if (!reactData.peopleRec.hasOwnProperty(reactData.pertains_to)) {
+              reactData.peopleRec[reactData.pertains_to] = await getDb({
+                Key: {
+                  person_id: reactData.pertains_to
+                },
+                TableName: "People"
+              });
+              updateReactData({
+                peopleRec: reactData.peopleRec
+              }, false);
             }
-            else {
-              // this person is not part of a family,
-              // and there's no way to know what family they might be a part of
-              // invent a new family and put them in there
-              const family_id = `family_${Date().getTime()}`;
-              reactData.familyRec[reactData.pertains_to] = {
-                client_id: state.session.client_id,
-                composite_key: `${family_id}%%${reactData.pertains_to}`,
-                family_id,
-                record_type: 'person',
-                role: 'primary'
-              };
-              await dbClient
-                .put({
-                  Item: {
-                    client_id: state.session.client_id,
-                    composite_key: family_id,
-                    family_id,
-                    record_type: 'header',
-                    role: 'master'
-                  },
-                  TableName: 'FamilyGroups'
-                })
-                .promise()
-                .catch(error => {
-                  cl(`Bad put to FamilyGroups. Error is: ${error}`);
-                });
-            }
-            updateReactData({
-              familyRec: reactData.familyRec
-            }, false);
+            reactData.peopleRec[reactData.pertains_to] = resolveValue(
+              reactData.peopleRec[reactData.pertains_to],
+              save_instructions,
+              reactData.fields[this_field].value
+            );
+            needsUpdate.peopleRec = true;
           }
-          reactData.familyRec[reactData.pertains_to] = resolveValue(
-            reactData.familyRec[reactData.pertains_to],
-            save_instructions,
-            reactData.fields[this_field].value
-          );
-          needsUpdate.familyRec = true;
+          else if (save_file === 'sessionRec') {
+            if (!reactData.sessionRec.hasOwnProperty(reactData.pertains_to)) {
+              reactData.sessionRec[reactData.pertains_to] = await getDb({
+                Key: {
+                  person_id: reactData.pertains_to
+                },
+                TableName: "SessionsV2"
+              });
+              updateReactData({
+                sessionRec: reactData.sessionRec
+              }, false);
+            }
+            reactData.sessionRec[reactData.pertains_to] = resolveValue(
+              reactData.sessionRec[reactData.pertains_to],
+              save_instructions,
+              reactData.fields[this_field].value
+            );
+            needsUpdate.sessionRec = true;
+          }
+          else if (save_file === 'familyRec') {
+            if (!reactData.familyRec.hasOwnProperty(reactData.pertains_to)) {
+              let familyResponse = await getDb({
+                Key: {
+                  client_id: state.session.client_id,
+                  person_id: reactData.pertains_to
+                },
+                TableName: "FamilyGroups",
+                IndexName: "person_id-index"
+              });
+              if (familyResponse) {
+                reactData.familyRec[reactData.pertains_to] = familyResponse[0];
+              }
+              else {
+                // this person is not part of a family,
+                // and there's no way to know what family they might be a part of
+                // invent a new family and put them in there
+                const family_id = `family_${Date().getTime()}`;
+                reactData.familyRec[reactData.pertains_to] = {
+                  client_id: state.session.client_id,
+                  composite_key: `${family_id}%%${reactData.pertains_to}`,
+                  family_id,
+                  record_type: 'person',
+                  role: 'primary'
+                };
+                await dbClient
+                  .put({
+                    Item: {
+                      client_id: state.session.client_id,
+                      composite_key: family_id,
+                      family_id,
+                      record_type: 'header',
+                      role: 'master'
+                    },
+                    TableName: 'FamilyGroups'
+                  })
+                  .promise()
+                  .catch(error => {
+                    cl(`Bad put to FamilyGroups. Error is: ${error}`);
+                  });
+              }
+              updateReactData({
+                familyRec: reactData.familyRec
+              }, false);
+            }
+            reactData.familyRec[reactData.pertains_to] = resolveValue(
+              reactData.familyRec[reactData.pertains_to],
+              save_instructions,
+              reactData.fields[this_field].value
+            );
+            needsUpdate.familyRec = true;
+          }
         }
       }
     }
@@ -1045,14 +1148,19 @@ export default ({ request = {}, onClose }) => {
       // render signatures (if any) before printing
       let signatures = [];
       for (const this_field in reactData.fields) {
+        if (reactData.fields[this_field].ignore) {
+          continue;
+        }
         if (reactData.fields[this_field].type === 'signature') {
           signatures[reactData.fields[this_field].options.sigRefNumber] = signatureRef[reactData.fields[this_field].options.sigRefNumber].current.getTrimmedCanvas().toDataURL('image/png');
         }
-        reactData.fields[this_field].prompt.value =
-          reconcilePrompt({
-            rawValue: reactData.fields[this_field].prompt.value,
-            this_field
-          });
+        if (reactData.fields[this_field].prompt) {
+          reactData.fields[this_field].prompt.value =
+            reconcilePrompt({
+              rawValue: reactData.fields[this_field].prompt.value,
+              this_field
+            });
+        }
       };
       const s3Results = await printDocumentB({
         documentList: [{
@@ -1143,6 +1251,9 @@ export default ({ request = {}, onClose }) => {
   async function printWIP({ document_id }) {
     let signatures = [];
     for (const this_field in reactData.fields) {
+      if (reactData.fields[this_field].ignore) {
+        continue;
+      }
       if ((reactData.fields[this_field].type === 'signature')
         && (!signatureRef[reactData.fields[this_field].options.sigRefNumber].current.isEmpty())) {
         signatures[reactData.fields[this_field].options.sigRefNumber] = signatureRef[reactData.fields[this_field].options.sigRefNumber].current.getTrimmedCanvas().toDataURL('image/png');
@@ -1213,7 +1324,7 @@ export default ({ request = {}, onClose }) => {
           pertains_to: AssignedDocRec.pertains_to
         });
         updateReactData({
-          document_title: AssignedDocRec.document_title,
+          document_title: AssignedDocRec.title || AssignedDocRec.document_title,
           pertains_to: AssignedDocRec.pertains_to,
           form_id: AssignedDocRec.form_id,
           fields,
@@ -1335,18 +1446,19 @@ export default ({ request = {}, onClose }) => {
                   {sectionObj.section_name}
                 </Typography>
                 {sectionObj.fields.map((this_field, fieldNdx) => (
-                  <Box
-                    key={`parentFrag__${this_field}`}
-                    display='flex'
-                    flexDirection='column'
-                    id={`sigBox__${this_field}`}
-                    justifyContent='flex-start'
-                    marginTop={2}
-                    marginBottom={2}
-                    alignItems='flex-start'
-                    width='97%'
-                  >
-                    {reactData.fields.hasOwnProperty(this_field) &&
+                  (reactData.fields.hasOwnProperty(this_field) &&
+                    !reactData.fields[this_field].ignore &&
+                    <Box
+                      key={`parentFrag__${this_field}`}
+                      display='flex'
+                      flexDirection='column'
+                      id={`sigBox__${this_field}`}
+                      justifyContent='flex-start'
+                      marginTop={2}
+                      marginBottom={2}
+                      alignItems='flex-start'
+                      width='97%'
+                    >
                       <React.Fragment
                         key={`fieldFrag__${this_field}`}
                       >
@@ -1355,8 +1467,8 @@ export default ({ request = {}, onClose }) => {
                             id={`field__${this_field}`}
                             key={`field__${this_field}`}
                             className={classes.inputDisplay}
-
-                            disabled={reactData.fields[this_field].options.viewOnly}
+                          disabled={reactData.fields[this_field].options.viewOnly}
+                          color={'black'}
                             style={AVATextStyle({
                               lineHeight: 1,
                               width: `${reactData.fields[this_field].prompt.width || 200}px`,
@@ -1492,6 +1604,10 @@ export default ({ request = {}, onClose }) => {
                             <AVACheckBoxGroup
                               prop={this_field}
                               text={reactData.fields[this_field].selectionObj.selectionList}
+                              withPrompt={(reactData.fields[this_field].type === 'select&text')
+                                ? reactData.fields[this_field].prompt.other || 'other'
+                                : null
+                              }
                             />
                           </Box>
                         }
@@ -1681,8 +1797,8 @@ export default ({ request = {}, onClose }) => {
                           </Box>
                         }
                       </React.Fragment>
-                    }
-                  </Box>
+                    </Box>
+                  )
                 ))}
               </React.Fragment>
             ))}
