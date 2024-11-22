@@ -1682,6 +1682,7 @@ export async function writeSlot(body) {
         expressionAttributeNames['#e2'] = 'event_data';
         expressionAttributeNames['#d'] = 'description';
         expressionAttributeValues[':d'] = newDescription;
+        delete body.customizations.description;
       }
       if (body.customizations.location) {
         newLocation = resolve(body.customizations.location);
@@ -1697,9 +1698,16 @@ export async function writeSlot(body) {
         expressionAttributeNames['#d'] = 'description';
         expressionAttributeNames['#l'] = 'location';
         expressionAttributeValues[':l'] = newLocation;
+        delete body.customizations.description;
       }
-      updateExpression += ', customizations = :null';
-      expressionAttributeValues[':null'] = '';
+      if (isEmpty(body.customizations)) {
+        updateExpression += ', customizations = :null';
+        expressionAttributeValues[':null'] = '';
+      }
+      else {
+        updateExpression += ', customizations = :c';
+        expressionAttributeValues[':c'] = body.customizations;
+      }
       await dbClient
         .update({
           Key: {

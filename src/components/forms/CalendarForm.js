@@ -334,6 +334,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   };
 
   const defaultColorScheme = {
+    unavailable: 'red',
     owned: 'green',
     full: 'red',
     waitlist: 'orange',
@@ -359,7 +360,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       denseView: setInitialView(defaultValues) || { '*all': false },
       factor7: defaultValues.weekView ? Math.min(((window.window.innerWidth - 220) / 1400), 1) : 1,
       conflictInfo: conflictInfo,
-      colorScheme: defaultValues.colorScheme || defaultColorScheme,
+      colorScheme: Object.assign({}, defaultColorScheme, defaultValues.colorScheme),
       calendar_fill: isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_fill : null,
       calendar_fill_text: isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_fill_text : null
     }
@@ -434,6 +435,15 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   const eventsToShow = (this_date) => {
     return this_date.eventList.some((this_event) => {        // an array of events on this date
       return okToShow(this_event);
+    });
+  };
+
+  const isUnAvailable = (this_date, this_person) => {
+    return this_date.eventList.some((this_event) => {        // an array of events on this date
+      if (!this_event.customizations) { return false; }
+      if (!this_event.customizations.hasOwnProperty('show_as_unavailable')) { return false; }
+      if (!okToShow(this_event)) { return false; }
+      return (this_event.slot_owners.hasOwnProperty(this_person));
     });
   };
 
@@ -894,8 +904,11 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     }
   };
 
-  const setTextColor = (this_event) => {
-    if (ownerOfSlots(this_event) && !reactData.defaultValues.onlyRegistered && reactData.colorScheme.owned) { return { color: reactData.colorScheme.owned }; }
+  const setTextColor = (this_event, this_date) => {
+    if (reactData.idFilter && isUnAvailable(this_date, reactData.idFilter)) {
+      return { color: reactData.calendar_fill_text };
+    }
+    else if (ownerOfSlots(this_event) && !reactData.defaultValues.onlyRegistered && reactData.colorScheme.owned) { return { color: reactData.colorScheme.owned }; }
     else if (allSlotsFull(this_event) && reactData.colorScheme.full) { return { color: reactData.colorScheme.full }; }
     else if (allSlotsEmpty(this_event) && reactData.colorScheme.empty) { return { color: reactData.colorScheme.empty }; }
     else {
@@ -942,6 +955,11 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     }
     else if (this_date.dateObj.weekday === 'weekend') {
       this_background = (isDarkMode ? 'darkgoldenrod' : 'lightyellow');
+    }
+    if (reactData.idFilter) {
+      if (isUnAvailable(this_date, reactData.idFilter)) { 
+        this_background = reactData.colorScheme.unavailable;
+      }
     }
     return this_background;
   }
