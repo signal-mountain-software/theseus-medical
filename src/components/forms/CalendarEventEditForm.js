@@ -32,6 +32,7 @@ import PrintIcon from '@material-ui/icons/Print';
 import StorageOutlined from '@material-ui/icons/StorageOutlined';
 import SendIcon from '@material-ui/icons/Send';
 import AssignmentTurnedInIcon from '@material-ui/icons/AssignmentTurnedIn';
+import RestoreIcon from '@material-ui/icons/Restore';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 import PersonAddDisabledIcon from '@material-ui/icons/PersonAddDisabled';
 import CloseIcon from '@material-ui/icons/HighlightOff';
@@ -550,6 +551,25 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
       textResponse += ` ${selectedResponse.Place.Label}`;
       return textResponse;
     }
+  };
+
+  const getHistoryTimes = (this_item) => {
+    let currentHistory = this_item.slotData.status.history;
+    let foundTimes = ['no Value', 'no Value'];
+    if (!currentHistory || isEmpty(currentHistory)) {
+      return foundTimes;
+    }
+    currentHistory.some(h => {
+      if (h.action === 'Checked out') {
+        foundTimes[1] = makeDate(h.timestamp).timeOnly;
+      }
+      else if (h.action === 'Checked in') {
+        foundTimes[0] = makeDate(h.timestamp).timeOnly;
+        return true;
+      }
+      return false;
+    });
+    return foundTimes;
   };
 
   const getDirection = (degrees, isLongitude) =>
@@ -1257,7 +1277,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                                     ExpressionAttributeValues: {
                                       ':m': !this_item.marked,
                                       ':h': currentHistory,
-                                      ':t': timestamp
+                                      ':t': (this_item.marked ? '' : timestamp)
                                     },
                                     ExpressionAttributeNames: {
                                       '#sd': 'slotData',
@@ -1269,7 +1289,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                                   .promise()
                                   .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
                                 eventSlotList[index].marked = !this_item.marked;
-                                eventSlotList[index].check_in = timestamp;
+                                eventSlotList[index].check_in = (this_item.marked ? null : timestamp);
                                 setEventSlotList(eventSlotList);
                                 setForceRedisplay(!forceRedisplay);
                               }}
@@ -1447,18 +1467,41 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                                 </Tooltip>
                               </Box>
                               {(isEventOwner || !pViewOnly) &&
-                                <Tooltip title={`Remove ${isEventOwner ? this_item.slotData.display_name : 'me'}`}>
-                                  <PersonAddDisabledIcon
-                                    onClick={async () => {
-                                      await handleAllocateSlot({
-                                        person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
-                                        slot: this_item.slotData.id,
-                                        release: true,
-                                        index: (index || 0)
-                                      });
-                                    }}
-                                  />
-                                </Tooltip>
+                                <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
+                                  <Tooltip title={`Remove ${isEventOwner ? this_item.slotData.display_name : 'me'}`}>
+                                    <PersonAddDisabledIcon
+                                      onClick={async () => {
+                                        await handleAllocateSlot({
+                                          person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
+                                          slot: this_item.slotData.id,
+                                          release: true,
+                                          index: (index || 0)
+                                        });
+                                      }}
+                                    />
+                                  </Tooltip>
+                                </Box>
+                              }
+                              {(isEventOwner || !pViewOnly) &&
+                                (this_item.slotData.documents && (this_item.slotData.documents.length > 0)) &&
+                                <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
+                                  <Tooltip title={`Update clock in/out times`}>
+                                    <RestoreIcon
+                                      onClick={async () => {
+                                        updateReactData({
+                                          editTimeEntries: Object.assign({},
+                                            this_item.slotData,
+                                            {
+                                              index,
+                                              title: `${pOccData.description} ${makeDate(pOccData.date).relative}${(!isEmpty(pOccData.time)) ? ' - ' + pOccData.time$ : ''}`,
+                                              appointmentDateTimeStamp: makeDate(pOccData.date, { noTime: true }).timestamp
+                                            }
+                                          )
+                                        }, true);
+                                      }}
+                                    />
+                                  </Tooltip>
+                                </Box>
                               }
                             </Box>
                           }
@@ -1734,6 +1777,89 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                 }
               }
               updateReactData(reactUpdates, true);
+            }}
+          />
+        }
+        {reactData.editTimeEntries &&
+          <AVATextInput
+            titleText={reactData.editTimeEntries.title}
+            errorText={reactData.editTimeEntries.errors || []}
+            promptText={['Clock in', 'Clock Out', 'Notes']}
+            valueText={getHistoryTimes(reactData.editTimeEntries)}
+            onCancel={() => {
+              reactData.editInfoErrorList = [];
+              reactData.editTimeEntries = false;
+              setReactData(reactData);
+              setForceRedisplay(!forceRedisplay);
+            }}
+            onSave={async ([newIn, newOut, newNote]) => {
+              let errorFree = true;
+              let currentHistory = reactData.editTimeEntries.slotData.status.history;
+              const this_userName = await makeName(state.session.user_id);
+              const nowTime = makeDate(new Date());
+              let inTime = makeTime(newIn);
+              if (inTime.good) {
+                currentHistory.unshift({
+                  timestamp: reactData.editTimeEntries.appointmentDateTimeStamp + (inTime.minutesSinceMidnight * 60000),
+                  user: reactData.editTimeEntries.slotData.owner,
+                  action: `Checked in`,
+                  location: `by ${this_userName} ${nowTime.oaDate}`
+                });
+              }
+              else {
+                errorFree = false;
+              }
+              let outTime = makeTime(newOut);
+              if (outTime.good) {
+                if (outTime.minutesSinceMidnight < inTime.minutesSinceMidnight) {
+                  outTime.minutesSinceMidnight += 1440;
+                }
+                currentHistory.unshift({
+                  timestamp: reactData.editTimeEntries.appointmentDateTimeStamp + (outTime.minutesSinceMidnight * 60000),
+                  user: reactData.editTimeEntries.slotData.owner,
+                  action: `Checked out`,
+                  location: `by ${this_userName} ${nowTime.oaDate}`,
+                  note: newNote
+                });
+              }
+              else {
+                errorFree = false;
+              }
+              if (errorFree) {
+                await dbClient
+                  .update({
+                    Key: {
+                      "client": pClient,
+                      "event_key": `${pEventCode}#${reactData.editTimeEntries.id}`
+                    },
+                    UpdateExpression: 'set #sd.#st.#h = :h, check_in = :null',
+                    ExpressionAttributeValues: {
+                      ':h': currentHistory,
+                      ':null': ''
+                    },
+                    ExpressionAttributeNames: {
+                      '#sd': 'slotData',
+                      '#st': 'status',
+                      '#h': 'history'
+                    },
+                    TableName: "Calendar"
+                  })
+                  .promise()
+                  .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
+                eventSlotList[reactData.editTimeEntries.index].check_in = (newOut ? null : newIn.timestamp);
+                eventSlotList[reactData.editTimeEntries.index].marked = (newOut ? false : (newIn ? true : false));
+                setEventSlotList(eventSlotList);
+                reactData.editTimeEntries = false;
+              }
+              else {
+                reactData.editTimeEntries.errors = [
+                  (inTime.good ? '' : 'Clock in time is invalid'),
+                  (outTime.good ? '' : 'Clock out time is invalid'),
+                ];
+              }
+              updateReactData({
+                editTimeEntries: reactData.editTimeEntries
+              }, true);
             }}
           />
         }

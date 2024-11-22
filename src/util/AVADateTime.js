@@ -556,7 +556,11 @@ export function makeTime(pTime) {
                 if (inTime.includes('pm')) { ampm = 'pm'; }
                 else if (inTime.includes('am')) { ampm = 'am'; };
                 [hh$, mm$] = inTime.split(':');
-                hh = Number(hh$.replace(/\D+/g, ''));
+                const hhClean = hh$.replace(/\D+/g, '');
+                if (!hhClean) {
+                    error = true;
+                }
+                hh = Number(hhClean);
                 if ((ampm === 'am') && (hh === 12)) { hh = 0; }
                 else if ((ampm === 'pm') && (hh < 12)) { hh += 12; }
             }
