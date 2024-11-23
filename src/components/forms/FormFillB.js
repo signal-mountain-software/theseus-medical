@@ -391,7 +391,8 @@ export default ({ request = {}, onClose }) => {
         // set options
         response.fields[this_field].options = {
           required: !!formRec.fields[this_field].value.required,
-          viewOnly: (formRec.fields[this_field].value.edit === 'view')
+          viewOnly: (formRec.fields[this_field].value.edit === 'view'),
+          ifEmpty: formRec.fields[this_field].options ? formRec.fields[this_field].options.ifEmpty : null
         };
       }
     };
@@ -590,7 +591,8 @@ export default ({ request = {}, onClose }) => {
         // set options
         response.fields[this_field].options = {
           required: !!formRec.fields[this_field].value.required,
-          viewOnly: (formRec.fields[this_field].value.edit === 'view')
+          viewOnly: (formRec.fields[this_field].value.edit === 'view'),
+          ifEmpty: formRec.fields[this_field].options ? formRec.fields[this_field].options.ifEmpty : null
         };
         if (response.fields[this_field].type === 'signature') {
           response.fields[this_field].options.sigRefNumber = formRec.fields[this_field].sigRefNumber;
@@ -665,6 +667,15 @@ export default ({ request = {}, onClose }) => {
     }
   };
 
+  const makeNewUser = () => {
+    let formatter = `%%first_name//^[a-zA-Z]{1}%%%%last_name%%-%%client_id%%`;
+    let candidate = reconcilePrompt({
+      rawValue: formatter,
+      this_field: 'person_id'
+    });
+    return candidate.toLowerCase();
+  };
+
   const handleChangeValue = async ({ newText, newValue, newList, prop, sentenceCase }) => {
     if (sentenceCase && newText && (newText.length === 1)) {
       newText = newText.toUpperCase();
@@ -712,15 +723,27 @@ export default ({ request = {}, onClose }) => {
       do {
         let variable = answer[0];
         if ((variable === '%%default%%') || (variable === '%%OG_default%%') || (variable === '%%value%%')) {
-          response = response.replace(variable, reactData.fields[this_field].valueText);
+          response = response.replace(variable, (reactData.fields[this_field] ? reactData.fields[this_field].valueText : ''));
           if (variable === '%%OG_default%%') {
             rememberAnswer = true;
           }
         }
         else {
           let extracted_field = variable.slice(2, -2);
-          if (reactData.fields[extracted_field]) {
+          if (reactData.fields[extracted_field] && reactData.fields[extracted_field].valueText) {
             response = response.replace(variable, reactData.fields[extracted_field].valueText);
+          }
+          else if (extracted_field.includes('//')) {
+            let [field_part, regex_part] = extracted_field.split('//');
+            if (reactData.fields[field_part]) {
+              response = response.replace(variable, reactData.fields[field_part].value.match(RegExp(regex_part, 'gm'))[0]);
+            }
+            else {
+              response = response.replace(variable, '');
+            }
+          }
+          else if (extracted_field === 'client_id') {
+            response = response.replace(variable, state.session.client_id);
           }
           else {
             response = response.replace(variable, '');
@@ -836,6 +859,12 @@ export default ({ request = {}, onClose }) => {
         continue;
       }
       reactData.fields[this_field].isError = false;
+      if (reactData.fields[this_field]?.options?.ifEmpty && isEmpty(reactData.fields[this_field].value)) { 
+        reactData.fields[this_field].value = reconcilePrompt({
+          rawValue: reactData.fields[this_field].options.ifEmpty,
+          this_field
+        })
+      }
       if (reactData.fields[this_field]?.options?.required || reactData.fields[this_field]?.value?.required) {
         if (((reactData.fields[this_field].type === 'signature')
           && ((signatureRef[reactData.fields[this_field].options.sigRefNumber].current.isEmpty())))
@@ -1467,8 +1496,8 @@ export default ({ request = {}, onClose }) => {
                             id={`field__${this_field}`}
                             key={`field__${this_field}`}
                             className={classes.inputDisplay}
-                          disabled={reactData.fields[this_field].options.viewOnly}
-                          color={'black'}
+                            disabled={reactData.fields[this_field].options.viewOnly}
+                            color={'black'}
                             style={AVATextStyle({
                               lineHeight: 1,
                               width: `${reactData.fields[this_field].prompt.width || 200}px`,

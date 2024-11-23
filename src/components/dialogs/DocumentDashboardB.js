@@ -111,7 +111,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ client, formTypes = '*all', onClose }) => {
+export default ({ client, formTypes = '*all', options, onClose }) => {
 
   const { state } = useSession();
 
@@ -134,6 +134,7 @@ export default ({ client, formTypes = '*all', onClose }) => {
     formList: [],
     initialized: false,
     docObj: {},
+    options: options || {},
     deletePending: false,
     recentlyExpandedForm: null,
     textInput: {},
@@ -184,9 +185,11 @@ export default ({ client, formTypes = '*all', onClose }) => {
       });
     if (recordExists(formResult)) {
       formResult.Items.forEach(this_form => {
-        formList.push(Object.assign((this_form), {
-          isExpanded: false
-        }));
+        if (this_form.active || reactData.options.viewInactive) {
+          formList.push(Object.assign((this_form), {
+            isExpanded: false
+          }));
+        }
       });
       if (formList.length === 1) {
         formList[0].isExpanded = true;
@@ -270,7 +273,7 @@ export default ({ client, formTypes = '*all', onClose }) => {
           document_id: this_doc.document_id,
           doc_status: this_doc.status
         });
-        if (docRec) {
+        if (docRec && (docObj.hasOwnProperty(this_doc.formType))) {
           docObj[this_doc.formType].docList.push(
             Object.assign(docRec, this_doc)
           );
@@ -896,6 +899,7 @@ export default ({ client, formTypes = '*all', onClose }) => {
                       {
                         document_id: statusObj.document_id,
                         document_title: statusObj.document_title,
+                        file_location: statusObj.file_location || null,
                         formType: reactData.pendingInstructions.formType,
                         last_update: new Date().getTime(),
                         status: statusObj.document_status
