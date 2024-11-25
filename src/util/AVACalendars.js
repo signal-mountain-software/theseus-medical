@@ -1565,6 +1565,7 @@ export async function writeSlot(body) {
                       Item: {
                         document_id: document_id_toBeAssigned,
                         person_id: '*status',
+                        client_id: body.client,
                         formType: this_form.form_id,
                         last_update: timestamp,
                         status: 'assigned'

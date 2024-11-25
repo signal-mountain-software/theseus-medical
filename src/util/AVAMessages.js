@@ -1,5 +1,5 @@
 
-import { clt, cl, s3, recordExists, titleCase, uuid, isObject, listFromArray, makeArray, sentenceCase, dbClient, deepCopy, getObject } from './AVAUtilities';
+import { clt, cl, s3, recordExists, titleCase, uuid, isObject, listFromArray, array_in_array, makeArray, sentenceCase, dbClient, deepCopy, getObject } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
 import { getCustomizations, getObject64 } from './AVAUtilities';
@@ -723,10 +723,10 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
 
   // docData.sections.forEach((sectionObj, sectionNdx) => {
   for (const sectionObj of docData.sections) {
-    pdfLine(sectionObj.section_name, { style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
+    pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
     // sectionObj.fields.forEach((this_field, fieldNdx) => {
     for (const this_field of sectionObj.fields) {
-      if (docData.fields.hasOwnProperty(this_field) && !(docData.fields.ignore)) {
+      if (docData.fields.hasOwnProperty(this_field) && !(docData.fields.ignore) && !(docData.fields.hidden)) {
         let printType = (docData.fields[this_field].value.type === 'view') ? docData.fields[this_field].prompt.type : docData.fields[this_field].value.type;
         switch (printType) {
           case 'image': {
@@ -750,7 +750,15 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
             break;
           }
           case 'html': {
-            await pdfHTML(docData.fields[this_field].prompt.ref, { before: -2, html: true, style: 'normal', size: 'medium', align: 'left', after: 1 });
+            await pdfHTML(docData.fields[this_field].prompt.ref || docData.fields[this_field].prompt.value, {
+              before: -2,
+              printed_height: docData.fields[this_field]?.prompt?.printed_height || null,
+              html: true,
+              style: 'normal',
+              size: 'medium',
+              align: 'left',
+              after: 1
+            });
             break;
           }
           case 'signature': {
@@ -783,6 +791,22 @@ export async function consolidatePDFs({ documentList, options = {} }) {
 
 }
 
+function okToShowSection(this_sectionObj, fields) {
+  if (this_sectionObj.hasOwnProperty('show_if')) {
+    for (const this_test of this_sectionObj.show_if) {
+      const this_value = fields[this_test.field].value;
+      if (!this_value) { return true; }
+      if (array_in_array(this_test.values, this_value)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  else {
+    return true;
+  }
+}
+
 export async function printDocumentB({ documentList, options = {} }) {
   let response = [];
   if (!Array.isArray(documentList)) {
@@ -804,59 +828,69 @@ export async function printDocumentB({ documentList, options = {} }) {
 
     //   sections.forEach((sectionObj, sectionNdx) => {
     for (const sectionObj of sections) {
-      pdfLine(sectionObj.section_name, { style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
-      //  sectionObj.fields.forEach((this_field, fieldNdx) => {
-      for (const this_field of sectionObj.fields) {
-        if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore)) {
-          let printType = fields[this_field].type;
-          switch (printType) {
-            case 'image': {
-              pdfLine('', { image: fields[this_field].valueText, style: 'normal', size: 'medium', align: 'left', after: 1 });
-              break;
-            }
-            case 'select&text':
-            case 'select': {
-              pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
-              fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
-                let radioSelected = fields[this_field].value.includes(text);
-                if (tIndex === 0) {
-                  pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
-                }
-                else {
-                  pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
-                }
-              });
-              if (fields[this_field].bonusText) {
-                const text = `${fields[this_field].prompt.other || 'other'}: ${fields[this_field].bonusText}`;
-                pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+      if (okToShowSection(sectionObj, fields)) {
+        pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
+        //  sectionObj.fields.forEach((this_field, fieldNdx) => {
+        for (const this_field of sectionObj.fields) {
+          if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore) && !(fields[this_field].hidden)) {
+            let printType = fields[this_field].type;
+            switch (printType) {
+              case 'image': {
+                pdfLine('', { image: fields[this_field].valueText, style: 'normal', size: 'medium', align: 'left', after: 1 });
+                break;
               }
-              pdfDown(1);
-              pdfStyle('reset');
-              break;
-            }
-            case 'html': {
-              await pdfHTML(`${fields[this_field].prompt.value}`, { before: -2, html: true, style: 'normal', size: 'medium', align: 'left', after: 1 });
-              break;
-            }
-            case 'signature': {
-              pdfLine(fields[this_field].prompt.value, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
-              break;
-            }
-            default: {
-              if (fields.hasOwnProperty(this_field)) {
-                if (fields[this_field].prompt.value.includes(fields[this_field].valueText)) {
-                  pdfLine(`${fields[this_field].prompt.value}`,
-                    { style: 'normal', size: 'medium', align: 'left', after: 1 });
+              case 'select&text':
+              case 'select': {
+                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+                fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
+                  let radioSelected = fields[this_field].value.includes(text);
+                  if (tIndex === 0) {
+                    pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
+                  }
+                  else {
+                    pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                  }
+                });
+                if (fields[this_field].bonusText) {
+                  const text = `${fields[this_field].prompt.other || 'other'}: ${fields[this_field].bonusText}`;
+                  pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
                 }
-                else {
-                  pdfLine(`${fields[this_field].prompt.value}: ${fields[this_field].valueText}`,
-                    { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                pdfDown(1);
+                pdfStyle('reset');
+                break;
+              }
+              case 'html': {
+                await pdfHTML(`${fields[this_field].prompt.value}`, {
+                  before: -2,
+                  printed_height: fields[this_field].prompt.printed_height,
+                  html: true,
+                  style: 'normal',
+                  size: 'medium',
+                  align: 'left',
+                  after: 1
+                });
+                break;
+              }
+              case 'signature': {
+                pdfLine(fields[this_field].prompt.value, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
+                break;
+              }
+              default: {
+                if (fields.hasOwnProperty(this_field)) {
+                  if (fields[this_field].prompt.value.includes(fields[this_field].valueText)) {
+                    pdfLine(`${fields[this_field].prompt.value}`,
+                      { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                  }
+                  else {
+                    pdfLine(`${fields[this_field].prompt.value}: ${fields[this_field].valueText}`,
+                      { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                  }
                 }
               }
             }
           }
-        }
-      };
+        };
+      }
     };
 
     // Finish
@@ -899,10 +933,10 @@ export async function printEmptyDocument({ documentList, options = {} }) {
     // eslint-disable-next-line
     //  sections.forEach((sectionObj) => {
     for (const sectionObj of sections) {
-      pdfLine(sectionObj.section_name, { style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
+      pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
       //   sectionObj.fields.forEach((this_field) => {
       for (const this_field of sectionObj.fields) {
-        if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore)) {
+        if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore) && !(fields[this_field].hidden)) {
           let printType = fields[this_field].type;
           switch (printType) {
             case 'image': {
@@ -933,7 +967,15 @@ export async function printEmptyDocument({ documentList, options = {} }) {
               break;
             }
             case 'html': {
-              await pdfHTML(`${fields[this_field].prompt.value}`, { before: -2, html: true, style: 'normal', size: 'medium', align: 'left', after: 1 });
+              await pdfHTML(`${fields[this_field].prompt.value}`, {
+                before: -2,
+                printed_height: fields[this_field].prompt.printed_height,
+                html: true,
+                style: 'normal',
+                size: 'medium',
+                align: 'left',
+                after: 1
+              });
               break;
             }
             case 'signature': {
@@ -954,6 +996,11 @@ export async function printEmptyDocument({ documentList, options = {} }) {
                 let promptWidth = doc.getTextWidth(`${this_text}:  `);
                 pdfCurrent.xPos += promptWidth;
                 let endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accomodate most situations');
+                if (endX > (page.right)) {
+                  pdfDown(2);
+                  pdfCurrent.xPos += 10;
+                  endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accomodate most situations');
+                }
                 doc.line(pdfCurrent.xPos, pdfCurrent.yPos - 8, endX, pdfCurrent.yPos - 8, 'DF');
                 pdfCurrent.xPos = endX;
               }
@@ -1003,83 +1050,97 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
     // eslint-disable-next-line
     //  sections.forEach((sectionObj, sectionNdx) => {
     for (const sectionObj of sections) {
-      pdfLine(sectionObj.section_name, { style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
-      //      sectionObj.fields.forEach((this_field, fieldNdx) => {
-      for (const this_field of sectionObj.fields) {
-        if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore)) {
-          let printType = fields[this_field].type;
-          switch (printType) {
-            case 'image': {
-              pdfLine('', { image: fields[this_field].valueText, style: 'normal', size: 'medium', align: 'left', after: 1 });
-              break;
-            }
-            case 'select&text':
-            case 'select': {
-              pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
-              fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
-                let radioSelected = fields[this_field].value && fields[this_field].value.includes(text);
-                if (tIndex === 0) {
-                  pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
-                }
-                else {
-                  pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
-                }
-              });
-              if (fields[this_field].bonusText) {
-                const text = `${fields[this_field].prompt.other || 'other'}: ${fields[this_field].bonusText}`;
-                pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+      if (okToShowSection(sectionObj, fields)) {
+        pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
+        for (const this_field of sectionObj.fields) {
+          if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore) && !(fields[this_field].hidden)) {
+            let printType = fields[this_field].type;
+            switch (printType) {
+              case 'image': {
+                pdfLine('', { image: fields[this_field].valueText, style: 'normal', size: 'medium', align: 'left', after: 1 });
+                break;
               }
-              pdfDown(1);
-              pdfStyle('reset');
-              break;
-            }
-            case 'html': {
-              await pdfHTML(`${fields[this_field].prompt.value}`, { before: -2, html: true, style: 'normal', size: 'medium', align: 'left', after: 1 });
-              break;
-            }
-            case 'signature': {
-              if (signatures[fields[this_field].options.sigRefNumber]) {
-                pdfLine(fields[this_field].prompt.value, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
-              }
-              else {
-                pdfCurrent.yPos += 12;
-                pdfLine(`${fields[this_field].prompt.value}:  `, { style: 'normal', size: 'medium', align: 'left', after: 1 });
-                pdfCurrent.xPos = page.margin.left;
-                let endX = doc.getTextWidth('Sample text long enough to accomodate most situations');
-                doc.rect(pdfCurrent.xPos, pdfCurrent.yPos - 4, endX, 40, 'S');
-                pdfCurrent.xPos += endX;
-                pdfCurrent.yPos += 42;
-              }
-              break;
-            }
-            default: {
-              if (fields.hasOwnProperty(this_field)) {
-                if (fields[this_field].valueText) {
-                  pdfCurrent.yPos += 12;
-                  if (fields[this_field].prompt.value.includes(fields[this_field].valueText)) {
-                    pdfLine(`${fields[this_field].prompt.value}`,
-                      { style: 'normal', size: 'medium', align: 'left', after: 1 });
+              case 'select&text':
+              case 'select': {
+                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+                fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
+                  let radioSelected = fields[this_field].value && fields[this_field].value.includes(text);
+                  if (tIndex === 0) {
+                    pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
                   }
                   else {
-                    pdfLine(`${fields[this_field].prompt.value}: ${fields[this_field].valueText}`,
-                      { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                    pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
                   }
+                });
+                if (fields[this_field].bonusText) {
+                  const text = `${fields[this_field].prompt.other || 'other'}: ${fields[this_field].bonusText}`;
+                  pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                }
+                pdfDown(1);
+                pdfStyle('reset');
+                break;
+              }
+              case 'html': {
+                await pdfHTML(`${fields[this_field].prompt.value}`, {
+                  before: -2,
+                  printed_height: fields[this_field].prompt.printed_height,
+                  html: true,
+                  style: 'normal',
+                  size: 'medium',
+                  align: 'left',
+                  after: 1
+                });
+                break;
+              }
+              case 'signature': {
+                if (signatures[fields[this_field].options.sigRefNumber]) {
+                  pdfLine(fields[this_field].prompt.value, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
                 }
                 else {
-                  const this_text = fields[this_field].prompt.value.split(/%%.*?%%/gm).join("").replace("  ", " ");
                   pdfCurrent.yPos += 12;
-                  pdfLine(`${this_text}:  `, { style: 'normal', size: 'medium', align: 'left', after: 1 });
-                  let promptWidth = doc.getTextWidth(`${this_text}:  `);
-                  pdfCurrent.xPos += promptWidth;
-                  let endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accomodate most situations');
-                  doc.line(pdfCurrent.xPos, pdfCurrent.yPos - 8, endX, pdfCurrent.yPos - 8, 'DF');
-                  pdfCurrent.xPos = endX;
+                  pdfLine(`${fields[this_field].prompt.value}:  `, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                  pdfCurrent.xPos = page.margin.left;
+                  let endX = doc.getTextWidth('Sample text long enough to accomodate most situations');
+                  doc.rect(pdfCurrent.xPos, pdfCurrent.yPos - 4, endX, 40, 'S');
+                  pdfCurrent.xPos += endX;
+                  pdfCurrent.yPos += 42;
+                }
+                break;
+              }
+              default: {
+                if (fields.hasOwnProperty(this_field)) {
+                  if (fields[this_field].valueText) {
+                    pdfCurrent.yPos += 12;
+                    if (fields[this_field].prompt.value.includes(fields[this_field].valueText)) {
+                      pdfLine(`${fields[this_field].prompt.value}`,
+                        { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                    }
+                    else {
+                      pdfLine(`${fields[this_field].prompt.value}: ${fields[this_field].valueText}`,
+                        { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                    }
+                  }
+                  else {
+                    const this_text = fields[this_field].prompt.value.split(/%%.*?%%/gm).join("").replace("  ", " ");
+                    pdfCurrent.yPos += 12;
+                    pdfLine(`${this_text}:  `, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                    let promptWidth = doc.getTextWidth(`${this_text}:  `);
+                    pdfCurrent.xPos += promptWidth;
+                    let endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accomodate most situations');
+                    if (endX > (page.right)) {
+                      pdfDown(2);
+                      pdfCurrent.xPos += 10;
+                      endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accomodate most situations');
+                    }
+                    doc.line(pdfCurrent.xPos, pdfCurrent.yPos - 8, endX, pdfCurrent.yPos - 8, 'DF');
+                    pdfCurrent.xPos = endX;
+                  }
                 }
               }
             }
           }
-        }
-      };
+        };
+      }
     };
 
     // Finish
@@ -1904,7 +1965,10 @@ async function pdfHTML(text, options = {}) {
     pdfHeader(++pdfCurrent.pageNumber);
   }
   let sizeEstimate = doc.getTextWidth(text);
-  let heightEstimate = Math.ceil(sizeEstimate / page.width) + (text.split('<p').length * 2);  
+  let heightEstimate = Math.ceil(sizeEstimate / page.width) + (text.split('<p').length * 2);
+  if (options.printed_height) {
+    heightEstimate = options.printed_height + 2;
+  }
   const this_page = doc.internal.getNumberOfPages();
   console.log(`html at right:${pdfCurrent.xPos}; top:${pdfCurrent.yPos}; width:${page.width - page.margin.right}`);
   await doc.html(text, {
@@ -1918,7 +1982,7 @@ async function pdfHTML(text, options = {}) {
       scale: 0.75
     },
     x: pdfCurrent.xPos,
-    y: ((this_page - 1) * page.height ) + pdfCurrent.yPos,
+    y: ((this_page - 1) * page.height) + pdfCurrent.yPos + (2 * (pdfCurrent.fontSize * 0.75)),
     autoPaging: true
   });
   pdfDown(heightEstimate);
@@ -1944,7 +2008,7 @@ function pdfLine(text, options = {}) {
   else if (!options.noNewLine) {
     pdfDown(1);
   }
-  if (!options.noNewPage && (pdfCurrent.yPos >= page.bottom)) {
+  if (!options.noNewPage && ((pdfCurrent.yPos + ((options.protectOrphan ? 2 : 0) * pdfCurrent.fontSize)) >= page.bottom)) {
     let savedStyle = Object.assign({}, pdfCurrent);
     pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
     pdfCurrent = Object.assign({}, savedStyle, { yPos: pdfCurrent.yPos });

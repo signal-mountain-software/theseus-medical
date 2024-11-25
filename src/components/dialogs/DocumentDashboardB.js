@@ -186,7 +186,7 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
     if (recordExists(formResult)) {
       formResult.Items.forEach(this_form => {
         if (this_form.active || reactData.options.viewInactive) {
-          formList.push(Object.assign((this_form), {
+          formList.push(Object.assign({}, (this_form), {
             isExpanded: false
           }));
         }
@@ -238,6 +238,7 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
     /*
     {
       person_id: '*status',
+      client_id: state.session.client_id,
       document_id,
       status: 'work_in_progress',
       formType: reactData.form_id,
@@ -258,7 +259,8 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
       .query({
         TableName: 'DocumentXRef',
         KeyConditionExpression: 'person_id = :p',
-        ExpressionAttributeValues: { ':p': '*status' }
+        ExpressionAttributeValues: { ':p': '*status', ':c': state.session.client_id },
+        FilterExpression: 'client_id = :c'
       })
       .promise()
       .catch(error => {
@@ -275,7 +277,7 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
         });
         if (docRec && (docObj.hasOwnProperty(this_doc.formType))) {
           docObj[this_doc.formType].docList.push(
-            Object.assign(docRec, this_doc)
+            Object.assign({}, docRec, this_doc)
           );
         }
       };
@@ -356,6 +358,9 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
   React.useEffect(() => {
     async function initialize() {
       let { formList } = await setFormList();
+      updateReactData({
+        formList
+      }, false);
       let { docObj } = await setDocObj({ formTypes: formList });
       updateReactData({
         formList,
@@ -494,15 +499,30 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                           size='medium'
                           aria-label="penciladd_icon"
                           onClick={() => {
-                            updateReactData({
-                              addDocPrompt: true,
-                              pendingInstructions: {
-                                action: 'addNew',
-                                formType: this_form.form_id,
-                                formName: this_form.form_name,
-                                formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
-                              }
-                            }, true);
+                            if (this_form.anonymous) {
+                              updateReactData({
+                                addDocPrompt: false,
+                                addDocForm: true,
+                                pendingInstructions: {
+                                  action: 'addNew',
+                                  formType: this_form.form_id,
+                                  selectedPerson: null,
+                                  formName: this_form.form_name,
+                                  formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
+                                }
+                              }, true)
+                            }
+                            else {
+                              updateReactData({
+                                addDocPrompt: true,
+                                pendingInstructions: {
+                                  action: 'addNew',
+                                  formType: this_form.form_id,
+                                  formName: this_form.form_name,
+                                  formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
+                                }
+                              }, true);
+                            }
                           }}
                           edge="start"
                         />
@@ -546,7 +566,7 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                               <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
                                 key={`row_box_grandparent-${docNdx}`}
                               >
-                                {(this_doc.status = 'complete') && (reactData.filtered_results) &&
+                                {(this_doc.status === 'complete') && (reactData.filtered_results) &&
                                   <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                                     {completed_and_displayed.push(this_doc.file_location || this_doc.location)}
                                   </Typography>
@@ -816,6 +836,7 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                       });
                     var docXRefRec = {
                       person_id: '*status',
+                      client_id: state.session.client_id,
                       document_id,
                       status: 'complete',
                       formType: reactData.pendingInstructions.formType,
@@ -834,7 +855,7 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                       });
                   }
                   reactData.docObj[reactData.pendingInstructions.formType].docList.unshift(
-                    Object.assign(docXRefRec, completedDocRec)
+                    Object.assign({}, docXRefRec, completedDocRec)
                   );
                   updateReactData({
                     docObj: reactData.docObj,
@@ -944,7 +965,7 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                     }
                     if (statusObj.recWritten) {
                       reactData.docObj[reactData.pendingInstructions.formType].docList[reactData.pendingInstructions.docIndex] =
-                        Object.assign(
+                        Object.assign({},
                           reactData.docObj[reactData.pendingInstructions.formType].docList[reactData.pendingInstructions.docIndex],
                           statusObj.recWritten || {},
                           { last_update: new Date().getTime(), status: statusObj.document_status }

@@ -7,7 +7,7 @@ import { deepCopy, makeArray, cl, recordExists, dbClient, isEmpty } from '../../
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
-import FormFill from './FormFill';
+import FormFillB from './FormFillB';
 
 import { Button, IconButton, TextField } from '@material-ui/core';
 import { Dialog, DialogContent, DialogActions } from '@material-ui/core';
@@ -143,6 +143,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     stage: 'start',
     family_id,
     familyMembers: [],
+    newAccountForm: {},
     restrict_to_client_id: options.client_id || null,
     selectedColumn: 0,
     formInfoForThisPerson: [],
@@ -495,6 +496,12 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     else {
       for (const formObj of reactData.forms[role]) {
         let this_form = await getForm(formObj.form_id);  
+        if (this_form.anonymous) {
+          reactData.newAccountForm[role] = this_form;
+          updateReactData({
+            newAccountForm: reactData.newAccountForm 
+          }, false)
+        }
         if (isEmpty(this_form)) {
           if (!formObj.asForm) { continue; }
           form_index++;
@@ -1145,7 +1152,11 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                   role: 'member'
                 }));
                 updateReactData({
-                  familyMembers: reactData.familyMembers
+                  addDocForm: true,
+                  pendingInstructions: {
+                    form_id: reactData.newAccountForm['caregiver'],
+                    family_id: reactData.family_id
+                  }
                 }, true);
               }}
             >
@@ -1315,7 +1326,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                       }
                       {reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].isChecked &&
                         reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].asForm &&
-                        <FormFill
+                        <FormFillB
                           request={{
                             form_id: reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].form_id,
                             person_id: reactData.familyMembers[reactData.selectedColumn].person_id,
@@ -1338,6 +1349,21 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
           </Box>
         </DialogContent>
       </React.Fragment>
+
+      {reactData.addDocForm &&
+        <FormFillB
+          request={{
+            form_id: reactData.pendingInstructions.formType,
+            family_id: reactData.family_id,
+            mode: 'new'
+          }}
+          onClose={(ignore_me, statusObj) => {
+            updateReactData({          
+              addDocForm: false           
+            }, true);
+          }}
+        />
+      }
 
       { /* Command Area */}
       <DialogActions className={classes.buttonArea} >
