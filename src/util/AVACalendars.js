@@ -1742,35 +1742,44 @@ export async function writeSlot(body) {
     if (eventRec.eventData && (!eventRec.eventData.messaging || (eventRec.eventData.messaging.length === 0))) {
       let subjectText = '';
       let messageText = '';
-
-      if (body.status === 'released') {
-        subjectText = `${slotDataObj.name} was removed from `;
+      if (body.override_subject) {
+        subjectText = body.override_subject;
       }
       else {
-        subjectText = `${slotDataObj.name} signed up `;
-        if (slotDataObj.slot) {
-          let maybeTime = makeSlotName(slotDataObj.slot);
-          if (maybeTime.includes(':')) {
-            subjectText += ` in the ${makeTime(slotDataObj.slot).time} slot `;
-          }
+        if (body.status === 'released') {
+          subjectText = `${slotDataObj.name} was removed from `;
         }
-        subjectText += 'for ';
+        else {
+          subjectText = `${slotDataObj.name} was added `;
+          if (slotDataObj.slot) {
+            let maybeTime = makeSlotName(slotDataObj.slot);
+            if (maybeTime.includes(':')) {
+              subjectText += ` in the ${makeTime(slotDataObj.slot).time} slot `;
+            }
+          }
+          subjectText += 'for ';
+        }
+        if (body.override_description) {
+          subjectText += body.override_description;
+        }
+        else if (eventRec.eventData.event_data) {
+          subjectText += eventRec.eventData.event_data.description;
+        }
+        else if (eventRec.calData) {
+          subjectText += eventRec.calData.description;
+        }
+        else { subjectText += 'your event'; }
+        subjectText += ` on ${makeDate(occurrence).absolute}`;
       }
-      if (body.override_description) {
-        subjectText += body.override_description;
-      }
-      else if (eventRec.eventData.event_data) {
-        subjectText += eventRec.eventData.event_data.description;
-      }
-      else if (eventRec.calData) {
-        subjectText += eventRec.calData.description;
-      }
-      else { subjectText += 'your event'; }
-      subjectText += ` on ${makeDate(occurrence).absolute}`;
 
-      messageText = (slotDataObj.notes ? `${slotDataObj.notes}\r\n\n` : '');
-      let pName = await makeName(body.person_id);
-      messageText += `AVA Automated Message from ${pName}`;
+      if (body.override_messageText) {
+        messageText = body.override_messageText;
+      }
+      else {
+        messageText = (slotDataObj.notes ? `${slotDataObj.notes}\r\n\n` : '');
+        let pName = await makeName(body.person_id);
+        messageText += `AVA Automated Message from ${pName}`;
+      }
 
       let ownerList;
       if (eventRec.eventData.event_data) { ownerList = makeArray(eventRec.eventData.event_data.owner); }

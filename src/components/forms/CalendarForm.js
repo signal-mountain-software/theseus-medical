@@ -4,7 +4,7 @@ import { useSnackbar } from 'notistack';
 import { makeTime, makeDate, addDays } from '../../util/AVADateTime';
 import { isObject, deepCopy, titleCase, makeArray, isEmpty } from '../../util/AVAUtilities';
 import { getCalendarEntries, writeSlot, getSlotList, publishCalendar } from '../../util/AVACalendars';
-import { getImage, getPerson } from '../../util/AVAPeople';
+import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import AVATextInput from './AVATextInput';
 
 import { Box, Typography, Avatar } from '@material-ui/core';
@@ -856,6 +856,40 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
         return oItem.toLowerCase().startsWith('*none');
       })) {
         writeRequest.no_messaging = true;
+      }
+      else if (overrideList.some(oItem => {
+        return oItem.toLowerCase().startsWith('*published');
+      })) {
+        if (!this_event.published) {
+          writeRequest.no_messaging = true;
+        }
+        else {
+          // event is already published and this instruction asks to message people only when published...
+          writeRequest.no_messaging = false;
+          writeRequest.overrideRecipient = [];
+          for (const this_person of overrideList) {
+            let instruction = this_person.split('=');
+            if (instruction[0].startsWith('*published')) {
+              instruction[0] = instruction[1];
+            }
+            if (instruction) {
+              if (instruction[0].startsWith('slot')) {
+                writeRequest.overrideRecipient.push(person_id);
+              }
+              else if(instruction[0].startsWith('event')) {
+                writeRequest.overrideRecipient.push(...makeArray(this_event.owner));
+              }
+              else {
+                writeRequest.overrideRecipient.push(instruction[0])
+              }
+            }
+          }
+          if (writeRequest.overrideRecipient.length === 0) {
+            writeRequest.overrideRecipient.push(person_id);
+          }
+          writeRequest.override_subject = `Changes have been made to ${this_event.description} (${makeDate(this_event.occurrence_date, { noTime: true }).absolute}) that affect you`;
+          writeRequest.override_messageText = `${await makeName(person_id)} has been added to this event.`;
+        }
       }
       else {
         writeRequest.no_messaging = false;
