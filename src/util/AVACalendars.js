@@ -1390,7 +1390,7 @@ export async function writeSlot(body) {
                 Limit: 1,
                 ExpressionAttributeValues: {
                   ':p': pertains_to[p],
-                  ':f': this_form.form_id
+                  ':f': `${this_form.form_id}%%`
                 }
               };
               queryObj.TableName = 'CompletedDocuments';
@@ -1403,7 +1403,10 @@ export async function writeSlot(body) {
                   }
                   cl(`Error reading ${queryObj.TableName} id ${error}`);
                 });
-              if (!recordExists(queryResult)) {
+              if (recordExists(queryResult)) {
+     //           foundDocumentAlreadyCompleted = true;
+              }
+              else {
                 queryObj.TableName = 'DocumentsInProcess';
                 queryResult = await dbClient
                   .query(queryObj)

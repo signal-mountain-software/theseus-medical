@@ -16,6 +16,7 @@ import DialogActions from '@material-ui/core/DialogActions';
 import DialogContentText from '@material-ui/core/DialogContentText';
 import Button from '@material-ui/core/Button';
 import EditIcon from '@material-ui/icons/Edit';
+import DeleteIcon from '@material-ui/icons/Delete';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import PrintIcon from '@material-ui/icons/Print';
 
@@ -271,14 +272,16 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
       });
     if (recordExists(docResult)) {
       for (const this_doc of docResult.Items) {
-        let docRec = await getDocRec({
-          document_id: this_doc.document_id,
-          doc_status: this_doc.status
-        });
-        if (docRec && (docObj.hasOwnProperty(this_doc.formType))) {
-          docObj[this_doc.formType].docList.push(
-            Object.assign({}, docRec, this_doc)
-          );
+        if (this_doc.status !== 'deleted') {
+          let docRec = await getDocRec({
+            document_id: this_doc.document_id,
+            doc_status: this_doc.status
+          });
+          if (docRec && (docObj.hasOwnProperty(this_doc.formType))) {
+            docObj[this_doc.formType].docList.push(
+              Object.assign({}, docRec, this_doc)
+            );
+          }
         }
       };
     }
@@ -510,7 +513,7 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                                   formName: this_form.form_name,
                                   formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
                                 }
-                              }, true)
+                              }, true);
                             }
                             else {
                               updateReactData({
@@ -595,24 +598,48 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                                       </React.Fragment>
                                     }
                                     {!this_doc.file_location &&
-                                      <EditIcon
-                                        classes={{ root: classes.rowButton }}
-                                        onClick={() => {
-                                          updateReactData({
-                                            editDoc: true,
-                                            pendingInstructions: {
-                                              action: 'edit',
-                                              formType: this_form.form_id,
-                                              formName: this_form.form_name,
-                                              formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); }),
-                                              document_id: this_doc.document_id,
-                                              document_title: this_doc.title || this_doc.document_title,
-                                              person_id: this_doc.pertains_to,
-                                              docIndex: docNdx
-                                            }
-                                          }, true);
-                                        }}
-                                      />
+                                      <React.Fragment>
+                                        <EditIcon
+                                          classes={{ root: classes.rowButton }}
+                                          onClick={() => {
+                                            updateReactData({
+                                              editDoc: true,
+                                              pendingInstructions: {
+                                                action: 'edit',
+                                                formType: this_form.form_id,
+                                                formName: this_form.form_name,
+                                                formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); }),
+                                                document_id: this_doc.document_id,
+                                                document_title: this_doc.title || this_doc.document_title,
+                                                person_id: this_doc.pertains_to,
+                                                docIndex: docNdx
+                                              }
+                                            }, true);
+                                          }}
+                                        />
+                                        <DeleteIcon
+                                          classes={{ root: classes.rowButton }}
+                                          onClick={async () => {
+                                            await dbClient
+                                              .update({
+                                                Key: {
+                                                  person_id: '*status',
+                                                  document_id: this_doc.document_id
+                                                },
+                                                UpdateExpression: 'set #s = :d',
+                                                ExpressionAttributeValues: { ':d': 'deleted' },
+                                                ExpressionAttributeNames: { '#s': 'status' },
+                                                TableName: 'DocumentXRef'
+                                              })
+                                              .promise()
+                                              .catch(error => { cl(`caught error updating Documents; error is: `, error); });
+                                            reactData.docObj[this_form.form_id].docList.splice(docNdx, 1);
+                                            updateReactData({
+                                              docObj: reactData.docObj
+                                            }, true);
+                                          }}
+                                        />
+                                      </React.Fragment>
                                     }
                                     <TextField
                                       className={classes.editInput}
@@ -952,8 +979,8 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
             {reactData.editDoc &&
               <FormFillB
                 request={{
-                document_id: reactData.pendingInstructions.document_id,
-                document_title: reactData.pendingInstructions.document_title,
+                  document_id: reactData.pendingInstructions.document_id,
+                  document_title: reactData.pendingInstructions.document_title,
                   person_id: reactData.pendingInstructions.person_id,
                 }}
                 onClose={(ignore_me, statusObj) => {

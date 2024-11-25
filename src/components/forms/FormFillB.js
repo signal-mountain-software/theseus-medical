@@ -1590,6 +1590,21 @@ export default ({ request = {}, onClose }) => {
     // If a form_id is sent in, create a new document from that form
     // Otherwise the call returns an error.
     if (reactData.document_id) {
+      let CompletedDocRec = await getDb({
+        Key: {
+          client_id: state.session.client_id,
+          document_id: reactData.document_id
+        },
+        TableName: "CompletedDocuments"
+      });
+      if (CompletedDocRec) {
+        window.open(
+          CompletedDocRec.file_location,
+          CompletedDocRec.title,
+          `name=${CompletedDocRec.title}, left=${20}, top=${20}`
+        );
+        handleAbort();
+      }
       let WIPDocRec = await getDb({
         Key: {
           client_id: state.session.client_id,
@@ -1638,22 +1653,7 @@ export default ({ request = {}, onClose }) => {
           stage: 'fill'
         }, true);
         return;
-      }
-      let CompletedDocRec = await getDb({
-        Key: {
-          client_id: state.session.client_id,
-          document_id: reactData.document_id
-        },
-        TableName: "CompletedDocuments"
-      });
-      if (CompletedDocRec) {
-        window.open(
-          CompletedDocRec.file_location,
-          CompletedDocRec.title,
-          `name=${CompletedDocRec.title}, left=${20}, top=${20}`
-        );
-        handleAbort();
-      }
+      }      
     }
     // if we got here, there was no existing document found with the passed in document_id
     // or no document_id was passed in at all.  
