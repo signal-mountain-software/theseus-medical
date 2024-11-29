@@ -510,11 +510,11 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     if (!reactData.filterTextLower) {
       return true;
     }
-    else if (reactData.idFilter && (this_event.slot_owners.hasOwnProperty(reactData.idFilter))) {
-      return true;
+    else if (reactData.idFilter) {
+      return (this_event.slot_owners.hasOwnProperty(reactData.idFilter));
     }
-    else if (reactData.eventIDFilter && (this_event.event_id === reactData.eventIDFilter)) {
-      return true;
+    else if (reactData.eventIDFilter) {
+      return (this_event.event_id === reactData.eventIDFilter);
     }
     else {
       return ((`${this_event.description} ${this_event.location}`).toLowerCase().includes(reactData.filterTextLower));
@@ -598,7 +598,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           updateReactData({
             eventIDFilter: false,
             idFilter: dragged_id,
-            filterTextLower: personRec.name.last.toLowerCase()
+            filterTextLower: `${personRec.name.last.toLowerCase()} ${personRec.name.first.toLowerCase()}`
           }, true);
         }
         break;
