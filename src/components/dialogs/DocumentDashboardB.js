@@ -1,7 +1,7 @@
 import React from 'react';
 import useSession from '../../hooks/useSession';
 
-import { dbClient, cl, makeArray, recordExists, getDb, array_in_array, listFromArray } from '../../util/AVAUtilities';
+import { dbClient, cl, makeArray, recordExists, getDb, array_in_array, listFromArray, switchActiveAccount } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import AVATextInput from '../forms/AVATextInput';
 import FormFillB from '../forms/FormFillB';
@@ -241,7 +241,7 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
       person_id: '*status',
       client_id: state.session.client_id,
       document_id,
-      status: 'work_in_progress',
+      status: 'work_in_process',
       formType: reactData.form_id,
       last_update: new Date().getTime()
     },
@@ -502,7 +502,7 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                           size='medium'
                           aria-label="penciladd_icon"
                           onClick={() => {
-                            if (this_form.anonymous) {
+                            if (this_form?.options?.anonymous) {
                               updateReactData({
                                 addDocPrompt: false,
                                 addDocForm: true,
@@ -936,7 +936,7 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                   mode: 'new'
 
                 }}
-                onClose={(ignore_me, statusObj) => {
+                onClose={async(ignore_me, statusObj) => {
                   if (statusObj.document_status !== 'aborted') {
                     if (!reactData.docObj.hasOwnProperty(reactData.pendingInstructions.formType)) {
                       reactData.docObj[reactData.pendingInstructions.formType] = {
@@ -953,6 +953,22 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                         status: statusObj.document_status
                       }
                     );
+                    if (statusObj.nextAction) {
+                      if (statusObj.nextAction.action === 'switchTo') {
+                        await switchActiveAccount(
+                          state.session,
+                          state.session.client_id,
+                          {
+                            id: statusObj.nextAction.target,
+                          }
+                        );
+                      }
+                      else if (statusObj.nextAction.action === 'logIn') {
+                        sessionStorage.removeItem('AVASessionData');
+                        let jumpTo = window.location.href.replace('refresh', 'theseus');
+                        window.location.replace(jumpTo);
+                      }
+                    }
                   }
                   updateReactData({
                     docObj: reactData.docObj,
@@ -983,7 +999,7 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                   document_title: reactData.pendingInstructions.document_title,
                   person_id: reactData.pendingInstructions.person_id,
                 }}
-                onClose={(ignore_me, statusObj) => {
+                onClose={async (ignore_me, statusObj) => {
                   if (statusObj.document_status !== 'aborted') {
                     if (!reactData.docObj.hasOwnProperty(reactData.pendingInstructions.formType)) {
                       reactData.docObj[reactData.pendingInstructions.formType] = {
@@ -997,6 +1013,17 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                           statusObj.recWritten || {},
                           { last_update: new Date().getTime(), status: statusObj.document_status }
                         );
+                    }
+                    if (statusObj.nextAction) {
+                      if (statusObj.nextAction.action === 'switchTo') {
+                        await switchActiveAccount(
+                          state.session,
+                          state.session.client_id,
+                          {
+                            id: statusObj.nextAction.target,
+                          }
+                        );
+                      }
                     }
                   }
                   updateReactData({

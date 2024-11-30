@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { dbClient, cl, makeArray, isEmpty, getDb, sentenceCase, listFromArray, array_in_array } from '../../util/AVAUtilities';
+import { dbClient, cl, makeArray, isEmpty, getDb, sentenceCase, listFromArray, array_in_array, recordExists } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { formatPhone, getPerson, makeName } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
@@ -166,9 +166,13 @@ export default ({ request = {}, onClose }) => {
       fields: []
     }]
     */
+    formRec: {},
     sessionRec: {},
     peopleRec: {},
-    familyRec: {},
+    familyRec: false,
+    family_id: options.family_id || false,
+    newPerson: false,
+    newFamily: false,
     stage: 'initialize',
     messageList: ['In progress'],
     errorsOnForm: 0,
@@ -176,7 +180,7 @@ export default ({ request = {}, onClose }) => {
     lastActiveTime: nowObj,
     version: 1,
     idleState: false,
-    pertains_to: options.person_id || state.session.patient_id
+    pertains_to: options.person_id || options.family_id || state.session.patient_id
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -299,36 +303,35 @@ export default ({ request = {}, onClose }) => {
               key: defaultObj.source_path
             });
           }
-          else if ((source_file.toLowerCase().startsWith('person')) || (source_file.toLowerCase().startsWith('people'))) {
+          else if ((source_file.toLowerCase().startsWith('person'))
+            || (source_file.toLowerCase().startsWith('people'))) {
             response.value = resolve({
               object: reactData.peopleRec[reactData.pertains_to],
               key: defaultObj.source_path
             });
           }
           else if (source_file.startsWith('family')) {
-            if (!reactData.familyRec[reactData.pertains_to]) {
-              let familyResponse = await getDb({
-                Key: {
-                  client_id: state.session.client_id,
-                  person_id: reactData.pertains_to
-                },
-                TableName: "FamilyGroups",
-                IndexName: "person_id-index"
-              });
-              if (familyResponse) {
-                reactData.familyRec[reactData.pertains_to] = familyResponse[0];
+            // we need to get the familyRec; do we have it already?
+            if (source_file.toLowerCase().startsWith('family')) {
+              if (!reactData.familyRec && reactData.family_id) {
+                reactData.familyRec = await getDb({
+                  Key: {
+                    client_id: state.session.client_id,
+                    composite_key: reactData.family_id
+                  },
+                  TableName: "FamilyGroups"
+                });
+                updateReactData({
+                  familyRec: reactData.familyRec
+                }, false);
               }
-              else {
-                reactData.familyRec[reactData.pertains_to] = false;
-              }
-              updateReactData({
-                familyRec: reactData.familyRec
-              }, false);
             }
-            response.value = resolve({
-              object: reactData.familyRec[reactData.pertains_to],
-              key: defaultObj.source_path
-            });
+            if (reactData.familyRec) {
+              response.value = resolve({
+                object: reactData.familyRec,
+                key: defaultObj.source_path
+              });
+            }
           }
           else if (source_file.toLowerCase().startsWith('user')) {
             if (!reactData.peopleRec[state.session.user_id]) {
@@ -374,7 +377,9 @@ export default ({ request = {}, onClose }) => {
           response.value = makeName(pertains_to);
         }
         else if (defaultObj.value_path[0].toLowerCase() === 'makenewaccount') {
-          response.value = await makeNewUser(reactData.formRec.fields[this_field].default.tables);
+          response.value = await makeNewUser({
+            tableDefaults: reactData.formRec.fields[this_field].default.tables,
+          });
         }
         else if (defaultObj.value_path.length === 1) {
           response.value = defaultObj.value_path[0];
@@ -501,7 +506,9 @@ export default ({ request = {}, onClose }) => {
               }
             }
             else if (defaultObj.value_path[0].toLowerCase() === 'makenewaccount') {
-              response.fields[this_field].value = await makeNewUser(formRec.fields[this_field]?.default?.tables);
+              response.fields[this_field].value = response.value = await makeNewUser({
+                tableDefaults: formRec.fields[this_field]?.default?.tables,
+              });
             }
             else if (defaultObj.value_path.length === 1) {
               response.fields[this_field].value = defaultObj.value_path[0];
@@ -582,22 +589,40 @@ export default ({ request = {}, onClose }) => {
         isError: 
         errorMessage:
     */
-    reactData.peopleRec[pertains_to] = await getDb({
-      Key: {
-        person_id: pertains_to
-      },
-      TableName: "People"
-    });
-    updateReactData({
-      peopleRec: reactData.peopleRec,
-      formRec
-    }, false);
-    const pertains_to_name = reactData.peopleRec[pertains_to].display_name
-      || (`${reactData.peopleRec[pertains_to]?.name.first} ${reactData.peopleRec[pertains_to]?.name.last}`).trim();
+    let pertains_to_name;
+    if (reactData.pertains_to === reactData.family_id) {
+      const familyRec = await getDb({
+        Key: {
+          client_id: state.session.client_id,
+          composite_key: pertains_to
+        },
+        TableName: "FamilyGroups"
+      });
+      updateReactData({
+        familyRec,
+        formRec
+      }, false);
+      pertains_to_name = reactData.familyRec.family_name || 'My Family'
+    }
+    else {
+      reactData.peopleRec[pertains_to] = await getDb({
+        Key: {
+          person_id: pertains_to
+        },
+        TableName: "People"
+      });
+      updateReactData({
+        family_id: reactData.peopleRec[pertains_to].family_id || false,
+        peopleRec: reactData.peopleRec,
+        formRec
+      }, false);
+      pertains_to_name = reactData.peopleRec[pertains_to].display_name
+        || (`${reactData.peopleRec[pertains_to]?.name.first} ${reactData.peopleRec[pertains_to]?.name.last}`).trim();
+    }
     let response = {
       fields: {},
       sections: formRec.sections,
-      document_title: `${formRec.form_name} for ${pertains_to_name} - ${makeDate(new Date()).absolute}`
+      document_title: reactData.document_title || `${formRec.form_name} for ${pertains_to_name} - ${makeDate(new Date()).absolute}`
     };
     for (let this_section of response.sections) {
       for (let this_field of this_section.fields) {
@@ -646,29 +671,26 @@ export default ({ request = {}, onClose }) => {
                 });
               }
               else if (source_file.startsWith('family')) {
-                if (!reactData.familyRec[pertains_to]) {
-                  let familyResponse = await getDb({
-                    Key: {
-                      client_id: state.session.client_id,
-                      person_id: pertains_to
-                    },
-                    TableName: "FamilyGroups",
-                    IndexName: "person_id-index"
-                  });
-                  if (familyResponse) {
-                    reactData.familyRec[pertains_to] = familyResponse[0];
+                if (source_file.toLowerCase().startsWith('family')) {
+                  if (!reactData.familyRec && reactData.family_id) {
+                    reactData.familyRec = await getDb({
+                      Key: {
+                        client_id: state.session.client_id,
+                        composite_key: reactData.family_id
+                      },
+                      TableName: "FamilyGroups"
+                    });
+                    updateReactData({
+                      familyRec: reactData.familyRec
+                    }, false);
                   }
-                  else {
-                    reactData.familyRec[pertains_to] = false;
-                  }
-                  updateReactData({
-                    familyRec: reactData.familyRec
-                  }, false);
                 }
-                response.fields[this_field].value = resolve({
-                  object: reactData.familyRec[pertains_to],
-                  key: defaultObj.source_path
-                });
+                if (reactData.familyRec) {
+                  response.fields[this_field].value = resolve({
+                    object: reactData.familyRec,
+                    key: defaultObj.source_path
+                  });
+                }
               }
               else if (source_file.toLowerCase().startsWith('user')) {
                 if (!reactData.peopleRec[state.session.user_id]) {
@@ -714,7 +736,9 @@ export default ({ request = {}, onClose }) => {
               response.fields[this_field].value = makeName(pertains_to);
             }
             else if (defaultObj.value_path[0].toLowerCase() === 'makenewaccount') {
-              response.fields[this_field].value = await makeNewUser(formRec.fields[this_field]?.default?.tables);
+              response.fields[this_field].value = response.value = await makeNewUser({
+                tableDefaults: formRec.fields[this_field]?.default?.tables,
+              });
             }
             else if (defaultObj.value_path.length === 1) {
               response.fields[this_field].value = defaultObj.value_path[0];
@@ -839,7 +863,20 @@ export default ({ request = {}, onClose }) => {
     }
   };
 
-  const makeNewUser = async (tableDefaults) => {
+  const makeNextAction = ({ instruction }) => {
+    let response = {
+      action: instruction.action
+    };
+    if (instruction.target) {
+      response.target = reconcilePrompt({
+        rawValue: instruction.target,
+        this_field: 'null'
+      });
+    }
+    return response;
+  };
+
+  const makeNewUser = async ({ tableDefaults }) => {
     let response;
     let formatter = `%%first_name//^[a-zA-Z]{1}%%%%last_name%%-%%client_id%%`;
     let candidate = reconcilePrompt({
@@ -872,7 +909,7 @@ export default ({ request = {}, onClose }) => {
           isExisting = await getPerson(candidateB);
         }
         while (!isEmpty(isExisting) && (num < 20));
-        if (!isEmpty(isExisting)) {
+        if (isEmpty(isExisting)) {
           response = candidateB.toLowerCase();
         }
         else {
@@ -896,36 +933,31 @@ export default ({ request = {}, onClose }) => {
         user_homeClient: state.session.client_id,
         user_id: response
       });
-    if (reactData.options.family_id) {
-      reactData.familyRec[response] = {
-        client_id: state.session.client_id,
-        composite_key: `${reactData.options.family_id}%%${response}`,
-        family_id: reactData.options.family_id,
-        record_type: 'caregiver',
-        role: 'primary'
-      };      
-    }
-    else if (!isEmpty(reactData.familyRec)) {
-      const family_id = reactData.familyRec[Object.keys(reactData.familyRec)[0]].family_id
-      reactData.familyRec[response] = {
-        client_id: state.session.client_id,
-        composite_key: `${family_id}%%${response}`,
-        family_id,
-        record_type: 'caregiver',
-        role: 'primary'
-      };  
-    }
-    else {
-      const family_id = `family_${Date().getTime()}`;
-      reactData.familyRec[response] = {
-        client_id: state.session.client_id,
-        composite_key: `${family_id}%%${response}`,
-        family_id,
-        record_type: 'caregiver',
-        role: 'primary'
-      };      
+    if (!reactData.family_id) {
+      reactData.family_id = `family_${new Date().getTime()}`;
+      reactData.newFamily = true;
+      reactData.familyRec = Object.assign({},
+        {
+          client_id: state.session.client_id,
+          composite_key: reactData.family_id,
+          record_type: 'header',
+          role: 'family',
+          family_id: reactData.family_id,
+        }
+      );
+    };
+    if (reactData.newFamily) {
+      reactData.familyRec.family_name = reactData.fields['last_name']
+        ? `The ${reactData.fields['last_name'].value} Family`
+        : (reactData.fields['first_name'] ? `${reactData.fields['first_name'].value}'s Family` : 'My Family')
     }
     updateReactData({
+      newPerson: true,
+      newFamily: reactData.newFamily,
+      family_id: reactData.family_id,
+      peopleRec: reactData.peopleRec,
+      sessionRec: reactData.sessionRec,
+      familyRec: reactData.familyRec,
       pertains_to: response
     }, false);
     return response;
@@ -1219,8 +1251,8 @@ export default ({ request = {}, onClose }) => {
 
   const handleSave = async ({ document_id, final }) => {
     let response = { goodPut: true };
-    // if not final, then save this in DocumentsInProcess
-    if (!final) {
+    // always save this in DocumentsInProcess
+    {
       let DinPRec = {
         client_id: state.session.client_id,
         document_id,
@@ -1231,6 +1263,7 @@ export default ({ request = {}, onClose }) => {
         formType_date: `${reactData.form_id}%%${new Date().getTime()}`,
         fields: reactData.fields,
         sections: reactData.sections,
+        options: reactData.formRec.options
       };
       await dbClient
         .put({
@@ -1242,7 +1275,10 @@ export default ({ request = {}, onClose }) => {
           cl(`Bad put to DocumentsInProcess. Error is: ${error}`);
           response = { goodPut: false };
         });
+      // if we saved successfully to DocumentsInProcess, 
+      // update all the DocumentXRef records to show this person as someone who updated the document
       if (response.goodPut) {
+        response.status = 'work_in_process';
         response.recWritten = DinPRec;
         await dbClient
           .put({
@@ -1259,6 +1295,7 @@ export default ({ request = {}, onClose }) => {
             cl(messageText);
             response = { goodPut: false, putError: messageText };
           });
+        // make sure there is a xRef entry for the person that this pertains to
         await dbClient
           .put({
             Item: {
@@ -1274,6 +1311,7 @@ export default ({ request = {}, onClose }) => {
             cl(messageText);
             response = { goodPut: false, putError: messageText };
           });
+        // save (or update) the status of this document
         await dbClient
           .put({
             Item: {
@@ -1293,163 +1331,158 @@ export default ({ request = {}, onClose }) => {
             response = { goodPut: false, putError: messageText };
           });
       }
-      return response;
     }
-    // if we got here, this is a FINAL save
-    // Update People, FamilyGroups, or SessionsV2 as per instructions in fields[this_field].saveAs
-    let needsUpdate = {
-      peopleRec: false,
-      sessionRec: false,
-      familyRec: false
-    };
-    for (const this_field in reactData.fields) {
-      if (!reactData.fields[this_field].ignore) {
-        if (reactData.fields[this_field].bonusText) {
-          if (reactData.fields[this_field].value) {
-            let valueArray = makeArray(reactData.fields[this_field].value);
-            valueArray.push(reactData.fields[this_field].bonusText);
-            reactData.fields[this_field].value = valueArray;
-            reactData.fields[this_field].valueText = listFromArray(valueArray);
-          }
-          else {
-            reactData.fields[this_field].value = reactData.fields[this_field].bonusText;
-            reactData.fields[this_field].valueText = reactData.fields[this_field].bonusText;
-          }
+    // updates to the Database as per instructions in fields[this_field].saveAs
+    {
+      let needsUpdate = {
+        peopleRec: false,
+        sessionRec: false,
+        familyRec: false
+      };
+      for (const this_field in reactData.fields) {
+        if (!reactData.fields[this_field].ignore) {
+          if (reactData.fields[this_field].bonusText) {
+            if (reactData.fields[this_field].value) {
+              let valueArray = makeArray(reactData.fields[this_field].value);
+              valueArray.push(reactData.fields[this_field].bonusText);
+              reactData.fields[this_field].value = valueArray;
+              reactData.fields[this_field].valueText = listFromArray(valueArray);
+            }
+            else {
+              reactData.fields[this_field].value = reactData.fields[this_field].bonusText;
+              reactData.fields[this_field].valueText = reactData.fields[this_field].bonusText;
+            }
 
-        }
-        if (reactData.fields[this_field].saveAs) {
-          const save_instructions = reactData.fields[this_field].saveAs;
-          const save_file = save_instructions.shift();
-          if (save_file === 'peopleRec') {
-            if (!reactData.peopleRec.hasOwnProperty(reactData.pertains_to)) {
-              reactData.peopleRec[reactData.pertains_to] = await getDb({
-                Key: {
-                  person_id: reactData.pertains_to
-                },
-                TableName: "People"
-              });
-              updateReactData({
-                peopleRec: reactData.peopleRec
-              }, false);
-            }
-            reactData.peopleRec[reactData.pertains_to] = resolveValue(
-              reactData.peopleRec[reactData.pertains_to],
-              save_instructions,
-              reactData.fields[this_field].value
-            );
-            needsUpdate.peopleRec = true;
           }
-          else if (save_file === 'sessionRec') {
-            if (!reactData.sessionRec.hasOwnProperty(reactData.pertains_to)) {
-              reactData.sessionRec[reactData.pertains_to] = await getDb({
-                Key: {
-                  person_id: reactData.pertains_to
-                },
-                TableName: "SessionsV2"
-              });
-              updateReactData({
-                sessionRec: reactData.sessionRec
-              }, false);
-            }
-            reactData.sessionRec[reactData.pertains_to] = resolveValue(
-              reactData.sessionRec[reactData.pertains_to],
-              save_instructions,
-              reactData.fields[this_field].value
-            );
-            needsUpdate.sessionRec = true;
-          }
-          else if (save_file === 'familyRec') {
-            if (!reactData.familyRec.hasOwnProperty(reactData.pertains_to)) {
-              let familyResponse = await getDb({
-                Key: {
-                  client_id: state.session.client_id,
-                  person_id: reactData.pertains_to
-                },
-                TableName: "FamilyGroups",
-                IndexName: "person_id-index"
-              });
-              if (familyResponse) {
-                reactData.familyRec[reactData.pertains_to] = familyResponse[0];
+          if (reactData.fields[this_field].saveAs) {
+            const save_instructions = reactData.fields[this_field].saveAs;
+            const save_file = save_instructions.shift();
+            if (save_file === 'peopleRec') {
+              if (!reactData.peopleRec.hasOwnProperty(reactData.pertains_to)) {
+                reactData.peopleRec[reactData.pertains_to] = await getDb({
+                  Key: {
+                    person_id: reactData.pertains_to
+                  },
+                  TableName: "People"
+                });
+                updateReactData({
+                  peopleRec: reactData.peopleRec
+                }, false);
               }
-              else {
-                // this person is not part of a family,
-                // and there's no way to know what family they might be a part of
-                // invent a new family and put them in there
-                const family_id = `family_${Date().getTime()}`;
-                reactData.familyRec[reactData.pertains_to] = {
-                  client_id: state.session.client_id,
-                  composite_key: `${family_id}%%${reactData.pertains_to}`,
-                  family_id,
-                  record_type: 'person',
-                  role: 'primary'
-                };
-                await dbClient
-                  .put({
-                    Item: {
-                      client_id: state.session.client_id,
-                      composite_key: family_id,
-                      family_id,
-                      record_type: 'header',
-                      role: 'master'
-                    },
-                    TableName: 'FamilyGroups'
-                  })
-                  .promise()
-                  .catch(error => {
-                    cl(`Bad put to FamilyGroups. Error is: ${error}`);
-                  });
-              }
-              updateReactData({
-                familyRec: reactData.familyRec
-              }, false);
+              reactData.peopleRec[reactData.pertains_to] = resolveValue(
+                reactData.peopleRec[reactData.pertains_to],
+                save_instructions,
+                reactData.fields[this_field].value
+              );
+              needsUpdate.peopleRec = true;
             }
-            reactData.familyRec[reactData.pertains_to] = resolveValue(
-              reactData.familyRec[reactData.pertains_to],
-              save_instructions,
-              reactData.fields[this_field].value
-            );
-            needsUpdate.familyRec = true;
+            else if (save_file === 'sessionRec') {
+              if (!reactData.sessionRec.hasOwnProperty(reactData.pertains_to)) {
+                reactData.sessionRec[reactData.pertains_to] = await getDb({
+                  Key: {
+                    person_id: reactData.pertains_to
+                  },
+                  TableName: "SessionsV2"
+                });
+                updateReactData({
+                  sessionRec: reactData.sessionRec
+                }, false);
+              }
+              reactData.sessionRec[reactData.pertains_to] = resolveValue(
+                reactData.sessionRec[reactData.pertains_to],
+                save_instructions,
+                reactData.fields[this_field].value
+              );
+              needsUpdate.sessionRec = true;
+            }
+            else if (save_file === 'familyRec') {
+              // we need to get the familyRec; do we have it already?           
+              if (!reactData.familyRec && reactData.family_id) {
+                reactData.familyRec = await getDb({
+                  Key: {
+                    client_id: state.session.client_id,
+                    composite_key: reactData.family_id
+                  },
+                  TableName: "FamilyGroups"
+                });
+                updateReactData({
+                  familyRec: reactData.familyRec
+                }, false);
+              }
+              if (reactData.familyRec) {
+                reactData.familyRec = resolveValue(
+                  reactData.familyRec,
+                  save_instructions,
+                  reactData.fields[this_field].value
+                );
+                needsUpdate.familyRec = true;
+              }
+            }
           }
         }
       }
+      if (needsUpdate.peopleRec || reactData.newPerson) {
+        if (reactData.newFamily) {
+          reactData.peopleRec[reactData.pertains_to].family_id = reactData.family_id;
+        }
+        await dbClient
+          .put({
+            Item: reactData.peopleRec[reactData.pertains_to],
+            TableName: 'People'
+          })
+          .promise()
+          .catch(error => {
+            cl(`Bad put to People. Error is: ${error}`);
+            response = { goodPut: false, putError: `Bad put to People. Error is: ${error}` };
+          });
+      }
+      if (needsUpdate.sessionRec) {
+        await dbClient
+          .put({
+            Item: reactData.sessionRec[reactData.pertains_to],
+            TableName: 'SessionsV2'
+          })
+          .promise()
+          .catch(error => {
+            cl(`Bad put to SessionsV2. Error is: ${error}`);
+            response = { goodPut: false, putError: `Bad put to SessionsV2. Error is: ${error}` };
+          });
+      }
+      if (needsUpdate.familyRec || reactData.newFamily) {
+        await dbClient
+          .put({
+            Item: reactData.familyRec,
+            TableName: 'FamilyGroups'
+          })
+          .promise()
+          .catch(error => {
+            cl(`Bad put to Family. Error is: ${error}`);
+            response = { goodPut: false, putError: `Bad put to Family. Error is: ${error}` };
+          });
+      }
+      if (reactData.newPerson || reactData.newFamily) {
+        let newFamilyGroupRec = {
+          client_id: state.session.client_id,
+          composite_key: `${reactData.family_id}%%${reactData.pertains_to}`,
+          family_id: reactData.family_id,
+          person_id: reactData.pertains_to,
+          record_type: 'person',
+          role: reactData.formRec.options.role || 'member'
+        };
+        await dbClient
+          .put({
+            Item: newFamilyGroupRec,
+            TableName: 'FamilyGroups'
+          })
+          .promise()
+          .catch(error => {
+            cl(`Bad put to Family (person). Error is: ${error}`);
+            response = { goodPut: false, putError: `Bad put to Family. Error is: ${error}` };
+          });
+      }
     }
-    if (needsUpdate.peopleRec) {
-      await dbClient
-        .put({
-          Item: reactData.peopleRec[reactData.pertains_to],
-          TableName: 'People'
-        })
-        .promise()
-        .catch(error => {
-          cl(`Bad put to People. Error is: ${error}`);
-          response = { goodPut: false, putError: `Bad put to People. Error is: ${error}` };
-        });
-    }
-    if (needsUpdate.sessionRec) {
-      await dbClient
-        .put({
-          Item: reactData.sessionRec[reactData.pertains_to],
-          TableName: 'SessionsV2'
-        })
-        .promise()
-        .catch(error => {
-          cl(`Bad put to SessionsV2. Error is: ${error}`);
-          response = { goodPut: false, putError: `Bad put to SessionsV2. Error is: ${error}` };
-        });
-    }
-    if (needsUpdate.familyRec) {
-      await dbClient
-        .put({
-          Item: reactData.familyRec[reactData.pertains_to],
-          TableName: 'FamilyGroups'
-        })
-        .promise()
-        .catch(error => {
-          cl(`Bad put to Family. Error is: ${error}`);
-          response = { goodPut: false, putError: `Bad put to Family. Error is: ${error}` };
-        });
-    }
-    if (response.goodPut) {
+    // if this is the type of document that needs to generate a final printout, do that now
+    if (final && !reactData.formRec?.options?.noFinal) {
       // render signatures (if any) before printing
       let signatures = [];
       for (const this_field in reactData.fields) {
@@ -1500,6 +1533,7 @@ export default ({ request = {}, onClose }) => {
           response = { goodPut: false, putError: `Bad put to CompletedDocuments. Error is: ${error}` };
         });
       if (response.goodPut) {
+        response.status = 'complete';
         response.recWritten = CRec;
         await dbClient
           .put({
@@ -1551,6 +1585,14 @@ export default ({ request = {}, onClose }) => {
           });
       }
     }
+    if (final && reactData.formRec?.options?.messaging) {
+      // conditional based on responses should be allowed here
+    }
+    updateReactData({
+      document_id,
+      recWritten: response.recWritten,
+      dataSaved: true,
+    }, true);
     return response;
   };
 
@@ -1627,6 +1669,7 @@ export default ({ request = {}, onClose }) => {
           form_id: WIPDocRec.form_id,
           fields: WIPDocRec.fields,
           sections: WIPDocRec.sections,
+          formRec: { options: WIPDocRec.options },
           stage: 'fill'
         }, true);
         return;
@@ -1653,20 +1696,65 @@ export default ({ request = {}, onClose }) => {
           stage: 'fill'
         }, true);
         return;
-      }      
+      }
     }
     // if we got here, there was no existing document found with the passed in document_id
-    // or no document_id was passed in at all.  
-    // In either case, try to create a new document from the form_id
+    // or no document_id was passed in at all. 
+    // In this case, look for a DocumentinProcess for this person and formType...
+    if (reactData.form_id) {
+      let queryObj = {
+        KeyConditionExpression: 'pertains_to = :p and begins_with(formType_date, :f)',
+        ScanIndexForward: false,
+        TableName: 'DocumentsInProcess',
+        IndexName: 'pertains_to-formType_date-index',
+        Limit: 1,
+        ExpressionAttributeValues: {
+          ':p': reactData.pertains_to,
+          ':f': `${reactData.form_id}%%`
+        }
+      };
+      let queryResult = await dbClient
+        .query(queryObj)
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            cl(`Security Violation or no Internet Connection`);
+          }
+          cl(`Error reading ${queryObj.TableName} is ${error}`);
+        });
+      if (recordExists(queryResult)) {
+        const WIPDocRec = queryResult.Items[0];
+        for (let this_field in WIPDocRec.fields) {
+          if (!WIPDocRec.fields[this_field].valueText) {
+            WIPDocRec.fields[this_field].valueText = await formatValue({
+              rawValue: WIPDocRec.fields[this_field].value,
+              type: WIPDocRec.fields[this_field].type
+            });
+          }
+        }
+        updateReactData({
+          document_id: WIPDocRec.document_id,
+          document_title: WIPDocRec.document_title,
+          pertains_to: WIPDocRec.pertains_to,
+          form_id: WIPDocRec.form_id,
+          fields: WIPDocRec.fields,
+          sections: WIPDocRec.sections,
+          formRec: { options: WIPDocRec.options },
+          stage: 'fill'
+        }, true);
+        return;
+      }
+    }
+    // If we still haven't found a document, try to create a new document from the form_id
     if (reactData.form_id) {
       const { fields, sections, document_title } = await initializeDoc({
         form_id: reactData.form_id,
-        pertains_to: options.person_id || state.session.patient_id,
+        pertains_to: options.person_id || options.family_id || state.session.patient_id
       });
       let nowTime = new Date().getTime();
       updateReactData({
         document_id: `${state.session.patient_id}_${reactData.form_id}_${nowTime}`,
-        pertains_to: options.person_id || state.session.patient_id,
+        pertains_to: options.person_id || options.family_id || state.session.patient_id,
         document_title,
         fields,
         sections,
@@ -1713,6 +1801,9 @@ export default ({ request = {}, onClose }) => {
       }
       else {
         await initialize();
+        if (!reactData.sections) {
+          onClose();
+        }
         start();  // idle timer
         updateReactData({
           stage: 'fill'
@@ -1794,13 +1885,13 @@ export default ({ request = {}, onClose }) => {
                               className={classes.inputDisplay}
                               multiline
                               disabled={reactData.fields[this_field].options.viewOnly}
-                              color={'black'}
                               style={AVATextStyle({
                                 lineHeight: 1,
                                 width: `${reactData.fields[this_field].prompt.width || 200}px`,
                                 maxWidth: '90%',
                                 minWidth: '80%',
                                 size: 0.75,
+                                color: 'black',
                                 margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
                               })}
                               autoComplete='off'
@@ -2151,25 +2242,22 @@ export default ({ request = {}, onClose }) => {
               {'Exit'}
             </Button>
             <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-              <Button
-                onClick={async () => {
-                  const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
-                  let response = await handleSave({
-                    document_id,
-                    final: false
-                  });
-                  updateReactData({
-                    document_id,
-                    recWritten: response.recWritten,
-                    savePending: true,
-                  }, true);
-                }}
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'lightcyan', color: 'black' }}
-                size='small'
-              >
-                {'Save/Continue'}
-              </Button>
+              {!reactData.formRec?.options?.noSaveContinue &&
+                <Button
+                  onClick={async () => {
+                    const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
+                    await handleSave({
+                      document_id,
+                      final: false
+                    });
+                  }}
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'lightcyan', color: 'black' }}
+                  size='small'
+                >
+                  {'Save/Continue'}
+                </Button>
+              }
               <Button
                 onClick={async () => {
                   await handleReview();
@@ -2222,8 +2310,12 @@ export default ({ request = {}, onClose }) => {
                 {
                   document_id: reactData.document_id,
                   document_title: reactData.document_title,
-                  document_status: 'complete',
-                  recWritten: response.recWritten
+                  document_status: response.status,
+                  recWritten: response.recWritten,
+                  nextAction: (reactData.formRec?.options?.onFinish
+                    ? makeNextAction({ instruction: reactData.formRec?.options?.onFinish })
+                    : null
+                  )
                 }
               );
             }
@@ -2241,7 +2333,7 @@ export default ({ request = {}, onClose }) => {
             }, true);
           }}
           onConfirm={async () => {
-            if (reactData.savePending) {
+            if (reactData.dataSaved) {
               onClose('docAdded',
                 {
                   document_id: reactData.document_id,

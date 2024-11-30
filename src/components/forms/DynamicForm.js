@@ -582,7 +582,6 @@ export default ({
     case 'family_maintenance':
       return (
         <FamilyMaintenance
-          family_id={'family_1'}
           forms={defaultObject.forms}
           onSave={onSave}
           onClose={onSave}

@@ -19,6 +19,9 @@ import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/Check';
 import HomeIcon from '@material-ui/icons/Home';
 import GroupAddIcon from '@material-ui/icons/GroupAdd';
+import EditIcon from '@material-ui/icons/Edit';
+
+import AVATextInput from './AVATextInput';
 
 const useStyles = makeStyles(theme => ({
   smallTextLine: {
@@ -143,10 +146,11 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     stage: 'start',
     family_id,
     familyMembers: [],
+    pertains_to: options.person_id || state.session.patient_id,
     newAccountForm: {},
     restrict_to_client_id: options.client_id || null,
     selectedColumn: 0,
-    formInfoForThisPerson: [],
+    columnForms: [],
     forms,
     formList: []
   });
@@ -167,6 +171,35 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
   };
 
   async function initialLoad() {
+    if (!reactData.family_id) {
+      let foundFamily = await dbClient
+        .query({
+          TableName: 'FamilyGroups',
+          IndexName: 'person_id-index',
+          KeyConditionExpression: 'client_id = :c AND person_id = :p',
+          ExpressionAttributeValues: {
+            ':c': state.session.client_id,
+            ':p': reactData.pertains_to
+          }
+        })
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            cl(`Security Violation or no Internet Connection`);
+          }
+          cl(`Error reading FamilyGroups with key of ${state.session.client_id}/${reactData.pertains_to}: ${error}`);
+        });
+      if (recordExists(foundFamily)) {
+        updateReactData({
+          family_id: foundFamily.Items[0].family_id
+        }, false);
+      }
+      else {
+        // no Family ID was passed in and this account doesn't have a Family ID.
+        // For now, just leave...
+        onClose();
+      }
+    }
     let qQ = {
       KeyConditionExpression: 'family_id = :f',
       ExpressionAttributeValues: { ':f': reactData.family_id },
@@ -201,9 +234,22 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
         }
       };
     }
+    if (familyMembers.length === 0) {
+      onClose();
+    }
+    if (isEmpty(familyHeader)) {
+      const lastName = familyMembers[0]?.name?.last;
+      familyHeader = {
+        family_name: (lastName ? `The ${lastName} Family` : 'Our Family'),
+        record_type: 'header',
+      };
+    }
+    if (!familyHeader.hasOwnProperty('role')) {
+      familyHeader.role = 'family';
+    }
     updateReactData({
       familyMembers: [familyHeader].concat(familyMembers),
-      selectedColumn: reactData.selectedColumn,
+      selectedColumn: reactData.selectedColumn || 0,
     }, false);
     const this_formList = await makeFormList({
       selectedColumn: reactData.selectedColumn,
@@ -230,18 +276,18 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
   function getRefValue({ selectedColumn, form_index, refField }) {
     let refValue;
     // is this value already on the current form?
-    refValue = reactData.formInfoForThisPerson[selectedColumn][form_index].fields[refField]?.value?.data_value;
+    refValue = reactData.columnForms[selectedColumn][form_index].fields[refField]?.value?.data_value;
     if (!refValue) {
       // does it exist anywhere in the family column?
-      for (let ndx = 0; ((ndx < reactData.formInfoForThisPerson[0].length) && !refValue); ndx++) {
-        refValue = reactData.formInfoForThisPerson[0][ndx].fields[refField]?.value?.data_value;
+      for (let ndx = 0; ((ndx < reactData.columnForms[0].length) && !refValue); ndx++) {
+        refValue = reactData.columnForms[0][ndx].fields[refField]?.value?.data_value;
       }
     }
     if (!refValue) {
       // does it exist on another form in this column?
-      for (let ndx = 0; ((ndx < reactData.formInfoForThisPerson[selectedColumn].length) && !refValue); ndx++) {
+      for (let ndx = 0; ((ndx < reactData.columnForms[selectedColumn].length) && !refValue); ndx++) {
         if (ndx !== form_index) {
-          refValue = reactData.formInfoForThisPerson[selectedColumn][ndx].fields[refField]?.value?.data_value;
+          refValue = reactData.columnForms[selectedColumn][ndx].fields[refField]?.value?.data_value;
         }
       }
     }
@@ -249,10 +295,10 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
   }
 
   function prepareField({ selectedColumn, form_index, field_name, editMode }) {
-    let fieldData = reactData.formInfoForThisPerson[selectedColumn][form_index].fields[field_name];
+    let fieldData = reactData.columnForms[selectedColumn][form_index].fields[field_name];
     let prompt = fieldData.prompt.ref;
     let data_value = fieldData.value.data_value;
-    if (fieldData.value.hidden && fieldData.edit && fieldData.edit.reset && editMode) { 
+    if (fieldData.value.hidden && fieldData.edit && fieldData.edit.reset && editMode) {
       data_value = null;
     }
     if ((!fieldData.value) || (!data_value)) {
@@ -264,7 +310,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
       if (fieldData.default) {
         if (!data_value) {
           // does the referenced field exist on ANY other form?  (default ref must be a string)
-          if (typeof(fieldData.default.ref) === 'string') {
+          if (typeof (fieldData.default.ref) === 'string') {
             data_value = getRefValue({ selectedColumn, form_index, refField: fieldData.default.ref });
           }
         }
@@ -385,62 +431,62 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
 
   function handleChange({ newValue, selectedColumn, form_index, field_name }) {
     Object.assign(
-      reactData.formInfoForThisPerson[selectedColumn][form_index].fields[field_name].value,
+      reactData.columnForms[selectedColumn][form_index].fields[field_name].value,
       cleanValue({
-        type: reactData.formInfoForThisPerson[selectedColumn][form_index].fields[field_name].value.type || 'text',
+        type: reactData.columnForms[selectedColumn][form_index].fields[field_name].value.type || 'text',
         value: newValue
       })
     );
     prepareField({ selectedColumn, form_index, field_name, editMode: true });
     updateReactData({
-      formInfoForThisPerson: reactData.formInfoForThisPerson,
+      columnForms: reactData.columnForms,
       familyMembers: reactData.familyMembers
     }, true);
   }
 
   function selectAForm({ selectedColumn, form_index }) {
-    if (reactData.formInfoForThisPerson[selectedColumn][form_index].isChecked) {
-      reactData.formInfoForThisPerson[selectedColumn][form_index].isChecked = false;
+    if (reactData.columnForms[selectedColumn][form_index].isChecked) {
+      reactData.columnForms[selectedColumn][form_index].isChecked = false;
     }
     else {
-      for (let ndx = 0; ndx < reactData.formInfoForThisPerson[selectedColumn].length; ndx++) {
-        reactData.formInfoForThisPerson[selectedColumn][ndx].isChecked = false;
+      for (let ndx = 0; ndx < reactData.columnForms[selectedColumn].length; ndx++) {
+        reactData.columnForms[selectedColumn][ndx].isChecked = false;
       }
-      reactData.formInfoForThisPerson[selectedColumn][form_index].isChecked = true;
+      reactData.columnForms[selectedColumn][form_index].isChecked = true;
     }
-    updateReactData({ formInfoForThisPerson: reactData.formInfoForThisPerson }, true);
+    updateReactData({ columnForms: reactData.columnForms }, true);
   }
 
   async function editColumn({ selectedColumn }) {
-    for (let form_index = 0; form_index < reactData.formInfoForThisPerson[selectedColumn].length; form_index++) {
-      await editForm({ selectedColumn, form_index, editMode: true })
+    for (let form_index = 0; form_index < reactData.columnForms[selectedColumn].length; form_index++) {
+      await editForm({ selectedColumn, form_index, editMode: true });
     }
   }
 
-  async function editForm({ selectedColumn, form_index, editMode }) {    
-    for (const field_name in reactData.formInfoForThisPerson[selectedColumn][form_index].fields) {
-      const beforeValue = reactData.formInfoForThisPerson[selectedColumn][form_index].fields[field_name]?.value?.data_value;
+  async function editForm({ selectedColumn, form_index, editMode }) {
+    for (const field_name in reactData.columnForms[selectedColumn][form_index].fields) {
+      const beforeValue = reactData.columnForms[selectedColumn][form_index].fields[field_name]?.value?.data_value;
       const [afterObj] = prepareField({ selectedColumn, form_index, field_name, editMode });
-      if (!reactData.formInfoForThisPerson[selectedColumn][form_index].fields[field_name].value.version) {
-        reactData.formInfoForThisPerson[selectedColumn][form_index].fields[field_name].value.version = 1;
+      if (!reactData.columnForms[selectedColumn][form_index].fields[field_name].value.version) {
+        reactData.columnForms[selectedColumn][form_index].fields[field_name].value.version = 1;
       }
       else {
-        reactData.formInfoForThisPerson[selectedColumn][form_index].fields[field_name].value.version++;
+        reactData.columnForms[selectedColumn][form_index].fields[field_name].value.version++;
       }
       afterObj.error = false;
       if (afterObj.data_value !== beforeValue) {
         // data in this field changed
       }
       if (afterObj.required && !afterObj.data_value) {
-        reactData.formInfoForThisPerson[selectedColumn][form_index].fields[field_name].value.error = `Please don't leave this blank`;
+        reactData.columnForms[selectedColumn][form_index].fields[field_name].value.error = `Please don't leave this blank`;
       }
     };
     updateReactData({
-      formInfoForThisPerson: reactData.formInfoForThisPerson,
+      columnForms: reactData.columnForms,
       familyMembers: reactData.familyMembers
     }, true);
     return ({
-      formInfoForThisPerson: reactData.formInfoForThisPerson,
+      columnForms: reactData.columnForms,
       familyMembers: reactData.familyMembers
     });
   }
@@ -458,15 +504,15 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
   }
 
   async function makeFormList({ selectedColumn, client_id, role }) {
-    if (!isEmpty(reactData.formInfoForThisPerson[selectedColumn])) {
-      return reactData.formInfoForThisPerson[selectedColumn];
+    if (!isEmpty(reactData.columnForms[selectedColumn])) {
+      return reactData.columnForms[selectedColumn];
     }
-    reactData.formInfoForThisPerson[selectedColumn] = [];
+    reactData.columnForms[selectedColumn] = [];
     let form_index = -1;
     if (!reactData.forms.hasOwnProperty(role)) {
       // you are asking for a form that was not named in the passed-in defaults,
       // build out a basic form with minimal info
-      reactData.formInfoForThisPerson[selectedColumn] = [{
+      reactData.columnForms[selectedColumn] = [{
         client_id: state.session.client_id,
         fields: {
           display_name: {
@@ -491,34 +537,35 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
           section_name: 'New Person Information'
         }]
       }];
-      updateReactData({ formInfoForThisPerson: reactData.formInfoForThisPerson }, false);
+      updateReactData({ columnForms: reactData.columnForms }, false);
     }
     else {
       for (const formObj of reactData.forms[role]) {
-        let this_form = await getForm(formObj.form_id);  
-        if (this_form.anonymous) {
+        let this_form = await getForm(formObj.form_id);
+        if (this_form?.options?.anonymous) {
           reactData.newAccountForm[role] = this_form;
           updateReactData({
-            newAccountForm: reactData.newAccountForm 
-          }, false)
+            newAccountForm: reactData.newAccountForm
+          }, false);
         }
         if (isEmpty(this_form)) {
           if (!formObj.asForm) { continue; }
           form_index++;
-          reactData.formInfoForThisPerson[selectedColumn][form_index] = { asForm: true };
+          reactData.columnForms[selectedColumn][form_index] = { asForm: true };
         }
         else {
           form_index++;
-          reactData.formInfoForThisPerson[selectedColumn][form_index] = deepCopy(this_form);
-          reactData.formInfoForThisPerson[selectedColumn][form_index].asForm = !!formObj.asForm;
+          reactData.columnForms[selectedColumn][form_index] = deepCopy(this_form);
+          reactData.columnForms[selectedColumn][form_index].asForm = !!formObj.asForm;
+          reactData.columnForms[selectedColumn][form_index].useFamilyID = !!formObj.useFamilyID;
           let response = await editForm({ selectedColumn, form_index, editMode: false });
-          reactData.formInfoForThisPerson = response.formInfoForThisPerson;
+          reactData.columnForms = response.columnForms;
         }
-        reactData.formInfoForThisPerson[selectedColumn][form_index].isChecked = (form_index === 0);
+        reactData.columnForms[selectedColumn][form_index].isChecked = false;
       }
     }
-    // updateReactData({ formInfoForThisPerson: reactData.formInfoForThisPerson }, false);
-    return reactData.formInfoForThisPerson[selectedColumn];
+    // updateReactData({ columnForms: reactData.columnForms }, false);
+    return reactData.columnForms[selectedColumn];
     //
     /* Functions used exclusively in makeFormList */
     //
@@ -550,9 +597,9 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     for (const this_column of reactData.familyMembers) {
       column_index++;
       if (this_column.record_type === 'header') {
-        if (reactData.formInfoForThisPerson[column_index]) {
+        if (reactData.columnForms[column_index]) {
           let familyRec = deepCopy(this_column);
-          for (const this_form of reactData.formInfoForThisPerson[column_index]) {
+          for (const this_form of reactData.columnForms[column_index]) {
             Object.keys(this_form.fields).forEach(this_field => {
               familyRec[this_field] = this_form.fields[this_field].value.data_value;
             });
@@ -578,7 +625,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
       }
       else if (this_column.record_type === 'person') {
         // for each person, we're updating three tables: People, SessionsV2, and FamilyGroups        
-        if (reactData.formInfoForThisPerson[column_index]) {
+        if (reactData.columnForms[column_index]) {
           // for each person's form info, we're going to load each of these table records with
           // data from the form, as specified in the form field's value.saveAs key
           let saveObj = {
@@ -587,7 +634,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
             familyRec: {}
           };
           //  remove?     let sessionRec = deepCopy(this_column);
-          for (const this_form of reactData.formInfoForThisPerson[column_index]) {
+          for (const this_form of reactData.columnForms[column_index]) {
             // eslint-disable-next-line
             Object.keys(this_form.fields).forEach(this_field => {
               if (this_form.fields[this_field].value.data_value) {
@@ -833,6 +880,20 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
         return oIn[key];
       }
     }
+  };
+
+  const makeFormRequest = ({ form_index }) => {
+    let response = {
+      form_id: reactData.columnForms[reactData.selectedColumn][form_index].form_id,
+      document_title: reactData.columnForms[reactData.selectedColumn][form_index].form_name,
+    };
+    if (reactData.columnForms[reactData.selectedColumn][form_index].useFamilyID) {
+      response.family_id = reactData.family_id;
+    }
+    else {
+      response.person_id = reactData.familyMembers[reactData.selectedColumn].person_id;
+    }
+    return response;
   };
 
   // **************************
@@ -1106,7 +1167,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                             justifyContent="flex-end"
                             alignItems='center'
                           >
-                            {(this_column.nickname || this_column?.name?.first).split(/\s+/).map((this_word, wX) => (
+                            {(this_column.nickname || this_column?.name?.first || 'New Person').split(/\s+/).map((this_word, wX) => (
                               <Typography key={`name-${this_columnNumber}_${wX}`} className={classes.smallTextLine}>
                                 {this_word.slice(0, 10)}
                               </Typography>
@@ -1146,17 +1207,8 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
               color='inherit'
               style={{ marginRight: '24px', marginBottom: '16px', height: '48px' }}
               onClick={async () => {
-                reactData.familyMembers.push(Object.assign({}, reactData.familyMembers[0], {
-                  record_type: 'person',
-                  nickname: 'New!',
-                  role: 'member'
-                }));
                 updateReactData({
-                  addDocForm: true,
-                  pendingInstructions: {
-                    form_id: reactData.newAccountForm['caregiver'],
-                    family_id: reactData.family_id
-                  }
+                  addDocPrompt: true,
                 }, true);
               }}
             >
@@ -1211,11 +1263,11 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                         justifyContent='flex-start'
                         alignItems='center'
                       >
-                        <Radio
+                        <EditIcon
                           key={`radio-button${reactData.selectedColumn}_form${form_index}`}
                           id={`radio-button${reactData.selectedColumn}_form${form_index}`}
-                          checked={reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].isChecked}
-                          value={reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].isChecked}
+                          checked={reactData.columnForms[reactData.selectedColumn][form_index].isChecked}
+                          value={reactData.columnForms[reactData.selectedColumn][form_index].isChecked}
                           onClick={() => {
                             selectAForm({ selectedColumn: reactData.selectedColumn, form_index });
                           }}
@@ -1230,8 +1282,8 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                           {this_form.form_name}
                         </Typography>
                       </Box>
-                      {reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].isChecked &&
-                        !reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].asForm &&
+                      {reactData.columnForms[reactData.selectedColumn][form_index].isChecked &&
+                        !reactData.columnForms[reactData.selectedColumn][form_index].asForm &&
                         this_form.sections.map((this_section, section_index) => (
                           <React.Fragment
                             key={`Formfrag${reactData.selectedColumn}${reactData.selectedColumn}_${form_index}_${section_index}`}
@@ -1324,19 +1376,14 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                           </React.Fragment>
                         ))
                       }
-                      {reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].isChecked &&
-                        reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].asForm &&
+                      {reactData.columnForms[reactData.selectedColumn][form_index].isChecked &&
+                        reactData.columnForms[reactData.selectedColumn][form_index].asForm &&
                         <FormFillB
-                          request={{
-                            form_id: reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].form_id,
-                            person_id: reactData.familyMembers[reactData.selectedColumn].person_id,
-                            mode: 'not_started',
-                            canvas: true
-                          }}
+                          request={makeFormRequest({ form_index })}
                           onClose={(formStatus) => {
-                            reactData.formInfoForThisPerson[reactData.selectedColumn][form_index].isChecked = false;
+                            reactData.columnForms[reactData.selectedColumn][form_index].isChecked = false;
                             updateReactData({
-                              formInfoForThisPerson: reactData.formInfoForThisPerson
+                              columnForms: reactData.columnForms
                             }, true);
                           }}
                         />
@@ -1353,17 +1400,55 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
       {reactData.addDocForm &&
         <FormFillB
           request={{
-            form_id: reactData.pendingInstructions.formType,
-            family_id: reactData.family_id,
+            form_id: ((reactData.roleToAdd === 'caregiver') ? 'new_caregiver_form' : 'new_camper_form'),
+            person_id: state.session.patient_id,
             mode: 'new'
+
           }}
-          onClose={(ignore_me, statusObj) => {
-            updateReactData({          
-              addDocForm: false           
+          onClose={async (ignore_me, statusObj) => {
+            if (statusObj.document_status !== 'aborted') {
+              let newLength = reactData.familyMembers.push(Object.assign({}, reactData.familyMembers[0],
+                statusObj.recWritten,
+                {
+                  record_type: 'person',
+                  role: reactData.roleToAdd,
+                  nickname: `New ${reactData.roleToAdd}`
+                }));
+              await makeFormList({
+                selectedColumn: newLength - 1,
+                client_id: state.session.client_id,
+                role: reactData.roleToAdd
+              });
+            }
+            updateReactData({
+              addDocForm: false
             }, true);
           }}
         />
       }
+      {reactData.addDocPrompt &&
+        <AVATextInput
+          titleText={`What type of account are you adding?`}
+          promptText={['[checkbox]Caregiver', '[checkbox]Camper']}
+          valueText={[
+            '', ''
+          ]}
+          buttonText={'Select'}
+          onCancel={() => {
+            updateReactData({
+              addDocPrompt: false
+            }, true);
+          }}
+          onSave={async (response) => {
+            updateReactData({
+              addDocPrompt: false,
+              addDocForm: true,
+              roleToAdd: ((response[1] === 'checked') ? 'camper' : 'caregiver')
+            }, true);
+          }}
+        />
+      }
+
 
       { /* Command Area */}
       <DialogActions className={classes.buttonArea} >
