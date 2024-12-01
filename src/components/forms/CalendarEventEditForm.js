@@ -1288,8 +1288,14 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                                   })
                                   .promise()
                                   .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
-                                eventSlotList[index].marked = !this_item.marked;
-                                eventSlotList[index].check_in = (this_item.marked ? null : timestamp);
+                                if (this_item.marked) {
+                                  eventSlotList[index].marked = false;
+                                  eventSlotList[index].check_in = null;
+                                }
+                                else {
+                                  eventSlotList[index].marked = true;
+                                  eventSlotList[index].check_in = timestamp;
+                                }
                                 setEventSlotList(eventSlotList);
                                 setForceRedisplay(!forceRedisplay);
                               }}
