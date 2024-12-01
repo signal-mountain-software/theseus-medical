@@ -9,7 +9,7 @@ import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
 import FamilyMaintenance from './FamilyMaintenance';
 import FormFill from './FormFill';
-import DocumentDashboard from '../dialogs/DocumentDashboard';
+import DocumentDashboardB from '../dialogs/DocumentDashboardB';
 import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
 import MultiObservationFormC from '../forms/MultiObservationFormC';
 import MultiObservationFormD from '../forms/MultiObservationFormD';
@@ -582,19 +582,7 @@ export default ({
     case 'family_maintenance':
       return (
         <FamilyMaintenance
-          family_id={'family_1'}
-          forms={{
-            header: { master: [{ form_id: 'familyRec_1' }] },
-            person: {
-              caregiver: [{ form_id: 'caregiverRec_1' }],
-              member: [
-                { form_id: 'personRec_1' },
-                { form_id: 'techInfo_1' },
-                { form_id: 'medInfo_1' },
-                { form_id: 'slidingscale_1' }
-              ]
-            }
-          }}
+          forms={defaultObject.forms}
           onSave={onSave}
           onClose={onSave}
         />
@@ -609,7 +597,7 @@ export default ({
       );
     case 'document_dashboard':
       return (
-        <DocumentDashboard
+        <DocumentDashboardB
           request={defaultValue}
           onClose={onSave}
         />

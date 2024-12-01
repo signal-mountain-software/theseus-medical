@@ -185,7 +185,8 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
     StartAsADateObj: {},
     EndAsADateObj: {},
     specificPeople: '',
-    criticalMessage: false
+    criticalMessage: false,
+    priorityMessage: false
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -219,7 +220,8 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       "message": reactData.description,
       "style": (reactData.criticalMessage ? { color: 'red' } : ""),
       "author": state.session.user_id,
-      "criticalMessage": reactData.criticalMessage
+      "criticalMessage": reactData.criticalMessage,
+      "priorityMessage": reactData.priorityMessage
     };
     let goodPut = true;
     await dbClient
@@ -349,7 +351,13 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
 
   const handleChangeCriticalToggle = event => {
     updateReactData({
-      criticalMessage: event.target.value
+      criticalMessage: (event.target.value === 'true')
+    }, true);
+  };
+
+  const handleChangePriorityToggle = event => {
+    updateReactData({
+      priorityMessage: (event.target.value === 'true')
     }, true);
   };
 
@@ -474,7 +482,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                         <FormControlLabel
                           className={classes.formControlLbl}
                           value={!true}
-                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                          control={<Radio disableRipple checked={!reactData.criticalMessage} className={classes.radioButton} size='small' />}
                           label={
                             <Typography className={classes.radioText}>
                               No
@@ -483,7 +491,49 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                         <FormControlLabel
                           className={classes.formControlLbl}
                           value={true}
-                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                          control={<Radio disableRipple checked={reactData.criticalMessage} className={classes.radioButton} size='small' />}
+                          label={
+                            <Typography className={classes.radioText}>
+                              Yes
+                            </Typography>}
+                        />
+                      </RadioGroup>
+                    </FormControl>
+                  </Box>
+                  <Box
+                    display="flex"
+                    pt={2}
+                    pb={1}
+                    pl={1}
+                    mt={3.5}
+                    flexDirection='column'
+                    justifyContent="center"
+                  >
+                    <Typography className={classes.radioText}>
+                      {`When displayed, should this message suppress weather and other greetings?`}
+                    </Typography>
+                    <FormControl className={classes.formControl} component="fieldset">
+                      <RadioGroup
+                        row
+                        defaultValue={'no'}
+                        aria-label="priority"
+                        name="priority"
+                        value={reactData.priorityMessage}
+                        onChange={handleChangePriorityToggle}
+                      >
+                        <FormControlLabel
+                          className={classes.formControlLbl}
+                          value={!true}
+                          control={<Radio disableRipple checked={!reactData.priorityMessage} className={classes.radioButton} size='small' />}
+                          label={
+                            <Typography className={classes.radioText}>
+                              No
+                            </Typography>}
+                        />
+                        <FormControlLabel
+                          className={classes.formControlLbl}
+                          value={true}
+                          control={<Radio disableRipple checked={reactData.priorityMessage} className={classes.radioButton} size='small' />}
                           label={
                             <Typography className={classes.radioText}>
                               Yes
@@ -704,6 +754,11 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                         {this_message.criticalMessage &&
                           <Typography className={classes.radioText} style={{ marginBottom: '-10px', color: 'red', fontSize: '1rem', italics: true }} >
                             {`*** Critical Message - All others hidden ***`}
+                          </Typography>
+                        }
+                        {this_message.priorityMessage &&
+                          <Typography className={classes.radioText} style={{ marginBottom: '-10px', fontSize: '1rem', italics: true }} >
+                            {`Weather and greetings hidden while this message is displayed`}
                           </Typography>
                         }
                         <Typography className={classes.radioText} style={{ color: (this_message.criticalMessage ? 'red' : 'black'), fontSize: '1.5rem', fontWeight: 'bold' }}>

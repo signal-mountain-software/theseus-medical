@@ -359,10 +359,10 @@ export function makeDate(pInput, optionIn = {}) {
                     if (pStringPieces.length > 2) {
                         let twoDigYr = parseInt(pStringPieces[2], 10);
                         if (twoDigYr < 30) {
-                            yearPiece = twoDigYr + 2000    
+                            yearPiece = twoDigYr + 2000;
                         }
                         else {
-                            yearPiece = twoDigYr + 1900    
+                            yearPiece = twoDigYr + 1900;
                         }
                     }
                     else {
@@ -477,7 +477,9 @@ export function makeDate(pInput, optionIn = {}) {
                     }
                 }
                 else {
-                    if (daysDiff(thisMonth_target, now) < 7) { return thisMonth_target; }
+                    if ((daysDiff(thisMonth_target, now) < 7) || (options.noFuture)) {
+                        return thisMonth_target;
+                    }
                     else {
                         let nextMonth_target = new Date();
                         nextMonth_target.setMonth(now.getMonth() + 1, n);
@@ -554,7 +556,11 @@ export function makeTime(pTime) {
                 if (inTime.includes('pm')) { ampm = 'pm'; }
                 else if (inTime.includes('am')) { ampm = 'am'; };
                 [hh$, mm$] = inTime.split(':');
-                hh = Number(hh$.replace(/\D+/g, ''));
+                const hhClean = hh$.replace(/\D+/g, '');
+                if (!hhClean) {
+                    error = true;
+                }
+                hh = Number(hhClean);
                 if ((ampm === 'am') && (hh === 12)) { hh = 0; }
                 else if ((ampm === 'pm') && (hh < 12)) { hh += 12; }
             }
@@ -564,7 +570,7 @@ export function makeTime(pTime) {
             if (!mm$) { mm = hh % 100; }
             hh = Math.floor(hh / 100);
         }
-        if (!ampm && (hh < 7)) { hh += 12; }
+        if (!ampm && (hh < 7) && (hh > 0)) { hh += 12; }
         if (mm$) { mm = Number(mm$.replace(/\D+/g, '')); }
         if (mm > 59) {
             error = true;
@@ -614,6 +620,7 @@ export function makeTime(pTime) {
         string24: `0000${numeric24}`.slice(-4),
         dayPart,
         empty,
-        error
+        error,
+        good: (!empty && !error)
     };
 }

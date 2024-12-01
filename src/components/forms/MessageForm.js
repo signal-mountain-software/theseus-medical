@@ -2,7 +2,7 @@ import React from 'react';
 import { useSnackbar } from 'notistack';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { messageHistory, getMessages } from '../../util/AVAMessages';
-import { extract, dbClient, lambda } from '../../util/AVAUtilities';
+import { extract, dbClient, lambda, isObject } from '../../util/AVAUtilities';
 import { AVATextStyle } from '../../util/AVAStyles';
 
 import List from '@material-ui/core/List';
@@ -446,6 +446,9 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
   }
 
   function attachmentName(a) {
+    if (isObject(a)) {
+      a = a.Location;
+    }
     let fNArr = a.split('/').pop().split('.');
     fNArr.pop();
     return decodeURI(fNArr.join('.'));

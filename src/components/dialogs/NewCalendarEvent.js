@@ -24,7 +24,6 @@ import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContent from '@material-ui/core/DialogContent';
 import IconButton from '@material-ui/core/IconButton';
-import Slide from '@material-ui/core/Slide';
 import Toolbar from '@material-ui/core/Toolbar';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -186,6 +185,9 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 10,
   },
+  timeInput: {
+    marginRight: '16px'
+  },
   radioButton: {
     marginTop: 0,
     marginRight: 0,
@@ -194,8 +196,6 @@ const useStyles = makeStyles(theme => ({
     paddingRight: 5,
   },
 }));
-
-const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
 export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppointment, options = {} }) => {
   const classes = useStyles();
@@ -214,13 +214,8 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   const [defaultSlotOwners, setDefaultSlotOwners] = React.useState('none');
   const [slot_max_seats, setSlotMaxSeats] = React.useState(' ');
   const [slot_interval, setSlotInterval] = React.useState(' ');
-  const [time_from_display_string, setTimeFromAsDisplayString] = React.useState(' ');
   const [eventDateAsDisplayString, setEventDateAsDisplayString] = React.useState((options.setDate ? options.setDate.dateObj.absolute : ' '));
-  const [eventDateAsADate, setEventDateAsADate] = React.useState();
-  const [timeFromAs24HourNumber, setTimeFromAs24HourNumber] = React.useState();
   const [displayTimes, setIntervalDisplay] = React.useState([]);
-  const [time_to_display_string, setTimeToAsDisplayString] = React.useState(' ');
-  const [timeToAs24HourNumber, setTimeToAs24HourNumber] = React.useState();
   const [showOwnerSelect, setShowOwnerSelect] = React.useState(false);
   const [ownerList, setOwnerList] = React.useState([patient.person_id || patient.patient_id]);
 
@@ -247,19 +242,21 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
       : ((options.setPerson && isAppointment) ? patient.location : '')
     ),
     location_override: false,
-    initialized: false
+    initialized: false,
+    allDay: true,
+    startObj: { empty: true },
+    endObj: { empty: true },
+    timeOK: true
   });
 
+  const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const updateReactData = (newData, force = false) => {
-    for (let oKey in newData) {
-      setReactData((prevValues) => ({
-        ...prevValues,
-        [oKey]: newData[oKey],
-        displayVersion: reactData.displayVersion + (force ? 1 : 0)
-      }));
-    }
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
     if (force) {
-      // setForceRedisplay(forceRedisplay => !forceRedisplay);
+      setForceRedisplay(!forceRedisplay);
     }
   };
 
@@ -306,6 +303,16 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
         if (checkedDays[a]) { oDays.push(Number(a)); };
       });
     }
+    let time_duration;
+    if (reactData.allDay) {
+
+    }
+    if (reactData.startObj.good && reactData.endObj.good) {
+      time_duration = reactData.endObj.minutesSinceMidnight - reactData.startObj.minutesSinceMidnight;
+      if (time_duration < 0) {
+        time_duration += 1440;
+      }
+    }
     var payload = {
       "clientId": patient.client_id,
       "calendar_info": {
@@ -315,8 +322,10 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
         "event_date": reactData.event_date.date.getTime(),
         "last_date": lastAsADate?.getTime() || null,
         "schedule_type": reactData.prefMethod,
-        "time_from": time_from_display_string,
-        "time_to": time_to_display_string,
+        "time_from": reactData.startObj.time,
+        "time_to": reactData.endObj.time,
+        time_duration,
+        allDay: reactData.allDay,
         "default_forms": reactData.default_forms,
         "customizations": reactData.customizations,
         "slots": reactData.slotObjList.map(s => { return s.key; }),
@@ -392,13 +401,10 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   }
 
   function OK2Save() {
-    let fromOK = !!timeFromAs24HourNumber;
-    let toOK = !!timeToAs24HourNumber;
     return ((reactData.event_date && !reactData.event_date.error)
       && (reactData.event_title.trim() !== '')
       && (!isAppointment || (reactData.preReservationList.length > 0))
-      && fromOK
-      && toOK
+      && reactData.timeOK
     );
   }
 
@@ -417,67 +423,8 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   };
 
   const handleChangeEventDate = event => {
-    setEventDateAsADate(null);
     setEventDateAsDisplayString(event.target.value);
   }
-
-  const handleChangeTimeFrom = event => {
-    setTimeFromAsDisplayString(event.target.value);
-    setTimeFromAs24HourNumber(null);
-  };
-
-  const handleTimeFromExit = event => {
-    let madeTime = makeTime(time_from_display_string);
-    if (madeTime.error || madeTime.empty) {
-      setTimeFromAs24HourNumber(null);
-      return false;
-    }
-    setTimeFromAs24HourNumber(madeTime.numeric24);
-    setTimeFromAsDisplayString(madeTime.time);
-    if (!time_to_display_string || (time_to_display_string.trim() === '') || (timeToAs24HourNumber && (timeToAs24HourNumber < madeTime.numeric24))) {
-      let calcTo;
-      if (options.setDuration) {
-        let tempTime = madeTime.minutesSinceMidnight + options.setDuration;
-        calcTo = makeTime((Math.round(tempTime / 60) * 100) + (tempTime % 60));
-      }
-      else {
-        calcTo = makeTime(madeTime.numeric24 + 100);
-      }
-      setTimeToAs24HourNumber(calcTo.numeric24);
-      setTimeToAsDisplayString(calcTo.time);
-      if (displayTimes.length > 0) {
-        handleExitInterval({ toTime: calcTo.numeric24 });
-      }
-    }
-    return true;
-  };
-
-  function assumeToTime(pFromTime) {
-    let newTime = pFromTime >= 2300 ? (pFromTime % 100) : (pFromTime + 100);
-    setTimeToAs24HourNumber(newTime);
-    let hh = Math.floor(newTime / 100);
-    let mm = newTime % 100;
-    setTimeToAsDisplayString(`${hh === 0 ? '12' : (hh > 12 ? (hh - 12) : hh).toString()}:${mm < 10 ? ('0' + mm) : mm} ${newTime > 1159 ? 'pm' : 'am'}`);
-  };
-
-  const handleTimeToExit = event => {
-    let madeTime = makeTime(time_to_display_string);
-    if (madeTime.error || madeTime.empty) {
-      setTimeToAs24HourNumber(null);
-      return false;
-    }
-    setTimeToAs24HourNumber(madeTime.numeric24);
-    setTimeToAsDisplayString(madeTime.time);
-    if (displayTimes.length > 0) {
-      handleExitInterval({ toTime: madeTime.numeric24 });
-    }
-    return true;
-  };
-
-  const handleChangeTimeTo = event => {
-    setTimeToAsDisplayString(event.target.value);
-    setTimeToAs24HourNumber(null);
-  };
 
   const handleChangeLastDate = event => {
     setLastAsADate(null);
@@ -522,12 +469,14 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   const handleChangeSignUp = event => {
     if (signup_type !== event.target.value) {
       setSignUpType(event.target.value);
-      if (event.target.value === 'time' && !time_to_display_string) {
-        assumeToTime(timeFromAs24HourNumber);
-      }
-      updateReactData({
+      let reactUpdateObj = {
         slotObjList: []
-      }, true);
+      }
+      if (event.target.value === 'time') {
+        reactUpdateObj.allDay = (reactData.startObj.empty && reactData.endObj.empty);
+        reactUpdateObj.timeOK = (reactData.startObj.good && reactData.endObj.good);
+      }
+      updateReactData(reactUpdateObj, true);
     }
   };
 
@@ -569,13 +518,11 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     setSlotInterval(event.target.value);
   };
 
-  const handleExitInterval = event => {
+  const handleSetSlotTimes = () => {
     let intervals = [];
-    if ((timeFromAs24HourNumber || event.hasOwnProperty('fromTime'))
-      && (timeToAs24HourNumber || event.hasOwnProperty('toTime'))
-    ) {
-      let useFromTime = event.fromTime || timeFromAs24HourNumber;
-      let useToTime = event.toTime || timeToAs24HourNumber;
+    if (reactData.timeOK && !reactData.allDay && reactData.startObj.numeric24 && reactData.endObj.numeric24) {
+      let useFromTime = reactData.startObj.numeric24;
+      let useToTime = reactData.endObj.numeric24;
       let s = Number(slot_interval);
       let m = useToTime % 100;
       let h = Math.floor(useToTime / 100);
@@ -636,32 +583,38 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
 
   React.useEffect(() => {
     async function initialize() {
-      if (options.setStart) {
-        let startTime = makeTime(options.setStart);
-        if (!startTime.empty && !startTime.error) {
-          setTimeFromAsDisplayString(startTime.time);
-          setTimeFromAs24HourNumber(startTime.numeric24);
-        }
-        if ((!options.setEnd || (options.setEnd.trim() === '')) && options.setDuration) {
-          let tempTime = startTime.minutesSinceMidnight + options.setDuration;
-          options.setEnd = (Math.floor(tempTime / 60) * 100) + (tempTime % 60);
-        }
-      }
+      let startObj = { empty: true, good: false };
+      let endObj = { empty: true, good: false };
+      let allDay = false;
       if (options.setEnd) {
-        let endTime = makeTime(options.setEnd);
-        if (!endTime.empty && !endTime.error) {
-          setTimeToAsDisplayString(endTime.time);
-          setTimeToAs24HourNumber(endTime.numeric24);
+        endObj = makeTime(options.setEnd);
+      };
+      if (options.setStart) {
+        startObj = makeTime(options.setStart);
+        if (!startObj.error) {
+          if (endObj.empty && options.setDuration) {
+            const tempTime = startObj.minutesSinceMidnight + options.setDuration;
+            endObj = makeTime(`${(Math.floor(tempTime / 60) * 100)}:${(tempTime % 60)}`);
+          }
         }
       }
-      let allGood = OK2Save();
-      if (allGood && options.noDisplay) {
+      if ((startObj.empty || (startObj.minutesSinceMidnight < 5))
+        && (endObj.empty || (endObj.minutesSinceMidnight > 1435))) {
+        allDay = true;
+      }
+      updateReactData({
+        startObj,
+        endObj,
+        allDay,
+        timeOK: true
+      }, false)
+      if (options.noDisplay) {
         handleUpdate();
       }
     }
     if (!reactData.initialized) {
       initialize();
-      updateReactData({ initialized: true }, false);
+      updateReactData({ initialized: true }, true);
     }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -671,7 +624,6 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     <Dialog
       open={showNewEvent}
       onClose={handleAbort}
-      TransitionComponent={Transition}
       fullScreen={true}
     >
       {!personalEvent &&
@@ -1046,33 +998,154 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                   </FormControl>
                 </Box>
               }
-              <div>
+              <Box
+                display="flex"
+                pt={2}
+                pb={1}
+                flexDirection='row'
+                alignItems={'center'}
+              >
                 <TextField
-                  id='time_from_display_string'
-                  value={time_from_display_string}
-                  onChange={handleChangeTimeFrom}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleTimeFromExit(e);
+                  className={classes.timeInput}
+                  id='startTime'
+                  key={`startTime_${reactData.allDay}`}
+                  value={(reactData.startObj.empty || reactData.allDay) ? null : reactData.startObj.time}
+                  onChange={(event) => {
+                    updateReactData({
+                      startObj: Object.assign(reactData.startObj, {time: event.target.value})
+                    }, true)
+                  }}
+                  onBlur={(event) => {
+                    const startObj = makeTime(event.target.value);
+                    if (startObj.empty) {
+                      // empty start
+                      updateReactData({
+                        startObj,
+                        allDay: reactData.endObj.empty,
+                        timeOK: reactData.endObj.empty
+                      }, true)
+                    }
+                    else if ((startObj.error) || (reactData.endObj.error)) {
+                      // bad start or bad end
+                      updateReactData({
+                        startObj,
+                        allDay: false,
+                        timeOK: false
+                      }, true);
+                    }
+                    else if (reactData.endObj.empty) {
+                      // good start, no end
+                      let tempTime;
+                      if (options.setDuration) {
+                        tempTime = startObj.minutesSinceMidnight + options.setDuration;
+                      }
+                      else {
+                        tempTime = startObj.minutesSinceMidnight + 60;
+                      }
+                      const endObj = makeTime(`${(Math.floor(tempTime / 60) * 100)}:${(tempTime % 60)}`);
+                      updateReactData({
+                        startObj,
+                        endObj,
+                        allDay: false,
+                        timeOK: !endObj.error
+                      }, true)
+                    }
+                    else {
+                      // good start, good end
+                      updateReactData({
+                        startObj,
+                        allDay: false,
+                        timeOK: true
+                      }, true);
                     }
                   }}
-                  onBlur={handleTimeFromExit}
                   helperText='Start time'
                 />
-                {'    '}
                 <TextField
-                  id='time_to_display_string'
-                  value={time_to_display_string}
-                  onChange={handleChangeTimeTo}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleTimeToExit(e);
+                  className={classes.timeInput}
+                  id='endTime'
+                  key={`endTime_${reactData.allDay}`}
+                  value={(reactData.endObj.empty || reactData.allDay) ? null : reactData.endObj.time}
+                  onChange={(event) => {
+                    updateReactData({
+                      endObj: Object.assign(reactData.endObj, { time: event.target.value })
+                    }, true);
+                  }}
+                  onBlur={(event) => {
+                    const endObj = makeTime(event.target.value);
+                    if (endObj.empty) {
+                      // empty end
+                      updateReactData({
+                        endObj,
+                        allDay: reactData.startObj.empty,
+                        timeOK: reactData.startObj.empty
+                      }, true);
+                    }
+                    else if ((endObj.error) || (reactData.startObj.error)) {
+                      // bad start or bad end
+                      updateReactData({
+                        endObj,
+                        allDay: false,
+                        timeOK: false
+                      }, true);
+                    }
+                    else if (reactData.startObj.empty) {
+                      // good end, no start
+                      let tempTime;
+                      if (options.setDuration) {
+                        tempTime = endObj.minutesSinceMidnight - options.setDuration;
+                      }
+                      else {
+                        tempTime = endObj.minutesSinceMidnight - 60;
+                      }
+                      const startObj = makeTime(`${(Math.floor(tempTime / 60) * 100)}:${(tempTime % 60)}`);
+                      updateReactData({
+                        startObj,
+                        endObj,
+                        allDay: false,
+                        timeOK: !startObj.error
+                      }, true);
+                    }
+                    else {
+                      // good start, good end
+                      updateReactData({
+                        endObj,
+                        allDay: false,
+                        timeOK: true
+                      }, true);
                     }
                   }}
-                  onBlur={handleTimeToExit}
+
                   helperText='End time'
                 />
-              </div>
+                <Radio
+                  key={`radio-allday`}
+                  id={`radio-allday`}
+                  style={{alignSelf: 'center'}}
+                  checked={reactData.allDay}
+                  value={reactData.allDay}
+                  onClick={async () => {
+                    if (reactData.allDay) {
+                      updateReactData({
+                        allDay: false,
+                        timeOK: (reactData.startObj.good && reactData.endObj.good),
+                    }, true)
+                    }
+                    else {
+                      updateReactData({
+                        allDay: true,
+                        timeOK: true,
+                      }, true)
+                    }
+                  }}
+                  disableRipple
+                  className={classes.radioButton}
+                  size='small'
+                />
+                  <Typography className={classes.radioText}>
+                    All Day?
+                  </Typography>
+              </Box>
               {!personalEvent && !isAppointment && !options.simpleForm &&
                 <Box
                   display="flex"
@@ -1138,12 +1211,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                     id='slot_interval'
                     value={slot_interval}
                     onChange={handleChangeInterval}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        handleExitInterval(e);
-                      }
-                    }}
-                    onBlur={handleExitInterval}
+                    onBlur={handleSetSlotTimes}
                     helperText='How long between appointment times? (in minutes)'
                   />
                 </div>

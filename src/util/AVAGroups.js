@@ -924,6 +924,72 @@ export async function getGroupMembers(request = {}) {
   }
 }
 
+export async function createNewGroup({ client_id, group_name, belongs_to, adminList, memberList, madeFromGroup }) {
+  cl({ 'in createNewGroup with': { client_id, group_name, belongs_to, adminList, memberList } });
+  if (!group_name) { return; }
+  let newGroupID = 'group_' + group_name.replace(' ', '').substr(0, 5) + '_' + new Date().getTime();
+  let newGroupRec = Object.assign({},
+    madeFromGroup,
+    {
+      client_id: client_id,
+      group_id: newGroupID,
+      admin_list: makeArray(adminList),
+      group_type: (madeFromGroup ? 'admin' : 'open'),
+      belongs_to: (madeFromGroup ? madeFromGroup.group_id : null),
+      name: group_name,
+      common_activities: []
+    },
+  );
+  await dbClient
+    .put({
+      Item: newGroupRec,
+      TableName: "Groups"
+    })
+    .promise()
+    .catch(error => {
+      clt({ 'Bad put to Groups - caught error is': error });
+    });
+  for (const this_member of makeArray(memberList)) {
+    await addMember(this_member, client_id, newGroupID);
+  };
+  for (const this_admin of makeArray(adminList)) {
+    var sessionRec = await dbClient
+      .get({
+        Key: { 'session_id': this_admin },
+        TableName: 'SessionsV2'
+      })
+      .promise()
+      .catch(error => {
+        clt({ 'Bad get on SessionsV2 - caught error is': error });
+      });
+    if (recordExists(sessionRec)) {
+      if (!sessionRec.Item.groups_managed) {
+        sessionRec.Item.groups_managed = [`${newGroupID} ~ ${group_name}`];
+      }
+      else {
+        sessionRec.Item.groups_managed.push(`${newGroupID} ~ ${group_name}`);
+      }
+    }
+    await dbClient
+      .update({
+        Key: { 'session_id': this_admin },
+        UpdateExpression: "set #n = :n",
+        ExpressionAttributeValues: {
+          ":n": sessionRec.Item.groups_managed
+        },
+        ExpressionAttributeNames: {
+          "#n": "groups_managed"
+        },
+        TableName: 'SessionsV2'
+      })
+      .promise()
+      .catch(error => {
+        clt({ 'Bad update on SessionsV2 - caught error is': error });
+      });
+  }
+  return newGroupID;
+}
+
 export async function addMember(pPerson, pClient, pGroup) {
   let peopleRec = await getPerson(pPerson);
   if (peopleRec?.person_id) {
@@ -1136,11 +1202,16 @@ export async function getGroupHierarchy(pClient_id, options) {
   let customRec = await getCustomizations('client_name', pClient_id);
   let nameObj = { '__TOP__': customRec.customization_value };   // this object delivers the groups name for each nameObj[group_id]
   let parentObj = { '__TOP__': '' };   // this object tells who the parent is for each parentObj[group_id]
+  // pre-first pass - set group_type to admin or parent
+ // groupRec.Items.forEach(this_group, gX) { 
+
+ //  }
+
   // first pass - all admin level groups are added to their parent
   for (let g = 0; g < groupRec.Items.length; g++) {
     if (!groupRec.Items[g].belongs_to) { groupRec.Items[g].belongs_to = '__TOP__'; }
     let thisGroup = groupRec.Items[g];
-    if (thisGroup.group_type === 'admin') {
+    if ((thisGroup.group_type === 'admin') || (thisGroup.group_type === 'parent')) {
       if (!hierarchy.hasOwnProperty(thisGroup.belongs_to)) {
         hierarchy[thisGroup.belongs_to] = {};
       }
@@ -1149,10 +1220,11 @@ export async function getGroupHierarchy(pClient_id, options) {
       parentObj[thisGroup.group_id] = thisGroup.belongs_to;
       let cKey = `${pClient_id}//${thisGroup.group_id}`;
       groupRecs[cKey] = thisGroup;
-      groupRec.Items.splice(g, 1);
-      g--;
+ //     groupRec.Items.splice(g, 1);
+ //     g--;
     }
   }
+  // hierarchy now contains every group with children
   // we've passed through every record returned by the query above (get all 'parent' and 'admin' records in the client)
   // since we ignore parents and delete admins, what's left behind is an array of all the parent records
   // loop through these (but no more than 20 times as a safety valve against a run-away loop)

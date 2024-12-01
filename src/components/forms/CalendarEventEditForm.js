@@ -3,15 +3,22 @@ import { useSnackbar } from 'notistack';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getSlotList, writeSlot, makeSlotName, myAvailability, printOccurrenceSheet } from '../../util/AVACalendars';
 import { getMemberList } from '../../util/AVAGroups';
-import { cl, makeArray, dbClient, isEmpty, deepCopy, titleCase } from '../../util/AVAUtilities';
+import { cl, makeArray, dbClient, isEmpty, deepCopy, titleCase, isMobile, recordExists } from '../../util/AVAUtilities';
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
 import { sendMessages } from '../../util/AVAMessages';
 import { putServiceRequest } from '../../util/AVAServiceRequest';
 import MakeMessage from './MakeMessage';
+import FormFillB from './FormFillB';
+
+import { useGeolocated } from "react-geolocated";
+import { SearchPlaceIndexForPositionCommand, LocationClient } from '@aws-sdk/client-location';
+import { withAPIKey } from '@aws/amazon-location-utilities-auth-helper';
 
 import List from '@material-ui/core/List';
 import Button from '@material-ui/core/Button';
 import Tooltip from '@material-ui/core/Tooltip';
+import AlarmAddIcon from '@material-ui/icons/AlarmAdd';
+import TimerOffIcon from '@material-ui/icons/TimerOff';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -24,6 +31,8 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import PrintIcon from '@material-ui/icons/Print';
 import StorageOutlined from '@material-ui/icons/StorageOutlined';
 import SendIcon from '@material-ui/icons/Send';
+import AssignmentTurnedInIcon from '@material-ui/icons/AssignmentTurnedIn';
+import RestoreIcon from '@material-ui/icons/Restore';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 import PersonAddDisabledIcon from '@material-ui/icons/PersonAddDisabled';
 import CloseIcon from '@material-ui/icons/HighlightOff';
@@ -90,7 +99,7 @@ const useStyles = makeStyles(theme => ({
   buttonArea: {
     justifyContent: 'center',
     marginTop: theme.spacing(1),
-    marginBottom: theme.spacing(1)
+    marginBottom: theme.spacing(1),
   },
   idText: {
     display: 'inline',
@@ -138,6 +147,7 @@ const useStyles = makeStyles(theme => ({
   },
   clientPopUp: {
     borderRadius: '30px 30px 30px 30px',
+    margin: '10px'
   },
   clientPopUpWithPadding: {
     borderRadius: '30px 30px 30px 30px',
@@ -146,10 +156,10 @@ const useStyles = makeStyles(theme => ({
   messageArea: {
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: theme.spacing(2),
+    marginTop: theme.spacing(0.5),
     marginBottom: theme.spacing(0),
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
+    marginLeft: theme.spacing(0.5),
+    marginRight: theme.spacing(0.5),
   },
   popUpMenuRow: {
     marginLeft: theme.spacing(1),
@@ -224,7 +234,8 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
     cancelPending: false,
     numberOfOwnedSlots: 0,
     waitList: pOccData.wait_list || [],
-    editWaitList: false
+    editWaitList: false,
+    editForm: false
   });
 
   const updateReactData = (newData, force = false) => {
@@ -236,6 +247,20 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
   };
 
   const [anchorEl, setAnchorEl] = React.useState(null);
+
+  const {
+    coords,
+    getPosition,
+    isGeolocationAvailable,
+    isGeolocationEnabled,
+    positionError,
+  } = useGeolocated({
+    positionOptions: {
+      enableHighAccuracy: true,
+    },
+    userDecisionTimeout: 5000,
+    watchLocationPermissionChange: true,
+  });
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
@@ -334,6 +359,71 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
     }, false);
   };
 
+  async function getDoc(this_doc) {
+    let queryObj = {
+      KeyConditionExpression: 'client_id = :c and document_id = :dID',
+      ScanIndexForward: false,
+      Limit: 1,
+      ExpressionAttributeValues: {
+        ':c': state.session.client_id,
+        ':dID': this_doc
+      }
+    };
+    queryObj.TableName = 'CompletedDocuments';
+    let queryResult = await dbClient
+      .query(queryObj)
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          cl(`Security Violation or no Internet Connection`);
+        }
+        cl(`Error reading ${queryObj.TableName} id ${error}`);
+      });
+    if (recordExists(queryResult)) {
+      return queryResult.Items[0];
+    }
+    queryObj.TableName = 'DocumentsInProcess';
+    queryResult = await dbClient
+      .query(queryObj)
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          cl(`Security Violation or no Internet Connection`);
+        }
+        cl(`Error reading ${queryObj.TableName} id ${error}`);
+      });
+    if (recordExists(queryResult)) {
+      return queryResult.Items[0];
+    }
+    queryObj.TableName = 'DocumentsAssigned';
+    queryResult = await dbClient
+      .query(queryObj)
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          cl(`Security Violation or no Internet Connection`);
+        }
+        cl(`Error reading ${queryObj.TableName} id ${error}`);
+      });
+    if (recordExists(queryResult)) {
+      return queryResult.Items[0];
+    }
+    queryObj.TableName = 'Documents';
+    queryResult = await dbClient
+      .query(queryObj)
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          cl(`Security Violation or no Internet Connection`);
+        }
+        cl(`Error reading ${queryObj.TableName} id ${error}`);
+      });
+    if (recordExists(queryResult)) {
+      return queryResult.Items[0];
+    }
+    return null;
+  }
+
   const handlePrint = async (pEvent, pType) => {
     await printOccurrenceSheet({
       client_id: pClient,
@@ -400,6 +490,98 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
     return slotList;
   };
 
+  const getMarker = async () => {
+    getPosition();
+    let newText;
+    if (!isEmpty(positionError)) {
+      newText = `Location Error ${JSON.stringify(positionError)}`;
+    }
+    else if (!isGeolocationAvailable) {
+      newText = "Device doesn't support location ID";
+    }
+    else if (!isGeolocationEnabled) {
+      newText = `User blocked location ID`;
+    }
+    else {
+      newText = await reverseGeo({
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        accuracy: coords.accuracy
+      });
+    }
+    return {
+      location: newText,
+      timestamp: new Date().getTime()
+    };
+  };
+
+  const reverseGeo = async ({ latitude, longitude, accuracy }) => {
+    const authHelper =
+      await withAPIKey("v1.public.eyJqdGkiOiJiOTFjN2E0My1mZTNlLTQxMzctYTIyMy00YWI2YTE2NjUxZDUifToPc5592CrSHhW1JSbATtnjGoJDzqJYD-7AK7ExQpcAtmfRb-ofIy9TciExqtsveXreYKYPBoGKj8IIpESh8jhu8WcHmPHzYyPwjdMLEj2oc78daTQeGqw41QI-okSYoUMVCRBwO9eGiLsU2adjFXwSNlcs85lz_XAaYLAAKZODPOFTKk4sgI2kJ5queq9aHj4HjOOJfPwWmJZAqP-oTs2TLp-N95yBVllyU7-_6S3QXOI97rSAy5ABj-7fJMZTtXRrb6zw6sv8pJPKjZegaeM8V2oP4fQBMC4bC746aYaNT6SiVtTzIU8tdmrYgHmgkzbSxw_VZSp-UF8_OQIiNwQ.ZWU0ZWIzMTktMWRhNi00Mzg0LTllMzYtNzlmMDU3MjRmYTkx");
+    const locationClient = new LocationClient({
+      region: "us-east-1",
+      ...authHelper.getLocationClientConfig() // sets up the Location client to use the API Key defined above
+    });
+    let response = await locationClient.send(new SearchPlaceIndexForPositionCommand({
+      IndexName: "explore.place.Here", // Place index resource to use
+      Position: [longitude, latitude], // position to search near
+      MaxResults: 3 // number of results to return
+    }));
+    if (!response || !response.Results || (response.Results.length === 0)) {
+      return `at ${formatDegrees(latitude, false)}, ${formatDegrees(longitude, true)}`;
+    }
+    else {
+      let selectedResponse = response.Results.find(result => {
+        return (result.Place.AddressNumber);
+      });
+      if (!selectedResponse) {
+        selectedResponse = response.Results[0];
+      }
+      let textResponse = 'At';
+      let netAccuracy = selectedResponse.Distance + accuracy;
+      if (netAccuracy > 10) {
+        let calcAccuracyFeet = netAccuracy * 3.28;
+        if (calcAccuracyFeet > 1000) {
+          textResponse = `Within ${Math.round((calcAccuracyFeet / 5280) * 10) / 10} miles of`;
+        }
+        else {
+          textResponse = `Within ${Math.round(calcAccuracyFeet)} feet of`;
+        }
+      }
+      textResponse += ` ${selectedResponse.Place.Label}`;
+      return textResponse;
+    }
+  };
+
+  const getHistoryTimes = (this_item) => {
+    let currentHistory = this_item.slotData.status.history;
+    let foundTimes = ['no Value', 'no Value'];
+    if (!currentHistory || isEmpty(currentHistory)) {
+      return foundTimes;
+    }
+    currentHistory.some(h => {
+      if (h.action === 'Checked out') {
+        foundTimes[1] = makeDate(h.timestamp).timeOnly;
+      }
+      else if (h.action === 'Checked in') {
+        foundTimes[0] = makeDate(h.timestamp).timeOnly;
+        return true;
+      }
+      return false;
+    });
+    return foundTimes;
+  };
+
+  const getDirection = (degrees, isLongitude) =>
+    degrees > 0 ? (isLongitude ? "E" : "N") : isLongitude ? "W" : "S";
+
+  const formatDegrees = (degrees, isLongitude) =>
+    `${0 | degrees}° ${0 | (((degrees < 0 ? (degrees = -degrees) : degrees) % 1) * 60)
+    }' ${0 | (((degrees * 60) % 1) * 60)}" ${getDirection(
+      degrees,
+      isLongitude,
+    )}`;
+
   const handleUpdateWaitList = async (waitList) => {
     let qQ = {
       Key: {
@@ -416,6 +598,22 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
       .catch(error => {
         cl(`caught error updating Calendar for ${qQ.Key.event_key}; error is: `, error);
       });
+  };
+
+  const determineMode = (docRec) => {
+    if (docRec.hasOwnProperty('incomplete')) {
+      if (typeof docRec.incomplete === 'boolean') {
+        return 'incomplete';
+      }
+      else if ((docRec.incomplete === 'true')
+        || (docRec.incomplete === 'incomplete')) {
+        return 'incomplete';
+      }
+      else if (docRec.incomplete === 'not_started') {
+        return 'not_started';
+      }
+    }
+    return 'view';
   };
 
   const handleAllocateSlot = async (body) => {
@@ -771,8 +969,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
     <Dialog
       open={true || forceRedisplay}
       position={'relative'}
-      classes={{ paper: classes.clientPopUpWithPadding }}
-      fullWidth
+      classes={{ paper: classes.clientPopUp }}
       p={2}
     >
       <React.Fragment>
@@ -802,7 +999,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
             </Typography>
             {pOccData.date &&
               <Typography className={classes.standardIndent} style={AVATextStyle({ margin: { left: 1, right: 1 } })} >
-                {`${makeDate(pOccData.date).relative}${(pOccData.time$ && (pOccData.time$.trim() !== '')) ? ' - ' + pOccData.time$ : ''}`}
+                {`${makeDate(pOccData.date).relative}${(!isEmpty(pOccData.time)) ? ' - ' + pOccData.time$ : ''}`}
               </Typography>
             }
             {pOccData.location &&
@@ -824,9 +1021,10 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
             m={2}
             aria-controls='hidden-menu'
             aria-haspopup='true'
-            minWidth={50}
-            minHeight={50}
-            maxHeight={50}
+            minWidth={isMobile ? 30 : 50}
+            minHeight={isMobile ? 30 : 50}
+            maxHeight={isMobile ? 30 : 50}
+            alignSelf={'flex-start'}
             onClick={(event) => {
               handleClick(event);
               updateReactData({
@@ -1047,37 +1245,76 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                   {isOwned(this_item.slotData) &&
                     <Box display='flex' width='100%'
                       mt={(this_item.slotData?.slot_description ? 1 : 0)}
-                      flexDirection='row' justifyContent='space-between' alignItems='center'
+                      flexDirection='row'
+                      flexWrap='wrap'
+                      justifyContent='space-between' alignItems='center'
                     >
                       <Box display='flex' mr={0} flexDirection='row' justifyContent='flex-start' alignItems='center'>
                         {/* Mark an item - Radio button */}
-                        {isEventOwner &&
-                          <Box width={40} display='flex' mr={0} flexDirection='row' justifyContent='center' alignItems='center'>
-                            <Tooltip mr={0} ml={0} title={`Mark ${this_item.marked ? 'not ' : ''}attended`} >
-                              <IconButton mr={0} ml={0} color='inherit'
-                                onClick={async () => {
-                                  await dbClient
-                                    .update({
-                                      Key: {
-                                        "client": pClient,
-                                        "event_key": `${pEventCode}#${this_item.slotData.id}`
-                                      },
-                                      UpdateExpression: 'set marked = :m',
-                                      ExpressionAttributeValues: { ':m': !this_item.marked },
-                                      TableName: "Calendar"
-                                    })
-                                    .promise()
-                                    .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
-                                  eventSlotList[index].marked = !this_item.marked;
-                                  setEventSlotList(eventSlotList);
-                                  setForceRedisplay(!forceRedisplay);
-                                }}
-                              >
-                                {this_item.marked ? <RadioButtonCheckedIcon mr={0} ml={0} /> : <RadioButtonUncheckedIcon mr={0} ml={0} />}
-                              </IconButton>
-                            </Tooltip>
-                          </Box>
-                        }
+
+                        <Box minWidth={40} maxWidth={40} display='flex' mr={0} flexDirection='column' justifyContent='center' alignItems='center'>
+                          {(isEventOwner || isSlotOwner(this_item.slotData)) && <Tooltip mr={0} ml={0} title={`Mark ${this_item.marked ? 'not ' : ''}attended`} >
+                            <IconButton mr={0} ml={0}
+                              onClick={async () => {
+                                let { timestamp, location } = await getMarker();
+                                let currentHistory = this_item.slotData.slotData.status.history;
+                                if (!currentHistory || isEmpty(currentHistory)) {
+                                  currentHistory = [];
+                                }
+                                currentHistory.unshift({
+                                  timestamp,
+                                  user: state.session.patient_id,
+                                  action: `Checked ${this_item.marked ? 'out' : 'in'}`,
+                                  location
+                                });
+                                await dbClient
+                                  .update({
+                                    Key: {
+                                      "client": pClient,
+                                      "event_key": `${pEventCode}#${this_item.slotData.id}`
+                                    },
+                                    UpdateExpression: 'set marked = :m, #sd.#st.#h = :h, check_in = :t',
+                                    ExpressionAttributeValues: {
+                                      ':m': !this_item.marked,
+                                      ':h': currentHistory,
+                                      ':t': (this_item.marked ? '' : timestamp)
+                                    },
+                                    ExpressionAttributeNames: {
+                                      '#sd': 'slotData',
+                                      '#st': 'status',
+                                      '#h': 'history'
+                                    },
+                                    TableName: "Calendar"
+                                  })
+                                  .promise()
+                                  .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
+                                if (this_item.marked) {
+                                  eventSlotList[index].marked = false;
+                                  eventSlotList[index].check_in = null;
+                                }
+                                else {
+                                  eventSlotList[index].marked = true;
+                                  eventSlotList[index].check_in = timestamp;
+                                }
+                                setEventSlotList(eventSlotList);
+                                setForceRedisplay(!forceRedisplay);
+                              }}
+                            >
+                              {this_item.marked
+                                ? ((isSlotOwner(this_item.slotData)
+                                  || (this_item.slotData.documents && (this_item.slotData.documents.length > 0)))
+                                  ? <TimerOffIcon mr={0} ml={0} />
+                                  : <RadioButtonCheckedIcon mr={0} ml={0} />
+                                )
+                                : ((isSlotOwner(this_item.slotData)
+                                  || (this_item.slotData.documents && (this_item.slotData.documents.length > 0)))
+                                  ? <AlarmAddIcon mr={0} ml={0} />
+                                  : <RadioButtonUncheckedIcon mr={0} ml={0} />
+                                )
+                              }
+                            </IconButton>
+                          </Tooltip>}
+                        </Box>
                         {/* Image and Name */}
                         {(!(state.user.account_class
                           && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
@@ -1103,6 +1340,20 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                             ) ? 'Reserved' : this_item.slotData.display_name
                             }
                           </Typography>
+                          {this_item.marked
+                            && (isSlotOwner(this_item.slotData) || (this_item.slotData.documents && (this_item.slotData.documents.length > 0)))
+                            && (this_item.check_in || this_item.slotData.check_in)
+                            &&
+                            <Typography style={AVATextStyle({
+                              size: 0.5,
+                              align: 'left',
+                              color: 'red',
+                              marginBottom: '3px'
+                            })} className={classes.standard}
+                            >
+                              {`Checked in since ${makeDate(this_item.check_in || this_item.slotData.check_in).date.toLocaleString([], { hour: 'numeric', minute: '2-digit' })}`}
+                            </Typography>
+                          }
                           {/* There are notes and I am the event or slot owner 
                                 OR You've asked to edit notes (which you only could do if you are the owner) */}
                           {((this_item.slotData.notes && (isEventOwner || isSlotOwner(this_item.slotData))) || (editNoteNumber === index)) &&
@@ -1146,51 +1397,123 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                               {pOccData.notes_required}
                             </Typography>
                           }
-                        </Box>
-                      </Box>
-                      {(isEventOwner || isSlotOwner(this_item.slotData)) &&
-                        (editNoteNumber === -1) &&
-                        <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
-                          {isEventOwner && !isSlotOwner(this_item.slotData) &&
-                            <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
-                              <Tooltip title={`Send a message to ${this_item.slotData.display_name}`} >
-                                <SendIcon
-                                  onClick={() => {
-                                    updateReactData({
-                                      promptForMessage: true,
-                                      messageType: '',
-                                      recipient: (`${this_item.slotData.display_name}:` + this_item.slotData.owner)
-                                    }, true);
-                                  }}
-                                />
-                              </Tooltip>
+
+                          {(isEventOwner || isSlotOwner(this_item.slotData)) &&
+                            (editNoteNumber === -1) &&
+                            <Box display='flex' mr={2} flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                              {(isEventOwner || isSlotOwner(this_item.slotData)) &&
+                                (this_item.slotData.documents) &&
+                                (this_item.slotData.documents.length > 0) &&
+                                <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
+                                  <Tooltip title={`View documents`} >
+                                    <AssignmentTurnedInIcon
+                                      onClick={async () => {
+                                        if (this_item.slotData.documents.length > 1) {
+                                          let docRecs = [];
+                                          for (const this_doc of this_item.slotData.documents) {
+                                            let dR = await getDoc(this_doc);
+                                            if (!isEmpty(dR)) {
+                                              docRecs.push(dR);
+                                            }
+                                          }
+                                          if (docRecs.length > 1) {
+                                            updateReactData({
+                                              selectForm: true,
+                                              selectedDoc_id: docRecs,
+                                            }, true);
+                                            return;
+                                          }
+                                          else if (docRecs.length === 1) {
+                                            updateReactData({
+                                              editForm: true,
+                                              selectedDoc_id: docRecs[0].document_id,
+                                              selectedPerson_id: docRecs[0].person_id,
+                                              selectedDocMode: determineMode(docRecs[0])
+                                            }, true);
+                                          }
+                                        }
+                                        else {
+                                          let docRec = await getDoc(this_item.slotData.documents[0]);
+                                          if (!isEmpty(docRec)) {
+                                            updateReactData({
+                                              editForm: true,
+                                              selectedDoc_id: this_item.slotData.documents[0],
+                                              selectedPerson_id: docRec.person_id,
+                                              selectedDocMode: determineMode(docRec)
+                                            }, true);
+                                          }
+                                        }
+                                      }}
+                                    />
+                                  </Tooltip>
+                                </Box>
+                              }
+                              {isEventOwner && !isSlotOwner(this_item.slotData) &&
+                                <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
+                                  <Tooltip title={`Send a message to ${this_item.slotData.display_name}`} >
+                                    <SendIcon
+                                      onClick={() => {
+                                        updateReactData({
+                                          promptForMessage: true,
+                                          messageType: '',
+                                          recipient: (`${this_item.slotData.display_name}:` + this_item.slotData.owner)
+                                        }, true);
+                                      }}
+                                    />
+                                  </Tooltip>
+                                </Box>
+                              }
+                              <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
+                                <Tooltip title={`${this_item.slotData.notes ? 'Update' : 'Add a'} note...`}>
+                                  <EditIcon
+                                    onClick={() => {
+                                      setEditNoteNumber(index);
+                                    }}
+                                  />
+                                </Tooltip>
+                              </Box>
+                              {(isEventOwner || !pViewOnly) &&
+                                <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
+                                  <Tooltip title={`Remove ${isEventOwner ? this_item.slotData.display_name : 'me'}`}>
+                                    <PersonAddDisabledIcon
+                                      onClick={async () => {
+                                        await handleAllocateSlot({
+                                          person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
+                                          slot: this_item.slotData.id,
+                                          release: true,
+                                          index: (index || 0)
+                                        });
+                                      }}
+                                    />
+                                  </Tooltip>
+                                </Box>
+                              }
+                              {(isEventOwner || !pViewOnly) &&
+                                (this_item.slotData.documents && (this_item.slotData.documents.length > 0)) &&
+                                <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
+                                  <Tooltip title={`Update clock in/out times`}>
+                                    <RestoreIcon
+                                      onClick={async () => {
+                                        updateReactData({
+                                          editTimeEntries: Object.assign({},
+                                            this_item.slotData,
+                                            {
+                                              index,
+                                              title: `${pOccData.description} ${makeDate(pOccData.date).relative}${(!isEmpty(pOccData.time)) ? ' - ' + pOccData.time$ : ''}`,
+                                              appointmentDateTimeStamp: makeDate(pOccData.date, { noTime: true }).timestamp
+                                            }
+                                          )
+                                        }, true);
+                                      }}
+                                    />
+                                  </Tooltip>
+                                </Box>
+                              }
                             </Box>
                           }
-                          <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
-                            <Tooltip title={`${this_item.slotData.notes ? 'Update' : 'Add a'} note...`}>
-                              <EditIcon
-                                onClick={() => {
-                                  setEditNoteNumber(index);
-                                }}
-                              />
-                            </Tooltip>
-                          </Box>
-                          {(isEventOwner || !pViewOnly) &&
-                            <Tooltip title={`Remove ${isEventOwner ? this_item.slotData.display_name : 'me'}`}>
-                              <PersonAddDisabledIcon
-                                onClick={async () => {
-                                  await handleAllocateSlot({
-                                    person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
-                                    slot: this_item.slotData.id,
-                                    release: true,
-                                    index: (index || 0)
-                                  });
-                                }}
-                              />
-                            </Tooltip>
-                          }
                         </Box>
-                      }
+                      </Box>
+
                     </Box>
                   }
                   {!isOwned(this_item.slotData) && (isEventOwner || !pViewOnly) &&
@@ -1237,6 +1560,46 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
             }
           </List>
         </Paper>
+        {reactData.editForm &&
+          <FormFillB
+            request={{
+              document_id: reactData.selectedDoc_id,
+              person_id: reactData.selectedPerson_id,
+              mode: reactData.selectedDocMode,
+            }}
+            onClose={() => {
+              updateReactData({
+                editForm: false
+              }, true);
+            }}
+          />
+        }
+        {reactData.selectForm &&
+          <AVATextInput
+            titleText='Which form?'
+            buttonText='Continue'
+            promptText={reactData.selectedDoc_id.map(d => {
+              return `[checkbox]${d.title || d.document_title}`;
+            })}
+            options={{ selectOne: true }}
+            onCancel={() => {
+              updateReactData({
+                selectForm: false
+              }, true);
+            }}
+            onSave={async (selectedForm) => {
+              let ndx = selectedForm.findIndex(f => f === 'checked');
+              let foundDoc = reactData.selectedDoc_id[ndx];
+              updateReactData({
+                selectForm: false,
+                editForm: true,
+                selectedDoc_id: foundDoc.document_id,
+                selectedPerson_id: foundDoc.pertains_to || foundDoc.person_id || state.session.patient_id,
+                selectedDocMode: determineMode(foundDoc)
+              }, true);
+            }}
+          />
+        }
         {selectNewSlotOwner &&
           <PersonFilter
             prompt={`Who are you adding?`}
@@ -1374,7 +1737,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
               pOccData.description,
               pOccData.location || '',
               (pOccData.date ? makeDate(pOccData.date).absolute : null),
-              (pOccData.date ? pOccData.time$ : null)
+              (isEmpty(pOccData.time) ? null : pOccData.time$)
             ]}
             onCancel={() => {
               reactData.editInfoErrorList = [];
@@ -1384,7 +1747,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
             }}
             onSave={async (updatedValues) => {
               reactData.editInfoErrorList = [];
-              let updatedDate = makeDate(updatedValues[2]);
+              let updatedDate = makeDate(updatedValues[2], { noTime: true });
               let reactUpdates = {};
               if (updatedDate.error) {
                 reactUpdates.editInfoErrorList = ['', '', 'Please enter a valid date'];
@@ -1393,7 +1756,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                 reactUpdates.editEventInfo = false;
                 let newDescription = ((pOccData.description !== updatedValues[0]) ? updatedValues[0] : null);
                 let newLocation = ((pOccData.location !== updatedValues[1]) ? updatedValues[1] : null);
-                let OGDate = (pOccData.date ? makeDate(pOccData.date) : { error: true });
+                let OGDate = (pOccData.date ? makeDate(pOccData.date, { noTime: true }) : { error: true });
                 let newDate = ((OGDate.numeric$ !== updatedDate.numeric$) ? updatedDate.numeric$ : null);
                 let newTime = ((pOccData.time$ !== updatedValues[3]) ? updatedValues[3] : null);
                 if (newDescription || newLocation || newDate || newTime) {
@@ -1420,6 +1783,89 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                 }
               }
               updateReactData(reactUpdates, true);
+            }}
+          />
+        }
+        {reactData.editTimeEntries &&
+          <AVATextInput
+            titleText={reactData.editTimeEntries.title}
+            errorText={reactData.editTimeEntries.errors || []}
+            promptText={['Clock in', 'Clock Out', 'Notes']}
+            valueText={getHistoryTimes(reactData.editTimeEntries)}
+            onCancel={() => {
+              reactData.editInfoErrorList = [];
+              reactData.editTimeEntries = false;
+              setReactData(reactData);
+              setForceRedisplay(!forceRedisplay);
+            }}
+            onSave={async ([newIn, newOut, newNote]) => {
+              let errorFree = true;
+              let currentHistory = reactData.editTimeEntries.slotData.status.history;
+              const this_userName = await makeName(state.session.user_id);
+              const nowTime = makeDate(new Date());
+              let inTime = makeTime(newIn);
+              if (inTime.good) {
+                currentHistory.unshift({
+                  timestamp: reactData.editTimeEntries.appointmentDateTimeStamp + (inTime.minutesSinceMidnight * 60000),
+                  user: reactData.editTimeEntries.slotData.owner,
+                  action: `Checked in`,
+                  location: `by ${this_userName} ${nowTime.oaDate}`
+                });
+              }
+              else {
+                errorFree = false;
+              }
+              let outTime = makeTime(newOut);
+              if (outTime.good) {
+                if (outTime.minutesSinceMidnight < inTime.minutesSinceMidnight) {
+                  outTime.minutesSinceMidnight += 1440;
+                }
+                currentHistory.unshift({
+                  timestamp: reactData.editTimeEntries.appointmentDateTimeStamp + (outTime.minutesSinceMidnight * 60000),
+                  user: reactData.editTimeEntries.slotData.owner,
+                  action: `Checked out`,
+                  location: `by ${this_userName} ${nowTime.oaDate}`,
+                  note: newNote
+                });
+              }
+              else {
+                errorFree = false;
+              }
+              if (errorFree) {
+                await dbClient
+                  .update({
+                    Key: {
+                      "client": pClient,
+                      "event_key": `${pEventCode}#${reactData.editTimeEntries.id}`
+                    },
+                    UpdateExpression: 'set #sd.#st.#h = :h, check_in = :null',
+                    ExpressionAttributeValues: {
+                      ':h': currentHistory,
+                      ':null': ''
+                    },
+                    ExpressionAttributeNames: {
+                      '#sd': 'slotData',
+                      '#st': 'status',
+                      '#h': 'history'
+                    },
+                    TableName: "Calendar"
+                  })
+                  .promise()
+                  .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
+                eventSlotList[reactData.editTimeEntries.index].check_in = (newOut ? null : newIn.timestamp);
+                eventSlotList[reactData.editTimeEntries.index].marked = (newOut ? false : (newIn ? true : false));
+                setEventSlotList(eventSlotList);
+                reactData.editTimeEntries = false;
+              }
+              else {
+                reactData.editTimeEntries.errors = [
+                  (inTime.good ? '' : 'Clock in time is invalid'),
+                  (outTime.good ? '' : 'Clock out time is invalid'),
+                ];
+              }
+              updateReactData({
+                editTimeEntries: reactData.editTimeEntries
+              }, true);
             }}
           />
         }
@@ -1460,7 +1906,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
               reactData.cancelPending = false;
               setReactData(reactData);
               setForceRedisplay(!forceRedisplay);
-              onReset({event_cancelled: true});
+              onReset({ event_cancelled: true });
             }}
             allowCancel={true}
           />

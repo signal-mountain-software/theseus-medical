@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { getGroup, getRole, getGroupsResponsibleFor } from '../../util/AVAGroups';
+import { getGroup, getRole } from '../../util/AVAGroups';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -78,7 +78,8 @@ export default ({ options, onClose, onAbort }) => {
     groupRec: {},
     progressMessage: 'Building Group List',
     building: 'not started',
-    updatesMade: false
+    updatesMade: false,
+    newGroups: {}
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -127,9 +128,17 @@ export default ({ options, onClose, onAbort }) => {
           peopleList = peopleList.concat(thisList);
         }
         else {
+          let newPeople = [];
+          if (reactData.newGroups) { 
+            for (const this_group of groupList[this_client]) {
+              if (reactData.newGroups.hasOwnProperty(this_group)) {
+                newPeople.push(...reactData.newGroups[this_group]);
+              }
+            }
+          }
           peopleList = peopleList.concat(state.accessList?.[this_client]?.list || ((this_client === state.session.client_id) ? state.session.last_state.list : [])).filter((p, pX) => {
             return makeArray(p.groups).some(g => {
-              return groupList[this_client].includes(g);
+              return groupList[this_client].includes(g) || newPeople.includes(p.person_id);
             });
           });
         }
@@ -222,27 +231,6 @@ export default ({ options, onClose, onAbort }) => {
     return response;
   };
 
-  const getGroupsManagedObject = async (pClient, pPatient, pGroupList) => {
-    let [gList,] = await getGroupsResponsibleFor(pClient, pPatient);
-    // sort by group name
-    let gSort = [];
-    let gObj = {};
-    for (let gID in gList) {
-      gSort.push(gList[gID].group_name);
-      gObj[gList[gID].group_name] = gID;
-    }
-    gSort.sort();
-    let gManagedObj = {};
-    gSort.forEach(g => {
-      let gData = gList[gObj[g]];
-      gManagedObj[gObj[g]] = gData;
-    });
-    updateReactData({
-      groupsManagedObject: gManagedObj
-    }, true);
-    return gManagedObj;
-  };
-
   const handleAbort = async (updatesMade) => {
     onClose(updatesMade);
   };
@@ -327,7 +315,7 @@ export default ({ options, onClose, onAbort }) => {
                 pRole: reactData.groupRole,
                 pStyle: showList
               })}
-              onReset={(updatesMade) => {
+              onReset={async ({ updatesMade, newGroupID, newGroupName, newMemberList }) => {
                 if (pGroup_id && (showList !== 'select')) {
                   handleAbort(updatesMade);
                 }
@@ -338,6 +326,29 @@ export default ({ options, onClose, onAbort }) => {
                   };
                   if (updatesMade) {
                     reactUpdater.updatesMade = true;
+                    if (newGroupID) {
+                      reactData.newGroups[newGroupID] = newMemberList;
+                      let foundIndex = state.groups.adminHierarchy.findIndex(soughtGroup => {
+                        return (soughtGroup.id === reactData.groupID);
+                      });
+                      let this_index = foundIndex + 1;
+                      state.groups.adminHierarchy.splice(this_index, 0, {
+                        belongs_to: reactData.groupID,
+                        id: newGroupID,
+                        level: state.groups.adminHierarchy[foundIndex].level + 1,
+                        name: newGroupName,
+                        selectable: false
+                      });
+                      let groupList = makeArray(pGroup_id, /[~,;]/);
+                      groupList.push(newGroupID);
+                      let gMObj = await prepareGroupObject(groupList);
+                      updateReactData({
+                        groupsManagedObject: gMObj,
+                        showGroupSelect: true,
+                        selectedIndex: foundIndex
+                      }, true);
+                    }
+                    setForceRedisplay(!forceRedisplay);
                   }
                   updateReactData(reactUpdater, true);
                 }
@@ -371,11 +382,24 @@ export default ({ options, onClose, onAbort }) => {
               // }
               setForceRedisplay(!forceRedisplay);
             }}
-            onRefresh={async () => {
-              updateReactData({
-                showGroupSelect: false
-              }, true);
-              await getGroupsManagedObject(pSession.client_id, pSession.patient_id, reactData.groupList);
+            onRefresh={async ({ newGroupID, newGroupName }) => {
+              if (newGroupID) {
+                let newGroupObj = {
+                  group_name: newGroupName,
+                  group_id: newGroupID,
+                  role: 'responsible'
+                };
+                reactData.groupsManagedObject[newGroupID] = newGroupObj;
+                state.groups.publicGroups[newGroupID] = newGroupObj;
+                updateReactData({
+                  groupsManagedObject: reactData.groupsManagedObject,
+                  showGroupSelect: true,
+                  selectedIndex: Object.keys(reactData.groupsManagedObject).length - 1
+                }, true);
+                let groupList = makeArray(pGroup_id, /[~,;]/);
+                groupList.push(newGroupID);
+                await prepareGroupObject(groupList);
+              }
               setForceRedisplay(!forceRedisplay);
             }}
           >

@@ -15,7 +15,6 @@ import { SearchPlaceIndexForPositionCommand, LocationClient } from '@aws-sdk/cli
 import { withAPIKey } from '@aws/amazon-location-utilities-auth-helper';
 
 import Box from '@material-ui/core/Box';
-import CloseIcon from '@material-ui/icons/HighlightOff';
 import { Dialog, DialogContent } from '@material-ui/core';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -91,9 +90,11 @@ const useStyles = makeStyles(theme => ({
   },
   clientBackground: {
     borderRadius: '30px',
-    maxWidth: '90%',
-    paddingLeft: '16px',
-    paddingRight: '16px',
+    maxWidth: '95%',
+    paddingLeft: '4px',
+    paddingRight: '4px',
+    marginLeft: '4px',
+    marginRight: '4px'
   },
   reject: {
     backgroundColor: theme.palette.reject[theme.palette.type],
@@ -476,7 +477,13 @@ export default ({ request = {}, onClose }) => {
           }
           else {
             if (isObject(reactData.document[default_ref][this_field])) {
-              defaultText = reactData.document[default_ref][this_field].textDescription;
+              if (reactData.document[default_ref][this_field].hasOwnProperty('timestamp')) {
+                let readableTime = makeDate(reactData.document[default_ref][this_field].timestamp).absolute;
+                defaultText = `Time: ${readableTime};  Info: ${reactData.document[default_ref][this_field].textDescription}`
+              }
+              else {
+                defaultText = reactData.document[default_ref][this_field].textDescription;
+              }
             }
             else {
               defaultText = reactData.document[default_ref][this_field];
@@ -1994,7 +2001,6 @@ export default ({ request = {}, onClose }) => {
                   }, true);
                 }
               }}
-              startIcon={<CloseIcon fontSize="small" />}
             >
               {'Exit'}
             </Button>

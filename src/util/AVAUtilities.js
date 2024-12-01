@@ -96,7 +96,11 @@ export async function getLocalWeather(client_weather = {
     return `Forecast for ${client_weather.place_name} not available at this time`;
   }
   else {
-    return `Forecast for ${client_weather.place_name} ${weather.properties.periods[0].name.toLowerCase()} - ${weather.properties.periods[0].detailedForecast}`;
+    let periodWords = weather.properties.periods[0].name;
+    if (periodWords.startsWith('this') || periodWords.startsWith('today')) {
+      periodWords = `t${periodWords.slice(1)}`;
+    }
+    return `Forecast for ${client_weather.place_name} ${periodWords} - ${weather.properties.periods[0].detailedForecast}`;
   };
 }
 
@@ -149,9 +153,10 @@ export async function getMarqueeMessage(client_id, options = {}) {
       response.push({
         style: sRec.style,
         message: sRec.message,
-        criticalMessage: sRec.criticalMessage
+        criticalMessage: sRec.criticalMessage,
+        priorityMessage: sRec.priorityMessage
       });
-      if (sRec.criticalMessage) {
+      if ((sRec.criticalMessage) || (sRec.priorityMessage)) {
         urgentMessage = sRec.message;
       }
     });
@@ -333,6 +338,58 @@ export function makeArray(input, delimiter = null) {
   else if (typeof input === 'object') {
     // response = Object.keys(input);
     response.push(input);
+  }
+  else if (typeof input === 'number') {
+    response.push(input);
+  }
+  else if ((input.charAt(0) === '{') && (input.charAt(input.length - 1) === '}')) {
+    try {
+      let rObj = JSON.parse(input);
+      Object.keys(rObj).forEach(o => {
+        response.push(`${o}=${rObj[o]}`);
+      });
+    }
+    catch {
+      let outObj = {};
+      let keyValuePairs = input.replace(/[{}]/g, '').split(',');
+      keyValuePairs.forEach(pair => {
+        let [key, value] = pair.split(':');
+        outObj[key.trim()] = value.trim();
+      });
+      response.push(outObj);
+    }
+  }
+  else if (input.charAt(0) === '[') {
+    response = input.replace(/[[\]]/, '').split(',');
+  }
+  else if (delimiter) {
+    response = input.split(delimiter).map(e => { return e.trim(); });
+  }
+  else { response.push(input); }
+  return response;
+}
+
+export function makeCustomArray(input, options = {}) {
+  let response = [];
+  if (!input) { return []; };
+  let { delimiter, toLowerCase, notAlone } = options;
+  if ((typeof (input) === 'string')) {
+    if (toLowerCase) {
+      return (notAlone ? input.toLowerCase() : [input.toLowerCase()]);
+    }
+    else {
+      return (notAlone ? input : [input]);
+    }
+  }
+  else if (Array.isArray(input)) {
+    for (const this_item of input) {
+      response.push(makeArray(this_item, Object.assign({}, options, { notAlone: true })));
+    }
+  }
+  else if (typeof input === 'object') {
+    for (const this_key in input) {
+      response.push({ [(toLowerCase ? this_key.toLowerCase() : this_key)]: makeArray(input[this_key], Object.assign({}, options, { notAlone: true })) });
+    }
   }
   else if (typeof input === 'number') {
     response.push(input);
@@ -821,6 +878,10 @@ export const isMobile = () => {
   return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 };
 
+export const isSmallScreen = () => {
+  return isMobile() || (window.window.innerWidth < 800);
+};
+
 export async function switchActiveAccount(session, newClient, newPatient) {
   await dbClient
     .update({
@@ -935,6 +996,21 @@ export async function deleteDbRec(pData) {
     response.push('OK');
   }
   return response;
+}
+
+export async function getDb(getSpec) {
+  const foundDoc = await dbClient
+    .get(getSpec)
+    .promise()
+    .catch(error => {
+      cl(`Error reading ${getSpec.TableName} in getDb with key of ${getSpec.Key}: ${error}`);
+    });
+  if (recordExists(foundDoc)) {
+    return foundDoc.Item;
+  }
+  else {
+    return false;
+  }
 }
 
 export async function restAPI(pRequest, api_data) {

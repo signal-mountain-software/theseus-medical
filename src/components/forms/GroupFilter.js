@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
 
-import { lambda } from '../../util/AVAUtilities';
+import { createNewGroup } from '../../util/AVAGroups';
 
 import Paper from '@material-ui/core/Paper';
 import TextField from '@material-ui/core/TextField';
@@ -227,31 +227,6 @@ export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, on
     return (inObj.group_id.toLowerCase().includes(lower_activity_filter));
   };
 
-  const handleCreateAGroup = async pGroupName => {
-    let params = {
-      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
-      InvocationType: 'RequestResponse',
-      LogType: 'Tail',
-      Payload: ''
-    };
-
-    params.Payload = JSON.stringify({
-      action: "create_new_group",
-      clientId: pSession.client_id,
-      request: {
-        "person_id": pSession.patient_id,
-        "group_name": pGroupName
-      }
-    });
-    await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        console.log(err);
-      });
-    onRefresh();
-  };
-
   // **************************
 
   return (
@@ -346,9 +321,18 @@ export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, on
                   promptText="Enter a Name for the Group you're creating"
                   buttonText='Create'
                   onCancel={() => { setPromptForName(false); }}
-                  onSave={(newGroupName) => {
+                  onSave={async (newGroupName) => {
                     setPromptForName(false);
-                    handleCreateAGroup(newGroupName);
+                    const newGroupID = await createNewGroup({
+                      client_id: pSession.client_id,
+                      group_name: newGroupName,
+                      adminList: pSession.patient_id,
+                      memberList: []
+                    });
+                    onRefresh({
+                      newGroupID,
+                      newGroupName
+                    });
                   }}
                 />
               }

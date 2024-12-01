@@ -2,9 +2,9 @@ import React from 'react';
 import { useSnackbar } from 'notistack';
 
 import { makeTime, makeDate, addDays } from '../../util/AVADateTime';
-import { isMobile, isObject, deepCopy, titleCase, makeArray, isEmpty } from '../../util/AVAUtilities';
+import { isObject, deepCopy, titleCase, makeArray, isEmpty } from '../../util/AVAUtilities';
 import { getCalendarEntries, writeSlot, getSlotList, publishCalendar } from '../../util/AVACalendars';
-import { getImage, getPerson } from '../../util/AVAPeople';
+import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import AVATextInput from './AVATextInput';
 
 import { Box, Typography, Avatar } from '@material-ui/core';
@@ -159,7 +159,6 @@ const useStyles = makeStyles(theme => ({
   },
   peopleBox: {
     paddingTop: 0,
-    paddingLeft: theme.spacing(2),
     paddingBottom: theme.spacing(2),
     overflowX: 'auto',
     scrollbarWidth: 'thin',
@@ -171,7 +170,6 @@ const useStyles = makeStyles(theme => ({
   },
   peopleBoxWithSpace: {
     paddingTop: theme.spacing(2),
-    paddingLeft: theme.spacing(2),
     paddingBottom: theme.spacing(2),
     overflowX: 'auto',
     scrollbarWidth: 'thin',
@@ -336,6 +334,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   };
 
   const defaultColorScheme = {
+    unavailable: 'red',
     owned: 'green',
     full: 'red',
     waitlist: 'orange',
@@ -358,10 +357,10 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       pWidth: 60,
       defaultValues: defaultValues,
       selectedPersonRec: {},
-      denseView: setInitialView(defaultValues) || {'*all': false},
+      denseView: setInitialView(defaultValues) || { '*all': false },
       factor7: defaultValues.weekView ? Math.min(((window.window.innerWidth - 220) / 1400), 1) : 1,
       conflictInfo: conflictInfo,
-      colorScheme: defaultValues.colorScheme || defaultColorScheme,
+      colorScheme: Object.assign({}, defaultColorScheme, defaultValues.colorScheme),
       calendar_fill: isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_fill : null,
       calendar_fill_text: isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_fill_text : null
     }
@@ -430,12 +429,21 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   };
 
   const agendaView = () => {
-    return reactData.defaultValues.agendaView;
+    return reactData.defaultValues.agendaView || (window.window.innerWidth < 800);
   };
 
   const eventsToShow = (this_date) => {
     return this_date.eventList.some((this_event) => {        // an array of events on this date
       return okToShow(this_event);
+    });
+  };
+
+  const isUnAvailable = (this_date, this_person) => {
+    return this_date.eventList.some((this_event) => {        // an array of events on this date
+      if (!this_event.customizations) { return false; }
+      if (!this_event.customizations.hasOwnProperty('show_as_unavailable')) { return false; }
+      if (!okToShow(this_event)) { return false; }
+      return (this_event.slot_owners.hasOwnProperty(this_person));
     });
   };
 
@@ -502,11 +510,11 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     if (!reactData.filterTextLower) {
       return true;
     }
-    else if (reactData.idFilter && (this_event.slot_owners.hasOwnProperty(reactData.idFilter))) {
-      return true;
+    else if (reactData.idFilter) {
+      return (this_event.slot_owners.hasOwnProperty(reactData.idFilter));
     }
-    else if (reactData.eventIDFilter && (this_event.event_id === reactData.eventIDFilter)) {
-      return true;
+    else if (reactData.eventIDFilter) {
+      return (this_event.event_id === reactData.eventIDFilter);
     }
     else {
       return ((`${this_event.description} ${this_event.location}`).toLowerCase().includes(reactData.filterTextLower));
@@ -558,6 +566,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               addTemplateEvent: true,
               selectedTemplate: getTemplate(dragged_id),
               isAppointment: true,
+              appointmentStart: null,
+              appointmentEnd: null,
               appointmentDate: dropTarget['calendar_cell'].this_date
             }, true);
           }
@@ -565,6 +575,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
             let personRec = await getPerson(dragged_id);
             updateReactData({
               getAppointmentType: true,
+              appointmentStart: null,
+              appointmentEnd: null,
               appointmentDate: dropTarget['calendar_cell'].this_date,
               selectedPersonRec: personRec,
             }, true);
@@ -586,7 +598,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           updateReactData({
             eventIDFilter: false,
             idFilter: dragged_id,
-            filterTextLower: personRec.name.last.toLowerCase()
+            filterTextLower: `${personRec.name.last.toLowerCase()} ${personRec.name.first.toLowerCase()}`
           }, true);
         }
         break;
@@ -683,66 +695,68 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
         eventIndex,
         dateIndex
       });
-      if (slotUpdates.newDescription) {
-        reactData.myCalendar[dateIndex].eventList[eventIndex].description = slotUpdates.newDescription;
-      }
-      if (slotAssigned) {
-        if (!reactData.myCalendar[dateIndex].eventList[eventIndex].hasOwnProperty('slot_owners')) {
-          reactData.myCalendar[dateIndex].eventList[eventIndex].slot_owners = {};
+      if ((eventIndex > -1) && (dateIndex > -1)) {
+        if (slotUpdates.newDescription) {
+          reactData.myCalendar[dateIndex].eventList[eventIndex].description = slotUpdates.newDescription;
         }
-        reactData.myCalendar[dateIndex].eventList[eventIndex].slot_owners[dragged_id] = slotAssigned;
-        if (!reactData.conflictInfo.hasOwnProperty(dragged_id)) {
-          reactData.conflictInfo[dragged_id] = {};
-        }
-        let this_date = makeDate(droppedOn_event.occurrence_date);
-        let this_Sunday = makeDate(addDays(this_date.date, -(this_date.dayOfWeek)));
-        if (!reactData.conflictInfo[dragged_id].hasOwnProperty('summaries')) {
-          reactData.conflictInfo[dragged_id].summaries = {
-            [this_Sunday.numeric$]: {
+        if (slotAssigned) {
+          if (!reactData.myCalendar[dateIndex].eventList[eventIndex].hasOwnProperty('slot_owners')) {
+            reactData.myCalendar[dateIndex].eventList[eventIndex].slot_owners = {};
+          }
+          reactData.myCalendar[dateIndex].eventList[eventIndex].slot_owners[dragged_id] = slotAssigned;
+          if (!reactData.conflictInfo.hasOwnProperty(dragged_id)) {
+            reactData.conflictInfo[dragged_id] = {};
+          }
+          let this_date = makeDate(droppedOn_event.occurrence_date);
+          let this_Sunday = makeDate(addDays(this_date.date, -(this_date.dayOfWeek)));
+          if (!reactData.conflictInfo[dragged_id].hasOwnProperty('summaries')) {
+            reactData.conflictInfo[dragged_id].summaries = {
+              [this_Sunday.numeric$]: {
+                description: this_Sunday.dateOnly,
+                minutes: 0
+              }
+            };
+          }
+          else if (!reactData.conflictInfo[dragged_id].summaries.hasOwnProperty(this_Sunday.numeric$)) {
+            reactData.conflictInfo[dragged_id].summaries[this_Sunday.numeric$] = {
               description: this_Sunday.dateOnly,
               minutes: 0
-            }
-          };
-        }
-        else if (!reactData.conflictInfo[dragged_id].summaries.hasOwnProperty(this_Sunday.numeric$)) {
-          reactData.conflictInfo[dragged_id].summaries[this_Sunday.numeric$] = {
-            description: this_Sunday.dateOnly,
-            minutes: 0
-          };
-        }
-        let start_time = makeTime(eventStart24);
-        let end_time = makeTime(eventEnd24);
-        let minutes_booked = 0;
-        if (end_time.minutesSinceMidnight < start_time.minutesSinceMidnight) {
-          minutes_booked = end_time.minutesSinceMidnight + (1440 - start_time.minutesSinceMidnight);
-        }
-        else {
-          minutes_booked = end_time.minutesSinceMidnight - start_time.minutesSinceMidnight;
-        }
-        if (minutes_booked < 1200) {
-          reactData.conflictInfo[dragged_id].summaries[this_Sunday.numeric$].minutes += minutes_booked;
-        }
-        if (!reactData.conflictInfo[dragged_id].hasOwnProperty(droppedOn_event.occurrence_date)) {
-          reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date] = [];
-        }
-        reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].push(
-          {
-            time: eventStart24, open: false, event_id: reactData.myCalendar[dateIndex].eventList[eventIndex].event_key,
-            event_title: reactData.myCalendar[dateIndex].eventList[eventIndex].description
-          },
-          { time: eventEnd24, open: true }
-        );
-        reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].sort((a, b) => {
-          if (a.time === b.time) {
-            return (!a.open ? 1 : -1);
+            };
+          }
+          let start_time = makeTime(eventStart24);
+          let end_time = makeTime(eventEnd24);
+          let minutes_booked = 0;
+          if (end_time.minutesSinceMidnight < start_time.minutesSinceMidnight) {
+            minutes_booked = end_time.minutesSinceMidnight + (1440 - start_time.minutesSinceMidnight);
           }
           else {
-            return ((a.time < b.time) ? -1 : 1);
+            minutes_booked = end_time.minutesSinceMidnight - start_time.minutesSinceMidnight;
           }
-        });
-        updateReactData({
-          myCalendar: reactData.myCalendar
-        }, true);
+          if (minutes_booked < 1200) {
+            reactData.conflictInfo[dragged_id].summaries[this_Sunday.numeric$].minutes += minutes_booked;
+          }
+          if (!reactData.conflictInfo[dragged_id].hasOwnProperty(droppedOn_event.occurrence_date)) {
+            reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date] = [];
+          }
+          reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].push(
+            {
+              time: eventStart24, open: false, event_id: reactData.myCalendar[dateIndex].eventList[eventIndex].event_key,
+              event_title: reactData.myCalendar[dateIndex].eventList[eventIndex].description
+            },
+            { time: eventEnd24, open: true }
+          );
+          reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].sort((a, b) => {
+            if (a.time === b.time) {
+              return (!a.open ? 1 : -1);
+            }
+            else {
+              return ((a.time < b.time) ? -1 : 1);
+            }
+          });
+          updateReactData({
+            myCalendar: reactData.myCalendar
+          }, true);
+        }
       }
     }
   }
@@ -845,6 +859,40 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       })) {
         writeRequest.no_messaging = true;
       }
+      else if (overrideList.some(oItem => {
+        return oItem.toLowerCase().startsWith('*published');
+      })) {
+        if (!this_event.published) {
+          writeRequest.no_messaging = true;
+        }
+        else {
+          // event is already published and this instruction asks to message people only when published...
+          writeRequest.no_messaging = false;
+          writeRequest.overrideRecipient = [];
+          for (const this_person of overrideList) {
+            let instruction = this_person.split('=');
+            if (instruction[0].startsWith('*published')) {
+              instruction[0] = instruction[1];
+            }
+            if (instruction) {
+              if (instruction[0].startsWith('slot')) {
+                writeRequest.overrideRecipient.push(person_id);
+              }
+              else if (instruction[0].startsWith('event')) {
+                writeRequest.overrideRecipient.push(...makeArray(this_event.owner));
+              }
+              else {
+                writeRequest.overrideRecipient.push(instruction[0]);
+              }
+            }
+          }
+          if (writeRequest.overrideRecipient.length === 0) {
+            writeRequest.overrideRecipient.push(person_id);
+          }
+          writeRequest.override_subject = `Changes have been made to ${this_event.description} (${makeDate(this_event.occurrence_date, { noTime: true }).absolute}) that affect you`;
+          writeRequest.override_messageText = `${await makeName(person_id)} has been added to this event.`;
+        }
+      }
       else {
         writeRequest.no_messaging = false;
         writeRequest.overrideRecipient = overrideList;
@@ -857,7 +905,10 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   };
 
   const isDense = (this_date) => {
-    if (reactData.denseView.hasOwnProperty(this_date)) {
+    if (window.window.innerWidth < 800) {
+      return false;
+    }
+    else if (reactData.denseView.hasOwnProperty(this_date)) {
       return reactData.denseView[this_date];
     }
     else {
@@ -889,8 +940,11 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     }
   };
 
-  const setTextColor = (this_event) => {
-    if (ownerOfSlots(this_event) && !reactData.defaultValues.onlyRegistered && reactData.colorScheme.owned) { return { color: reactData.colorScheme.owned }; }
+  const setTextColor = (this_event, this_date) => {
+    if (reactData.idFilter && isUnAvailable(this_date, reactData.idFilter)) {
+      return { color: reactData.calendar_fill_text };
+    }
+    else if (ownerOfSlots(this_event) && !reactData.defaultValues.onlyRegistered && reactData.colorScheme.owned) { return { color: reactData.colorScheme.owned }; }
     else if (allSlotsFull(this_event) && reactData.colorScheme.full) { return { color: reactData.colorScheme.full }; }
     else if (allSlotsEmpty(this_event) && reactData.colorScheme.empty) { return { color: reactData.colorScheme.empty }; }
     else {
@@ -937,6 +991,11 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     }
     else if (this_date.dateObj.weekday === 'weekend') {
       this_background = (isDarkMode ? 'darkgoldenrod' : 'lightyellow');
+    }
+    if (reactData.idFilter) {
+      if (isUnAvailable(this_date, reactData.idFilter)) {
+        this_background = reactData.colorScheme.unavailable;
+      }
     }
     return this_background;
   }
@@ -1295,9 +1354,10 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         >
                           <EventIcon />
                         </Avatar>
-                        {(this_template.event_data.generic_description || this_template.event_data.description).split(' ').map((this_word) => (
+                        {(this_template.event_data.generic_description || this_template.event_data.description).split(' ').map((this_word, wX) => (
                           <Typography
                             noWrap={true}
+                            key={`name_word_${wX}`}
                             className={classes.dragNamesLast}
                           >
                             {this_word}
@@ -2125,11 +2185,11 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 setDuration: reactData.selectedTemplate.event_data.time.duration,
                 forms: reactData.selectedTemplate.forms,
                 customizations: reactData.selectedTemplate.customizations,
-                title: (reactData.selectedPersonRec
+                title: (!isEmpty(reactData.selectedPersonRec)
                   ? resolve(reactData.selectedTemplate.customizations.description, reactData.selectedPersonRec)
                   : reactData.selectedTemplate.event_data.generic_description
                 ),
-                location: (reactData.selectedPersonRec
+                location: (!isEmpty(reactData.selectedPersonRec)
                   ? (resolve(reactData.selectedTemplate.customizations.location, reactData.selectedPersonRec) || '')
                   : ''
                 ),
@@ -2153,24 +2213,25 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                     newEvent.slots.forEach(this_slot => {
                       slotObj[this_slot.slot_owner] = this_slot.slot_owner;
                     });
+                    let newEntry = Object.assign({}, newEvent, {
+                      "event_id": newEvent.event_id,
+                      "owner": [state.session.user_id],
+                      "image": null,
+                      "description": newEvent.eventData.event_data.description,
+                      "groups": newEvent.eventData.event_data.groups,
+                      "location": newEvent.eventData.event_data.location,
+                      "time": newEvent.eventData.event_data.time,
+                      "type": 'appointment',
+                      "sort24": (newEvent.eventData.event_data.time.from ? makeTime(newEvent.eventData.event_data.time.from).numeric24 : 0),
+                      "slot_owners": slotObj,
+                      "occurrence_date": newOccDate,
+                      "event_key": `${newEvent.event_key}#${newOccDate}`,
+                      "client": newEvent.client,
+                      "record_type": "occurrence"
+                    });
+                    let eventIndex = -1;
                     if (foundIt > -1) {
-                      let newEntry = Object.assign({}, newEvent, {
-                        "event_id": newEvent.event_id,
-                        "owner": [state.session.user_id],
-                        "image": null,
-                        "description": newEvent.eventData.event_data.description,
-                        "groups": newEvent.eventData.event_data.groups,
-                        "location": newEvent.eventData.event_data.location,
-                        "time": newEvent.eventData.event_data.time,
-                        "type": 'appointment',
-                        "sort24": (newEvent.eventData.event_data.time.from ? makeTime(newEvent.eventData.event_data.time.from).numeric24 : 0),
-                        "slot_owners": slotObj,
-                        "occurrence_date": newOccDate,
-                        "event_key": `${newEvent.event_key}#${newOccDate}`,
-                        "client": newEvent.client,
-                        "record_type": "occurrence"
-                      });
-                      let eventIndex = reactData.myCalendar[foundIt].eventList.push(newEntry) - 1;
+                      eventIndex = reactData.myCalendar[foundIt].eventList.push(newEntry) - 1;
                       for (let s = 0; s < newEvent.slots.length; s++) {
                         let this_slot = newEvent.slots[s];
                         let dragged_id = this_slot.slot_owner;
@@ -2224,13 +2285,15 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                           }
                         });
                       };
-                      if (reactData.selectedPersonRec) {
-                        await eventSignup(reactData.selectedPersonRec.person_id, {
-                          droppedOn_event: newEntry,
-                          eventIndex,
-                          dateIndex: foundIt
-                        });
-                      }
+                    }
+                    if (reactData.selectedPersonRec) {
+                      await eventSignup(reactData.selectedPersonRec.person_id, {
+                        droppedOn_event: newEntry,
+                        eventIndex,
+                        dateIndex: foundIt
+                      });
+                    }
+                    if (foundIt > -1) {
                       reactData.myCalendar[foundIt].eventList.sort((a, b) => {
                         return ((a.sort24 < b.sort24) ? -1 : 1);
                       });
@@ -2273,7 +2336,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       }
       <Box display='flex' flexDirection='row'
         className={classes.button_area}
-        paddingBottom={'1.5'} px={isMobile ? 2 : 6}
+        paddingBottom={'1.5'} px={0}
         justifyContent='space-between' alignItems='center'
       >
         <Box display='flex' flexWrap='wrap' flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
@@ -2289,7 +2352,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               });
             }}
           >
-            {'Back 1 week'}
+            {(window.window.innerWidth < 800) ? '' : 'Back 1 week'}
           </Button>
         </Box>
         <Box display='flex' flexWrap='wrap' flexGrow={2} flexDirection='row' justifyContent='center' alignItems='center'>
@@ -2359,7 +2422,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               });
             }}
           >
-            {'Forward 1 week'}
+            {(window.window.innerWidth < 800) ? '' : 'Forward 1 week'}
           </Button>
         </Box>
       </Box>

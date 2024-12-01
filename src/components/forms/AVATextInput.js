@@ -168,10 +168,26 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
 
   const toggleCheckbox = (ndx) => {
     if (textInput[ndx] === 'checked') { textInput[ndx] = ''; }
-    else { textInput[ndx] = 'checked'; }
+    else {
+      if (options.selectOne) {
+        textInput.forEach((t, x) => textInput[x] = '');
+      }
+      textInput[ndx] = 'checked';
+    }
     setTextInput(textInput);
     setForceRedisplay(!forceRedisplay);
   };
+
+  const buildValueList = (ndx) => {
+    if (!valueText || !valueText[ndx]) {
+      return [];
+    }
+    let response = [];
+    makeArray(valueText[ndx]).forEach(v => {
+      response.push(selectionList[ndx].find(s => (s.value === v)));
+    })
+    return response;
+  }
 
   function loadingInProgress(index = 'all') {
     if (!reactData.loadProgress) {
@@ -291,8 +307,8 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
       else if (Array.isArray(promptText)) {
         let currentIndex = promptText.findIndex(this_prompt => {
           let promptParts = this_prompt.split(']');
-          return (promptParts[promptParts.length - 1] === event.currentTarget.innerText)
-        })
+          return (promptParts[promptParts.length - 1] === event.currentTarget.innerText);
+        });
         let currentFocus = currentIndex + 1;
         if (currentFocus >= promptText.length) {
           currentFocus = 0;
@@ -317,19 +333,27 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
     }
   });
   let titleArray = makeArray(titleText);
+  /*
   let displayValueArray = makeArray(valueText).map((v, ndx) => {
-    if (!v || (v.trim() === '')) {
-      return '';
+    if (!v) { return ''; }
+    if (Array.isArray(v)) {
+      if (v.length === 0) { return ''; }
     }
+    else if ((typeof(v) === 'string') && !(v.trim())) { return ''; }
     if (!selectionList || !selectionList[ndx]) {
-      return v;
+      if (Array.isArray(v)) {
+        return listFromArray(v);
+      }
+      else {
+        return v;
+      }
     }
     let foundIt = selectionList[ndx].find(s => {
       if (typeof (s) === 'string') {
-        return (s.toLowerCase().trim() === v.toLowerCase().trim());
+        return (searchValueList.includes(s.toLowerCase().trim()));
       }
       else if (s.hasOwnProperty('value')) {
-        return (s.value.toLowerCase().trim() === v.toLowerCase().trim());
+        return (searchValueList.includes(s.value.toLowerCase().trim()));
       }
       else {
         return false;
@@ -345,6 +369,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
     }
     return '';
   });
+  */
 
 
   let buttonArray = [];
@@ -473,24 +498,30 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                                 borderWidth: 0
                               }}
                               dropdownHandle={true}
+                              dropdownPosition={'auto'}
+                              values={buildValueList(ndx)}
+                              clearable={true}
                               clearOnSelect={true}
                               clearOnBlur={true}
                               key={`select_${ndx}`}
                               searchable={true}
                               multi={prompt.toLowerCase().startsWith('[selectmulti')}
-                              closeOnClickInput={true}
-                              closeOnSelect={true}
+                              closeOnClickInput={!prompt.toLowerCase().startsWith('[selectmulti')}
+                              closeOnSelect={!prompt.toLowerCase().startsWith('[selectmulti')}
                               create={false}
                               keepSelectedInList={true}
                               noDataLabel={"No matches found"}
-                              placeholder={displayValueArray[ndx]}
                               onChange={(values) => {
-                                if (values.length > 0) {
-                                  handleChangeTextInput(values, ndx);
-                                  updateReactData({
-                                    focusOn: (ndx + 1)
-                                  }, true);
+                                if (values.length === 0) {
+                                  textInput[ndx] = null;                                  
+                                  setTextInput(textInput);
                                 }
+                                else {
+                                  handleChangeTextInput(values, ndx);
+                                }
+                                updateReactData({
+                                  focusOn: (ndx + 1)
+                                }, true);
                               }}
                             />
                             <Box display='flex'
@@ -633,7 +664,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
             style={
               Object.assign(
                 {},
-                AVAButton, 
+                AVAButton,
                 { backgroundColor: 'red', color: 'white' }
               )
             }
@@ -669,13 +700,13 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
               (i > 1) &&
               b &&
               <Button
-                  style={
-                    Object.assign(
-                      {},
-                      AVAButton,
-                      { backgroundColor: 'blue', color: 'white' }                    )
-                  }
-                key={`extra-button_${i}`}               
+                style={
+                  Object.assign(
+                    {},
+                    AVAButton,
+                    { backgroundColor: 'blue', color: 'white' })
+                }
+                key={`extra-button_${i}`}
                 size='small'
                 onClick={() => {
                   keyPressed = i;
@@ -686,7 +717,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
               </Button>
             ))
           }
-          {options.allowAttach &&
+          {options.allowAttach && (!options.maxAttach || (options.maxAttach > reactData.attachmentList.length)) &&
             <Box display='flex' flexDirection='row' justifyContent='flex-start'
               alignItems='center' key={'qrOpt_attachmentbox'}
             >
