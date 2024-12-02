@@ -718,7 +718,7 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
   page.document_id = docID;
   page.client_id = client_id;
   page.footerText = `AVA reference: ${page.client_id}/${page.document_id}`;
-  pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
+  // pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
   pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
 
   // docData.sections.forEach((sectionObj, sectionNdx) => {
