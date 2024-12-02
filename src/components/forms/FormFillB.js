@@ -2311,7 +2311,7 @@ export default ({ request = {}, onClose }) => {
                   document_id: reactData.document_id,
                   document_title: reactData.document_title,
                   document_status: response.status,
-                  recWritten: response.recWritten,
+                  recWritten: Object.assign({}, response.recWritten, reactData.peopleRec[reactData.pertains_to]),
                   nextAction: (reactData.formRec?.options?.onFinish
                     ? makeNextAction({ instruction: reactData.formRec?.options?.onFinish })
                     : null
