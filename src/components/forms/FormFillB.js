@@ -180,7 +180,8 @@ export default ({ request = {}, onClose }) => {
     lastActiveTime: nowObj,
     version: 1,
     idleState: false,
-    pertains_to: options.person_id || options.family_id || state.session.patient_id
+    //   pertains_to: options.person_id || options.family_id || state.session.patient_id
+    pertains_to: options.person_id || options.family_id
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -611,13 +612,18 @@ export default ({ request = {}, onClose }) => {
         },
         TableName: "People"
       });
+      if (!reactData.peopleRec[pertains_to]) {
+        reactData.peopleRec[pertains_to] = {};
+      };
       updateReactData({
         family_id: reactData.peopleRec[pertains_to].family_id || false,
         peopleRec: reactData.peopleRec,
         formRec
       }, false);
-      pertains_to_name = reactData.peopleRec[pertains_to].display_name
-        || (`${reactData.peopleRec[pertains_to]?.name.first} ${reactData.peopleRec[pertains_to]?.name.last}`).trim();
+      pertains_to_name = reactData.peopleRec[pertains_to].display_name;
+      if (!pertains_to_name && (reactData.peopleRec[pertains_to] && reactData.peopleRec[pertains_to].hasOwnProperty('name'))) {
+        pertains_to_name = (`${reactData.peopleRec[pertains_to]?.name.first} ${reactData.peopleRec[pertains_to]?.name.last}`).trim();
+      }
     }
     let response = {
       fields: {},
@@ -1749,7 +1755,8 @@ export default ({ request = {}, onClose }) => {
     if (reactData.form_id) {
       const { fields, sections, document_title } = await initializeDoc({
         form_id: reactData.form_id,
-        pertains_to: options.person_id || options.family_id || state.session.patient_id
+        //      pertains_to: options.person_id || options.family_id || state.session.patient_id
+        pertains_to: options.person_id || options.family_id
       });
       let nowTime = new Date().getTime();
       updateReactData({

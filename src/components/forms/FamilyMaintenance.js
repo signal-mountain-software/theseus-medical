@@ -196,8 +196,58 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
       }
       else {
         // no Family ID was passed in and this account doesn't have a Family ID.
-        // For now, just leave...
-        onClose();
+        // Create a Family and add this account as a new Caregiver
+        const newFamilyID = `family_${new Date().getTime()}`;
+        await dbClient
+          .put({
+            Item: {
+              client_id: state.session.client_id,
+              composite_key: newFamilyID,
+              record_type: 'header',
+              role: 'family',
+              family_id: newFamilyID,
+              family_name: (state?.patient?.name?.last
+                ? `The ${state?.patient?.name?.last} Family`
+                : 'My Family')
+            },
+            TableName: 'FamilyGroups'
+          })
+          .promise()
+          .catch(error => {
+            cl(`Bad put to Family. Error is: ${error}`);
+            onClose();
+          });
+        await dbClient
+          .put({
+            Item: {
+              client_id: state.session.client_id,
+              composite_key: `${newFamilyID}%%${state.session.patient_id}`,
+              family_id: newFamilyID,
+              person_id: state.session.patient_id,
+              record_type: 'person',
+              role: 'caregiver'
+            },
+            TableName: 'FamilyGroups'
+          })
+          .promise()
+          .catch(error => {
+            cl(`Bad put to Family (person). Error is: ${error}`);
+            onClose();
+          });
+        await dbClient
+          .update({
+            Key: { person_id: state.session.patient_id },
+            UpdateExpression: 'set family_id = :f',
+            ExpressionAttributeValues: {
+              ':f': newFamilyID
+            },
+            TableName: "People",
+          })
+          .promise()
+          .catch(error => { console.log(`caught error updating People; error is:`, error); });
+        updateReactData({
+          family_id: newFamilyID
+        }, false);
       }
     }
     let qQ = {
@@ -1412,7 +1462,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                 {
                   record_type: 'person',
                   role: reactData.roleToAdd,
-                  nickname: `New ${reactData.roleToAdd}`
+                  nickname: (statusObj.recWritten?.name?.first || `New ${reactData.roleToAdd}`)
                 }));
               await makeFormList({
                 selectedColumn: newLength - 1,
