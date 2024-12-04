@@ -329,7 +329,13 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
         }
         else {
           let sorted_eventIDs = Object.keys(this_calendar[this_date].events).sort((s1, s2) => {
-            if (this_calendar[this_date].events[s1].sort24 > this_calendar[this_date].events[s2].sort24) {
+            if (this_calendar[this_date].events[s1].customizations && this_calendar[this_date].events[s1].customizations.show_as_unavailable) {
+              return 1;
+            }
+            else if (this_calendar[this_date].events[s2].customizations && this_calendar[this_date].events[s2].customizations.show_as_unavailable) {
+              return -1;
+            }
+            else if (this_calendar[this_date].events[s1].sort24 > this_calendar[this_date].events[s2].sort24) {
               return 1;
             }
             else if (this_calendar[this_date].events[s1].sort24 < this_calendar[this_date].events[s2].sort24) {
