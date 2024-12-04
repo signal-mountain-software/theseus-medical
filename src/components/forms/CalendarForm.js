@@ -334,7 +334,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   };
 
   const defaultColorScheme = {
-    unavailable: 'red',
+    unavailable: 'purple',
     owned: 'green',
     full: 'red',
     waitlist: 'orange',
@@ -948,6 +948,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   const setTextColor = (this_event, this_date) => {
     if (reactData.idFilter && isUnAvailable(this_date, reactData.idFilter)) {
       return { color: reactData.calendar_fill_text };
+    }
+    else if (this_event.customizations && this_event.customizations.show_as_unavailable && reactData.colorScheme.unavailable) {
+      return { color: reactData.colorScheme.empty };
     }
     else if (ownerOfSlots(this_event) && !reactData.defaultValues.onlyRegistered && reactData.colorScheme.owned) { return { color: reactData.colorScheme.owned }; }
     else if (allSlotsFull(this_event) && reactData.colorScheme.full) { return { color: reactData.colorScheme.full }; }
@@ -2168,7 +2171,22 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         });
                       });
                       reactData.myCalendar[foundIt].eventList.sort((a, b) => {
-                        return ((a.sort24 < b.sort24) ? -1 : 1);
+             //           return ((a.sort24 < b.sort24) ? -1 : 1);
+                        if (a.customizations && a.customizations.show_as_unavailable) {
+                          return 1;
+                        }
+                        else if (b.customizations && b.customizations.show_as_unavailable) {
+                          return -1;
+                        }
+                        else if (a.sort24 > b.sort24) {
+                          return 1;
+                        }
+                        else if (a.sort24 < b.sort24) {
+                          return -1;
+                        }
+                        else {
+                          return (a.description > b.description ? 1 : -1);
+                        }
                       });
                     }
                   });
@@ -2300,7 +2318,22 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                     }
                     if (foundIt > -1) {
                       reactData.myCalendar[foundIt].eventList.sort((a, b) => {
-                        return ((a.sort24 < b.sort24) ? -1 : 1);
+          //              return ((a.sort24 < b.sort24) ? -1 : 1);
+                        if (a.customizations && a.customizations.show_as_unavailable) {
+                          return 1;
+                        }
+                        else if (b.customizations && b.customizations.show_as_unavailable) {
+                          return -1;
+                        }
+                        else if (a.sort24 > b.sort24) {
+                          return 1;
+                        }
+                        else if (a.sort24 < b.sort24) {
+                          return -1;
+                        }
+                        else {
+                          return (a.description > b.description ? 1 : -1);
+                        }
                       });
                     }
                   };
