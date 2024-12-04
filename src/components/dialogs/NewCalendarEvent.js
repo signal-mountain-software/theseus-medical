@@ -1036,13 +1036,13 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                     else if (reactData.endObj.empty) {
                       // good start, no end
                       let tempTime;
-                      if (options.setDuration) {
+                      if (options.setDuration && (options.setDuration < 1400)) {
                         tempTime = startObj.minutesSinceMidnight + options.setDuration;
                       }
                       else {
                         tempTime = startObj.minutesSinceMidnight + 60;
                       }
-                      const endObj = makeTime(`${(Math.floor(tempTime / 60) * 100)}:${(tempTime % 60)}`);
+                      const endObj = makeTime(`${(Math.floor(tempTime / 60) * 100)}:${(tempTime % 60)} ${(tempTime > 719) ? 'pm' : 'am'}`);
                       updateReactData({
                         startObj,
                         endObj,
