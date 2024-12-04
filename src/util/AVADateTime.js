@@ -554,7 +554,9 @@ export function makeTime(pTime) {
             else {
                 inTime = pTime.toLowerCase();
                 if (inTime.includes('pm')) { ampm = 'pm'; }
-                else if (inTime.includes('am')) { ampm = 'am'; };
+                else if (inTime.includes('am')) { ampm = 'am'; }
+                else if (inTime.includes('a')) { ampm = 'am'; }
+                else if (inTime.includes('p')) { ampm = 'pm'; }
                 [hh$, mm$] = inTime.split(':');
                 const hhClean = hh$.replace(/\D+/g, '');
                 if (!hhClean) {
