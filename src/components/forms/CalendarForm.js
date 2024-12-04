@@ -562,9 +562,14 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       case 'calendar_cell': {
         if (dropTarget.hasOwnProperty('calendar_cell')) {
           if (isTemplate(dragged_id)) {
+            let personRec = null;
+            if (reactData.idFilter) {
+              personRec = await getPerson(reactData.idFilter);
+            } 
             updateReactData({
               addTemplateEvent: true,
               selectedTemplate: getTemplate(dragged_id),
+              selectedPersonRec: personRec,
               isAppointment: true,
               appointmentStart: null,
               appointmentEnd: null,
