@@ -965,7 +965,7 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                       }
                       else if (statusObj.nextAction.action === 'logIn') {
                         sessionStorage.removeItem('AVASessionData');
-                        let jumpTo = window.location.href.replace('refresh', 'theseus');
+                        let jumpTo = `${window.location.href.replace('refresh', 'theseus')}?user=${statusObj.nextAction.target}`;
                         window.location.replace(jumpTo);
                       }
                     }
