@@ -1896,7 +1896,6 @@ export default ({ request = {}, onClose }) => {
                                 lineHeight: 1,
                                 width: `${reactData.fields[this_field].prompt.width || 200}px`,
                                 maxWidth: '90%',
-                                minWidth: '80%',
                                 size: 0.75,
                                 color: 'black',
                                 margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
