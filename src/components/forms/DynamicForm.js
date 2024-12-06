@@ -583,6 +583,7 @@ export default ({
       return (
         <FamilyMaintenance
           forms={defaultObject.forms}
+          options={defaultObject}
           onSave={onSave}
           onClose={onSave}
         />

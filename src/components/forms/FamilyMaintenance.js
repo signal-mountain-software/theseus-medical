@@ -3,7 +3,7 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 
 import { getImage, getPerson, getSession } from '../../util/AVAPeople';
-import { deepCopy, makeArray, cl, recordExists, dbClient, isEmpty } from '../../util/AVAUtilities';
+import { deepCopy, makeArray, cl, recordExists, dbClient, isEmpty, titleCase } from '../../util/AVAUtilities';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
@@ -17,6 +17,8 @@ import { FormGroup, FormControlLabel, FormControl, FormLabel } from '@material-u
 
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/Check';
+import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
+import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import HomeIcon from '@material-ui/icons/Home';
 import GroupAddIcon from '@material-ui/icons/GroupAdd';
 import EditIcon from '@material-ui/icons/Edit';
@@ -146,8 +148,10 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     stage: 'start',
     family_id,
     familyMembers: [],
+    defaults: deepCopy(options),
     pertains_to: options.person_id || state.session.patient_id,
     newAccountForm: {},
+    showCompleted: false,
     restrict_to_client_id: options.client_id || null,
     selectedColumn: 0,
     columnForms: [],
@@ -225,7 +229,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
               family_id: newFamilyID,
               person_id: state.session.patient_id,
               record_type: 'person',
-              role: 'caregiver'
+              role: options.role_if_new || 'caregiver'
             },
             TableName: 'FamilyGroups'
           })
@@ -297,10 +301,18 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     if (!familyHeader.hasOwnProperty('role')) {
       familyHeader.role = 'family';
     }
-    updateReactData({
-      familyMembers: [familyHeader].concat(familyMembers),
-      selectedColumn: reactData.selectedColumn || 0,
-    }, false);
+    if (!reactData.defaults.noFamilyColumn) {
+      updateReactData({
+        familyMembers: [familyHeader].concat(familyMembers),
+        selectedColumn: reactData.selectedColumn || 0,
+      }, false);
+    }
+    else {
+      updateReactData({
+        familyMembers,
+        selectedColumn: reactData.selectedColumn || 0,
+      }, false);
+    }
     const this_formList = await makeFormList({
       selectedColumn: reactData.selectedColumn,
       client_id: state.session.client_id,
@@ -494,7 +506,16 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     }, true);
   }
 
-  function selectAForm({ selectedColumn, form_index }) {
+  const identifyNewAccountForm = ({ role }) => {
+    if (reactData.defaults.hasOwnProperty('roles')) {
+      if (reactData.defaults.roles.hasOwnProperty(role)) {
+        return reactData.defaults.roles[role].form_if_new || state.session.new_account_form || null;
+      }
+    }
+    return ((role === 'caregiver') ? 'new_caregiver_form' : 'new_camper_form');
+  };
+
+  function selectAForm({ selectedColumn, form_index, showCompleted }) {
     if (reactData.columnForms[selectedColumn][form_index].isChecked) {
       reactData.columnForms[selectedColumn][form_index].isChecked = false;
     }
@@ -504,7 +525,10 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
       }
       reactData.columnForms[selectedColumn][form_index].isChecked = true;
     }
-    updateReactData({ columnForms: reactData.columnForms }, true);
+    updateReactData({
+      columnForms: reactData.columnForms,
+      showCompleted
+    }, true);
   }
 
   async function editColumn({ selectedColumn }) {
@@ -534,7 +558,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     updateReactData({
       columnForms: reactData.columnForms,
       familyMembers: reactData.familyMembers
-    }, true);
+    }, false);
     return ({
       columnForms: reactData.columnForms,
       familyMembers: reactData.familyMembers
@@ -564,33 +588,45 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
       // build out a basic form with minimal info
       reactData.columnForms[selectedColumn] = [{
         client_id: state.session.client_id,
-        fields: {
-          display_name: {
-            prompt: { type: 'text', ref: 'Name' },
-            value: { type: 'text', required: true }
-          },
-          nickname: {
-            default: { type: 'first', ref: 'display_name' },
-            prompt: { type: 'text', ref: 'Nickname' },
-            value: { type: 'text', required: false }
-          },
-          person_id: {
-            default: { type: 'ID', ref: 'display_name' },
-            prompt: { type: 'text', ref: 'Account ID' },
-            value: { type: 'ID', required: true }
-          }
-        },
-        form_name: 'Account Information',
+        fields: {},
+        form_name: 'No Forms Available',
         isChecked: true,
-        sections: [{
-          fields: ['display_name', 'nickname', 'person_id'],
-          section_name: 'New Person Information'
-        }]
+        sections: []
       }];
       updateReactData({ columnForms: reactData.columnForms }, false);
     }
     else {
       for (const formObj of reactData.forms[role]) {
+        // is there an active form for this person?
+        let queryObj = {
+          KeyConditionExpression: 'pertains_to = :p and begins_with(formType_date, :f)',
+          ScanIndexForward: false,
+          IndexName: 'pertains_to-formType_date-index',
+          Limit: 1,
+          ExpressionAttributeValues: {
+            ':p': reactData.familyMembers[selectedColumn].person_id,
+            ':f': `${formObj.form_id}%%`
+          }
+        };
+        queryObj.TableName = 'CompletedDocuments';
+        let existingCompleteRecs = await dbClient
+          .query(queryObj)
+          .promise()
+          .catch(error => {
+            if (error.code === 'NetworkingError') {
+              cl(`Security Violation or no Internet Connection`);
+            }
+            cl(`Error reading ${queryObj.TableName} id ${error}`);
+          });
+        let existingComplete;
+        if (recordExists(existingCompleteRecs)) {
+          // there IS a completed form for this person
+          existingComplete = existingCompleteRecs.Items[0];
+        }
+        else {
+          existingComplete = false;
+        }
+        // No?  Then set up for a new form
         let this_form = await getForm(formObj.form_id);
         if (this_form?.options?.anonymous) {
           reactData.newAccountForm[role] = this_form;
@@ -611,6 +647,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
           let response = await editForm({ selectedColumn, form_index, editMode: false });
           reactData.columnForms = response.columnForms;
         }
+        reactData.columnForms[selectedColumn][form_index].existingComplete = existingComplete;
         reactData.columnForms[selectedColumn][form_index].isChecked = false;
       }
     }
@@ -846,7 +883,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
             nickname: saveObj.personRec.nickname,
             person_id: saveObj.personRec.person_id,
             record_type: 'person',
-            role: saveObj.personRec.role || 'member'
+            role: saveObj.personRec.role || reactData.defaults.role_if_new || 'member'
           };
           await dbClient
             .put({
@@ -932,7 +969,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     }
   };
 
-  const makeFormRequest = ({ form_index }) => {
+  const makeFormRequest = ({ form_index, showCompleted }) => {
     let response = {
       form_id: reactData.columnForms[reactData.selectedColumn][form_index].form_id,
       document_title: reactData.columnForms[reactData.selectedColumn][form_index].form_name,
@@ -942,6 +979,9 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     }
     else {
       response.person_id = reactData.familyMembers[reactData.selectedColumn].person_id;
+    }
+    if (showCompleted) {
+      response.document_id = reactData.columnForms[reactData.selectedColumn][form_index].existingComplete.document_id;
     }
     return response;
   };
@@ -1313,13 +1353,35 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                         justifyContent='flex-start'
                         alignItems='center'
                       >
+                        {reactData.columnForms[reactData.selectedColumn][form_index].existingComplete
+                          ? <CheckCircleIcon
+                            key={`radio-button${reactData.selectedColumn}_form${form_index}`}
+                            id={`radio-button${reactData.selectedColumn}_form${form_index}`}
+                            onClick={() => {
+                              selectAForm({ selectedColumn: reactData.selectedColumn, form_index, showCompleted: true });
+                            }}
+                            disableRipple
+                            className={classes.radioButton}
+                            size='small'
+                          />
+                          : <RadioButtonUncheckedIcon
+                            key={`radio-button${reactData.selectedColumn}_form${form_index}`}
+                            id={`radio-button${reactData.selectedColumn}_form${form_index}`}
+                            onClick={() => {
+                              selectAForm({ selectedColumn: reactData.selectedColumn, form_index, showCompleted: false });
+                            }}
+                            disableRipple
+                            className={classes.radioButton}
+                            size='small'
+                          />
+                        }
                         <EditIcon
                           key={`radio-button${reactData.selectedColumn}_form${form_index}`}
                           id={`radio-button${reactData.selectedColumn}_form${form_index}`}
                           checked={reactData.columnForms[reactData.selectedColumn][form_index].isChecked}
                           value={reactData.columnForms[reactData.selectedColumn][form_index].isChecked}
                           onClick={() => {
-                            selectAForm({ selectedColumn: reactData.selectedColumn, form_index });
+                            selectAForm({ selectedColumn: reactData.selectedColumn, form_index, showCompleted: false });
                           }}
                           disableRipple
                           className={classes.radioButton}
@@ -1429,11 +1491,12 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                       {reactData.columnForms[reactData.selectedColumn][form_index].isChecked &&
                         reactData.columnForms[reactData.selectedColumn][form_index].asForm &&
                         <FormFillB
-                          request={makeFormRequest({ form_index })}
+                          request={makeFormRequest({ form_index, showCompleted: reactData.showCompleted })}
                           onClose={(formStatus) => {
                             reactData.columnForms[reactData.selectedColumn][form_index].isChecked = false;
                             updateReactData({
-                              columnForms: reactData.columnForms
+                              columnForms: reactData.columnForms,
+                              showCompleted: false
                             }, true);
                           }}
                         />
@@ -1450,7 +1513,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
       {reactData.addDocForm &&
         <FormFillB
           request={{
-            form_id: ((reactData.roleToAdd === 'caregiver') ? 'new_caregiver_form' : 'new_camper_form'),
+            form_id: identifyNewAccountForm({ role: reactData.roleToAdd }),
             person_id: state.session.patient_id,
             mode: 'new'
 
@@ -1479,7 +1542,12 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
       {reactData.addDocPrompt &&
         <AVATextInput
           titleText={`What type of account are you adding?`}
-          promptText={['[checkbox]Caregiver', '[checkbox]Camper']}
+          promptText={(reactData.defaults.hasOwnProperty('roles')
+            ? Object.keys(reactData.defaults.roles).map(this_role => {
+              return `[checkbox]${titleCase(this_role)}`;
+            })
+            : ['[checkbox]Caregiver', '[checkbox]Camper']
+          )}
           valueText={[
             '', ''
           ]}
@@ -1490,15 +1558,28 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
             }, true);
           }}
           onSave={async (response) => {
-            updateReactData({
-              addDocPrompt: false,
-              addDocForm: true,
-              roleToAdd: ((response[1] === 'checked') ? 'camper' : 'caregiver')
-            }, true);
+            let checkNum = response.findIndex(this_response => { return this_response === 'checked'; });
+            if (checkNum === -1) {
+              updateReactData({
+                addDocPrompt: false
+              }, true);
+            }
+            else {
+              let targetArray = (reactData.defaults.hasOwnProperty('roles')
+                ? Object.keys(reactData.defaults.roles)
+                : ['caregiver', 'camper']
+              );
+              let roleToAdd = targetArray[checkNum];
+              updateReactData({
+                addDocPrompt: false,
+                addDocForm: true,
+                roleToAdd
+
+              }, true);
+            }
           }}
         />
       }
-
 
       { /* Command Area */}
       <DialogActions className={classes.buttonArea} >
