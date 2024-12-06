@@ -1,5 +1,6 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
+import { isEmpty } from '../../util/AVAUtilities';
 import { getGroup, getRole } from '../../util/AVAGroups';
 
 import Box from '@material-ui/core/Box';
@@ -129,7 +130,7 @@ export default ({ options, onClose, onAbort }) => {
         }
         else {
           let newPeople = [];
-          if (reactData.newGroups) { 
+          if (reactData.newGroups) {
             for (const this_group of groupList[this_client]) {
               if (reactData.newGroups.hasOwnProperty(this_group)) {
                 newPeople.push(...reactData.newGroups[this_group]);
@@ -196,11 +197,20 @@ export default ({ options, onClose, onAbort }) => {
     let response = {};
     for (let x = 0; x < gList.length; x++) {
       let g = gList[x];
-      if ((g.level > 0) && (selectAll || pGroupList.includes(g.id) || pGroupList.includes(g.belongs_to))) {
+      if ((g.level > 0)
+        && (selectAll
+          || pGroupList.includes(g.id)
+          || pGroupList.includes(g.belongs_to)
+          || pGroupList.includes('*responsible'))
+      ) {
+        let my_role = await getRole(g.id, state.session.person_id);
+        if (pGroupList.includes('*responsible') && (my_role !== 'responsible')) {
+          continue;
+        }
         response[g.id] = {
           group_name: g.name,
           group_id: g.id,
-          role: await getRole(g.id, state.session.person_id),
+          role: my_role,
           level: g.level
         };
         if (!pGroupList.includes(g.id)) {

@@ -186,6 +186,17 @@ export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, on
   const [lower_activity_filter, setLowerFilter] = React.useState('');
   const [promptForName, setPromptForName] = React.useState(false);
 
+  function calcMinimumGroupLevel() {
+    let response = 99;
+    Object.keys(groupsManagedObject).map((listEntry) => {
+      if (groupsManagedObject[listEntry].level &&(groupsManagedObject[listEntry].level < response)) {
+        response = groupsManagedObject[listEntry].level;
+      }
+    });
+    return response;
+  }
+  const [minimumGroupLevel, setMinimumGroupLevel] = React.useState(calcMinimumGroupLevel() - 1);
+
   /*
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const [reactData, setReactData] = React.useState({
@@ -304,7 +315,7 @@ export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, on
                           key={`g_text_${listIndex}_${(listIndex === focusAt) ? 'selected' : ''}`}
                           style={AVATextStyle({
                             size: 1.5,
-                            margin: { left: (groupsManagedObject[listEntry].level ? groupsManagedObject[listEntry].level - 1 : 0) },
+                            margin: { left: (groupsManagedObject[listEntry].level ? (groupsManagedObject[listEntry].level - minimumGroupLevel) - 1 : 0) },
                             weight: (groupsManagedObject[listEntry].role === 'member' ? null
                               : (groupsManagedObject[listEntry].role === 'non-member' ? 'light' : 'bold'))
                           })}>
