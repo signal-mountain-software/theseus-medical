@@ -1488,7 +1488,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                                   </Tooltip>
                                 </Box>
                               }
-                              {(isEventOwner || !pViewOnly) &&
+                              {(isEventOwner && !pViewOnly) &&
                                 (this_item.slotData.documents && (this_item.slotData.documents.length > 0)) &&
                                 <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
                                   <Tooltip title={`Update clock in/out times`}>
