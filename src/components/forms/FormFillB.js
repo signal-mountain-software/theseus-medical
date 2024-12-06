@@ -603,7 +603,7 @@ export default ({ request = {}, onClose }) => {
         familyRec,
         formRec
       }, false);
-      pertains_to_name = reactData.familyRec.family_name || 'My Family'
+      pertains_to_name = reactData.familyRec.family_name || 'My Family';
     }
     else {
       reactData.peopleRec[pertains_to] = await getDb({
@@ -625,10 +625,17 @@ export default ({ request = {}, onClose }) => {
         pertains_to_name = (`${reactData.peopleRec[pertains_to]?.name.first} ${reactData.peopleRec[pertains_to]?.name.last}`).trim();
       }
     }
+    let tempTitle;
+    if (pertains_to_name) {
+      tempTitle = `${formRec.form_name} for ${pertains_to_name} - ${makeDate(new Date()).absolute}`;
+    }
+    else {
+      tempTitle = `${formRec.form_name} - ${makeDate(new Date()).absolute}`;
+    }
     let response = {
       fields: {},
       sections: formRec.sections,
-      document_title: reactData.document_title || `${formRec.form_name} for ${pertains_to_name} - ${makeDate(new Date()).absolute}`
+      document_title: reactData.document_title || tempTitle
     };
     for (let this_section of response.sections) {
       for (let this_field of this_section.fields) {
@@ -955,7 +962,7 @@ export default ({ request = {}, onClose }) => {
     if (reactData.newFamily) {
       reactData.familyRec.family_name = reactData.fields['last_name']
         ? `The ${reactData.fields['last_name'].value} Family`
-        : (reactData.fields['first_name'] ? `${reactData.fields['first_name'].value}'s Family` : 'My Family')
+        : (reactData.fields['first_name'] ? `${reactData.fields['first_name'].value}'s Family` : 'My Family');
     }
     updateReactData({
       newPerson: true,
@@ -1853,7 +1860,7 @@ export default ({ request = {}, onClose }) => {
             {reactData.sections.map((sectionObj, sectionNdx) => (
               (okToShowSection(sectionObj) &&
                 <React.Fragment
-                  key={`sectionFrag__${sectionObj.section_name}`}
+                  key={`sectionFrag__${sectionObj.section_name}_${sectionNdx}`}
                 >
                   <Typography
                     key={`section__${sectionObj.section_name}`}
@@ -1870,7 +1877,7 @@ export default ({ request = {}, onClose }) => {
                       (!reactData.fields[this_field].options || !reactData.fields[this_field].options.hidden) &&
                       !reactData.fields[this_field].ignore &&
                       <Box
-                        key={`parentFrag__${this_field}`}
+                        key={`parentFrag__${this_field}_${sectionNdx}`}
                         display='flex'
                         flexDirection='column'
                         id={`sigBox__${this_field}`}
@@ -1881,12 +1888,12 @@ export default ({ request = {}, onClose }) => {
                         width='97%'
                       >
                         <React.Fragment
-                          key={`fieldFrag__${this_field}`}
+                          key={`fieldFrag__${this_field}_${sectionNdx}`}
                         >
                           {(reactData.fields[this_field].type === 'text') &&
                             <TextField
                               id={`field__${this_field}`}
-                              key={`field__${this_field}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                              key={`field__${this_field}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
                                 ? reactData.fields[this_field].valueText
                                 : ''}`}
                               className={classes.inputDisplay}
@@ -1932,7 +1939,7 @@ export default ({ request = {}, onClose }) => {
                               className={classes.inputDisplay}
                               autoComplete='off'
                               disabled={reactData.fields[this_field].options.viewOnly}
-                              key={`field__${fieldNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                              key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
                                 ? reactData.fields[this_field].valueText
                                 : ''}`}
                               style={AVATextStyle({
@@ -1976,7 +1983,7 @@ export default ({ request = {}, onClose }) => {
                               className={classes.inputDisplay}
                               disabled={reactData.fields[this_field].options.viewOnly}
                               autoComplete='off'
-                              key={`field__${fieldNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
+                              key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
                                 ? reactData.fields[this_field].value
                                 : ''}`}
                               style={AVATextStyle({
@@ -2073,7 +2080,7 @@ export default ({ request = {}, onClose }) => {
                               display='flex'
                               flexDirection='column'
                               id={`sigBox__${this_field}`}
-                              key={`sigBox__${this_field}`}
+                              key={`sigBox__${this_field}_${sectionNdx}`}
                               justifyContent='flex-start'
                               marginTop={2}
                               marginBottom={2}
@@ -2095,7 +2102,7 @@ export default ({ request = {}, onClose }) => {
                               />
                               <Typography
                                 id={`sigBoxText__${this_field}`}
-                                key={`sigBoxText__${this_field}`}
+                                key={`sigBoxText__${this_field}_${sectionNdx}`}
                                 style={AVATextStyle({
                                   lineHeight: 1,
                                   width: `${reactData.fields[this_field].prompt.width || 200}px`,
@@ -2130,7 +2137,7 @@ export default ({ request = {}, onClose }) => {
                             <Box
                               display='flex'
                               flexDirection='row'
-                              key={`selectParent-${this_field}`}
+                              key={`selectParent-${this_field}_${sectionNdx}`}
                               id={`selectParent-${this_field}`}
                               width={`${reactData.fields[this_field].prompt.width || 200}px`}
                               flexGrow={1}
@@ -2139,7 +2146,7 @@ export default ({ request = {}, onClose }) => {
                               alignItems='flex-start'
                             >
                               <Box
-                                key={`selectBox-${this_field}`}
+                                key={`selectBox-${this_field}_${sectionNdx}`}
                                 display='flex' marginLeft={1} flexGrow={1} flexDirection='column'
                               >
                                 <Select
@@ -2148,7 +2155,7 @@ export default ({ request = {}, onClose }) => {
                                   dropdownHandle={true}
                                   clearOnSelect={true}
                                   clearOnBlur={true}
-                                  key={`selectOptions-${this_field}`}
+                                  key={`selectOptions-${this_field}_${sectionNdx}`}
                                   searchable={true}
                                   create={false}
                                   closeOnClickInput={true}
@@ -2196,10 +2203,10 @@ export default ({ request = {}, onClose }) => {
                                   flexDirection='row'
                                   paddingTop={'4px'}
                                   borderTop={1}
-                                  key={`selectPromptBox-${this_field}`}
+                                  key={`selectPromptBox-${this_field}_${sectionNdx}`}
                                 >
                                   <Typography
-                                    key={`selectPrompt-${this_field}`}
+                                    key={`selectPrompt-${this_field}_${sectionNdx}`}
                                     id={`selectPrompt-${this_field}`}
                                     style={AVATextStyle({
                                       lineHeight: 1,

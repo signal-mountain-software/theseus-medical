@@ -802,7 +802,13 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                   const [selectedPerson, selectedName] = response[0].split('%%');
                   const nowTime = makeDate(new Date());
                   const document_id = `${response[0]}_${reactData.pendingInstructions.formType}_${nowTime.timestamp}`;
-                  const document_title = `${reactData.pendingInstructions.formName} for ${selectedName} - ${nowTime.absolute}`;
+                  let document_title;
+                  if (selectedName) {
+                    document_title = `${reactData.pendingInstructions.formName} for ${selectedName} - ${nowTime.absolute}`;
+                  }
+                  else {
+                    document_title = `${reactData.pendingInstructions.formName} - ${nowTime.absolute}`;
+                  }
                   let goodPut = true;
                   const completedDocRec = {
                     client_id: state.session.client_id,
