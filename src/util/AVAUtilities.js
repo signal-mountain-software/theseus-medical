@@ -1,5 +1,5 @@
 import { getPerson, makeName } from '../util/AVAPeople';
-import { makeDate } from '../util/AVADateTime';
+import { makeDate, isDate } from '../util/AVADateTime';
 import { getOccurenceList } from '../util/AVACalendars';
 import { Lambda } from 'aws-sdk';
 
@@ -181,6 +181,9 @@ export function deepCopy(pValue) {
       arr[i] = deepCopy(pValue[i]);
     }
     return arr;
+  }
+  else if (isDate(pValue)) {
+    return pValue;
   }
   else if (typeof pValue === 'object') {
     var obj = {};
