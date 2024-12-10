@@ -1355,8 +1355,8 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                       >
                         {reactData.columnForms[reactData.selectedColumn][form_index].existingComplete
                           ? <CheckCircleIcon
-                            key={`radio-button${reactData.selectedColumn}_form${form_index}`}
-                            id={`radio-button${reactData.selectedColumn}_form${form_index}`}
+                            key={`radio-button${reactData.selectedColumn}_form${form_index}off`}
+                            id={`radio-button${reactData.selectedColumn}_form${form_index}off`}
                             onClick={() => {
                               selectAForm({ selectedColumn: reactData.selectedColumn, form_index, showCompleted: true });
                             }}
@@ -1365,8 +1365,8 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                             size='small'
                           />
                           : <RadioButtonUncheckedIcon
-                            key={`radio-button${reactData.selectedColumn}_form${form_index}`}
-                            id={`radio-button${reactData.selectedColumn}_form${form_index}`}
+                            key={`radio-button${reactData.selectedColumn}_form${form_index}on`}
+                            id={`radio-button${reactData.selectedColumn}_form${form_index}on`}
                             onClick={() => {
                               selectAForm({ selectedColumn: reactData.selectedColumn, form_index, showCompleted: false });
                             }}
@@ -1376,8 +1376,8 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                           />
                         }
                         <EditIcon
-                          key={`radio-button${reactData.selectedColumn}_form${form_index}`}
-                          id={`radio-button${reactData.selectedColumn}_form${form_index}`}
+                          key={`radio-button${reactData.selectedColumn}_form${form_index}edit`}
+                          id={`radio-button${reactData.selectedColumn}_form${form_index}edit`}
                           checked={reactData.columnForms[reactData.selectedColumn][form_index].isChecked}
                           value={reactData.columnForms[reactData.selectedColumn][form_index].isChecked}
                           onClick={() => {
@@ -1389,7 +1389,12 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                         />
                         <Typography
                           key={`name-col${reactData.selectedColumn}_form${form_index}`}
-                          style={AVATextStyle({ size: 1.5, bold: true, margin: { left: 1 } })}
+                          style={AVATextStyle({
+                            size: 1.5,
+                            bold: true,
+                            margin: { left: 1 },
+                            color: ((reactData.columnForms[reactData.selectedColumn][form_index].existingComplete) ? null : 'red')
+                          })}
                         >
                           {this_form.form_name}
                         </Typography>
@@ -1492,8 +1497,11 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                         reactData.columnForms[reactData.selectedColumn][form_index].asForm &&
                         <FormFillB
                           request={makeFormRequest({ form_index, showCompleted: reactData.showCompleted })}
-                          onClose={(formStatus) => {
+                          onClose={(formStatus, statusObj) => {
                             reactData.columnForms[reactData.selectedColumn][form_index].isChecked = false;
+                            if (statusObj.document_status === 'complete') {
+                              reactData.columnForms[reactData.selectedColumn][form_index].existingComplete = statusObj.recWritten;
+                            }
                             updateReactData({
                               columnForms: reactData.columnForms,
                               showCompleted: false
