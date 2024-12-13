@@ -282,7 +282,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     viewOnly - do not allow updates to event details
     assignmentView - show list of people you can assign to events
     allowAssign - required when assignmentView is true; this becomes assignment__list
-    template__List - a list of event templates to use when creatinf new appointments
+    template__List - a list of event templates to use when creating new appointments
     assignment__list - this is a list of people and groups that you may choose from to assign to events
     message_override - [list of IDs] or [*none*] (default if missing: added slots = message to the event owner)
     colorScheme: {   (if this exists at all, ALL colors are overridden; missing keys will be null/black color)
@@ -1335,9 +1335,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 </MenuList>
               </Menu>
             </Box>
-            {reactData.defaultValues.assignmentView &&
+            {reactData.defaultValues.assignmentView && 
               <React.Fragment>
-                {reactData.defaultValues.template__List &&
+                {reactData.defaultValues.template__List && !reactData.defaultValues.no_dragTemplate &&
                   <Box
                     key={`template_outer`}
                     className={classes.peopleBox}
