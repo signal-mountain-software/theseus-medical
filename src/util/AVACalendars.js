@@ -1328,6 +1328,7 @@ export async function writeSlot(body) {
 
   // assign a form?
   let ownerRec;
+  let documents_assigned;
   if (body.default_forms) {
     let documentsAssignedToThisPerson = {};
     let formList = makeArray(body.default_forms);
@@ -1648,6 +1649,10 @@ export async function writeSlot(body) {
             }
           })
         }
+        // remove duplicates from docRef
+        let uniqueDocRef = docRef.filter(function (item, pos, self) {
+          return self.indexOf(item) === pos;
+        })
         if (needsUpdate) {
           await dbClient
             .update({
@@ -1656,11 +1661,12 @@ export async function writeSlot(body) {
                 event_key: `${event_key}`
               },
               UpdateExpression: 'set documents = :d',
-              ExpressionAttributeValues: { ':d': docRef },
+              ExpressionAttributeValues: { ':d': uniqueDocRef },
               TableName: "Calendar"
             })
             .promise()
             .catch(error => { cl(`caught error updating Documents; error is: `, error); });
+          documents_assigned = uniqueDocRef;
         }
       }
     };
@@ -1828,6 +1834,9 @@ export async function writeSlot(body) {
   }
   if (newLocation) {
     putCalendar.newLocation = newLocation;
+  }
+  if (documents_assigned) {
+    putCalendar.documents = documents_assigned;
   }
   return putCalendar;
 
@@ -2610,7 +2619,10 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
     let occurrenceRec = calendarRecs.Items[c];
     if (occurrenceRec.occurrence_date !== screenDate) {  // send a message back... now processing date xxxx
       screenDate = occurrenceRec.occurrence_date;
-      screenStatus(makeDate(occurrenceRec.occurrence_date).relative, ccL * 3, ((c / ccL) * 90));
+      screenStatus(makeDate(occurrenceRec.occurrence_date).relative, ccL * 3, ((c / ccL) * 90), response);
+    }
+    else if ((c % 10) === 0) {
+      screenStatus(makeDate(occurrenceRec.occurrence_date).relative, ccL * 3, ((c / ccL) * 90), response);
     }
     if (!found_events.hasOwnProperty(occurrenceRec.event_id)) {
       // for each event we come across, gather event data (eventData) and create any missing occurrences in this date range (getOccurrenceList)
@@ -2765,7 +2777,7 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
     }
   };
 
-  screenStatus('Wrapping things up', ccL * 3, 95);
+  screenStatus('Wrapping things up', ccL * 3, 95, response);
   let greetings = await getCustomizations('greetings', this_client);
   let greetingsAll = await getCustomizations('greetings', '*all');
   let holidays = Object.assign({}, greetingsAll.customization_value, greetings.customization_value);
