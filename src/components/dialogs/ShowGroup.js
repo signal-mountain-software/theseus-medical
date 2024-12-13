@@ -1,6 +1,5 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { isEmpty } from '../../util/AVAUtilities';
 import { getGroup, getRole } from '../../util/AVAGroups';
 
 import Box from '@material-ui/core/Box';

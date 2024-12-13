@@ -8,7 +8,6 @@ import { getObservationItems } from './AVAObservations';
 import { makeDate } from './AVADateTime';
 
 import { jsPDF } from "jspdf";
-import { html2canvas } from "html2canvas";
 
 let page = {};
 let pdfCurrent = {};

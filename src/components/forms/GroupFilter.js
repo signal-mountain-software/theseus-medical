@@ -188,14 +188,14 @@ export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, on
 
   function calcMinimumGroupLevel() {
     let response = 99;
-    Object.keys(groupsManagedObject).map((listEntry) => {
+    Object.keys(groupsManagedObject).forEach((listEntry) => {
       if (groupsManagedObject[listEntry].level &&(groupsManagedObject[listEntry].level < response)) {
         response = groupsManagedObject[listEntry].level;
       }
     });
     return response;
   }
-  const [minimumGroupLevel, setMinimumGroupLevel] = React.useState(calcMinimumGroupLevel() - 1);
+  const [minimumGroupLevel, ] = React.useState(calcMinimumGroupLevel() - 1);
 
   /*
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
