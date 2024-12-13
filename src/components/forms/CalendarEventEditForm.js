@@ -946,7 +946,18 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
         cl(`caught error updating Calendar; error is: `, error);
         goodUpdate = false;
       });
+    // remove all the slots
     if (goodUpdate) {
+      if (eventSlotList && (eventSlotList.length > 0)) {
+        for (const [index, this_item] of eventSlotList.entries()) {
+          await handleAllocateSlot({
+            person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
+            slot: this_item.slotData.id,
+            release: true,
+            index: (index || 0)
+          });
+        };
+      }
       enqueueSnackbar('Event cancelled!', { variant: 'success' });
     }
     else {
