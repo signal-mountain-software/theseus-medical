@@ -557,6 +557,10 @@ export function makeTime(pTime) {
                 else if (inTime.includes('am')) { ampm = 'am'; }
                 else if (inTime.includes('a')) { ampm = 'am'; }
                 else if (inTime.includes('p')) { ampm = 'pm'; }
+                else if (inTime.slice(0, 1) === '0') {
+                    ampm = 'am';
+                    if (inTime.slice(1, 2) === '0') { inTime = `12${inTime.slice(2)}am` }
+                }  // support military times starting with zero
                 [hh$, mm$] = inTime.split(':');
                 const hhClean = hh$.replace(/\D+/g, '');
                 if (!hhClean) {
@@ -568,7 +572,7 @@ export function makeTime(pTime) {
             }
         }
         else { hh = pTime; }
-        if (hh > 100) {
+        if (hh > 12) {
             if (!mm$) { mm = hh % 100; }
             hh = Math.floor(hh / 100);
         }
@@ -588,7 +592,7 @@ export function makeTime(pTime) {
             hh -= 12;
             ampm = 'pm';
         }
-        else if (hh === 12) {
+        else if ((hh === 12) && (!ampm)) {
             ampm = 'pm';
         }
         else if (hh === 0) {
