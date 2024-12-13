@@ -1,4 +1,4 @@
-import { clt, cl, recordExists, getCustomizations, makeArray, makeString, makeNumber, uuid, dbClient, titleCase, isEmpty, isObject, array_in_array } from './AVAUtilities';
+import { clt, cl, deepCopy, recordExists, getCustomizations, makeArray, makeString, makeNumber, uuid, dbClient, titleCase, isEmpty, isObject, array_in_array } from './AVAUtilities';
 import { makeName, getPerson, formatPhone } from './AVAPeople';
 import { addDays, daysDiff, makeDate, makeTime, addMonths } from './AVADateTime';
 import { sendMessages, resolveMessageVariables } from './AVAMessages';
@@ -2574,15 +2574,21 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
   const [start_date, end_date] = setDateRange(body.start_date, body.end_date);
 
   let qQ = { TableName: 'Calendar' };
-  qQ.IndexName = 'occurrence_date-index';
-
   const this_client = body.client || body.client_id;
   qQ.KeyConditionExpression = 'client = :c';
   qQ.ExpressionAttributeValues = { ':c': this_client };
-
-  qQ.KeyConditionExpression += ' AND occurrence_date BETWEEN :s and :e';
-  qQ.ExpressionAttributeValues[':s'] = makeDate(start_date, { noTime: true }).numeric$;
-  qQ.ExpressionAttributeValues[':e'] = makeDate(end_date, { noTime: true }).numeric$;
+  
+  if (body.filter && body.filter.this_person) {
+    qQ.IndexName = 'slot_owner-index';
+    qQ.KeyConditionExpression += ' AND slot_owner = :s';
+    qQ.ExpressionAttributeValues[':s'] = body.filter.this_person;
+  }
+  else {
+    qQ.IndexName = 'occurrence_date-index';
+    qQ.KeyConditionExpression += ' AND occurrence_date BETWEEN :s and :e';
+    qQ.ExpressionAttributeValues[':s'] = makeDate(start_date, { noTime: true }).numeric$;
+    qQ.ExpressionAttributeValues[':e'] = makeDate(end_date, { noTime: true }).numeric$;
+  }
 
   let peopleInfo = {};
   let conflicts = {};
@@ -2616,7 +2622,7 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
   let found_events = {};
   let cancelled_occurrences = {};
   for (let c = 0; c < ccL; c++) {
-    let occurrenceRec = calendarRecs.Items[c];
+    let occurrenceRec = deepCopy(calendarRecs.Items[c]);
     if (occurrenceRec.occurrence_date !== screenDate) {  // send a message back... now processing date xxxx
       screenDate = occurrenceRec.occurrence_date;
       screenStatus(makeDate(occurrenceRec.occurrence_date).relative, ccL * 3, ((c / ccL) * 90), response);
@@ -2631,12 +2637,18 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       //   event_id: occurrenceRec.event_id,
       //   info: 'basic'
       // });
+      // ********* RAY HERE **************
+      let newOcc = {};
+      const responseCal = await getCalendarEntries({ client: this_client, event: occurrenceRec.event_id, type: 'event' });
+      newOcc.eventRec = responseCal[0];
+      /*
       let newOcc = await getOccurenceList({
         client: this_client,
         event: occurrenceRec.event_id,
         from_date: start_date,
         to_date: end_date
       });
+      */
       found_events[occurrenceRec.event_id] = newOcc.eventRec.eventData.event_data;
       if (newOcc.eventRec.hasOwnProperty('default_forms')) {
         found_events[occurrenceRec.event_id].default_forms = newOcc.eventRec.default_forms;
@@ -2676,7 +2688,8 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       else {
         found_events[occurrenceRec.event_id].sort24 = makeTime(found_events[occurrenceRec.event_id].time.split(' to')[0]).string24;
       }
-      // for occurrences that were created, add them to the appropriate response[date].events object 
+      // for occurrences that were created, add them to the appropriate response[date].events object
+      /*
       for (let newDate in newOcc.occRec) {
         if (response.hasOwnProperty(newDate)) {
           if (!response[newDate].events.hasOwnProperty(newOcc.occRec[newDate].event_id)) {
@@ -2687,6 +2700,11 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
           Object.assign(response[newDate].events[newOcc.occRec[newDate].event_id], newOcc.eventRec.eventData.event_data, newOcc.occRec[newDate]);
         }
       }
+      */
+      const this_eventID = occurrenceRec.event_id;
+      const responseEventRec = deepCopy(newOcc.eventRec.eventData.event_data);
+      const responseRec = Object.assign({}, responseEventRec, occurrenceRec, { slot_owners: {} });
+      response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id] = responseRec;
     }
     // identify any cancelled occurrences; we'll remove them later
     if (occurrenceRec.occurrence_cancelled) {
@@ -2770,8 +2788,16 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
           conflicts[occurrenceRec.slotData.owner].summaries[this_Sunday.numeric$].minutes += minutes_booked;
         }
         conflicts[occurrenceRec.slotData.owner][occurrenceRec.occurrence_date].push(
-          { time: start_time.numeric24, open: false, event_id: occurrenceRec.event_id, event_title: found_events[occurrenceRec.event_id].description },
-          { time: end_time.numeric24, open: true }
+          {
+            time: start_time.numeric24,
+            open: false,
+            event_id: occurrenceRec.event_id,
+            event_title: found_events[occurrenceRec.event_id].description
+          },
+          {
+            time: end_time.numeric24,
+            open: true
+          }
         );
       }
     }

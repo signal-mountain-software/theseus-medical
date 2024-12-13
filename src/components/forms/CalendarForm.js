@@ -45,7 +45,7 @@ import PersonFilter from '../forms/PersonFilter';
 
 import Button from '@material-ui/core/Button';
 
-import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, AVADefaults, contrastColor, hexColors } from '../../util/AVAStyles';
 import useSession from '../../hooks/useSession';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { printCalendar } from '../../util/AVACalendarPrint';
@@ -565,7 +565,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
             let personRec = null;
             if (reactData.idFilter) {
               personRec = await getPerson(reactData.idFilter);
-            } 
+            }
             updateReactData({
               addTemplateEvent: true,
               selectedTemplate: getTemplate(dragged_id),
@@ -745,7 +745,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           }
           reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].push(
             {
-              time: eventStart24, open: false, event_id: reactData.myCalendar[dateIndex].eventList[eventIndex].event_key,
+              time: eventStart24,
+              open: false,
+              event_id: reactData.myCalendar[dateIndex].eventList[eventIndex].event_id,
               event_title: reactData.myCalendar[dateIndex].eventList[eventIndex].description
             },
             { time: eventEnd24, open: true }
@@ -921,32 +923,11 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     }
   };
 
-  let alreadySummarized = {};
-  const showPersonSummary = (display_name) => {
-    alreadySummarized = {};
-    return display_name;
-  };
-
-  const showWeekTotal = (this_person, this_date) => {
-    let madeDate = makeDate(this_date);
-    let this_sunday = makeDate(addDays(madeDate.date, -(madeDate.dayOfWeek)));
-    if (alreadySummarized.hasOwnProperty(this_sunday.numeric$)) {
-      return null;
+  const setTextColor = (this_event, this_date, agendaView) => {
+    if (!agendaView && reactData.idFilter && isUnAvailable(this_date, reactData.idFilter)) {
+      return { color: contrastColor(hexColors[reactData.colorScheme.unavailable]) };
     }
-    else {
-      alreadySummarized[this_sunday.numeric$] = true;
-      return (
-        <Typography
-          noWrap={true}
-          style={AVATextStyle({ bold: true, size: 1.1, margin: { top: 1 } })}>
-          {`Hrs wk of ${this_sunday.dateOnly} = ${Math.round((reactData.conflictInfo[this_person].summaries[this_sunday.numeric$].minutes / 60) * 10) / 10}`}
-        </Typography>
-      );
-    }
-  };
-
-  const setTextColor = (this_event, this_date) => {
-    if (reactData.idFilter && isUnAvailable(this_date, reactData.idFilter)) {
+    else if (!this_event) {
       return { color: reactData.calendar_fill_text };
     }
     else if (this_event.customizations && this_event.customizations.show_as_unavailable && reactData.colorScheme.unavailable) {
@@ -1335,7 +1316,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 </MenuList>
               </Menu>
             </Box>
-            {reactData.defaultValues.assignmentView && 
+            {reactData.defaultValues.assignmentView &&
               <React.Fragment>
                 {reactData.defaultValues.template__List && !reactData.defaultValues.no_dragTemplate &&
                   <Box
@@ -1406,41 +1387,37 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                 key={`conflict-${cX}_conflictName`}
                                 style={AVATextStyle({ bold: true, size: 1.2, margin: { top: 0.2 } })}
                               >
-                                {showPersonSummary(this_candidate.display_name)}
+                                {this_candidate.display_name}
                               </Typography>
                               {reactData.conflictInfo[this_candidate.person_id]
                                 ?
-                                Object.keys(reactData.conflictInfo[this_candidate.person_id]).map((conflict_date, cDateX) => (
-                                  ((conflict_date !== 'summaries') &&
-                                    <Box
-                                      key={`conflict-${cX}_${cDateX}`}
-                                      display='flex' justifyContent='center'
-                                      alignItems='center' flexDirection='column'
-                                      textOverflow={'ellipsis'}
-                                    >
-                                      {showWeekTotal(this_candidate.person_id, conflict_date)}
+                                Object.keys(reactData.conflictInfo[this_candidate.person_id].summaries).map((conflict_date, cDateX) => (
+                                  <Box
+                                    key={`conflict-${cX}_${cDateX}`}
+                                    display='flex' justifyContent='center'
+                                    alignItems='center' flexDirection='column'
+                                    textOverflow={'ellipsis'}
+                                  >
+                                    {(reactData.conflictInfo[this_candidate.person_id].summaries[conflict_date].minutes > 0)
+                                      ?
                                       <Typography
                                         noWrap={true}
-                                        style={AVATextStyle({ italic: true, size: 1.0, margin: { top: 0.2 } })}>
-                                        {makeDate(conflict_date).relative}
+                                        style={AVATextStyle({ italic: true, size: 0.8 })}>
+                                        {`Hrs wk of ${ordinal(conflict_date % 100)}: ${(Math.round((reactData.conflictInfo[this_candidate.person_id].summaries[conflict_date].minutes / 60) * 10) / 10).toFixed(1)}`}
                                       </Typography>
-                                      {reactData.conflictInfo[this_candidate.person_id][conflict_date].map((this_conflict, tCN) => (
-                                        !this_conflict.open &&
-                                        <Typography
-                                          key={`conflict-${cX}_${tCN}`}
-                                          style={AVATextStyle({ size: 1.0 })}
-                                          noWrap={true}
-                                        >
-                                          {`${(this_conflict.time > 0) ? makeTime(this_conflict.time).short : 'All Day'} - ${titleCase(this_conflict.event_title).slice(0, 30)}`}
-                                        </Typography>
-                                      ))}
-                                    </Box>
-                                  )
+                                      :
+                                      <Typography
+                                        noWrap={true}
+                                        style={AVATextStyle({ italic: true, size: 0.8 })}>
+                                        {`Nothing scheduled wk of ${ordinal(conflict_date % 100)}`}
+                                      </Typography>
+                                    }
+                                  </Box>
                                 ))
                                 :
                                 <Box key={`conflict-${cX}_noconflict`} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
                                   <Typography
-                                    style={AVATextStyle({ italic: true, size: 1.0, margin: { top: 0.2 } })}>
+                                    style={AVATextStyle({ italic: true, size: 0.8, margin: { top: 0.2 } })}>
                                     {'Nothing Scheduled'}
                                   </Typography>
                                 </Box>
@@ -1561,7 +1538,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                 mt={1}
                                 justifyContent={'center'}
                                 style={{
-                                  borderColor: reactData.calendar_fill_text,
+                                  borderColor: setTextColor(null, this_date, agendaView()).color,
                                 }}
                                 onDragOver={(e) =>
                                   handleDragOver(e, {
@@ -1600,7 +1577,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                     style={AVATextStyle({
                                       size: 1.2,
                                       margin: { left: 0.2, right: 0.2 },
-                                      color: reactData.calendar_fill_text,
+                                      color: setTextColor(null, this_date, agendaView()).color,
                                     })}
                                     key={this_date.dateObj.numeric$ + 'head1' + dateIndex}
                                   >
@@ -1615,7 +1592,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                       style={AVATextStyle({
                                         size: 1.2,
                                         margin: { left: 0.2, right: 0.2 },
-                                        color: reactData.calendar_fill_text,
+                                        color: setTextColor(null, this_date, agendaView()).color,
                                       })}
                                       key={this_date.dateObj.numeric$ + 'month2' + dateIndex}
                                     >
@@ -1625,7 +1602,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                   <Typography
                                     style={AVATextStyle({
                                       size: 1.2,
-                                      color: reactData.calendar_fill_text,
+                                      color: setTextColor(null, this_date, agendaView()).color,
                                       margin: { left: 0.2, right: 0.2 }
                                     })}
                                     key={this_date.dateObj.numeric$ + 'head2' + dateIndex}
@@ -1774,14 +1751,14 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                           <Box display='flex' flexDirection='row'
                                             justifyContent={agendaView() ? 'flex-start' : 'center'}
                                             alignItems='center'
-                                            color={setTextColor(this_event, this_date).color}
+                                              color={setTextColor(this_event, this_date, agendaView()).color}
                                           >
                                             <Box display='flex' flexDirection='column'
                                               justifyContent={agendaView() ? 'flex-start' : 'center'}
                                               ml={agendaView() ? 0 : 1}
                                               mr={1}
                                               alignItems={agendaView() ? 'flex-start' : 'center'}
-                                              color={setTextColor(this_event, this_date).color}
+                                                color={setTextColor(this_event, this_date, agendaView()).color}
                                             >
                                               <Typography style={AVATextStyle({
                                                 size: 1,
@@ -2032,6 +2009,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           {!reactData.loading && reactData.event_being_edited &&
             <CalendarEventEditForm
               pEventCode={reactData.event_being_edited.event_key}
+              pEvent={reactData.event_being_edited}
               peopleList={peopleList}
               pPatient={reactData.selectedPerson_id}
               pClient={reactData.event_being_edited.client}
@@ -2048,6 +2026,20 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                   event_being_edited: false
                 };
                 if (updatedData.event_cancelled) {
+                  let minutes_removed = 0;
+                  let found_conflict = reactData.conflictInfo[reactData.selectedPerson_id][reactData.event_being_edited.occData.occurrence_date].findIndex(this_conflict => {
+                    if (this_conflict.event_id === reactData.event_being_edited.event_id) {
+                      minutes_removed = reactData.event_being_edited.time.duration;
+                      return true;
+                    }
+                    return false;
+                  });
+                  if (found_conflict > -1) {
+                    reactData.conflictInfo[reactData.selectedPerson_id][reactData.event_being_edited.occData.occurrence_date].splice(found_conflict, 1);
+                    if (minutes_removed < 1400) {
+                      reactData.conflictInfo[reactData.selectedPerson_id].summaries[reactData.event_being_edited.occData.occurrence_date].minutes -= minutes_removed;
+                    }
+                  }
                   reactData.myCalendar[reactData.event_being_edited.date_index].eventList.splice(reactData.event_being_edited.event_index, 1);
                   updateObj.myCalendar = reactData.myCalendar;
                   localStorage.setItem(`calendarChanged`, true);
@@ -2171,7 +2163,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         });
                       });
                       reactData.myCalendar[foundIt].eventList.sort((a, b) => {
-             //           return ((a.sort24 < b.sort24) ? -1 : 1);
+                        //           return ((a.sort24 < b.sort24) ? -1 : 1);
                         if (a.customizations && a.customizations.show_as_unavailable) {
                           return 1;
                         }
@@ -2294,7 +2286,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         }
                         reactData.conflictInfo[dragged_id][newOccDate].push(
                           {
-                            time: start_time.numeric24, open: false, event_id: reactData.myCalendar[foundIt].eventList[eventIndex].event_key,
+                            time: start_time.numeric24,
+                            open: false,
+                            event_id: reactData.myCalendar[foundIt].eventList[eventIndex].event_id,
                             event_title: reactData.myCalendar[foundIt].eventList[eventIndex].description
                           },
                           { time: end_time.numeric24, open: true }
@@ -2318,7 +2312,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                     }
                     if (foundIt > -1) {
                       reactData.myCalendar[foundIt].eventList.sort((a, b) => {
-          //              return ((a.sort24 < b.sort24) ? -1 : 1);
+                        //              return ((a.sort24 < b.sort24) ? -1 : 1);
                         if (a.customizations && a.customizations.show_as_unavailable) {
                           return 1;
                         }
