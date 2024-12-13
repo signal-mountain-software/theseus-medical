@@ -572,7 +572,7 @@ export function makeTime(pTime) {
             }
         }
         else { hh = pTime; }
-        if (hh > 12) {
+        if (hh >= 100) {
             if (!mm$) { mm = hh % 100; }
             hh = Math.floor(hh / 100);
         }
