@@ -762,6 +762,10 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
             break;
           }
           case 'signature': {
+            await pdfImage(docData.fields[this_field].prompt.ref, { image: docDocument[this_field] || docDocument.signature, style: 'normal', size: 'medium', align: 'left', after: 1 });
+            break;
+          }
+          case 'legacy_signature': {
             pdfLine(docData.fields[this_field].prompt.ref, { image: docDocument[this_field] || docDocument.signature, style: 'normal', size: 'medium', align: 'left', after: 1 });
             break;
           }
@@ -874,6 +878,10 @@ export async function printDocumentB({ documentList, options = {} }) {
                 break;
               }
               case 'signature': {
+                await pdfImage(fields[this_field].prompt.value, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
+                break;
+              }
+              case 'legacy_signature': {
                 pdfLine(fields[this_field].prompt.value, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
                 break;
               }
@@ -1100,7 +1108,7 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
               }
               case 'signature': {
                 if (signatures[fields[this_field].options.sigRefNumber]) {
-                  pdfLine(fields[this_field].prompt.value, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
+                  await pdfImage(fields[this_field].prompt.value, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
                 }
                 else {
                   pdfCurrent.yPos += 12;
@@ -2051,27 +2059,39 @@ function pdfLine(text, options = {}) {
     pdfHeader(++pdfCurrent.pageNumber);
   }
   if (options.image) {
-    let imageSize = pdfCurrent.fontSize * 2 * (pdfCurrent.fontSize / page.font.size['medium']);
+    var imageWidth, imageHeight;
+    if (options.image.includes('base64')) {
+      var img = new Image();
+      img.src = options.image;
+      img.onload = function () {
+        imageWidth = img.naturalWidth;
+        imageHeight = img.naturalHeight;
+      }
+    }
+    else {
+      imageWidth = pdfCurrent.fontSize * 2 * (pdfCurrent.fontSize / page.font.size['medium']);
+      imageHeight = imageWidth;
+    }
     let xOffset;
     try {
       switch (pdfCurrent.align) {
         case 'center': {
-          xOffset = page.centerPoint - (imageSize / 2);
-          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
-          pdfCurrent.xPos = page.centerPoint + (imageSize / 2);
+          xOffset = page.centerPoint - (imageWidth / 2);
+          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+          pdfCurrent.xPos = page.centerPoint + (imageWidth / 2);
           break;
         }
         case 'right': {
-          xOffset = page.width - page.margin.right - imageSize;
-          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
+          xOffset = page.width - page.margin.right - imageWidth;
+          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
           pdfCurrent.xPos = page.width - page.margin.right;
           break;
         }
         default: {
           xOffset = pdfCurrent.xPos + pdfCurrent.indent;
           //    let imageProps = doc.getImageProperties(options.image);
-          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
-          pdfCurrent.yPos += imageSize;
+          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+          pdfCurrent.yPos += imageHeight;
           pdfDown(1);
         }
       }
@@ -2080,7 +2100,7 @@ function pdfLine(text, options = {}) {
       doc.html(`<img src="${options.image}" />`);
       switch (pdfCurrent.align) {
         case 'center': {
-          pdfCurrent.xPos = page.centerPoint + (imageSize / 2);
+          pdfCurrent.xPos = page.centerPoint + (imageWidth / 2);
           break;
         }
         case 'right': {
@@ -2088,7 +2108,7 @@ function pdfLine(text, options = {}) {
           break;
         }
         default: {
-          pdfCurrent.xPos = xOffset + imageSize;
+          pdfCurrent.xPos = xOffset + imageWidth;
         }
       }
     }
@@ -2152,6 +2172,141 @@ function pdfLine(text, options = {}) {
   }
   if (options.after) { pdfDown(options.after); }
   return;
+}
+
+
+async function pdfImage(text, options = {}) {
+  clt({ pdfLine: text, options });
+  if (options) { pdfStyle(options); }
+  if (options.before) { pdfDown(options.before); }
+  if (options.yPos && !isNaN(options.yPos)) {
+    pdfCurrent.yPos = options.yPos;
+  }
+  else if (options.yPos && (options.yPos === 'footer')) {
+    pdfCurrent.yPos = Math.max((page.height - page.margin.bottom - 20), pdfCurrent.yPos);
+    pdfCurrent.xPos = page.margin.left;
+    options.noNewPage = true;
+  }
+  else if (options.yPos && (options.yPos === 'header')) {
+    pdfCurrent.yPos = page.margin.top;
+    options.noNewPage = true;
+  }
+  else if (!options.noNewLine) {
+    pdfDown(1);
+  }
+  if (!options.noNewPage && ((pdfCurrent.yPos + ((options.protectOrphan ? 2 : 0) * pdfCurrent.fontSize)) >= page.bottom)) {
+    let savedStyle = Object.assign({}, pdfCurrent);
+    pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
+    pdfCurrent = Object.assign({}, savedStyle, { yPos: pdfCurrent.yPos });
+    pdfStyle(pdfCurrent);
+    pdfHeader(++pdfCurrent.pageNumber);
+  }
+  if (options.image) {
+    var imageWidth, imageHeight;
+    if (options.image.includes('base64')) {
+      var img = new Image();
+      img.src = options.image;
+      await getImageSize(img);
+      imageWidth = img.naturalWidth;
+      imageHeight = img.naturalHeight;
+    }
+    else {
+      imageWidth = pdfCurrent.fontSize * 2 * (pdfCurrent.fontSize / page.font.size['medium']);
+      imageHeight = imageWidth;
+    }
+    if (imageWidth === 0) {
+      imageWidth = pdfCurrent.fontSize * 2 * (pdfCurrent.fontSize / page.font.size['medium']);
+      imageHeight = imageWidth;
+    }
+    else if (imageWidth > (page.width / 4)) {
+      var shrinkFactor = (page.width / 4) / imageWidth;
+      imageWidth = page.width / 4;
+      imageHeight = imageHeight *= shrinkFactor;
+    }
+    let xOffset;
+    try {
+      switch (pdfCurrent.align) {
+        case 'center': {
+          xOffset = page.centerPoint - (imageWidth / 2);
+          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+          pdfCurrent.xPos = page.centerPoint + (imageWidth / 2);
+          break;
+        }
+        case 'right': {
+          xOffset = page.width - page.margin.right - imageWidth;
+          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+          pdfCurrent.xPos = page.width - page.margin.right;
+          break;
+        }
+        default: {
+          xOffset = pdfCurrent.xPos + pdfCurrent.indent;
+          //    let imageProps = doc.getImageProperties(options.image);
+          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+          pdfCurrent.yPos += imageHeight;
+          pdfDown(1);
+        }
+      }
+    }
+    catch {
+      doc.html(`<img src="${options.image}" />`);
+      switch (pdfCurrent.align) {
+        case 'center': {
+          pdfCurrent.xPos = page.centerPoint + (imageWidth / 2);
+          break;
+        }
+        case 'right': {
+          pdfCurrent.xPos = page.width - page.margin.right;
+          break;
+        }
+        default: {
+          pdfCurrent.xPos = xOffset + imageWidth;
+        }
+      }
+    }
+  }
+  if (text && (text.length > 0)) {
+    // this little chunk deals with text overflow
+    let tWords = [];
+    if ((pdfCurrent.align === 'center') && (doc.getTextWidth(text) > page.printableArea)) {
+      tWords = doc.splitTextToSize(text, page.printableArea);
+    }
+    else if ((pdfCurrent.align !== 'center') && ((doc.getTextWidth(text) + pdfCurrent.xPos + pdfCurrent.indent) > page.right)) {
+      tWords = doc.splitTextToSize(text, (page.right - (pdfCurrent.xPos + pdfCurrent.indent)));
+    }
+    if (tWords.length > 0) {
+      for (let t = 0; t < tWords.length - 1; t++) {
+        pdfLine(tWords[t], Object.assign({}, options, { after: 0 }));
+      }
+      pdfDown(1);
+      text = tWords[tWords.length - 1];
+    }
+    if (pdfCurrent.align === 'center') {
+      let xOffset = page.centerPoint - (doc.getTextWidth(text) / 2);
+      doc.text(text, xOffset, pdfCurrent.yPos);
+      pdfCurrent.xPos = page.centerPoint + (doc.getTextWidth(text) / 2) + pdfCurrent.fontSize;
+    }
+    else if (pdfCurrent.align === 'right') {
+      doc.text(text, page.width - page.margin.right, pdfCurrent.yPos, { align: 'right' });
+      pdfCurrent.xPos = page.margin.right;
+    }
+    else if (pdfCurrent.noNewLine) {
+      doc.text(text, pdfCurrent.xPos + pdfCurrent.indent, pdfCurrent.yPos);
+      pdfCurrent.xPos += doc.getTextWidth(text) + pdfCurrent.fontSize;
+    }
+    else {
+      doc.text(text, pdfCurrent.xPos + pdfCurrent.indent, pdfCurrent.yPos);
+      pdfCurrent.xPos = (pdfCurrent.xPos + pdfCurrent.indent) + doc.getTextWidth(text) + pdfCurrent.fontSize;
+    }
+  }
+  if (options.after) { pdfDown(options.after); }
+  return;
+
+  function getImageSize(img) {
+    return new Promise(res => {     
+      img.onload = () => res();
+      img.onerror = () => res();
+    });
+  }
 }
 
 function pdfDown(n = 1) {
