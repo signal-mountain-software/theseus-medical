@@ -351,6 +351,11 @@ export default ({ request = {}, onClose }) => {
               key: defaultObj.source_path
             });
           }
+          else if (source_file.startsWith('formData')) {
+            if (reactData.options.hasOwnProperty('formData') && defaultObj.source_path[0]) {
+              response.value = reactData.options.formData[defaultObj.source_path[0]];
+            }
+          }
           if (response.value) {
             break;
           }
@@ -481,6 +486,11 @@ export default ({ request = {}, onClose }) => {
                   object: reactData.peopleRec[state.session.user_id],
                   key: defaultObj.source_path
                 });
+              }
+              else if (source_file.startsWith('formData')) {
+                if (reactData.options.hasOwnProperty('formData') && defaultObj.source_path[0]) {
+                  response.fields[this_field].value = reactData.options.formData[defaultObj.source_path[0]];
+                }
               }
               if (response.fields[this_field].value) {
                 break;
@@ -721,6 +731,11 @@ export default ({ request = {}, onClose }) => {
                   object: reactData.peopleRec[state.session.user_id],
                   key: defaultObj.source_path
                 });
+              }
+              else if (source_file.startsWith('formData')) {
+                if (reactData.options.hasOwnProperty('formData') && defaultObj.source_path[0]) {
+                  response.fields[this_field].value = reactData.options.formData[defaultObj.source_path[0]];
+                }
               }
               if (response.fields[this_field].value) {
                 break;
@@ -1546,6 +1561,21 @@ export default ({ request = {}, onClose }) => {
           response = { goodPut: false, putError: `Bad put to CompletedDocuments. Error is: ${error}` };
         });
       if (response.goodPut) {
+        // if we dont allow save/continue, then we should remove the WIP document here
+        if (reactData.formRec?.options?.noSaveContinue) {
+          await dbClient
+            .delete({
+              Key: {
+                client_id: state.session.client_id,
+                document_id
+              },
+              TableName: 'DocumentsInProcess'
+            })
+            .promise()
+            .catch(error => {
+              cl(`Bad delete. DocumentsInProcess not removed or did not exist. Error is: ${error}`);
+            });
+        }
         response.status = 'complete';
         response.recWritten = CRec;
         await dbClient

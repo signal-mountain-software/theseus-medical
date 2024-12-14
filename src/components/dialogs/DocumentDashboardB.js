@@ -1,13 +1,14 @@
 import React from 'react';
 import useSession from '../../hooks/useSession';
+import { useSnackbar } from 'notistack';
 
 import { dbClient, cl, makeArray, recordExists, getDb, array_in_array, listFromArray, switchActiveAccount } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import AVATextInput from '../forms/AVATextInput';
+import { makeName } from '../../util/AVAPeople';
 import FormFillB from '../forms/FormFillB';
 
 import { Typography } from '@material-ui/core';
-import TextField from '@material-ui/core/TextField';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -115,6 +116,7 @@ const useStyles = makeStyles(theme => ({
 export default ({ client, formTypes = '*all', options, onClose }) => {
 
   const { state } = useSession();
+  const { enqueueSnackbar } = useSnackbar();
 
   var rowsWritten;
   var completed_and_displayed = [];
@@ -312,7 +314,7 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
     return false;
   };
 
-  const okToShowDoc = (this_doc) => {
+  const okToShowDoc = async (this_doc) => {
     if (!reactData.filtered_results) { return true; }
     /* 
       title_words: false,
@@ -335,6 +337,16 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
     return true;
   };
 
+  const getOwnerNames = async ({ form_id }) => {
+    for (var this_doc of reactData.docObj[form_id].docList) {
+      if (!this_doc.pertains_to_name) {
+        this_doc.pertains_to_name = await makeName(this_doc.pertains_to);
+      }
+    }
+    updateReactData({
+      docObj: reactData.docObj
+    }, false);
+  };
 
   const getDocRec = async ({ document_id, doc_status }) => {
     let docFile;
@@ -457,6 +469,9 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                         alignItems={'center'} justifyContent={'flex-start'}
                         onClick={async () => {
                           reactData.formList[formNdx].isExpanded = !reactData.formList[formNdx].isExpanded;
+                          if (reactData.formList[formNdx].isExpanded) {
+                            await getOwnerNames({ form_id: this_form.form_id });
+                          }
                           updateReactData({
                             formList: reactData.formList,
                             docObj: reactData.docObj,
@@ -489,6 +504,7 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                               uploadDoc: true,
                               pendingInstructions: {
                                 action: 'upload',
+                                selectedPerson: (reactData.filter.person ? `${reactData.filter.person.id}%%${reactData.filter.person.name}` : null),
                                 formType: this_form.form_id,
                                 formName: this_form.form_name,
                                 formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
@@ -592,7 +608,35 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                                         <PrintIcon
                                           classes={{ root: classes.rowButton }}
                                           onClick={() => {
-                                            printAll({ document_list: [this_doc.file_location || this_doc.location] });
+                                            printAll({
+                                              document_list: ([this_doc.file_location || this_doc.location]).concat(
+                                                this_doc.amendments
+                                                  ? this_doc.amendments.map(this_amendment => {
+                                                    return this_amendment.file_location;
+                                                  })
+                                                  : null
+                                              )
+                                            });
+                                          }}
+                                        />
+                                        <EditIcon
+                                          classes={{ root: classes.rowButton }}
+                                          onClick={() => {
+                                            updateReactData({
+                                              addDocPrompt: false,
+                                              addDocForm: true,
+                                              pendingInstructions: {
+                                                selectedPerson: this_doc.pertains_to,
+                                                action: 'amendment',
+                                                parentFormType: this_form.form_id,
+                                                docIndex: docNdx,
+                                                formType: this_form.amedment_form_id || 'amendment_1',
+                                                formData: {
+                                                  document_id: this_doc.document_id,
+                                                  doc_reference: `${this_doc.document_title} for ${this_doc.pertains_to_name}; completed on ${makeDate(this_doc.last_update).absolute}`
+                                                }
+                                              }
+                                            }, true);
                                           }}
                                         />
                                       </React.Fragment>
@@ -641,16 +685,71 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                                         />
                                       </React.Fragment>
                                     }
-                                    <TextField
-                                      className={classes.editInput}
-                                      disabled
-                                      InputProps={{ disableUnderline: true, className: classes.inputDisplay }}
-                                      variant={'standard'}
-                                      id={`prompt-${this_doc.document_id}_${docNdx}`}
-                                      key={`prompt-${this_doc.document_id}_${docNdx}`}
-                                      value={this_doc.document_title || this_doc.title}
-                                    />
+                                    <Box
+                                      key={`docNameBox-${this_doc.document_id}_${docNdx}`}
+                                      id={`docNameBox-${this_doc.document_id}_${docNdx}`}
+                                      display='flex' flexDirection='row'
+                                      flexGrow={1}
+                                      alignItems={'center'} justifyContent={'flex-start'}
+                                      onContextMenu={async (e) => {
+                                        e.preventDefault();
+                                        enqueueSnackbar(<div>
+                                          1. Form ID {this_form.form_id}<br />
+                                          2. Doc ID {this_doc.document_id}<br />
+                                          3. Pertains to {this_doc.pertains_to}</div>,
+                                          { variant: 'info', persist: true });
+                                      }}
+                                      onClick={async () => {
+                                        if (this_doc.file_location) {
+                                          let nowJ = new Date().getTime();
+                                          window.open(`${this_doc.file_location}?qt=${nowJ.toString()}`, this_doc.document_title);
+                                        }
+                                        else {
+                                          updateReactData({
+                                            editDoc: true,
+                                            pendingInstructions: {
+                                              action: 'edit',
+                                              formType: this_form.form_id,
+                                              formName: this_form.form_name,
+                                              formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); }),
+                                              document_id: this_doc.document_id,
+                                              document_title: this_doc.title || this_doc.document_title,
+                                              person_id: this_doc.pertains_to,
+                                              docIndex: docNdx
+                                            }
+                                          }, true);
+                                        }
+                                      }}
+                                    >
+                                      <Typography
+                                        key={`docPerson-${this_doc.document_id}_${docNdx}`}
+                                        id={`docPerson-${this_doc.document_id}_${docNdx}`}
+                                        style={AVATextStyle({ size: 1.0, margin: { bottom: 0.8, top: 0 } })}
+                                      >
+                                        {this_doc.pertains_to_name}
+                                      </Typography>
+                                      <Typography
+                                        key={`docDate-${this_doc.document_id}_${docNdx}`}
+                                        id={`docDate-${this_doc.document_id}_${docNdx}`}
+                                        style={AVATextStyle({ size: 1.0, margin: { left: 1, bottom: 0.8, top: 0 } })}
+                                      >
+                                        {makeDate(this_doc.last_update).dateOnly}
+                                      </Typography>
+                                    </Box>
                                   </Box>
+                                  {this_doc.amendments && this_doc.amendments.map((this_amendment, amendment_number) => (
+                                    <Typography
+                                      key={`docAmend-${this_doc.document_id}_${amendment_number}`}
+                                      id={`docAmend-${this_doc.document_id}_${amendment_number}`}
+                                      style={AVATextStyle({ size: 0.8, margin: { left: 2, bottom: 0.8, top: 0 } })}
+                                      onClick={() => {
+                                        let nowJ = new Date().getTime();
+                                        window.open(`${this_amendment.file_location}?qt=${nowJ.toString()}`, this_amendment.document_title);
+                                      }}
+                                    >
+                                      {`Amendment ${this_doc.amendments.length - amendment_number} - ${makeDate(this_amendment.last_update).absolute}`}
+                                    </Typography>
+                                  ))}
                                 </Box>
                               </Box>
                             )
@@ -775,9 +874,7 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
               <AVATextInput
                 titleText={`About this Document`}
                 promptText={['[select]Who does this pertain to?']}
-                valueText={[
-                  '',
-                ]}
+                valueText={[reactData.filter.person.id]}
                 options={{ allowAttach: true, maxAttach: 1 }}
                 selectionList={[
                   state.accessList[state.session.client_id].list.filter(p => {
@@ -888,7 +985,9 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                       });
                   }
                   reactData.docObj[reactData.pendingInstructions.formType].docList.unshift(
-                    Object.assign({}, docXRefRec, completedDocRec)
+                    Object.assign({}, docXRefRec, completedDocRec, {
+                      pertains_to_name: selectedName
+                    })
                   );
                   updateReactData({
                     docObj: reactData.docObj,
@@ -939,26 +1038,55 @@ export default ({ client, formTypes = '*all', options, onClose }) => {
                 request={{
                   form_id: reactData.pendingInstructions.formType,
                   person_id: reactData.pendingInstructions.selectedPerson,
-                  mode: 'new'
-
+                  mode: 'new',
+                  formData: reactData.pendingInstructions.formData
                 }}
-                onClose={async(ignore_me, statusObj) => {
+                onClose={async (ignore_me, statusObj) => {
                   if (statusObj.document_status !== 'aborted') {
-                    if (!reactData.docObj.hasOwnProperty(reactData.pendingInstructions.formType)) {
-                      reactData.docObj[reactData.pendingInstructions.formType] = {
-                        docList: []
-                      };
-                    }
-                    reactData.docObj[reactData.pendingInstructions.formType].docList.unshift(
-                      {
+                    if (reactData.pendingInstructions.action === 'amendment') {
+                      if (!reactData.docObj[reactData.pendingInstructions.parentFormType].docList[reactData.pendingInstructions.docIndex].hasOwnProperty('amendments')) {
+                        reactData.docObj[reactData.pendingInstructions.parentFormType].docList[reactData.pendingInstructions.docIndex].amendments = [];
+                      }
+                      reactData.docObj[reactData.pendingInstructions.parentFormType].docList[reactData.pendingInstructions.docIndex].amendments.unshift({
                         document_id: statusObj.document_id,
                         document_title: statusObj.document_title,
-                        file_location: statusObj.file_location || null,
+                        file_location: statusObj.recWritten.file_location || null,
                         formType: reactData.pendingInstructions.formType,
                         last_update: new Date().getTime(),
                         status: statusObj.document_status
+                      });
+                      await dbClient
+                        .update({
+                          Key: {
+                            client_id: state.session.client_id,
+                            document_id: reactData.pendingInstructions.formData.document_id
+                          },
+                          UpdateExpression: 'set #a = :a',
+                          ExpressionAttributeValues: { ':a': reactData.docObj[reactData.pendingInstructions.parentFormType].docList[reactData.pendingInstructions.docIndex].amendments },
+                          ExpressionAttributeNames: { '#a': 'amendments' },
+                          TableName: 'CompletedDocuments'
+                        })
+                        .promise()
+                        .catch(error => { cl(`caught error adding amendment to Completed Documents; error is: `, error); });
+                    }
+                    else {
+                      if (!reactData.docObj.hasOwnProperty(reactData.pendingInstructions.formType)) {
+                        reactData.docObj[reactData.pendingInstructions.formType] = {
+                          docList: []
+                        };
                       }
-                    );
+                      reactData.docObj[reactData.pendingInstructions.formType].docList.unshift(
+                        {
+                          document_id: statusObj.document_id,
+                          document_title: statusObj.document_title,
+                          file_location: statusObj.file_location || null,
+                          formType: reactData.pendingInstructions.formType,
+                          last_update: new Date().getTime(),
+                          status: statusObj.document_status,
+                          pertains_to_name: await makeName(reactData.pendingInstructions.selectedPerson)
+                        }
+                      );
+                    }
                     if (statusObj.nextAction) {
                       if (statusObj.nextAction.action === 'switchTo') {
                         await switchActiveAccount(
