@@ -2701,6 +2701,7 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
         }
       }
       */
+      // eslint-disable-next-line
       const this_eventID = occurrenceRec.event_id;
       const responseEventRec = deepCopy(newOcc.eventRec.eventData.event_data);
       const responseRec = Object.assign({}, responseEventRec, occurrenceRec, { slot_owners: {} });
