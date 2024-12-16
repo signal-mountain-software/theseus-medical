@@ -250,6 +250,7 @@ export default ({ request = {}, onClose }) => {
         document_id: reactData.document_id,
         document_title: reactData.document_title,
         document_status: 'work_in_process',
+        pertains_to: reactData.pertains_to,
         recWritten: reactData.recWritten
       });
     }
@@ -2354,6 +2355,7 @@ export default ({ request = {}, onClose }) => {
                   document_id: reactData.document_id,
                   document_title: reactData.document_title,
                   document_status: response.status,
+                  pertains_to: reactData.pertains_to,
                   recWritten: Object.assign({}, response.recWritten, reactData.peopleRec[reactData.pertains_to]),
                   nextAction: (reactData.formRec?.options?.onFinish
                     ? makeNextAction({ instruction: reactData.formRec?.options?.onFinish })
@@ -2382,6 +2384,7 @@ export default ({ request = {}, onClose }) => {
                   document_id: reactData.document_id,
                   document_title: reactData.document_title,
                   document_status: 'work_in_process',
+                  pertains_to: reactData.pertains_to,
                   recWritten: reactData.recWritten
                 }
               );

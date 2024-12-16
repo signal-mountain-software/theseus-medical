@@ -508,7 +508,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                               multi={prompt.toLowerCase().startsWith('[selectmulti')}
                               closeOnClickInput={!prompt.toLowerCase().startsWith('[selectmulti')}
                               closeOnSelect={!prompt.toLowerCase().startsWith('[selectmulti')}
-                              create={false}
+                              create={prompt.toLowerCase().startsWith('[selectcreate')}
                               keepSelectedInList={true}
                               noDataLabel={"No matches found"}
                               onChange={(values) => {
