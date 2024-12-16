@@ -393,7 +393,13 @@ export default ({ request, onClose }) => {
   const getName = async (person_id) => {
     if (!reactData.nameObj.hasOwnProperty[person_id]) {
       let personRec = await getPerson(person_id);
-      if (reactData.options.sortByLastName) {
+      if (!personRec) { 
+        reactData.nameObj[person_id] = `Person ID ${person_id}`;
+      }
+      else if (!personRec.name) {
+        reactData.nameObj[person_id] = personRec.display_name || `Person ID ${person_id}`;
+      }
+      else if (reactData.options.sortByLastName) {
         reactData.nameObj[person_id] = (`${personRec.name.last}, ${personRec.name.first}`).trim();
       }
       else {
@@ -1313,7 +1319,7 @@ export default ({ request, onClose }) => {
                         reactData.pendingInstructions.selectedPerson_index = foundIt;
                       }
                       else {
-                        reactData.docObj[reactData.pendingInstructions.formType].unshift = ({
+                        reactData.docObj[reactData.pendingInstructions.formType].unshift({
                           pertains_to: statusObj.pertains_to,
                           pertains_to_name: await getName(statusObj.pertains_to),
                           docList: [],
