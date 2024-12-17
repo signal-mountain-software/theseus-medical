@@ -138,7 +138,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
-   const { enqueueSnackbar } = useSnackbar();
+  const { enqueueSnackbar } = useSnackbar();
 
   const { state } = useSession();
 
@@ -599,34 +599,35 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
         }
         else {
           existingComplete = false;
-          let queryObj = {
-            KeyConditionExpression: 'pertains_to = :p and begins_with(formType_date, :f)',
-            ScanIndexForward: false,
-            TableName: 'DocumentsInProcess',
-            IndexName: 'pertains_to-formType_date-index',
-            Limit: 1,
-            ExpressionAttributeValues: {
-              ':p': reactData.pertains_to,
-              ':f': `${reactData.form_id}%%`
-            }
-          };
-          let queryResult = await dbClient
-            .query(queryObj)
-            .promise()
-            .catch(error => {
-              if (error.code === 'NetworkingError') {
-                cl(`Security Violation or no Internet Connection`);
-              }
-              cl(`Error reading ${queryObj.TableName} is ${error}`);
-            });
-          if (recordExists(queryResult)) {
-            existingWIP = {
-              document_id: queryResult.Items[0].document_id,
-              date_started: makeDate(queryResult.Items[0].formType_date.split('%%')[1]).dateOnly
-            };
-          }
         }
-        // No?  Then set up for a new form
+        // CHeck for an exising WIP form
+        queryObj = {
+          KeyConditionExpression: 'pertains_to = :p and begins_with(formType_date, :f)',
+          ScanIndexForward: false,
+          TableName: 'DocumentsInProcess',
+          IndexName: 'pertains_to-formType_date-index',
+          Limit: 1,
+          ExpressionAttributeValues: {
+            ':p': reactData.pertains_to,
+            ':f': `${formObj.form_id}%%`
+          }
+        };
+        let queryResult = await dbClient
+          .query(queryObj)
+          .promise()
+          .catch(error => {
+            if (error.code === 'NetworkingError') {
+              cl(`Security Violation or no Internet Connection`);
+            }
+            cl(`Error reading ${queryObj.TableName} is ${error}`);
+          });
+        if (recordExists(queryResult)) {
+          existingWIP = {
+            document_id: queryResult.Items[0].document_id,
+            date_started: makeDate(queryResult.Items[0].formType_date.split('%%')[1]).dateOnly
+          };
+        }
+        // Set up for a new form in case we need it
         let this_form = await getForm(formObj.form_id);
         if (this_form?.options?.anonymous) {
           reactData.newAccountForm[role] = this_form;
@@ -1335,7 +1336,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                           checked={reactData.columnForms[reactData.selectedColumn][form_index].isChecked}
                           value={reactData.columnForms[reactData.selectedColumn][form_index].isChecked}
                           onClick={() => {
-                            selectAForm({ selectedColumn: reactData.selectedColumn, form_index, showCompleted: false });
+                            selectAForm({ selectedColumn: reactData.selectedColumn, form_index, showCompleted: !!reactData.columnForms[reactData.selectedColumn][form_index].existingComplete });
                           }}
                           disableRipple
                           className={classes.radioButton}
@@ -1344,29 +1345,32 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                         <Typography
                           key={`name-col${reactData.selectedColumn}_form${form_index}`}
                           onClick={() => {
-                            selectAForm({ selectedColumn: reactData.selectedColumn, form_index, showCompleted: false });
+                            selectAForm({ selectedColumn: reactData.selectedColumn, form_index, showCompleted: !!reactData.columnForms[reactData.selectedColumn][form_index].existingComplete });
                           }}
                           onContextMenu={async (e) => {
                             e.preventDefault();
-                            var contextText = '';
+                            let contextText = false;
                             if (reactData.columnForms[reactData.selectedColumn][form_index].existingComplete) {
-                              contextText += `Completed Document<br />
-                              1. DocID: ${reactData.columnForms[reactData.selectedColumn][form_index].existingComplete.document_id}<br />
-                              2. FormID: ${reactData.columnForms[reactData.selectedColumn][form_index].form_id}<br />
-                              3. PersonID: ${reactData.familyMembers[reactData.selectedColumn].person_id}<br />`;
-                            }
+                              enqueueSnackbar(<div><p>Completed Document<br />
+                                1. DocID: {reactData.columnForms[reactData.selectedColumn][form_index].existingComplete.document_id}<br />
+                                2. FormID: {reactData.columnForms[reactData.selectedColumn][form_index].form_id}<br />
+                                3. PersonID: {reactData.familyMembers[reactData.selectedColumn].person_id}<br /></p></div>,
+                                { variant: 'info', persist: true });
+                              contextText = true;
+                            };
                             if (reactData.columnForms[reactData.selectedColumn][form_index].existingWIP) {
-                              contextText += `WIP Document<br />
-                              1. DocID: ${reactData.columnForms[reactData.selectedColumn][form_index].existingWIP.document_id}<br />
-                              2. FormID: ${reactData.columnForms[reactData.selectedColumn][form_index].form_id}<br />
-                              3. PersonID: ${reactData.familyMembers[reactData.selectedColumn].person_id}<br />
-                              4. Date Started: ${reactData.columnForms[reactData.selectedColumn][form_index].existingWIP.date_started}`;
+                              enqueueSnackbar(<div><p>WIP Document<br />
+                                1. DocID: {reactData.columnForms[reactData.selectedColumn][form_index].existingWIP.document_id}<br />
+                                2. FormID: {reactData.columnForms[reactData.selectedColumn][form_index].form_id}<br />
+                                3. PersonID: {reactData.familyMembers[reactData.selectedColumn].person_id}<br />
+                                4. Date Started: {reactData.columnForms[reactData.selectedColumn][form_index].existingWIP.date_started}</p></div>,
+                                { variant: 'info', persist: true });
+                              contextText = true;
                             }
                             if (!contextText) {
-                              contextText = 'Nothing started yet'
+                              enqueueSnackbar(<div>Nothing started yet</div>,
+                                { variant: 'info', persist: true });
                             }
-                            enqueueSnackbar(<div>{contextText}</div>,
-                              { variant: 'info', persist: true });
                           }}
                           style={AVATextStyle({
                             size: 1.5,
