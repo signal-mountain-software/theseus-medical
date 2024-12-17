@@ -670,6 +670,11 @@ export async function getRole(pGroup, pPerson) {
     else {
       let gRec = await getGroup(pGroup, pSession.client_id);
       if (gRec.admin_list && gRec.admin_list.includes(pPerson)) { return 'responsible'; }
+      // am I responsible for this group's parent?
+      if (gRec.belongs_to) {
+        let parentRole = await getRole(gRec.belongs_to, pPerson);
+        if (parentRole === 'responsible') { return 'responsible'; }
+      }
     }
     if (await isMemberOf(pSession.client_id, pPerson, pGroup)) { return 'member'; }
     else { return 'non-member'; }
