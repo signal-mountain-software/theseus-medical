@@ -1,19 +1,20 @@
 import React from 'react';
 
 import useSession from '../../hooks/useSession';
+import { useSnackbar } from 'notistack';
 
 import { getImage, getPerson, getSession } from '../../util/AVAPeople';
 import { deepCopy, makeArray, cl, recordExists, dbClient, isEmpty, titleCase } from '../../util/AVAUtilities';
+import { makeDate } from '../../util/AVADateTime';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import FormFillB from './FormFillB';
 
-import { Button, IconButton, TextField } from '@material-ui/core';
+import { Button, IconButton } from '@material-ui/core';
 import { Dialog, DialogContent, DialogActions } from '@material-ui/core';
-import { Box, Typography, Radio, Avatar, Checkbox } from '@material-ui/core';
+import { Box, Typography, Radio, Avatar } from '@material-ui/core';
 import { Menu, MenuList, MenuItem } from '@material-ui/core';
-import { FormGroup, FormControlLabel, FormControl, FormLabel } from '@material-ui/core';
 
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/Check';
@@ -135,10 +136,9 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
   }
   */
 
-  let user_fontSize = AVADefaults({ fontSize: 'get' });
-
   const classes = useStyles();
   const AVAClass = AVAclasses();
+   const { enqueueSnackbar } = useSnackbar();
 
   const { state } = useSession();
 
@@ -491,21 +491,6 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     }
   }
 
-  function handleChange({ newValue, selectedColumn, form_index, field_name }) {
-    Object.assign(
-      reactData.columnForms[selectedColumn][form_index].fields[field_name].value,
-      cleanValue({
-        type: reactData.columnForms[selectedColumn][form_index].fields[field_name].value.type || 'text',
-        value: newValue
-      })
-    );
-    prepareField({ selectedColumn, form_index, field_name, editMode: true });
-    updateReactData({
-      columnForms: reactData.columnForms,
-      familyMembers: reactData.familyMembers
-    }, true);
-  }
-
   const identifyNewAccountForm = ({ role }) => {
     if (reactData.defaults.hasOwnProperty('roles')) {
       if (reactData.defaults.roles.hasOwnProperty(role)) {
@@ -565,18 +550,6 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     });
   }
 
-  function reMap({ form, fieldList }) {
-    let response = fieldList.map(this_field => {
-      return Object.assign({},
-        { field_name: this_field },
-        form.fields[this_field],
-        form.fields[this_field].value,
-        { prompt: form.fields[this_field].prompt.ref }
-      );
-    });
-    return response;
-  }
-
   async function makeFormList({ selectedColumn, client_id, role }) {
     if (!isEmpty(reactData.columnForms[selectedColumn])) {
       return reactData.columnForms[selectedColumn];
@@ -619,12 +592,39 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
             cl(`Error reading ${queryObj.TableName} id ${error}`);
           });
         let existingComplete;
+        let existingWIP = false;
         if (recordExists(existingCompleteRecs)) {
           // there IS a completed form for this person
           existingComplete = existingCompleteRecs.Items[0];
         }
         else {
           existingComplete = false;
+          let queryObj = {
+            KeyConditionExpression: 'pertains_to = :p and begins_with(formType_date, :f)',
+            ScanIndexForward: false,
+            TableName: 'DocumentsInProcess',
+            IndexName: 'pertains_to-formType_date-index',
+            Limit: 1,
+            ExpressionAttributeValues: {
+              ':p': reactData.pertains_to,
+              ':f': `${reactData.form_id}%%`
+            }
+          };
+          let queryResult = await dbClient
+            .query(queryObj)
+            .promise()
+            .catch(error => {
+              if (error.code === 'NetworkingError') {
+                cl(`Security Violation or no Internet Connection`);
+              }
+              cl(`Error reading ${queryObj.TableName} is ${error}`);
+            });
+          if (recordExists(queryResult)) {
+            existingWIP = {
+              document_id: queryResult.Items[0].document_id,
+              date_started: makeDate(queryResult.Items[0].formType_date.split('%%')[1]).dateOnly
+            };
+          }
         }
         // No?  Then set up for a new form
         let this_form = await getForm(formObj.form_id);
@@ -642,12 +642,13 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
         else {
           form_index++;
           reactData.columnForms[selectedColumn][form_index] = deepCopy(this_form);
-          reactData.columnForms[selectedColumn][form_index].asForm = !!formObj.asForm;
+          reactData.columnForms[selectedColumn][form_index].asForm = true;
           reactData.columnForms[selectedColumn][form_index].useFamilyID = !!formObj.useFamilyID;
           let response = await editForm({ selectedColumn, form_index, editMode: false });
           reactData.columnForms = response.columnForms;
         }
         reactData.columnForms[selectedColumn][form_index].existingComplete = existingComplete;
+        reactData.columnForms[selectedColumn][form_index].existingWIP = existingWIP;
         reactData.columnForms[selectedColumn][form_index].isChecked = false;
       }
     }
@@ -969,6 +970,18 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     }
   };
 
+  const makeScreenName = () => {
+    if (reactData.familyMembers.length === 1) {
+      var personName = (reactData.familyMembers[0].nickname || reactData.familyMembers[0].name?.first).trim();
+      if (personName) {
+        return `${personName}'${personName.endsWith('s') ? '' : 's'} Forms`;
+      }
+    }
+    else {
+      return 'My Group';
+    }
+  };
+
   const makeFormRequest = ({ form_index, showCompleted }) => {
     let response = {
       form_id: reactData.columnForms[reactData.selectedColumn][form_index].form_id,
@@ -988,70 +1001,6 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
 
   // **************************
 
-  const AVACheckBoxGroup = (props) => {
-    // props should contain
-    //   prop
-    //   choices - an array of options, each can independently go true or false
-    //   selected - currently selected prop
-    //   response - send back the selected value as a parm to this function
-    let choiceList = props.choices.map(this_choice => {
-      return Object.assign({},
-        this_choice,
-        { isSelected: (this_choice.value === props.selected) }
-      );
-    });
-    return (
-      <FormControl
-        className={classes.formControlCheckGroup}
-        component="fieldset"
-        key={props.myKey}
-        id={props.myKey}
-      >
-        <FormLabel
-          className={classes.formControlTitle}
-          key={`${props.myKey}_label`}
-          id={`${props.myKey}_label`}
-          style={{ fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` }}
-        >
-          {props.prompt}
-        </FormLabel>
-        <FormGroup row aria-label={`CheckGroup__${props.prop}`} name="method">
-          {(choiceList).map((this_choice, tIndex) => (
-            <FormControlLabel
-              className={classes.formControlDays}
-              key={`${props.myKey}_${tIndex}`}
-              id={`${props.myKey}_${tIndex}`}
-              control={
-                <Checkbox
-                  aria-label={`${props.prop}_${tIndex}`}
-                  name={`${props.prop}_${tIndex}`}
-                  key={`CheckGroup__${props.myKey}_${tIndex}`}
-                  id={`CheckGroup__${props.myKey}_${tIndex}`}
-                  size='small'
-                  checked={this_choice.isSelected}
-                  value={this_choice.isSelected}
-                  onClick={() => {
-                    props.response(this_choice.value);
-                  }}
-                  onMouseDown={() => {
-                    props.response(this_choice.value);
-                  }}
-                  disableRipple
-                  inputProps={{ 'aria-labelledby': `message_routing_3` }}
-                />
-              }
-              label={<Typography className={classes.radioDays}>{this_choice.label}</Typography>}
-              labelPlacement='end'
-            />
-          ))}
-        </FormGroup>
-      </FormControl>
-    );
-  };
-
-  // **************************
-
-
   return (
     <Dialog
       open={(true || forceRedisplay)}
@@ -1068,7 +1017,8 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
             margin: {
               top: 1,
               right: 0.5,
-              left: 0.5
+              left: 0.5,
+              bottom: 1
             },
             size: 1.3,
             bold: true,
@@ -1095,7 +1045,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                 bold: true
               })}
             >
-              {`Our Family`}
+              {makeScreenName()}
             </Typography>
           </Box>
           <Box
@@ -1148,8 +1098,8 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                   key={'vRowRefresh'}
                 >
                   <Typography style={AVATextStyle({ size: 0.5 })} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-                  <Typography style={AVATextStyle({ size: 0.5 })} >{`User ${state.session.user_id}${state.patient_id !== state.session.user_id ? (' (' + state.patient_id + ')') : ''}`}</Typography>
-                  <Typography style={AVATextStyle({ size: 0.5 })} >{`Function: FamiyMaintenance`}</Typography>
+                  <Typography style={AVATextStyle({ size: 0.5 })} >{`User ${state.session.user_id}${state.patient_id !== state.session.user_id ? (' (' + state.session.patient_id + ')') : ''}`}</Typography>
+                  <Typography style={AVATextStyle({ size: 0.5 })} >{`Function: FamilyMaintenance`}</Typography>
                 </Box>
               </MenuItem>
             </MenuList>
@@ -1166,144 +1116,148 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
             alignItems={'flex-end'}
             borderBottom={2}
           >
-            <Box display='flex'
-              flexDirection='row'
-              marginRight={0}
-              marginLeft={0}
-              marginTop={0}
-              marginBottom={0}
-              paddingTop={1}
-              overflow={(reactData.familyMembers.length > 5) ? 'scroll' : null}
-              key={'peopleSelectionBox'}
-              id={'peopleSelectionBox'}
-              className={classes.listItemSticky}
-            >
-              <Box
-                display='flex'
+            {(reactData.familyMembers.length > 1) &&
+              <Box display='flex'
                 flexDirection='row'
-                key={'person'}
-                className={classes.listItem}
-                mb={0.5}
-                mt={0.5}
-                justifyContent='space-between'
-                alignItems='flex-end'
+                marginRight={0}
+                marginLeft={0}
+                marginTop={0}
+                marginBottom={0}
+                paddingTop={1}
+                overflow={(reactData.familyMembers.length > 5) ? 'scroll' : null}
+                key={'peopleSelectionBox'}
+                id={'peopleSelectionBox'}
+                className={classes.listItemSticky}
               >
                 <Box
                   display='flex'
                   flexDirection='row'
-                  key={'rowP'}
+                  key={'person'}
                   className={classes.listItem}
-                  justifyContent='flex-end'
+                  mb={0.5}
+                  mt={0.5}
+                  justifyContent='space-between'
                   alignItems='flex-end'
                 >
                   <Box
                     display='flex'
-                    flexDirection='column'
-                    minWidth={50}
-                    maxWidth={50}
-                    marginBottom={'10px'}
-                    key={`radiobox-rowP-colSelect`}
+                    flexDirection='row'
+                    key={'rowP'}
                     className={classes.listItem}
                     justifyContent='flex-end'
-                    alignItems='center'
+                    alignItems='flex-end'
                   >
-                    <Typography key={`selectWord`} className={classes.smallTextLine}>{'Select'}</Typography>
-                  </Box>
-                  {reactData.familyMembers.map((this_column, this_columnNumber) => (
                     <Box
                       display='flex'
                       flexDirection='column'
                       minWidth={50}
                       maxWidth={50}
-                      key={`radiobox-rowP-col${this_columnNumber}`}
+                      marginBottom={'10px'}
+                      key={`radiobox-rowP-colSelect`}
                       className={classes.listItem}
-                      justifyContent='space-between'
+                      justifyContent='flex-end'
                       alignItems='center'
                     >
-                      {(this_column.record_type === 'header')
-                        ?
-                        <React.Fragment
-                          key={`familyHeader_${this_columnNumber}`}
-                        >
-                          {(this_column.family_name || 'My Family').split(/\s+/).map((this_word, wX) => (
-                            <Typography key={`name-${this_columnNumber}_${wX}`} className={classes.smallTextLine}>
-                              {this_word.slice(0, 10)}
-                            </Typography>
-                          ))}
-                        </React.Fragment>
-                        :
-                        <React.Fragment
-                          key={`familyHeader_${this_columnNumber}_${this_column.nickname}`}
-                        >
-                          <Box
-                            component="img"
-                            mt={0}
-                            mb={1}
-                            border={1}
-                            minWidth={50}
-                            maxWidth={50}
-                            minHeight={50}
-                            maxHeight={50}
-                            alt=''
-                            src={getImage(this_column.person_id)}
-                          />
-                          <Box
-                            key={`nameBox-${this_columnNumber}`}
-                            id={`nameBox-${this_columnNumber}`}
-                            display="flex"
-                            flexDirection='column'
-                            minHeight={'40px'}
-                            flexWrap={'wrap'}
-                            justifyContent="flex-end"
-                            alignItems='center'
+                      <Typography key={`selectWord`} className={classes.smallTextLine}>{'Select'}</Typography>
+                    </Box>
+                    {reactData.familyMembers.map((this_column, this_columnNumber) => (
+                      <Box
+                        display='flex'
+                        flexDirection='column'
+                        minWidth={50}
+                        maxWidth={50}
+                        key={`radiobox-rowP-col${this_columnNumber}`}
+                        className={classes.listItem}
+                        justifyContent='space-between'
+                        alignItems='center'
+                      >
+                        {(this_column.record_type === 'header')
+                          ?
+                          <React.Fragment
+                            key={`familyHeader_${this_columnNumber}`}
                           >
-                            {(this_column.nickname || this_column?.name?.first || 'New Person').split(/\s+/).map((this_word, wX) => (
+                            {(this_column.family_name || 'My Family').split(/\s+/).map((this_word, wX) => (
                               <Typography key={`name-${this_columnNumber}_${wX}`} className={classes.smallTextLine}>
                                 {this_word.slice(0, 10)}
                               </Typography>
                             ))}
-                          </Box>
-                        </React.Fragment>
-                      }
-                      <Radio
-                        key={`radio-rowP-col${this_columnNumber}`}
-                        id={`radio-rowP-col${this_columnNumber}`}
-                        checked={(reactData.selectedColumn === this_columnNumber)}
-                        value={(reactData.selectedColumn === this_columnNumber)}
-                        onClick={async () => {
-                          // changing columns - run a final edit on the one you are leaving
-                          await editColumn({ selectedColumn: reactData.selectedColumn });
-                          const this_formList = await makeFormList({
-                            selectedColumn: this_columnNumber,
-                            client_id: state.session.client_id,
-                            record_type: reactData.familyMembers[this_columnNumber].record_type,
-                            role: reactData.familyMembers[this_columnNumber].role
-                          });
-                          updateReactData({
-                            selectedColumn: this_columnNumber,
-                            formList: this_formList
-                          }, true);
-                        }}
-                        disableRipple
-                        className={classes.radioButton}
-                        size='small'
-                      />
-                    </Box>
-                  ))}
+                          </React.Fragment>
+                          :
+                          <React.Fragment
+                            key={`familyHeader_${this_columnNumber}_${this_column.nickname}`}
+                          >
+                            <Box
+                              component="img"
+                              mt={0}
+                              mb={1}
+                              border={1}
+                              minWidth={50}
+                              maxWidth={50}
+                              minHeight={50}
+                              maxHeight={50}
+                              alt=''
+                              src={getImage(this_column.person_id)}
+                            />
+                            <Box
+                              key={`nameBox-${this_columnNumber}`}
+                              id={`nameBox-${this_columnNumber}`}
+                              display="flex"
+                              flexDirection='column'
+                              minHeight={'40px'}
+                              flexWrap={'wrap'}
+                              justifyContent="flex-end"
+                              alignItems='center'
+                            >
+                              {(this_column.nickname || this_column?.name?.first || 'New Person').split(/\s+/).map((this_word, wX) => (
+                                <Typography key={`name-${this_columnNumber}_${wX}`} className={classes.smallTextLine}>
+                                  {this_word.slice(0, 10)}
+                                </Typography>
+                              ))}
+                            </Box>
+                          </React.Fragment>
+                        }
+                        <Radio
+                          key={`radio-rowP-col${this_columnNumber}`}
+                          id={`radio-rowP-col${this_columnNumber}`}
+                          checked={(reactData.selectedColumn === this_columnNumber)}
+                          value={(reactData.selectedColumn === this_columnNumber)}
+                          onClick={async () => {
+                            // changing columns - run a final edit on the one you are leaving
+                            await editColumn({ selectedColumn: reactData.selectedColumn });
+                            const this_formList = await makeFormList({
+                              selectedColumn: this_columnNumber,
+                              client_id: state.session.client_id,
+                              record_type: reactData.familyMembers[this_columnNumber].record_type,
+                              role: reactData.familyMembers[this_columnNumber].role
+                            });
+                            updateReactData({
+                              selectedColumn: this_columnNumber,
+                              formList: this_formList
+                            }, true);
+                          }}
+                          disableRipple
+                          className={classes.radioButton}
+                          size='small'
+                        />
+                      </Box>
+                    ))}
+                  </Box>
                 </Box>
               </Box>
-            </Box>
-            <IconButton
-              color='inherit'
-              style={{ marginRight: '24px', marginBottom: '16px', height: '48px' }}
-              onClick={async () => {
-                updateReactData({
-                  addDocPrompt: true,
-                }, true);
-              }}
-            >
-              <GroupAddIcon />
-            </IconButton>
+            }
+            {!reactData.defaults.suppressAddPerson &&
+              <IconButton
+                color='inherit'
+                style={{ marginRight: '24px', marginBottom: '16px', height: '48px' }}
+                onClick={async () => {
+                  updateReactData({
+                    addDocPrompt: true,
+                  }, true);
+                }}
+              >
+                <GroupAddIcon />
+              </IconButton>
+            }
           </Box>
         }
 
@@ -1389,6 +1343,31 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                         />
                         <Typography
                           key={`name-col${reactData.selectedColumn}_form${form_index}`}
+                          onClick={() => {
+                            selectAForm({ selectedColumn: reactData.selectedColumn, form_index, showCompleted: false });
+                          }}
+                          onContextMenu={async (e) => {
+                            e.preventDefault();
+                            var contextText = '';
+                            if (reactData.columnForms[reactData.selectedColumn][form_index].existingComplete) {
+                              contextText += `Completed Document<br />
+                              1. DocID: ${reactData.columnForms[reactData.selectedColumn][form_index].existingComplete.document_id}<br />
+                              2. FormID: ${reactData.columnForms[reactData.selectedColumn][form_index].form_id}<br />
+                              3. PersonID: ${reactData.familyMembers[reactData.selectedColumn].person_id}<br />`;
+                            }
+                            if (reactData.columnForms[reactData.selectedColumn][form_index].existingWIP) {
+                              contextText += `WIP Document<br />
+                              1. DocID: ${reactData.columnForms[reactData.selectedColumn][form_index].existingWIP.document_id}<br />
+                              2. FormID: ${reactData.columnForms[reactData.selectedColumn][form_index].form_id}<br />
+                              3. PersonID: ${reactData.familyMembers[reactData.selectedColumn].person_id}<br />
+                              4. Date Started: ${reactData.columnForms[reactData.selectedColumn][form_index].existingWIP.date_started}`;
+                            }
+                            if (!contextText) {
+                              contextText = 'Nothing started yet'
+                            }
+                            enqueueSnackbar(<div>{contextText}</div>,
+                              { variant: 'info', persist: true });
+                          }}
                           style={AVATextStyle({
                             size: 1.5,
                             bold: true,
@@ -1399,100 +1378,6 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                           {this_form.form_name}
                         </Typography>
                       </Box>
-                      {reactData.columnForms[reactData.selectedColumn][form_index].isChecked &&
-                        !reactData.columnForms[reactData.selectedColumn][form_index].asForm &&
-                        this_form.sections.map((this_section, section_index) => (
-                          <React.Fragment
-                            key={`Formfrag${reactData.selectedColumn}${reactData.selectedColumn}_${form_index}_${section_index}`}
-                          >
-                            <Typography
-                              key={`sectionHeader_${reactData.selectedColumn}.${form_index}.${section_index}`}
-                              id={`sectionHeader_${reactData.selectedColumn}.${form_index}.${section_index}`}
-                              style={AVATextStyle({ size: 1, italic: true, margin: { left: 1.5, top: 0.5 } })}
-                            >
-                              {this_section.section_name}
-                            </Typography>
-                            {reMap({ form: this_form, fieldList: this_section.fields }).map((this_field, sFnDX) => (
-                              <React.Fragment
-                                key={`tempFrag_${reactData.selectedColumn}.${form_index}.${section_index}_${sFnDX}_${this_field.version}`}
-                              >
-                                <Typography
-                                  key={`temp_${reactData.selectedColumn}.${form_index}.${section_index}_${sFnDX}_${this_field.version}`}
-                                  id={`temp_${reactData.selectedColumn}.${form_index}.${section_index}_${sFnDX}_${this_field.version}`}
-                                >
-                                  {console.log(`${this_field.field_name}/${this_field.type}/${this_field.data_value}/v${this_field.version}`)}
-                                </Typography>
-                                {!this_field.hidden && (this_field.type !== 'select') &&
-                                  <Box display='flex'
-                                    flexDirection='row'
-                                    borderRadius={'16px'}
-                                    marginLeft={2}
-                                    marginRight={2}
-                                    maxWidth={this_field.checkbox ? 400 : 'auto'}
-                                    width={!this_field.checkbox ? '100%' : 'auto'}
-                                    marginTop={1}
-                                    marginBottom={0}
-                                    padding={1}
-                                    border={(!!this_field.error || (this_field.isBlank && this_field.required))
-                                      ? 4
-                                      : (this_field.checkbox ? 4 : 'none')
-                                    }
-                                    className={classes.backGroundNone}
-                                    borderColor={!!this_field.error ? 'red' : (this_field.isChecked ? 'green' : 'lightgray')}
-                                    key={`box_${reactData.selectedColumn}.${form_index}.${section_index}.${sFnDX}`}
-                                    id={`box_${reactData.selectedColumn}.${form_index}.${section_index}.${sFnDX}`}
-                                  >
-                                    <TextField
-                                      className={classes.freeInput}
-                                      variant={'standard'}
-                                      key={`inputtextprompt_${reactData.selectedColumn}.${form_index}.${section_index}.${sFnDX}.${this_field.version || 0}`}
-                                      id={`inputtextprompt_${reactData.selectedColumn}.${form_index}.${section_index}.${sFnDX}.${this_field.version || 0}`}
-                                      helperText={this_field.prompt}
-                                      multiline
-                                      onChange={async (event) => {
-                                        handleChange({
-                                          newValue: event.target.value,
-                                          selectedColumn: reactData.selectedColumn,
-                                          form_index,
-                                          section_index,
-                                          field_name: this_field.field_name
-                                        });
-                                      }}
-                                      FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                                      autoComplete='off'
-                                      defaultValue={this_field.visible_value || ''}
-                                    />
-                                  </Box>
-                                }
-                                {!this_field.hidden && (this_field.type === 'select') &&
-                                  <React.Fragment
-                                    key={`Checkfrag${reactData.selectedColumn}_${form_index}_${section_index}_${sFnDX}${this_field.data_value}`}
-                                  >
-                                    {true && (this_field.data_value !== null) &&
-                                      <AVACheckBoxGroup
-                                        prop={this_field.field_name}
-                                        myKey={`cbox_${reactData.selectedColumn}.${form_index}.${section_index}_${sFnDX}_${this_field.version || '-1'}`}
-                                        prompt={this_field.prompt}
-                                        choices={this_field.selectList}
-                                        selected={this_field.data_value}
-                                        response={async (response) => {
-                                          handleChange({
-                                            newValue: response,
-                                            selectedColumn: reactData.selectedColumn,
-                                            form_index,
-                                            section_index,
-                                            field_name: this_field.field_name
-                                          });
-                                        }}
-                                      />
-                                    }
-                                  </React.Fragment>
-                                }
-                              </React.Fragment>
-                            ))}
-                          </React.Fragment>
-                        ))
-                      }
                       {reactData.columnForms[reactData.selectedColumn][form_index].isChecked &&
                         reactData.columnForms[reactData.selectedColumn][form_index].asForm &&
                         <FormFillB
@@ -1518,7 +1403,8 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
         </DialogContent>
       </React.Fragment>
 
-      {reactData.addDocForm &&
+      {
+        reactData.addDocForm &&
         <FormFillB
           request={{
             form_id: identifyNewAccountForm({ role: reactData.roleToAdd }),
@@ -1547,7 +1433,8 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
           }}
         />
       }
-      {reactData.addDocPrompt &&
+      {
+        reactData.addDocPrompt &&
         <AVATextInput
           titleText={`What type of account are you adding?`}
           promptText={(reactData.defaults.hasOwnProperty('roles')
