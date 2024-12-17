@@ -15,7 +15,7 @@ import { Dialog, DialogContent } from '@material-ui/core';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import Checkbox from '@material-ui/core/Checkbox';
-import { FormControlLabel  } from '@material-ui/core';
+import { FormControlLabel } from '@material-ui/core';
 
 import TextField from '@material-ui/core/TextField';
 import Button from '@material-ui/core/Button';
@@ -1819,7 +1819,9 @@ export default ({ request = {}, onClose }) => {
     // if we got here, there was no existing document found with the passed in document_id
     // or no document_id was passed in at all. 
     // In this case, look for a DocumentinProcess for this person and formType...
-    if (reactData.form_id) {
+    var WIPFields = false;
+    if (reactData.form_id && !reactData.options.start_from_scratch) {
+      let reactUpdObj = {};
       let queryObj = {
         KeyConditionExpression: 'pertains_to = :p and begins_with(formType_date, :f)',
         ScanIndexForward: false,
@@ -1850,30 +1852,25 @@ export default ({ request = {}, onClose }) => {
             });
           }
         }
-        updateReactData({
-          document_id: WIPDocRec.document_id,
-          document_title: WIPDocRec.document_title,
-          pertains_to: WIPDocRec.pertains_to,
-          form_id: WIPDocRec.form_id,
-          fields: WIPDocRec.fields,
-          sections: WIPDocRec.sections,
-          formRec: { options: WIPDocRec.options },
-          stage: 'fill'
-        }, true);
-        return;
+        reactUpdObj.document_id = WIPDocRec.document_id;
+        reactUpdObj.document_title = WIPDocRec.document_title;
+        reactUpdObj.formRec = { options: WIPDocRec.options };
+        WIPFields = WIPDocRec.fields;       
       }
-    }
-    // If we still haven't found a document, try to create a new document from the form_id
-    if (reactData.form_id) {
       const { fields, sections, document_title } = await initializeDoc({
         form_id: reactData.form_id,
-        //      pertains_to: options.person_id || options.family_id || state.session.patient_id
         pertains_to: options.person_id || options.family_id
       });
+      if (WIPFields) {
+        for (let this_field in WIPFields) {
+          fields[this_field].value = WIPFields[this_field].value;
+        }
+      };
       let nowTime = new Date().getTime();
       updateReactData({
         document_id: `${state.session.patient_id}_${reactData.form_id}_${nowTime}`,
         pertains_to: options.person_id || options.family_id || state.session.patient_id,
+        form_id: reactData.form_id,
         document_title,
         fields,
         sections,
