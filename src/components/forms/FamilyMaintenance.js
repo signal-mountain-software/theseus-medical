@@ -509,7 +509,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
   const identifyNewAccountForm = ({ role }) => {
     if (reactData.defaults.hasOwnProperty('roles')) {
       if (reactData.defaults.roles.hasOwnProperty(role)) {
-        return reactData.defaults.roles[role].form_if_new || state.session.new_account_form || null;
+        return reactData.defaults.roles[role].form_if_new || state.session.new_account_form || 'new_account_form';
       }
     }
     return ((role === 'caregiver') ? 'new_caregiver_form' : 'new_camper_form');
