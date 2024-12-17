@@ -2,6 +2,7 @@ import React from 'react';
 import { useSnackbar } from 'notistack';
 
 import { createNewGroup } from '../../util/AVAGroups';
+import MakeMessage from './MakeMessage';
 
 import Paper from '@material-ui/core/Paper';
 import TextField from '@material-ui/core/TextField';
@@ -19,7 +20,6 @@ import CloseIcon from '@material-ui/icons/ExitToApp';
 
 import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
-import CircularProgress from '@material-ui/core/CircularProgress';
 
 import AVATextInput from '../forms/AVATextInput';
 
@@ -185,17 +185,18 @@ export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, on
   const [activity_filter, setActivityFilter] = React.useState('');
   const [lower_activity_filter, setLowerFilter] = React.useState('');
   const [promptForName, setPromptForName] = React.useState(false);
+  const [requestNewGroup, setRequestNewGroup] = React.useState(false);
 
   function calcMinimumGroupLevel() {
     let response = 99;
     Object.keys(groupsManagedObject).forEach((listEntry) => {
-      if (groupsManagedObject[listEntry].level &&(groupsManagedObject[listEntry].level < response)) {
+      if (groupsManagedObject[listEntry].level && (groupsManagedObject[listEntry].level < response)) {
         response = groupsManagedObject[listEntry].level;
       }
     });
     return response;
   }
-  const [minimumGroupLevel, ] = React.useState(calcMinimumGroupLevel() - 1);
+  const [minimumGroupLevel,] = React.useState(calcMinimumGroupLevel() - 1);
 
   /*
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -251,11 +252,8 @@ export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, on
         ?
         <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
           <Typography className={classes.formControl} variant='h5' >
-            {'Building the Group List'}
+            {`No Groups to show for ${pSession.user_display_name}`}
           </Typography>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <CircularProgress />
-          </div>
         </Box>
         :
         <React.Fragment>
@@ -359,6 +357,32 @@ export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, on
                   </Typography>
                 </Box>
               }
+              {requestNewGroup &&
+                <MakeMessage
+                  titleText={`Request to create a New Group`}
+                  promptText={[`Subject`, `Message`]}
+                  promptUse={['subject', 'message']}
+                  seedText={[
+                    `Request to create a new group`,
+                    `This is ${pSession.patient_display_name}.   I'd like to have a new group created.  Here are the details:`
+                  ]}
+                  buttonText={'Send'}
+                  sender={{
+                    "client_id": pSession.client_id,
+                    "patient_id": pSession.patient_id,
+                    "patient_display_name": pSession.patient_display_name
+                  }}
+                  pRecipientID={pSession.newGroupAdministrator}
+                  onCancel={() => {
+                    setRequestNewGroup(false);
+                  }}
+                  onComplete={() => {
+                    setRequestNewGroup(false);
+                  }}
+                  setMethod={null}
+                  allowCancel={true}
+                />
+              }
             </List>
           </Paper>
         </React.Fragment>
@@ -386,6 +410,19 @@ export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, on
             startIcon={<GroupAddIcon fontSize="small" />}
           >
             {`New Group`}
+          </Button>
+        }
+        {!pSession?.adminAccount && pSession.newGroupAdministrator &&
+          <Button
+            onClick={() => {
+              setRequestNewGroup(true);
+            }}
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'green', color: 'white' }}
+            size='small'
+            startIcon={<GroupAddIcon fontSize="small" />}
+          >
+            {`Request New Group`}
           </Button>
         }
       </DialogActions>

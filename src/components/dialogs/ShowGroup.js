@@ -261,6 +261,7 @@ export default ({ options, onClose, onAbort }) => {
           else {
             reactUpdater.groupsManagedObject = await prepareGroupObject(groupList);
             reactUpdater.showGroupSelect = true;
+            reactUpdater.building = 'done';
           }
         }
         else {
@@ -365,7 +366,7 @@ export default ({ options, onClose, onAbort }) => {
             />
           }
         </DialogContent>
-        {reactData.showGroupSelect &&
+        {reactData.showGroupSelect && (reactData.building === 'done') &&
           <GroupFilter
             pSession={pSession}
             groupsManagedObject={reactData.groupsManagedObject}
