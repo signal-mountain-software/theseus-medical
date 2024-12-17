@@ -15,7 +15,7 @@ import { Dialog, DialogContent } from '@material-ui/core';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import Checkbox from '@material-ui/core/Checkbox';
-import { FormGroup, FormControlLabel, FormControl, FormLabel } from '@material-ui/core';
+import { FormControlLabel  } from '@material-ui/core';
 
 import TextField from '@material-ui/core/TextField';
 import Button from '@material-ui/core/Button';
@@ -53,7 +53,6 @@ const useStyles = makeStyles(theme => ({
     marginRight: '2px',
     paddingTop: '16px',
     paddingBottom: 0,
-    height: 1,
     fontSize: theme.typography.fontSize * 0.8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -68,7 +67,6 @@ const useStyles = makeStyles(theme => ({
     margin: 0,
     marginLeft: '-8px',
     marginRight: '2px',
-    paddingTop: '16px',
     height: 1,
     fontSize: theme.typography.fontSize * 0.8,
     alignItems: 'center',
@@ -1167,76 +1165,83 @@ export default ({ request = {}, onClose }) => {
     //   prop
     //   text - an array of options, each can independently go true or false
     return (
-      <FormControl className={classes.formControlCheckGroup} component="fieldset">
-        <FormLabel className={classes.formControlTitle}>
+      <Box flexDirection='column' key={`Box__${props.prop}`} className={classes.formControlCheckGroup}>
+        <Typography className={classes.formControlTitle}>
           {reconcilePrompt({
             rawValue: reactData.fields[props.prop].prompt.value,
             this_field: props.prop
           })}
-        </FormLabel>
-        <FormGroup row aria-label={`CheckGroup__${props.prop}`} name="method">
-          {(props.text).map((text, tIndex) => (
-            <FormControlLabel
-              className={classes.formControlDays}
-              key={`${props.prop}_${tIndex}`}
-              control={
-                <Checkbox
-                  aria-label={`${props.prop}_${tIndex}`}
-                  name={`${props.prop}_${tIndex}`}
-                  key={`CheckGroup__${props.prop}_${tIndex}`}
-                  size='small'
-                  checked={reactData.fields[props.prop].value && reactData.fields[props.prop].value.includes(text)}
-                  onClick={async () => {
-                    await handleMakeSelection({
-                      clickText: text,
-                      prop: props.prop
-                    });
-                  }}
-                  disableRipple
-                  inputProps={{ 'aria-labelledby': `message_routing_3` }}
-                />
-              }
-              label={<Typography className={classes.radioDays}>{text}</Typography>}
-              labelPlacement='end'
-            />
-          ))}
-          {(props.withPrompt) &&
-            <FormControlLabel
-              className={classes.formControlDays}
-              key={`${props.prop}_other`}
-              control={
-                <TextField
-                  style={AVATextStyle({
-                    lineHeight: 1,
-                    padding: { bottom: 0, top: 1 },
-                    size: 0.75,
-                    margin: { top: 0, bottom: 0.5, left: 0.5, right: 3 }
-                  })}
-                  className={classes.radioDays}
-                  autoComplete='off'
-                  disabled={reactData.fields[props.prop].options.viewOnly}
-                  id={`${props.prop}_otherText`}
-                  defaultValue={(reactData.fields[props.prop].value && reactData.fields[props.prop].bonusText)
-                    ? reactData.fields[props.prop].bonusText
-                    : ''
-                  }
-                  onBlur={(event) => {
-                    if (!reactData.fields[props.prop].value) {
-                      reactData.fields[props.prop].value = [];
+        </Typography>
+        <Box
+          flexDirection='row'
+          key={`CheckGroup__${props.prop}`}
+        >
+          <React.Fragment
+            key={`groupFrag__${props.prop}`}
+          >
+            {(props.text).map((text, tIndex) => (
+              <FormControlLabel
+                className={classes.formControlDays}
+                key={`${props.prop}_${tIndex}`}
+                control={
+                  <Checkbox
+                    aria-label={`${props.prop}_${tIndex}`}
+                    name={`${props.prop}_${tIndex}`}
+                    key={`CheckGroup__${props.prop}_${tIndex}`}
+                    size='small'
+                    checked={reactData.fields[props.prop].value && reactData.fields[props.prop].value.includes(text)}
+                    onClick={async () => {
+                      await handleMakeSelection({
+                        clickText: text,
+                        prop: props.prop
+                      });
+                    }}
+                    disableRipple
+                    inputProps={{ 'aria-labelledby': `message_routing_3` }}
+                  />
+                }
+                label={<Typography className={classes.radioDays}>{text}</Typography>}
+                labelPlacement='end'
+              />
+            ))}
+            {(props.withPrompt) &&
+              <FormControlLabel
+                className={classes.formControlDays}
+                key={`${props.prop}_other`}
+                control={
+                  <TextField
+                    style={AVATextStyle({
+                      lineHeight: 1,
+                      padding: { bottom: 0, top: 1 },
+                      size: 0.75,
+                      margin: { top: 0, bottom: 0.5, left: 0.5, right: 3 }
+                    })}
+                    className={classes.radioDays}
+                    autoComplete='off'
+                    disabled={reactData.fields[props.prop].options.viewOnly}
+                    id={`${props.prop}_otherText`}
+                    defaultValue={(reactData.fields[props.prop].value && reactData.fields[props.prop].bonusText)
+                      ? reactData.fields[props.prop].bonusText
+                      : ''
                     }
-                    reactData.fields[props.prop].bonusText = event.target.value;
-                    updateReactData({
-                      formUpdates: reactData.formUpdates++,
-                      fields: reactData.fields
-                    }, true);
-                  }}
-                  helperText={props.withPrompt}
-                />
-              }
-            />
-          }
-        </FormGroup>
-      </FormControl>
+                    onBlur={(event) => {
+                      if (!reactData.fields[props.prop].value) {
+                        reactData.fields[props.prop].value = [];
+                      }
+                      reactData.fields[props.prop].bonusText = event.target.value;
+                      updateReactData({
+                        formUpdates: reactData.formUpdates++,
+                        fields: reactData.fields
+                      }, true);
+                    }}
+                    helperText={props.withPrompt}
+                  />
+                }
+              />
+            }
+          </React.Fragment>
+        </Box>
+      </Box>
     );
   };
 
