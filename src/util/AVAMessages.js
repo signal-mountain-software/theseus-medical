@@ -9,8 +9,6 @@ import { makeDate } from './AVADateTime';
 
 import { jsPDF } from "jspdf";
 
-// import htmlToFormattedText from "html-to-formatted-text";
-
 let page = {};
 let pdfCurrent = {};
 let doc;
@@ -718,7 +716,7 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
   page.document_id = docID;
   page.client_id = client_id;
   page.footerText = `AVA reference: ${page.client_id}/${page.document_id}`;
-  pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
+  // pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
   pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
 
   // docData.sections.forEach((sectionObj, sectionNdx) => {
@@ -750,18 +748,24 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
             break;
           }
           case 'html': {
-            await pdfHTML(docData.fields[this_field].prompt.ref || docData.fields[this_field].prompt.value, {
-              before: -2,
-              printed_height: docData.fields[this_field]?.prompt?.printed_height || null,
-              html: true,
-              style: 'normal',
-              size: 'medium',
-              align: 'left',
-              after: 1
-            });
+            await pdfHTML(docData.fields[this_field].prompt.ref || docData.fields[this_field].prompt.value,
+              Object.assign({}, docData.fields[this_field]?.prompt, {
+                before: -2,
+                printed_height: docData.fields[this_field]?.prompt?.printed_height || null,
+                print_scale: docData.fields[this_field].prompt.print_scale || 1,
+                html: true,
+                style: 'normal',
+                size: 'medium',
+                align: 'left',
+                after: 1
+              }));
             break;
           }
           case 'signature': {
+            await pdfImage(docData.fields[this_field].prompt.ref, { image: docDocument[this_field] || docDocument.signature, style: 'normal', size: 'medium', align: 'left', after: 1 });
+            break;
+          }
+          case 'legacy_signature': {
             pdfLine(docData.fields[this_field].prompt.ref, { image: docDocument[this_field] || docDocument.signature, style: 'normal', size: 'medium', align: 'left', after: 1 });
             break;
           }
@@ -860,18 +864,24 @@ export async function printDocumentB({ documentList, options = {} }) {
                 break;
               }
               case 'html': {
-                await pdfHTML(`${fields[this_field].prompt.value}`, {
-                  before: -2,
-                  printed_height: fields[this_field].prompt.printed_height,
-                  html: true,
-                  style: 'normal',
-                  size: 'medium',
-                  align: 'left',
-                  after: 1
-                });
+                await pdfHTML(`${fields[this_field].prompt.value}`,
+                  Object.assign({}, fields[this_field].prompt, {
+                    before: -2,
+                    printed_height: fields[this_field].prompt.printed_height,
+                    print_scale: fields[this_field].prompt.print_scale || 1,
+                    html: true,
+                    style: 'normal',
+                    size: 'medium',
+                    align: 'left',
+                    after: 1
+                  }));
                 break;
               }
               case 'signature': {
+                await pdfImage(fields[this_field].prompt.value, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
+                break;
+              }
+              case 'legacy_signature': {
                 pdfLine(fields[this_field].prompt.value, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
                 break;
               }
@@ -967,15 +977,17 @@ export async function printEmptyDocument({ documentList, options = {} }) {
               break;
             }
             case 'html': {
-              await pdfHTML(`${fields[this_field].prompt.value}`, {
-                before: -2,
-                printed_height: fields[this_field].prompt.printed_height,
-                html: true,
-                style: 'normal',
-                size: 'medium',
-                align: 'left',
-                after: 1
-              });
+              await pdfHTML(`${fields[this_field].prompt.value}`,
+                Object.assign({}, fields[this_field].prompt, {
+                  before: -2,
+                  printed_height: fields[this_field].prompt.printed_height,
+                  print_scale: fields[this_field].prompt.print_scale || 1,
+                  html: true,
+                  style: 'normal',
+                  size: 'medium',
+                  align: 'left',
+                  after: 1
+                }));
               break;
             }
             case 'signature': {
@@ -1081,20 +1093,22 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
                 break;
               }
               case 'html': {
-                await pdfHTML(`${fields[this_field].prompt.value}`, {
-                  before: -2,
-                  printed_height: fields[this_field].prompt.printed_height,
-                  html: true,
-                  style: 'normal',
-                  size: 'medium',
-                  align: 'left',
-                  after: 1
-                });
+                await pdfHTML(`${fields[this_field].prompt.value}`,
+                  Object.assign({}, fields[this_field].prompt, {
+                    before: -2,
+                    printed_height: fields[this_field].prompt.printed_height,
+                    print_scale: fields[this_field].prompt.print_scale || 1,
+                    html: true,
+                    style: 'normal',
+                    size: 'medium',
+                    align: 'left',
+                    after: 1
+                  }));
                 break;
               }
               case 'signature': {
                 if (signatures[fields[this_field].options.sigRefNumber]) {
-                  pdfLine(fields[this_field].prompt.value, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
+                  await pdfImage(fields[this_field].prompt.value, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
                 }
                 else {
                   pdfCurrent.yPos += 12;
@@ -1884,7 +1898,7 @@ async function pdfLaunch(body) {
   };
   if (customizations['logo']) {
     pdfCurrent.logo = getObject(customizations['logo'], 'logo');
-    pdfCurrent.logo64 = await getObject64(customizations['logo'], 'logo');
+    //    pdfCurrent.logo64 = await getObject64(customizations['logo'], 'logo');
     if (customizations['logo_dimensions']) {
       pdfCurrent.logo_width = customizations['logo_dimensions'][0] / 2;
       pdfCurrent.logo_height = customizations['logo_dimensions'][1] / 2;
@@ -1964,28 +1978,57 @@ async function pdfHTML(text, options = {}) {
     pdfStyle(pdfCurrent);
     pdfHeader(++pdfCurrent.pageNumber);
   }
-  let sizeEstimate = doc.getTextWidth(text);
-  let heightEstimate = Math.ceil(sizeEstimate / page.width) + (text.split('<p').length * 2);
+  /** calculate the imgWidth, imgHeight to print on PDF 
+   *  so it can scale in equal proportions*/
+  const canvasWidth = (page.width - page.margin.right - page.margin.left);
+  let canvasHeight;
+  let computed_height;
   if (options.printed_height) {
-    heightEstimate = options.printed_height + 2;
+    canvasHeight = options.printed_height + 2;
+    computed_height = options.printed_height + 2;
   }
+  else {
+    let sizeEstimate = doc.getTextWidth(text);
+    canvasHeight = Math.ceil(sizeEstimate / page.width) + (text.split('<p').length * 2);
+    computed_height = ((page.width - page.margin.right - page.margin.left) / canvasWidth) * canvasHeight;
+  }
+  let scale_factor = 1;
+  pdfCurrent.yPos += (options.print_ypos || 1);
+  pdfCurrent.xPos = page.margin.left + (options.print_xpos || 0);
+  if ((computed_height + pdfCurrent.yPos) > (page.height - page.margin.top - page.margin.bottom)) {
+    scale_factor = (page.height - page.margin.top - page.margin.bottom) / computed_height;
+  }
+  const final_width = ((page.width - page.margin.right - page.margin.left) * scale_factor) / (options.print_scale || 0.6);
+  const final_height = (computed_height * scale_factor) / 0.6;
+
   const this_page = doc.internal.getNumberOfPages();
-  console.log(`html at right:${pdfCurrent.xPos}; top:${pdfCurrent.yPos}; width:${page.width - page.margin.right}`);
   await doc.html(text, {
     callback: function (doc) {
       return doc;
     },
-    width: page.width - page.margin.right,
+    width: final_width,
+    height: final_height,
     windowWidth: page.width,
     html2canvas: {
-      width: (page.width / 0.75),
-      scale: 0.75
+      width: final_width,
+      scale: (options.print_scale || 1)
     },
-    x: pdfCurrent.xPos,
-    y: ((this_page - 1) * page.height) + pdfCurrent.yPos + (2 * (pdfCurrent.fontSize * 0.75)),
-    autoPaging: true
+    margin: [page.margin.left, page.margin.top, page.margin.right, page.margin.bottom],
+    x: (options.print_xpos || 0),
+    y: ((this_page - 1) * page.height) + pdfCurrent.yPos,
+    autoPaging: 'text'
   });
-  pdfDown(heightEstimate);
+
+  pdfCurrent.yPos += final_height / scale_factor;
+  if (!options.noNewPage && ((pdfCurrent.yPos >= page.bottom))) {
+    let savedStyle = Object.assign({}, pdfCurrent);
+    pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
+    pdfCurrent = Object.assign({}, savedStyle, { yPos: pdfCurrent.yPos });
+    pdfStyle(pdfCurrent);
+    pdfHeader(++pdfCurrent.pageNumber);
+  }
+  pdfCurrent.xPos = page.margin.left;
+
   if (options.after) { pdfDown(options.after); }
 }
 
@@ -2016,27 +2059,39 @@ function pdfLine(text, options = {}) {
     pdfHeader(++pdfCurrent.pageNumber);
   }
   if (options.image) {
-    let imageSize = pdfCurrent.fontSize * 2 * (pdfCurrent.fontSize / page.font.size['medium']);
+    var imageWidth, imageHeight;
+    if (options.image.includes('base64')) {
+      var img = new Image();
+      img.src = options.image;
+      img.onload = function () {
+        imageWidth = img.naturalWidth;
+        imageHeight = img.naturalHeight;
+      }
+    }
+    else {
+      imageWidth = pdfCurrent.fontSize * 2 * (pdfCurrent.fontSize / page.font.size['medium']);
+      imageHeight = imageWidth;
+    }
     let xOffset;
     try {
       switch (pdfCurrent.align) {
         case 'center': {
-          xOffset = page.centerPoint - (imageSize / 2);
-          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
-          pdfCurrent.xPos = page.centerPoint + (imageSize / 2);
+          xOffset = page.centerPoint - (imageWidth / 2);
+          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+          pdfCurrent.xPos = page.centerPoint + (imageWidth / 2);
           break;
         }
         case 'right': {
-          xOffset = page.width - page.margin.right - imageSize;
-          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
+          xOffset = page.width - page.margin.right - imageWidth;
+          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
           pdfCurrent.xPos = page.width - page.margin.right;
           break;
         }
         default: {
           xOffset = pdfCurrent.xPos + pdfCurrent.indent;
           //    let imageProps = doc.getImageProperties(options.image);
-          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
-          pdfCurrent.yPos += imageSize;
+          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+          pdfCurrent.yPos += imageHeight;
           pdfDown(1);
         }
       }
@@ -2045,7 +2100,7 @@ function pdfLine(text, options = {}) {
       doc.html(`<img src="${options.image}" />`);
       switch (pdfCurrent.align) {
         case 'center': {
-          pdfCurrent.xPos = page.centerPoint + (imageSize / 2);
+          pdfCurrent.xPos = page.centerPoint + (imageWidth / 2);
           break;
         }
         case 'right': {
@@ -2053,15 +2108,17 @@ function pdfLine(text, options = {}) {
           break;
         }
         default: {
-          pdfCurrent.xPos = xOffset + imageSize;
+          pdfCurrent.xPos = xOffset + imageWidth;
         }
       }
     }
   }
   if (options.radio) {
-    doc.circle(pdfCurrent.xPos + pdfCurrent.indent, pdfCurrent.yPos - 3.5, 3, (options.radioSelected ? 'F' : 'S'));
-    doc.text(text, pdfCurrent.xPos + pdfCurrent.indent + 8, pdfCurrent.yPos);
+    doc.circle(pdfCurrent.xPos + pdfCurrent.indent, pdfCurrent.yPos - 1, 3, (options.radioSelected ? 'F' : 'S'));
+    doc.setFontSize(pdfCurrent.fontSize * 0.8);
+    doc.text(text, pdfCurrent.xPos + pdfCurrent.indent + 8, pdfCurrent.yPos + 1);
     pdfCurrent.xPos = (pdfCurrent.xPos + pdfCurrent.indent + 8) + doc.getTextWidth(text) + pdfCurrent.fontSize;
+    doc.setFontSize(pdfCurrent.fontSize);
   }
   else if (options.html) {
     console.log(`html at right:${pdfCurrent.xPos}; top:${pdfCurrent.yPos}; width:${page.width - page.margin.right}`);
@@ -2115,6 +2172,141 @@ function pdfLine(text, options = {}) {
   }
   if (options.after) { pdfDown(options.after); }
   return;
+}
+
+
+async function pdfImage(text, options = {}) {
+  clt({ pdfLine: text, options });
+  if (options) { pdfStyle(options); }
+  if (options.before) { pdfDown(options.before); }
+  if (options.yPos && !isNaN(options.yPos)) {
+    pdfCurrent.yPos = options.yPos;
+  }
+  else if (options.yPos && (options.yPos === 'footer')) {
+    pdfCurrent.yPos = Math.max((page.height - page.margin.bottom - 20), pdfCurrent.yPos);
+    pdfCurrent.xPos = page.margin.left;
+    options.noNewPage = true;
+  }
+  else if (options.yPos && (options.yPos === 'header')) {
+    pdfCurrent.yPos = page.margin.top;
+    options.noNewPage = true;
+  }
+  else if (!options.noNewLine) {
+    pdfDown(1);
+  }
+  if (!options.noNewPage && ((pdfCurrent.yPos + ((options.protectOrphan ? 2 : 0) * pdfCurrent.fontSize)) >= page.bottom)) {
+    let savedStyle = Object.assign({}, pdfCurrent);
+    pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
+    pdfCurrent = Object.assign({}, savedStyle, { yPos: pdfCurrent.yPos });
+    pdfStyle(pdfCurrent);
+    pdfHeader(++pdfCurrent.pageNumber);
+  }
+  if (options.image) {
+    var imageWidth, imageHeight;
+    if (options.image.includes('base64')) {
+      var img = new Image();
+      img.src = options.image;
+      await getImageSize(img);
+      imageWidth = img.naturalWidth;
+      imageHeight = img.naturalHeight;
+    }
+    else {
+      imageWidth = pdfCurrent.fontSize * 2 * (pdfCurrent.fontSize / page.font.size['medium']);
+      imageHeight = imageWidth;
+    }
+    if (imageWidth === 0) {
+      imageWidth = pdfCurrent.fontSize * 2 * (pdfCurrent.fontSize / page.font.size['medium']);
+      imageHeight = imageWidth;
+    }
+    else if (imageWidth > (page.width / 4)) {
+      var shrinkFactor = (page.width / 4) / imageWidth;
+      imageWidth = page.width / 4;
+      imageHeight = imageHeight *= shrinkFactor;
+    }
+    let xOffset;
+    try {
+      switch (pdfCurrent.align) {
+        case 'center': {
+          xOffset = page.centerPoint - (imageWidth / 2);
+          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+          pdfCurrent.xPos = page.centerPoint + (imageWidth / 2);
+          break;
+        }
+        case 'right': {
+          xOffset = page.width - page.margin.right - imageWidth;
+          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+          pdfCurrent.xPos = page.width - page.margin.right;
+          break;
+        }
+        default: {
+          xOffset = pdfCurrent.xPos + pdfCurrent.indent;
+          //    let imageProps = doc.getImageProperties(options.image);
+          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+          pdfCurrent.yPos += imageHeight;
+          pdfDown(1);
+        }
+      }
+    }
+    catch {
+      doc.html(`<img src="${options.image}" />`);
+      switch (pdfCurrent.align) {
+        case 'center': {
+          pdfCurrent.xPos = page.centerPoint + (imageWidth / 2);
+          break;
+        }
+        case 'right': {
+          pdfCurrent.xPos = page.width - page.margin.right;
+          break;
+        }
+        default: {
+          pdfCurrent.xPos = xOffset + imageWidth;
+        }
+      }
+    }
+  }
+  if (text && (text.length > 0)) {
+    // this little chunk deals with text overflow
+    let tWords = [];
+    if ((pdfCurrent.align === 'center') && (doc.getTextWidth(text) > page.printableArea)) {
+      tWords = doc.splitTextToSize(text, page.printableArea);
+    }
+    else if ((pdfCurrent.align !== 'center') && ((doc.getTextWidth(text) + pdfCurrent.xPos + pdfCurrent.indent) > page.right)) {
+      tWords = doc.splitTextToSize(text, (page.right - (pdfCurrent.xPos + pdfCurrent.indent)));
+    }
+    if (tWords.length > 0) {
+      for (let t = 0; t < tWords.length - 1; t++) {
+        pdfLine(tWords[t], Object.assign({}, options, { after: 0 }));
+      }
+      pdfDown(1);
+      text = tWords[tWords.length - 1];
+    }
+    if (pdfCurrent.align === 'center') {
+      let xOffset = page.centerPoint - (doc.getTextWidth(text) / 2);
+      doc.text(text, xOffset, pdfCurrent.yPos);
+      pdfCurrent.xPos = page.centerPoint + (doc.getTextWidth(text) / 2) + pdfCurrent.fontSize;
+    }
+    else if (pdfCurrent.align === 'right') {
+      doc.text(text, page.width - page.margin.right, pdfCurrent.yPos, { align: 'right' });
+      pdfCurrent.xPos = page.margin.right;
+    }
+    else if (pdfCurrent.noNewLine) {
+      doc.text(text, pdfCurrent.xPos + pdfCurrent.indent, pdfCurrent.yPos);
+      pdfCurrent.xPos += doc.getTextWidth(text) + pdfCurrent.fontSize;
+    }
+    else {
+      doc.text(text, pdfCurrent.xPos + pdfCurrent.indent, pdfCurrent.yPos);
+      pdfCurrent.xPos = (pdfCurrent.xPos + pdfCurrent.indent) + doc.getTextWidth(text) + pdfCurrent.fontSize;
+    }
+  }
+  if (options.after) { pdfDown(options.after); }
+  return;
+
+  function getImageSize(img) {
+    return new Promise(res => {     
+      img.onload = () => res();
+      img.onerror = () => res();
+    });
+  }
 }
 
 function pdfDown(n = 1) {

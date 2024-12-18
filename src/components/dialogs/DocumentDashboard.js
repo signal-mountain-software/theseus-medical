@@ -253,7 +253,8 @@ export default ({ request = {}, onClose }) => {
   };
 
   const [reactData, setReactData] = React.useState({
-    formType_filter: options.formTypeList || ['*all'],
+    //    formType_filter: options.formTypeList || ['*all'],
+    formType_filter: ['billing_summary_1'],
     formNoAdd: (options.formNoAdd ? makeArray(options.formNoAdd) : []),
     formNotAlone: (options.formNotAlone ? makeArray(options.formNotAlone) : []),
     formMaxToShow: (options.formMaxToShow ? Number(options.formMaxToShow) : 999),
@@ -467,6 +468,9 @@ export default ({ request = {}, onClose }) => {
               }
             }
           }
+        }
+        if (isIncomplete(this_document) || (this_document.completed_timestamp < 1731862247000)) {
+          continue;
         }
         const documentMatchesForm = (this_form) => { return ((this_document.form_id === this_form.form_id) || (this_form.form_id === '*all')); };
         let foundAt = buildDocList.findIndex(this_docObj => {

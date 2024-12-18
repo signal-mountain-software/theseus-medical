@@ -1,5 +1,5 @@
 import { getPerson, makeName } from '../util/AVAPeople';
-import { makeDate } from '../util/AVADateTime';
+import { makeDate, isDate } from '../util/AVADateTime';
 import { getOccurenceList } from '../util/AVACalendars';
 import { Lambda } from 'aws-sdk';
 
@@ -182,6 +182,9 @@ export function deepCopy(pValue) {
     }
     return arr;
   }
+  else if (isDate(pValue)) {
+    return pValue;
+  }
   else if (typeof pValue === 'object') {
     var obj = {};
     for (var prop in pValue) {
@@ -282,7 +285,7 @@ export function stringToColor(string) {
   let color = '#e';
   for (i = 0; i < 3; i += 1) {
     const value = (hash >> (i * 8)) & 0xff;
-    color += `00${value.toString(16)}`.substr(-2);
+    color += `00${value.toString(16)}`.slice(-2);
   }
   /* eslint-enable no-bitwise */
   return color.slice(0, 7);

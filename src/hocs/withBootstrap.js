@@ -69,7 +69,7 @@ export default Component => props => {
   const { dispatch, state } = useSession();
   const AVAClass = AVAclasses();
 
-  const [cookies, setCookie,] = useCookies(['AVAuser', 'AVAclient', 'AVAvalidated']);
+  const [cookies, setCookie,] = useCookies(['AVAuser', 'AVAclient', 'AVAvalidated', 'AVAaction']);
 
   const [doneTrying, setDoneTrying] = React.useState(false);
   const [AVAReady, setAVAReady] = React.useState(false);
@@ -184,6 +184,10 @@ export default Component => props => {
               currentClientLogo: cData.logo
             });
           }
+          if (reactData.urlData.create) {
+            await tryUser(`ava-${reactData.urlData.client_id}`, reactData.urlData.client_id, 'url');
+            return;
+          }
           if (reactData.urlData.user_id) {
             await tryUser(reactData.urlData.user_id, reactData.urlData.client_id, 'url');
             return;
@@ -292,14 +296,14 @@ export default Component => props => {
         let expectedAddress;
         if (source.includes('@')) {
           prefMethod = 'email';
-          expectedAddress = foundPatient.messaging.email;
+          expectedAddress = foundPatient.messaging.email || source;
           enqueueSnackbar(
             `We've sent an e-Mail to ${expectedAddress}. Look for a security code in that message and enter it here.`,
             { variant: 'success', persist: true });
         }
         else {
           prefMethod = 'sms';
-          expectedAddress = foundPatient.messaging.sms;
+          expectedAddress = foundPatient.messaging.sms || source;
           enqueueSnackbar(
             `We've sent a text to (${expectedAddress.slice(2, 5)}) ${expectedAddress.slice(5, 8)}-${expectedAddress.slice(8)}. Look for a security code in that message and enter it here.`,
             { variant: 'success', persist: true });
@@ -970,6 +974,12 @@ export default Component => props => {
     setCookie('AVAvalidated', 'true', { path: '/' });
   }
 
+  function putActionCookie() {
+    setCookie('AVAaction', JSON.stringify({
+      form: (reactData.urlData ? reactData.urlData.form : null),
+    }), { path: '/' });
+  }
+
   function getCookie() {
     let returnObj;
     if (cookies.AVAuser && cookies.AVAuser !== 'undefined') {
@@ -1490,6 +1500,9 @@ export default Component => props => {
     loadSyncInfo(currentSession, currentPatient);
 
     putValidationCookie();
+    if (reactData.urlData.hasOwnProperty('form')) {
+      putActionCookie();
+    }
     setAVAReady(true);
     localAVAReady = true;
     setAVAFollowUpData({ 'Completed': true });
