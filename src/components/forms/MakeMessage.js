@@ -260,7 +260,12 @@ export default ({
     else {
       principalMessageText = reactData.textInput[0];
     }
-    if (!subjectText) { subjectText = `Message from ${senderName}`; }
+    if (!subjectText) {
+      subjectText = `Message from ${senderName}`;
+    }
+    else {
+      principalMessageText += `\r\n\n(sent by ${senderName})`;
+    }
     let request = {
       client: sender.client_id,
       author: state.session.user_id,
@@ -271,9 +276,6 @@ export default ({
     };
     if (voiceMailText) {
       request.voiceMail = voiceMailText.trim();
-    }
-    if (state.session.user_id !== state.session.patient_id) {
-      request.messageText += `\r\n\n(sent by ${senderName})`;
     }
     if (reactData.attachmentList.length > 0) { request.attachments = reactData.attachmentList.map(a => { return a.Location; }); }
     if (reactData.isUrgent) { request.preffered_method = 'urgent'; }
