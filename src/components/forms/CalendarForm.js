@@ -312,6 +312,10 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     defaultValues.slotsView = true;
   }
 
+  if (!defaultValues.template__List) {
+    defaultValues.template__List = [];
+  }
+
   const setInitialView = (defaultValues) => {
     if (!defaultValues.hasOwnProperty('%%initialized%%')) {
       if (defaultValues.agendaView) {
@@ -585,6 +589,15 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               appointmentDate: dropTarget['calendar_cell'].this_date,
               selectedPersonRec: personRec,
             }, true);
+            /*
+             updateReactData({
+                    addPersonalEvent: true,
+                    getAppointmentType: false,
+                    isAppointment: true,
+                    appointmentStart: response[1],
+                    appointmentEnd: response[2]
+                  }, true);
+            */
           }
         }
         break;
@@ -2075,7 +2088,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               showNewEvent={true}
               options={{
                 setPerson: reactData.isAppointment,
-                setDate: ((reactData.appointmentDate && !reactData.appointmentDate.error) ? reactData.appointmentDate : null)
+                setDate: ((reactData.appointmentDate && !reactData.appointmentDate.error) ? reactData.appointmentDate : null),
+                setStart: reactData.appointmentStart,
+                setEnd: reactData.appointmentEnd,
               }}
               isAppointment={reactData.isAppointment}
               onClose={(newEvent) => {

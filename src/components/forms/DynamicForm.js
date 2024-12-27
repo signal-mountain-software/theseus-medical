@@ -15,6 +15,7 @@ import MultiObservationFormC from '../forms/MultiObservationFormC';
 import MultiObservationFormD from '../forms/MultiObservationFormD';
 import CheckInCheckOut from '../forms/CheckInCheckOut';
 import RequestDashboard from '../dialogs/RequestDashboard';
+import ReportRequest from './ReportRequest';
 import CalendarDashboard from '../dialogs/CalendarDashboard';
 import ShowCalendar from '../dialogs/ShowCalendar';
 import ShowMenu from '../dialogs/ShowMenu';
@@ -93,14 +94,6 @@ export default ({
     newFact.value = observationKey + '.' + event.target.value;
     setNewFact(newFact);
   };
-
-  /*  Candidate for removal
-  const onChangeMessage = event => {
-    setValue(event.target.value);
-    newFact.value = observationKey + '.' + event.target.value;
-    setNewFact(newFact);
-  };
-  */
 
   const onChangeNums = index => event => {
     const newNums = [...nums];
@@ -386,6 +379,18 @@ export default ({
           onClose={onClose}
         />
       );
+    case 'submit_report':
+      return (    
+        <ReportRequest
+          report_id={defaultObject.report_id}
+          title={defaultObject.title}
+          buttonText={defaultObject.buttonText}
+          options={defaultObject.options}
+          onClose={(response) => {
+            onClose(response);
+          }}
+        />
+      );
     case 'upload_file':
       return (
         <FileUpload
@@ -582,7 +587,6 @@ export default ({
     case 'family_maintenance':
       return (
         <FamilyMaintenance
-          forms={defaultObject.forms}
           options={defaultObject}
           onSave={onSave}
           onClose={onSave}
