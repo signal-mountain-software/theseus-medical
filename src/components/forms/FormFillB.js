@@ -1863,7 +1863,9 @@ export default ({ request = {}, onClose }) => {
       });
       if (WIPFields) {
         for (let this_field in WIPFields) {
-          fields[this_field].value = WIPFields[this_field].value;
+          if (fields.hasOwnProperty(this_field)) {
+            fields[this_field].value = WIPFields[this_field].value;
+          }
         }
       };
       let nowTime = new Date().getTime();
