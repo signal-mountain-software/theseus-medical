@@ -318,6 +318,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
   const [play] = useSound(AVA_AlertSound, { volume: 1 });
 
   let rowsDisplayed = [];
+  let TELS_isUpdating = false;
 
   let dashboard_idleTimer = React.createRef();
   const oneMinute = 1000 * 60;
@@ -733,7 +734,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       let TELS_facility = 138266;   // 138266 is TELS global test facility
       let this_env = window.location.href.split('//')[1].charAt(0).toUpperCase();
       if ((this_env === 'D') && (this_row.workData.TELSfacilityID)) {
-        TELS_facility = this_row.workData.TELSfacilityID;  
+        TELS_facility = this_row.workData.TELSfacilityID;
       }
 
       let newTELSworkorder = {
@@ -3103,10 +3104,15 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                     &&
                     <Button
                       className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'green', color: 'white', paddingRight: (reactData.isMobile ? '4px' : '') }}
+                      disabled={TELS_isUpdating}
+                      style={{ backgroundColor: (!TELS_isUpdating ? 'green' : 'gray'), color: 'white', paddingRight: (reactData.isMobile ? '4px' : '') }}
                       size='small'
                       onClick={async () => {
-                        await handleCreateTELS();
+                        if (!TELS_isUpdating) {
+                          TELS_isUpdating = true;
+                          await handleCreateTELS();
+                          TELS_isUpdating = false;
+                        }
                       }}
                       startIcon={<SaveAltIcon size="small" />}
                     >
