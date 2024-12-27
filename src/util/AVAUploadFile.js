@@ -210,6 +210,95 @@ export default ({ onCancel, onLoad, options = {} }) => {
     };
   };
 
+  /****** FOR FUTURE REFERENCE
+   *   THIS CODE SUPPORT MULTI-PART UPLOADS
+  async function handleMultiPartUpload(pTarget) {
+    try {
+      // Multipart upload will pass chunks of 10Mb
+      let partSize = 10000000;
+      let numberOfParts = 10;
+      if (fileSize > (partSize * numberOfParts)) { partSize = fileSize / 10; }
+      else { numberOfParts = Math.ceil(fileSize / partSize); }
+
+      if ((numberOfParts === 1) || forceSingle) {
+        enqueueSnackbar(`AVA is saving your ${pType.toLowerCase()} with the name ${pMediaData.Key}`, { variant: 'info', persist: false });
+        let uploadOK = true;
+        await s3
+          .putObject(pMediaData)
+          .promise()
+          .catch(err => {
+            uploadOK = false;
+            enqueueSnackbar(`Uh oh!  AVA couldn't save that.  The reason is ${err.message}`,
+              { variant: 'error', persist: true });
+          });
+        if (uploadOK) {
+          closeSnackbar();
+          enqueueSnackbar(`${pMediaData.Key} was saved successfully`, { variant: 'success', persist: true });
+          return pMediaData.Key;
+        };
+        return null;
+      }
+
+      // this is a multi-part load
+      enqueueSnackbar(`AVA broke your ${pType.toLowerCase()} with the name ${pMediaData.Key} into ${numberOfParts} pieces and is uploading them now`, { variant: 'info', persist: false });
+      let upParms = {
+        Bucket: pMediaData.Bucket,
+        Key: pMediaData.Key,
+        ACL: pMediaData.ACL,
+        ContentType: pMediaData.ContentType,
+        Metadata: pMediaData.MetaData
+      };
+      let mpUp = await s3.createMultipartUpload(upParms).promise();
+      uploadId = mpUp.UploadId;
+
+      const uploadPromises = [];
+      // Upload each part.
+      for (let i = 0; i < numberOfParts; i++) {
+        const start = i * partSize;
+        const end = start + partSize;
+        let uPartParm = {
+          Bucket: pMediaData.Bucket,
+          Key: pMediaData.Key,
+          UploadId: uploadId,
+          Body: buffer.subarray(start, end),
+          PartNumber: i + 1,
+        };
+        uploadPromises.push(s3.uploadPart(uPartParm).promise());
+      }
+
+      const uploadResults = await Promise.all(uploadPromises);
+      let upDone = {
+        Bucket: pMediaData.Bucket,
+        Key: pMediaData.Key,
+        UploadId: uploadId,
+        MultipartUpload: {
+          Parts: uploadResults.map(({ ETag }, i) => ({
+            ETag,
+            PartNumber: i + 1,
+          })),
+        }
+      };
+      let s3Resp = await s3.completeMultipartUpload(upDone).promise();
+      enqueueSnackbar(`All parts of ${s3Resp.Key} were saved successfully to ${s3Resp.Location}`, { variant: 'success', persist: true });
+      return pMediaData.Key;
+
+      // Verify the output by downloading the file from the Amazon Simple Storage Service (Amazon S3) console.
+      // Because the output is a 25 MB string, text editors might struggle to open the file.
+    }
+    catch (err) {
+      console.error(err);
+      enqueueSnackbar(`That didn't work.  ${err}`, { variant: 'error', persist: true });
+      if (uploadId) {
+        let s3Bad = await s3.abortMultipartUpload({
+          Bucket: pMediaData.Bucket,
+          Key: pMediaData.Key,
+          UploadId: uploadId,
+        }).promise();
+        console.log(s3Bad);
+      }
+    }
+  */
+
   const handleSave = () => {
     onLoad(reactData.uploadList);
   };
@@ -412,62 +501,3 @@ export default ({ onCancel, onLoad, options = {} }) => {
     </Dialog >
   );
 };
-
-/*
-                      onChange={async (target) => {
-                        let fObj = target.target.files[0];
-                        let fParts = fObj.name.split('.');
-                        let extension = fParts.pop();
-                        let keyName = fParts.join('.');
-                        const pFile = {
-                          Bucket: 'theseus-medical-storage',
-                          Key: `public_uploads/${keyName}.${extension}`,
-                          Body: fObj,
-                          ACL: 'public-read-write',
-                          ContentType: fObj.type || fObj.ContentType
-                        };
-                        enqueueSnackbar(`Uploading ${keyName}`, { variant: 'success', persist: true });
-                        let s3Resp = await s3
-                          .upload(pFile)
-                          .promise()
-                          .catch(err => {
-                            enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
-                          });
-                        let s3File = s3Resp.Location;
-                        if (extension.toLowerCase() === 'mov') {
-                          var converterParms = {
-                            PipelineId: '1626108726566-cv5z9u', 
-Input: {
-  Key: pFile.Key,
-                            },
-Output: {
-  Key: `public_uploads/${keyName}.mp4`,
-    PresetId: '1351620000001-000001',
-                            },
-                          };
-enqueueSnackbar(`Converting ${keyName} to generic video format`, { variant: 'warning', persist: true });
-let converterOK = true;
-let data = await elastictranscoder
-  .createJob(converterParms)
-  .promise()
-  .catch(err => {
-    enqueueSnackbar(`Conversion unsuccessful`, { variant: 'failure', persist: true });
-    converterOK = false;
-  });
-if (converterOK) {
-  s3File = data.Job.Output.Key;
-}
-                        }
-closeSnackbar();
-reactData.uploadList.push({ fName: keyName, fType: extension, fLoc: s3File });
-if (options.buttonText && Array.isArray(options.buttonText)) {
-  if (options.buttonText[2] && reactData.uploadList.length > 1) {
-    reactData.buttonText = options.buttonText[2];
-  }
-  else { reactData.buttonText = options.buttonText[1]; }
-}
-setReactData(reactData);
-setForceRedisplay(!forceRedisplay);
-                      }}
-
-*/
