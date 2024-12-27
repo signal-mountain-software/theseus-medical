@@ -3,8 +3,8 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 import { useSnackbar } from 'notistack';
 
-import { getImage, getPerson, getSession } from '../../util/AVAPeople';
-import { deepCopy, makeArray, cl, recordExists, dbClient, isEmpty, titleCase } from '../../util/AVAUtilities';
+import { getImage, getPerson, getSession, makeName } from '../../util/AVAPeople';
+import { deepCopy, makeArray, cl, recordExists, dbClient, isEmpty } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -195,7 +195,8 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
         });
       if (recordExists(foundFamily)) {
         updateReactData({
-          family_id: foundFamily.Items[0].family_id
+          family_id: foundFamily.Items[0].family_id,
+          myRole: foundFamily.Items[0].role
         }, false);
       }
       else {
@@ -229,7 +230,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
               family_id: newFamilyID,
               person_id: state.session.patient_id,
               record_type: 'person',
-              role: options.role_if_new || 'caregiver'
+              role: options.role_if_new || 'primary'
             },
             TableName: 'FamilyGroups'
           })
@@ -301,16 +302,25 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     if (!familyHeader.hasOwnProperty('role')) {
       familyHeader.role = 'family';
     }
+    const may_create = (state.session.hasOwnProperty('account_types')) ? state.session.account_types[reactData.myRole].may_create : [];
+    const accountTypeList = [may_create].flat().map(this_type => {
+      return {
+        value: this_type,
+        label: state.session.account_types[this_type].description
+      };
+    });
     if (!reactData.defaults.noFamilyColumn) {
       updateReactData({
         familyMembers: [familyHeader].concat(familyMembers),
         selectedColumn: reactData.selectedColumn || 0,
+        accountTypeList
       }, false);
     }
     else {
       updateReactData({
         familyMembers,
         selectedColumn: reactData.selectedColumn || 0,
+        accountTypeList
       }, false);
     }
     const this_formList = await makeFormList({
@@ -556,7 +566,16 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
     }
     reactData.columnForms[selectedColumn] = [];
     let form_index = -1;
-    if (!reactData.forms.hasOwnProperty(role)) {
+    let formObjList = [];
+    if (reactData.defaults.hasOwnProperty('forms') && reactData.defaults.forms[role]) {
+      formObjList = reactData.defaults?.forms[role].map(this_obj => {
+        return this_obj;
+      });
+    }
+    else {
+      formObjList = makeArray(state.session.account_types[role].forms);
+    }
+    if (formObjList.length === 0) {
       // you are asking for a form that was not named in the passed-in defaults,
       // build out a basic form with minimal info
       reactData.columnForms[selectedColumn] = [{
@@ -569,7 +588,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
       updateReactData({ columnForms: reactData.columnForms }, false);
     }
     else {
-      for (const formObj of reactData.forms[role]) {
+      for (let this_formObj of formObjList) {
         // is there an active form for this person?
         let queryObj = {
           KeyConditionExpression: 'pertains_to = :p and begins_with(formType_date, :f)',
@@ -578,7 +597,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
           Limit: 1,
           ExpressionAttributeValues: {
             ':p': reactData.familyMembers[selectedColumn].person_id,
-            ':f': `${formObj.form_id}%%`
+            ':f': `${this_formObj.form_id}%%`
           }
         };
         queryObj.TableName = 'CompletedDocuments';
@@ -600,7 +619,9 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
         else {
           existingComplete = false;
         }
-        // CHeck for an exising WIP form
+        // Load form info - needed below
+        let this_form = await getForm(this_formObj.form_id);
+        // Check for an exising WIP form
         queryObj = {
           KeyConditionExpression: 'pertains_to = :p and begins_with(formType_date, :f)',
           ScanIndexForward: false,
@@ -609,7 +630,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
           Limit: 1,
           ExpressionAttributeValues: {
             ':p': reactData.pertains_to,
-            ':f': `${formObj.form_id}%%`
+            ':f': `${this_formObj.form_id}%%`
           }
         };
         let queryResult = await dbClient
@@ -627,8 +648,59 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
             date_started: makeDate(queryResult.Items[0].formType_date.split('%%')[1]).dateOnly
           };
         }
-        // Set up for a new form in case we need it
-        let this_form = await getForm(formObj.form_id);
+        else if (this_formObj.assign) {
+          let nowTime = makeDate('today');
+          const document_id_toBeAssigned = `${reactData.familyMembers[selectedColumn].person_id}%%${this_formObj.form_id}%%${nowTime.dateOnly}`;
+          const myName = makeName(reactData.familyMembers[selectedColumn].person_id);
+          await dbClient
+            .put({
+              Item: {
+                client_id: state.session.client_id,
+                document_id: document_id_toBeAssigned,
+                form_id: this_formObj.form_id,
+                formType: this_formObj.form_id,
+                formType_date: `${this_formObj.form_id}%%${nowTime.timestamp}`,
+                title: `${this_form.form_name} for ${myName}`,
+                pertains_to: reactData.familyMembers[selectedColumn].person_id,
+                date_assigned: nowTime.timestamp
+              },
+              TableName: "DocumentsAssigned",
+            })
+            .promise()
+            .catch(error => {
+              cl(`caught error updating DocumentsAssigned; error is:`, error);
+            });
+          await dbClient
+            .put({
+              Item: {
+                document_id: document_id_toBeAssigned,
+                person_id: '*status',
+                client_id: state.session.client_id,
+                formType: this_formObj.form_id,
+                last_update: nowTime.timestamp,
+                status: 'assigned'
+              },
+              TableName: "DocumentXRef",
+            })
+            .promise()
+            .catch(error => {
+              cl(`caught error updating DocumentXRef; error is:`, error);
+            });
+          await dbClient
+            .put({
+              Item: {
+                document_id: document_id_toBeAssigned,
+                person_id: reactData.familyMembers[selectedColumn].person_id,
+                role: 'pertains_to'
+              },
+              TableName: "DocumentXRef",
+            })
+            .promise()
+            .catch(error => {
+              cl(`caught error updating Calendar; error is:`, error);
+            });
+        }
+        // Set up for a new form in case we need it       
         if (this_form?.options?.anonymous) {
           reactData.newAccountForm[role] = this_form;
           updateReactData({
@@ -636,7 +708,6 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
           }, false);
         }
         if (isEmpty(this_form)) {
-          if (!formObj.asForm) { continue; }
           form_index++;
           reactData.columnForms[selectedColumn][form_index] = { asForm: true };
         }
@@ -644,12 +715,13 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
           form_index++;
           reactData.columnForms[selectedColumn][form_index] = deepCopy(this_form);
           reactData.columnForms[selectedColumn][form_index].asForm = true;
-          reactData.columnForms[selectedColumn][form_index].useFamilyID = !!formObj.useFamilyID;
+          reactData.columnForms[selectedColumn][form_index].useFamilyID = this_formObj.form_id.useFamilyID || false;
           let response = await editForm({ selectedColumn, form_index, editMode: false });
           reactData.columnForms = response.columnForms;
         }
         reactData.columnForms[selectedColumn][form_index].existingComplete = existingComplete;
         reactData.columnForms[selectedColumn][form_index].existingWIP = existingWIP;
+        reactData.columnForms[selectedColumn][form_index].form_status = (existingComplete ? 'complete' : (existingWIP ? 'started' : 'not_started'));
         reactData.columnForms[selectedColumn][form_index].isChecked = false;
       }
     }
@@ -1099,7 +1171,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                   key={'vRowRefresh'}
                 >
                   <Typography style={AVATextStyle({ size: 0.5 })} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-                  <Typography style={AVATextStyle({ size: 0.5 })} >{`User ${state.session.user_id}${state.patient_id !== state.session.user_id ? (' (' + state.session.patient_id + ')') : ''}`}</Typography>
+                  <Typography style={AVATextStyle({ size: 0.5 })} >{`User ${state.session.user_id}${state.session.patient_id !== state.session.user_id ? (' (' + state.session.patient_id + ')') : ''}`}</Typography>
                   <Typography style={AVATextStyle({ size: 0.5 })} >{`Function: FamilyMaintenance`}</Typography>
                 </Box>
               </MenuItem>
@@ -1246,7 +1318,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
                 </Box>
               </Box>
             }
-            {!reactData.defaults.suppressAddPerson &&
+            {!reactData.defaults.suppressAddPerson && reactData.accountTypeList && (reactData.accountTypeList.length > 0) &&
               <IconButton
                 color='inherit'
                 style={{ marginRight: '24px', marginBottom: '16px', height: '48px' }}
@@ -1408,7 +1480,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
       </React.Fragment>
 
       {
-        reactData.addDocForm &&
+        reactData.addNewAccountDoc &&
         <FormFillB
           request={{
             form_id: identifyNewAccountForm({ role: reactData.roleToAdd }),
@@ -1432,7 +1504,7 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
               });
             }
             updateReactData({
-              addDocForm: false
+              addNewAccountDoc: false
             }, true);
           }}
         />
@@ -1441,12 +1513,9 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
         reactData.addDocPrompt &&
         <AVATextInput
           titleText={`What type of account are you adding?`}
-          promptText={(reactData.defaults.hasOwnProperty('roles')
-            ? Object.keys(reactData.defaults.roles).map(this_role => {
-              return `[checkbox]${titleCase(this_role)}`;
-            })
-            : ['[checkbox]Caregiver', '[checkbox]Camper']
-          )}
+          promptText={reactData.accountTypeList.map(this_one => {
+            return `[checkbox]${this_one.label}`;
+          })}
           valueText={[
             '', ''
           ]}
@@ -1464,14 +1533,10 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
               }, true);
             }
             else {
-              let targetArray = (reactData.defaults.hasOwnProperty('roles')
-                ? Object.keys(reactData.defaults.roles)
-                : ['caregiver', 'camper']
-              );
-              let roleToAdd = targetArray[checkNum];
+              let roleToAdd = reactData.accountTypeList[checkNum].value;
               updateReactData({
                 addDocPrompt: false,
-                addDocForm: true,
+                addNewAccountDoc: true,
                 roleToAdd
 
               }, true);
