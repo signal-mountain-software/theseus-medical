@@ -1,7 +1,6 @@
 import React from 'react';
 import { Auth } from '@aws-amplify/auth';
-import { useSnackbar } from 'notistack';
-import { recordExists, isObject, cl, switchActiveAccount, makeArray, s3, dbClient, lambda, deepCopy, getMarqueeMessage } from '../../util/AVAUtilities';
+import { recordExists, isObject, cl, switchActiveAccount, makeArray, dbClient, lambda, deepCopy, getMarqueeMessage } from '../../util/AVAUtilities';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { getActivity } from '../../util/AVAObservations';
@@ -22,7 +21,6 @@ import useSession from '../../hooks/useSession';
 import SwitchPatientDialog from '../dialogs/SwitchPatientDialog';
 import PatientDialog from '../dialogs/PatientDialog';
 import NewFactDialog from '../dialogs/NewFactDialog';
-import AVAConfirm from '../forms/AVAConfirm';
 import MakeAVAMenu from '../../util/MakeAVAMenu';
 
 import List from '@material-ui/core/List';
@@ -46,7 +44,6 @@ import SubscriptionIcon from '@material-ui/icons/CardMembership';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import NewReleasesOutlinedIcon from '@material-ui/icons/NewReleasesOutlined';
-// import CircularProgress from '@material-ui/core/CircularProgress';
 import LinearProgress from '@material-ui/core/LinearProgress';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 
@@ -247,41 +244,32 @@ const useStyles = makeStyles(theme => ({
 export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   const classes = useStyles();
-  const { enqueueSnackbar, closeSnackbar } = useSnackbar();
 
   const { state } = useSession();
   const { roles, session } = state;
 
-  const [selected, setSelected] = React.useState(null);
-
   const [, , removeCookie] = useCookies(['AVAuser']);
 
-  const [mainMenu, setMainMenu] = React.useState([]);
-  const [greetingName, setGreetingName] = React.useState('');
-  const [greetingWords, setGreetingWords] = React.useState('');
-  const [confirmMessage, setConfirmMessage] = React.useState('');
-  const [pendingFact, setPendingFact] = React.useState('');
-
-  const [currentMenu, setCurrentMenu] = React.useState('main');
-  const [menuArray, setMenuArray] = React.useState(['main']);
-  const [menuNames, setMenuNames] = React.useState([]);
-  const [sectionOpen, setSectionOpen] = React.useState();
-  const [showPersonSelect, setShowPersonSelect] = React.useState(false);
-  const [showProfileEdit, setShowProfileEdit] = React.useState(false);
-  const [showPasswordEdit, setShowPasswordEdit] = React.useState(false);
-  const [showAddAccount, setShowAddAccount] = React.useState(false);
-  const [showNewFactDialog, setShowNewFactDialog] = React.useState(-1);
-  const [needsConfirmation, setNeedsConfirmation] = React.useState(-1);
-  const [toggleClick, setToggleClick] = React.useState(false);
-  const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
-  const [anchorEl, setAnchorEl] = React.useState(null);
-  const [groupData, setGroupData] = React.useState({});
-
-  const [loading, setLoading] = React.useState('Initializing');
-  const [progress, setProgress] = React.useState(100);
-  const [pWidth, setPWidth] = React.useState(60);
-
   const [reactData, setReactData] = React.useState({
+    mainMenu: [],
+    greetingName: '',
+    greetingWords: '',
+    loading: 'Initializing',
+    progress: 100,
+    pWidth: 60,
+    currentMenu: 'main',
+    menuArray: ['main'],
+    menuNames: [],
+    selected: null,
+    sectionOpen: null,
+    showPersonSelect: false,
+    popupMenuOpen: false,
+    showProfileEdit: false,
+    showNewFactDialog: -1,
+    showAddAccount: false,
+    showPasswordEdit: false,
+    groupData: {},
+    anchorEl: null,
     lastActiveTime: new Date(),
     idleState: true,
     enteredIdleStateTime: new Date(),
@@ -358,7 +346,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         client_weather: state.session.client_weather
       };
       let marqueeData = [
-        { message: `${greetingWords}, ${greetingName}!` },
+        { message: `${reactData.greetingWords}, ${reactData.greetingName}!` },
         { message: `AVA for ${state.session.client_name}` }
       ];
       marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
@@ -386,19 +374,25 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       .promise()
       .catch(error => {
         if (error.code === 'NetworkingError') {
-          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+          updateReactData({
+            alert: {
+              severity: 'error',
+              title: 'No internet',
+              message: `There is no internet connection.`
+            }
+          }, true);
         }
         cl(`caught error getting People record; error is:`, error);
       });
     if (recordExists(menuRec) && (menuRec.Item.menu_version !== reactData.loadedMenuVersion)) {
-      if ((menuRec.Item.AVA_main_menu.length > 0)) {
-        setMainMenu(menuRec.Item.AVA_main_menu);
-      }
-      cl(`Completed AVA Menu reload`);
-      updateReactData({
+      let reactUpdObj = {
         menu_reloaded: true,
         loadedMenuVersion: menuRec.Item.menu_version
-      }, true);
+      };
+      if ((menuRec.Item.AVA_main_menu.length > 0)) {
+        reactUpdObj.mainMenu = menuRec.Item.AVA_main_menu;
+      }
+      updateReactData(reactUpdObj, true);
     }
   };
 
@@ -412,7 +406,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         client_weather: state.session.client_weather
       };
       let marqueeData = [
-        { message: `${greetingWords}, ${greetingName}!` },
+        { message: `${reactData.greetingWords}, ${reactData.greetingName}!` },
         { message: `AVA for ${state.session.client_name}` }
       ];
       marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
@@ -426,7 +420,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         lastActiveTime: now,
         marqueeData: marqueeData,
         marqueeVersion: reactData.marqueeVersion++
-      }, false);
+      }, true);
       refresh = true;
     }
     if (!reactData.menu_reloaded) {
@@ -448,10 +442,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   let nowTime = new Date().getTime();
 
   const buildMenu = async (reload = false, beQuiet = null) => {
-    setSectionOpen({});
-
-    // reload = true;
-
+    let reactUpdObj = {
+      sectionOpen: {}
+    };
     // AVA_section_open in People record, or (legacy code) current_event in SessionV2 record
     // is used to save what the screen looked like last time the user was in AVA
     let menuRec = await dbClient
@@ -464,15 +457,26 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       .promise()
       .catch(error => {
         if (error.code === 'NetworkingError') {
-          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+          reactUpdObj.alert = {
+            severity: 'error',
+            title: 'No internet',
+            message: `There is no internet connection.`
+          };
         }
-        cl(`caught error getting People record; error is:`, error);
+        else {
+          reactUpdObj.alert = {
+            severity: 'error',
+            title: 'Unusual error',
+            message: `When getting your menu history, an error occurred.  The error is ${error}`
+          };
+        }
       });
     if (recordExists(menuRec)) {
-      updateReactData({ loadedMenuVersion: menuRec.Item.menu_version }, false);
-      setSectionOpen(menuRec.Item.AVA_section_open || {});
+      reactUpdObj.loadedMenuVersion = menuRec.Item.menu_version;
+      reactUpdObj.sectionOpen = menuRec.Item.AVA_section_open || {};
       if ((menuRec.Item.AVA_main_menu && (menuRec.Item.AVA_main_menu.length > 0)) && !reload) {
-        setMainMenu(menuRec.Item.AVA_main_menu);
+        reactUpdObj.mainMenu = menuRec.Item.AVA_main_menu;
+        updateReactData(reactUpdObj, true);
         return menuRec.Item.AVA_main_menu;
       }
     }
@@ -482,20 +486,17 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus), null, forceRefresh, state);
 
     if (wholeMenu.length > 0) {
-      // cl(`Reloaded menu at ${new Date().toLocaleString()}.`);
-      await updateAVA(sectionOpen, wholeMenu);
-      setMainMenu(wholeMenu);
+      await updateAVA(reactData.sectionOpen, wholeMenu);
+      reactUpdObj.mainMenu = wholeMenu;
+      updateReactData(reactUpdObj, true);
       return wholeMenu;
     }
     else {
-      // cl(`Empty menu for ${patient} in ${defaultClient} at ${new Date().toLocaleString()}.`);
-      updateReactData({
-        alert: {
-          severity: 'info',
-          title: 'Warning',
-          message: `AVA didn't find any options for you.  Ask AVA Support to check on this.`
-        }
-      }, true);
+      reactUpdObj.alert = {
+        severity: 'info',
+        title: 'Warning',
+        message: `AVA didn't find any options for you.  Ask AVA Support to check on this.`
+      };
       let helpRow = {
         activity_code: 'message.chubbie_request',
         activity_name: 'Send a message to AVA Support',
@@ -510,11 +511,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         section_name: 'Get AVA Help',
         sort_key: 'Messages, Comments, and Feedback'
       };
-      setSectionOpen({ 'Get AVA Help': true });
-      setMainMenu([helpRow]);
+      reactUpdObj.sectionOpen = { 'Get AVA Help': true };
+      reactUpdObj.mainMenu = [helpRow];
+      updateReactData(reactUpdObj, true);
     }
     // end
-    return mainMenu;
+    return reactUpdObj.mainMenu;
   };
 
   const updateAVA = async (pOpen, pMenu) => {
@@ -547,147 +549,25 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     start();
   };
 
-/*
-  async function putS3Object(pMediaData, pType) {
-    
-//    pMediaData = {
-//      Bucket: 'theseus-medical-storage',
-//      Key: fName,
-//      Body: fObj,
-//      ACL: 'public-read-write',
-//      ContentType: fObj.type,
-//      Metadata: { 'Content-Type': fObj.type }
-//    }
-    
-    let buff, buffer;
-    let fileSize = 1;
-    let forceSingle = false;
-    try {
-      buff = await pMediaData.Body.arrayBuffer();
-      buffer = new Float32Array(buff, 4, 4);
-      fileSize = buffer.length;
-    }
-    catch {
-      updateReactData({
-        alert: {
-          severity: 'info',
-          title: 'Warning',
-          message: `${pMediaData.Key} is really big.  This may take a few minutes...`
-        }
-      }, true);
-    }
-
-    let uploadId;
-    try {
-      // Multipart upload will pass chunks of 10Mb
-      let partSize = 10000000;
-      let numberOfParts = 10;
-      if (fileSize > (partSize * numberOfParts)) { partSize = fileSize / 10; }
-      else { numberOfParts = Math.ceil(fileSize / partSize); }
-
-      if ((numberOfParts === 1) || forceSingle) {
-        enqueueSnackbar(`AVA is saving your ${pType.toLowerCase()} with the name ${pMediaData.Key}`, { variant: 'info', persist: false });
-        let uploadOK = true;
-        await s3
-          .putObject(pMediaData)
-          .promise()
-          .catch(err => {
-            uploadOK = false;
-            enqueueSnackbar(`Uh oh!  AVA couldn't save that.  The reason is ${err.message}`,
-              { variant: 'error', persist: true });
-          });
-        if (uploadOK) {
-          closeSnackbar();
-          enqueueSnackbar(`${pMediaData.Key} was saved successfully`, { variant: 'success', persist: true });
-          return pMediaData.Key;
-        };
-        return null;
-      }
-
-      // this is a multi-part load
-      enqueueSnackbar(`AVA broke your ${pType.toLowerCase()} with the name ${pMediaData.Key} into ${numberOfParts} pieces and is uploading them now`, { variant: 'info', persist: false });
-      let upParms = {
-        Bucket: pMediaData.Bucket,
-        Key: pMediaData.Key,
-        ACL: pMediaData.ACL,
-        ContentType: pMediaData.ContentType,
-        Metadata: pMediaData.MetaData
-      };
-      let mpUp = await s3.createMultipartUpload(upParms).promise();
-      uploadId = mpUp.UploadId;
-
-      const uploadPromises = [];
-      // Upload each part.
-      for (let i = 0; i < numberOfParts; i++) {
-        const start = i * partSize;
-        const end = start + partSize;
-        let uPartParm = {
-          Bucket: pMediaData.Bucket,
-          Key: pMediaData.Key,
-          UploadId: uploadId,
-          Body: buffer.subarray(start, end),
-          PartNumber: i + 1,
-        };
-        uploadPromises.push(s3.uploadPart(uPartParm).promise());
-      }
-
-      const uploadResults = await Promise.all(uploadPromises);
-      let upDone = {
-        Bucket: pMediaData.Bucket,
-        Key: pMediaData.Key,
-        UploadId: uploadId,
-        MultipartUpload: {
-          Parts: uploadResults.map(({ ETag }, i) => ({
-            ETag,
-            PartNumber: i + 1,
-          })),
-        }
-      };
-      let s3Resp = await s3.completeMultipartUpload(upDone).promise();
-      enqueueSnackbar(`All parts of ${s3Resp.Key} were saved successfully to ${s3Resp.Location}`, { variant: 'success', persist: true });
-      return pMediaData.Key;
-
-      // Verify the output by downloading the file from the Amazon Simple Storage Service (Amazon S3) console.
-      // Because the output is a 25 MB string, text editors might struggle to open the file.
-    } catch (err) {
-      console.error(err);
-      enqueueSnackbar(`That didn't work.  ${err}`, { variant: 'error', persist: true });
-      if (uploadId) {
-        let s3Bad = await s3.abortMultipartUpload({
-          Bucket: pMediaData.Bucket,
-          Key: pMediaData.Key,
-          UploadId: uploadId,
-        }).promise();
-        console.log(s3Bad);
-      }
-      return null;
-    }
-  };
-*/
-  
   const screenQuiet = (statusMessage) => {
     return;
   };
 
   const screenStatus = (statusMessage, progressPct, progressWidth, interimMenu) => {
-    setLoading(statusMessage);
-    setProgress(progressPct);
-    setPWidth(progressWidth * 100);
-    setForceRedisplay(!forceRedisplay);
+    let reactUpdObj = {
+      loading: statusMessage,
+      progress: progressPct,
+      pWidth: progressWidth * 100
+    };
     if (interimMenu) {
-      setMainMenu(interimMenu);
+      reactUpdObj.mainMenu = interimMenu;
     }
+    updateReactData(reactUpdObj, true);
   };
 
   const updateFavorites = async (pType, activityRowIndex) => {
-    setLoading('Resetting your Favorites');
-    setForceRedisplay(!forceRedisplay);
-    makeGreeting();
-    let activityRow = mainMenu[activityRowIndex];
+    let activityRow = reactData.mainMenu[activityRowIndex];
     let activityLine = activityRow.raw_data;
-    // let activityLine = activityRow.activity_code;
-    // if (activityRow.default_value) { activityLine += `~[default=${activityRow.default_value}]`; }
-    // if (activityRow.activity_name) { activityLine += `~[title=${activityRow.activity_name}]`; }
     let changeMade = false;
     let personRec = await dbClient
       .get({
@@ -697,7 +577,13 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       .promise()
       .catch(error => {
         if (error.code === 'NetworkingError') {
-          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+          updateReactData({
+            alert: {
+              severity: 'error',
+              title: 'No internet',
+              message: `There is no internet connection.  AVA cannot update your Favorites.`
+            }
+          }, true);
         }
         cl(`caught error getting People record; error is:`, error);
       });
@@ -758,18 +644,22 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           })
           .promise()
           .catch(error => {
-            enqueueSnackbar(`AVA couldn't update your Favorites.  Error is ${error}`,
-              { variant: 'error', persist: true }
-            );
+            updateReactData({
+              alert: {
+                severity: 'error',
+                title: 'No internet',
+                message: `AVA couldn't update your Favorites.`
+              }
+            }, true);
             return;
           });
         if (pType === 'add') {
-          mainMenu[activityRowIndex].is_favorite = true;
-          mainMenu.unshift({
+          reactData.mainMenu[activityRowIndex].is_favorite = true;
+          reactData.mainMenu.unshift({
             menu_name: 'main',
             sort_key: `**2-0000`,
-            section_name: (mainMenu[0].section_name.includes('favorites')
-              ? mainMenu[0].section_name
+            section_name: (reactData.mainMenu[0].section_name.includes('favorites')
+              ? reactData.mainMenu[0].section_name
               : `My Favorites`
             ),
             section_color: '#6bb44b',
@@ -788,13 +678,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           });
         }
         else {
-          mainMenu.splice(activityRowIndex, 1);
+          reactData.mainMenu.splice(activityRowIndex, 1);
         };
       }
       window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
-      setMainMenu(mainMenu);
-      setLoading(false);
-      setForceRedisplay(!forceRedisplay);
+      updateReactData({
+        mainMenu: reactData.mainMenu,
+        loading: false
+      }, true);
     };
     return;
   };
@@ -809,7 +700,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       if (factFlavor !== 'action'
         && pFact.value.hasOwnProperty('selected')
       ) {
-        setPendingFact(pFact);
         let foundText = [];
         let valueArray = pFact.value.selected.map(selection => {    // this adds anything that was selected (checkbox)
           // add qualifiers if applicable
@@ -854,49 +744,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
         let factValueType = 'selection';
 
-        // special cases include forms, messages, and media
-        if (factFlavor === 'form' || factFlavor === 'message') {
-          if (pFact.status !== 'confirmed') {
-            let cMessage = [
-              'Review & Confirm please',
-              pFactName];
-            if (valueArray.length > 0) {
-              cMessage.push(
-                '~~~~',
-                'Your selections are:',
-              );
-              valueArray.forEach(v => {
-                if (v.charAt(0) !== '~') { cMessage.push(v.split(/:/)[0]); }
-              });
-            }
-            setConfirmMessage(cMessage);
-            setNeedsConfirmation(pIndex);
-            return;
-          }
-          else {
-            factValueType = 'form_selections';
-          }
-        }
-        /*
-        if (pFact.value.mediaData) {
-          let newName = pFact.value?.freeText?.Title || pFact.value.mediaData.Key;
-          let fileExtension = pFact.value.mediaData.Key.split('.').pop();
-          pFact.value.mediaData.Key = newName.trim().replace(/[\s/.]/g, '_') + '.' + fileExtension;
-          let fileType;
-          let fileName;
-          if (pFact.value.mediaData.Location) {
-            fileName = pFact.value.mediaData.Location;
-            fileType = fileExtension.startsWith('mp') ? 'video' : 'file';
-          }
-          else {
-            fileType = ((pFact.value.mediaData.ContentType?.includes('video') || pFact.value.mediaData.Body?.type?.includes('video')) ? 'Video' : 'File');
-            fileName = await putS3Object(pFact.value.mediaData, fileType);
-          }
-          valueArray.unshift(`s3file=${fileName}`, fileType, `userTag=${pFact.value.tag}`);
-          factValueType = 'file_details';
-        }
-        */
-
         // set the value that will be written into the Fact table
         pFact.value = factValueType + '.' + valueArray.join(' ~ ');
 
@@ -904,13 +751,15 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         putFact(pFact, pFactName, pIndex);
       }
     };
-    setShowNewFactDialog(-1);
-    setForceRedisplay(!forceRedisplay);
+    updateReactData({
+      showNewFactDialog: -1
+    }, true);
   };
 
   const onNextFact = async () => {
-    setShowNewFactDialog(-1);
-    setForceRedisplay(!forceRedisplay);
+    updateReactData({
+      showNewFactDialog: -1
+    }, true);
   };
 
   React.useEffect(() => {
@@ -920,24 +769,24 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         block: 'end',
       });
     }
-  }, [currentMenu]);
+  }, [reactData.currentMenu]);
 
   React.useEffect(() => {
     let response = (
       async () => {
-        setLoading('Getting your Information');
-        setForceRedisplay(!forceRedisplay);
-        let tempName = makeGreetingName(patient.hasOwnProperty('name') ? patient.name.first : (session.patient_display_name || pPerson));
-        let tempGreeting = makeGreeting();
-        setLoading('Building your AVA menu');
-        setForceRedisplay(!forceRedisplay);
+        let reactUpdObj = {};
+        let tempName = (patient.hasOwnProperty('name') ? patient.name.first : (session.patient_display_name || pPerson));
+        reactUpdObj.greetingName = (tempName || 'AVA User');
+        reactUpdObj.greetingWords = makeGreeting();
+        reactUpdObj.loading = 'Building your AVA menu';
+        updateReactData(reactUpdObj, true);
         await buildMenu();
         let options = {
           belongsTo: (state.groups ? state.groups.belongsTo : {}),
           client_weather: state.session.client_weather
         };
         let marqueeData = [
-          { message: `${tempGreeting}, ${tempName}!` },
+          { message: `${reactUpdObj.greetingWords}, ${tempName}!` },
           { message: `AVA for ${state.session.client_name}` }
         ];
         marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
@@ -949,13 +798,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         }
         updateReactData({
           marqueeData: marqueeData,
-          marqueeVersion: reactData.marqueeVersion++
-        }, false);
-        setLoading(false);
-        setForceRedisplay(!forceRedisplay);
+          marqueeVersion: reactData.marqueeVersion++,
+          loading: false
+        }, true);
       }
     );
-    if (mainMenu.length === 0) {
+    if (reactData.mainMenu.length === 0) {
       response();
     }
   }, [pPerson]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1002,8 +850,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       .catch(error => {
         cl(`Bad put to ActivityLog - caught error is: ${error}`);
       });
-    mainMenu[pIndex].last_used = postTime;
-    setMainMenu(mainMenu);
   };
 
   const putFact = async (pFact, pFactName, pIndex) => {
@@ -1014,7 +860,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       value: pFact.value,
       status: 'recorded',
       user_id: pPerson,
-      session_id: ((needsConfirmation > -1) ? 'Confirmed' : 'Done'),
+      session_id: 'Confirmed',
       method: 'AVAMenu',
       posted_time: postTime
     };
@@ -1051,10 +897,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       .catch(error => { console.error('Error adding a fact:', error.message); });
   };
 
-  function makeGreetingName(pString) {
+  /* function makeGreetingName(pString) {
     setGreetingName(pString || 'AVA User');
     return pString;
-  }
+  }  */
 
   function makeExpiration() {
     let cognito_expires = JSON.parse(sessionStorage.getItem('cognito_expires'));
@@ -1070,12 +916,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   function makeGreeting() {
     if (session?.custom_greeting) {
-      setGreetingWords(session.custom_greeting);
       return session.custom_greeting;
     }
-    let response = `Good ${makeTime(new Date()).dayPart}`;
-    setGreetingWords(response);
-    return response;
+    else {
+      return `Good ${makeTime(new Date()).dayPart}`;
+    }
   }
 
   function proxyAuthority() {
@@ -1096,12 +941,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     return false;
   };
 
-  const handleClick = async (event) => {
-    setAnchorEl(event.currentTarget);
-  };
-
   function rowIsOpen(pRow) {
-    return (sectionOpen[pRow.section_name] || (currentMenu !== 'main'));
+    return (reactData.sectionOpen[pRow.section_name] || (reactData.currentMenu !== 'main'));
   }
 
   // ******************
@@ -1128,13 +969,21 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               key={'personBox'}
               onClick={async () => {
                 if (!state.hasOwnProperty('groups') || !state.groups.hasOwnProperty('adminHierarchy')) {
-                  enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+                  updateReactData({
+                    alert: {
+                      severity: 'warning',
+                      title: 'Still loading',
+                      message: `AVA is still loading.  Wait just a moment and try again, please.`
+                    }
+                  }, true);
                 }
                 else {
-                  setPopupMenuOpen(false);
-                  setGroupData(state.groups);
-                  setShowProfileEdit(true);
-                  setShowPasswordEdit(false);
+                  updateReactData({
+                    groupData: state.groups,
+                    showPasswordEdit: false,
+                    popupMenuOpen: false,
+                    showProfileEdit: true
+                  }, true);
                 }
               }}
             >
@@ -1142,11 +991,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 className={classes.avatar}
                 title={
                   <Typography variant='caption'>
-                    {session?.kiosk_mode ? 'View/Update not available' : `View/Update ${greetingName}'${greetingName.slice(-1) === 's' ? '' : 's'} Profile`}
+                    {session?.kiosk_mode ? 'View/Update not available' : `View/Update ${reactData.greetingName}'${reactData.greetingName.slice(-1) === 's' ? '' : 's'} Profile`}
                   </Typography>
                 }
                 placement='bottom-start'>
-                <Avatar src={getImage(session.patient_id)} alt={greetingName} />
+                <Avatar src={getImage(session.patient_id)} alt={reactData.greetingName} />
               </Tooltip>
               <Box
                 flexGrow={1}
@@ -1157,13 +1006,13 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}
                   id='scroll-dialog-title'
                 >
-                  {`${greetingWords},`}
+                  {`${reactData.greetingWords},`}
                 </Typography>
                 <Typography
                   style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}
                   id='scroll-dialog-title'
                 >
-                  {`${greetingName}!`}
+                  {`${reactData.greetingName}!`}
                 </Typography>
               </Box>
             </Box>
@@ -1210,8 +1059,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 maxWidth={50}
                 alignSelf='flex-end'
                 onClick={(event) => {
-                  handleClick(event);
-                  setPopupMenuOpen(true);
+                  updateReactData({
+                    anchorEl: event.currentTarget,
+                    popupMenuOpen: true
+                  }, true);
                 }}
                 alt=''
                 src={state.session?.client_logo || process.env.REACT_APP_AVA_LOGO}
@@ -1222,15 +1073,21 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             </Box>
             <Menu
               id='hidden-menu'
-              anchorEl={anchorEl}
-              open={popupMenuOpen}
+              anchorEl={reactData.anchorEl}
+              open={reactData.popupMenuOpen}
               classes={{ paper: classes.clientPopUp }}
-              onClose={() => { setPopupMenuOpen(false); }}
+              onClose={() => {
+                updateReactData({
+                  popupMenuOpen: false
+                }, true);
+              }}
               keepMounted>
               <MenuList className={classes.popUpMenu}>
                 {(session?.patient_id !== session?.user_id) && (
                   <MenuItem onClick={async () => {
-                    setPopupMenuOpen(false);
+                    updateReactData({
+                      popupMenuOpen: false
+                    }, true);
                     await switchActiveAccount(
                       session,
                       (session.user_homeClient || session.client_id),
@@ -1252,13 +1109,21 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 {!session?.kiosk_mode && (
                   <MenuItem onClick={async () => {
                     if (!state.hasOwnProperty('groups') || !state.groups.hasOwnProperty('adminHierarchy')) {
-                      enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+                      updateReactData({
+                        alert: {
+                          severity: 'warning',
+                          title: 'Still loading',
+                          message: `AVA is still loading.  Wait just a moment and try again, please.`
+                        }
+                      }, true);
                     }
                     else {
-                      setPopupMenuOpen(false);
-                      setGroupData(state.groups);
-                      setShowProfileEdit(true);
-                      setShowPasswordEdit(true);
+                      updateReactData({
+                        groupData: state.groups,
+                        showPasswordEdit: true,
+                        popupMenuOpen: false,
+                        showProfileEdit: true
+                      }, true);
                     }
                   }}>
                     <Box
@@ -1267,7 +1132,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     >
                       <EditIcon />
                       <Typography className={classes.popUpMenuRow} >
-                        {`Manage ${(session.patient_id === session.user_id) ? 'my' : greetingName + "'" + ((greetingName.slice(-1) === 's') ? '' : 's')} Password`}
+                        {`Manage ${(session.patient_id === session.user_id) ? 'my' : reactData.greetingName + "'" + ((reactData.greetingName.slice(-1) === 's') ? '' : 's')} Password`}
                       </Typography>
                     </Box>
                   </MenuItem>
@@ -1294,8 +1159,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 {proxyAuthority()
                   &&
                   <MenuItem onClick={() => {
-                    setPopupMenuOpen(false);
-                    setShowPersonSelect(true);
+                    updateReactData({
+                      showPersonSelect: true,
+                      popupMenuOpen: false
+                    }, true);
                   }}>
                     <Box
                       display='flex' flexDirection='row' alignItems={'center'}
@@ -1309,10 +1176,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 {createAccountAuthority()
                   &&
                   <MenuItem onClick={async () => {
-                    setGroupData(state.groups);
-                    setPopupMenuOpen(false);
                     pause();
-                    setShowAddAccount(true);
+                    updateReactData({
+                      groupData: state.groups,
+                      showAddAccount: true,
+                      popupMenuOpen: false
+                    }, true);
                   }}>
                     <Box
                       display='flex' flexDirection='row' alignItems={'center'}
@@ -1395,7 +1264,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           </Box>
 
           {/* AVA Menu */}
-          {mainMenu && mainMenu.length > 0 &&
+          {reactData.mainMenu && reactData.mainMenu.length > 0 &&
             <Paper component={Box} className={classes.clientBackground} variant='outlined' overflow={'auto'} >
               <Box
                 display='flex' flexDirection='row'
@@ -1403,7 +1272,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               >
                 <Box flex={2} overflow={'hidden'} >
                   <List >
-                    {currentMenu !== 'main' &&
+                    {reactData.currentMenu !== 'main' &&
                       <Paper mt={1.5} component={Box} elevation={0} key={'gobacksection'} >
                         <Box
                           display='flex'
@@ -1413,12 +1282,13 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                           flexDirection='column'
                           minHeight={80}
                           onClick={async () => {
-                            menuArray.pop();
-                            setCurrentMenu(menuArray[menuArray.length - 1]);
-                            setMenuArray(menuArray);
-                            menuNames.pop();
-                            setMenuNames(menuNames);
-                            setForceRedisplay(!forceRedisplay);
+                            reactData.menuArray.pop();
+                            reactData.menuNames.pop();
+                            updateReactData({
+                              menuArray: reactData.menuArray,
+                              menuNames: reactData.menuNames,
+                              currentMenu: reactData.menuArray[reactData.menuArray.length - 1]
+                            }, true);
                           }}
                         >
                           <Box
@@ -1435,7 +1305,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                             <Box display='flex' ml={2} mr={5} flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
                               <Box display='flex' flexDirection='column'>
                                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' overflow='hidden'>
-                                  <Typography style={AVATextStyle({ size: 1.5 })} ref={subMenuHead}>{`Return to ${menuNames[menuNames.length - 1]}`}</Typography>
+                                  <Typography style={AVATextStyle({ size: 1.5 })} ref={subMenuHead}>{`Return to ${reactData.menuNames[reactData.menuNames.length - 1]}`}</Typography>
                                 </Box>
                               </Box>
                             </Box>
@@ -1443,8 +1313,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                         </Box>
                       </Paper>
                     }
-                    {mainMenu.map((this_row, index) => (
-                      ((this_row.menu_name === currentMenu) &&
+                    {reactData.mainMenu.map((this_row, index) => (
+                      ((this_row.menu_name === reactData.currentMenu) &&
                         <React.Fragment
                           key={this_row.activity_code + 'fragment' + index}
                         >
@@ -1454,7 +1324,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               ml={2} mr={2} mt={1.5}
                               key={this_row.activity_code + 'section' + index}
                               style={{
-                                borderRadius: ((sectionOpen[this_row.section_name] || (currentMenu !== 'main')) ? '30px 30px 0px 0px' : '30px 30px 30px 30px'),
+                                borderRadius: ((reactData.sectionOpen[this_row.section_name] || (reactData.currentMenu !== 'main')) ? '30px 30px 0px 0px' : '30px 30px 30px 30px'),
                                 backgroundColor: hexToRgb(this_row.section_color, 1),
                                 textDecoration: 'none'
                               }}
@@ -1466,10 +1336,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               flexDirection='column'
                               minHeight={80}
                               onClick={async () => {
-                                sectionOpen[this_row.section_name] = !sectionOpen[this_row.section_name];
-                                setSectionOpen(sectionOpen);
-                                await updateAVA(sectionOpen, mainMenu);
-                                setForceRedisplay(!forceRedisplay);
+                                reactData.sectionOpen[this_row.section_name] = !reactData.sectionOpen[this_row.section_name];
+                                await updateAVA(reactData.sectionOpen, reactData.mainMenu);
+                                updateReactData({
+                                  sectionOpen: reactData.sectionOpen
+                                }, true);
                               }}
                             >
                               <Box
@@ -1494,7 +1365,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                                   <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center', color: (isDark(this_row.section_color) ? 'cornsilk' : 'black') })} >{this_row.section_name.trim()}</Typography>
                                 </Box>
                                 <Box display='flex' justifyContent='flex-end' alignItems='center'>
-                                  {(currentMenu !== 'main') ? null : (!sectionOpen[this_row.section_name] ? 'Show' : 'Hide')}
+                                  {(reactData.currentMenu !== 'main') ? null : (!reactData.sectionOpen[this_row.section_name] ? 'Show' : 'Hide')}
                                 </Box>
                               </Box>
                             </Box>
@@ -1525,12 +1396,23 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                                   className={classes.listItem}
                                   onContextMenu={async (e) => {
                                     e.preventDefault();
-                                    enqueueSnackbar(<div>
-                                      1. Func {this_row.activity_code}<br />
-                                      2. Type {this_row.row_type}<br />
-                                      3. Reas {this_row.reason}<br />
-                                      4. Defs {isObject(this_row.default_value) ? `OBJ -> ${JSON.stringify(this_row.default_value)}` : this_row.default_value}</div>,
-                                      { variant: 'info', persist: true });
+                                    /*                 enqueueSnackbar(<div>
+                                                       1. Func {this_row.activity_code}<br />
+                                                       2. Type {this_row.row_type}<br />
+                                                       3. Reas {this_row.reason}<br />
+                                                       4. Defs {isObject(this_row.default_value) ? `OBJ -> ${JSON.stringify(this_row.default_value)}` : this_row.default_value}</div>,
+                                                       { variant: 'info', persist: true });
+                                      */
+                                    updateReactData({
+                                      alert: {
+                                        severity: 'info',
+                                        title: this_row.activity_name,
+                                        message: <div>
+                                          1. Activity Code: {this_row.activity_code}<br />
+                                          2. Row Type: {this_row.row_type}<br />
+                                          3. Why on Menu: {this_row.reason}</div>
+                                      }
+                                    }, true);
                                   }}
                                 >
                                   <Box
@@ -1543,37 +1425,44 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                                     overflow={'hidden'}
                                     onClick={async () => {
                                       await activityLog(pPerson, this_row.activity_code, this_row.activity_name, index);
-                                      if (!toggleClick && (this_row.row_type !== 'document')) {
+                                      reactData.mainMenu[index].last_used = new Date().getTime();
+                                      let reactUpdObj = {
+                                        mainMenu: reactData.mainMenu
+                                      };
+                                      if (this_row.row_type !== 'document') {
                                         if (this_row.subMenu_data) {
                                           let subMenu = await MakeAVAMenu(patient, defaultClient, screenQuiet, this_row.subMenu_data);
-                                          delete mainMenu[index].subMenu_data;
-                                          mainMenu.push(...subMenu);
-                                          setMainMenu(mainMenu);
+                                          delete reactData.mainMenu[index].subMenu_data;
+                                          reactData.mainMenu.push(...subMenu);
+                                          reactUpdObj.mainMenu = reactData.mainMenu;
                                         }
                                         if (this_row.child_menu) {
-                                          setCurrentMenu(this_row.child_menu);
-                                          menuArray.push(this_row.child_menu);
-                                          setMenuArray(menuArray);
-                                          menuNames.push((currentMenu === 'main') ? 'AVA Main Menu' : this_row.section_name);
-                                          setMenuNames(menuNames);
-                                          setForceRedisplay(!forceRedisplay);
+                                          reactUpdObj.currentMenu = this_row.child_menu;
+                                          reactData.menuArray.push(this_row.child_menu);
+                                          reactUpdObj.menuArray = reactData.menuArray;
+                                          reactData.menuNames.push((reactUpdObj.currentMenu === 'main') ? 'AVA Main Menu' : this_row.section_name);
+                                          reactUpdObj.menuNames = reactData.menuNames;
                                         }
                                         else {
-                                          setLoading('Loading');
-                                          setForceRedisplay(!forceRedisplay);
                                           let gad_response = await getActivityDetail(this_row, state);
-                                          setSelected(gad_response.activityRec);
-                                          setLoading(false);
+                                          reactUpdObj.selected = gad_response.activityRec;
+                                          reactUpdObj.loading = false;
                                           if (gad_response.loadError) {
-                                            enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+                                            updateReactData({
+                                              alert: {
+                                                severity: 'warning',
+                                                title: 'Still loading',
+                                                message: `AVA is still loading.  Wait just a moment and try again, please.`
+                                              }
+                                            }, true);
                                           }
                                           else {
                                             pause();
-                                            setShowNewFactDialog(index);
+                                            reactUpdObj.showNewFactDialog = index;
                                           }
                                         }
                                       }
-                                      setToggleClick(false);
+                                      updateReactData(reactUpdObj, true);
                                     }}
                                   >
                                     {this_row.row_type === 'document' ?
@@ -1612,9 +1501,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                                   </Box>
                                 </Box>
                               </Box>
-                              {((index === (mainMenu.length - 1))
-                                || (this_row.menu_name !== mainMenu[index + 1].menu_name)
-                                || (this_row.section_name !== mainMenu[index + 1].section_name)
+                              {((index === (reactData.mainMenu.length - 1))
+                                || (this_row.menu_name !== reactData.mainMenu[index + 1].menu_name)
+                                || (this_row.section_name !== reactData.mainMenu[index + 1].section_name)
                               ) &&
                                 <Box
                                   display='flex'
@@ -1641,7 +1530,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           }
 
           {/* Message Box */}
-          {mainMenu && mainMenu.length > 0 &&
+          {reactData.mainMenu && reactData.mainMenu.length > 0 &&
             <Box
               display='flex' flexDirection='column' justifyContent='center' alignItems='center'
               key={'lowerloadingBoxWrapper'}
@@ -1655,13 +1544,13 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   key={'loadingBox'}
                   id={'loadingBox'}
                 >
-                  {loading &&
+                  {reactData.loading &&
                     <React.Fragment>
                       <Typography style={AVATextStyle({ size: 1.5, align: 'center' })}  >{`Loading AVA`}</Typography>
                       <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >
                         {`AVA version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
                       </Typography>
-                      {loading.startsWith('Common activities')
+                      {reactData.loading.startsWith('Common activities')
                         ?
                         <Box
                           display='flex' flexDirection='column' justifyContent='center' alignItems='center'
@@ -1670,14 +1559,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                           id={'groupActivitiesBox'}
                         >
                           <Typography style={AVATextStyle({ size: 0.8 })}>{'Common activities for'}</Typography>
-                          <Typography style={AVATextStyle({ size: 0.8 })}>{loading.split(' for ')[1]}</Typography>
+                          <Typography style={AVATextStyle({ size: 0.8 })}>{reactData.loading.split(' for ')[1]}</Typography>
                         </Box>
                         :
-                        <Typography style={AVATextStyle({ size: 0.8 })}>{loading}</Typography>
+                        <Typography style={AVATextStyle({ size: 0.8 })}>{reactData.loading}</Typography>
                       }
                       <LinearProgress variant="determinate" className={classes.progressBar}
-                        style={AVATextStyle({ width: pWidth, margin: { top: 1 } })}
-                        value={progress} />
+                        style={AVATextStyle({ width: reactData.pWidth, margin: { top: 1 } })}
+                        value={reactData.progress} />
                     </React.Fragment>
                   }
                 </Box>
@@ -1697,35 +1586,41 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             </Box>
           }
 
-          {showPersonSelect &&
+          {reactData.showPersonSelect &&
             <SwitchPatientDialog
-              open={showPersonSelect}
+              open={reactData.showPersonSelect}
               roles={roles}
               onClose={() => {
-                setShowPersonSelect(false);
+                updateReactData({
+                  showPersonSelect: false
+                }, true);
               }}
             />
           }
 
-          {showProfileEdit &&
+          {reactData.showProfileEdit &&
             <PatientDialog
               patient={patient}
-              groupData={groupData}
+              groupData={reactData.groupData}
               open={true}
               options={{
-                scrollToPassword: showPasswordEdit
+                scrollToPassword: reactData.showPasswordEdit
               }}
               onClose={(updatedPerson) => {
-                setShowProfileEdit(false);
                 if (updatedPerson) {
                   sessionStorage.removeItem('AVASessionData');
                   window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+                }
+                else {
+                  updateReactData({
+                    showProfileEdit: false
+                  }, true);
                 }
               }}
             />
           }
 
-          {showAddAccount &&
+          {reactData.showAddAccount &&
             <PatientDialog
               patient={{
                 "person_id": `*NEW~${new Date().getTime()}`,
@@ -1742,11 +1637,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   }
                 ],
               }}
-              groupData={groupData}
+              groupData={reactData.groupData}
               open={true}
               onClose={() => {
                 reset();
-                setShowAddAccount(false);
                 sessionStorage.removeItem('AVASessionData');
                 window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
               }}
@@ -1754,26 +1648,27 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           }
 
           {/* Launch Children */}
-          {(showNewFactDialog > -1) &&
-            selected &&
+          {(reactData.showNewFactDialog > -1) &&
+            reactData.selected &&
             <NewFactDialog
-              fact={selected}
+              fact={reactData.selected}
               session={session}
               open={true}
               fromHome={false}
               onClose={async (response) => {
+                let reactUpdObj = {};
                 if (session?.url_parameters && ('activity' in session.url_parameters) && ('user' in session.url_parameters)) {
                   let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
                   jumpTo += `?user=${session.url_parameters.user}`;
                   window.location.replace(jumpTo);
                 }
                 else if ((['continue', 'next'].includes(response))
-                  && (mainMenu[showNewFactDialog].raw_data.hasOwnProperty('nextActivity'))) {
-                  let nextActivityList = makeArray(mainMenu[showNewFactDialog].raw_data.nextActivity);
+                  && (reactData.mainMenu[reactData.showNewFactDialog].raw_data.hasOwnProperty('nextActivity'))) {
+                  let nextActivityList = makeArray(reactData.mainMenu[reactData.showNewFactDialog].raw_data.nextActivity);
                   let nextActivityRec;
                   if (isObject(nextActivityList[0])) {
                     if (!nextActivityList[0].activity_code) {
-                      setShowNewFactDialog(-1);
+                      reactUpdObj.showNewFactDialog = -1;
                     }
                     else {
                       let gotRec = await getActivity(state.session.client_id, nextActivityList[0].activity_code);
@@ -1785,26 +1680,27 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   else {
                     nextActivityRec = await getActivity(state.session.client_id, nextActivityList[0]);
                   }
-                  // the assign here "promotes" and default_value in the validation object up to the activityRec itself where getActivityDetails expects it to be
+                  // the assign here "promotes" the default_value in the validation object up to the activityRec itself where getActivityDetails expects it to be
                   nextActivityRec.default_value = Object.assign({}, nextActivityRec.validation.default_value, nextActivityRec.default_value);
                   let gad_response = await getActivityDetail(nextActivityRec, state);
-                  setSelected(gad_response.activityRec);
+                  reactUpdObj.selected = gad_response.activityRec;
                 }
                 else {
                   if (response && response.hasOwnProperty('alert')) {
-                    updateReactData({
-                      alert: response.alert
-                    }, true);
+                    reactUpdObj.alert = response.alert;
                   }
                   reset();
-                  setShowNewFactDialog(-1);
+                  reactUpdObj.showNewFactDialog = -1;
                 }
+                updateReactData(reactUpdObj, true);
               }}
               onSave={
                 async (pResult) => {
                   reset();
-                  if ('client_id' in selected) { pResult.client_id = selected.client_id; }
-                  await onSaveFact(pResult, selected.name, showNewFactDialog);
+                  if ('client_id' in reactData.selected) {
+                    pResult.client_id = reactData.selected.client_id;
+                  }
+                  await onSaveFact(pResult, reactData.selected.name, reactData.showNewFactDialog);
                 }
               }
               onNext={() => {
@@ -1813,23 +1709,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               }}
               onSelected={() => { }}
             />
-          }
-
-          {/* Confirm Fact before saving */
-            (needsConfirmation > -1) &&
-            <AVAConfirm
-              promptText={confirmMessage}
-              onCancel={() => {
-                setNeedsConfirmation(-1);
-                setForceRedisplay(!forceRedisplay);
-              }}
-              onConfirm={async () => {
-                pendingFact.status = 'confirmed';
-                await onSaveFact(pendingFact, selected.name, needsConfirmation);
-                setNeedsConfirmation(-1);
-              }}
-            >
-            </AVAConfirm>
           }
         </React.Fragment >
       </Dialog >
