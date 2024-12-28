@@ -303,12 +303,16 @@ export default ({ family_id, forms, options = {}, onSave, onClose }) => {
       familyHeader.role = 'family';
     }
     const may_create = (state.session.hasOwnProperty('account_types')) ? state.session.account_types[reactData.myRole].may_create : [];
-    const accountTypeList = [may_create].flat().map(this_type => {
-      return {
-        value: this_type,
-        label: state.session.account_types[this_type].description
-      };
-    });
+    const accountTypeList = () => {
+      if (!may_create) { return []; }
+      return [may_create].flat().map(this_type => {
+        return {
+          value: this_type,
+          label: state.session.account_types[this_type].description
+        };
+      });
+    }
+    ;
     if (!reactData.defaults.noFamilyColumn) {
       updateReactData({
         familyMembers: [familyHeader].concat(familyMembers),
