@@ -117,6 +117,7 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
 
   var rowsWritten;
 
+  const isMounted = React.useRef(false);
   const [reactData, setReactData] = React.useState({
     group_id: (Array.isArray(pGroup) ? ((pGroup.length > 0) ? pGroup[0] : 'ALL') : pGroup),
     initialized: false,
@@ -139,11 +140,13 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const updateReactData = (newData, force = false) => {
-    setReactData((prevValues) => (Object.assign(
-      prevValues,
-      newData
-    )));
-    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+    if (isMounted.current) {
+      setReactData((prevValues) => (Object.assign(
+        prevValues,
+        newData
+      )));
+      if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+    }
   };
 
 
@@ -294,9 +297,11 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
         initialized: true
       }, true);
     }
+    isMounted.current = true;
     if (!reactData.initialized) {
       initialize();
     }
+    return () => { isMounted.current = false; }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
 
