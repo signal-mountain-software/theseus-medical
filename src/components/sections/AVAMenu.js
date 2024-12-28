@@ -261,7 +261,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     menuArray: ['main'],
     menuNames: [],
     selected: null,
-    sectionOpen: null,
+    sectionOpen: {},
     showPersonSelect: false,
     popupMenuOpen: false,
     showProfileEdit: false,
@@ -1273,10 +1273,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 <Box flex={2} overflow={'hidden'} >
                   <List >
                     {reactData.currentMenu !== 'main' &&
-                      <Paper mt={1.5} component={Box} elevation={0} key={'gobacksection'} >
+                      <Paper mt={1.5} className={classes.clientBackground} component={Box} elevation={0} key={'gobacksection'} >
                         <Box
                           display='flex'
                           style={{ borderRadius: '30px 30px 30px 30px', backgroundColor: '#d25958', textDecoration: 'none' }}
+                          borderTop={.5}
+                          borderBottom={.5}
+                          borderLeft={1}
+                          borderRight={1}
                           ml={2} mr={2}
                           justifyContent='center'
                           flexDirection='column'
