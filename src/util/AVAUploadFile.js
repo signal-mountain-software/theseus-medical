@@ -35,6 +35,11 @@ const useStyles = makeStyles(theme => ({
     transition: 'none',
     height: '5px'
   },
+  AVATitle: {
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginBottom: 0,
+  },
 }));
 
 export default ({ onCancel, onLoad, options = {} }) => {
@@ -53,6 +58,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
     saving: false,
     focusOn: 0,
     loadProgress: [],
+    title: [options.title || 'Upload a File'].flat(),
     attachmentList: (options.allowAttach && options.attachmentList ? options.attachmentList : []),
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -307,14 +313,21 @@ export default ({ onCancel, onLoad, options = {} }) => {
     <Dialog open={forceRedisplay || true} fullWidth
       classes={{ paper: classes.radius_rounded }}
     >
-      <Typography
-        style={AVATextStyle({
-          size: 1.3,
-          bold: true
-        })}
-        className={AVAClass.AVATitle} id='scroll-dialog-title'>
-        {options.title || 'Upload a file'}
-      </Typography>
+      <Box marginTop={3}>
+        {[options.title || 'Upload a File'].flat().map((this_title, ndx) => (
+          <Typography
+            style={AVATextStyle({
+              size: ((ndx === 0) ? 1.3 : 1),
+              bold: (ndx === 0)
+            })}
+            className={classes.AVATitle}
+            id={'scroll-dialog-title'}
+            key={'scroll-dialog-title'}
+          >
+            {this_title}
+          </Typography>
+        ))}
+      </Box>
       <Paper component={Box} style={{ maxWidth: 1000 }} overflow='auto' square>
         <Box
           display='flex'
@@ -446,6 +459,16 @@ export default ({ onCancel, onLoad, options = {} }) => {
         <DialogActions className={AVAClass.AVABox} style={{ justifyContent: 'center' }}>
           <Box display='flex' flexDirection='column' minWidth='100%'>
             <Box display='flex' flexDirection='row' marginTop={2} paddingBottom={1} justifyContent='space-between' alignItems='center'>
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'red', color: 'white' }}
+                size='small'
+                variant='outlined'
+                onClick={() => onCancel()}
+                startIcon={<CloseIcon size="small" />}
+              >
+                {`${loadingInProgress('all') ? 'Stop/' : ''}Exit`}
+              </Button>
               <Box display='flex' flexDirection='row'>
                 {(!options.oneOnly || (reactData.uploadList.length === 0)) &&
                   <React.Fragment>
@@ -484,16 +507,6 @@ export default ({ onCancel, onLoad, options = {} }) => {
                   </Button>
                 }
               </Box>
-              <Button
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'red', color: 'white' }}
-                size='small'
-                variant='outlined'
-                onClick={() => onCancel()}
-                startIcon={<CloseIcon size="small" />}
-              >
-                {`${loadingInProgress('all') ? 'Stop/' : ''}Exit`}
-              </Button>
             </Box>
           </Box>
         </DialogActions>
