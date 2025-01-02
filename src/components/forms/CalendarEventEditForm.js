@@ -673,63 +673,63 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
 
 
 
-      
-      if (pEvent.hasOwnProperty('default_forms')) {
-        writeRequest.default_forms = deepCopy(pEvent.default_forms);
-      }
-      if (pEvent.hasOwnProperty('customizations')) {
-        writeRequest.customizations = deepCopy(pEvent.customizations);
-      }
-      if (!reactData.defaultValues.message_override) {
-        writeRequest.no_messaging = false;
-      }
-      else {
-        let overrideList = makeArray(reactData.defaultValues.message_override);
-        if (overrideList.some(oItem => {
-          return oItem.toLowerCase().startsWith('*none');
-        })) {
-          writeRequest.no_messaging = true;
+      if (pEvent) {
+        if (pEvent.hasOwnProperty('default_forms')) {
+          writeRequest.default_forms = deepCopy(pEvent.default_forms);
         }
-        else if (overrideList.some(oItem => {
-          return oItem.toLowerCase().startsWith('*published');
-        })) {
-          if (!pEvent.published) {
-            writeRequest.no_messaging = true;
-          }
-          else {
-            // event is already published and this instruction asks to message people only when published...
-            writeRequest.no_messaging = false;
-            writeRequest.overrideRecipient = [];
-            for (const this_person of overrideList) {
-              let instruction = this_person.split('=');
-              if (instruction[0].startsWith('*published')) {
-                instruction[0] = instruction[1];
-              }
-              if (instruction) {
-                if (instruction[0].startsWith('slot')) {
-                  writeRequest.overrideRecipient.push(newPersonID);
-                }
-                else if (instruction[0].startsWith('event')) {
-                  writeRequest.overrideRecipient.push(...makeArray(pEvent.owner));
-                }
-                else {
-                  writeRequest.overrideRecipient.push(instruction[0]);
-                }
-              }
-            }
-            if (writeRequest.overrideRecipient.length === 0) {
-              writeRequest.overrideRecipient.push(newPersonID);
-            }
-            writeRequest.override_subject = `Changes have been made to ${pEvent.description} (${makeDate(pEvent.occurrence_date, { noTime: true }).absolute}) that affect you`;
-            writeRequest.override_messageText = `${newPersonName} has been added to this event.`;
-          }
+        if (pEvent.hasOwnProperty('customizations')) {
+          writeRequest.customizations = deepCopy(pEvent.customizations);
+        }
+        if (!reactData.defaultValues.message_override) {
+          writeRequest.no_messaging = false;
         }
         else {
-          writeRequest.no_messaging = false;
-          writeRequest.overrideRecipient = overrideList;
+          let overrideList = makeArray(reactData.defaultValues.message_override);
+          if (overrideList.some(oItem => {
+            return oItem.toLowerCase().startsWith('*none');
+          })) {
+            writeRequest.no_messaging = true;
+          }
+          else if (overrideList.some(oItem => {
+            return oItem.toLowerCase().startsWith('*published');
+          })) {
+            if (!pEvent.published) {
+              writeRequest.no_messaging = true;
+            }
+            else {
+              // event is already published and this instruction asks to message people only when published...
+              writeRequest.no_messaging = false;
+              writeRequest.overrideRecipient = [];
+              for (const this_person of overrideList) {
+                let instruction = this_person.split('=');
+                if (instruction[0].startsWith('*published')) {
+                  instruction[0] = instruction[1];
+                }
+                if (instruction) {
+                  if (instruction[0].startsWith('slot')) {
+                    writeRequest.overrideRecipient.push(newPersonID);
+                  }
+                  else if (instruction[0].startsWith('event')) {
+                    writeRequest.overrideRecipient.push(...makeArray(pEvent.owner));
+                  }
+                  else {
+                    writeRequest.overrideRecipient.push(instruction[0]);
+                  }
+                }
+              }
+              if (writeRequest.overrideRecipient.length === 0) {
+                writeRequest.overrideRecipient.push(newPersonID);
+              }
+              writeRequest.override_subject = `Changes have been made to ${pEvent.description} (${makeDate(pEvent.occurrence_date, { noTime: true }).absolute}) that affect you`;
+              writeRequest.override_messageText = `${newPersonName} has been added to this event.`;
+            }
+          }
+          else {
+            writeRequest.no_messaging = false;
+            writeRequest.overrideRecipient = overrideList;
+          }
         }
       }
-
 
 
 
