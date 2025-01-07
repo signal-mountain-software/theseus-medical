@@ -1009,7 +1009,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                   className={classes.timeInput}
                   id='startTime'
                   key={`startTime_${reactData.allDay}`}
-                  value={(reactData.startObj.empty || reactData.allDay) ? '' : reactData.startObj.time}
+                  defaultValue={(reactData.startObj.empty || reactData.allDay) ? '' : reactData.startObj.time}
                   onChange={(event) => {
                     updateReactData({
                       startObj: Object.assign(reactData.startObj, {time: event.target.value})
@@ -1065,7 +1065,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                   className={classes.timeInput}
                   id='endTime'
                   key={`endTime_${reactData.allDay}`}
-                  value={(reactData.endObj.empty || reactData.allDay) ? '' : reactData.endObj.time}
+                  defaultValue={(reactData.endObj.empty || reactData.allDay) ? '' : reactData.endObj.time}
                   onChange={(event) => {
                     updateReactData({
                       endObj: Object.assign(reactData.endObj, { time: event.target.value })

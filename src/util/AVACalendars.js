@@ -1405,7 +1405,7 @@ export async function writeSlot(body) {
                   cl(`Error reading ${queryObj.TableName} id ${error}`);
                 });
               if (recordExists(queryResult)) {
-     //           foundDocumentAlreadyCompleted = true;
+                //           foundDocumentAlreadyCompleted = true;
               }
               else {
                 queryObj.TableName = 'DocumentsInProcess';
@@ -1638,7 +1638,7 @@ export async function writeSlot(body) {
       else {
         let docRef = [];
         if (slotRec.Item.documents && (slotRec.Item.documents.length > 0)) {
-          docRef.push(...slotRec.Item.documents)
+          docRef.push(...slotRec.Item.documents);
         }
         let needsUpdate = false;
         if (documentsAssignedToThisPerson[this_person].length > 0) {
@@ -1647,12 +1647,12 @@ export async function writeSlot(body) {
               docRef.push(d);
               needsUpdate = true;
             }
-          })
+          });
         }
         // remove duplicates from docRef
         let uniqueDocRef = docRef.filter(function (item, pos, self) {
           return self.indexOf(item) === pos;
-        })
+        });
         if (needsUpdate) {
           await dbClient
             .update({
@@ -2577,7 +2577,7 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
   const this_client = body.client || body.client_id;
   qQ.KeyConditionExpression = 'client = :c';
   qQ.ExpressionAttributeValues = { ':c': this_client };
-  
+
   if (body.filter && body.filter.this_person) {
     qQ.IndexName = 'slot_owner-index';
     qQ.KeyConditionExpression += ' AND slot_owner = :s';
@@ -2639,7 +2639,14 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       // });
       // ********* RAY HERE **************
       let newOcc = {};
-      const responseCal = await getCalendarEntries({ client: this_client, event: occurrenceRec.event_id, type: 'event' });
+      if (!occurrenceRec.event_id) {
+        occurrenceRec.event_id = occurrenceRec.event_key.split('#')[0];
+      }
+      const responseCal = await getCalendarEntries({
+        client: this_client,
+        event: occurrenceRec.event_id,
+        type: 'event'
+      });
       newOcc.eventRec = responseCal[0];
       /*
       let newOcc = await getOccurenceList({
