@@ -1290,7 +1290,7 @@ export default ({ request = {}, onClose }) => {
           else if (reactData.fields[this_field].type.startsWith('select')) {
             let mySelections = [];
             if (reactData.fields[this_field].value) {
-              mySelections = reactData.fields[this_field].value.filter(v => {
+              mySelections = ([reactData.fields[this_field].value].flat()).filter(v => {
                 return (reactData.fields[this_field].selectionObj.selectionList.includes(v));
               });
             }

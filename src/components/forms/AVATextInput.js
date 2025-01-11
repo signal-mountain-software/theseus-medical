@@ -415,7 +415,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
 
       {promptArray && (promptArray.length > 0) &&
         <DialogContent
-          dividers={true}
+    
           style={{
             minWidth: '100%',
             backgroundColor: reactData.bgColor_option,

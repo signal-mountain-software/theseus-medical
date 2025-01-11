@@ -186,6 +186,9 @@ const useStyles = makeStyles(theme => ({
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
 export default ({ patient, picture, groupData, options = {}, open, onClose }) => {
+
+  const isMounted = React.useRef(false);
+  
   const classes = useStyles();
 
   const [localData, setLocalData] = React.useState({});
@@ -235,12 +238,12 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
   }
 
   const updateReactData = (newData, force = false) => {
-    setReactData((prevValues) => (Object.assign(
-      prevValues,
-      newData
-    )));
-    if (force) {
-      setRefreshTrigger(!refreshTrigger);
+    if (isMounted.current) {
+      setReactData((prevValues) => (Object.assign(
+        prevValues,
+        newData
+      )));
+      if (force) { setRefreshTrigger(refreshTrigger => !refreshTrigger); }
     }
   };
 
@@ -344,7 +347,9 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
         setLocalData(workLocalData);
       }
     }
+    isMounted.current = true;
     initialize();
+    return () => { isMounted.current = false; }
   }, [patient]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   function prepareLocal(localObj) {

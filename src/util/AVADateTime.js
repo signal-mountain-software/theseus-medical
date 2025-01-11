@@ -584,8 +584,7 @@ export function makeTime(pTime) {
             mm -= (hAdd * 60);
             hh += hAdd;
         }
-        if (hh >= 23) {
-            error = true;
+        if (hh > 23) {
             hh = hh % 24;
         }
         if (hh > 12) {

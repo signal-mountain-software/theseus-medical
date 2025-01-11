@@ -117,6 +117,7 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
 
   var rowsWritten;
 
+  const isMounted = React.useRef(false);
   const [reactData, setReactData] = React.useState({
     group_id: (Array.isArray(pGroup) ? ((pGroup.length > 0) ? pGroup[0] : 'ALL') : pGroup),
     initialized: false,
@@ -127,6 +128,7 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
     textInput: {},
     editMode: {},
     addAttachment: false,
+    isError: false,
     addLink: false,
     needsHeader: false,
     changesMade: false
@@ -139,11 +141,13 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const updateReactData = (newData, force = false) => {
-    setReactData((prevValues) => (Object.assign(
-      prevValues,
-      newData
-    )));
-    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+    if (isMounted.current) {
+      setReactData((prevValues) => (Object.assign(
+        prevValues,
+        newData
+      )));
+      if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+    }
   };
 
 
@@ -213,6 +217,7 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
     }
     reactData.textInput[section_name][ndx] = inputValue;
     updateReactData({
+      isError: false,
       textInput: reactData.textInput
     }, true);
   };
@@ -294,9 +299,11 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
         initialized: true
       }, true);
     }
+    isMounted.current = true;
     if (!reactData.initialized) {
       initialize();
     }
+    return () => { isMounted.current = false; };
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
 
@@ -374,7 +381,7 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
                       id={`Group-title-box-${section_name}-title`}
                       style={AVATextStyle({ size: 1.3, bold: true, margin: { bottom: 0.8, top: 0 } })}
                     >
-                        {section_name.toLowerCase().startsWith('submenu') ? titleCase(section_name.slice(8)) : titleCase(section_name) }
+                      {section_name.toLowerCase().startsWith('submenu') ? titleCase(section_name.slice(8)) : titleCase(section_name)}
                     </Typography>
                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                       {rowsWritten++}
@@ -400,13 +407,26 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
                       <Box
                         key={`selectBox_${section_name}`}
                         display='flex' flexGrow={1} flexDirection='row'
+                        border={((reactData.selectedSection === section_name) && (reactData.isError)) ? 4 : 'none'}
+                        borderColor={((reactData.selectedSection === section_name) && (reactData.isError)) ? 'red' : 'gray'}
+                        borderRadius={'16px'}
+                        paddingLeft={((reactData.selectedSection === section_name) && (reactData.isError)) ? 2 : 0}
+                        paddingTop={((reactData.selectedSection === section_name) && (reactData.isError)) ? 2 : 0}
+                        marginBottom={((reactData.selectedSection === section_name) && (reactData.isError)) ? 1.5 : 0}
                       >
                         <TextField
                           className={classes.freeInput}
                           variant={'standard'}
                           key={`inputtextprompt_${section_name}`}
                           id={`inputtextprompt_${section_name}`}
-                          helperText={'Title for a New Item'}
+                          helperText={((reactData.selectedSection === section_name) && (reactData.isError))
+                            ? 'You must assign a Title for this new entry'
+                            : 'Title for a New Item'
+                          }
+                          FormHelperTextProps={((reactData.selectedSection === section_name) && (reactData.isError))
+                            ? { style: AVATextStyle({ size: 0.5, bold: true, color: 'red' }) }
+                            : {}
+                          }
                           onChange={event => {
                             handleChangeTextInput(event.target.value, section_name);
                           }}
@@ -419,40 +439,53 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
                             : ''
                           }
                         />
-                        {reactData.textInput.hasOwnProperty(section_name)
-                          && reactData.textInput[section_name]['new']
-                          && reactData.textInput[section_name]['new'].length > 0
-                          &&
-                          <Box
-                            key={`selectBox_${section_name}`}
-                            display='flex' mb={4} flexGrow={1} alignSelf='center' flexDirection='row'
-                          >
-                            <CloudUploadIcon
-                              classes={{ root: classes.rowButton }}
-                              size='medium'
-                              aria-label="attach_icon"
-                              onClick={() => {
-                                updateReactData({
-                                  addAttachment: true,
-                                  selectedSection: section_name
-                                }, true);
-                              }}
-                              edge="start"
-                            />
-                            <LinkIcon
-                              classes={{ root: classes.rowButton }}
-                              size='medium'
-                              aria-label="attach_icon"
-                              onClick={() => {
-                                updateReactData({
-                                  addLink: true,
-                                  selectedSection: section_name
-                                }, true);
-                              }}
-                              edge="start"
-                            />
-                          </Box>
-                        }
+                        <Box
+                          key={`selectBox_${section_name}`}
+                          display='flex' mt={1.25} mb={2.75} flexGrow={1} alignSelf='center' flexDirection='row'
+                        >
+                          <CloudUploadIcon
+                            classes={{ root: classes.rowButton }}
+                            size='medium'
+                            aria-label="attach_icon"
+                            onClick={() => {
+                              let reactUpdObj = {
+                                selectedSection: section_name
+                              };
+                              if (!reactData.textInput.hasOwnProperty(section_name)
+                                || !reactData.textInput[section_name].hasOwnProperty('new')
+                                || reactData.textInput[section_name].new.length < 1) {
+                                reactUpdObj.isError = true;
+                              }
+                              else {
+                                reactUpdObj.isError = false;
+                                reactUpdObj.addAttachment = true;
+                              }
+                              updateReactData(reactUpdObj, true);
+                            }}
+                            edge="start"
+                          />
+                          <LinkIcon
+                            classes={{ root: classes.rowButton }}
+                            size='medium'
+                            aria-label="attach_icon"
+                            onClick={() => {
+                              let reactUpdObj = {
+                                selectedSection: section_name
+                              };
+                              if (!reactData.textInput.hasOwnProperty(section_name)
+                                || !reactData.textInput[section_name].hasOwnProperty('new')
+                                || reactData.textInput[section_name].new.length < 1) {
+                                reactUpdObj.isError = true;
+                              }
+                              else {
+                                reactUpdObj.isError = false;
+                                reactUpdObj.addLink = true;
+                              }
+                              updateReactData(reactUpdObj, true);
+                            }}
+                            edge="start"
+                            />                          
+                        </Box>
                       </Box>
                       { /* Existing items in this Section */}
                       {reactData.bBoardList[reactData.group_id][section_name].generic_activities_list.map((aData, aNdx) => (
@@ -621,7 +654,7 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
               <AVAUploadFile
                 options={{
                   buttonText: ['Choose', 'Save & Continue'],
-                  title: 'Link this menu option to what file?',
+                  title: [reactData.textInput[reactData.selectedSection].new, 'Tap "Choose a File" to select the content to link to'],
                   oneOnly: true
                 }}
                 onCancel={() => {
@@ -670,7 +703,7 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
             }
             {reactData.addLink &&
               <AVATextInput
-                titleText={'Link this menu option to what web address?'}
+                titleText={[reactData.textInput[reactData.selectedSection].new, 'Link this menu option to what web address?']}
                 promptText={['Web address']}
                 buttonText={'Add Link & Save'}
                 onCancel={() => {
