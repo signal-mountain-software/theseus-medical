@@ -205,7 +205,11 @@ export async function getPerson(pID, pElement = '*all', override = false) {
             .catch(error => {
                 cl({ 'Error reading People': error });
             });
-        if (!recordExists(personRec)) { return {}; }
+        if (!recordExists(personRec)) {
+            if (pElement === 'validate') { return false; }
+            else { return {}; }
+        }
+        else if (pElement === 'validate') { return true; }
         if (!personRec.Item.hasOwnProperty('messaging')) {
             personRec.Item.messaging = {};
         }
