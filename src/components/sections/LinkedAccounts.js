@@ -215,7 +215,8 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
         {reactData.addFamilyMember &&
           <PeopleMaintenance
             person_id={null}
-            initialValues={{
+          initialValues={{
+              color: 'indigo',
               peopleRec: {
                 account_class: 'family',
                 client_id: currentValues.peopleRec.client_id,

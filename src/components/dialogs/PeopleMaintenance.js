@@ -212,10 +212,10 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             peopleRec.Item.contact_info.landline = { number: peopleRec.Item.messaging?.voice };
           }
           if (!peopleRec.Item.address && peopleRec.Item.location) {
-            peopleRec.Item.address = { street: peopleRec.Item.location }
+            peopleRec.Item.address = { street: peopleRec.Item.location };
           }
           else if (!peopleRec.Item.address?.street && peopleRec.Item.location) {
-            peopleRec.Item.address.street = peopleRec.Item.location
+            peopleRec.Item.address.street = peopleRec.Item.location;
           }
           if (!peopleRec.Item.preferred_methods) {
             peopleRec.Item.preferred_methods = [(peopleRec.Item.preferred_method ? peopleRec.Item.preferred_method.toLowerCase() : 'ava')];
@@ -335,9 +335,11 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             }
           }
           for (let this_update of [updateList].flat()) {
-            const { tableName, fieldName, newData } = this_update;
-            let result = resolve(reactData.current[tableName] || reactData.current[tableName], fieldName.split('.'), newData);
-            reactUpdObj.current[tableName] = result;
+            if (this_update) {
+              const { tableName, fieldName, newData } = this_update;
+              let result = resolve(reactData.current[tableName] || reactData.current[tableName], fieldName.split('.'), newData);
+              reactUpdObj.current[tableName] = result;
+            }
           }
           updateReactData(reactUpdObj, true);
         }}
@@ -617,67 +619,67 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       </Box>
 
       <Paper component={Box} paddingBottom={1.5} key={`section_frame`} variant='outlined' overflow={'auto'} >
-          {reactData.sections.map((this_section, sectionNdx) => (
-            (this_section.isAuthorized &&
+        {reactData.sections.map((this_section, sectionNdx) => (
+          (this_section.isAuthorized &&
+            <React.Fragment
+              key={`frag__${sectionNdx}`}
+            >
+              <Box
+                display='flex'
+                ml={2} mr={2} mt={1.5}
+                key={`sectionRow__${sectionNdx}`}
+                style={{
+                  borderRadius: (this_section.isOpen ? '30px 30px 0px 0px' : '30px 30px 30px 30px'),
+                  backgroundColor: this_section.color,
+                  textDecoration: 'none'
+                }}
+                borderTop={1}
+                borderLeft={1}
+                borderRight={1}
+                borderBottom={!this_section.isOpen ? 1 : 0}
+                justifyContent='center'
+                flexDirection='column'
+                minHeight={80}
+                onClick={async () => {
+                  reactData.sections[sectionNdx].isOpen = !reactData.sections[sectionNdx].isOpen;
+                  updateReactData({
+                    sections: reactData.sections
+                  }, true);
+                }}
+              >
+                <Typography
+                  style={AVATextStyle({ size: 1.5, bold: true, align: 'center', color: (isDark(this_section.color) ? 'cornsilk' : 'black') })} >
+                  {this_section.section_name.trim()}
+                </Typography>
+              </Box>
+              {this_section.isOpen &&
                 <React.Fragment
-                  key={`frag__${sectionNdx}`}
+                  key={`${this_section.section_name}__callFrag`}
                 >
                   <Box
+                    border={1}
+                    ml={2} mr={2}
+                  >
+                    {renderSection(this_section.component_name)}
+                  </Box>
+                  <Box
                     display='flex'
-                    ml={2} mr={2} mt={1.5}
-                    key={`sectionRow__${sectionNdx}`}
+                    border={1}
                     style={{
-                      borderRadius: (this_section.isOpen ? '30px 30px 0px 0px' : '30px 30px 30px 30px'),
+                      borderRadius: '0px 0px 30px 30px',
                       backgroundColor: this_section.color,
                       textDecoration: 'none'
                     }}
-                    borderTop={1}
-                    borderLeft={1}
-                    borderRight={1}
-                    borderBottom={!this_section.isOpen ? 1 : 0}
+                    ml={2} mr={2} mb={1.5}
                     justifyContent='center'
                     flexDirection='column'
-                    minHeight={80}
-                    onClick={async () => {
-                      reactData.sections[sectionNdx].isOpen = !reactData.sections[sectionNdx].isOpen;
-                      updateReactData({
-                        sections: reactData.sections
-                      }, true);
-                    }}
-                  >
-                    <Typography
-                      style={AVATextStyle({ size: 1.5, bold: true, align: 'center', color: (isDark(this_section.color) ? 'cornsilk' : 'black') })} >
-                      {this_section.section_name.trim()}
-                    </Typography>
-                  </Box>
-                  {this_section.isOpen &&
-                    <React.Fragment
-                      key={`${this_section.section_name}__callFrag`}
-                    >
-                      <Box
-                        border={1}
-                        ml={2} mr={2}
-                      >
-                        {renderSection(this_section.component_name)}
-                      </Box>
-                      <Box
-                        display='flex'
-                        border={1}
-                        style={{
-                          borderRadius: '0px 0px 30px 30px',
-                          backgroundColor: this_section.color,
-                          textDecoration: 'none'
-                        }}
-                        ml={2} mr={2} mb={1.5}
-                        justifyContent='center'
-                        flexDirection='column'
-                        minHeight={30}
-                        height={30}
-                      />
-                    </React.Fragment>
-                  }
+                    minHeight={30}
+                    height={30}
+                  />
                 </React.Fragment>
-            )
+              }
+            </React.Fragment>
+          )
         ))}
       </Paper>
 
