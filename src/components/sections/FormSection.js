@@ -162,7 +162,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
             isComplete: false,
           });
         }
-      }      
+      }
       updateReactData({
         myFormListObj,
         recentlyCompletedDocs: recentlyCompletedDocs?.Items || []
@@ -316,10 +316,17 @@ export default ({ currentValues, reactData, updateReactData }) => {
                   <Typography
                     key={`name-col_form${form_index}`}
                     onClick={() => {
-                      reactData.myFormListObj[this_formID].isViewing = true;
-                      updateReactData({
-                        myFormListObj: reactData.myFormListObj
-                      }, true);
+                      if (reactData.myFormListObj[this_formID].completed) {
+                        let nowJ = new Date().getTime();
+                        window.open(`${reactData.myFormListObj[this_formID].document_list[0].location}?qt=${nowJ.toString()}`
+                          , reactData.myFormListObj[this_formID].date_completed);
+                      }
+                      else {
+                        reactData.myFormListObj[this_formID].isViewing = true;
+                        updateReactData({
+                          myFormListObj: reactData.myFormListObj
+                        }, true);
+                      }
                     }}
                     style={AVATextStyle({
                       size: 1.5,
@@ -354,8 +361,18 @@ export default ({ currentValues, reactData, updateReactData }) => {
                     ),
                     person_id: currentValues.peopleRec.person_id
                   }}
-                  onClose={() => {
+                  onClose={(ignore_me, statusObj) => {
                     reactData.myFormListObj[this_formID].isViewing = false;
+                    reactData.myFormListObj[this_formID].completed = (statusObj.document_status === 'complete');
+                    if (statusObj.location) {
+                      if (!reactData.myFormListObj[this_formID].document_list
+                        || !Array.isArray(reactData.myFormListObj[this_formID].document_list)
+                      ) {
+                        reactData.myFormListObj[this_formID].document_list = [];
+                      }
+                      reactData.myFormListObj[this_formID].document_list.unshift(statusObj.location);
+                    }
+                    reactData.myFormListObj[this_formID].wip = (statusObj.document_status === 'work_in_process');
                     updateReactData({
                       myFormListObj: reactData.myFormListObj
                     }, true);

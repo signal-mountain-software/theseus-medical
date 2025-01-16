@@ -19,7 +19,7 @@ import { useCookies } from 'react-cookie';
 import { useIdleTimer } from 'react-idle-timer';
 import useSession from '../../hooks/useSession';
 import SwitchPatientDialog from '../dialogs/SwitchPatientDialog';
-import PatientDialog from '../dialogs/PatientDialog';
+// import PatientDialog from '../dialogs/PatientDialog';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import NewFactDialog from '../dialogs/NewFactDialog';
 import MakeAVAMenu from '../../util/MakeAVAMenu';

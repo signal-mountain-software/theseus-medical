@@ -1652,6 +1652,7 @@ export default ({ request = {}, onClose }) => {
             });
         }
         response.status = 'complete';
+        response.location = CRec.file_location;
         response.recWritten = CRec;
         await dbClient
           .put({
@@ -1705,6 +1706,19 @@ export default ({ request = {}, onClose }) => {
     }
     if (final && reactData.formRec?.options?.messaging) {
       // conditional based on responses should be allowed here
+      // formRec?.options?.messaging may contain...
+      // create_form = [
+      //   { form_id: <form_id>   make a new form of type form_id as wip 
+      //     fields: { field, field...}     Object.assign fields in new form from all data fields from this form, then create_form.fields 
+      //     assign_to: [user, user, ...]  put it on the forms list for this/these people
+      //     message_text: <text> and send a message to the assign_to people that has this text and a like to the form
+      //   }, {}, ...]
+      // send_message = [ 
+      //   { attach_form: <boolean>
+      //     send_to: [user, user, ...]  send this form as an attachment to a message sent to user(s)
+      //     message_text: <text>   send this text 
+      //   }, {}, ...]
+      // in user lists, user can be a person: person_id, group: group_id, or author: true
     }
     updateReactData({
       document_id,
@@ -2443,6 +2457,7 @@ export default ({ request = {}, onClose }) => {
                   document_id: reactData.document_id,
                   document_title: reactData.document_title,
                   document_status: response.status,
+                  location: response.location,
                   pertains_to: reactData.pertains_to,
                   recWritten: Object.assign({}, response.recWritten, reactData.peopleRec[reactData.pertains_to]),
                   nextAction: (reactData.formRec?.options?.onFinish

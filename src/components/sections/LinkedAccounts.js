@@ -104,7 +104,14 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
             >
               {`Your existing Family members are:`}
             </Typography>
-            {Object.keys(currentValues.peopleRec.myFamilyMembers).map((this_member, memberNdx) => (
+            {Object.keys(currentValues.peopleRec.myFamilyMembers).sort((p1, p2) => {
+              if (currentValues.peopleRec.myFamilyMembers[p1].type !== currentValues.peopleRec.myFamilyMembers[p2].type) {
+                return ((currentValues.peopleRec.myFamilyMembers[p1].type === 'Camper') ? -1 : 1);
+              }
+              else {
+                return ((currentValues.peopleRec.myFamilyMembers[p1].name > currentValues.peopleRec.myFamilyMembers[p2].name) ? 1 : -1);
+              }
+            }).map((this_member, memberNdx) => (
               <Box
                 display='flex'
                 flexDirection='row'
@@ -215,7 +222,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
         {reactData.addFamilyMember &&
           <PeopleMaintenance
             person_id={null}
-          initialValues={{
+            initialValues={{
               color: 'indigo',
               peopleRec: {
                 account_class: 'family',

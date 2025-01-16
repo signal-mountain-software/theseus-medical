@@ -9,7 +9,8 @@ import useMediaQuery from '@material-ui/core/useMediaQuery';
 import useSession from '../../hooks/useSession';
 
 import List from '@material-ui/core/List';
-import PatientDialog from '../dialogs/PatientDialog';
+// import PatientDialog from '../dialogs/PatientDialog';
+import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
@@ -791,10 +792,8 @@ export default ({ options, onReset }) => {
             </PersonFilter>
           }
           {showEditPerson && editPersonRec &&
-            <PatientDialog
+            <PeopleMaintenance
               patient={editPersonRec}
-              groupData={groupData}
-              open={true}
               onClose={(updatedPerson) => {
                 if (updatedPerson) {
                   updatedPerson.account_class = determineClass(updatedPerson.groups, state.session.group_assignments);
@@ -805,6 +804,20 @@ export default ({ options, onReset }) => {
                 setShowEditPerson(null);
               }}
             />
+            //        <PatientDialog
+            //          patient={editPersonRec}
+            //          groupData={groupData}
+            //          open={true}
+            //          onClose={(updatedPerson) => {
+            //            if (updatedPerson) {
+            //              updatedPerson.account_class = determineClass(updatedPerson.groups, state.session.group_assignments);
+            //              setSuperSizeData(Object.assign(superSizeData, updatedPerson));
+            //              setUpdatesMade(true);
+            //            }
+            //            setEditPersonRec(null);
+            //            setShowEditPerson(null);
+            //          }}
+            //        />
           }
           {promptForMessage &&
             <MakeMessage
@@ -1014,7 +1027,7 @@ export default ({ options, onReset }) => {
                 adminList: pPatient,
                 memberList: writtenRows
               });
-              onReset({ updatesMade: true, newGroupID, newGroupName, newMemberList: writtenRows } );
+              onReset({ updatesMade: true, newGroupID, newGroupName, newMemberList: writtenRows });
             }}
           />
         }
