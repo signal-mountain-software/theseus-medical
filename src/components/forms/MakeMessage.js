@@ -53,7 +53,9 @@ const useStyles = makeStyles(theme => ({
   imageArea: {
     minWidth: '100px',
     maxWidth: '100px',
+    marginTop: theme.spacing(1),
     marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
   },
   buttonArea: {
     justifyContent: 'space-around',
@@ -461,9 +463,9 @@ export default ({
           <Box display='flex' flexDirection={'row'} justifyContent={'space-between'} width={'100%'} alignItems={'flex-start'} mb={1}>
             <Typography style={AVATextStyle({
               size: 1.3, bold: true, margin: {
-                top: 2,
-                left: 1,
-                right: 2,
+                top: 3,
+                left: 1.5,
+                right: 0,
               }
             })} id='scroll-dialog-title'>
               {reactData.titleText || makeTitle(reactData)}

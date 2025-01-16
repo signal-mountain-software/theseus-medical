@@ -847,7 +847,7 @@ export async function printDocumentB({ documentList, options = {} }) {
               case 'select': {
                 pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
                 fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
-                  let radioSelected = fields[this_field].value.includes(text);
+                  let radioSelected = fields.hasOwnProperty(this_field) && fields[this_field].value && fields[this_field].value.includes(text);
                   if (tIndex === 0) {
                     pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
                   }
