@@ -153,6 +153,9 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         if (['support', 'master', 'admin'].includes(myClass)) {
           myMaxAccessLevelToThisPerson = 3;
         }
+        else if (p.may_proxy_to && p.may_proxy_to.hasOwnProperty(person_id)) {
+          myMaxAccessLevelToThisPerson = 3;     // the person record we're looking at granted permission for me to proxy to them
+        }
         else {
           // also... determine my role in all of the groups in this client
           if (p.groups) {

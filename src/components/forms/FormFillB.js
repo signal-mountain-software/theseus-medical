@@ -1855,7 +1855,7 @@ export default ({ request = {}, onClose }) => {
         reactUpdObj.document_id = WIPDocRec.document_id;
         reactUpdObj.document_title = WIPDocRec.document_title;
         reactUpdObj.formRec = { options: WIPDocRec.options };
-        WIPFields = WIPDocRec.fields;       
+        WIPFields = WIPDocRec.fields;
       }
       const { fields, sections, document_title } = await initializeDoc({
         form_id: reactData.form_id,
@@ -2002,7 +2002,6 @@ export default ({ request = {}, onClose }) => {
                                 : ''}`}
                               className={classes.inputDisplay}
                               multiline
-                              rows={reactData.fields[this_field].prompt.rows || null}
                               variant={reactData.fields[this_field].prompt.rows ? 'outlined' : 'standard'}
                               disabled={reactData.fields[this_field].options.viewOnly}
                               style={AVATextStyle({

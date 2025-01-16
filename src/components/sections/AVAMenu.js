@@ -20,6 +20,7 @@ import { useIdleTimer } from 'react-idle-timer';
 import useSession from '../../hooks/useSession';
 import SwitchPatientDialog from '../dialogs/SwitchPatientDialog';
 import PatientDialog from '../dialogs/PatientDialog';
+import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import NewFactDialog from '../dialogs/NewFactDialog';
 import MakeAVAMenu from '../../util/MakeAVAMenu';
 
@@ -398,7 +399,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   async function onAction() {
     let now = new Date();
-    let refresh = false;
     if ((reactData.idleState) || ((now.getTime() - reactData.lastActiveTime.getTime()) > oneMinute)) {
       cl(`Action/Update at ${now.toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}`);
       let options = {
@@ -418,17 +418,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       }
       updateReactData({
         lastActiveTime: now,
+        idleState: false,
         marqueeData: marqueeData,
         marqueeVersion: reactData.marqueeVersion++
       }, true);
-      refresh = true;
     }
     if (!reactData.menu_reloaded) {
       await checkReload();
     }
-    updateReactData({
-      idleState: false,
-    }, refresh);
     reset();
   };
 
@@ -972,12 +969,13 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   updateReactData({
                     alert: {
                       severity: 'warning',
-                      title: 'Still loading',
+                      title: 'Still loading Group information',
                       message: `AVA is still loading.  Wait just a moment and try again, please.`
                     }
                   }, true);
                 }
                 else {
+                  pause();
                   updateReactData({
                     groupData: state.groups,
                     showPasswordEdit: false,
@@ -1112,12 +1110,13 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                       updateReactData({
                         alert: {
                           severity: 'warning',
-                          title: 'Still loading',
+                          title: 'Still loading Group information',
                           message: `AVA is still loading.  Wait just a moment and try again, please.`
                         }
                       }, true);
                     }
                     else {
+                      pause();
                       updateReactData({
                         groupData: state.groups,
                         showPasswordEdit: true,
@@ -1379,11 +1378,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               <Box
                                 key={this_row.activity_code + 'detail' + index}
                                 display='flex'
-                                ml={2} mr={2} mt={.2} mb={.2}
+                                ml={2} mr={2}
                                 borderTop={.5}
                                 borderBottom={.5}
                                 borderLeft={1}
-                                borderRight={1}
+                                borderRight={0}
+                                borderColor={'black'}
                                 style={{
                                   backgroundColor: hexToRgb(this_row.row_color, 0.7),
                                   textDecoration: 'none',
@@ -1454,9 +1454,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                                           if (gad_response.loadError) {
                                             updateReactData({
                                               alert: {
-                                                severity: 'warning',
-                                                title: 'Still loading',
-                                                message: `AVA is still loading.  Wait just a moment and try again, please.`
+                                                severity: 'error',
+                                                title: 'Activity error',
+                                                message: `AVA could not load ${this_row.activity_name}.  This may resolve itself after AVA's data load completes.  Wait just a moment and try again, please.  If the error persists, contact Support (activity_code=${this_row.activity_name})`
                                               }
                                             }, true);
                                           }
@@ -1603,15 +1603,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           }
 
           {reactData.showProfileEdit &&
-            <PatientDialog
+            <PeopleMaintenance
               patient={patient}
-              groupData={reactData.groupData}
-              open={true}
-              options={{
-                scrollToPassword: reactData.showPasswordEdit
-              }}
               onClose={(updatedPerson) => {
-                if (updatedPerson) {
+                if (updatedPerson || !reactData.menu_reloaded) {
                   sessionStorage.removeItem('AVASessionData');
                   window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
                 }
@@ -1622,9 +1617,46 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 }
               }}
             />
+            //        <PatientDialog
+            //          patient={patient}
+            //          groupData={reactData.groupData}
+            //          open={true}
+            //          options={{
+            //            scrollToPassword: reactData.showPasswordEdit
+            //          }}
+            //          onClose={(updatedPerson) => {
+            //            if (updatedPerson) {
+            //              sessionStorage.removeItem('AVASessionData');
+            //              window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+            //            }
+            //            else {
+            //              updateReactData({
+            //                showProfileEdit: false
+            //              }, true);
+            //            }
+            //          }}
+            //        />
           }
 
           {reactData.showAddAccount &&
+            <PeopleMaintenance
+              person_id={null}
+              initialValues={{
+                peopleRec: {
+                  client_id: state.session.client_id,
+                  groups: ['inactive', 'ALL', '__top__'],
+                },
+                sessionRec: {
+                  client_id: state.session.client_id
+                }
+              }}
+              onClose={() => {
+                  updateReactData({
+                    showAddAccount: false
+                  }, true);
+              }}
+            />
+            /*
             <PatientDialog
               patient={{
                 "person_id": `*NEW~${new Date().getTime()}`,
@@ -1649,6 +1681,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
               }}
             />
+            */
           }
 
           {/* Launch Children */}
@@ -1719,7 +1752,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       {reactData.alert &&
         <Snackbar
           open={!!reactData.alert}
-          autoHideDuration={(reactData.alert.severity === 'success') ? 5000 : ((reactData.alert.severity === 'info') ? 15000 : null)}
+          autoHideDuration={(reactData.alert.severity === 'success') ? 5000 : ((reactData.alert.severity === 'info') ? 150000 : null)}
           onClose={() => {
             updateReactData({
               alert: false
@@ -1733,6 +1766,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           <Alert
             severity={reactData.alert.severity || 'info'}
             variant='filled'
+            style={{ paddingLeft: '24px', paddingRight: '48px', borderRadius: '30px', borderWidth: 4, borderColor: 'black' }}
             onClose={() => {
               updateReactData({
                 alert: false

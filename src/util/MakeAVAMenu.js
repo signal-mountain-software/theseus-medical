@@ -7,7 +7,7 @@ import { makeDate } from '../util/AVADateTime';
 import { getGroup, getMemberList, prepareTargets } from '../util/AVAGroups';
 import { makeObservationList } from '../util/AVAObservations';
 
-const AVAIcon = process.env.REACT_APP_AVA_LOGO;
+let AVAIcon = process.env.REACT_APP_AVA_LOGO;
 
 let customObj = {};
 let activityObj = {};
@@ -186,6 +186,20 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     let duplicateCheck = [];
     let menuStructure = [{ menuName: 'main', currentSection: '' }];
 
+    let logo_Rec = await dbClient
+      .get({
+        Key: {
+          client_id: masterClient,
+          custom_key: 'logo'
+        },
+        TableName: "Customizations",
+      })
+      .promise()
+      .catch(error => {
+      });
+    if (recordExists(logo_Rec)) {
+      AVAIcon = logo_Rec.Item.icon;
+    }
     // Get Favorites from the People record
     // ({ '** FAVORITES **': (requestor.favorite_activities || 'no favorite activities') });
     sectionSort = '**2';

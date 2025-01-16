@@ -117,7 +117,7 @@ export async function getPersonFromLocation(pClient, pLoc) {
 
 export async function getPersonByName(pClient, pFirstName, pLastName) {
     if (!pLastName) {
-        if (pFirstName.includes(',')) { 
+        if (pFirstName.includes(',')) {
             let pWords = pFirstName.split(/,(.*)/);
             pLastName = pWords[0].trim();
             pFirstName = pWords[1].trim();
@@ -181,7 +181,7 @@ export async function getPersonByWords(pClient, pWords) {
     if (recordExists(qR)) {
         for (let p = 0; p < qR.Items.length; p++) {
             let searchWords = qR.Items[p].search_data.split(/[\W,]/);
-            let notFoundWords = pWords.filter(w => { return (w && !searchWords.includes(w)); })
+            let notFoundWords = pWords.filter(w => { return (w && !searchWords.includes(w)); });
             if (notFoundWords.length === 0) {
                 foundPeople[qR.Items[p].person_id] = qR.Items[p];
             }
@@ -192,6 +192,194 @@ export async function getPersonByWords(pClient, pWords) {
         return qR.Items;
     }
     else { return []; }
+}
+
+export async function getWIPFormList({ client_id, personList }) {
+    let response = {};
+
+    // in a minute, we're going to need the names and due dates of all the forms that are found.
+    // we'll grab them all here.
+    let formNames = {};
+    let formDueDates = {};
+    let formList = {};
+    let formResult = await dbClient
+        .query({
+            TableName: 'Forms',
+            KeyConditionExpression: 'client_id = :c',
+            ExpressionAttributeValues: { ':c': client_id }
+        })
+        .promise()
+        .catch(error => {
+            if (error.code === 'NetworkingError') {
+                cl(`Security Violation or no Internet Connection`);
+            }
+            cl(`Error reading Forms is ${error}`);
+        });
+    if (recordExists(formResult)) {
+        for (let this_form of formResult.Items) {
+            formNames[this_form.form_id] = this_form.form_name;
+            formDueDates[this_form.form_id] = this_form.due_by ? this_form.due_by[0] : null;
+        }
+    }
+
+    // ... and we'll need the formList from every group
+    let groupResult = await dbClient
+        .query({
+            TableName: 'Groups',
+            KeyConditionExpression: 'client_id = :c',
+            ExpressionAttributeValues: { ':c': client_id }
+        })
+        .promise()
+        .catch(error => {
+            if (error.code === 'NetworkingError') {
+                cl(`Security Violation or no Internet Connection`);
+            }
+            cl(`Error reading Groups is ${error}`);
+        });
+    if (recordExists(groupResult)) {
+        for (let this_group of groupResult.Items) {
+            formList[this_group.group_id] = this_group.forms;
+        }
+    }
+
+    for (let person_id of personList) {
+        // get all the groups that this person belongs to
+        let peopleRec = await dbClient
+            .get({
+                Key: { person_id: person_id },
+                TableName: "People"
+            })
+            .promise()
+            .catch(error => {
+                cl({ 'Error reading People': error });
+            });
+        if (!recordExists(peopleRec)) {
+            response[person_id] = {
+                formListObj: {},
+                numberWIP: 0,
+                nearest_dueDate: 0
+            };
+        }
+
+        let myFormListObj = {};
+        // get all the forms that are assigned to people in this group 
+        for (let this_group of peopleRec.Item.groups) {
+            if (formList[this_group] && (formList[this_group].length > 0)) {
+                for (let this_form of formList[this_group]) {
+                    if (!myFormListObj.hasOwnProperty(this_form)) {
+                        myFormListObj[this_form] = {
+                            form_id: this_form,
+                            form_name: formNames[this_form],
+                            due_date: formDueDates[this_form],
+                            completed: false,
+                            wip: false,
+                            document_list: []
+                        };
+                    }
+                }
+            }
+        }
+
+        // get all the completed documents for this person
+        let recentlyCompletedDocs = await dbClient
+            .query({
+                KeyConditionExpression: 'pertains_to = :p',
+                ScanIndexForward: false,
+                IndexName: 'pertains_to-formType_date-index',
+                Limit: 40,
+                TableName: 'CompletedDocuments',
+                ExpressionAttributeValues: {
+                    ':p': person_id
+                }
+            })
+            .promise()
+            .catch(error => {
+                if (error.code === 'NetworkingError') {
+                    cl(`Security Violation or no Internet Connection`);
+                }
+                cl(`Error reading CompletedDocuments; error is ${error}`);
+            });
+        if (recordExists(recentlyCompletedDocs)) {
+            for (let this_doc of recentlyCompletedDocs.Items) {
+                if (!myFormListObj.hasOwnProperty(this_doc.formType)) {
+                    myFormListObj[this_doc.formType] = {
+                        form_id: this_doc.formType,
+                        form_name: formNames[this_doc.formType],
+                        due_date: formDueDates[this_doc.formType],
+                        completed: true,
+                        wip: false,
+                        document_list: []
+                    };
+                }
+                myFormListObj[this_doc.formType].completed = true;
+                myFormListObj[this_doc.formType].document_list.push({
+                    document_id: this_doc.document_id,
+                    isComplete: true,
+                    location: this_doc.file_location,
+                    date_completed: this_doc.date_completed
+                });
+            }
+        }
+
+        // Check for an exising WIP form
+        let wipDocuments = await dbClient
+            .query({
+                KeyConditionExpression: 'pertains_to = :p',
+                ScanIndexForward: false,
+                TableName: 'DocumentsInProcess',
+                IndexName: 'pertains_to-formType_date-index',
+                ExpressionAttributeValues: {
+                    ':p': person_id,
+                }
+            })
+            .promise()
+            .catch(error => {
+                if (error.code === 'NetworkingError') {
+                    cl(`Security Violation or no Internet Connection`);
+                }
+                cl(`Error reading DocumentsInProcess; error is ${error}`);
+            });
+        if (recordExists(wipDocuments)) {
+            for (let this_doc of wipDocuments.Items) {
+                if (!myFormListObj.hasOwnProperty(this_doc.formType)) {
+                    myFormListObj[this_doc.formType] = {
+                        form_id: this_doc.formType,
+                        form_name: formNames[this_doc.formType],
+                        due_date: formDueDates[this_doc.formType],
+                        completed: false,
+                        wip: true,
+                        document_list: []
+                    };
+                }
+                myFormListObj[this_doc.formType].wip = true;
+                myFormListObj[this_doc.formType].document_list.push({
+                    document_id: this_doc.document_id,
+                    isComplete: false,
+                });
+            }
+        }
+
+        // go through all the forms to summarize
+        let numberWIP = 0;
+        let nearest_dueDate = false;
+        for (let this_formID in myFormListObj) {
+            if (!myFormListObj[this_formID].completed || myFormListObj[this_formID].wip) {
+                numberWIP++;
+                if (myFormListObj[this_formID].due_date
+                    && (myFormListObj[this_formID].due_date > 0)
+                    && (!nearest_dueDate || (myFormListObj[this_formID].due_date < nearest_dueDate))
+                ) {
+                    nearest_dueDate = myFormListObj[this_formID].due_date;
+                }
+            }
+        }
+        response[person_id] = {
+            formListObj: {},
+            numberWIP,
+            nearest_dueDate
+        };
+    }
+    return response;
 }
 
 export async function getPerson(pID, pElement = '*all', override = false) {
@@ -445,7 +633,7 @@ export function makeSearchData(iArray) {
             }
         }
         let names = [i.firstName, i.lastName, (i.display_name ? i.display_name.replace(/,/g, ' ') : '')];
-        if (i.name) (names.push(...(Object.values(i.name))))
+        if (i.name) (names.push(...(Object.values(i.name))));
         names.forEach(n => {
             if (n) {
                 search_words.push(...(n.trim().toLowerCase().split(/\s+/)));
