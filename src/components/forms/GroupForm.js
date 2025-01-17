@@ -798,7 +798,7 @@ export default ({ options, onReset }) => {
                 if (updatedPerson) {
                   updatedPerson.account_class = determineClass(updatedPerson.groups, state.session.group_assignments);
                   setSuperSizeData(Object.assign(superSizeData, updatedPerson));
-                  setUpdatesMade(true);
+                  // setUpdatesMade(true);
                 }
                 setEditPersonRec(null);
                 setShowEditPerson(null);
