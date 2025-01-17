@@ -2420,6 +2420,7 @@ export async function sendMessages(body) {
     if (Array.isArray(env.recipientList)) { to = env.recipientList; }
     else to = [env.recipientList];
     for (let r = 0; r < to.length; r++) {
+      PostOfficeRec.Item['message_id'] = `${env.thread_id}.${m}.${r}~AVAMessages`;
       if (to[r].startsWith('GRP//')) {
         let gCode = to[r].split('//')[1];
         if (gCode.includes('/')) {
