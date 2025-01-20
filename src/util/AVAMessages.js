@@ -2358,7 +2358,7 @@ export async function sendMessages(body) {
           author: <from person_id>
           testMode: <boolean> (if true, everything will happen EXCEPT the message will not be put in the PostOffice - and therefore not sent)
           messageText: <text> (if present, messageTextthis will override any messageText in the values attribute)
-          htmlMessageText: <text>
+          htmltext: <text>
           recipientList: <person_id or array of person_id's list can include "GRP//<group_id>" as well>
           subject: <subject>
           attachments: [<string>, <string>, ...]

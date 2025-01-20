@@ -1651,9 +1651,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 }
               }}
               onClose={() => {
-                  updateReactData({
-                    showAddAccount: false
-                  }, true);
+                updateReactData({
+                  showAddAccount: false
+                }, true);
               }}
             />
             /*
@@ -1690,6 +1690,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             <NewFactDialog
               fact={reactData.selected}
               session={session}
+              key={`launch_NFD`}
               open={true}
               fromHome={false}
               onClose={async (response) => {

@@ -19,6 +19,8 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
 
   React.useEffect(() => {
     async function initialize() {
+      let reactUpdObj = {};
+      
       if (reactData.administrative_account && !reactData.accessList) {
         if (!state.accessList) {
           if (isMounted.current) {
@@ -36,6 +38,9 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
             accessList: deepCopy(state.accessList[state.session.client_id].list)
           }, true);
         }
+      }
+      if (Object.keys(reactUpdObj).length > 0) {
+        updateReactData(reactUpdObj, true);
       }
     }
     isMounted.current = true;

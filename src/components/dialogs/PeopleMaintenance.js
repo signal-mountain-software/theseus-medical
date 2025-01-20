@@ -273,6 +273,45 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           };
         }
       }
+      if (!reactData.groupObj && state.groups && reactUpdObj.og.peopleRec.groups) {
+        let enableFamily = false;
+        let disableFamily = false;
+        for (let this_group of reactUpdObj.og.peopleRec.groups) {
+          let groupRec = await dbClient
+            .get({
+              Key: {
+                client_id: state.session.client_id,
+                group_id: this_group
+              },
+              TableName: "Groups"
+            })
+            .promise()
+            .catch(error => {
+              console.log({ 'Error reading Groups': error });
+            });
+          if (recordExists(groupRec)) {
+            if (groupRec.Item.myFamily) {
+              if (groupRec.Item.myFamily.hasOwnProperty('disable')) {
+                if (groupRec.Item.myFamily.disable) {
+                  disableFamily = true;
+                }
+                else {
+                  enableFamily = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+        if (disableFamily && !enableFamily) {
+          let foundAt = reactUpdObj.sections.findIndex(this_section => {
+            return (this_section.component_name === 'LinkedAccounts');
+          });
+          if (foundAt > -1) {
+            reactUpdObj.sections[foundAt].isAuthorized = false;
+          }
+        }
+      }
       reactUpdObj.current = {
         peopleRec: deepCopy(reactUpdObj.og.peopleRec),
         sessionRec: deepCopy(reactUpdObj.og.sessionRec)

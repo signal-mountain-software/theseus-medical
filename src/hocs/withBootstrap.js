@@ -69,7 +69,7 @@ export default Component => props => {
   const { dispatch, state } = useSession();
   const AVAClass = AVAclasses();
 
-  const [cookies, setCookie,] = useCookies(['AVAuser', 'AVAclient', 'AVAvalidated', 'AVAaction']);
+  const [cookies, setCookie, removeCookie] = useCookies(['AVAuser', 'AVAclient', 'AVAvalidated', 'AVAaction']);
 
   const [doneTrying, setDoneTrying] = React.useState(false);
   const [AVAReady, setAVAReady] = React.useState(false);
@@ -974,9 +974,11 @@ export default Component => props => {
     setCookie('AVAvalidated', 'true', { path: '/' });
   }
 
-  function putActionCookie() {
+  function putActionCookie(urlObj) {
+    removeCookie("AVAaction");
     setCookie('AVAaction', JSON.stringify({
-      form: (reactData.urlData ? reactData.urlData.form : null),
+      document: (urlObj.document || null),
+      docUser: (urlObj.docUser || null)
     }), { path: '/' });
   }
 
@@ -1500,8 +1502,11 @@ export default Component => props => {
     loadSyncInfo(currentSession, currentPatient);
 
     putValidationCookie();
-    if (reactData.urlData.hasOwnProperty('form')) {
-      putActionCookie();
+    if (currentSession.url_parameters && (currentSession.url_parameters).hasOwnProperty('document')) {
+      putActionCookie(currentSession.url_parameters);
+    }
+    else if (reactData.urlData.hasOwnProperty('document')) {
+      putActionCookie(reactData.urlData);
     }
     setAVAReady(true);
     localAVAReady = true;

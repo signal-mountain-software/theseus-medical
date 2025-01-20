@@ -104,6 +104,11 @@ export default ({ currentValues, reactData, updateReactData }) => {
         });
       if (recordExists(recentlyCompletedDocs)) {
         for (let this_doc of recentlyCompletedDocs.Items) {
+          if (this_doc.hasOwnProperty('restricted_access')) {
+            if ((this_doc.restricted_access === 'admin_only') && (!reactData.administrative_account)) {
+              continue;    // skip this document
+            }
+          }
           if (!myFormListObj.hasOwnProperty(this_doc.formType)) {
             myFormListObj[this_doc.formType] = {
               form_id: this_doc.formType,
@@ -145,6 +150,11 @@ export default ({ currentValues, reactData, updateReactData }) => {
         });
       if (recordExists(wipDocuments)) {
         for (let this_doc of wipDocuments.Items) {
+          if (this_doc.hasOwnProperty('restricted_access')) {
+            if ((this_doc.restricted_access === 'admin_only') && (!reactData.administrative_account)) {
+              continue;    // skip this document
+            }
+          }
           if (!myFormListObj.hasOwnProperty(this_doc.formType)) {
             myFormListObj[this_doc.formType] = {
               form_id: this_doc.formType,

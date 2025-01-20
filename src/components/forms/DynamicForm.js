@@ -187,6 +187,7 @@ export default ({
     case 'make_payment': {
       window.open('https://buy.stripe.com/3cs5lzbSS9RXecwcMN');
       onClose();
+      break;
     }
     case 'record_video':
       var dateOptions = { month: 'short', day: 'numeric' };

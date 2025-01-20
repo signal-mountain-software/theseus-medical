@@ -8,6 +8,8 @@ import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useSession from '../hooks/useSession';
 
+import { useCookies } from 'react-cookie';
+
 const useStyles = makeStyles(theme => ({
     formControl: {
         margin: theme.spacing(1),
@@ -85,6 +87,8 @@ export default () => {
     const { state } = useSession();
     const { session } = state;
 
+    const [, , removeCookie] = useCookies(['AVAuser', 'AVAaction']);
+
 
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready
@@ -96,8 +100,13 @@ export default () => {
             });
     }
 
+    removeCookie("AVAuser");
+
     return (
-        <Box>
+        <Box
+            display='flex' marginTop='64px' flexDirection='column' justifyContent='center' alignItems='center'
+            width='100%'
+        >
             <Grid item>
                 <Card
                     className={classes.logoDisplay}
@@ -112,7 +121,7 @@ export default () => {
                 </Card>
                 <Box display='flex' className={classes.gridList} flexDirection='row' justifyContent='center' alignItems='center'>
                     <Typography  variant='h5'>
-                        {'Thanks for using AVA!'}
+                        {`Thank you from ${session?.client_name}!`}
                     </Typography>
                 </Box>
             </Grid>
