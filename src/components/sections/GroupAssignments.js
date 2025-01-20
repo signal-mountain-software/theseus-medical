@@ -19,11 +19,12 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
       if (clicked_group.belongs_to) {
         let checkGroup = clicked_group.belongs_to;
         do {
+          const g = checkGroup;
           if (!currentValues.peopleRec.groups.includes(checkGroup)) {
             currentValues.peopleRec.groups.push(checkGroup);
           }
           let foundParent = reactData.groupObj.adminHierarchy.find(this_group => {
-            return (this_group === checkGroup);
+            return (this_group === g);
           });
           if (foundParent) {
             checkGroup = foundParent.id;
@@ -40,11 +41,12 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
       if (clicked_group.belongs_to) {
         let checkGroup = clicked_group.belongs_to;
         do {
+          const g = checkGroup;
           let parentAt = currentValues.peopleRec.groups.indexOf(checkGroup);
           if (parentAt > -1) {
             // get a list of other groups that belong to the checkgroup (parent)
             let sibling_exists = reactData.groupObj.adminHierarchy.some(test_group => {
-              return ((test_group.belongs_to === checkGroup)
+              return ((test_group.belongs_to === g)
                 && (currentValues.peopleRec.groups.includes(test_group.id)));
             });
             if (!sibling_exists) {
@@ -52,7 +54,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
             }
           }
           let foundParent = reactData.groupObj.adminHierarchy.find(this_group => {
-            return (this_group === checkGroup);
+            return (this_group === g);
           });
           if (foundParent) {
             checkGroup = foundParent.id;
