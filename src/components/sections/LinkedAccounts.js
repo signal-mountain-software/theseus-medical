@@ -34,9 +34,11 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
           }
         }
         else {
-          updateReactData({
-            accessList: deepCopy(state.accessList[state.session.client_id].list)
-          }, true);
+          reactUpdObj.accessList = deepCopy(state.accessList[state.session.client_id].list);
+          if (!currentValues.peopleRec.hasOwnProperty('proxy_allowed_from')) {
+            currentValues.peopleRec.proxy_allowed_from = {};
+            reactUpdObj.currentValues = currentValues;
+          }
         }
       }
       if (Object.keys(reactUpdObj).length > 0) {
@@ -58,7 +60,10 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
   };
 
   const number_of_proxy_accounts = () => {
-    return (Object.keys(currentValues.peopleRec.proxy_allowed_from).length);
+    if (!currentValues.peopleRec.proxy_allowed_from) { return 0; }
+    else {
+      return (Object.keys(currentValues.peopleRec.proxy_allowed_from).length);
+    }
   };
 
   return (
@@ -368,7 +373,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                       })
                       .promise()
                       .catch(error => {
-                        console.log({ 'Error reading People': error });
+                        console.log({ [`in Linked Accounts, Error reading ${this_item.person_id}`]: error });
                       });
                     if (recordExists(proxyRec)) {
                       let newFamilyMembers = proxyRec.Item.myFamilyMembers || {};
