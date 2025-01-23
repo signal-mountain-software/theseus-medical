@@ -1047,24 +1047,25 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               overflow='auto'
               flexDirection='column'
             >
-              <Box
-                component="img"
-                ml={2}
-                mr={2}
-                aria-controls='hidden-menu'
-                aria-haspopup='true'
-                minWidth={50}
-                maxWidth={50}
-                alignSelf='flex-end'
+              <Tooltip
+                className={classes.avatar}
                 onClick={(event) => {
                   updateReactData({
                     anchorEl: event.currentTarget,
                     popupMenuOpen: true
                   }, true);
                 }}
-                alt=''
-                src={state.session?.client_logo || process.env.REACT_APP_AVA_LOGO}
-              />
+                title={
+                  <Typography variant='caption'>
+                    {session?.kiosk_mode ? 'View/Update not available' : `View/Update ${reactData.greetingName}'${reactData.greetingName.slice(-1) === 's' ? '' : 's'} Profile`}
+                  </Typography>
+                }
+                placement='bottom-start'>
+                <Avatar
+                  src={state.session?.client_logo || process.env.REACT_APP_AVA_LOGO}
+                  alt={reactData.greetingName}
+                />
+              </Tooltip>
               {!reactData.menu_reloaded &&
                 <LinearProgress className={classes.pendingBar} style={{ width: 50 }} />
               }
