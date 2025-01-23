@@ -4,12 +4,13 @@ import AVATextInput from './AVATextInput';
 import { useSnackbar } from 'notistack';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
-import { createNewGroup, getMemberList, addMember, getPublicGroupList, getPrivateGroupList, determineClass, getRole, getAllGroups, removeMember, removeAdministrator, addAdministrator } from '../../util/AVAGroups';
+import { createNewGroup, getMemberList, addMember, getPublicGroupList, getPrivateGroupList, determineClass, getRole, removeMember, removeAdministrator, addAdministrator } from '../../util/AVAGroups';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import useSession from '../../hooks/useSession';
 
 import List from '@material-ui/core/List';
-import PatientDialog from '../dialogs/PatientDialog';
+// import PatientDialog from '../dialogs/PatientDialog';
+import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
@@ -210,7 +211,7 @@ export default ({ options, onReset }) => {
   const [showAddPrompt, setShowAddPrompt] = React.useState(false);
   const [showEditPerson, setShowEditPerson] = React.useState(null);
   const [editPersonRec, setEditPersonRec] = React.useState(null);
-  const [groupData, setGroupData] = React.useState({});
+  // const [groupData, setGroupData] = React.useState({});
 
   const [workingMemberList, setGroupMemberList] = React.useState(Array.isArray(groupMemberList) ? groupMemberList : groupMemberList[pClient].list);
 
@@ -223,7 +224,7 @@ export default ({ options, onReset }) => {
   const [showAccountHistory, setShowAccountHistory] = React.useState(false);
   const [promptForName, setPromptForName] = React.useState(false);
   const [superSizeData, setSuperSizeData] = React.useState(false);
-  const [updatesMade, setUpdatesMade] = React.useState(false);
+  const [updatesMade, ] = React.useState(false);
   const [singlePersonMode, setsinglePersonMode] = React.useState(false);
   const [recipient, setRecipient] = React.useState();
   const [messageType, setMessageType] = React.useState();
@@ -791,20 +792,32 @@ export default ({ options, onReset }) => {
             </PersonFilter>
           }
           {showEditPerson && editPersonRec &&
-            <PatientDialog
+            <PeopleMaintenance
               patient={editPersonRec}
-              groupData={groupData}
-              open={true}
               onClose={(updatedPerson) => {
                 if (updatedPerson) {
                   updatedPerson.account_class = determineClass(updatedPerson.groups, state.session.group_assignments);
                   setSuperSizeData(Object.assign(superSizeData, updatedPerson));
-                  setUpdatesMade(true);
+                  // setUpdatesMade(true);
                 }
                 setEditPersonRec(null);
                 setShowEditPerson(null);
               }}
             />
+            //        <PatientDialog
+            //          patient={editPersonRec}
+            //          groupData={groupData}
+            //          open={true}
+            //          onClose={(updatedPerson) => {
+            //            if (updatedPerson) {
+            //              updatedPerson.account_class = determineClass(updatedPerson.groups, state.session.group_assignments);
+            //              setSuperSizeData(Object.assign(superSizeData, updatedPerson));
+            //              setUpdatesMade(true);
+            //            }
+            //            setEditPersonRec(null);
+            //            setShowEditPerson(null);
+            //          }}
+            //        />
           }
           {promptForMessage &&
             <MakeMessage
@@ -1014,7 +1027,7 @@ export default ({ options, onReset }) => {
                 adminList: pPatient,
                 memberList: writtenRows
               });
-              onReset({ updatesMade: true, newGroupID, newGroupName, newMemberList: writtenRows } );
+              onReset({ updatesMade: true, newGroupID, newGroupName, newMemberList: writtenRows });
             }}
           />
         }
@@ -1216,7 +1229,7 @@ export default ({ options, onReset }) => {
                     </Button>
                     <Button
                       onClick={async () => {
-                        setGroupData(await getAllGroups(superSizeData.person_id));
+ //                       setGroupData(await getAllGroups(superSizeData.person_id));
                         setShowEditPerson(superSizeData.person_id);
                         setEditPersonRec(await getPerson(superSizeData.person_id));
                       }}

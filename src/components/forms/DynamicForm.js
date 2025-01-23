@@ -29,6 +29,7 @@ import NumberForm from './NumberForm';
 import Number2Form from './Number2Form';
 import FreeTextForm from './FreeTextForm';
 import MakeMessage from './MakeMessage';
+import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 
 import { createPutFact } from '../../graphql/mutations';
 import { useSnackbar } from 'notistack';
@@ -166,6 +167,28 @@ export default ({
           </FormGroup>
         </FormControl>
       );
+    case 'people_maintenance':
+    case 'person_maintenance': {
+      return (
+        <PeopleMaintenance
+          person_id={session.patient_id}
+          onClose={(updatedPerson) => {
+            if (updatedPerson) {
+              sessionStorage.removeItem('AVASessionData');
+              window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+            }
+            else {
+              onClose();
+            }
+          }}
+        />
+      );
+    }
+    case 'make_payment': {
+      window.open('https://buy.stripe.com/3cs5lzbSS9RXecwcMN');
+      onClose();
+      break;
+    }
     case 'record_video':
       var dateOptions = { month: 'short', day: 'numeric' };
       return (
@@ -380,7 +403,7 @@ export default ({
         />
       );
     case 'submit_report':
-      return (    
+      return (
         <ReportRequest
           report_id={defaultObject.report_id}
           title={defaultObject.title}

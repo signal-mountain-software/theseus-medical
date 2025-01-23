@@ -1,8 +1,9 @@
 import React from 'react';
+
 import Box from '@material-ui/core/Box';
 
 import useSession from '../hooks/useSession';
-// import ActivitySection from '../components/sections/ActivitySection';
+
 import AVAMenu from '../components/sections/AVAMenu';
 import FormFillB from '../components/forms/FormFillB';
 
@@ -24,13 +25,13 @@ export default () => {
       });
   }
 
-  if (cookies.AVAaction) {
-    if (cookies.AVAaction.form) {
+  if (cookies.AVAaction) {    
+    if (cookies.AVAaction.document) {
       return (
         <FormFillB
           request={{
-            form_id: cookies.AVAaction.form,
-            person_id: null,
+            document_id: cookies.AVAaction.document,
+            person_id: cookies.AVAaction.docUser,
             mode: 'new'
 
           }}
@@ -44,7 +45,9 @@ export default () => {
                   window.location.replace(jumpTo);
                 }
               }
-            }
+            }       
+            let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
+            window.location.replace(jumpTo);
           }}
         />
       );

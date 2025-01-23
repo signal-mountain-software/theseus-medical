@@ -1,0 +1,867 @@
+import React from 'react';
+
+import { getPerson, getImage } from '../../util/AVAPeople';
+import { deepCopy, isEmpty, dbClient, cl, recordExists } from '../../util/AVAUtilities';
+import { AVAclasses, AVADefaults, AVATextStyle, isDark } from '../../util/AVAStyles';
+
+import useSession from '../../hooks/useSession';
+
+import ProfileSection from '../sections/ProfileSection';
+import FormSection from '../sections/FormSection';
+import TechInfoSection from '../sections/TechInfoSection';
+import MessagePreferencesSection from '../sections/MessagePreferencesSection';
+import LinkedAccounts from '../sections/LinkedAccounts';
+import PersonalizationSection from '../sections/PersonalizationSection';
+import GroupAssignments from '../sections/GroupAssignments';
+
+import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
+import { Alert, AlertTitle } from '@material-ui/lab/';
+
+import makeStyles from '@material-ui/core/styles/makeStyles';
+const useStyles = makeStyles(theme => ({
+  clientPopUp: {
+    borderRadius: '30px 30px 30px 30px',
+  },
+  popUpMenu: {
+    marginRight: theme.spacing(3),
+    paddingRight: 2,
+  },
+  paperPallette: {
+    borderRadius: '30px 30px 30px 30px',
+    width: '95%',
+  },
+  padRight: {
+    marginRight: theme.spacing(2),
+  },
+}));
+
+export default ({ patient, person_id, personRec, initialValues, options = {}, onClose }) => {
+
+  const isMounted = React.useRef(false);
+  const { state } = useSession();
+  const classes = useStyles();
+  const AVAClass = AVAclasses();
+
+  const AWS = require('aws-sdk');
+  AWS.config.update({ region: 'us-east-1' });
+
+  const [reactData, setReactData] = React.useState({
+    initialized: false,
+    popupMenuOpen: false,
+    person_id,
+    accessList: null,
+    isMobile: (window.window.innerWidth < 800),
+    linkedPersonFilter: {},
+    mode: options.mode || 'edit',
+    addFamilyMember: false,
+    viewFamilyMember: false,
+    user_id: state.user.user_id,
+    formHistoryMode: false,
+    recentlyCompletedDocs: [],
+    familyFormsObj: {},
+    user_class: state.user.account_class,
+    administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
+    OKtoSave: false,
+    alert: false,
+    myFormListObj: {},
+    myImage: (options.mode === 'add') ? '' : (getImage(person_id || state.session.patient_id)),
+    image_editing: false,
+    components: {
+      ProfileSection: {
+        component_id: ProfileSection,
+      },
+      MessagePreferencesSection: {
+        component_id: MessagePreferencesSection,
+      },
+      LinkedAccounts: {
+        component_id: LinkedAccounts,
+      },
+      PersonalizationSection: {
+        component_id: PersonalizationSection
+      },
+      GroupAssignments: {
+        component_id: GroupAssignments,
+      },
+      TechInfoSection: {
+        component_id: TechInfoSection
+      },
+      FormSection: {
+        component_id: FormSection,
+      },
+
+    },
+    og: {
+      peopleRec: false,
+      sessionRec: false,
+      peopleAccountRecs: false,     // array of objects
+      peopleGroups: false,
+    },
+    current: {
+      peopleRec: {},
+      sessionRec: {},
+      peopleAccountRecs: [{}],
+      peopleGroups: [{}],
+    },
+    errorList: {},
+    options
+  });
+
+  const [refreshTrigger, setRefreshTrigger] = React.useState(false);
+  const updateReactData = (newData, force = false) => {
+    if (isMounted.current) {
+      setReactData((prevValues) => (Object.assign(
+        prevValues,
+        newData
+      )));
+      if (force) { setRefreshTrigger(refreshTrigger => !refreshTrigger); }
+    }
+  };
+
+  React.useEffect(() => {
+    async function initialize() {
+      let reactUpdObj = {
+        initialized: true,
+        sections: [{
+          section_name: 'Name & Contact info',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'ProfileSection'
+        },
+        {
+          section_name: 'Messaging',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'MessagePreferencesSection'
+        },
+        {
+          section_name: 'My Family',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'LinkedAccounts'
+        },
+        {
+          section_name: 'Photo & Personalization',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'PersonalizationSection'
+        },
+        {
+          section_name: 'Groups',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: ['master', 'support'].includes(state.user.account_class),
+          version_id: 0,
+          component_name: 'GroupAssignments'
+        },
+        {
+          section_name: 'Forms',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'FormSection'
+        },
+        {
+          section_name: 'Password & Tech Stuff',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'TechInfoSection'
+        }
+        ]
+      };
+      // incoming personRec should tell us who we are editing here
+      let parm_personRec = Object.assign({}, { person_id: person_id }, (patient || {}), (personRec || {}));
+      reactUpdObj.og = {};
+      if (!parm_personRec.person_id || parm_personRec.person_id.startsWith('*NEW~') || options.newPerson) {
+        reactUpdObj.mode = 'add';
+        reactUpdObj.og.peopleRec = Object.assign({}, initialValues?.peopleRec);
+        reactUpdObj.og.sessionRec = Object.assign({}, initialValues?.sessionRec);
+      }
+      else {
+        reactUpdObj.person_id = parm_personRec.person_id;
+        let peopleRec = await dbClient
+          .get({
+            Key: { person_id: parm_personRec.person_id },
+            TableName: "People"
+          })
+          .promise()
+          .catch(error => {
+            cl({ 'Error reading People': error });
+          });
+        if (recordExists(peopleRec)) {
+          // convert from earlier versions if necessary
+          if (!peopleRec.Item.contact_info) {
+            peopleRec.Item.contact_info = {
+              cell: { number: peopleRec.Item.messaging?.sms },
+              landline: { number: peopleRec.Item.messaging?.voice },
+              work: { number: peopleRec.Item.messaging?.office },
+              email: { address: peopleRec.Item.messaging?.email },
+            };
+          }
+          else if (!peopleRec.Item.contact_info.landline) {
+            peopleRec.Item.contact_info.landline = { number: peopleRec.Item.messaging?.voice };
+          }
+          if (!peopleRec.Item.address && peopleRec.Item.location) {
+            peopleRec.Item.address = { street: peopleRec.Item.location };
+          }
+          else if (!peopleRec.Item.address?.street && peopleRec.Item.location) {
+            peopleRec.Item.address.street = peopleRec.Item.location;
+          }
+          if (!peopleRec.Item.preferred_methods) {
+            peopleRec.Item.preferred_methods = [(peopleRec.Item.preferred_method ? peopleRec.Item.preferred_method.toLowerCase() : 'ava')];
+          }
+          if (peopleRec.Item.time_based_rules) {
+            peopleRec.Item.time_based_rules = peopleRec.Item.time_based_rules.filter(this_rule => {
+              return !this_rule.global_rule;
+            });
+          }
+          if (state.session?.global_mail_rules?.time_based_rules) {
+            let start_index = peopleRec.Item.time_based_rules?.length || 0;
+            peopleRec.Item.time_based_rules = (peopleRec.Item.time_based_rules || []).concat(state.session?.global_mail_rules?.time_based_rules);
+            for (let i = start_index; i < peopleRec.Item.time_based_rules.length; i++) {
+              if (peopleRec.Item.time_based_rules[i].name) {
+                peopleRec.Item.time_based_rules[i].name += ` (Administrative Rule)`;
+              }
+              else {
+                peopleRec.Item.time_based_rules[i].name = `${state.session.client_name} Administrative Rule`;
+              }
+              peopleRec.Item.time_based_rules[i].global_rule = true;
+            }
+          }
+          if (!peopleRec.Item.proxy_allowed_from) {
+            peopleRec.Item.proxy_allowed_from = {};
+          }
+          reactUpdObj.og.peopleRec = Object.assign({}, peopleRec.Item, initialValues?.peopleRec);
+        }
+        else {
+          return {
+            response_code: 400,
+            errorMessage: `AVA doesn't recognize ID ${parm_personRec.person_id} - PeopleRec not found.`
+          };
+        }
+        let sessionRec = await dbClient
+          .get({
+            Key: { session_id: parm_personRec.person_id },
+            TableName: "SessionsV2"
+          })
+          .promise()
+          .catch(error => { cl({ 'Error reading SessionsV2': error }); });
+        if (recordExists(sessionRec)) {
+          if (!sessionRec.Item.customizations) {
+            sessionRec.Item.customizations = {};
+          }
+          if (!sessionRec.Item.customizations.font_size) {
+            sessionRec.Item.customizations.font_size = 1;
+          }
+          AVADefaults({ fontSize: sessionRec.Item.customizations.font_size });
+          reactUpdObj.og.sessionRec = sessionRec.Item;
+        }
+        else {
+          return {
+            response_code: 400,
+            errorMessage: `AVA doesn't recognize ID ${parm_personRec.person_id} - SessionsV2 not found.`
+          };
+        }
+      }
+      if (!reactData.groupObj && state.groups && reactUpdObj.og.peopleRec.groups) {
+        let enableFamily = false;
+        let disableFamily = false;
+        for (let this_group of reactUpdObj.og.peopleRec.groups) {
+          let groupRec = await dbClient
+            .get({
+              Key: {
+                client_id: state.session.client_id,
+                group_id: this_group
+              },
+              TableName: "Groups"
+            })
+            .promise()
+            .catch(error => {
+              console.log({ 'Error reading Groups': error });
+            });
+          if (recordExists(groupRec)) {
+            if (groupRec.Item.myFamily) {
+              if (groupRec.Item.myFamily.hasOwnProperty('disable')) {
+                if (groupRec.Item.myFamily.disable) {
+                  disableFamily = true;
+                }
+                else {
+                  enableFamily = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+        if (disableFamily && !enableFamily) {
+          let foundAt = reactUpdObj.sections.findIndex(this_section => {
+            return (this_section.component_name === 'LinkedAccounts');
+          });
+          if (foundAt > -1) {
+            reactUpdObj.sections[foundAt].isAuthorized = false;
+          }
+        }
+      }
+      reactUpdObj.current = {
+        peopleRec: deepCopy(reactUpdObj.og.peopleRec),
+        sessionRec: deepCopy(reactUpdObj.og.sessionRec)
+      };
+      updateReactData(reactUpdObj, true);
+      window.addEventListener('resize', handleResize);
+    }
+    function handleResize() {
+      updateReactData({
+        isMobile: (window.window.innerWidth < 800),
+      }, true);
+    }
+    isMounted.current = true;
+    initialize();
+    return () => {
+      isMounted.current = false;
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  function renderSection(componentName) {
+    const SectionToRender = reactData.components[componentName].component_id;
+    return (
+      <SectionToRender
+        currentValues={reactData.current}
+        ogValues={reactData.og}
+        errorList={reactData.errorList}
+        setError={(errorList) => {
+          for (let errorObj of [errorList].flat()) {
+            const { errorField, isError } = errorObj;
+            if (!isError) {
+              delete reactData.errorList[errorField];
+            }
+            else {
+              reactData.errorList[errorField] = errorObj;
+            }
+          }
+          updateReactData({
+            errorList: reactData.errorList,
+          }, true);
+        }}
+        updateField={async ({ updateList, errorObj, reactUpd }) => {
+          let reactUpdObj = {
+            OKtoSave: true,
+            current: reactData.current,
+          };
+          if (reactUpd) {
+            Object.assign(reactUpdObj, reactUpd);
+          };
+          if (errorObj) {
+            reactUpdObj.errorList = reactData.errorList;
+            for (let errorItem of [errorObj].flat()) {
+              const { errorField, isError } = errorItem;
+              if (!isError) {
+                delete reactUpdObj.errorList[errorField];
+              }
+              else {
+                reactUpdObj.errorList[errorField] = errorItem;
+              }
+            }
+          }
+          for (let this_update of [updateList].flat()) {
+            if (this_update) {
+              const { tableName, fieldName, newData } = this_update;
+              let result = resolve(reactData.current[tableName] || reactData.current[tableName], fieldName.split('.'), newData);
+              reactUpdObj.current[tableName] = result;
+            }
+          }
+          updateReactData(reactUpdObj, true);
+        }}
+        reactData={reactData}
+        updateReactData={(newData, force) => {
+          updateReactData(newData, force);
+        }}
+      />);
+  }
+
+  const resolve = (object, key, value) => {
+    const this_key = key.shift();
+    if (key.length === 0) {
+      object[this_key] = value;
+      return object;
+    }
+    else if (!object.hasOwnProperty(this_key)) {
+      let resolvedObj = resolve({}, key, value);
+      object[this_key] = resolvedObj;
+      return object;
+    }
+    else if (isEmpty(object)) {
+      let resolvedObj = resolve({}, key, value);
+      object = resolvedObj;
+      return object;
+    }
+    else {
+      let resolvedObj = resolve(object[this_key], key, value);
+      object[this_key] = resolvedObj;
+      return object;
+    }
+  };
+
+  const handleAbort = () => {
+    updateReactData({
+      alert: {
+        severity: 'warning',
+        title: 'Changes are Pending',
+        message: `There are unsaved changes.  Exit anyway?`,
+        action: [
+          {
+            text: `Keep editing`,
+            function: () => {
+              updateReactData({
+                alert: false
+              }, true);
+            }
+          },
+          {
+            text: `Exit`,
+            function: () => {
+              onClose(false);
+            }
+          }
+        ]
+      }
+    }, true);
+  };
+
+  const saveChanges = async () => {
+    const person_id_blank = !reactData.current.peopleRec.person_id;
+    if (person_id_blank || (reactData.current.peopleRec.person_id !== reactData.og.peopleRec.person_id)) {
+      // check person_id just before saving to assure that it hasn't been claimed between setting and saving
+      const person_id_exists = await getPerson(reactData.current.peopleRec.person_id, 'validate');
+      if (person_id_exists || person_id_blank) {
+        // it's a duplicate OR blank; fix it and abort the save with an alert message
+        const { proposedID, newID } = await newUserID(reactData.current.peopleRec.person_id);
+        reactData.current.peopleRec.person_id = newID;
+        reactData.current.sessionRec.session_id = newID;
+        reactData.current.sessionRec.user_id = newID;
+        updateReactData({
+          person_id: newID,
+          current: reactData.current,
+          alert: {
+            severity: 'warning',
+            title: 'Your Account ID',
+            message: (person_id_blank
+              ? `We set your Account ID to ${newID}.  Tap OK, then tap Save again.`
+              : `We tried Account ID of ${proposedID}, but that was already taken.  We've assigned ${newID} instead.  Tap OK, then try your Save again (you can update this proposed ID, too, if you'd prefer).`
+            ),
+            action: [
+              {
+                text: `OK`,
+                function: () => {
+                  updateReactData({
+                    alert: false
+                  }, true);
+                }
+              }
+            ]
+          }
+        }, true);
+        return false;
+      };
+    }
+    reactData.person_id = reactData.current.peopleRec.person_id;
+    if (JSON.stringify(reactData.og.peopleRec) !== JSON.stringify(reactData.current.peopleRec)) {
+      // **** NEED TO ADD SPECIAL HANDLING FOR CHANGE OF PRIMARY KEY ***  (likely change to inactive account?)
+      await dbClient
+        .put({
+          TableName: 'People',
+          Item: reactData.current.peopleRec
+        })
+        .promise()
+        .catch(error => {
+          console.log(`caught error putting to People; error is:`, error);
+        });
+    }
+    if (JSON.stringify(reactData.og.sessionRec) !== JSON.stringify(reactData.current.sessionRec)) {
+      // **** NEED TO ADD SPECIAL HANDLING FOR CHANGE OF PRIMARY KEY ***  (likely change to inactive account?)
+      await dbClient
+        .put({
+          TableName: 'SessionsV2',
+          Item: reactData.current.sessionRec
+        })
+        .promise()
+        .catch(error => {
+          console.log(`caught error putting to People; error is:`, error);
+        });
+    }
+    return reactData.current.peopleRec.person_id;
+  };
+
+  async function newUserID(proposedID) {
+    let tryAgain;
+    let newID, namePart;
+    let clientPart = `-${state.session.client_id.toLowerCase()}`;
+    let numberPart = 1;
+    if (proposedID) {
+      namePart = (proposedID.match(/([\w-]*[^\d]+)(\d*)$/))[1];
+      newID = proposedID.toLowerCase().replace(/\W/g, '');
+    }
+    else {
+      if (!reactData.current.peopleRec?.name?.last) {
+        if (!reactData.current.peopleRec?.name?.first) {
+          return reactData.current.peopleRec.person_id;        // neither first nor last exits
+        }
+        else {
+          namePart = reactData.current.peopleRec?.name?.first;     // first but not last
+        }
+      }
+      else if (!reactData.current.peopleRec?.name?.first) {
+        namePart = reactData.current.peopleRec?.name?.last;        // last but not first
+      }
+      else {
+        namePart = `${reactData.current.peopleRec.name.first.trim().charAt(0)}${reactData.current.peopleRec.name.last.trim()}`;
+      }
+      newID = `${namePart.toLowerCase().replace(/\W/g, '')}${clientPart}`;
+    }
+    do {
+      tryAgain = false;
+      const person_id_exists = await getPerson(newID, 'validate');
+      if (person_id_exists) {
+        numberPart++;
+        if (newID.includes(clientPart)) {
+          newID = `${namePart.replace(clientPart, '')}${numberPart}${clientPart}`;
+        }
+        else {
+          newID = `${namePart}${numberPart}`;
+        }
+        tryAgain = true;
+      }
+    } while (tryAgain);
+    return { proposedID, newID };
+  }
+
+  return (
+    reactData.initialized &&
+    <Dialog
+      open={(true || refreshTrigger)}
+      maxWidth={false}
+      classes={{
+        paper: classes.paperPallette
+      }}
+      style={{
+        borderRadius: ('25px 25px 25px 25px'),
+      }}
+      onClose={() => {
+        if (reactData.OKtoSave) {
+          handleAbort();
+        }
+        else {
+          onClose({
+            newID: reactData.current.peopleRec.person_id,
+            newName: (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim()
+          });
+        }
+      }}
+    >
+      <Box
+        display='flex' flexDirection='row'
+        style={{
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginTop: '32px',
+          marginBottom: '32px',
+          marginLeft: '16px',
+          marginRight: '16px',
+        }}
+        key={'topBox'}
+      >
+        <Box
+          display='flex' flexDirection='row'
+          flexGrow={1}
+          style={{
+            alignItems: 'center',
+          }}
+          key={'personBox'}
+        >
+          <Avatar src={reactData.myImage} alt={reactData.greetingName} />
+          <Typography
+            key={`personName`}
+            style={AVATextStyle({
+              size: 1.8,
+              bold: true,
+              margin: {
+                left: 1.5
+              }
+            })}>
+            {reactData.current.peopleRec.name ? (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim() : 'Welcome!'}
+          </Typography>
+        </Box>
+        {/* Logo and Pop-up Menu */}
+        <Box
+          display='flex'
+          ml={2}
+          overflow='auto'
+          flexDirection='column'
+        >
+          <Box
+            component="img"
+            ml={2}
+            mr={2}
+            aria-controls='hidden-menu'
+            aria-haspopup='true'
+            minWidth={50}
+            maxWidth={50}
+            alignSelf='flex-end'
+            onClick={(event) => {
+              updateReactData({
+                anchorEl: event.currentTarget,
+                popupMenuOpen: true
+              }, true);
+            }}
+            alt=''
+            src={state.session?.client_logo || process.env.REACT_APP_AVA_LOGO}
+          />
+        </Box>
+        <Menu
+          id='hidden-menu'
+          anchorEl={reactData.anchorEl}
+          open={reactData.popupMenuOpen}
+          classes={{ paper: classes.clientPopUp }}
+          onClose={() => {
+            updateReactData({
+              popupMenuOpen: false
+            }, true);
+          }}
+          keepMounted>
+          <MenuList className={classes.popUpMenu}>
+            <MenuItem>
+              <Box
+                display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
+                key={'vRowRefresh'}
+                style={AVATextStyle({ size: 0.8 })}
+              >
+                <Typography style={AVATextStyle({ size: 0.8 })}>
+                  {`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
+                </Typography>
+                <Typography style={AVATextStyle({ size: 0.8 })}>
+                  {`User ${state.session.user_id}${state.session.patient_id !== state.session.user_id ? (' (' + state.session.patient_id + ')') : ''}`}
+                </Typography>
+              </Box>
+            </MenuItem>
+          </MenuList>
+        </Menu>
+      </Box>
+
+      <Paper component={Box} paddingBottom={1.5} key={`section_frame`} variant='outlined' overflow={'auto'} >
+        {reactData.sections.map((this_section, sectionNdx) => (
+          (this_section.isAuthorized &&
+            <React.Fragment
+              key={`frag__${sectionNdx}`}
+            >
+              <Box
+                display='flex'
+                ml={2} mr={2} mt={1.5}
+                key={`sectionRow__${sectionNdx}`}
+                style={{
+                  borderRadius: (this_section.isOpen ? '30px 30px 0px 0px' : '30px 30px 30px 30px'),
+                  backgroundColor: this_section.color,
+                  textDecoration: 'none'
+                }}
+                borderTop={1}
+                borderLeft={1}
+                borderRight={1}
+                borderBottom={!this_section.isOpen ? 1 : 0}
+                justifyContent='center'
+                flexDirection='column'
+                minHeight={80}
+                onClick={async () => {
+                  reactData.sections[sectionNdx].isOpen = !reactData.sections[sectionNdx].isOpen;
+                  updateReactData({
+                    sections: reactData.sections
+                  }, true);
+                }}
+              >
+                <Typography
+                  style={AVATextStyle({ size: 1.5, bold: true, align: 'center', color: (isDark(this_section.color) ? 'cornsilk' : 'black') })} >
+                  {this_section.section_name.trim()}
+                </Typography>
+              </Box>
+              {this_section.isOpen &&
+                <React.Fragment
+                  key={`${this_section.section_name}__callFrag`}
+                >
+                  <Box
+                    border={1}
+                    ml={2} mr={2}
+                  >
+                    {renderSection(this_section.component_name)}
+                  </Box>
+                  <Box
+                    display='flex'
+                    border={1}
+                    style={{
+                      borderRadius: '0px 0px 30px 30px',
+                      backgroundColor: this_section.color,
+                      textDecoration: 'none'
+                    }}
+                    ml={2} mr={2} mb={1.5}
+                    justifyContent='center'
+                    flexDirection='column'
+                    minHeight={30}
+                    height={30}
+                  />
+                </React.Fragment>
+              }
+            </React.Fragment>
+          )
+        ))}
+      </Paper>
+
+      <Box
+        display='flex'
+        flexDirection='row'
+        alignItems={'center'}
+        marginTop={'16px'}
+        marginBottom={'16px'}
+        justifyContent={'space-around'}
+      >
+        <Button
+          className={AVAClass.AVAButton}
+          style={{ backgroundColor: 'red', color: 'white' }}
+          size='small'
+          onClick={() => {
+            if (reactData.OKtoSave) {
+              handleAbort();
+            }
+            else {
+              if (!reactData.current.peopleRec.person_id) {
+                onClose({
+                  newID: false
+                });
+              }
+              else {
+                onClose({
+                  newID: reactData.current.peopleRec.person_id,
+                  newName: (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim()
+                });
+              }
+            }
+          }}
+        >
+          {'Exit'}
+        </Button>
+        {reactData.OKtoSave ?
+          (isEmpty(reactData.errorList) ?
+            <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
+              <Button
+                onClick={async () => {
+                  const result = await saveChanges();
+                  updateReactData({
+                    OKtoSave: !result
+                  }, true);
+                }}
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'lightcyan', color: 'black' }}
+                size='small'
+              >
+                {reactData.isMobile ? 'Save' : 'Save/Continue'}
+              </Button>
+              <Button
+                onClick={async () => {
+                  let result = await saveChanges();
+                  if (result) {
+                    onClose({
+                      newID: reactData.current.peopleRec.person_id,
+                      newName: (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim()
+                    });
+                  }
+                }}
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'green', color: 'white' }}
+                size='small'
+              >
+                {'Save/Finish'}
+              </Button>
+            </Box>
+            :
+            <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
+              <Typography style={{ color: 'red', bold: true }}>
+                {(Object.keys(reactData.errorList).length === 1)
+                  ? `${reactData.errorList[Object.keys(reactData.errorList)[0]].errorMessage}`
+                  : `${Object.keys(reactData.errorList).length} issues`
+                }
+              </Typography>
+            </Box>
+          )
+          :
+          (reactData.current.peopleRec?.name?.first &&
+            <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
+              <Typography style={{ size: 1.2, bold: true, marginRight: '16px' }}>
+                {`Viewing ${(reactData.current.peopleRec?.name?.first + "'s").replace("s's", "s'")} Profile`}
+              </Typography>
+            </Box>
+          )
+        }
+      </Box>
+
+      {reactData.alert &&
+        <Snackbar
+          open={!!reactData.alert}
+          px={3}
+          key={`alert_wrapper`}
+          autoHideDuration={(reactData.alert.severity === 'success') ? 5000 : ((reactData.alert.severity === 'info') ? 15000 : null)}
+          onClose={() => {
+            updateReactData({
+              alert: false
+            }, true);
+          }}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'center'
+          }}
+        >
+          <Alert
+            severity={reactData.alert.severity || 'info'}
+            key={`alert_box`}
+            style={{ marginX: '8px', borderRadius: '20px', border: 1 }}
+            action={(reactData.alert.action
+              ?
+              <Box
+                display='flex'
+                key={`alert_action`}
+                mx={1}
+                overflow='auto'
+                flexDirection='column'
+              >
+                {([reactData.alert.action].flat()).map((this_action, actionNdx) => (
+                  <Button
+                    key={`alert_button__${actionNdx}`}
+                    className={AVAClass.AVAButton} color="inherit"
+                    onClick={() => this_action.function()}
+                  >
+                    {this_action.text}
+                  </Button>
+                ))}
+              </Box>
+              : null
+            )}
+            variant='filled'
+            onClose={() => {
+              updateReactData({
+                alert: false
+              }, true);
+            }}
+          >
+            {reactData.alert.title && <AlertTitle>{reactData.alert.title}</AlertTitle>}
+            {reactData.alert.message}
+          </Alert>
+        </Snackbar >
+      }
+    </Dialog >
+  );
+};

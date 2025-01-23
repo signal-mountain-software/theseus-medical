@@ -1,10 +1,11 @@
 import React from 'react';
 
-import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, sentenceCase, listFromArray, array_in_array, recordExists } from '../../util/AVAUtilities';
+import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, sentenceCase, listFromArray, array_in_array, recordExists, isObject } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { formatPhone, getPerson, makeName } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
 import AVAConfirm from './AVAConfirm';
+import { sendMessages } from '../../util/AVAMessages';
 import { printDocumentB, printEmptyDocument, printDocumentHybrid } from '../../util/AVAMessages';
 import SignatureCanvas from 'react-signature-canvas';
 import Select from "react-dropdown-select";
@@ -461,6 +462,7 @@ export default ({ request = {}, onClose }) => {
       document_title: `${formRec.form_name}`
     };
     for (let this_section of response.sections) {
+      this_section.section_name = await resolveVariables(this_section.section_name);
       for (let this_field of this_section.fields) {
         response.fields[this_field] = {};
         // Set default value
@@ -608,7 +610,7 @@ export default ({ request = {}, onClose }) => {
     return response;
   };
 
-  const initializeDoc = async ({ form_id, pertains_to }) => {
+  const initializeDoc = async ({ form_id, pertains_to, preset_values }) => {
     const formRec = await getDb({
       Key: {
         client_id: state.session.client_id,
@@ -704,7 +706,10 @@ export default ({ request = {}, onClose }) => {
             continue;
           }
         }
-        if (formRec.fields[this_field].default) {
+        if (preset_values && preset_values[this_field]) {
+          response.fields[this_field].value = preset_values[this_field];
+        }
+        else if (formRec.fields[this_field].default) {
           if (formRec.fields[this_field].default.source) {
             let sourceDefaults = [];
             if (Array.isArray(formRec.fields[this_field].default.source)) {
@@ -894,6 +899,8 @@ export default ({ request = {}, onClose }) => {
         // finish initializations
         response.fields[this_field].isError = false;
       }
+      this_section.section_name = await resolveVariables(this_section.section_name, response.fields);
+      console.log(this_section);
     };
     return response;
   };
@@ -1652,6 +1659,7 @@ export default ({ request = {}, onClose }) => {
             });
         }
         response.status = 'complete';
+        response.location = CRec.file_location;
         response.recWritten = CRec;
         await dbClient
           .put({
@@ -1705,6 +1713,22 @@ export default ({ request = {}, onClose }) => {
     }
     if (final && reactData.formRec?.options?.messaging) {
       // conditional based on responses should be allowed here
+      // formRec?.options?.messaging should be an object or array of objects; each object has in instruction key
+      //   { instruction: 'send_message',
+      //     attach_form: <boolean>
+      //     send_to: [user, user, ...]  send this form as an attachment to a message sent to user(s)
+      //     message_text: <text>   send this text 
+      //   }, {}, ...]
+      // in user lists, user can be a person: person_id, group: group_id, or author: true
+      for (let this_instruction of [reactData.formRec?.options?.messaging].flat()) {
+        if (this_instruction.instruction === 'create_form') {
+          await createForm({
+            instructions: this_instruction,
+            source_doc: document_id,
+            doc_location: response.location
+          });
+        }
+      }
     }
     updateReactData({
       document_id,
@@ -1713,6 +1737,195 @@ export default ({ request = {}, onClose }) => {
     }, true);
     return response;
   };
+
+  let preset_values = {};
+  async function createForm({ instructions, source_doc, doc_location }) {
+    //   { 
+    //     instruction: 'create_form',
+    //     form_id: <form_id>   make a new form of type form_id as wip 
+    //     fields: [ {<field>: <value>}, {<field>: {form: <form_field>}}, <field> (as a string - same as {<field> : {form: <field>}})
+    //     assign_to: [user, user, (author), (pertains_to)...]  put it on the forms list for this/these people
+    //     pertains_to: <specific_user_id>
+    //     document_title: (optional) <string>
+    //     restricted_access: 'admin_only'
+    //     message: {text: <text>, subject: <subject>} 
+    //   }, {}, ...]
+
+
+    // write an assignment record
+    for (let this_instruction of [instructions].flat()) {
+
+      // prepare data fields
+      if (instructions.fields) {
+        //  array - each entry is one of these forms: 
+        //    object with key = field to set and value is a string {<key>: <value>}, 
+        // or object with key = field to set and value is an object as in {<key>: {form: <form_field>}}, 
+        // or a string = field name from the source form
+        for (let this_field of instructions.fields) {
+          if (!isObject(this_field)) {
+            if (reactData.fields.hasOwnProperty(this_field)) {
+              preset_values[this_field] = reactData.fields[this_field].value;
+            }
+          }
+          else {
+            for (const [key, value] of Object.entries(this_field)) {
+              if (typeof (value) === 'string') {
+                preset_values[key] = await resolveVariables(value);
+                console.log(preset_values);
+              }
+              else {
+                if (reactData.fields.hasOwnProperty(value.form)) {
+                  preset_values[key] = reactData.fields[value.form].value;
+                }
+                console.log(preset_values);
+              }
+            }
+          }
+        }
+      }
+
+      // write Assignment and XRefs
+      const now = new Date().getTime();
+      let goodPut = true;
+      const newDocumentID = `${this_instruction.pertains_to}%%${this_instruction.form_id}%%ref_${source_doc}`;
+      await dbClient
+        .put({
+          Item: {
+            client_id: state.session.client_id,
+            document_id: newDocumentID,
+            document_title: this_instruction.document_title,
+            pertains_to: this_instruction.pertains_to,
+            form_id: this_instruction.form_id,
+            formType: this_instruction.form_id,
+            formType_date: `${this_instruction.form_id}%%${now}`,
+            date_assigned: now,
+            preset_values,
+            options: { restricted_access: this_instruction.restricted_access }
+          },
+          TableName: 'DocumentsAssigned'
+        })
+        .promise()
+        .catch(error => {
+          cl(`Bad put to DocumentsAssigned. Error is: ${error}`);
+          goodPut = false;
+        });
+      // if we saved successfully, add DocumentXRef records
+      let assignmentList = [];
+      if (goodPut) {
+        for (let this_assignee of [this_instruction.assign_to].flat()) {
+          const this_assignment = ((this_assignee === 'author')
+            ? state.session.user_id
+            : ((this_assignee === 'pertains_to')
+              ? this_instruction.pertains_to
+              : this_assignee)
+          );
+          await dbClient
+            .put({
+              Item: {
+                person_id: this_assignment,
+                document_id: newDocumentID,
+                client_id: state.session.client_id,
+                formType: this_instruction.form_id,
+                last_update: now,
+                role: 'assigned',
+              },
+              TableName: 'DocumentXRef'
+            })
+            .promise()
+            .catch(error => {
+              const messageText = `Bad put to DocumentXRef (made_updates). Error is: ${error}`;
+              cl(messageText);
+            });
+          assignmentList.push(this_assignment);
+        }
+        // make sure there is a xRef entry for the person that this pertains to
+        await dbClient
+          .put({
+            Item: {
+              person_id: this_instruction.pertains_to,
+              document_id: newDocumentID,
+              client_id: state.session.client_id,
+              formType: this_instruction.form_id,
+              last_update: now,
+              role: 'pertains_to',
+            },
+            TableName: 'DocumentXRef'
+          })
+          .promise()
+          .catch(error => {
+            const messageText = `Bad put to DocumentXRef (pertains_to). Error is: ${error}`;
+            cl(messageText);
+          });
+        // save (or update) the status of this document
+        await dbClient
+          .put({
+            Item: {
+              person_id: '*status',
+              client_id: state.session.client_id,
+              document_id: newDocumentID,
+              status: 'assigned',
+              formType: this_instruction.form_id,
+              last_update: now,
+            },
+            TableName: 'DocumentXRef'
+          })
+          .promise()
+          .catch(error => {
+            const messageText = `Bad put to DocumentXRef (status). Error is: ${error}`;
+            cl(messageText);
+          });
+      }
+
+      // Send messages (optional)
+      if (this_instruction.message) {
+        // the message.text and message.subject may contain variables in the form %%field_name%%
+        let final_messageText = await resolveVariables(this_instruction.message.text);
+        let jumpTo = window.location.origin;
+        let final_html = final_messageText + `<br><br>Please click on <a href=${jumpTo}?document=${newDocumentID}&&docUser=${assignmentList[0]}>this link</a> to respond.`;
+        final_messageText += `\r\n\nClick on this link to respond: ${jumpTo}?document=${newDocumentID}&&docUser=${assignmentList[0]}`;
+        
+        await sendMessages({
+          client: state.session.client_id,
+          author: state.session.user_id,
+          person_id: state.session.patient_id,
+          messageText: final_messageText,
+          htmlText: final_html,
+          recipientList: assignmentList,
+          attachments: doc_location,
+          subject: this_instruction.message.subject
+            ? await resolveVariables(this_instruction.message.subject)
+            : `A message from ${reactData.peopleRec[this_instruction.pertains_to].display_name || 'AVA Document Management'}`
+        });
+      }
+    }
+  }
+
+  async function resolveVariables(s, o) {
+    let a = s.match(/(.*?)%%(.*?)%%(.*)/);
+    if (a) {
+      do {
+        let v = '';
+        if (preset_values && preset_values.hasOwnProperty(a[2])) {
+          v = preset_values[a[2]];
+        }
+        else if (reactData.fields.hasOwnProperty(a[2])) {
+          v = await formatValue({
+            rawValue: reactData.fields[a[2]].value,
+            type: reactData.fields[a[2]].type
+          });
+        }
+        else if (o && o.hasOwnProperty(a[2])) {
+          v = await formatValue({
+            rawValue: o[a[2]].value,
+            type: o[a[2]].type
+          });
+        }
+        s = `${a[1]}${v}${a[3]}`;
+        a = s.match(/(.*?)%%(.*?)%%(.*)/);
+      } while (a);
+    }
+    return s;
+  }
 
   async function printWIP({ document_id }) {
     let signatures = [];
@@ -1749,7 +1962,9 @@ export default ({ request = {}, onClose }) => {
     // If no document_id is sent in, or the document_id wasn't found in the process above, look for a form_id
     // If a form_id is sent in, create a new document from that form
     // Otherwise the call returns an error.
+
     if (reactData.document_id) {
+      // first, look to see if the referenced document_id is completed.  If it is, show it and leave
       let CompletedDocRec = await getDb({
         Key: {
           client_id: state.session.client_id,
@@ -1765,6 +1980,10 @@ export default ({ request = {}, onClose }) => {
         );
         handleAbort();
       }
+
+      // if the referenced document_id was found in CompletedDocuments, we would have left already, so...
+      // the referenced document_id is not completed; check to see if it is an in process document
+      // if it is, use the data found in the WIP document and leave
       let WIPDocRec = await getDb({
         Key: {
           client_id: state.session.client_id,
@@ -1792,6 +2011,10 @@ export default ({ request = {}, onClose }) => {
         }, true);
         return;
       }
+
+      // once you arrive here, you have failed to find the referenced document_id in EITHER the Completed
+      // or the WIP table;  there might be some information about this document (form_id, pertains_to, and title) 
+      // in the assigned table.  Use that information to load up and then leave this initialization function
       let AssignedDocRec = await getDb({
         Key: {
           client_id: state.session.client_id,
@@ -1801,12 +2024,13 @@ export default ({ request = {}, onClose }) => {
       });
       if (AssignedDocRec) {
         // this document_id was assigned to someone, but hasn't been started yet
-        const { fields, sections } = await initializeDoc({
+        const { fields, sections, document_title } = await initializeDoc({
           form_id: AssignedDocRec.form_id,
-          pertains_to: AssignedDocRec.pertains_to
+          pertains_to: AssignedDocRec.pertains_to,
+          preset_values: AssignedDocRec.preset_values
         });
         updateReactData({
-          document_title: AssignedDocRec.title || AssignedDocRec.document_title,
+          document_title: AssignedDocRec.title || AssignedDocRec.document_title || document_title,
           pertains_to: AssignedDocRec.pertains_to,
           form_id: AssignedDocRec.form_id,
           fields,
@@ -1816,6 +2040,7 @@ export default ({ request = {}, onClose }) => {
         return;
       }
     }
+
     // if we got here, there was no existing document found with the passed in document_id
     // or no document_id was passed in at all. 
     // In this case, look for a DocumentinProcess for this person and formType...
@@ -1855,7 +2080,7 @@ export default ({ request = {}, onClose }) => {
         reactUpdObj.document_id = WIPDocRec.document_id;
         reactUpdObj.document_title = WIPDocRec.document_title;
         reactUpdObj.formRec = { options: WIPDocRec.options };
-        WIPFields = WIPDocRec.fields;       
+        WIPFields = WIPDocRec.fields;
       }
       const { fields, sections, document_title } = await initializeDoc({
         form_id: reactData.form_id,
@@ -1973,7 +2198,8 @@ export default ({ request = {}, onClose }) => {
                         bottom: 1,
                         top: ((sectionNdx === 0) ? 1 : 3),
                       }
-                    })}>
+                    })}
+                  >
                     {sectionObj.section_name}
                   </Typography>
                   {sectionObj.fields.map((this_field, fieldNdx) => (
@@ -2002,7 +2228,6 @@ export default ({ request = {}, onClose }) => {
                                 : ''}`}
                               className={classes.inputDisplay}
                               multiline
-                              rows={reactData.fields[this_field].prompt.rows || null}
                               variant={reactData.fields[this_field].prompt.rows ? 'outlined' : 'standard'}
                               disabled={reactData.fields[this_field].options.viewOnly}
                               style={AVATextStyle({
@@ -2444,6 +2669,7 @@ export default ({ request = {}, onClose }) => {
                   document_id: reactData.document_id,
                   document_title: reactData.document_title,
                   document_status: response.status,
+                  location: response.location,
                   pertains_to: reactData.pertains_to,
                   recWritten: Object.assign({}, response.recWritten, reactData.peopleRec[reactData.pertains_to]),
                   nextAction: (reactData.formRec?.options?.onFinish

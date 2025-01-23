@@ -33,6 +33,10 @@ export const AVAclasses = makeStyles(theme => ({
         size: 'small',
         fontSize: theme.typography.fontSize * 0.8
     },
+    noDisplay: {
+        display: 'none',
+        visibility: 'hidden'
+    },
     AVATitle: {
         marginTop: theme.spacing(3),
         marginLeft: theme.spacing(2),
