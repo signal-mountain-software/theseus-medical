@@ -1645,7 +1645,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               initialValues={{
                 peopleRec: {
                   client_id: state.session.client_id,
-                  groups: ['inactive', 'ALL', '__top__'],
+                  groups: ['ALL', '__top__'],
+                  address: {}
                 },
                 sessionRec: {
                   client_id: state.session.client_id

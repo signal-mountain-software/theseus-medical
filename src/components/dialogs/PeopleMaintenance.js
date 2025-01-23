@@ -65,7 +65,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     OKtoSave: false,
     alert: false,
     myFormListObj: {},
-    myImage: (options.mode === 'add') ? '' : (getImage(person_id || state.session.patient_id)),
+    myImage: (options.mode === 'add') ? '' : getImage(person_id),
     image_editing: false,
     components: {
       ProfileSection: {
@@ -212,11 +212,11 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           else if (!peopleRec.Item.contact_info.landline) {
             peopleRec.Item.contact_info.landline = { number: peopleRec.Item.messaging?.voice };
           }
-          if (!peopleRec.Item.address && peopleRec.Item.location) {
-            peopleRec.Item.address = { street: peopleRec.Item.location };
-          }
-          else if (!peopleRec.Item.address?.street && peopleRec.Item.location) {
-            peopleRec.Item.address.street = peopleRec.Item.location;
+          if (!peopleRec.Item.address) {
+            peopleRec.Item.address = {};
+            if (peopleRec.Item.location) {
+              peopleRec.Item.address = { address: peopleRec.Item.location };
+            }
           }
           if (!peopleRec.Item.preferred_methods) {
             peopleRec.Item.preferred_methods = [(peopleRec.Item.preferred_method ? peopleRec.Item.preferred_method.toLowerCase() : 'ava')];
@@ -465,7 +465,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
 
   const saveChanges = async () => {
     const person_id_blank = !reactData.current.peopleRec.person_id;
-    if (person_id_blank || (reactData.current.peopleRec.person_id !== reactData.og.peopleRec.person_id)) {
+    if (person_id_blank || (reactData.current.peopleRec.person_id !== reactData.person_id)) {
       // check person_id just before saving to assure that it hasn't been claimed between setting and saving
       const person_id_exists = await getPerson(reactData.current.peopleRec.person_id, 'validate');
       if (person_id_exists || person_id_blank) {
@@ -683,13 +683,13 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         key={`section_frame`} variant='outlined' overflow={'auto'}
       >
         {reactData.sections.map((this_section, sectionNdx) => (
-          (this_section.isAuthorized &&
+          (this_section.isAuthorized && (reactData.person_id || (this_section.component_name === 'ProfileSection')) &&
             <Box
               key={`frag__${sectionNdx}`}
             >
               <Box
                 display='flex'
-                ml={2} mr={2} mt={'12px'}
+                ml={2} mr={2} mt={'8px'}
                 key={`sectionRow__${sectionNdx}`}
                 style={{
                   borderRadius: (this_section.isOpen ? '30px 30px 0px 0px' : '30px 30px 30px 30px'),
