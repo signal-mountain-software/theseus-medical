@@ -251,7 +251,7 @@ export async function getWIPFormList({ client_id, personList }) {
             })
             .promise()
             .catch(error => {
-                cl({ 'Error reading People': error });
+                cl({ [`in getWIPFormList, Error reading People key=${person_id}`]: error });
             });
         if (!recordExists(peopleRec)) {
             response[person_id] = {
@@ -391,7 +391,7 @@ export async function getPerson(pID, pElement = '*all', override = false) {
             })
             .promise()
             .catch(error => {
-                cl({ 'Error reading People': error });
+                cl({ [`in getPerson, Error reading key=${pID}`]: error });
             });
         if (!recordExists(personRec)) {
             if (pElement === 'validate') { return false; }

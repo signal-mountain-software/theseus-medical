@@ -197,7 +197,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           })
           .promise()
           .catch(error => {
-            cl({ 'Error reading People': error });
+            cl({ [`in People Maintenance, Error reading ${parm_personRec.person_id}`]: error });
           });
         if (recordExists(peopleRec)) {
           // convert from earlier versions if necessary
