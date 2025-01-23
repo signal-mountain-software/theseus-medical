@@ -2,6 +2,16 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 let remembered = {};
 
 export const AVAclasses = makeStyles(theme => ({
+    AVAAvatar: {
+        marginTop: 0,
+        marginBottom: 0,
+        minHeight: '60px',
+        minWidth: '60px',
+        maxHeight: '60px',
+        maxWidth: '60px',
+        paddingTop: 0,
+        fontSize: '1.3rem'
+    },
     AVAButton: {
         marginLeft: theme.spacing(1),
         marginRight: theme.spacing(1),

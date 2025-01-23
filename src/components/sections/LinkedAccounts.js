@@ -78,7 +78,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
           <Typography
             style={AVATextStyle({ margin: { top: 1 } })}
           >
-            {`You have ${Object.keys(currentValues.peopleRec.myFamilyMembers).length} Family Member${(Object.keys(currentValues.peopleRec.myFamilyMembers).length > 1) ? 's' : ''} added`}
+            {`You already have ${Object.keys(currentValues.peopleRec.myFamilyMembers).length} Account${(Object.keys(currentValues.peopleRec.myFamilyMembers).length > 1) ? 's' : ''} listed`}
           </Typography>
         }
         {(!currentValues.peopleRec.myFamilyMembers ||
@@ -86,18 +86,20 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
           <Typography
             style={AVATextStyle({ margin: { top: 1 } })}
           >
-            {`You don't have any Family members yet.`}
+            {`You don't have anyone listed yet`}
+          </Typography>
+        }
+        {(reactData.addAccountList.length > 0) &&
+          <Typography
+            style={AVATextStyle({ margin: { top: 1 }, italic: true })}
+          >
+            {`You may create a new Account by tapping a button below.`}
           </Typography>
         }
         <Typography
-          style={AVATextStyle({ margin: { top: 1 }, italic: true })}
-        >
-          {`You may create a new Family Member's account by tapping a button below.`}
-        </Typography>
-        <Typography
           style={AVATextStyle({ margin: { top: 0, bottom: 1 }, size: 0.8 })}
         >
-          {`If your Family Member already has an account, ask them to add you to their Family.`}
+          {`If you wish to add someone that already has an account, ask them to add you to their list`}
         </Typography>
         {currentValues.peopleRec.myFamilyMembers &&
           <React.Fragment>
@@ -107,11 +109,11 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
             <Typography
               style={AVATextStyle({})}
             >
-              {`Your existing Family members are:`}
+              {`You are currently managing:`}
             </Typography>
             {Object.keys(currentValues.peopleRec.myFamilyMembers).sort((p1, p2) => {
               if (currentValues.peopleRec.myFamilyMembers[p1].type !== currentValues.peopleRec.myFamilyMembers[p2].type) {
-                return ((currentValues.peopleRec.myFamilyMembers[p1].type === 'Camper') ? -1 : 1);
+                return ((currentValues.peopleRec.myFamilyMembers[p1].type > currentValues.peopleRec.myFamilyMembers[p2].type) ? 1 : -1);
               }
               else {
                 return ((currentValues.peopleRec.myFamilyMembers[p1].name > currentValues.peopleRec.myFamilyMembers[p2].name) ? 1 : -1);
@@ -156,43 +158,33 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
           key={`add_button_row`}
           style={{ marginTop: '4px', marginBottom: '4px' }}
         >
+          {reactData.addAccountList.map((this_class, selected_classIndex) => (
           <Button
             onClick={async () => {
               updateReactData({
-                addCamper: true
+                addPerson: selected_classIndex
               }, true);
             }}
             className={AVAClass.AVAButton}
             style={{ marginLeft: '8px', marginTop: '16px', backgroundColor: 'white', color: 'black' }}
             size='small'
           >
-            {'Add a Camper'}
+            {this_class.buttonText}
           </Button>
-          <Button
-            onClick={async () => {
-              updateReactData({
-                addFamilyMember: true
-              }, true);
-            }}
-            className={AVAClass.AVAButton}
-            style={{ marginLeft: '8px', marginTop: '16px', backgroundColor: 'white', color: 'black' }}
-            size='small'
-          >
-            {'Add another Individual'}
-          </Button>
+          ))}          
         </Box>
-        {reactData.addCamper &&
+        {(reactData.addPerson > -1) &&
           <PeopleMaintenance
             person_id={null}
             initialValues={{
-              color: 'turquoise',
+              color: reactData.addAccountList[reactData.addPerson].color || 'turquoise',
               peopleRec: {
-                account_class: 'camper',
+                account_class: reactData.addAccountList[reactData.addPerson].account_class,
                 client_id: currentValues.peopleRec.client_id,
                 proxy_allowed_from: {
                   [currentValues.peopleRec.person_id]: `${currentValues.peopleRec.name.first} ${currentValues.peopleRec.name.last}`
                 },
-                groups: ['new_campers', 'all_campers', 'ALL', '__top__'],
+                groups: reactData.addAccountList[reactData.addPerson].groups,
                 address: currentValues.peopleRec.address
               },
               sessionRec: {
@@ -208,7 +200,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                 currentValues.peopleRec.myFamilyMembers[newID] =
                 {
                   name: newName,
-                  type: 'Camper'
+                  type: reactData.addAccountList[reactData.addPerson].description || reactData.addAccountList[reactData.addPerson].account_class
                 };
                 updateObj.updateList =
                   [{
@@ -218,7 +210,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                   }];
               };
               updateObj.reactUpd = {
-                addCamper: false
+                addPerson: -1
               };
               await updateField(updateObj);
             }}
@@ -287,7 +279,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
             <Typography
               style={AVATextStyle({ margin: { top: 3 }, italic: true })}
             >
-              {`You may add existing accounts to your family`}
+              {`You may give existing accounts permission to act on your behalf`}
             </Typography>
             <Typography
               style={AVATextStyle({ margin: { top: 0.5 }, size: 0.8 })}
