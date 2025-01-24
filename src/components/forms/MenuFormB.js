@@ -514,7 +514,13 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
       return check_key;
     }
     else if (return_type === 'value') {
-      return local_service_details['dates'][check_key].value;
+      if (!local_service_details['dates'].hasOwnProperty(check_key)) {
+        console.log(`bad at ${check_key}`);
+        return check_key;
+      }
+      else {
+        return local_service_details['dates'][check_key].value;
+      }
     }
     else if (return_type === 'ymd') {
       return local_service_details['dates'][check_key].ymd;

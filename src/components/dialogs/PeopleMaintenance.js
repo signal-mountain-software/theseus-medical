@@ -58,13 +58,14 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     user_id: state.user.user_id,
     formHistoryMode: false,
     recentlyCompletedDocs: [],
+    addAccountList: [],
     familyFormsObj: {},
     user_class: state.user.account_class,
     administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
     OKtoSave: false,
     alert: false,
     myFormListObj: {},
-    myImage: (options.mode === 'add') ? '' : (getImage(person_id || state.session.patient_id)),
+    myImage: (options.mode === 'add') ? '' : getImage(person_id),
     image_editing: false,
     components: {
       ProfileSection: {
@@ -157,7 +158,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           section_name: 'Groups',
           color: initialValues?.color || 'orange',
           isOpen: false,
-          isAuthorized: ['master', 'support'].includes(state.user.account_class),
+          isAuthorized: reactData.administrative_account,
           version_id: 0,
           component_name: 'GroupAssignments'
         },
@@ -173,7 +174,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           section_name: 'Password & Tech Stuff',
           color: initialValues?.color || 'orange',
           isOpen: false,
-          isAuthorized: true,
+          isAuthorized: reactData.administrative_account || (state.session.user_id === reactData.person_id),
           version_id: 0,
           component_name: 'TechInfoSection'
         }
@@ -196,7 +197,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           })
           .promise()
           .catch(error => {
-            cl({ 'Error reading People': error });
+            cl({ [`in People Maintenance, Error reading ${parm_personRec.person_id}`]: error });
           });
         if (recordExists(peopleRec)) {
           // convert from earlier versions if necessary
@@ -211,11 +212,11 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           else if (!peopleRec.Item.contact_info.landline) {
             peopleRec.Item.contact_info.landline = { number: peopleRec.Item.messaging?.voice };
           }
-          if (!peopleRec.Item.address && peopleRec.Item.location) {
-            peopleRec.Item.address = { street: peopleRec.Item.location };
-          }
-          else if (!peopleRec.Item.address?.street && peopleRec.Item.location) {
-            peopleRec.Item.address.street = peopleRec.Item.location;
+          if (!peopleRec.Item.address) {
+            peopleRec.Item.address = {};
+            if (peopleRec.Item.location) {
+              peopleRec.Item.address = { address: peopleRec.Item.location };
+            }
           }
           if (!peopleRec.Item.preferred_methods) {
             peopleRec.Item.preferred_methods = [(peopleRec.Item.preferred_method ? peopleRec.Item.preferred_method.toLowerCase() : 'ava')];
@@ -274,8 +275,14 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         }
       }
       if (!reactData.groupObj && state.groups && reactUpdObj.og.peopleRec.groups) {
-        let enableFamily = false;
-        let disableFamily = false;
+        // check all groups you belong to - there are three states:
+        //   show_linkedAccounts is ASSUMED to be on
+        //   a group can explcitly disable this by including the linked_accounts key with isEnabled = false
+        //   ANY group with isEnabled = true will override ALL other isEnabled = false
+        let isEnabled = false;
+        let isDisabled = false;
+        let addAccountList = [];
+        let set_sectionName = false;
         for (let this_group of reactUpdObj.og.peopleRec.groups) {
           let groupRec = await dbClient
             .get({
@@ -290,26 +297,44 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
               console.log({ 'Error reading Groups': error });
             });
           if (recordExists(groupRec)) {
-            if (groupRec.Item.myFamily) {
-              if (groupRec.Item.myFamily.hasOwnProperty('disable')) {
-                if (groupRec.Item.myFamily.disable) {
-                  disableFamily = true;
+            if (groupRec.Item.linked_accounts) {
+              if (groupRec.Item.linked_accounts.hasOwnProperty('isEnabled')) {
+                if (groupRec.Item.linked_accounts.isEnabled) {
+                  isEnabled = true;
                 }
                 else {
-                  enableFamily = true;
+                  isDisabled = true;
                   break;
                 }
+              }
+              if (groupRec.Item.linked_accounts.hasOwnProperty('add_account')) {
+                for (let this_type of groupRec.Item.linked_accounts.add_account) {
+                  if (!addAccountList.some(existing_type => {
+                    return existing_type.account_class === this_type.account_class;
+                  })) {
+                    addAccountList.push(this_type);
+                  }
+                }
+              }
+              if (groupRec.Item.linked_accounts.hasOwnProperty('section_name')) {
+                set_sectionName = groupRec.Item.linked_accounts.section_name;
               }
             }
           }
         }
-        if (disableFamily && !enableFamily) {
-          let foundAt = reactUpdObj.sections.findIndex(this_section => {
-            return (this_section.component_name === 'LinkedAccounts');
-          });
-          if (foundAt > -1) {
+        let foundAt = reactUpdObj.sections.findIndex(this_section => {
+          return (this_section.component_name === 'LinkedAccounts');
+        });
+        if (foundAt > -1) {
+          if (isDisabled && !isEnabled) {
             reactUpdObj.sections[foundAt].isAuthorized = false;
           }
+          if (set_sectionName) {
+            reactUpdObj.sections[foundAt].section_name = set_sectionName;
+          }
+        }
+        if (addAccountList.length > 0) {
+          reactUpdObj.addAccountList = addAccountList;
         }
       }
       reactUpdObj.current = {
@@ -354,33 +379,35 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           }, true);
         }}
         updateField={async ({ updateList, errorObj, reactUpd }) => {
-          let reactUpdObj = {
-            OKtoSave: true,
-            current: reactData.current,
-          };
-          if (reactUpd) {
-            Object.assign(reactUpdObj, reactUpd);
-          };
-          if (errorObj) {
-            reactUpdObj.errorList = reactData.errorList;
-            for (let errorItem of [errorObj].flat()) {
-              const { errorField, isError } = errorItem;
-              if (!isError) {
-                delete reactUpdObj.errorList[errorField];
-              }
-              else {
-                reactUpdObj.errorList[errorField] = errorItem;
+          if (reactData.mode !== 'view') {
+            let reactUpdObj = {
+              OKtoSave: true,
+              current: reactData.current,
+            };
+            if (reactUpd) {
+              Object.assign(reactUpdObj, reactUpd);
+            };
+            if (errorObj) {
+              reactUpdObj.errorList = reactData.errorList;
+              for (let errorItem of [errorObj].flat()) {
+                const { errorField, isError } = errorItem;
+                if (!isError) {
+                  delete reactUpdObj.errorList[errorField];
+                }
+                else {
+                  reactUpdObj.errorList[errorField] = errorItem;
+                }
               }
             }
-          }
-          for (let this_update of [updateList].flat()) {
-            if (this_update) {
-              const { tableName, fieldName, newData } = this_update;
-              let result = resolve(reactData.current[tableName] || reactData.current[tableName], fieldName.split('.'), newData);
-              reactUpdObj.current[tableName] = result;
+            for (let this_update of [updateList].flat()) {
+              if (this_update) {
+                const { tableName, fieldName, newData } = this_update;
+                let result = resolve(reactData.current[tableName] || reactData.current[tableName], fieldName.split('.'), newData);
+                reactUpdObj.current[tableName] = result;
+              }
             }
+            updateReactData(reactUpdObj, true);
           }
-          updateReactData(reactUpdObj, true);
         }}
         reactData={reactData}
         updateReactData={(newData, force) => {
@@ -440,7 +467,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
 
   const saveChanges = async () => {
     const person_id_blank = !reactData.current.peopleRec.person_id;
-    if (person_id_blank || (reactData.current.peopleRec.person_id !== reactData.og.peopleRec.person_id)) {
+    if (person_id_blank || (reactData.current.peopleRec.person_id !== reactData.person_id)) {
       // check person_id just before saving to assure that it hasn't been claimed between setting and saving
       const person_id_exists = await getPerson(reactData.current.peopleRec.person_id, 'validate');
       if (person_id_exists || person_id_blank) {
@@ -588,7 +615,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           }}
           key={'personBox'}
         >
-          <Avatar src={reactData.myImage} alt={reactData.greetingName} />
+          <Avatar className={AVAClass.AVAAvatar} src={reactData.myImage} alt={reactData.greetingName} />
           <Typography
             key={`personName`}
             style={AVATextStyle({
@@ -608,24 +635,21 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           overflow='auto'
           flexDirection='column'
         >
-          <Box
-            component="img"
+          <Avatar className={AVAClass.AVAAvatar}
+            alt=''
+            src={state.session?.client_logo || process.env.REACT_APP_AVA_LOGO}
             ml={2}
             mr={2}
             aria-controls='hidden-menu'
             aria-haspopup='true'
-            minWidth={50}
-            maxWidth={50}
-            alignSelf='flex-end'
             onClick={(event) => {
               updateReactData({
                 anchorEl: event.currentTarget,
                 popupMenuOpen: true
               }, true);
             }}
-            alt=''
-            src={state.session?.client_logo || process.env.REACT_APP_AVA_LOGO}
           />
+
         </Box>
         <Menu
           id='hidden-menu'
@@ -657,20 +681,27 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         </Menu>
       </Box>
 
-      <Paper component={Box} paddingBottom={1.5} key={`section_frame`} variant='outlined' overflow={'auto'} >
+      <Paper component={Box}
+        key={`section_frame`} variant='outlined' overflow={'auto'}
+      >
         {reactData.sections.map((this_section, sectionNdx) => (
-          (this_section.isAuthorized &&
-            <React.Fragment
+          (this_section.isAuthorized && (reactData.person_id || (this_section.component_name === 'ProfileSection')) &&
+            <Box
               key={`frag__${sectionNdx}`}
             >
               <Box
                 display='flex'
-                ml={2} mr={2} mt={1.5}
+                ml={2} mr={2} mt={'8px'}
                 key={`sectionRow__${sectionNdx}`}
                 style={{
                   borderRadius: (this_section.isOpen ? '30px 30px 0px 0px' : '30px 30px 30px 30px'),
+                  marginBottom: (this_section.isOpen ? 0 : '8px'),
                   backgroundColor: this_section.color,
-                  textDecoration: 'none'
+                  textDecoration: 'none',
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 1,
+                  opacity: 1
                 }}
                 borderTop={1}
                 borderLeft={1}
@@ -710,6 +741,12 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                       textDecoration: 'none'
                     }}
                     ml={2} mr={2} mb={1.5}
+                    onClick={async () => {
+                      reactData.sections[sectionNdx].isOpen = !reactData.sections[sectionNdx].isOpen;
+                      updateReactData({
+                        sections: reactData.sections
+                      }, true);
+                    }}
                     justifyContent='center'
                     flexDirection='column'
                     minHeight={30}
@@ -717,7 +754,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                   />
                 </React.Fragment>
               }
-            </React.Fragment>
+            </Box>
           )
         ))}
       </Paper>
@@ -800,10 +837,20 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           )
           :
           (reactData.current.peopleRec?.name?.first &&
-            <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-              <Typography style={{ size: 1.2, bold: true, marginRight: '16px' }}>
-                {`Viewing ${(reactData.current.peopleRec?.name?.first + "'s").replace("s's", "s'")} Profile`}
+            <Box display='flex' flexDirection='column' justifyContent='flex-end' alignItems='center'>
+              <Typography style={{ size: 1.2, bold: true }}>
+                {`${(reactData.current.peopleRec?.name?.first + "'s").replace("s's", "s'")} Profile`}
               </Typography>
+                {(reactData.mode === 'view') &&
+                  <Typography style={{ size: 1.2, bold: true }}>
+                    {`** View only **`}
+                  </Typography>
+                }
+                {(reactData.mode === 'view') &&
+                   <Typography style={{ marginTop: 0, size: 1 }}>
+                  {`No Changes allowed`}
+                </Typography>
+              }
             </Box>
           )
         }
