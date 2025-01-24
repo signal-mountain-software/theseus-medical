@@ -158,7 +158,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           section_name: 'Groups',
           color: initialValues?.color || 'orange',
           isOpen: false,
-          isAuthorized: ['master', 'support'].includes(state.user.account_class),
+          isAuthorized: reactData.administrative_account || (state.session.user_id === reactData.person_id),
           version_id: 0,
           component_name: 'GroupAssignments'
         },
@@ -379,33 +379,35 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           }, true);
         }}
         updateField={async ({ updateList, errorObj, reactUpd }) => {
-          let reactUpdObj = {
-            OKtoSave: true,
-            current: reactData.current,
-          };
-          if (reactUpd) {
-            Object.assign(reactUpdObj, reactUpd);
-          };
-          if (errorObj) {
-            reactUpdObj.errorList = reactData.errorList;
-            for (let errorItem of [errorObj].flat()) {
-              const { errorField, isError } = errorItem;
-              if (!isError) {
-                delete reactUpdObj.errorList[errorField];
-              }
-              else {
-                reactUpdObj.errorList[errorField] = errorItem;
+          if (reactData.mode !== 'view') {
+            let reactUpdObj = {
+              OKtoSave: true,
+              current: reactData.current,
+            };
+            if (reactUpd) {
+              Object.assign(reactUpdObj, reactUpd);
+            };
+            if (errorObj) {
+              reactUpdObj.errorList = reactData.errorList;
+              for (let errorItem of [errorObj].flat()) {
+                const { errorField, isError } = errorItem;
+                if (!isError) {
+                  delete reactUpdObj.errorList[errorField];
+                }
+                else {
+                  reactUpdObj.errorList[errorField] = errorItem;
+                }
               }
             }
-          }
-          for (let this_update of [updateList].flat()) {
-            if (this_update) {
-              const { tableName, fieldName, newData } = this_update;
-              let result = resolve(reactData.current[tableName] || reactData.current[tableName], fieldName.split('.'), newData);
-              reactUpdObj.current[tableName] = result;
+            for (let this_update of [updateList].flat()) {
+              if (this_update) {
+                const { tableName, fieldName, newData } = this_update;
+                let result = resolve(reactData.current[tableName] || reactData.current[tableName], fieldName.split('.'), newData);
+                reactUpdObj.current[tableName] = result;
+              }
             }
+            updateReactData(reactUpdObj, true);
           }
-          updateReactData(reactUpdObj, true);
         }}
         reactData={reactData}
         updateReactData={(newData, force) => {
@@ -835,10 +837,20 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           )
           :
           (reactData.current.peopleRec?.name?.first &&
-            <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-              <Typography style={{ size: 1.2, bold: true, marginRight: '16px' }}>
-                {`Viewing ${(reactData.current.peopleRec?.name?.first + "'s").replace("s's", "s'")} Profile`}
+            <Box display='flex' flexDirection='column' justifyContent='flex-end' alignItems='center'>
+              <Typography style={{ size: 1.2, bold: true }}>
+                {`${(reactData.current.peopleRec?.name?.first + "'s").replace("s's", "s'")} Profile`}
               </Typography>
+                {(reactData.mode === 'view') &&
+                  <Typography style={{ size: 1.2, bold: true }}>
+                    {`** View only **`}
+                  </Typography>
+                }
+                {(reactData.mode === 'view') &&
+                   <Typography style={{ marginTop: 0, size: 1 }}>
+                  {`No Changes allowed`}
+                </Typography>
+              }
             </Box>
           )
         }

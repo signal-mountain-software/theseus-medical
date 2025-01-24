@@ -19,7 +19,7 @@ import { useCookies } from 'react-cookie';
 import { useIdleTimer } from 'react-idle-timer';
 import useSession from '../../hooks/useSession';
 import SwitchPatientDialog from '../dialogs/SwitchPatientDialog';
-// import PatientDialog from '../dialogs/PatientDialog';
+import PatientDialog from '../dialogs/PatientDialog';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import NewFactDialog from '../dialogs/NewFactDialog';
 import MakeAVAMenu from '../../util/MakeAVAMenu';
@@ -47,8 +47,10 @@ import AutorenewIcon from '@material-ui/icons/Autorenew';
 import NewReleasesOutlinedIcon from '@material-ui/icons/NewReleasesOutlined';
 import LinearProgress from '@material-ui/core/LinearProgress';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
+import SearchIcon from '@material-ui/icons/Search';
 
 import Tooltip from '@material-ui/core/Tooltip';
+import QuickSearch from './QuickSearch';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -268,6 +270,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     showProfileEdit: false,
     showNewFactDialog: -1,
     showAddAccount: false,
+    showQuickSearch: false,
+    accessList: false,
+    showProfileEdit_id: false,
+    linkedPersonFilter: '',
     showPasswordEdit: false,
     groupData: {},
     anchorEl: null,
@@ -1193,6 +1199,21 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   </MenuItem>
                 }
                 <MenuItem onClick={async () => {
+                  pause();
+                  updateReactData({
+                    showQuickSearch: true,
+                    popupMenuOpen: false
+                  }, true);
+                }}>
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'vRowCreate'}
+                  >
+                    <SearchIcon />
+                    <Typography className={classes.popUpMenuRow} >{'Quick Search'}</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem onClick={async () => {
                   await accessLog(session.user_id, `*na*`, `Manual sign-out`);
                   removeCookie("AVAuser");
                   Auth.signOut().then(() => {
@@ -1604,86 +1625,108 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           }
 
           {reactData.showProfileEdit &&
-            <PeopleMaintenance
-              patient={patient}
-              onClose={(updatedPerson) => {
-                if (updatedPerson || !reactData.menu_reloaded) {
-                  sessionStorage.removeItem('AVASessionData');
-                  window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
-                }
-                else {
-                  updateReactData({
-                    showProfileEdit: false
-                  }, true);
-                }
-              }}
-            />
-            //        <PatientDialog
-            //          patient={patient}
-            //          groupData={reactData.groupData}
-            //          open={true}
-            //          options={{
-            //            scrollToPassword: reactData.showPasswordEdit
-            //          }}
-            //          onClose={(updatedPerson) => {
-            //            if (updatedPerson) {
-            //              sessionStorage.removeItem('AVASessionData');
-            //              window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
-            //            }
-            //            else {
-            //              updateReactData({
-            //                showProfileEdit: false
-            //              }, true);
-            //            }
-            //          }}
-            //        />
+            <React.Fragment>
+              {!session.useOldVersion &&
+                <PeopleMaintenance
+                  patient={patient}
+                  onClose={(updatedPerson) => {
+                    if (updatedPerson || !reactData.menu_reloaded) {
+                      sessionStorage.removeItem('AVASessionData');
+                      window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+                    }
+                    else {
+                      updateReactData({
+                        showProfileEdit: false
+                      }, true);
+                    }
+                  }}
+                />
+              }
+              {session.useOldVersion &&
+                <PatientDialog
+                  patient={patient}
+                  groupData={reactData.groupData}
+                  open={true}
+                  options={{
+                    scrollToPassword: reactData.showPasswordEdit
+                  }}
+                  onClose={(updatedPerson) => {
+                    if (updatedPerson) {
+                      sessionStorage.removeItem('AVASessionData');
+                      window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+                    }
+                    else {
+                      updateReactData({
+                        showProfileEdit: false
+                      }, true);
+                    }
+                  }}
+                />
+              }
+            </React.Fragment>
           }
 
           {reactData.showAddAccount &&
-            <PeopleMaintenance
-              person_id={null}
-              initialValues={{
-                peopleRec: {
-                  client_id: state.session.client_id,
-                  groups: ['ALL', '__top__'],
-                  address: {}
-                },
-                sessionRec: {
-                  client_id: state.session.client_id
-                }
-              }}
+            <React.Fragment>
+              {!session.useOldVersion &&
+                <PeopleMaintenance
+                  person_id={null}
+                  initialValues={{
+                    peopleRec: {
+                      client_id: state.session.client_id,
+                      groups: ['ALL', '__top__'],
+                      address: {}
+                    },
+                    sessionRec: {
+                      client_id: state.session.client_id
+                    }
+                  }}
+                  onClose={() => {
+                    updateReactData({
+                      showAddAccount: false
+                    }, true);
+                  }}
+                />
+              }
+              {session.useOldVersion &&
+                <PatientDialog
+                  patient={{
+                    "person_id": `*NEW~${new Date().getTime()}`,
+                    "client_id": state.session.client_id,
+                    "groups": [],
+                    "name": {
+                      "first": 'New',
+                      "last": 'Account'
+                    },
+                    "clients": [
+                      {
+                        "groups": [],
+                        "id": state.session.client_id
+                      }
+                    ],
+                  }}
+                  groupData={reactData.groupData}
+                  open={true}
+                  onClose={() => {
+                    reset();
+                    sessionStorage.removeItem('AVASessionData');
+                    window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+                  }}
+                />
+              }
+            </React.Fragment>
+          }
+
+          {reactData.showQuickSearch &&
+            <QuickSearch
+              reactData={reactData}
+              updateReactData={updateReactData}
               onClose={() => {
                 updateReactData({
-                  showAddAccount: false
+                  showQuickSearch: false
                 }, true);
               }}
             />
-            /*
-            <PatientDialog
-              patient={{
-                "person_id": `*NEW~${new Date().getTime()}`,
-                "client_id": state.session.client_id,
-                "groups": [],
-                "name": {
-                  "first": 'New',
-                  "last": 'Account'
-                },
-                "clients": [
-                  {
-                    "groups": [],
-                    "id": state.session.client_id
-                  }
-                ],
-              }}
-              groupData={reactData.groupData}
-              open={true}
-              onClose={() => {
-                reset();
-                sessionStorage.removeItem('AVASessionData');
-                window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
-              }}
-            />
-            */
           }
 
           {/* Launch Children */}

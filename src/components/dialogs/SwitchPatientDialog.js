@@ -43,6 +43,9 @@ const useStyles = makeStyles(theme => ({
     display: 'none',
     visibility: 'hidden'
   },
+  clientPopUp: {
+    borderRadius: '30px 30px 30px 30px',
+  },
   freeInput: {
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
@@ -188,11 +191,13 @@ export default ({ open, roles, onClose }) => {
       onScroll={onScroll}
       p={2}
       height={250}
+      classes={{ paper: classes.clientPopUp }}
       fullWidth
       variant={'elevation'}
       elevation={2}
       TransitionComponent={Transition}
-      onClose={handleClose}>
+      onClose={handleClose}
+    >
       <DialogContentText
         className={classes.title}
         id='scroll-dialog-title'
@@ -209,7 +214,9 @@ export default ({ open, roles, onClose }) => {
       <Typography variant='h5' className={classes.orSeparator}>
         {`You may filter the list below`}
       </Typography>
-      <Paper p={2} component={Box} variant='outlined' width='100%' maxHeight={256} overflow='auto' square>
+      <Paper p={2} component={Box} variant='outlined'
+        width='100%' maxHeight={256} overflow='auto' square
+      >
         {(selectedClient === '*none') &&
           <React.Fragment>
             {Object.keys(accessList).map((client, c) => (

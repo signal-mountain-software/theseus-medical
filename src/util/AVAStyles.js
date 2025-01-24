@@ -12,6 +12,9 @@ export const AVAclasses = makeStyles(theme => ({
         paddingTop: 0,
         fontSize: '1.3rem'
     },
+    roundedCorners: {
+        borderRadius: '30px 30px 30px 30px',
+    },
     AVAButton: {
         marginLeft: theme.spacing(1),
         marginRight: theme.spacing(1),
