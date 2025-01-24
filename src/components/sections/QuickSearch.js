@@ -201,7 +201,7 @@ export default ({ reactData, updateReactData, onClose }) => {
         helperText='Name Search'
       />
       <Paper p={2} component={Box} elevation={0}
-        width='100%' minHeight={250} overflow='auto' square
+        width='100%' height={250} overflow='auto' square
       >
         {reactData.accessList &&
           <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
