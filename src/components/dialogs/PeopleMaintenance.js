@@ -158,7 +158,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           section_name: 'Groups',
           color: initialValues?.color || 'orange',
           isOpen: false,
-          isAuthorized: reactData.administrative_account || (state.session.user_id === reactData.person_id),
+          isAuthorized: reactData.administrative_account,
           version_id: 0,
           component_name: 'GroupAssignments'
         },
@@ -174,7 +174,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           section_name: 'Password & Tech Stuff',
           color: initialValues?.color || 'orange',
           isOpen: false,
-          isAuthorized: true,
+          isAuthorized: reactData.administrative_account || (state.session.user_id === reactData.person_id),
           version_id: 0,
           component_name: 'TechInfoSection'
         }
