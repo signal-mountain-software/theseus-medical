@@ -1,69 +1,62 @@
 import React from 'react';
-import useSession from '../../hooks/useSession';
 
-import { dbClient, recordExists, cl, deepCopy } from '../../util/AVAUtilities';
+import { dbClient, recordExists, cl } from '../../util/AVAUtilities';
 import { AVATextStyle } from '../../util/AVAStyles';
 import { makeDate } from '../../util/AVADateTime';
-import { documentDueDate } from '../../util/AVADocuments';
 
 import { Typography, Box } from '@material-ui/core/';
 
+import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import EditIcon from '@material-ui/icons/Edit';
+import CloudUploadIcon from '@material-ui/icons/CloudUpload';
+import PrintIcon from '@material-ui/icons/Print';
 import AddCircleIcon from '@material-ui/icons/AddCircle';
-import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
-import DynamicFeedIcon from '@material-ui/icons/DynamicFeed';
+import VisibilityIcon from '@material-ui/icons/Visibility';
 
+import AVAUploadFile from '../../util/AVAUploadFile';
 import FormFillB from '../forms/FormFillB';
 
 export default ({ currentValues, reactData, updateReactData }) => {
 
-  const { state } = useSession();
   const isMounted = React.useRef(false);
-
-  let checkCircleDisplayed = false;
-  let redPencilDisplayed = false;
-  let orangePencilDisplayed = false;
-  let pencilDisplayed = false;
-  let addAmendmentDisplayed = false;
-  let historyAmendmentDisplayed = false;
-  let circleDisplayed = false;
-  let orangeCircleDisplayed = false;
-  let redCircleDisplayed = false;
-  let historyDisplayed = false;
 
   React.useEffect(() => {
     async function initialize() {
       let myFormListObj = {};
-      if (!reactData.groupObj) {
-        if (!state.groups) {
-          if (isMounted.current) {
-            updateReactData({
-              alert: {
-                severity: 'warning',
-                title: 'Still loading Group information',
-                message: `AVA is still loading.  Wait just a moment and try again, please.`
-              }
-            }, true);
-            return;
+
+      // in a minute, we're going to need the names of all the forms that are found.
+      // we'll grab them all here.
+      let formNames = {};
+      let dueDates = {};
+      let formResult = await dbClient
+        .query({
+          TableName: 'Forms',
+          KeyConditionExpression: 'client_id = :c',
+          ExpressionAttributeValues: { ':c': currentValues.peopleRec.client_id }
+        })
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            cl(`Security Violation or no Internet Connection`);
           }
-        }
-        else {
-          updateReactData({
-            groupObj: deepCopy(state.groups)
-          }, true);
+          cl(`Error reading Forms id ${error}`);
+        });
+      if (recordExists(formResult)) {
+        for (let this_form of formResult.Items) {
+          formNames[this_form.form_id] = this_form.form_name;
+          dueDates[this_form.form_id] = this_form.due_by ? this_form.due_by[0] : null;
         }
       }
+
       // get all the groups that this person belongs to
       // and build myFormListObj with one object for each form assigned to members of this person's groups
-      for (let this_groupID of currentValues.peopleRec.groups) {
-        // get all the forms that are assigned people in this group 
-        let this_group;
+      for (let this_group of currentValues.peopleRec.groups) {
         let groupRec = await dbClient
           .get({
             Key: {
-              client_id: state.session.client_id,
-              group_id: this_groupID
+              client_id: currentValues.peopleRec.client_id,
+              group_id: this_group
             },
             TableName: "Groups"
           })
@@ -71,45 +64,33 @@ export default ({ currentValues, reactData, updateReactData }) => {
           .catch(error => {
             console.log({ 'Error reading Groups': error });
           });
-        if (recordExists(groupRec)) {
-          this_group = groupRec.Item;
-        }
-        if (this_group && this_group.forms) {
-          for (let this_form of this_group.forms) {
-            const formData = await documentDueDate(state.session.client_id, this_form);
-            let view_only = false;
-            if (formData) {
-              if (formData.formRec?.options?.restricted_access && !reactData.administrative_account) {
-                if (formData.formRec.options.restricted_access === 'admin_only') {
-                  continue;
-                }
-                if (formData.formRec.options.restricted_access === 'view_only') {
-                  view_only = true;
-                }
-              }
+
+        // get all the forms that are assigned people in this group 
+        if (recordExists(groupRec) && groupRec.Item.forms) {
+          for (let this_form of groupRec.Item.forms) {
+            if (!myFormListObj.hasOwnProperty(this_form)) {
               myFormListObj[this_form] = {
-                why: this_group.group_name,
                 form_id: this_form,
-                form_name: formData.formRec.form_name,
-                options: formData.formRec.options || {},
-                dueDate: formData.due_date,
-                view_only,
-                wipDocs: [],
-                assignedDocs: [],
-                completedDocs: [],
-                isUpdating: false,
-                isAmending: false
+                form_name: formNames[this_form],
+                dueDate: dueDates[this_form],
+                completed: false,
+                wip: false,
+                isViewing: false,
+                document_list: []
               };
             }
           }
         }
       }
-      // get all Documents for this person
-      let allDocs = await dbClient
+
+      // get all the completed documents for this person
+      let recentlyCompletedDocs = await dbClient
         .query({
           KeyConditionExpression: 'pertains_to = :p',
-          IndexName: 'person_form-index',
-          TableName: 'DocumentMaster',
+          ScanIndexForward: false,
+          IndexName: 'pertains_to-formType_date-index',
+          Limit: 40,
+          TableName: 'CompletedDocuments',
           ExpressionAttributeValues: {
             ':p': currentValues.peopleRec.person_id
           }
@@ -121,116 +102,97 @@ export default ({ currentValues, reactData, updateReactData }) => {
           }
           cl(`Error reading CompletedDocuments; error is ${error}`);
         });
-      if (recordExists(allDocs)) {
-        for (const this_doc of allDocs.Items) {
-          if ((this_doc.restricted_access === 'admin_only') && (!reactData.administrative_account)) {
-            continue;    // skip this document
-          }
-          if (!myFormListObj.hasOwnProperty(this_doc.form_type)) {
-            let view_only = false;
-            const formData = await documentDueDate(state.session.client_id, this_doc.form_type);
-            if (formData.formRec?.options?.restricted_access && !reactData.administrative_account) {
-              if (formData.formRec.options.restricted_access === 'admin_only') {
-                continue;
-              }
-              if (formData.formRec.options.restricted_access === 'view_only') {
-                view_only = true;
-              }
+      if (recordExists(recentlyCompletedDocs)) {
+        for (let this_doc of recentlyCompletedDocs.Items) {
+          if (this_doc.hasOwnProperty('restricted_access')) {
+            if ((this_doc.restricted_access === 'admin_only') && (!reactData.administrative_account)) {
+              continue;    // skip this document
             }
-            myFormListObj[this_doc.form_type] = {
-              why: `Assigned by ${this_doc.history[this_doc.history.length - 1].update_by}`,
-              form_id: this_doc.form_type,
-              form_name: formData.formRec.form_name || this_doc.form_type,
-              dueDate: formData.due_date,
-              options: formData.formRec.options || {},
-              view_only,
-              wipDocs: [],
-              assignedDocs: [],
-              completedDocs: [],
-              isUpdating: false,
-              isAmending: false
+          }
+          if (!myFormListObj.hasOwnProperty(this_doc.formType)) {
+            myFormListObj[this_doc.formType] = {
+              form_id: this_doc.formType,
+              form_name: formNames[this_doc.formType],
+              dueDate: dueDates[this_doc.formType],
+              completed: true,
+              wip: false,
+              isViewing: false,
+              document_list: []
             };
           }
-          if (this_doc.status === 'complete') {
-            const completed_count = myFormListObj[this_doc.form_type].completedDocs.length;
-            const cObj = {
-              document_id: this_doc.document_id,
-              location: this_doc.history[0].url,
-              last_update: this_doc.history[0].last_update,
-              date_completed: makeDate(this_doc.history[0].last_update).relative,
-              title: this_doc.title,
-              amendments: this_doc.amendments
-            };
-            if ((completed_count === 0) || (this_doc.history[0].last_update > myFormListObj[this_doc.form_type].completedDocs[0].last_update)) {
-              myFormListObj[this_doc.form_type].completedDocs.unshift(cObj);
-            }
-            else if (this_doc.history[0].last_update < myFormListObj[this_doc.form_type].completedDocs[completed_count - 1].last_update) {
-              myFormListObj[this_doc.form_type].completedDocs.push(cObj);
-            }
-            else {
-              const foundAt = myFormListObj[this_doc.form_type].completedDocs.findIndex(d => {
-                return (d.last_update < this_doc.history[0].last_update);
-              });
-              myFormListObj[this_doc.form_type].completedDocs.splice(foundAt, 0, cObj);
-            }
-          }
-          else if (this_doc.status === 'in_process') {
-            myFormListObj[this_doc.form_type].wipDocs.push({
-              document_id: this_doc.document_id,
-              last_update: this_doc.history[0].last_update,
-              due_date: this_doc.due_date || myFormListObj[this_doc.form_type].dueDate,
-              title: this_doc.title
-            });
-          }
-          else {
-            myFormListObj[this_doc.form_type].assignedDocs.push({
-              document_id: this_doc.document_id,
-              last_update: this_doc.history[0].last_update,
-              due_date: this_doc.due_date || myFormListObj[this_doc.form_type].dueDate,
-              title: this_doc.title
-            });
-          }
+          myFormListObj[this_doc.formType].completed = true;
+          myFormListObj[this_doc.formType].document_list.push({
+            document_id: this_doc.document_id,
+            isComplete: true,
+            location: this_doc.file_location,
+            date_completed: makeDate(this_doc.date_completed).relative
+          });
         }
       }
-      // done with all the docs - sort them so that:
-      //   completedDocs are in reverse last_update sequence
-      //   wipDocs and assignedDocs are in ascending due_date sequence with "no due date" last
 
+      // Check for an exising WIP form
+      let wipDocuments = await dbClient
+        .query({
+          KeyConditionExpression: 'pertains_to = :p',
+          ScanIndexForward: false,
+          TableName: 'DocumentsInProcess',
+          IndexName: 'pertains_to-formType_date-index',
+          ExpressionAttributeValues: {
+            ':p': currentValues.peopleRec.person_id,
+          }
+        })
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            cl(`Security Violation or no Internet Connection`);
+          }
+          cl(`Error reading DocumentsInProcess; error is ${error}`);
+        });
+      if (recordExists(wipDocuments)) {
+        for (let this_doc of wipDocuments.Items) {
+          if (this_doc.hasOwnProperty('restricted_access')) {
+            if ((this_doc.restricted_access === 'admin_only') && (!reactData.administrative_account)) {
+              continue;    // skip this document
+            }
+          }
+          if (!myFormListObj.hasOwnProperty(this_doc.formType)) {
+            myFormListObj[this_doc.formType] = {
+              form_id: this_doc.formType,
+              form_name: formNames[this_doc.formType],
+              dueDate: dueDates[this_doc.formType],
+              completed: false,
+              wip: true,
+              isViewing: false,
+              document_list: []
+            };
+          }
+          myFormListObj[this_doc.formType].wip = true;
+          myFormListObj[this_doc.formType].document_list.push({
+            document_id: this_doc.document_id,
+            isComplete: false,
+          });
+        }
+      }
       updateReactData({
         myFormListObj,
-        formsInitialized: true
+        recentlyCompletedDocs: recentlyCompletedDocs?.Items || []
       }, true);
     }
-    initialize();
     isMounted.current = true;
+    initialize();
     return () => { isMounted.current = false; };
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
-
-  const editForm = (this_formID) => {
-    if (reactData.myFormListObj[this_formID].wipDocs.length > 0) {
-      reactData.myFormListObj[this_formID].isUpdating = reactData.myFormListObj[this_formID].wipDocs[0].document_id;
-    }
-    else if (reactData.myFormListObj[this_formID].assignedDocs.length > 0) {
-      reactData.myFormListObj[this_formID].isUpdating = reactData.myFormListObj[this_formID].assignedDocs[0].document_id;
-    }
-    else {
-      reactData.myFormListObj[this_formID].isUpdating = 'new';
-    }
-    updateReactData({
-      myFormListObj: reactData.myFormListObj
-    }, true);
-  };
 
   return (
     <React.Fragment>
       {!reactData.formHistoryMode &&
         <Box
           key={`DocSection_masterBox`}
-          flexGrow={2} px={2} pt={'24px'} pb={'8px'} display='flex' flexDirection='column'
+          flexGrow={2} px={2} pt={2} pb={4} display='flex' flexDirection='column'
         >
-          {isMounted.current && reactData.formsInitialized && Object.keys(reactData.myFormListObj).length === 0 &&
+          {isMounted.current && Object.keys(reactData.myFormListObj).length === 0 &&
             <Typography
-              style={AVATextStyle({ margin: { left: 3, top: 1, bottom: 1 } })}
+              style={AVATextStyle({ italic: true, margin: { top: 1, bottom: 0.4 } })}
             >
               {`No Forms were found for you.`}
             </Typography>
@@ -241,274 +203,186 @@ export default ({ currentValues, reactData, updateReactData }) => {
             >
               <Box
                 display='flex'
-                flexDirection={'row'}
+                flexDirection={reactData.isMobile ? 'column' : 'row'}
                 key={`radio-col_form${form_index}`}
-                style={{ marginLeft: '4px', marginRight: '4px', marginTop: '8px', marginBottom: '8px' }}
-                justifyContent='space-between'
-                alignItems='center'
+                style={AVATextStyle({ margin: { left: 0, right: 1, top: 1 } })}
+                justifyContent='flex-start'
+                alignItems='flex-start'
               >
                 <Box
                   display='flex'
                   flexDirection='row'
                   key={`radio-row_form${form_index}`}
-                  justifyContent='center'
+                  justifyContent='flex-start'
                   alignItems='center'
                 >
-                  {((reactData.myFormListObj[this_formID].completedDocs.length > 0) &&
-                    (reactData.myFormListObj[this_formID].wipDocs.length === 0)) ?
-                    <React.Fragment>
-                      <Typography style={{ display: 'none', visibility: 'hidden' }}>
-                        {checkCircleDisplayed = true}
-                      </Typography>
-                      <CheckCircleIcon
-                        key={`radio-button_form${form_index}off`}
-                        id={`radio-button_form${form_index}off`}
-                        style={AVATextStyle({
-                          size: 1.5,
-                          margin: { right: 0.5 },
-                        })}
-                        onClick={() => {
-                          let nowJ = new Date().getTime();
-                          window.open(`${reactData.myFormListObj[this_formID].completedDocs[0].location}?qt=${nowJ.toString()}`
-                            , reactData.myFormListObj[this_formID].completedDocs[0].date_completed);
-                        }}
-                        size='small'
-                      />
-                    </React.Fragment>
-                    :
-                    ((!reactData.myFormListObj[this_formID].view_only
-                      || (
-                        (reactData.myFormListObj[this_formID].wipDocs.length > 0)
-                        && reactData.myFormListObj[this_formID].wipDocs[0].hasOwnProperty('assigned_to')
-                        && reactData.myFormListObj[this_formID].wipDocs[0].assigned_to.hasOwnProperty(state.session.patient_id)
-                        && reactData.myFormListObj[this_formID].wipDocs[0].assigned_to[state.session.patient_id] !== 'view_only'
-                      )
-                    )
-                      ?
-                      <React.Fragment>
-                        <Typography style={{ display: 'none', visibility: 'hidden' }}>
-                          {((reactData.myFormListObj[this_formID].completedDocs.length > 0)
-                            ? (pencilDisplayed = true)
-                            : (reactData.myFormListObj[this_formID].wipDocs.length > 0) ? (orangePencilDisplayed = true) : (redPencilDisplayed = true))}
-                        </Typography>
-                        <EditIcon
-                          key={`radio-button_form${form_index}edit`}
-                          id={`radio-button_form${form_index}edit`}
-                          onClick={() => {
-                            editForm(this_formID);
-                          }}
-                          style={AVATextStyle({
-                            size: 1.5,
-                            margin: { right: 0.5 },
-                            color: ((reactData.myFormListObj[this_formID].completedDocs.length > 0)
-                              ? null
-                              : (reactData.myFormListObj[this_formID].wipDocs.length > 0) ? 'orange' : 'red')
-                          })}
-                          size='small'
-                        />
-                      </React.Fragment>
-                      :
-                      <React.Fragment>
-                        <Typography style={{ display: 'none', visibility: 'hidden' }}>
-                          {((reactData.myFormListObj[this_formID].completedDocs.length > 0)
-                            ? (circleDisplayed = true)
-                            : (reactData.myFormListObj[this_formID].wipDocs.length > 0) ? (orangeCircleDisplayed = true) : (redCircleDisplayed = true))}
-                        </Typography>
-                        <RadioButtonUncheckedIcon
-                          key={`radio-button_open_form${form_index}edit`}
-                          style={AVATextStyle({
-                            size: 1.5,
-                            margin: { right: 0.5 },
-                            color: ((reactData.myFormListObj[this_formID].completedDocs.length > 0)
-                              ? null
-                              : (reactData.myFormListObj[this_formID].wipDocs.length > 0) ? 'orange' : 'red')
-                          })}
-                          size='small'
-                        />
-                      </React.Fragment>
-
-                    )
-                  }
-                  <Box display='flex' alignItems='flex-start'
-                    justifyContent='center' flexDirection='column'
-                    flexWrap='wrap'
-                  >
-                    <Typography
-                      key={`name-col_form${form_index}`}
+                  {reactData.myFormListObj[this_formID].completed &&
+                    <CheckCircleIcon
+                      key={`radio-button_form${form_index}off`}
+                      id={`radio-button_form${form_index}off`}
+                      style={AVATextStyle({
+                        size: 1.5,
+                        margin: { right: 0.5 },
+                      })}
                       onClick={() => {
-                        if (reactData.myFormListObj[this_formID].completedDocs.length > 0) {
-                          let nowJ = new Date().getTime();
-                          window.open(`${reactData.myFormListObj[this_formID].completedDocs[0].location}?qt=${nowJ.toString()}`
-                            , reactData.myFormListObj[this_formID].completedDocs[0].date_completed);
-                        }
-                        else if (!reactData.myFormListObj[this_formID].view_only) {
-                          editForm(this_formID);
-                        }
+                        let nowJ = new Date().getTime();
+                        window.open(`${reactData.myFormListObj[this_formID].document_list[0].location}?qt=${nowJ.toString()}`
+                          , reactData.myFormListObj[this_formID].date_completed);
+                      }}
+                      size='small'
+                    />
+                  }
+                  {!reactData.myFormListObj[this_formID].completed &&
+                    <RadioButtonUncheckedIcon
+                      key={`radio-button_form${form_index}on`}
+                      id={`radio-button_form${form_index}on`}
+                      style={AVATextStyle({
+                        size: 1.5,
+                        margin: { right: 0.5 },
+                        color: 'red'
+                      })}
+                      onClick={() => {
+                        reactData.myFormListObj[this_formID].isViewing = true;
+                        updateReactData({
+                          myFormListObj: reactData.myFormListObj
+                        }, true);
+                      }}
+                      size='small'
+                    />
+                  }
+                  {reactData.myFormListObj[this_formID].wip &&
+                    <EditIcon
+                      key={`radio-button_form${form_index}edit`}
+                      id={`radio-button_form${form_index}edit`}
+                      onClick={() => {
+                        reactData.myFormListObj[this_formID].isViewing = true;
+                        updateReactData({
+                          myFormListObj: reactData.myFormListObj
+                        }, true);
                       }}
                       style={AVATextStyle({
                         size: 1.5,
-                        margin: { left: 0 },
-                        color: ((reactData.myFormListObj[this_formID].completedDocs.length === 0) ? ((reactData.myFormListObj[this_formID].wipDocs.length > 0) ? 'orange' : 'red') : null)
+                        margin: { right: 0.5 },
+                        color: (!reactData.myFormListObj[this_formID].completed ? 'red' : null)
+                      })}
+                      size='small'
+                    />
+                  }
+                  {!reactData.myFormListObj[this_formID].wip &&
+                    <AddCircleIcon
+                      key={`radio-button_form${form_index}addnew`}
+                      id={`radio-button_form${form_index}addnew`}
+                      onClick={() => {
+                        reactData.myFormListObj[this_formID].makeNewDocument = true;
+                        updateReactData({
+                          myFormListObj: reactData.myFormListObj
+                        }, true);
+                      }}
+                      style={AVATextStyle({
+                        size: 1.5,
+                        margin: { right: 0.5 },
+                        color: (!reactData.myFormListObj[this_formID].completed ? 'red' : null)
+                      })}
+                      size='small'
+                    />
+                  }
+                  <PrintIcon
+                    key={`radio-button_form${form_index}print`}
+                    id={`radio-button_form${form_index}print`}
+                    style={AVATextStyle({
+                      size: 1.5,
+                      margin: { right: 0.5 },
+                      color: (!reactData.myFormListObj[this_formID].completed ? 'red' : null)
+                    })}
+                    onClick={() => {
+                      reactData.myFormListObj[this_formID].isPrinting = true;
+                      updateReactData({
+                        myFormListObj: reactData.myFormListObj
+                      }, true);
+                    }}
+                    size='small'
+                  />
+                  <CloudUploadIcon
+                    key={`radio-button_form${form_index}upload`}
+                    id={`radio-button_form${form_index}upload`}
+                    style={AVATextStyle({
+                      size: 1.5,
+                      margin: { right: 0.5 },
+                      color: (!reactData.myFormListObj[this_formID].completed ? 'red' : null)
+                    })}
+                    onClick={() => {
+                      reactData.myFormListObj[this_formID].uploadDoc = true;
+                      updateReactData({
+                        myFormListObj: reactData.myFormListObj
+                      }, true);
+                    }}
+                    size='small'
+                  />
+                </Box>
+                <Box display='flex' alignItems='center'
+                  justifyContent='flex-start' flexDirection='row'
+                  flexWrap='wrap'
+                >
+                  <Typography
+                    key={`name-col_form${form_index}`}
+                    onClick={() => {
+                      if (reactData.myFormListObj[this_formID].completed) {
+                        let nowJ = new Date().getTime();
+                        window.open(`${reactData.myFormListObj[this_formID].document_list[0].location}?qt=${nowJ.toString()}`
+                          , reactData.myFormListObj[this_formID].date_completed);
+                      }
+                      else {
+                        reactData.myFormListObj[this_formID].isViewing = true;
+                        updateReactData({
+                          myFormListObj: reactData.myFormListObj
+                        }, true);
+                      }
+                    }}
+                    style={AVATextStyle({
+                      size: 1.5,
+                      margin: { left: 0 },
+                      color: (!reactData.myFormListObj[this_formID].completed ? 'red' : null)
+                    })}
+                  >
+                    {reactData.myFormListObj[this_formID].form_name}
+                  </Typography>
+                  {reactData.myFormListObj[this_formID].dueDate &&
+                    !reactData.myFormListObj[this_formID].completed &&
+                    <Typography
+                      key={`duedate-col_form${form_index}`}
+                      style={AVATextStyle({
+                        size: 1,
+                        margin: { top: 0.2, left: 0.5 },
+                        color: (!reactData.myFormListObj[this_formID].completed ? 'red' : null)
                       })}
                     >
-                      {reactData.myFormListObj[this_formID].form_name}
+                      {`(due by ${makeDate(reactData.myFormListObj[this_formID].dueDate).relative})`}
                     </Typography>
-                    {(reactData.myFormListObj[this_formID].dueDate || (reactData.myFormListObj[this_formID].wipDocs.length > 0)) &&
-                      (reactData.myFormListObj[this_formID].completedDocs.length === 0) &&
-                      <Typography
-                        key={`duedate-col_form${form_index}`}
-                        style={AVATextStyle({
-                          size: 0.8,
-                          margin: { top: 0, left: 0 },
-                          color: ((reactData.myFormListObj[this_formID].wipDocs.length > 0) ? 'orange' : 'red')
-                        })}
-                      >
-                        {`${((reactData.myFormListObj[this_formID].wipDocs.length > 0) ? 'Started but incomplete. ' : '')}${(reactData.myFormListObj[this_formID].dueDate) ? ('Due by ' + makeDate(reactData.myFormListObj[this_formID].dueDate).relative) : ''}`}
-                      </Typography>
-                    }
-                    {(reactData.myFormListObj[this_formID].completedDocs.length > 0) &&
-                      <React.Fragment>
-                        <Typography
-                          key={`duedate-col_form${form_index}`}
-                          style={AVATextStyle({
-                            size: 0.8,
-                            margin: { top: 0, left: 0 },
-                          })}
-                        >
-                          {reactData.myFormListObj[this_formID].completedDocs[0].title}
-                        </Typography>
-                        <Typography
-                          key={`duedate-col_form${form_index}`}
-                          style={AVATextStyle({
-                            size: 0.8,
-                            margin: { top: 0, left: 0 },
-                          })}
-                        >
-                          {`Completed ${makeDate(reactData.myFormListObj[this_formID].completedDocs[0].last_update).relative}`}
-                        </Typography>
-                      </React.Fragment>
-                    }
-                  </Box>
-                </Box>
-                <Box
-                  display='flex'
-                  flexDirection='row'
-                  key={`radio-row_form__buttons${form_index}`}
-                  justifyContent='center'
-                  alignItems='center'
-                >
-                  {(reactData.myFormListObj[this_formID].completedDocs.length > 0) &&
-                    <React.Fragment>
-                      {reactData.myFormListObj[this_formID].options?.allowAmendments &&
-                        reactData.administrative_account &&
-                        <React.Fragment>
-                          <Typography style={{ display: 'none', visibility: 'hidden' }}>
-                            {addAmendmentDisplayed = true}
-                          </Typography>
-                          <AddCircleIcon
-                            style={AVATextStyle({ margin: { right: 0.1 } })}
-                            onClick={() => {
-                              reactData.myFormListObj[this_formID].isAmending = reactData.myFormListObj[this_formID].completedDocs[0].document_id;
-                              updateReactData({
-                                isAmendingForm: {
-                                  form_id: this_formID,
-                                  document_id: reactData.myFormListObj[this_formID].completedDocs[0].document_id
-                                },
-                                myFormListObj: reactData.myFormListObj
-                              }, true);
-                            }}
-                          />
-                        </React.Fragment>
-                      }
-                      {(reactData.myFormListObj[this_formID].completedDocs.length > 1) &&
-                        <React.Fragment >
-                          <Typography style={{ display: 'none', visibility: 'hidden' }}>
-                            {historyDisplayed = true}
-                          </Typography>
-                          <DynamicFeedIcon
-                            style={AVATextStyle({ margin: { right: 0.1 } })}
-                            onClick={() => {
-                              updateReactData({
-                                formHistoryMode: this_formID
-                              }, true);
-                            }}
-                          />
-                        </React.Fragment>
-                      }
-                      {(reactData.myFormListObj[this_formID].wipDocs.length === 0) &&
-                        (reactData.administrative_account || !reactData.myFormListObj[this_formID].view_only) &&
-                        <React.Fragment>
-                          <Typography style={{ display: 'none', visibility: 'hidden' }}>
-                            {pencilDisplayed = true}
-                          </Typography>
-                          <EditIcon
-                            style={AVATextStyle({ margin: { right: 0.1 } })}
-                            key={`radio-button_form${form_index}add`}
-                            id={`radio-button_form${form_index}add`}
-                            onClick={() => {
-                              editForm(this_formID);
-                            }}
-                            size='small'
-                          />
-                        </React.Fragment>
-                      }
-                    </React.Fragment>
                   }
                 </Box>
               </Box>
-              {reactData.myFormListObj[this_formID].isUpdating &&
+              {reactData.myFormListObj[this_formID].isViewing &&
                 <FormFillB
-                  key={`docPerson-${this_formID}_update_ffB`}
-                  request={(reactData.myFormListObj[this_formID].isUpdating === 'new') ?
-                    {
-                      form_id: this_formID,
-                      person_id: currentValues.peopleRec.person_id,
-                      mode: 'new',
-                    }
-                    :
-                    {
-                      form_id: this_formID,
-                      document_id: reactData.myFormListObj[this_formID].isUpdating,
-                      person_id: currentValues.peopleRec.person_id,
-                    }}
+                  request={{
+                    form_id: reactData.myFormListObj[this_formID].form_id,
+                    document_id: (reactData.myFormListObj[this_formID].document_id
+                      ? reactData.myFormListObj[this_formID].document_id[0]
+                      : null
+                    ),
+                    person_id: currentValues.peopleRec.person_id
+                  }}
                   onClose={(ignore_me, statusObj) => {
-                    reactData.myFormListObj[this_formID].isUpdating = false;
-                    if (statusObj.document_status === 'complete') {
-                      reactData.myFormListObj[this_formID].completedDocs.push({
-                        document_id: statusObj.recWritten.document_id,
-                        location: statusObj.recWritten.history[0].url,
-                        date_completed: makeDate(new Date().getTime()).relative,
-                        title: statusObj.recWritten.title,
-                        amendments: []
-                      });
-                      let foundAt = reactData.myFormListObj[this_formID].wipDocs.findIndex(d => {
-                        return d.document_id === reactData.myFormListObj[this_formID].isUpdating;
-                      });
-                      if (foundAt > -1) {
-                        reactData.myFormListObj[this_formID].wipDocs.splice(foundAt, 1);
+                    reactData.myFormListObj[this_formID].isViewing = false;
+                    reactData.myFormListObj[this_formID].completed = (statusObj.document_status === 'complete');
+                    if (statusObj.location) {
+                      if (!reactData.myFormListObj[this_formID].document_list
+                        || !Array.isArray(reactData.myFormListObj[this_formID].document_list)
+                      ) {
+                        reactData.myFormListObj[this_formID].document_list = [];
                       }
-                      else {
-                        let foundAt = reactData.myFormListObj[this_formID].assignedDocs.findIndex(d => {
-                          return d.document_id === reactData.myFormListObj[this_formID].isUpdating;
-                        });
-                        if (foundAt > -1) {
-                          reactData.myFormListObj[this_formID].assignedDocs.splice(foundAt, 1);
-                        }
-                      }
+                      reactData.myFormListObj[this_formID].document_list.unshift(statusObj.location);
                     }
-                    else if (statusObj.document_status === 'work_in_process') {
-                      reactData.myFormListObj[this_formID].wipDocs.push({
-                        document_id: statusObj.recWritten.document_id,
-                        due_date: statusObj.recWritten.due_date,
-                        title: statusObj.recWritten.title
-                      });
-                      let foundAt = reactData.myFormListObj[this_formID].assignedDocs.findIndex(d => {
-                        return d.document_id === reactData.myFormListObj[this_formID].isUpdating;
-                      });
-                      if (foundAt > -1) {
-                        reactData.myFormListObj[this_formID].assignedDocs.splice(foundAt, 1);
-                      }
-                    }
+                    reactData.myFormListObj[this_formID].wip = (statusObj.document_status === 'work_in_process');
                     updateReactData({
                       myFormListObj: reactData.myFormListObj
                     }, true);
@@ -517,7 +391,6 @@ export default ({ currentValues, reactData, updateReactData }) => {
               }
               {reactData.myFormListObj[this_formID].isPrinting &&
                 <FormFillB
-                  key={`docPerson-${this_formID}_print_ffB`}
                   request={{
                     form_id: reactData.myFormListObj[this_formID].form_id,
                     mode: 'printEmpty'
@@ -529,47 +402,149 @@ export default ({ currentValues, reactData, updateReactData }) => {
                     }, true);
                   }}
                 />
-              }              
+              }
+              {reactData.myFormListObj[this_formID].makeNewDocument &&
+                <FormFillB
+                  request={{
+                    form_id: reactData.myFormListObj[this_formID].form_id,
+                    person_id: currentValues.peopleRec.person_id,
+                    mode: 'new',
+                  }}
+                  onClose={() => {
+                    reactData.myFormListObj[this_formID].makeNewDocument = false;
+                    updateReactData({
+                      myFormListObj: reactData.myFormListObj
+                    }, true);
+                  }}
+                />
+              }
+              {reactData.myFormListObj[this_formID].uploadDoc &&
+                <AVAUploadFile
+                  options={{
+                    buttonText: ['Choose', 'Save & Continue'],
+                    title: [reactData.myFormListObj[this_formID].file_name, 'Tap "Choose a File" to select the content to upload'],
+                    oneOnly: true
+                  }}
+                  onCancel={() => {
+                    reactData.myFormListObj[this_formID].uploadDoc = false;
+                    updateReactData({
+                      myFormListObj: reactData.myFormListObj
+                    }, true);
+                  }}
+                  onLoad={async (response) => {
+                    let selectedName = (`${currentValues.peopleRec.name?.first} ${currentValues.peopleRec.name?.last}`).trim();
+                    const nowTime = makeDate(new Date());
+                    const newDocument_id = `${reactData.myFormListObj[this_formID].form_id}_${nowTime.timestamp}`;
+                    let goodPut = true;
+                    await dbClient
+                      .put({
+                        Item: {
+                          client_id: currentValues.peopleRec.client_id,
+                          document_id: `${reactData.myFormListObj[this_formID].form_id}_${nowTime.timestamp}`,
+                          document_title: `${reactData.myFormListObj[this_formID].form_name} for ${selectedName || currentValues.peopleRec.client_id} - ${nowTime.absolute}`,
+                          pertains_to: currentValues.peopleRec.person_id,
+                          date_completed: nowTime.timestamp,
+                          formType: reactData.myFormListObj[this_formID].form_id,
+                          formType_date: `${reactData.myFormListObj[this_formID].form_id}%%${new Date().getTime()}`,
+                          fields: null,
+                          save_info: {
+                            s3Bucket: 'theseus-medical-storage',
+                            s3Key: response[0].split('/').pop(),
+                            s3Location: response[0]
+                          },
+                          file_location: response[0]
+                        },
+                        TableName: 'CompletedDocuments'
+                      })
+                      .promise()
+                      .catch(error => {
+                        cl(`Bad put to CompletedDocuments. Error is: ${error}`);
+                        goodPut = false;
+                      });
+                    if (goodPut) {
+                      await dbClient
+                        .put({
+                          Item: {
+                            person_id: reactData.user_id,
+                            document_id: newDocument_id,
+                            role: 'completed_by',
+                          },
+                          TableName: 'DocumentXRef'
+                        })
+                        .promise()
+                        .catch(error => {
+                          const messageText = `Bad put to DocumentXRef (completed_by). Error is: ${error}`;
+                          cl(messageText);
+                          goodPut = false;
+                        });
+                      await dbClient
+                        .put({
+                          Item: {
+                            person_id: currentValues.peopleRec.person_id,
+                            document_id: newDocument_id,
+                            role: 'pertains_to',
+                          },
+                          TableName: 'DocumentXRef'
+                        })
+                        .promise()
+                        .catch(error => {
+                          const messageText = `Bad put to DocumentXRef (pertains_to). Error is: ${error}`;
+                          cl(messageText);
+                          goodPut = false;
+                        });
+                      var docXRefRec = {
+                        person_id: '*status',
+                        client_id: currentValues.peopleRec.client_id,
+                        document_id: newDocument_id,
+                        status: 'complete',
+                        formType: reactData.myFormListObj[this_formID].form_id,
+                        last_update: nowTime.timestamp
+                      };
+                      await dbClient
+                        .put({
+                          Item: docXRefRec,
+                          TableName: 'DocumentXRef'
+                        })
+                        .promise()
+                        .catch(error => {
+                          const messageText = `Bad put to DocumentXRef (status). Error is: ${error}`;
+                          cl(messageText);
+                          goodPut = false;
+                        });
+                    }
+                    reactData.myFormListObj[this_formID].uploadDoc = false;
+                    updateReactData({
+                      myFormListObj: reactData.myFormListObj
+                    }, true);
+                  }}
+                />
+              }
             </React.Fragment>
           ))}
+          {(reactData.recentlyCompletedDocs.length > 0) &&
+            <Box display='flex' alignItems='center'
+              justifyContent='flex-end' flexDirection='row'
+              onClick={() => {
+                updateReactData({
+                  formHistoryMode: true
+                }, true);
+              }}
+            >
+              <Typography
+                style={AVATextStyle({ opacity: '40%', margin: { top: 1, right: 0.5 } })}
+              >
+                {`Click here for history of completed forms`}
+              </Typography>
+            </Box>
+          }
         </Box >
-      }
-      {reactData.isAmendingForm &&
-        <FormFillB
-          key={`docPerson-amending_ffB`}
-          request={{
-            form_id: reactData.myFormListObj[reactData.isAmendingForm.form_id].options?.allowAmendments || 'amendment_1',
-            person_id: currentValues.peopleRec.person_id,
-            mode: 'new',
-            formData: {
-              document_id: reactData.isAmendingForm.document_id,
-              doc_reference: reactData.myFormListObj[reactData.isAmendingForm.form_id].completedDocs[0].title
-            }
-          }}
-          onClose={() => {
-            reactData.myFormListObj[reactData.isAmendingForm.form_id].isAmending = false;
-            updateReactData({
-              isAmendingForm: false,
-              myFormListObj: reactData.myFormListObj
-            }, true);
-          }}
-        />
       }
       {reactData.formHistoryMode &&
         <Box
           key={`DocHistorySection_masterBox`}
-          flexGrow={2} px={2} pt={'24px'} pb={4} display='flex' flexDirection='column'
+          flexGrow={2} px={2} pt={2} pb={4} display='flex' flexDirection='column'
         >
-          <Typography
-            key={`name-histry_section`}
-            style={AVATextStyle({
-              size: 1.5,
-              margin: { left: 0, bottom: 1 },
-            })}
-          >
-            {`History - ${reactData.myFormListObj[reactData.formHistoryMode].form_name}`}
-          </Typography>
-          {reactData.myFormListObj[reactData.formHistoryMode].completedDocs.map((this_doc, docNdx) => (
+          {reactData.recentlyCompletedDocs.map((this_doc, docNdx) => (
             <React.Fragment
               key={`historyFrag-col_form${docNdx}`}
             >
@@ -579,11 +554,55 @@ export default ({ currentValues, reactData, updateReactData }) => {
                 flexWrap={'nowrap'}
                 key={`radio-col_form${docNdx}`}
                 style={AVATextStyle({ margin: { left: 1, right: 1, top: 0.5 } })}
-                justifyContent='space-between'
+                justifyContent='flex-start'
                 alignItems='center'
-              >                
-                <Box display='flex' alignItems='flex-start'
-                  justifyContent='center' flexDirection='column'
+              >
+                <VisibilityIcon
+                  style={AVATextStyle({ margin: { right: 0.5 } })}
+                  onClick={() => {
+                    let printList = ([this_doc.file_location || this_doc.location]).concat(
+                      this_doc.amendments
+                        ? this_doc.amendments.map(this_amendment => {
+                          return this_amendment.file_location;
+                        })
+                        : []
+                    );
+                    printList.forEach((this_document, ndx) => {
+                      if (this_document) {
+                        window.open(this_document);
+                      }
+                    });
+                  }}
+                />
+                <AddCircleIcon
+                  style={AVATextStyle({ margin: { right: 0.5 } })}
+                  onClick={() => {
+                    reactData.recentlyCompletedDocs[docNdx].amendmentPending = true;
+                    updateReactData({
+                      recentlyCompletedDocs: reactData.recentlyCompletedDocs
+                    }, true);
+                    /*
+                    updateReactData({
+                      addDocPrompt: false,
+                      addDocForm: true,
+                      pendingInstructions: {
+                        selectedPerson: this_doc.pertains_to,
+                        selectedPerson_index: personNdx,
+                        action: 'amendment',
+                        parentFormType: this_form.form_id,
+                        docIndex: docNdx,
+                        formType: this_form.amedment_form_id || 'amendment_1',
+                        formData: {
+                          document_id: this_doc.document_id,
+                          doc_reference: `${this_doc.document_title} for ${this_doc.pertains_to_name}; completed on ${makeDate(this_doc.last_update).absolute}`
+                        }
+                      }
+                    }, true);
+                */
+                  }}
+                />
+                <Box display='flex' alignItems='center'
+                  justifyContent='flex-start' flexDirection='row'
                   onClick={() => {
                     let printList = ([this_doc.file_location || this_doc.location]).concat(
                       this_doc.amendments
@@ -602,46 +621,38 @@ export default ({ currentValues, reactData, updateReactData }) => {
                   <Typography
                     key={`docPerson-${this_doc.document_id}_${docNdx}`}
                     id={`docPerson-${this_doc.document_id}_${docNdx}`}
-                    style={AVATextStyle({ size: 1, margin: { right: 0.2 } })}
+                    style={AVATextStyle({ size: 0.8, margin: { right: 0.2 } })}
                   >
-                    {this_doc.title}
+                    {this_doc.document_title}
                   </Typography>
                   <Typography
-                    key={`duedate-col_form${this_doc.document_id}_${docNdx}`}
-                    style={AVATextStyle({
-                      size: 0.8,
-                      margin: { top: 0, left: 0 },
-                    })}
+                    key={`docDate-${this_doc.document_id}_${docNdx}`}
+                    id={`docDate-${this_doc.document_id}_${docNdx}`}
+                    style={AVATextStyle({ size: 0.8 })}
                   >
-                    {`Completed ${this_doc.date_completed}`}
+                    {makeDate(this_doc.docDate).dateOnly}
                   </Typography>
                 </Box>
-                <Box display='flex' alignItems='center'
-                  justifyContent='flex-start' flexDirection='row'
-                >
-                  {reactData.myFormListObj[reactData.formHistoryMode].options?.allowAmendments &&
-                    reactData.administrative_account &&
-                    <React.Fragment>
-                      <Typography style={{ display: 'none', visibility: 'hidden' }}>
-                        {historyAmendmentDisplayed = true}
-                      </Typography>
-                      <AddCircleIcon
-                        style={AVATextStyle({ margin: { right: 0.1 } })}
-                        onClick={() => {
-                          reactData.myFormListObj[reactData.formHistoryMode].isAmending = this_doc.document_id;
-                          updateReactData({
-                            isAmendingForm: {
-                              form_id: reactData.formHistoryMode,
-                              document_id: this_doc.document_id
-                            },
-                            myFormListObj: reactData.myFormListObj
-                          }, true);
-                        }}
-                      />
-                    </React.Fragment>
-                  }             
-                </Box>
               </Box>
+              {this_doc.amendmentPending &&
+                <FormFillB
+                  request={{
+                    form_id: this_doc.amedment_form_id || 'amendment_1',
+                    person_id: currentValues.peopleRec.person_id,
+                    mode: 'new',
+                    formData: {
+                      document_id: this_doc.document_id,
+                      doc_reference: `${this_doc.document_title}`
+                    }
+                  }}
+                  onClose={() => {
+                    reactData.recentlyCompletedDocs[docNdx].amendmentPending = false;
+                    updateReactData({
+                      recentlyCompletedDocs: reactData.recentlyCompletedDocs
+                    }, true);
+                  }}
+                />
+              }
             </React.Fragment>
           ))}
           <Box display='flex' alignItems='center'
@@ -660,178 +671,6 @@ export default ({ currentValues, reactData, updateReactData }) => {
           </Box>
         </Box>
       }
-      {!reactData.formHistoryMode &&
-        isMounted.current &&
-        reactData.formsInitialized &&
-        Object.keys(reactData.myFormListObj).length > 0 &&
-        <Box
-          display='flex'
-          flexDirection='column'
-          key={`radio-guide_buttons`}
-          marginTop='16px'
-          marginBottom='16px'
-          marginLeft='20px'
-        >
-          <Typography
-            style={AVATextStyle({ margin: { right: 1 }, size: 0.8 })}
-          >
-            {`Icon guide`}
-          </Typography>
-          {checkCircleDisplayed &&
-            <Box display='flex'
-              flexDirection='row'
-              key={`radio-guide_e_buttons`}
-            >
-              <CheckCircleIcon
-                style={AVATextStyle({ margin: { right: 0.1 } })}
-                key={`radio-guide_e_button`}
-                size='small'
-              />
-              <Typography
-                style={AVATextStyle({ margin: { right: 1 }, size: 0.8 })}
-              >
-                {`View a completed form`}
-              </Typography>
-            </Box>
-          }
-          {(circleDisplayed || redCircleDisplayed || orangeCircleDisplayed) &&
-            <Box display='flex'
-              flexDirection='row'
-              key={`radio-guide_e_buttons2`}
-            >
-              <RadioButtonUncheckedIcon
-                style={AVATextStyle({ margin: { right: 0.1 }, color: (redCircleDisplayed ? 'red' : (orangeCircleDisplayed ? 'orange' : null)) })}
-                key={`radio-guide_e_button`}
-                size='small'
-              />
-              <Typography
-                style={AVATextStyle({ margin: { right: 1 }, size: 0.8, color: (redCircleDisplayed ? 'red' : (orangeCircleDisplayed ? 'orange' : null)) })}
-              >
-                {`You will be able to view this form after it is completed`}
-              </Typography>
-            </Box>
-          }
-          {redPencilDisplayed &&
-            <Box display='flex'
-              flexDirection='row'
-              key={`radio-guide_e_buttons2`}
-            >
-              <EditIcon
-                style={AVATextStyle({ margin: { right: 0.1 }, color: 'red' })}
-                key={`radio-guide_e_button`}
-                size='small'
-              />
-              <Typography
-                style={AVATextStyle({ margin: { right: 1 }, size: 0.8, color: 'red' })}
-              >
-                {`Start a new form`}
-              </Typography>
-            </Box>
-          }
-          {orangePencilDisplayed &&
-            <Box display='flex'
-              flexDirection='row'
-              key={`radio-guide_e_buttons2`}
-            >
-              <EditIcon
-                style={AVATextStyle({ margin: { right: 0.1 }, color: 'orange' })}
-                key={`radio-guide_e_button2`}
-                size='small'
-              />
-              <Typography
-                style={AVATextStyle({ margin: { right: 1 }, size: 0.8, color: 'orange' })}
-              >
-                {`Continue an incomplete form`}
-              </Typography>
-            </Box>
-          }
-          {addAmendmentDisplayed &&
-            <Box display='flex'
-              flexDirection='row'
-              key={`radio-guide_e_buttons3`}
-            >
-              <AddCircleIcon
-                key={`radio-guide_ac_button3`}
-                style={AVATextStyle({ margin: { right: 0.1 } })}
-              />
-              <Typography
-                style={AVATextStyle({ margin: { right: 1 }, size: 0.8 })}
-              >
-                {`Amend a completed form`}
-              </Typography>
-            </Box>
-          }
-          {pencilDisplayed &&
-            <Box display='flex'
-              flexDirection='row'
-              key={`radio-guide_e_buttons4`}
-            >
-              <EditIcon
-                style={AVATextStyle({ margin: { right: 0.1 } })}
-                key={`radio-guide_e_button4`}
-                size='small'
-              />
-              <Typography
-                style={AVATextStyle({ margin: { right: 1 }, size: 0.8 })}
-              >
-                {`Replace a completed form`}
-              </Typography>
-            </Box>
-          }
-          {historyDisplayed &&
-            <Box display='flex'
-              flexDirection='row'
-              key={`radio-guide_e_buttons5`}
-            >
-              <DynamicFeedIcon
-                style={AVATextStyle({ margin: { right: 0.1 } })}
-                key={`radio-guide_e_button5`}
-                size='small'
-              />
-              <Typography
-                style={AVATextStyle({ margin: { right: 1 }, size: 0.8 })}
-              >
-                {`Show history`}
-              </Typography>
-            </Box>
-          }
-        </Box>
-      }
-      {reactData.formHistoryMode &&
-        isMounted.current &&
-        reactData.formsInitialized &&
-        historyAmendmentDisplayed &&
-        <Box
-          display='flex'
-          flexDirection='column'
-          key={`radio-guide_buttons`}
-          marginTop='16px'
-          marginBottom='16px'
-          marginLeft='20px'
-        >
-          <Typography
-            style={AVATextStyle({ margin: { right: 1 }, size: 0.8 })}
-          >
-            {`Icon guide - History screen`}
-          </Typography>          
-          {historyAmendmentDisplayed &&
-            <Box display='flex'
-              flexDirection='row'
-              key={`radio-guide_e_buttons3`}
-            >
-              <AddCircleIcon
-                key={`radio-guide_ac_button`}
-                style={AVATextStyle({ margin: { right: 0.1 } })}
-              />
-              <Typography
-                style={AVATextStyle({ margin: { right: 1 }, size: 0.8 })}
-              >
-                {`Amend a completed form`}
-              </Typography>
-            </Box>
-          }
-        </Box>
-      }
     </React.Fragment>
   );
-};
+};;

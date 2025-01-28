@@ -30,8 +30,6 @@ import Number2Form from './Number2Form';
 import FreeTextForm from './FreeTextForm';
 import MakeMessage from './MakeMessage';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
-import ClientMaintenance from '../dialogs/ClientMaintenance';
-import FormManagement from '../dialogs/FormManagement';
 
 import { createPutFact } from '../../graphql/mutations';
 import { useSnackbar } from 'notistack';
@@ -171,31 +169,9 @@ export default ({
       );
     case 'people_maintenance':
     case 'person_maintenance': {
-      let defaultValueObj = {};
-      if (!defaultValue) { }
-      else {
-        if (Array.isArray(defaultValue)) {
-          defaultValue.forEach(d => {
-            if (typeof d === 'string') {
-              let [dKey, dVal] = d.split('=');
-              defaultValueObj[dKey] = dVal;
-            }
-            else {
-              for (let dKey in d) {
-                defaultValueObj[dKey] = d[dKey];
-              }
-            }
-          });
-        }
-        else {
-          try { defaultValueObj = JSON.parse(defaultValue); }
-          catch { console.log(defaultValue); }
-        }
-      }
       return (
         <PeopleMaintenance
           person_id={session.patient_id}
-          options={defaultValueObj.options}
           onClose={(updatedPerson) => {
             if (updatedPerson) {
               sessionStorage.removeItem('AVASessionData');
@@ -204,33 +180,6 @@ export default ({
             else {
               onClose();
             }
-          }}
-        />
-      );
-    }
-    case 'client_maintenance': {
-      return (
-        <ClientMaintenance
-          client_id={session.client_id}
-          onClose={(updatedPerson) => {
-            if (updatedPerson) {
-              sessionStorage.removeItem('AVASessionData');
-              window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
-            }
-            else {
-              onClose();
-            }
-          }}
-        />
-      );
-    }
-    case 'form_management': {
-      return (
-        <FormManagement
-          client_id={session.client_id}
-          form_id={'billing_summary_1'}
-          onClose={() => {
-              onClose();
           }}
         />
       );

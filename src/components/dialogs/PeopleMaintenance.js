@@ -57,7 +57,6 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     viewFamilyMember: false,
     user_id: state.user.user_id,
     formHistoryMode: false,
-    isAmendingForm: false,
     recentlyCompletedDocs: [],
     addAccountList: [],
     familyFormsObj: {},
@@ -66,7 +65,6 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     OKtoSave: false,
     alert: false,
     myFormListObj: {},
-    formsInitialized: false,
     myImage: (options.mode === 'add') ? '' : getImage(person_id),
     image_editing: false,
     components: {
@@ -127,7 +125,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         sections: [{
           section_name: 'Name & Contact info',
           color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'ProfileSection') : false),
+          isOpen: false,
           isAuthorized: true,
           version_id: 0,
           component_name: 'ProfileSection'
@@ -135,7 +133,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'Messaging',
           color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'MessagePreferencesSection') : false),
+          isOpen: false,
           isAuthorized: true,
           version_id: 0,
           component_name: 'MessagePreferencesSection'
@@ -143,7 +141,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'My Family',
           color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'LinkedAccounts') : false),
+          isOpen: false,
           isAuthorized: true,
           version_id: 0,
           component_name: 'LinkedAccounts'
@@ -151,7 +149,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'Photo & Personalization',
           color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'PersonalizationSection') : false),
+          isOpen: false,
           isAuthorized: true,
           version_id: 0,
           component_name: 'PersonalizationSection'
@@ -159,7 +157,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'Groups',
           color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'GroupAssignments') : false),
+          isOpen: false,
           isAuthorized: reactData.administrative_account,
           version_id: 0,
           component_name: 'GroupAssignments'
@@ -167,7 +165,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'Forms',
           color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'FormSection') : false),
+          isOpen: false,
           isAuthorized: true,
           version_id: 0,
           component_name: 'FormSection'
@@ -175,7 +173,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'Password & Tech Stuff',
           color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'TechInfoSection') : false),
+          isOpen: false,
           isAuthorized: reactData.administrative_account || (state.session.user_id === reactData.person_id),
           version_id: 0,
           component_name: 'TechInfoSection'
@@ -277,11 +275,10 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         }
       }
       if (!reactData.groupObj && state.groups && reactUpdObj.og.peopleRec.groups) {
-        // check all groups you belong to - we are trying to figure out whether to show the linked account section
-        // there are three states:
+        // check all groups you belong to - there are three states:
         //   show_linkedAccounts is ASSUMED to be on
-        //   a group can explcitly disable this by including the linked_accounts.isEnabled = false
-        //   ANY group with linked_accounts.isEnabled = true will override ALL others despite any other groups having linked_accounts.isEnabled = false
+        //   a group can explcitly disable this by including the linked_accounts key with isEnabled = false
+        //   ANY group with isEnabled = true will override ALL other isEnabled = false
         let isEnabled = false;
         let isDisabled = false;
         let addAccountList = [];
@@ -486,20 +483,15 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             severity: 'warning',
             title: 'Your Account ID',
             message: (person_id_blank
-              ? `We set your Account ID to ${newID}.  Tap OK, then select Group(s) and make other updates as needed.`
-              : `We tried Account ID of ${proposedID}, but that was already taken.  We've assigned ${newID} instead.`
+              ? `We set your Account ID to ${newID}.  Tap OK, then tap Save again.`
+              : `We tried Account ID of ${proposedID}, but that was already taken.  We've assigned ${newID} instead.  Tap OK, then try your Save again (you can update this proposed ID, too, if you'd prefer).`
             ),
             action: [
               {
                 text: `OK`,
                 function: () => {
-                  let groupAt = reactData.sections.findIndex(g => { return g.section_name === 'Groups'; });
-                  if (groupAt > -1) {
-                    reactData.sections[groupAt].isOpen = true;
-                  }
                   updateReactData({
-                    alert: false,
-                    sections: reactData.sections
+                    alert: false
                   }, true);
                 }
               }
@@ -509,20 +501,6 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         return false;
       };
     }
-    let groupOK = reactData.current.peopleRec.groups.some(g => { return ((g !== 'ALL') && (g !== '__top__')); });
-    if (!groupOK) {
-      reactData.errorList['groups'] = {
-        errorField: 'groups',
-        errorValue: '',
-        isError: true,
-        errorMessage: `You must select at least one Group`
-      };
-      updateReactData({
-        errorList: reactData.errorList,
-      }, true);
-      return false;
-    }
-
     reactData.person_id = reactData.current.peopleRec.person_id;
     if (JSON.stringify(reactData.og.peopleRec) !== JSON.stringify(reactData.current.peopleRec)) {
       // **** NEED TO ADD SPECIAL HANDLING FOR CHANGE OF PRIMARY KEY ***  (likely change to inactive account?)
@@ -707,9 +685,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         key={`section_frame`} variant='outlined' overflow={'auto'}
       >
         {reactData.sections.map((this_section, sectionNdx) => (
-          (this_section.isAuthorized &&
-            (!reactData.options?.sectionToShow || (reactData.options?.sectionToShow === this_section.component_name)) &&
-            (reactData.person_id || (this_section.component_name === 'ProfileSection')) &&
+          (this_section.isAuthorized && (reactData.person_id || (this_section.component_name === 'ProfileSection')) &&
             <Box
               key={`frag__${sectionNdx}`}
             >
@@ -766,17 +742,15 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                     }}
                     ml={2} mr={2} mb={1.5}
                     onClick={async () => {
-                      if (reactData.options?.sectionToShow !== this_section.component_name) {
-                        reactData.sections[sectionNdx].isOpen = !reactData.sections[sectionNdx].isOpen;
-                        updateReactData({
-                          sections: reactData.sections
-                        }, true);
-                      }
+                      reactData.sections[sectionNdx].isOpen = !reactData.sections[sectionNdx].isOpen;
+                      updateReactData({
+                        sections: reactData.sections
+                      }, true);
                     }}
-                  justifyContent='center'
-                  flexDirection='column'
-                  minHeight={30}
-                  height={30}
+                    justifyContent='center'
+                    flexDirection='column'
+                    minHeight={30}
+                    height={30}
                   />
                 </React.Fragment>
               }
@@ -867,13 +841,13 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
               <Typography style={{ size: 1.2, bold: true }}>
                 {`${(reactData.current.peopleRec?.name?.first + "'s").replace("s's", "s'")} Profile`}
               </Typography>
-              {(reactData.mode === 'view') &&
-                <Typography style={{ size: 1.2, bold: true }}>
-                  {`** View only **`}
-                </Typography>
-              }
-              {(reactData.mode === 'view') &&
-                <Typography style={{ marginTop: 0, size: 1 }}>
+                {(reactData.mode === 'view') &&
+                  <Typography style={{ size: 1.2, bold: true }}>
+                    {`** View only **`}
+                  </Typography>
+                }
+                {(reactData.mode === 'view') &&
+                   <Typography style={{ marginTop: 0, size: 1 }}>
                   {`No Changes allowed`}
                 </Typography>
               }

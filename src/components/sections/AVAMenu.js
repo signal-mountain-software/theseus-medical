@@ -1063,7 +1063,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 }}
                 title={
                   <Typography variant='caption'>
-                    {`Administration Menu`}
+                    {session?.kiosk_mode ? 'View/Update not available' : `View/Update ${reactData.greetingName}'${reactData.greetingName.slice(-1) === 's' ? '' : 's'} Profile`}
                   </Typography>
                 }
                 placement='bottom-start'>
@@ -1682,9 +1682,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     }
                   }}
                   onClose={() => {
-                    reset();
-                    sessionStorage.removeItem('AVASessionData');
-                    window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+                    updateReactData({
+                      showAddAccount: false
+                    }, true);
                   }}
                 />
               }
