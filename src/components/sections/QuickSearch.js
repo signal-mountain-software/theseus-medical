@@ -18,7 +18,7 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-export default ({ reactData, updateReactData, onClose }) => {
+export default ({ reactData, updateReactData, onClose, options = {} }) => {
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -27,7 +27,6 @@ export default ({ reactData, updateReactData, onClose }) => {
 
   React.useEffect(() => {
     async function initialize() {
-
       if (!reactData.accessList) {
         if (!state.accessList) {
           if (isMounted.current) {
@@ -36,10 +35,21 @@ export default ({ reactData, updateReactData, onClose }) => {
         }
         else {
           updateReactData(
-            { accessList: deepCopy(state.accessList[state.session.client_id].list) },
+            {
+              selections: [],
+              accessList: deepCopy(state.accessList[state.session.client_id].list)
+            },
             true
           );
         }
+      }
+      else {
+        updateReactData(
+          {
+            selections: [],
+          },
+          true
+        );
       }
     }
     isMounted.current = true;
@@ -49,111 +59,12 @@ export default ({ reactData, updateReactData, onClose }) => {
 
   const OKtoShow = (this_person) => {
     return (
+      (((reactData.selections.length > 0) && (reactData.selections.some(s => { return s.person_id === this_person.person_id; })))
+        ||
       ((reactData.linkedPersonFilter?.raw?.length > 1)
-        && (`${this_person.last} ${this_person.first}`).toLowerCase().includes(reactData.linkedPersonFilter.lower))
+        && (`${this_person.last} ${this_person.first}`).toLowerCase().includes(reactData.linkedPersonFilter.lower)))
     );
   };
-
-  /*
-  return (
-    <Dialog open={true || reactData.accessList}
-      classes={{ paper: AVAClass.clientPopUp }}
-      p={2}
-      height={550}
-      fullWidth
-      variant={'elevation'}
-      elevation={2}
-      onClose={() => { onClose(); }}
-    >
-      <Box
-        key={`MessagePrefSection_masterBox`}
-        flexGrow={2} p={2} display='flex' flexDirection='column'
-      >
-        <Box
-          display='flex'
-          flexDirection='column'
-          alignItems={'flex-start'}
-          marginTop={2}
-          marginBottom={1}
-        >
-          {reactData.accessList &&
-            <Box flexGrow={2} display='flex' flexDirection='column'>
-              <Typography
-                style={AVATextStyle({ italic: true })}
-              >
-                {`Quick search`}
-              </Typography>
-              <Box flexGrow={2} display='flex' flexDirection='column'>
-                <TextField
-                  multiline
-                  style={isMobile ? AVATextStyle({ width: '90%', margin: { left: 0.5 } }) : AVATextStyle({ margin: { left: 1 } })}
-                  key={`key_words`}
-                  defaultValue={reactData.linkedPersonFilter.raw || ''}
-                  onChange={(event) => {
-                    if (event.target.value.length === 0) {
-                      updateReactData({
-                        linkedPersonFilter: {
-                          raw: '',
-                          lower: ''
-                        }
-                      }, true);
-                    }
-                    else {
-                      updateReactData({
-                        linkedPersonFilter: {
-                          raw: event.target.value.trim(),
-                          lower: event.target.value.trim().toLowerCase()
-                        }
-                      }, true);
-                    }
-                  }}
-                  autoComplete='off'
-                  helperText='Name Search'
-                />
-              </Box>
-            </Box>
-          }
-          {reactData.accessList &&
-            <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-              {reactData.accessList.map((this_item, tIndex) => (
-                OKtoShow(this_item) &&
-                <Box
-                  display='flex'
-                  flexDirection='row'
-                  alignItems={'center'}
-                  key={`select_person_opt${tIndex}`}
-                  style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
-                  onClick={() => {
-                    updateReactData({
-                      showProfileEdit_id: this_item.person_id
-                    }, true);
-                  }}
-                >
-                  <Typography
-                    style={AVATextStyle({})}
-                  >
-                    {`${this_item.first} ${this_item.last}`}
-                  </Typography>
-                </Box>
-              )
-              )}
-            </Box>
-          }
-          {reactData.showProfileEdit_id &&
-            <PeopleMaintenance
-              person_id={reactData.showProfileEdit_id}
-              onClose={(updatedPerson) => {
-                updateReactData({
-                  showProfileEdit_id: false
-                }, true);
-              }}
-            />
-          }
-        </Box>
-      </Box >
-    </Dialog>
-  );
-  */
 
   return (
     <Dialog open={true || reactData.accessList}
@@ -170,7 +81,7 @@ export default ({ reactData, updateReactData, onClose }) => {
         style={AVATextStyle({
           size: 1.4,
           bold: true,
-          margin: {left: 0.5, top: 1}
+          margin: { left: 0.5, top: 1 }
         })}
       >
         {`Quick Search`}
@@ -214,13 +125,24 @@ export default ({ reactData, updateReactData, onClose }) => {
                 key={`select_person_opt${tIndex}`}
                 style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
                 onClick={() => {
-                  updateReactData({
-                    showProfileEdit_id: this_item.person_id
-                  }, true);
+                  if (options.pickAndGo) {
+                    reactData.selections.unshift({
+                      person_id: this_item.person_id,
+                      person_name: (`${this_item.first.trim()} ${this_item.last.trim()}`).trim()
+                    })
+                    updateReactData({
+                      selections: reactData.selections
+                    }, true)
+                  }
+                  else {
+                    updateReactData({
+                      showProfileEdit_id: this_item.person_id
+                    }, true);
+                  }
                 }}
               >
                 <Typography
-                  style={AVATextStyle({})}
+                    style={AVATextStyle({ bold: (reactData.selections.some(s => { return s.person_id === this_item.person_id; }))})}
                 >
                   {`${this_item.first} ${this_item.last}`}
                 </Typography>
@@ -236,7 +158,7 @@ export default ({ reactData, updateReactData, onClose }) => {
           style={{ backgroundColor: 'red', color: 'white' }}
           size='small'
           onClick={() => {
-            onClose();
+            onClose(reactData.selections);
           }}
           startIcon={<CloseIcon fontSize="small" />}
         >
@@ -245,8 +167,8 @@ export default ({ reactData, updateReactData, onClose }) => {
       </DialogActions>
       {reactData.showProfileEdit_id &&
         <PeopleMaintenance
-        person_id={reactData.showProfileEdit_id}
-        options={{ mode: 'view' }}
+          person_id={reactData.showProfileEdit_id}
+          options={{ mode: 'view' }}
           onClose={(updatedPerson) => {
             updateReactData({
               showProfileEdit_id: false

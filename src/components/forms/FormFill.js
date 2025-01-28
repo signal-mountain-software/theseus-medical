@@ -1490,6 +1490,11 @@ export default ({ request = {}, onClose }) => {
                       <React.Fragment
                         key={`fieldFrag__${this_field}`}
                       >
+
+
+
+
+                        
                         {(reactData.formRec.fields[this_field].value.type === 'text') &&
                           <TextField
                             id={`field__${this_field}`}
@@ -1518,6 +1523,18 @@ export default ({ request = {}, onClose }) => {
                             helperText={reactData.formRec.fields[this_field].prompt.ref}
                           />
                         }
+
+
+
+
+
+
+
+
+
+
+
+
                         {(reactData.formRec.fields[this_field].value.type === 'image') &&
                           <Box
                             className={classes.imageArea}

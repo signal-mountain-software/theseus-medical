@@ -5,11 +5,14 @@ import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { formatPhone, getPerson, makeName } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
 import AVAConfirm from './AVAConfirm';
+import AVAUploadFile from '../../util/AVAUploadFile';
+
 import { sendMessages } from '../../util/AVAMessages';
 import { printDocumentB, printEmptyDocument, printDocumentHybrid } from '../../util/AVAMessages';
 import SignatureCanvas from 'react-signature-canvas';
 import Select from "react-dropdown-select";
 import PrintIcon from '@material-ui/icons/Print';
+import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 
 import Box from '@material-ui/core/Box';
 import { Dialog, DialogContent } from '@material-ui/core';
@@ -23,6 +26,7 @@ import Button from '@material-ui/core/Button';
 
 import useSession from '../../hooks/useSession';
 import { useIdleTimer } from 'react-idle-timer';
+import { updateDocument, createDocument } from '../../util/AVADocuments';
 
 const useStyles = makeStyles(theme => ({
   dialogBox: {
@@ -93,6 +97,10 @@ const useStyles = makeStyles(theme => ({
   },
   reject: {
     backgroundColor: theme.palette.reject[theme.palette.type],
+  },
+  breakRow: {
+    flexBasis: '100%',
+    height: 0
   },
   inputDisplay: {
     '&.MuiInputBase-input': {
@@ -168,6 +176,7 @@ export default ({ request = {}, onClose }) => {
     formRec: {},
     sessionRec: {},
     peopleRec: {},
+    docRec: {},
     familyRec: false,
     family_id: options.family_id || false,
     newPerson: false,
@@ -230,7 +239,8 @@ export default ({ request = {}, onClose }) => {
         cl(`Auto save at ${now.toLocaleString()}.`);
         let response = await handleSave({
           document_id: reactData.document_id,
-          final: false
+          final: false,
+          timeout: true
         });
         if (response.goodPut) {
           reactUpdObj.formUpdates = 0;
@@ -636,39 +646,23 @@ export default ({ request = {}, onClose }) => {
         errorMessage:
     */
     let pertains_to_name;
-    if (reactData.pertains_to === reactData.family_id) {
-      const familyRec = await getDb({
-        Key: {
-          client_id: state.session.client_id,
-          composite_key: pertains_to
-        },
-        TableName: "FamilyGroups"
-      });
-      updateReactData({
-        familyRec,
-        formRec
-      }, false);
-      pertains_to_name = reactData.familyRec.family_name || 'My Family';
-    }
-    else {
-      reactData.peopleRec[pertains_to] = await getDb({
-        Key: {
-          person_id: pertains_to
-        },
-        TableName: "People"
-      });
-      if (!reactData.peopleRec[pertains_to]) {
-        reactData.peopleRec[pertains_to] = {};
-      };
-      updateReactData({
-        family_id: reactData.peopleRec[pertains_to].family_id || false,
-        peopleRec: reactData.peopleRec,
-        formRec
-      }, false);
-      pertains_to_name = reactData.peopleRec[pertains_to].display_name;
-      if (!pertains_to_name && (reactData.peopleRec[pertains_to] && reactData.peopleRec[pertains_to].hasOwnProperty('name'))) {
-        pertains_to_name = (`${reactData.peopleRec[pertains_to]?.name.first} ${reactData.peopleRec[pertains_to]?.name.last}`).trim();
-      }
+    reactData.peopleRec[pertains_to] = await getDb({
+      Key: {
+        person_id: pertains_to
+      },
+      TableName: "People"
+    });
+    if (!reactData.peopleRec[pertains_to]) {
+      reactData.peopleRec[pertains_to] = {};
+    };
+    updateReactData({
+      family_id: reactData.peopleRec[pertains_to].family_id || false,
+      peopleRec: reactData.peopleRec,
+      formRec
+    }, false);
+    pertains_to_name = reactData.peopleRec[pertains_to].display_name;
+    if (!pertains_to_name && (reactData.peopleRec[pertains_to] && reactData.peopleRec[pertains_to].hasOwnProperty('name'))) {
+      pertains_to_name = (`${reactData.peopleRec[pertains_to]?.name.first} ${reactData.peopleRec[pertains_to]?.name.last}`).trim();
     }
     let tempTitle;
     if (pertains_to_name) {
@@ -900,7 +894,6 @@ export default ({ request = {}, onClose }) => {
         response.fields[this_field].isError = false;
       }
       this_section.section_name = await resolveVariables(this_section.section_name, response.fields);
-      console.log(this_section);
     };
     return response;
   };
@@ -1359,239 +1352,169 @@ export default ({ request = {}, onClose }) => {
     }
   };
 
-  const handleSave = async ({ document_id, final }) => {
+  const handleSave = async ({ document_id, final, timeout }) => {
     let response = { goodPut: true };
     // always save this in DocumentsInProcess
-    {
-      let DinPRec = {
-        client_id: state.session.client_id,
-        document_id,
-        document_title: reactData.document_title,
-        pertains_to: reactData.pertains_to,
-        form_id: reactData.form_id,
-        formType: reactData.form_id,
-        formType_date: `${reactData.form_id}%%${new Date().getTime()}`,
-        fields: reactData.fields,
-        sections: reactData.sections,
-        options: reactData.formRec.options
-      };
+    if (!document_id) {
+      document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
+      updateReactData({
+        document_id
+      }, false);
+    }
+    // updates to the Database as per instructions in fields[this_field].saveAs
+    let needsUpdate = {
+      peopleRec: false,
+      sessionRec: false,
+      familyRec: false
+    };
+    let field_values = {};
+    for (const this_field in reactData.fields) {
+      if (reactData.fields[this_field].bonusText) {
+        if (reactData.fields[this_field].value) {
+          let valueArray = makeArray(reactData.fields[this_field].value);
+          valueArray.push(reactData.fields[this_field].bonusText);
+          reactData.fields[this_field].value = valueArray;
+          reactData.fields[this_field].valueText = listFromArray(valueArray);
+        }
+        else {
+          reactData.fields[this_field].value = reactData.fields[this_field].bonusText;
+          reactData.fields[this_field].valueText = reactData.fields[this_field].bonusText;
+        }
+      }
+      if (!reactData.fields[this_field].options?.viewOnly) {
+        field_values[this_field] = reactData.fields[this_field].value;
+      }
+      if (!reactData.fields[this_field].ignore) {
+        if (reactData.fields[this_field].saveAs) {
+          const save_instructions = reactData.fields[this_field].saveAs;
+          const save_file = save_instructions.shift();
+          if (save_file === 'peopleRec') {
+            if (!reactData.peopleRec.hasOwnProperty(reactData.pertains_to)) {
+              reactData.peopleRec[reactData.pertains_to] = await getDb({
+                Key: {
+                  person_id: reactData.pertains_to
+                },
+                TableName: "People"
+              });
+              updateReactData({
+                peopleRec: reactData.peopleRec
+              }, false);
+            }
+            reactData.peopleRec[reactData.pertains_to] = resolveValue(
+              reactData.peopleRec[reactData.pertains_to],
+              save_instructions,
+              reactData.fields[this_field].value
+            );
+            needsUpdate.peopleRec = true;
+          }
+          else if (save_file === 'sessionRec') {
+            if (!reactData.sessionRec.hasOwnProperty(reactData.pertains_to)) {
+              reactData.sessionRec[reactData.pertains_to] = await getDb({
+                Key: {
+                  person_id: reactData.pertains_to
+                },
+                TableName: "SessionsV2"
+              });
+              updateReactData({
+                sessionRec: reactData.sessionRec
+              }, false);
+            }
+            reactData.sessionRec[reactData.pertains_to] = resolveValue(
+              reactData.sessionRec[reactData.pertains_to],
+              save_instructions,
+              reactData.fields[this_field].value
+            );
+            needsUpdate.sessionRec = true;
+          }
+          else if (save_file === 'familyRec') {
+            // we need to get the familyRec; do we have it already?           
+            if (!reactData.familyRec && reactData.family_id) {
+              reactData.familyRec = await getDb({
+                Key: {
+                  client_id: state.session.client_id,
+                  composite_key: reactData.family_id
+                },
+                TableName: "FamilyGroups"
+              });
+              updateReactData({
+                familyRec: reactData.familyRec
+              }, false);
+            }
+            if (reactData.familyRec) {
+              reactData.familyRec = resolveValue(
+                reactData.familyRec,
+                save_instructions,
+                reactData.fields[this_field].value
+              );
+              needsUpdate.familyRec = true;
+            }
+          }
+        }
+      }
+    }
+    if (needsUpdate.peopleRec || reactData.newPerson) {
+      if (reactData.newFamily) {
+        reactData.peopleRec[reactData.pertains_to].family_id = reactData.family_id;
+      }
       await dbClient
         .put({
-          Item: DinPRec,
-          TableName: 'DocumentsInProcess'
+          Item: reactData.peopleRec[reactData.pertains_to],
+          TableName: 'People'
         })
         .promise()
         .catch(error => {
-          cl(`Bad put to DocumentsInProcess. Error is: ${error}`);
-          response = { goodPut: false };
+          cl(`Bad put to People. Error is: ${error}`);
+          response = { goodPut: false, putError: `Bad put to People. Error is: ${error}` };
         });
-      // if we saved successfully to DocumentsInProcess, 
-      // update all the DocumentXRef records to show this person as someone who updated the document
-      if (response.goodPut) {
-        response.status = 'work_in_process';
-        response.recWritten = DinPRec;
-        await dbClient
-          .put({
-            Item: {
-              person_id: state.session.user_id,
-              document_id,
-              role: 'made_updates',
-            },
-            TableName: 'DocumentXRef'
-          })
-          .promise()
-          .catch(error => {
-            const messageText = `Bad put to DocumentXRef (made_updates). Error is: ${error}`;
-            cl(messageText);
-            response = { goodPut: false, putError: messageText };
-          });
-        // make sure there is a xRef entry for the person that this pertains to
-        await dbClient
-          .put({
-            Item: {
-              person_id: reactData.pertains_to,
-              document_id,
-              role: 'pertains_to',
-            },
-            TableName: 'DocumentXRef'
-          })
-          .promise()
-          .catch(error => {
-            const messageText = `Bad put to DocumentXRef (pertains_to). Error is: ${error}`;
-            cl(messageText);
-            response = { goodPut: false, putError: messageText };
-          });
-        // save (or update) the status of this document
-        await dbClient
-          .put({
-            Item: {
-              person_id: '*status',
-              client_id: state.session.client_id,
-              document_id,
-              status: 'work_in_process',
-              formType: reactData.form_id,
-              last_update: new Date().getTime()
-            },
-            TableName: 'DocumentXRef'
-          })
-          .promise()
-          .catch(error => {
-            const messageText = `Bad put to DocumentXRef (status). Error is: ${error}`;
-            cl(messageText);
-            response = { goodPut: false, putError: messageText };
-          });
-      }
     }
-    // updates to the Database as per instructions in fields[this_field].saveAs
-    {
-      let needsUpdate = {
-        peopleRec: false,
-        sessionRec: false,
-        familyRec: false
+    if (needsUpdate.sessionRec) {
+      await dbClient
+        .put({
+          Item: reactData.sessionRec[reactData.pertains_to],
+          TableName: 'SessionsV2'
+        })
+        .promise()
+        .catch(error => {
+          cl(`Bad put to SessionsV2. Error is: ${error}`);
+          response = { goodPut: false, putError: `Bad put to SessionsV2. Error is: ${error}` };
+        });
+    }
+    if (needsUpdate.familyRec || reactData.newFamily) {
+      await dbClient
+        .put({
+          Item: reactData.familyRec,
+          TableName: 'FamilyGroups'
+        })
+        .promise()
+        .catch(error => {
+          cl(`Bad put to Family. Error is: ${error}`);
+          response = { goodPut: false, putError: `Bad put to Family. Error is: ${error}` };
+        });
+    }
+    if (reactData.newPerson || reactData.newFamily) {
+      let newFamilyGroupRec = {
+        client_id: state.session.client_id,
+        composite_key: `${reactData.family_id}%%${reactData.pertains_to}`,
+        family_id: reactData.family_id,
+        person_id: reactData.pertains_to,
+        record_type: 'person',
+        role: reactData.formRec.options.role || 'member'
       };
-      for (const this_field in reactData.fields) {
-        if (!reactData.fields[this_field].ignore) {
-          if (reactData.fields[this_field].bonusText) {
-            if (reactData.fields[this_field].value) {
-              let valueArray = makeArray(reactData.fields[this_field].value);
-              valueArray.push(reactData.fields[this_field].bonusText);
-              reactData.fields[this_field].value = valueArray;
-              reactData.fields[this_field].valueText = listFromArray(valueArray);
-            }
-            else {
-              reactData.fields[this_field].value = reactData.fields[this_field].bonusText;
-              reactData.fields[this_field].valueText = reactData.fields[this_field].bonusText;
-            }
-
-          }
-          if (reactData.fields[this_field].saveAs) {
-            const save_instructions = reactData.fields[this_field].saveAs;
-            const save_file = save_instructions.shift();
-            if (save_file === 'peopleRec') {
-              if (!reactData.peopleRec.hasOwnProperty(reactData.pertains_to)) {
-                reactData.peopleRec[reactData.pertains_to] = await getDb({
-                  Key: {
-                    person_id: reactData.pertains_to
-                  },
-                  TableName: "People"
-                });
-                updateReactData({
-                  peopleRec: reactData.peopleRec
-                }, false);
-              }
-              reactData.peopleRec[reactData.pertains_to] = resolveValue(
-                reactData.peopleRec[reactData.pertains_to],
-                save_instructions,
-                reactData.fields[this_field].value
-              );
-              needsUpdate.peopleRec = true;
-            }
-            else if (save_file === 'sessionRec') {
-              if (!reactData.sessionRec.hasOwnProperty(reactData.pertains_to)) {
-                reactData.sessionRec[reactData.pertains_to] = await getDb({
-                  Key: {
-                    person_id: reactData.pertains_to
-                  },
-                  TableName: "SessionsV2"
-                });
-                updateReactData({
-                  sessionRec: reactData.sessionRec
-                }, false);
-              }
-              reactData.sessionRec[reactData.pertains_to] = resolveValue(
-                reactData.sessionRec[reactData.pertains_to],
-                save_instructions,
-                reactData.fields[this_field].value
-              );
-              needsUpdate.sessionRec = true;
-            }
-            else if (save_file === 'familyRec') {
-              // we need to get the familyRec; do we have it already?           
-              if (!reactData.familyRec && reactData.family_id) {
-                reactData.familyRec = await getDb({
-                  Key: {
-                    client_id: state.session.client_id,
-                    composite_key: reactData.family_id
-                  },
-                  TableName: "FamilyGroups"
-                });
-                updateReactData({
-                  familyRec: reactData.familyRec
-                }, false);
-              }
-              if (reactData.familyRec) {
-                reactData.familyRec = resolveValue(
-                  reactData.familyRec,
-                  save_instructions,
-                  reactData.fields[this_field].value
-                );
-                needsUpdate.familyRec = true;
-              }
-            }
-          }
-        }
-      }
-      if (needsUpdate.peopleRec || reactData.newPerson) {
-        if (reactData.newFamily) {
-          reactData.peopleRec[reactData.pertains_to].family_id = reactData.family_id;
-        }
-        await dbClient
-          .put({
-            Item: reactData.peopleRec[reactData.pertains_to],
-            TableName: 'People'
-          })
-          .promise()
-          .catch(error => {
-            cl(`Bad put to People. Error is: ${error}`);
-            response = { goodPut: false, putError: `Bad put to People. Error is: ${error}` };
-          });
-      }
-      if (needsUpdate.sessionRec) {
-        await dbClient
-          .put({
-            Item: reactData.sessionRec[reactData.pertains_to],
-            TableName: 'SessionsV2'
-          })
-          .promise()
-          .catch(error => {
-            cl(`Bad put to SessionsV2. Error is: ${error}`);
-            response = { goodPut: false, putError: `Bad put to SessionsV2. Error is: ${error}` };
-          });
-      }
-      if (needsUpdate.familyRec || reactData.newFamily) {
-        await dbClient
-          .put({
-            Item: reactData.familyRec,
-            TableName: 'FamilyGroups'
-          })
-          .promise()
-          .catch(error => {
-            cl(`Bad put to Family. Error is: ${error}`);
-            response = { goodPut: false, putError: `Bad put to Family. Error is: ${error}` };
-          });
-      }
-      if (reactData.newPerson || reactData.newFamily) {
-        let newFamilyGroupRec = {
-          client_id: state.session.client_id,
-          composite_key: `${reactData.family_id}%%${reactData.pertains_to}`,
-          family_id: reactData.family_id,
-          person_id: reactData.pertains_to,
-          record_type: 'person',
-          role: reactData.formRec.options.role || 'member'
-        };
-        await dbClient
-          .put({
-            Item: newFamilyGroupRec,
-            TableName: 'FamilyGroups'
-          })
-          .promise()
-          .catch(error => {
-            cl(`Bad put to Family (person). Error is: ${error}`);
-            response = { goodPut: false, putError: `Bad put to Family. Error is: ${error}` };
-          });
-      }
+      await dbClient
+        .put({
+          Item: newFamilyGroupRec,
+          TableName: 'FamilyGroups'
+        })
+        .promise()
+        .catch(error => {
+          cl(`Bad put to Family (person). Error is: ${error}`);
+          response = { goodPut: false, putError: `Bad put to Family. Error is: ${error}` };
+        });
     }
+
+    // updates - if any - are done
     // if this is the type of document that needs to generate a final printout, do that now
+    let url;
     if (final && !reactData.formRec?.options?.noFinal) {
       // render signatures (if any) before printing
       let signatures = [];
@@ -1620,97 +1543,33 @@ export default ({ request = {}, onClose }) => {
           title: reactData.document_title
         }]
       });
-      let timestamp = new Date().getTime();
-      let CRec = {
-        client_id: state.session.client_id,
-        document_id,
-        document_title: reactData.document_title,
-        pertains_to: reactData.pertains_to,
-        date_completed: timestamp,
-        formType: reactData.form_id,
-        formType_date: `${reactData.form_id}%%${timestamp}`,
-        save_info: s3Results,
-        file_location: s3Results[0].s3Location
-      };
-      await dbClient
-        .put({
-          Item: CRec,
-          TableName: 'CompletedDocuments'
-        })
-        .promise()
-        .catch(error => {
-          cl(`Bad put to CompletedDocuments. Error is: ${error}`);
-          response = { goodPut: false, putError: `Bad put to CompletedDocuments. Error is: ${error}` };
-        });
-      if (response.goodPut) {
-        // if we dont allow save/continue, then we should remove the WIP document here
-        if (reactData.formRec?.options?.noSaveContinue) {
-          await dbClient
-            .delete({
-              Key: {
-                client_id: state.session.client_id,
-                document_id
-              },
-              TableName: 'DocumentsInProcess'
-            })
-            .promise()
-            .catch(error => {
-              cl(`Bad delete. DocumentsInProcess not removed or did not exist. Error is: ${error}`);
-            });
-        }
-        response.status = 'complete';
-        response.location = CRec.file_location;
-        response.recWritten = CRec;
-        await dbClient
-          .put({
-            Item: {
-              person_id: state.session.user_id,
-              document_id,
-              role: 'completed_by',
-            },
-            TableName: 'DocumentXRef'
-          })
-          .promise()
-          .catch(error => {
-            const messageText = `Bad put to DocumentXRef (completed_by). Error is: ${error}`;
-            cl(messageText);
-            response = { goodPut: false, putError: messageText };
-          });
-        await dbClient
-          .put({
-            Item: {
-              person_id: reactData.pertains_to,
-              document_id,
-              role: 'pertains_to',
-            },
-            TableName: 'DocumentXRef'
-          })
-          .promise()
-          .catch(error => {
-            const messageText = `Bad put to DocumentXRef (pertains_to). Error is: ${error}`;
-            cl(messageText);
-            response = { goodPut: false, putError: messageText };
-          });
-        await dbClient
-          .put({
-            Item: {
-              person_id: '*status',
-              client_id: state.session.client_id,
-              document_id,
-              status: 'complete',
-              formType: reactData.form_id,
-              last_update: new Date().getTime()
-            },
-            TableName: 'DocumentXRef'
-          })
-          .promise()
-          .catch(error => {
-            const messageText = `Bad put to DocumentXRef (status). Error is: ${error}`;
-            cl(messageText);
-            response = { goodPut: false, putError: messageText };
-          });
-      }
+      url = s3Results[0].s3Location;
     }
+
+    // printing - if needed - is done
+    // save_type is one of 'final', 'in_process', 'on_timeout', 'printed'
+    let docData = {
+      client_id: state.session.client_id,
+      document_id,
+      title: reactData.document_title,
+      pertains_to: reactData.pertains_to,
+      status: url ? 'complete' : 'in_process',
+      form_type: reactData.form_id,
+      client_id_form_type: `${state.session.client_id}%%${reactData.form_id}`,
+      field_values,
+      options: reactData.formRec.options
+    };
+    if (reactData.docRec?.history) {
+      docData.history = reactData.docRec?.history;
+    }
+    const recWritten = await updateDocument({
+      docData,
+      author: state.session.patient_id,
+      isNew: false,
+      save_type: url ? 'printed' : (final ? 'save_final' : (timeout ? 'on_timeout' : 'in_process')),
+      url
+    });
+
     if (final && reactData.formRec?.options?.messaging) {
       // conditional based on responses should be allowed here
       // formRec?.options?.messaging should be an object or array of objects; each object has in instruction key
@@ -1722,7 +1581,7 @@ export default ({ request = {}, onClose }) => {
       // in user lists, user can be a person: person_id, group: group_id, or author: true
       for (let this_instruction of [reactData.formRec?.options?.messaging].flat()) {
         if (this_instruction.instruction === 'create_form') {
-          await createForm({
+          await createForm({        // finishing this form issues an instruction to create another form ("teacher recommendation" use case, for example)
             instructions: this_instruction,
             source_doc: document_id,
             doc_location: response.location
@@ -1732,7 +1591,8 @@ export default ({ request = {}, onClose }) => {
     }
     updateReactData({
       document_id,
-      recWritten: response.recWritten,
+      docRec: recWritten,
+      recWritten: recWritten,
       dataSaved: true,
     }, true);
     return response;
@@ -1750,154 +1610,91 @@ export default ({ request = {}, onClose }) => {
     //     restricted_access: 'admin_only'
     //     message: {text: <text>, subject: <subject>} 
     //   }, {}, ...]
+    /*
+    Example: {
+      "form_id": "recommendation_response",
+      "assign_to": [
+        "rsteele"
+      ],
+      "document_title": "Test Title",
+      "fields": [
+        {
+          "camper_first_name": "%%camper_first_name%% %%camper_last_name%%"
+        },
+        "camper_last_name",
+        "camper_school_grade_2024_2025",
+        "teachers_name",
+        "teachers_email"
+      ],
+      "instruction": "create_form",
+      "message": {
+        "subject": "Test subject goes here",
+        "text": "This is the message";
+      },
+      "pertains_to": "ava-campdemo",
+      "restricted_access": "admin_only";
+    }
+    */
 
-
-    // write an assignment record
-    for (let this_instruction of [instructions].flat()) {
-
-      // prepare data fields
-      if (instructions.fields) {
-        //  array - each entry is one of these forms: 
-        //    object with key = field to set and value is a string {<key>: <value>}, 
-        // or object with key = field to set and value is an object as in {<key>: {form: <form_field>}}, 
-        // or a string = field name from the source form
-        for (let this_field of instructions.fields) {
-          if (!isObject(this_field)) {
-            if (reactData.fields.hasOwnProperty(this_field)) {
-              preset_values[this_field] = reactData.fields[this_field].value;
-            }
+    // prepare data fields
+    if (instructions.fields) {
+      //  array - each entry is one of these forms: 
+      //    object with key = field to set and value is a string {<key>: <value>}, 
+      // or object with key = field to set and value is an object as in {<key>: {form: <form_field>}}, 
+      // or a string = field name from the source form
+      for (let this_field of instructions.fields) {
+        if (!isObject(this_field)) {
+          if (reactData.fields.hasOwnProperty(this_field)) {
+            preset_values[this_field] = reactData.fields[this_field].value;
           }
-          else {
-            for (const [key, value] of Object.entries(this_field)) {
-              if (typeof (value) === 'string') {
-                preset_values[key] = await resolveVariables(value);
-                console.log(preset_values);
-              }
-              else {
-                if (reactData.fields.hasOwnProperty(value.form)) {
-                  preset_values[key] = reactData.fields[value.form].value;
-                }
-                console.log(preset_values);
+        }
+        else {
+          for (const [key, value] of Object.entries(this_field)) {
+            if (typeof (value) === 'string') {
+              preset_values[key] = await resolveVariables(value);
+            }
+            else {
+              if (reactData.fields.hasOwnProperty(value.form)) {
+                preset_values[key] = reactData.fields[value.form].value;
               }
             }
           }
         }
       }
+    }
+    let newDocumentID = await createDocument({
+      docData: {
+        client_id: state.session.client_id,
+        form_type: instructions.form_id,
+        pertains_to: instructions.pertains_to,
+        field_values: preset_values
+      },
+      author: state.session.user_id
+    });
 
-      // write Assignment and XRefs
-      const now = new Date().getTime();
-      let goodPut = true;
-      const newDocumentID = `${this_instruction.pertains_to}%%${this_instruction.form_id}%%ref_${source_doc}`;
-      await dbClient
-        .put({
-          Item: {
-            client_id: state.session.client_id,
-            document_id: newDocumentID,
-            document_title: this_instruction.document_title,
-            pertains_to: this_instruction.pertains_to,
-            form_id: this_instruction.form_id,
-            formType: this_instruction.form_id,
-            formType_date: `${this_instruction.form_id}%%${now}`,
-            date_assigned: now,
-            preset_values,
-            options: { restricted_access: this_instruction.restricted_access }
-          },
-          TableName: 'DocumentsAssigned'
-        })
-        .promise()
-        .catch(error => {
-          cl(`Bad put to DocumentsAssigned. Error is: ${error}`);
-          goodPut = false;
-        });
-      // if we saved successfully, add DocumentXRef records
-      let assignmentList = [];
-      if (goodPut) {
-        for (let this_assignee of [this_instruction.assign_to].flat()) {
-          const this_assignment = ((this_assignee === 'author')
-            ? state.session.user_id
-            : ((this_assignee === 'pertains_to')
-              ? this_instruction.pertains_to
-              : this_assignee)
-          );
-          await dbClient
-            .put({
-              Item: {
-                person_id: this_assignment,
-                document_id: newDocumentID,
-                client_id: state.session.client_id,
-                formType: this_instruction.form_id,
-                last_update: now,
-                role: 'assigned',
-              },
-              TableName: 'DocumentXRef'
-            })
-            .promise()
-            .catch(error => {
-              const messageText = `Bad put to DocumentXRef (made_updates). Error is: ${error}`;
-              cl(messageText);
-            });
-          assignmentList.push(this_assignment);
-        }
-        // make sure there is a xRef entry for the person that this pertains to
-        await dbClient
-          .put({
-            Item: {
-              person_id: this_instruction.pertains_to,
-              document_id: newDocumentID,
-              client_id: state.session.client_id,
-              formType: this_instruction.form_id,
-              last_update: now,
-              role: 'pertains_to',
-            },
-            TableName: 'DocumentXRef'
-          })
-          .promise()
-          .catch(error => {
-            const messageText = `Bad put to DocumentXRef (pertains_to). Error is: ${error}`;
-            cl(messageText);
-          });
-        // save (or update) the status of this document
-        await dbClient
-          .put({
-            Item: {
-              person_id: '*status',
-              client_id: state.session.client_id,
-              document_id: newDocumentID,
-              status: 'assigned',
-              formType: this_instruction.form_id,
-              last_update: now,
-            },
-            TableName: 'DocumentXRef'
-          })
-          .promise()
-          .catch(error => {
-            const messageText = `Bad put to DocumentXRef (status). Error is: ${error}`;
-            cl(messageText);
-          });
-      }
-
-      // Send messages (optional)
-      if (this_instruction.message) {
-        // the message.text and message.subject may contain variables in the form %%field_name%%
-        let final_messageText = await resolveVariables(this_instruction.message.text);
-        let jumpTo = window.location.origin;
-        let final_html = final_messageText + `<br><br>Please click on <a href=${jumpTo}?document=${newDocumentID}&&docUser=${assignmentList[0]}>this link</a> to respond.`;
-        final_messageText += `\r\n\nClick on this link to respond: ${jumpTo}?document=${newDocumentID}&&docUser=${assignmentList[0]}`;
-        
+    // Send messages (optional)
+    if (instructions.message) {
+      // the message.text and message.subject may contain variables in the form %%field_name%%
+      let final_messageText = await resolveVariables(instructions.message.text);
+      let jumpTo = window.location.origin;
+      for (const this_assignment of instructions.assign_to) {
+        let final_html = final_messageText + `<br><br>Please click on <a href=${jumpTo}?document=${newDocumentID}&&docUser=${this_assignment}>this link</a> to respond.`;
+        final_messageText += `\r\n\nClick on this link to respond: ${jumpTo}?document=${newDocumentID}&&docUser=${this_assignment}`;
         await sendMessages({
           client: state.session.client_id,
           author: state.session.user_id,
           person_id: state.session.patient_id,
           messageText: final_messageText,
           htmlText: final_html,
-          recipientList: assignmentList,
+          recipientList: this_assignment,
           attachments: doc_location,
-          subject: this_instruction.message.subject
-            ? await resolveVariables(this_instruction.message.subject)
-            : `A message from ${reactData.peopleRec[this_instruction.pertains_to].display_name || 'AVA Document Management'}`
+          subject: instructions.message.subject
+            ? await resolveVariables(instructions.message.subject)
+            : `A message from ${reactData.peopleRec[instructions.pertains_to].display_name || 'AVA Document Management'}`
         });
       }
     }
+
   }
 
   async function resolveVariables(s, o) {
@@ -1965,97 +1762,58 @@ export default ({ request = {}, onClose }) => {
 
     if (reactData.document_id) {
       // first, look to see if the referenced document_id is completed.  If it is, show it and leave
-      let CompletedDocRec = await getDb({
-        Key: {
-          client_id: state.session.client_id,
-          document_id: reactData.document_id
-        },
-        TableName: "CompletedDocuments"
-      });
-      if (CompletedDocRec) {
-        window.open(
-          CompletedDocRec.file_location,
-          CompletedDocRec.title,
-          `name=${CompletedDocRec.title}, left=${20}, top=${20}`
-        );
-        handleAbort();
-      }
-
-      // if the referenced document_id was found in CompletedDocuments, we would have left already, so...
-      // the referenced document_id is not completed; check to see if it is an in process document
-      // if it is, use the data found in the WIP document and leave
-      let WIPDocRec = await getDb({
-        Key: {
-          client_id: state.session.client_id,
-          document_id: reactData.document_id
-        },
-        TableName: "DocumentsInProcess"
-      });
-      if (WIPDocRec) {
-        for (let this_field in WIPDocRec.fields) {
-          if (!WIPDocRec.fields[this_field].valueText) {
-            WIPDocRec.fields[this_field].valueText = await formatValue({
-              rawValue: WIPDocRec.fields[this_field].value,
-              type: WIPDocRec.fields[this_field].type
-            });
-          }
-        }
-        updateReactData({
-          document_title: WIPDocRec.document_title,
-          pertains_to: WIPDocRec.pertains_to,
-          form_id: WIPDocRec.form_id,
-          fields: WIPDocRec.fields,
-          sections: WIPDocRec.sections,
-          formRec: { options: WIPDocRec.options },
-          stage: 'fill'
-        }, true);
-        return;
-      }
-
-      // once you arrive here, you have failed to find the referenced document_id in EITHER the Completed
-      // or the WIP table;  there might be some information about this document (form_id, pertains_to, and title) 
-      // in the assigned table.  Use that information to load up and then leave this initialization function
-      let AssignedDocRec = await getDb({
-        Key: {
-          client_id: state.session.client_id,
-          document_id: reactData.document_id
-        },
-        TableName: "DocumentsAssigned"
-      });
-      if (AssignedDocRec) {
-        // this document_id was assigned to someone, but hasn't been started yet
-        const { fields, sections, document_title } = await initializeDoc({
-          form_id: AssignedDocRec.form_id,
-          pertains_to: AssignedDocRec.pertains_to,
-          preset_values: AssignedDocRec.preset_values
+      let docRec = await dbClient
+        .get({
+          Key: {
+            document_id: reactData.document_id
+          },
+          TableName: "DocumentMaster"
+        })
+        .promise()
+        .catch(error => {
+          cl(`in FormFillB -> initialize, bad get to DocumentMaster with ${reactData.document_id || '(null)'}. Error is: ${error}`);
         });
-        updateReactData({
-          document_title: AssignedDocRec.title || AssignedDocRec.document_title || document_title,
-          pertains_to: AssignedDocRec.pertains_to,
-          form_id: AssignedDocRec.form_id,
-          fields,
-          sections,
-          stage: 'fill'
-        }, true);
-        return;
+      if (recordExists(docRec)) {
+        if (docRec.Item.status === 'complete') {
+          window.open(
+            docRec.Item.history[0].url,
+            docRec.Item.status,
+            `name=${docRec.Item.status}, left=${20}, top=${20}`
+          );
+          handleAbort();
+        }
+        else {
+          const { fields, sections, document_title } = await initializeDoc({
+            form_id: docRec.Item.form_type,
+            pertains_to: docRec.Item.pertains_to,
+            preset_values: docRec.Item.field_values
+          });
+          updateReactData({
+            document_title: docRec.Item.title || document_title,
+            pertains_to: docRec.Item.pertains_to,
+            form_id: docRec.Item.form_type,
+            fields,
+            sections,
+            docRec: docRec.Item,
+            formRec: { options: docRec.Item.options },
+            stage: 'fill'
+          }, true);
+          return;
+        }
       }
     }
-
     // if we got here, there was no existing document found with the passed in document_id
     // or no document_id was passed in at all. 
     // In this case, look for a DocumentinProcess for this person and formType...
-    var WIPFields = false;
-    if (reactData.form_id && !reactData.options.start_from_scratch) {
-      let reactUpdObj = {};
+    if (reactData.form_id && reactData.pertains_to && !reactData.options.start_from_scratch) {
       let queryObj = {
-        KeyConditionExpression: 'pertains_to = :p and begins_with(formType_date, :f)',
+        KeyConditionExpression: 'pertains_to = :p and form_type = :f',
         ScanIndexForward: false,
-        TableName: 'DocumentsInProcess',
-        IndexName: 'pertains_to-formType_date-index',
-        Limit: 1,
+        TableName: 'DocumentMaster',
+        IndexName: 'person_form-index',
         ExpressionAttributeValues: {
           ':p': reactData.pertains_to,
-          ':f': `${reactData.form_id}%%`
+          ':f': reactData.form_id
         }
       };
       let queryResult = await dbClient
@@ -2065,46 +1823,47 @@ export default ({ request = {}, onClose }) => {
           if (error.code === 'NetworkingError') {
             cl(`Security Violation or no Internet Connection`);
           }
-          cl(`Error reading ${queryObj.TableName} is ${error}`);
+          cl(`in FormFillB -> initialize, bad get to DocumentMaster with pertains_to=${reactData.pertains_to || '(null)'} and form_id=${reactData.form_id || '(null)'}. Error is: ${error}`);
         });
       if (recordExists(queryResult)) {
-        const WIPDocRec = queryResult.Items[0];
-        for (let this_field in WIPDocRec.fields) {
-          if (!WIPDocRec.fields[this_field].valueText) {
-            WIPDocRec.fields[this_field].valueText = await formatValue({
-              rawValue: WIPDocRec.fields[this_field].value,
-              type: WIPDocRec.fields[this_field].type
+        for (const this_document of queryResult.Items) {
+          if (this_document.status !== 'complete') {
+            const { fields, sections, document_title } = await initializeDoc({
+              form_id: this_document.form_type,
+              pertains_to: this_document.pertains_to,
+              preset_values: this_document.field_values
             });
+            updateReactData({
+              document_id: this_document.document_id,
+              document_title: this_document.title || document_title,
+              pertains_to: this_document.pertains_to,
+              form_id: this_document.form_type,
+              fields,
+              sections,
+              formRec: { options: this_document.options },
+              stage: 'fill'
+            }, true);
+            return;
           }
         }
-        reactUpdObj.document_id = WIPDocRec.document_id;
-        reactUpdObj.document_title = WIPDocRec.document_title;
-        reactUpdObj.formRec = { options: WIPDocRec.options };
-        WIPFields = WIPDocRec.fields;
       }
-      const { fields, sections, document_title } = await initializeDoc({
-        form_id: reactData.form_id,
-        pertains_to: options.person_id || options.family_id
-      });
-      if (WIPFields) {
-        for (let this_field in WIPFields) {
-          if (fields.hasOwnProperty(this_field)) {
-            fields[this_field].value = WIPFields[this_field].value;
-          }
-        }
-      };
-      let nowTime = new Date().getTime();
-      updateReactData({
-        document_id: `${state.session.patient_id}_${reactData.form_id}_${nowTime}`,
-        pertains_to: options.person_id || options.family_id || state.session.patient_id,
-        form_id: reactData.form_id,
-        document_title,
-        fields,
-        sections,
-        stage: 'fill'
-      }, true);
-      return;
     }
+    // we couldn't find an appropriate document to continue with, so we'll start a new one
+    const { fields, sections, document_title } = await initializeDoc({
+      form_id: reactData.form_id,
+      pertains_to: reactData.pertains_to
+    });
+    let nowTime = new Date().getTime();
+    updateReactData({
+      document_id: `${reactData.pertains_to}_${reactData.form_id}_${nowTime}`,
+      pertains_to: reactData.pertains_to,
+      form_id: reactData.form_id,
+      document_title,
+      fields,
+      sections,
+      stage: 'fill'
+    }, true);
+    return;
   }
 
   const okToShowSection = (this_sectionObj) => {
@@ -2160,12 +1919,6 @@ export default ({ request = {}, onClose }) => {
 
   // **************************
 
-
-  console.log({
-    isInitializing: isInitializing(),
-    stage: reactData.stage,
-    title: reactData.document_title
-  });
   return (
     <Dialog
       open={(forceRedisplay && (reactData.version > 0)) || true}
@@ -2206,373 +1959,395 @@ export default ({ request = {}, onClose }) => {
                     (reactData.fields.hasOwnProperty(this_field) &&
                       (!reactData.fields[this_field].options || !reactData.fields[this_field].options.hidden) &&
                       !reactData.fields[this_field].ignore &&
-                      <Box
-                        key={`parentFrag__${this_field}_${sectionNdx}`}
-                        display='flex'
-                        flexDirection='column'
-                        id={`sigBox__${this_field}`}
-                        justifyContent='flex-start'
-                        marginTop={2}
-                        marginBottom={2}
-                        alignItems='flex-start'
-                        width='97%'
+
+                      <React.Fragment
+                        key={`fieldFrag__${this_field}_${sectionNdx}`}
                       >
-                        <React.Fragment
-                          key={`fieldFrag__${this_field}_${sectionNdx}`}
-                        >
-                          {(reactData.fields[this_field].type === 'text') &&
-                            <TextField
-                              id={`field__${this_field}`}
-                              key={`field__${this_field}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                ? reactData.fields[this_field].valueText
-                                : ''}`}
-                              className={classes.inputDisplay}
-                              multiline
-                              variant={reactData.fields[this_field].prompt.rows ? 'outlined' : 'standard'}
-                              disabled={reactData.fields[this_field].options.viewOnly}
+                        {reactData.fields[this_field].prompt.newLine &&
+                          <Typography
+                            key={`section__${sectionObj.section_name}_${reactData.fields[this_field]}-breakRow`}
+                            className={classes.breakRow}
+                          >
+                            {''}
+                          </Typography>
+                        }
+
+
+
+
+
+
+                        {(reactData.fields[this_field].type === 'text') &&
+                          <TextField
+                            id={`field__${this_field}`}
+                            key={`field__${this_field}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                              ? reactData.fields[this_field].valueText
+                              : ''}`}
+                            className={classes.inputDisplay}
+                            multiline
+                            variant={reactData.fields[this_field].prompt.rows ? 'outlined' : 'standard'}
+                            disabled={reactData.fields[this_field].options.viewOnly}
+                            style={AVATextStyle({
+                              lineHeight: 1,
+                              width: `${reactData.fields[this_field].prompt.width || 200}px`,
+                              maxWidth: '90%',
+                              size: 0.75,
+                              color: 'black',
+                              margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
+                            })}
+                            autoComplete='off'
+                            defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                              ? reactData.fields[this_field].valueText
+                              : ''
+                            }
+                            onBlur={async (event) => {
+                              await handleChangeValue({
+                                newText: event.target.value,
+                                prop: this_field,
+                                sentenceCase: true
+                              });
+                            }}
+                            helperText={reconcilePrompt({
+                              rawValue: reactData.fields[this_field].prompt.value,
+                              this_field
+                            })}
+                          />
+                        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                        {(reactData.fields[this_field].type === 'header') &&
+                          <Typography
+                            style={AVATextStyle(Object.assign(
+                              {},
+                              {
+                                size: 0.75,
+                                margin: { top: 2, bottom: 0.5, left: 0.5, right: 3 }
+                              },
+                              reactData.fields[this_field].prompt.style || {}
+                            ))}
+                          >
+                            {reactData.fields[this_field].prompt.value}
+                          </Typography>
+                        }
+                        {(reactData.fields[this_field].type === 'image') &&
+                          <Box
+                            className={classes.imageArea}
+                            component="img"
+                            alt={''}
+                            src={reactData.fields[this_field].valueText}
+                          />
+                        }
+                        {(reactData.fields[this_field].type === 'phone') &&
+                          <TextField
+                            id={`field__${fieldNdx}`}
+                            className={classes.inputDisplay}
+                            autoComplete='off'
+                            disabled={reactData.fields[this_field].options.viewOnly}
+                            key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                              ? reactData.fields[this_field].valueText
+                              : ''}`}
+                            style={AVATextStyle({
+                              lineHeight: 1,
+                              width: `${reactData.fields[this_field].prompt.width || 200}px`,
+                              size: 0.75,
+                              padding: { bottom: 0 },
+                              margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
+                            })}
+                            defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                              ? reactData.fields[this_field].valueText
+                              : ''
+                            }
+                            onBlur={async (event) => {
+                              if (event.target.value) {
+                                let fPhone = formatPhone(event.target.value);
+                                await handleChangeValue({
+                                  newText: fPhone,
+                                  newValue: `+1${fPhone.replace(/\D/g, '')}`,
+                                  prop: this_field,
+                                  sentenceCase: false
+                                });
+                              }
+                              if (event.relatedTarget) {
+                                event.relatedTarget.focus({ focusVisible: true });
+                                if (event.relatedTarget.type !== 'button') {
+                                  event.relatedTarget.click();
+                                }
+                              }
+                            }}
+                            helperText={reconcilePrompt({
+                              rawValue: reactData.fields[this_field].prompt.value,
+                              this_field
+                            })}
+                          />
+                        }
+                        {((reactData.fields[this_field].type === 'date')
+                          || (reactData.fields[this_field].type === 'time')) &&
+                          <TextField
+                            id={`field__${fieldNdx}`}
+                            className={classes.inputDisplay}
+                            disabled={reactData.fields[this_field].options.viewOnly}
+                            autoComplete='off'
+                            key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
+                              ? reactData.fields[this_field].value
+                              : ''}`}
+                            style={AVATextStyle({
+                              lineHeight: 1,
+                              size: 0.75,
+                              padding: { bottom: 0 },
+                              margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
+                            })}
+                            defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                              ? reactData.fields[this_field].valueText
+                              : ''
+                            }
+                            onBlur={async (event) => {
+                              if (event.target.value) {
+                                let dObj = makeDate(event.target.value, { noTime: (reactData.fields[this_field].type === 'date'), noYearCorrection: true });
+                                if (!dObj.error) {
+                                  await handleChangeValue({
+                                    newText: dObj.absolute,
+                                    newValue: ((reactData.fields[this_field].type === 'date')
+                                      ? dObj.numeric$
+                                      : dObj.timestamp),
+                                    prop: this_field,
+                                    sentenceCase: false
+                                  });
+                                }
+                              }
+                              if (event.relatedTarget) {
+                                event.relatedTarget.focus({ focusVisible: true });
+                                if (event.relatedTarget.type !== 'button') {
+                                  event.relatedTarget.click();
+                                }
+                              }
+                            }}
+                            helperText={reconcilePrompt({
+                              rawValue: reactData.fields[this_field].prompt.value,
+                              this_field
+                            })}
+                          />
+                        }
+                        {(reactData.fields[this_field].type.startsWith('select')) &&
+                          <Box
+                            display='flex'
+                            mb={0}
+                            flexDirection='row'
+                            justifyContent='flex-start'
+                            alignItems='center'
+                          >
+                            <AVACheckBoxGroup
+                              prop={this_field}
+                              text={reactData.fields[this_field].selectionObj.selectionList}
+                              withPrompt={(reactData.fields[this_field].type === 'select&text')
+                                ? reactData.fields[this_field].prompt.other || 'other'
+                                : null
+                              }
+                            />
+                          </Box>
+                        }
+                        {(reactData.fields[this_field].type === 'html') &&
+                          <Box>
+                            <div
+                              dangerouslySetInnerHTML={{ '__html': reactData.fields[this_field].value }}
+                            />
+                          </Box>
+                        }
+                        {(reactData.fields[this_field].type === 'image') &&
+                          <img
+                            className={classes.imageArea}
+                            alt=''
+                            src={reactData.fields[this_field].value}
+                          />
+                        }
+                        {(reactData.fields[this_field].type === 'url') &&
+                          <a
+                            href={reactData.fields[this_field].value}
+                            style={{ color: 'inherit', textDecoration: 'none' }}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <Typography
+                              style={AVATextStyle(Object.assign({}, {
+                                size: 0.75,
+                                margin: { top: 2, bottom: 0.5, left: 0.5, right: 3 }
+                              }))}
+                            >
+                              <u>{reactData.fields[this_field].prompt.helper || `Tap here for ${reconcilePrompt({
+                                rawValue: reactData.fields[this_field].prompt.value,
+                                this_field
+                              })}`}</u>
+                            </Typography>
+                          </a>
+                        }
+                        {(reactData.fields[this_field].type === 'signature') &&
+                          <Box
+                            display='flex'
+                            flexDirection='column'
+                            id={`sigBox__${this_field}`}
+                            key={`sigBox__${this_field}_${sectionNdx}`}
+                            justifyContent='flex-start'
+                            marginTop={2}
+                            marginBottom={2}
+                            alignItems='flex-start'
+                            width='97%'
+                          >
+                            <SignatureCanvas
+                              ref={signatureRef[reactData.fields[this_field].options.sigRefNumber || 0]}
+                              canvasProps={{
+                                style: {
+                                  backgroundColor: 'beige',
+                                  width: '75%',
+                                  marginLeft: '10px',
+                                  marginRight: '10px',
+                                  marginTop: '2px',
+                                  height: '88px'
+                                }
+                              }}
+                            />
+                            <Typography
+                              id={`sigBoxText__${this_field}`}
+                              key={`sigBoxText__${this_field}_${sectionNdx}`}
                               style={AVATextStyle({
                                 lineHeight: 1,
                                 width: `${reactData.fields[this_field].prompt.width || 200}px`,
                                 maxWidth: '90%',
                                 size: 0.75,
-                                color: 'black',
                                 margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
                               })}
-                              autoComplete='off'
-                              defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                ? reactData.fields[this_field].valueText
-                                : ''
-                              }
-                              onBlur={async (event) => {
-                                await handleChangeValue({
-                                  newText: event.target.value,
-                                  prop: this_field,
-                                  sentenceCase: true
-                                });
-                              }}
-                              helperText={reconcilePrompt({
-                                rawValue: reactData.fields[this_field].prompt.value,
-                                this_field
-                              })}
-                            />
-                          }
-                          {(reactData.fields[this_field].type === 'header') &&
-                            <Typography
-                              style={AVATextStyle(Object.assign(
-                                {},
-                                {
-                                  size: 0.75,
-                                  margin: { top: 2, bottom: 0.5, left: 0.5, right: 3 }
-                                },
-                                reactData.fields[this_field].prompt.style || {}
-                              ))}
                             >
-                              {reactData.fields[this_field].prompt.value}
-                            </Typography>
-                          }
-                          {(reactData.fields[this_field].type === 'image') &&
-                            <Box
-                              className={classes.imageArea}
-                              component="img"
-                              alt={''}
-                              src={reactData.fields[this_field].valueText}
-                            />
-                          }
-                          {(reactData.fields[this_field].type === 'phone') &&
-                            <TextField
-                              id={`field__${fieldNdx}`}
-                              className={classes.inputDisplay}
-                              autoComplete='off'
-                              disabled={reactData.fields[this_field].options.viewOnly}
-                              key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                ? reactData.fields[this_field].valueText
-                                : ''}`}
-                              style={AVATextStyle({
-                                lineHeight: 1,
-                                width: `${reactData.fields[this_field].prompt.width || 200}px`,
-                                size: 0.75,
-                                padding: { bottom: 0 },
-                                margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
-                              })}
-                              defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                ? reactData.fields[this_field].valueText
-                                : ''
-                              }
-                              onBlur={async (event) => {
-                                if (event.target.value) {
-                                  let fPhone = formatPhone(event.target.value);
-                                  await handleChangeValue({
-                                    newText: fPhone,
-                                    newValue: `+1${fPhone.replace(/\D/g, '')}`,
-                                    prop: this_field,
-                                    sentenceCase: false
-                                  });
-                                }
-                                if (event.relatedTarget) {
-                                  event.relatedTarget.focus({ focusVisible: true });
-                                  if (event.relatedTarget.type !== 'button') {
-                                    event.relatedTarget.click();
-                                  }
-                                }
-                              }}
-                              helperText={reconcilePrompt({
+                              {reconcilePrompt({
                                 rawValue: reactData.fields[this_field].prompt.value,
                                 this_field
                               })}
-                            />
-                          }
-                          {((reactData.fields[this_field].type === 'date')
-                            || (reactData.fields[this_field].type === 'time')) &&
-                            <TextField
-                              id={`field__${fieldNdx}`}
-                              className={classes.inputDisplay}
-                              disabled={reactData.fields[this_field].options.viewOnly}
-                              autoComplete='off'
-                              key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
-                                ? reactData.fields[this_field].value
-                                : ''}`}
-                              style={AVATextStyle({
-                                lineHeight: 1,
-                                size: 0.75,
-                                padding: { bottom: 0 },
-                                margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
-                              })}
-                              defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                ? reactData.fields[this_field].valueText
-                                : ''
+                            </Typography>
+                            <Box display='flex' mt={0} mb={0} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
+                              {signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current &&
+                                <Button
+                                  className={AVAClass.AVAMicroButton}
+                                  style={{ backgroundColor: 'white', color: 'red' }}
+                                  size='small'
+                                  onClick={() => {
+                                    signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current.clear();
+                                    setForceRedisplay(!forceRedisplay);
+                                  }}
+                                >
+                                  {'Clear'}
+                                </Button>
                               }
-                              onBlur={async (event) => {
-                                if (event.target.value) {
-                                  let dObj = makeDate(event.target.value, { noTime: (reactData.fields[this_field].type === 'date'), noYearCorrection: true });
-                                  if (!dObj.error) {
+                            </Box>
+                          </Box>
+                        }
+                        {(reactData.fields[this_field].type === 'id') &&
+                          <Box
+                            display='flex'
+                            flexDirection='row'
+                            key={`selectParent-${this_field}_${sectionNdx}`}
+                            id={`selectParent-${this_field}`}
+                            width={`${reactData.fields[this_field].prompt.width || 200}px`}
+                            flexGrow={1}
+                            marginBottom={0}
+                            justifyContent='flex-start'
+                            alignItems='flex-start'
+                          >
+                            <Box
+                              key={`selectBox-${this_field}_${sectionNdx}`}
+                              display='flex' marginLeft={1} flexGrow={1} flexDirection='column'
+                            >
+                              <Select
+                                options={reactData.peopleList[reactData.fields[this_field].choose.ref]}
+                                searchBy={'label'}
+                                dropdownHandle={true}
+                                clearOnSelect={true}
+                                clearOnBlur={true}
+                                key={`selectOptions-${this_field}_${sectionNdx}`}
+                                searchable={true}
+                                create={false}
+                                closeOnClickInput={true}
+                                closeOnSelect={true}
+                                style={{
+                                  lineHeight: 1,
+                                  fontSize: `${reactData.user_fontSize * (1.05)}rem`,
+                                  marginLeft: '-5px',
+                                  marginBottom: '-4px',
+                                  borderWidth: 0
+                                }}
+                                noDataLabel={`No ${reconcilePrompt({
+                                  rawValue: reactData.fields[this_field].prompt.value,
+                                  this_field
+                                })}s match`}
+                                values={(reactData.fields[this_field]) ?
+                                  (reactData.fields[this_field].valueText
+                                    ? [{ label: reactData.fields[this_field].valueText, value: reactData.fields[this_field].value }]
+                                    : (reactData.fields[this_field].valueList
+                                      ? reactData.fields[this_field].valueList.map(this_value => {
+                                        return {
+                                          label: (reactData.peopleList[reactData.fields[this_field].choose.ref].find(this_person => {
+                                            return (this_person.value === this_value);
+                                          })).label,
+                                          value: this_value
+                                        };
+                                      })
+                                      : []
+                                    )
+                                  ) : []
+                                }
+                                placeholder={``}
+                                onChange={async (values) => {
+                                  if (values.length > 0) {
                                     await handleChangeValue({
-                                      newText: dObj.absolute,
-                                      newValue: ((reactData.fields[this_field].type === 'date')
-                                        ? dObj.numeric$
-                                        : dObj.timestamp),
+                                      newText: values[0].label,
+                                      newValue: values[0].value,
                                       prop: this_field,
                                       sentenceCase: false
                                     });
                                   }
-                                }
-                                if (event.relatedTarget) {
-                                  event.relatedTarget.focus({ focusVisible: true });
-                                  if (event.relatedTarget.type !== 'button') {
-                                    event.relatedTarget.click();
-                                  }
-                                }
-                              }}
-                              helperText={reconcilePrompt({
-                                rawValue: reactData.fields[this_field].prompt.value,
-                                this_field
-                              })}
-                            />
-                          }
-                          {(reactData.fields[this_field].type.startsWith('select')) &&
-                            <Box
-                              display='flex'
-                              mb={0}
-                              flexDirection='row'
-                              justifyContent='flex-start'
-                              alignItems='center'
-                            >
-                              <AVACheckBoxGroup
-                                prop={this_field}
-                                text={reactData.fields[this_field].selectionObj.selectionList}
-                                withPrompt={(reactData.fields[this_field].type === 'select&text')
-                                  ? reactData.fields[this_field].prompt.other || 'other'
-                                  : null
-                                }
-                              />
-                            </Box>
-                          }
-                          {(reactData.fields[this_field].type === 'html') &&
-                            <Box>
-                              <div
-                                dangerouslySetInnerHTML={{ '__html': reactData.fields[this_field].value }}
-                              />
-                            </Box>
-                          }
-                          {(reactData.fields[this_field].type === 'image') &&
-                            <img
-                              className={classes.imageArea}
-                              alt=''
-                              src={reactData.fields[this_field].value}
-                            />
-                          }
-                          {(reactData.fields[this_field].type === 'url') &&
-                            <a
-                              href={reactData.fields[this_field].value}
-                              style={{ color: 'inherit', textDecoration: 'none' }}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              <Typography
-                                style={AVATextStyle(Object.assign({}, {
-                                  size: 0.75,
-                                  margin: { top: 2, bottom: 0.5, left: 0.5, right: 3 }
-                                }))}
-                              >
-                                <u>{reactData.fields[this_field].prompt.helper || `Tap here for ${reconcilePrompt({
-                                  rawValue: reactData.fields[this_field].prompt.value,
-                                  this_field
-                                })}`}</u>
-                              </Typography>
-                            </a>
-                          }
-                          {(reactData.fields[this_field].type === 'signature') &&
-                            <Box
-                              display='flex'
-                              flexDirection='column'
-                              id={`sigBox__${this_field}`}
-                              key={`sigBox__${this_field}_${sectionNdx}`}
-                              justifyContent='flex-start'
-                              marginTop={2}
-                              marginBottom={2}
-                              alignItems='flex-start'
-                              width='97%'
-                            >
-                              <SignatureCanvas
-                                ref={signatureRef[reactData.fields[this_field].options.sigRefNumber || 0]}
-                                canvasProps={{
-                                  style: {
-                                    backgroundColor: 'beige',
-                                    width: '75%',
-                                    marginLeft: '10px',
-                                    marginRight: '10px',
-                                    marginTop: '2px',
-                                    height: '88px'
-                                  }
                                 }}
                               />
-                              <Typography
-                                id={`sigBoxText__${this_field}`}
-                                key={`sigBoxText__${this_field}_${sectionNdx}`}
-                                style={AVATextStyle({
-                                  lineHeight: 1,
-                                  width: `${reactData.fields[this_field].prompt.width || 200}px`,
-                                  maxWidth: '90%',
-                                  size: 0.75,
-                                  margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
-                                })}
+                              <Box display='flex'
+                                flexDirection='row'
+                                paddingTop={'4px'}
+                                borderTop={1}
+                                key={`selectPromptBox-${this_field}_${sectionNdx}`}
                               >
-                                {reconcilePrompt({
-                                  rawValue: reactData.fields[this_field].prompt.value,
-                                  this_field
-                                })}
-                              </Typography>
-                              <Box display='flex' mt={0} mb={0} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
-                                {signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current &&
-                                  <Button
-                                    className={AVAClass.AVAMicroButton}
-                                    style={{ backgroundColor: 'white', color: 'red' }}
-                                    size='small'
-                                    onClick={() => {
-                                      signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current.clear();
-                                      setForceRedisplay(!forceRedisplay);
-                                    }}
-                                  >
-                                    {'Clear'}
-                                  </Button>
-                                }
-                              </Box>
-                            </Box>
-                          }
-                          {(reactData.fields[this_field].type === 'id') &&
-                            <Box
-                              display='flex'
-                              flexDirection='row'
-                              key={`selectParent-${this_field}_${sectionNdx}`}
-                              id={`selectParent-${this_field}`}
-                              width={`${reactData.fields[this_field].prompt.width || 200}px`}
-                              flexGrow={1}
-                              marginBottom={0}
-                              justifyContent='flex-start'
-                              alignItems='flex-start'
-                            >
-                              <Box
-                                key={`selectBox-${this_field}_${sectionNdx}`}
-                                display='flex' marginLeft={1} flexGrow={1} flexDirection='column'
-                              >
-                                <Select
-                                  options={reactData.peopleList[reactData.fields[this_field].choose.ref]}
-                                  searchBy={'label'}
-                                  dropdownHandle={true}
-                                  clearOnSelect={true}
-                                  clearOnBlur={true}
-                                  key={`selectOptions-${this_field}_${sectionNdx}`}
-                                  searchable={true}
-                                  create={false}
-                                  closeOnClickInput={true}
-                                  closeOnSelect={true}
-                                  style={{
+                                <Typography
+                                  key={`selectPrompt-${this_field}_${sectionNdx}`}
+                                  id={`selectPrompt-${this_field}`}
+                                  style={AVATextStyle({
                                     lineHeight: 1,
-                                    fontSize: `${reactData.user_fontSize * (1.05)}rem`,
-                                    marginLeft: '-5px',
-                                    marginBottom: '-4px',
-                                    borderWidth: 0
-                                  }}
-                                  noDataLabel={`No ${reconcilePrompt({
+                                    width: `${reactData.fields[this_field].prompt.width || 200}px`,
+                                    maxWidth: '90%',
+                                    size: 0.75,
+                                    opacity: '60%',
+                                    margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
+                                  })}
+                                >
+                                  {reconcilePrompt({
                                     rawValue: reactData.fields[this_field].prompt.value,
                                     this_field
-                                  })}s match`}
-                                  values={(reactData.fields[this_field]) ?
-                                    (reactData.fields[this_field].valueText
-                                      ? [{ label: reactData.fields[this_field].valueText, value: reactData.fields[this_field].value }]
-                                      : (reactData.fields[this_field].valueList
-                                        ? reactData.fields[this_field].valueList.map(this_value => {
-                                          return {
-                                            label: (reactData.peopleList[reactData.fields[this_field].choose.ref].find(this_person => {
-                                              return (this_person.value === this_value);
-                                            })).label,
-                                            value: this_value
-                                          };
-                                        })
-                                        : []
-                                      )
-                                    ) : []
-                                  }
-                                  placeholder={``}
-                                  onChange={async (values) => {
-                                    if (values.length > 0) {
-                                      await handleChangeValue({
-                                        newText: values[0].label,
-                                        newValue: values[0].value,
-                                        prop: this_field,
-                                        sentenceCase: false
-                                      });
-                                    }
-                                  }}
-                                />
-                                <Box display='flex'
-                                  flexDirection='row'
-                                  paddingTop={'4px'}
-                                  borderTop={1}
-                                  key={`selectPromptBox-${this_field}_${sectionNdx}`}
-                                >
-                                  <Typography
-                                    key={`selectPrompt-${this_field}_${sectionNdx}`}
-                                    id={`selectPrompt-${this_field}`}
-                                    style={AVATextStyle({
-                                      lineHeight: 1,
-                                      width: `${reactData.fields[this_field].prompt.width || 200}px`,
-                                      maxWidth: '90%',
-                                      size: 0.75,
-                                      opacity: '60%',
-                                      margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
-                                    })}
-                                  >
-                                    {reconcilePrompt({
-                                      rawValue: reactData.fields[this_field].prompt.value,
-                                      this_field
-                                    })}
-                                  </Typography>
-                                </Box>
+                                  })}
+                                </Typography>
                               </Box>
                             </Box>
-                          }
-                        </React.Fragment>
-                      </Box>
+                          </Box>
+                        }
+                      </React.Fragment>
+
                     )
                   ))}
                 </React.Fragment>
@@ -2635,9 +2410,72 @@ export default ({ request = {}, onClose }) => {
                 }}
                 edge="start"
               />
+              <CloudUploadIcon
+                classes={{ root: classes.rowButton }}
+                style={{ marginLeft: '16px' }}
+                key={`radio-button_upload`}
+                id={`radio-button_upload`}
+                size='medium'
+                onClick={() => {
+                  updateReactData({
+                    stage: 'upload'
+                  }, true);
+                }}
+              />
             </Box>
           </Box>
         </React.Fragment>
+      }
+      {(reactData.stage === 'upload') &&
+        <AVAUploadFile
+          options={{
+            buttonText: ['Choose', 'Save & Continue'],
+            title: [reactData.document_title, 'Tap "Choose a File" to select the content to upload'],
+            oneOnly: true
+          }}
+          onCancel={() => {
+            updateReactData({
+              stage: 'fill'
+            }, true);
+          }}
+          onLoad={async (response) => {
+            const docRec = await updateDocument({
+              docData: Object.assign({},
+                reactData.docRec,
+                {
+                  document_id: reactData.document_id,
+                  form_type: reactData.form_id,
+                  pertains_to: reactData.pertains_to,
+                  client_id: state.session.client_id 
+                }
+              ),
+              author: state.session.user_id,
+              save_type: 'uploaded',
+              url: response[0].fLoc
+            });
+            if (!docRec) {
+              updateReactData({
+                stage: 'fill'
+              }, true);
+            }
+            else {
+              onClose('docAdded',
+                {
+                  document_id: reactData.document_id,
+                  document_title: reactData.document_title,
+                  document_status: 'uploaded',
+                  location: response[0],
+                  pertains_to: reactData.pertains_to,
+                  recWritten: docRec,
+                  nextAction: (reactData.formRec?.options?.onFinish
+                    ? makeNextAction({ instruction: reactData.formRec?.options?.onFinish })
+                    : null
+                  )
+                }
+              );
+            };
+          }}
+        />
       }
       {(reactData.stage === 'confirm') &&
         <AVAConfirm

@@ -902,7 +902,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                 </Box>
               }
               {(reactData.prefMethod && ((reactData.prefMethod === 'weekly_on') || (reactData.prefMethod === 'bi-weekly_on'))) &&
-                <Box display={'flex'} flexDirection={'row'} className={classes.formControlDayRow} flexWrap={'wrap'} >
+                <Box display={'flex'} flexDirection={'row'} flexWrap={'wrap'} >
                   <Typography className={classes.radioText}>
                     {`Which days?`}
                   </Typography>
@@ -911,6 +911,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                       {[0, 1, 2, 3, 4, 5, 6].map(this_dow => (
                         <FormControlLabel
                           className={classes.formControlDays}
+                          key={`dow_control_${this_dow}`}
                           control={
                             <Checkbox
                               className={classes.centerCenter}
