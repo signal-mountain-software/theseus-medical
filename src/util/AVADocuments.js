@@ -212,7 +212,7 @@ export async function updateDocument({ docData, author, isNew = false, save_type
             docOut.restricted_access = formData.formRec.restricted_access;
         }
     }
-    // save_type is one of 'save_final', 'in_process', 'on_timeout', 'printed', 'uploaded'
+    // save_type is one of 'save_final', 'in_process', 'on_timeout', 'printed', 'uploaded', 'cancelled'
     if (docOut.history[0].status === 'on_timeout') {
         docOut.history.splice(0, 1);
     }

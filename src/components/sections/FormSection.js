@@ -356,7 +356,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                     {(reactData.myFormListObj[this_formID].dueDate || (reactData.myFormListObj[this_formID].wipDocs.length > 0)) &&
                       (reactData.myFormListObj[this_formID].completedDocs.length === 0) &&
                       <Typography
-                        key={`duedate-col_form${form_index}`}
+                        key={`duedate-col_form${form_index}t1`}
                         style={AVATextStyle({
                           size: 0.8,
                           margin: { top: 0, left: 0 },
@@ -369,7 +369,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                     {(reactData.myFormListObj[this_formID].completedDocs.length > 0) &&
                       <React.Fragment>
                         <Typography
-                          key={`duedate-col_form${form_index}`}
+                          key={`duedate-col_form${form_index}t2`}
                           style={AVATextStyle({
                             size: 0.8,
                             margin: { top: 0, left: 0 },
@@ -378,7 +378,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                           {reactData.myFormListObj[this_formID].completedDocs[0].title}
                         </Typography>
                         <Typography
-                          key={`duedate-col_form${form_index}`}
+                          key={`duedate-col_form${form_index}t3`}
                           style={AVATextStyle({
                             size: 0.8,
                             margin: { top: 0, left: 0 },

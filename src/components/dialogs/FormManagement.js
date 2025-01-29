@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { deepCopy, isEmpty, dbClient, cl, recordExists } from '../../util/AVAUtilities';
+import { deepCopy, isEmpty, dbClient, cl } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle, isDark } from '../../util/AVAStyles';
 
 import useSession from '../../hooks/useSession';
@@ -55,6 +55,7 @@ export default ({ client_id, form_id, formRec, initialValues, options = {}, onCl
     errorList: {},
     familyFormsObj: {},
     formHistoryMode: false,
+    form_id: form_id || formRec.form_id,
     group_id: 'ALL',
     image_editing: false,
     initialized: false,
@@ -68,10 +69,13 @@ export default ({ client_id, form_id, formRec, initialValues, options = {}, onCl
     needsHeader: false,
     OKtoSave: false,
     options,
+    personXRef: [],
     popupMenuOpen: false,
     recentlyCompletedDocs: [],
     selectedForm: form_id || formRec.form_id,
     selections: [],
+    historyShowMoreCompleted: false,
+    historyShowMoreWIP: false,
     showQuickSearch: false,
     spliceAt: -1,
     textInput: {},
@@ -117,8 +121,11 @@ export default ({ client_id, form_id, formRec, initialValues, options = {}, onCl
         }]
       };
 
-      if (!formRec) {
-        formRec = await dbClient
+      if (formRec) {
+        reactUpdObj.og = { formRec: formRec.Item };
+      }
+      else {
+        let fRec = await dbClient
           .get({
             TableName: 'Forms',
             Key: {
@@ -133,9 +140,9 @@ export default ({ client_id, form_id, formRec, initialValues, options = {}, onCl
             }
             cl(`Error reading Form ${reactData.selectedForm} for ${reactData.client_id} - error is ${error}`);
           });
+        reactUpdObj.og = { formRec: fRec.Item };
       }
-
-      reactUpdObj.og = { formRec };
+     
       reactUpdObj.current = {
         formRec: deepCopy(
           Object.assign({},
@@ -309,7 +316,6 @@ export default ({ client_id, form_id, formRec, initialValues, options = {}, onCl
         }
         else {
           onClose({
-            newName: reactData.current.customizationRecs.client_name.customization_value
           });
         }
       }}
@@ -495,9 +501,7 @@ export default ({ client_id, form_id, formRec, initialValues, options = {}, onCl
               handleAbort();
             }
             else {
-              onClose({
-                newName: reactData.current.customizationRecs.client_name.customization_value
-              });
+              onClose({});
             }
           }}
         >

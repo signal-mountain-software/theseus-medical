@@ -228,7 +228,7 @@ export default ({
       return (
         <FormManagement
           client_id={session.client_id}
-          form_id={'billing_summary_1'}
+          form_id={'billing_summary_1NEWVERSION'}
           onClose={() => {
               onClose();
           }}
