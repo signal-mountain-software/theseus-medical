@@ -68,7 +68,9 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
     deletePending: false,
     spliceAt: -1,
     confirmMessage: '',
-    accessList: state.accessList[state.session.client_id].list,
+    accessList: (state.accessList && state.accessList[state.session.client_id])
+      ? state.accessList[state.session.client_id].list
+      : [],
     textInput: {},
     editMode: {},
     addAttachment: false,

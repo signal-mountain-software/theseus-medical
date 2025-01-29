@@ -1,7 +1,7 @@
 import React from 'react';
 import useSession from '../../hooks/useSession';
 
-import { dbClient, recordExists, cl, deepCopy } from '../../util/AVAUtilities';
+import { dbClient, recordExists, cl } from '../../util/AVAUtilities';
 import { AVATextStyle } from '../../util/AVAStyles';
 import { makeDate } from '../../util/AVADateTime';
 import { documentDueDate } from '../../util/AVADocuments';
