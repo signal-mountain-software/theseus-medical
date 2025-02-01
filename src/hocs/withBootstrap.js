@@ -1477,6 +1477,7 @@ export default Component => props => {
     dispatch({ type: SET_PROFILE, payload: currentProfile });
     dispatch({ type: SET_USER, payload: currentProfile });
     dispatch({ type: SET_PATIENT, payload: currentPatient });
+    sessionStorage.setItem('AVASessionData', JSON.stringify({ currentProfile }));
 
     bootState = {
       session: currentSession,
