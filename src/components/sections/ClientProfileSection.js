@@ -69,7 +69,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
           >
             <Button
               className={AVAClass.AVAButton}
-              style={{ width: 'fit-content', marginTop: '24px', marginLeft: '16px' }}
+              style={{ width: 'fit-content', marginTop: '8px', marginBottom: '8px', marginLeft: '16px' }}
               size='small'
               onClick={() => {
                 updateReactData({
@@ -149,7 +149,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         >
           <Button
             className={AVAClass.AVAButton}
-            style={{ width: 'fit-content', marginTop: '24px', marginLeft: '16px', marginRight: '16px' }}
+            style={{ width: 'fit-content', marginTop: '8px', marginBottom: '8px', marginLeft: '16px', marginRight: '16px' }}
             size='small'
             onClick={() => {
               updateReactData({

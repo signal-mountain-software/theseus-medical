@@ -49,6 +49,8 @@ export default ({ currentValues, reactData, updateReactData }) => {
         }
       }
       updateReactData({
+        formRec: formRec.Item,
+        form_id: reactData.selectedForm,
         alert: {
           severity: 'warning',
           title: `Loading`,
