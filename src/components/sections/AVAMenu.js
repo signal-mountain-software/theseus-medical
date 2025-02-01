@@ -1111,6 +1111,31 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     </Box>
                   </MenuItem>
                 )}
+                {(session?.patient_id !== session?.user_id) && (
+                  <MenuItem onClick={async () => {
+                    let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
+                      updateReactData({
+                        popupMenuOpen: false
+                      }, true);
+                      await switchActiveAccount(
+                        session,
+                        (session.client_id || session.user_homeClient),
+                        {
+                          id: session.patient_id,
+                          name: reactData.greetingName
+                        },
+                        { resetUser: true }
+                      );
+                    }}>
+                      <Box
+                        display='flex' flexDirection='row' alignItems={'center'}
+                        key={'switch2self'}
+                      >
+                        <HomeIcon />
+                        <Typography className={classes.popUpMenuRow} >{`Reload as ${session?.patient_id}`}</Typography>
+                      </Box>
+                    </MenuItem>
+                )}
                 {!session?.kiosk_mode && (
                   <MenuItem onClick={async () => {
                     if (!state.hasOwnProperty('groups') || !state.groups.hasOwnProperty('adminHierarchy')) {
@@ -1422,21 +1447,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                                   className={classes.listItem}
                                   onContextMenu={async (e) => {
                                     e.preventDefault();
-                                    /*                 enqueueSnackbar(<div>
-                                                       1. Func {this_row.activity_code}<br />
-                                                       2. Type {this_row.row_type}<br />
-                                                       3. Reas {this_row.reason}<br />
-                                                       4. Defs {isObject(this_row.default_value) ? `OBJ -> ${JSON.stringify(this_row.default_value)}` : this_row.default_value}</div>,
-                                                       { variant: 'info', persist: true });
-                                      */
                                     updateReactData({
                                       alert: {
                                         severity: 'info',
                                         title: this_row.activity_name,
                                         message: <div>
-                                          1. Activity Code: {this_row.activity_code}<br />
-                                          2. Row Type: {this_row.row_type}<br />
-                                          3. Why on Menu: {this_row.reason}</div>
+                                          Activity Code: {this_row.activity_code}<br />
+                                          Row Type: {this_row.row_type}<br />
+                                          Why on Menu: {this_row.reason}</div>
                                       }
                                     }, true);
                                   }}

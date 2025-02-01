@@ -209,20 +209,28 @@ export function deepCopy(pValue) {
   }
 }
 
-export function listFromArray(inArray, options) {
-  if (!Array.isArray(inArray)) {
-    if (!inArray || (inArray.trim() === '')) { return 'None'; }
-    return inArray;
+export function listFromArray(pArray, options) {
+  if (!Array.isArray(pArray)) {
+    if (!pArray || (pArray.trim() === '')) { return 'None'; }
+    return pArray;
+  }
+  let inArray = pArray;
+  if (options && options.ignoreBlank) {
+    inArray = pArray.filter(e => { return (e.trim() !== ''); });
   }
   let makeList$ = '';
   let link = '';
   let nextToLast = inArray.length - 2;
   let threeOrMore = (inArray.length > 2);
   inArray.forEach((s, x) => {
-    if (options && options.sentenceCase) { s = sentenceCase(s); }
+    let linkWord = 'and';
+    if (options) {
+      if (options.sentenceCase) { s = sentenceCase(s); }
+      if (options.or) { linkWord = 'or' }
+    }
     makeList$ += link + s;
     if (threeOrMore) { link = ', '; }
-    if (x === nextToLast) (link += (!threeOrMore ? ' ' : '') + `${(options && options.or) ? 'or' : 'and'} `);
+    if (x === nextToLast) (link += (!threeOrMore ? ' ' : '') + `${linkWord} `);
   });
   return makeList$;
 }
@@ -897,7 +905,7 @@ export const isSmallScreen = () => {
   return isMobile() || (window.window.innerWidth < 800);
 };
 
-export async function switchActiveAccount(session, newClient, newPatient) {
+export async function switchActiveAccount(session, newClient, newPatient, options = {}) {
   await dbClient
     .update({
       Key: { session_id: session.user_id },
@@ -912,7 +920,15 @@ export async function switchActiveAccount(session, newClient, newPatient) {
     })
     .promise()
     .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
-  sessionStorage.removeItem('AVASessionData');
+  if (options && options.resetUser) {
+    let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
+    sessionObject.currentProfile.client_id = newClient;
+    sessionObject.currentProfile.person_id = newPatient.id;
+    sessionStorage.setItem('AVASessionData', JSON.stringify(sessionObject));
+  }
+  else {
+    sessionStorage.removeItem('AVASessionData');
+  }
   let jumpTo = window.location.href.replace('refresh', 'theseus');
   window.location.replace(jumpTo);
 };
