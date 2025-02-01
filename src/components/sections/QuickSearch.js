@@ -2,7 +2,7 @@ import React from 'react';
 
 import useSession from '../../hooks/useSession';
 
-import { deepCopy, isMobile } from '../../util/AVAUtilities';
+import { deepCopy, isMobile, titleCase, listFromArray } from '../../util/AVAUtilities';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -57,12 +57,32 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
     return () => { isMounted.current = false; };
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
+  const clean = (this_entry) => {
+    let work = titleCase(this_entry.replace(/GRP|AVA|TOP|ALL/gm, '').replace(/_/gm, ' ').trim());
+    let responseA = [];
+    let skip = false;
+    for (let char of work) {
+      if (skip) {
+        responseA.push(char);
+        skip = false;
+      }
+      else if (char === char.toLowerCase()) { responseA.push(char); }
+      else if (char === ' ') {
+        responseA.push(char);
+        skip = true;
+      }
+      else if (char === char.toUpperCase()) { responseA.push(' ', char); }
+      else { responseA.push(char); }
+    }
+    return responseA.join('');
+  };
+
   const OKtoShow = (this_person) => {
     return (
       (((reactData.selections.length > 0) && (reactData.selections.some(s => { return s.person_id === this_person.person_id; })))
         ||
-      ((reactData.linkedPersonFilter?.raw?.length > 1)
-        && (`${this_person.last} ${this_person.first}`).toLowerCase().includes(reactData.linkedPersonFilter.lower)))
+        ((reactData.linkedPersonFilter?.raw?.length > 1)
+          && (`${this_person.last} ${this_person.first}`).toLowerCase().includes(reactData.linkedPersonFilter.lower)))
     );
   };
 
@@ -124,15 +144,30 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                 alignItems={'center'}
                 key={`select_person_opt${tIndex}`}
                 style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
+                onContextMenu={async (e) => {
+                  e.preventDefault();
+                  updateReactData({
+                    alert: {
+                      severity: 'info',
+                      title: `${this_item.first} ${this_item.last}`,
+                      message: <div>
+                        User ID: <strong>{this_item.person_id}</strong><br />
+                        Groups: {listFromArray(this_item.groups.map(g => {
+                          return clean(g);
+                        }), { ignoreBlank: true })}<br /></div>
+                    }
+                  }, true);
+                }}
+
                 onClick={() => {
                   if (options.pickAndGo) {
                     reactData.selections.unshift({
                       person_id: this_item.person_id,
                       person_name: (`${this_item.first.trim()} ${this_item.last.trim()}`).trim()
-                    })
+                    });
                     updateReactData({
                       selections: reactData.selections
-                    }, true)
+                    }, true);
                   }
                   else {
                     updateReactData({
@@ -142,7 +177,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                 }}
               >
                 <Typography
-                    style={AVATextStyle({ bold: (reactData.selections.some(s => { return s.person_id === this_item.person_id; }))})}
+                  style={AVATextStyle({ bold: (reactData.selections.some(s => { return s.person_id === this_item.person_id; })) })}
                 >
                   {`${this_item.first} ${this_item.last}`}
                 </Typography>
