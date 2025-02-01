@@ -17,22 +17,22 @@ export default ({ currentValues, updateField, reactData, setError, updateReactDa
     if (foundIt < 0) {
       currentValues.peopleRec.groups.push(clicked_group.id || clicked_group.group_id);
       if (clicked_group.belongs_to) {
-        let checkGroup = clicked_group.belongs_to;
+        let parentGroup = clicked_group.belongs_to;
         do {
-          const g = checkGroup;
-          if (!currentValues.peopleRec.groups.includes(checkGroup)) {
-            currentValues.peopleRec.groups.push(checkGroup);
+          const g = parentGroup;
+          if (!currentValues.peopleRec.groups.includes(parentGroup)) {
+            currentValues.peopleRec.groups.push(parentGroup);
           }
           let foundParent = reactData.groupObj.adminHierarchy.find(this_group => {
-            return (this_group === g);
+            return (this_group.id === parentGroup);
           });
           if (foundParent) {
-            checkGroup = foundParent.id;
+            parentGroup = foundParent.belongs_to || false;
           }
           else {
-            checkGroup = false;
+            parentGroup = false;
           }
-        } while (checkGroup);
+        } while (parentGroup);
       }
     }
     else {
