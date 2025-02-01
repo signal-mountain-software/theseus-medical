@@ -136,7 +136,10 @@ export default ({ options, onClose, onAbort }) => {
               }
             }
           }
-          peopleList = peopleList.concat(state.accessList?.[this_client]?.list || ((this_client === state.session.client_id) ? state.session.last_state.list : [])).filter((p, pX) => {
+          peopleList = peopleList
+            .concat(state.accessList?.[this_client]?.list || ((this_client === state.session.client_id)
+              ? state.session.last_state.list
+              : [])).filter((p, pX) => {
             return makeArray(p.groups).some(g => {
               return groupList[this_client].includes(g) || newPeople.includes(p.person_id);
             });
@@ -202,7 +205,14 @@ export default ({ options, onClose, onAbort }) => {
           || pGroupList.includes(g.belongs_to)
           || pGroupList.includes('*responsible'))
       ) {
-        let my_role = await getRole(g.id, state.session.person_id);
+        const foundGroup = state.groups.belongsTo[g.id];
+        let my_role;
+        if (foundGroup) {
+          my_role = foundGroup.role;
+        }
+        else {
+          my_role = await getRole(g.id, state.session.person_id);
+        }
         if (pGroupList.includes('*responsible') && (my_role !== 'responsible')) {
           continue;
         }
@@ -253,7 +263,7 @@ export default ({ options, onClose, onAbort }) => {
       if (groupList && groupList.length > 0) {
         reactUpdater.groupList = groupList;
         if (showList === 'select') {
-          if (!state.groups || !state.groups.adminHierarchy) {
+          if (!state.groups || !state.groups.adminHierarchy || !state.groups.belongsTo) {
             enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
             onAbort();
             return;
