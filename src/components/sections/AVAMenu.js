@@ -1113,7 +1113,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 )}
                 {(session?.patient_id !== session?.user_id) && (
                   <MenuItem onClick={async () => {
-                    let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
+                  //  let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
                       updateReactData({
                         popupMenuOpen: false
                       }, true);

@@ -377,7 +377,10 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                       });
                     if (recordExists(proxyRec)) {
                       let newFamilyMembers = proxyRec.Item.myFamilyMembers || {};
-                      newFamilyMembers[currentValues.peopleRec.person_id] = `${currentValues.peopleRec.name.first} ${currentValues.peopleRec.name.last}`;
+                      newFamilyMembers[currentValues.peopleRec.person_id] = {
+                        name: `${currentValues.peopleRec.name.first} ${currentValues.peopleRec.name.last}`,
+                        type: state.groups.person_admin_class || 'other'
+                      };
                       await dbClient
                         .update({
                           Key: { person_id: this_item.person_id },

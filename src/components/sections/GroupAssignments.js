@@ -19,10 +19,10 @@ export default ({ currentValues, updateField, reactData, setError, updateReactDa
       if (clicked_group.belongs_to) {
         let parentGroup = clicked_group.belongs_to;
         do {
-          const g = parentGroup;
           if (!currentValues.peopleRec.groups.includes(parentGroup)) {
             currentValues.peopleRec.groups.push(parentGroup);
           }
+          // eslint-disable-next-line
           let foundParent = reactData.groupObj.adminHierarchy.find(this_group => {
             return (this_group.id === parentGroup);
           });

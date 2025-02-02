@@ -1145,8 +1145,8 @@ export default Component => props => {
         let [goodGet, this_person] = await getPerson(altIDs.Items[p].person_id);
         if (goodGet &&
           ((!reactData.urlData.client_id)
-          || (this_person.client_id === reactData.urlData.client_id)
-        )) {
+            || (this_person.client_id === reactData.urlData.client_id)
+          )) {
           foundIDs.push(this_person);
         }
       }
@@ -1455,7 +1455,8 @@ export default Component => props => {
     }
 
     belongsTo = await getGroupsBelongTo(currentSession.client_id, currentSession.patient_id, { sort: true });
-    dispatch({ type: SET_GROUPS, payload: Object.assign({}, { belongsTo }) });
+    let group_structure = await getAllGroups(currentSession.patient_id, currentSession.client_id);
+    dispatch({ type: SET_GROUPS, payload: Object.assign({}, group_structure, { belongsTo }) });
 
     currentSession.adminAccount = false;
     if (currentProfile.account_class) {
@@ -1529,12 +1530,12 @@ export default Component => props => {
       .catch(error => {
         console.log(`error in loadSyncInfo AccessList. Message is ${error.message}`);
       });
-    let cPromise = getAllGroups(pSession.patient_id, pSession.client_id)
-      .then(groups => {
-        dispatch({ type: SET_GROUPS, payload: Object.assign({}, { belongsTo }, membersObj, groups) });
-        console.log(`done with loadSyncInfo Groups. Retrieved groups keys as ${Object.keys(groups)}`);
-        groupsObj = groups;
-      });
+    // let cPromise = getAllGroups(pSession.patient_id, pSession.client_id)
+    //  .then(groups => {
+    //    dispatch({ type: SET_GROUPS, payload: Object.assign({}, { belongsTo }, membersObj, groups) });
+    //    console.log(`done with loadSyncInfo Groups. Retrieved groups keys as ${Object.keys(groups)}`);
+    //    groupsObj = groups;
+    //  });
 
     let rightNow = new Date();
     let dPromise = getAllOccurrences(
@@ -1553,7 +1554,8 @@ export default Component => props => {
       .catch(error => {
         console.log(`error in loadSyncInfo Calendar. Message is ${error.message}`);
       });
-    await Promise.allSettled([aPromise, cPromise, dPromise])
+    // await Promise.allSettled([aPromise, cPromise, dPromise])
+    await Promise.allSettled([aPromise, dPromise])
       .then(results => {
         console.log(`All resolved; results are ${JSON.stringify(results)}`, 'Launching MakeAVAMenu');
         bootState.groups = Object.assign({}, { belongsTo }, membersObj, groupsObj);
