@@ -7,6 +7,8 @@ import { formatPhone } from '../../util/AVAPeople';
 import { deepCopy } from '../../util/AVAUtilities';
 import { AVATextStyle } from '../../util/AVAStyles';
 
+import PeopleMaintenance from '../dialogs/PeopleMaintenance';
+
 export default ({ currentValues, reactData, updateReactData }) => {
 
   const { state } = useSession();
@@ -91,14 +93,16 @@ export default ({ currentValues, reactData, updateReactData }) => {
           </Typography>
         </Box>
       </Box>
-      <Typography
-        style={AVATextStyle({ margin: { top: 1 } })}
-      >
-        {`Cell phone: ${(formatPhone(currentValues.peopleRec?.contact_info?.cell?.number
-          ? currentValues.peopleRec.contact_info.cell.number
-          : (currentValues.peopleRec?.messaging?.sms || '')
-        ))}`}
-      </Typography>
+      {(currentValues.peopleRec?.contact_info?.cell?.number || currentValues.peopleRec?.messaging?.sms) &&
+        <Typography
+          style={AVATextStyle({ margin: { top: 1 } })}
+        >
+          {`Cell phone: ${(formatPhone(currentValues.peopleRec?.contact_info?.cell?.number
+            ? currentValues.peopleRec.contact_info.cell.number
+            : (currentValues.peopleRec?.messaging?.sms || '')
+          ))}`}
+        </Typography>
+      }
       {(currentValues.peopleRec.emergency_contact?.contact1 || currentValues.peopleRec.emergency_contact?.contact2) &&
         <Typography
           style={AVATextStyle({ margin: { top: 1 } })}
@@ -120,9 +124,6 @@ export default ({ currentValues, reactData, updateReactData }) => {
           {currentValues.peopleRec.emergency_contact.contact2}
         </Typography>
       }
-
-
-
       {currentValues.peopleRec.myFamilyMembers &&
         <React.Fragment>
           <Typography
@@ -145,13 +146,18 @@ export default ({ currentValues, reactData, updateReactData }) => {
 
               key={`family_${memberNdx}`}
             >
-              {(currentValues.peopleRec.myFamilyMembers[this_member].type === 'Camper') &&
+              {(currentValues.peopleRec.myFamilyMembers[this_member].type.toLowerCase() === 'camper') &&
                 <Typography style={AVATextStyle({ margin: { top: 0, left: 1, right: -0.8 }, bold: true })}>
                   {`Camper -`}
                 </Typography>
               }
               <Typography
                 style={AVATextStyle({ margin: { top: 0, left: 1 }, bold: true })}
+                onClick={async () => {
+                  updateReactData({
+                    viewFamilyMember: this_member
+                  }, true);
+                }}
               >
                 {`${currentValues.peopleRec.myFamilyMembers[this_member].name}`}
               </Typography>
@@ -159,9 +165,6 @@ export default ({ currentValues, reactData, updateReactData }) => {
           ))}
         </React.Fragment>
       }
-
-
-
       {currentValues.peopleRec.proxy_allowed_from &&
         (Object.keys(currentValues.peopleRec.proxy_allowed_from).length > 0) &&
         reactData.accessList &&
@@ -176,6 +179,11 @@ export default ({ currentValues, reactData, updateReactData }) => {
               currentValues.peopleRec.proxy_allowed_from.hasOwnProperty(this_item.person_id) &&
               <Typography
                 style={AVATextStyle({ margin: { top: 0, left: 1 }, bold: true })}
+                onClick={async () => {
+                  updateReactData({
+                    viewFamilySnapshot: this_item.person_id
+                  }, true);
+                }}
               >
                 {`${this_item.first} ${this_item.last}`}
               </Typography>
@@ -184,14 +192,6 @@ export default ({ currentValues, reactData, updateReactData }) => {
           </Box>
         </React.Fragment>
       }
-
-
-
-
-
-
-
-
       <Box display='flex' alignItems='center'
         justifyContent='flex-end' flexDirection='row'>
         <Typography
@@ -200,6 +200,31 @@ export default ({ currentValues, reactData, updateReactData }) => {
           {`User ID: ${currentValues.peopleRec.person_id}`}
         </Typography>
       </Box>
+
+      {reactData.viewFamilySnapshot &&
+        <PeopleMaintenance
+          person_id={reactData.viewFamilySnapshot}
+          initialValues={{ color: 'green' }}
+          options={{ sectionToShow: 'Snapshot' }}
+          onClose={() => {
+            updateReactData({
+              viewFamilySnapshot: false
+            }, true);
+          }}
+        />
+      }
+
+      {reactData.viewFamilyMember &&
+        <PeopleMaintenance
+          person_id={reactData.viewFamilyMember}
+          initialValues={{ color: 'turquoise' }}
+          onClose={() => {
+            updateReactData({
+              viewFamilyMember: false
+            }, true);
+          }}
+        />
+      }
     </Box>
   );
 };
