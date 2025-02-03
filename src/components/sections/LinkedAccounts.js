@@ -128,11 +128,11 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                 display='flex'
                 flexDirection='row'
                 alignItems={'flex-start'}
-
                 key={`family_${memberNdx}`}
               >
                 {(currentValues.peopleRec.myFamilyMembers[this_member].type === 'Camper') &&
                   <Typography style={AVATextStyle({ margin: { top: 1, left: 1, right: -0.8 }, bold: true })}
+                    key={`family_${memberNdx}__camperID`}
                     onClick={async () => {
                       updateReactData({
                         viewFamilyMember: this_member
@@ -144,6 +144,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                 }
                 <Typography
                   style={AVATextStyle({ margin: { top: 1, left: 1 }, bold: true })}
+                  key={`family_${memberNdx}__name`}
                   onClick={async () => {
                     updateReactData({
                       viewFamilyMember: this_member

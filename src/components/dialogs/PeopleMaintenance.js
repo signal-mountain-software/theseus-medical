@@ -7,6 +7,7 @@ import { AVAclasses, AVADefaults, AVATextStyle, isDark } from '../../util/AVASty
 import useSession from '../../hooks/useSession';
 
 import ProfileSection from '../sections/ProfileSection';
+import Snapshot from '../sections/Snapshot';
 import FormSection from '../sections/FormSection';
 import TechInfoSection from '../sections/TechInfoSection';
 import MessagePreferencesSection from '../sections/MessagePreferencesSection';
@@ -70,6 +71,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     myImage: (options.mode === 'add') ? '' : getImage(person_id),
     image_editing: false,
     components: {
+      Snapshot: {
+        component_id: Snapshot,
+      },
       ProfileSection: {
         component_id: ProfileSection,
       },
@@ -125,13 +129,21 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       let reactUpdObj = {
         initialized: true,
         sections: [{
-          section_name: 'Name & Contact info',
+          section_name: 'Snapshot',
           color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'ProfileSection') : false),
+          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'Snapshot') : false),
           isAuthorized: true,
           version_id: 0,
-          component_name: 'ProfileSection'
+          component_name: 'Snapshot'
         },
+          {
+            section_name: 'Name & Contact info',
+            color: initialValues?.color || 'orange',
+            isOpen: (options?.sectionToShow ? (options.sectionToShow === 'ProfileSection') : false),
+            isAuthorized: true,
+            version_id: 0,
+            component_name: 'ProfileSection'
+          },
         {
           section_name: 'Messaging',
           color: initialValues?.color || 'orange',
