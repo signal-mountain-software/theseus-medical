@@ -473,7 +473,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                     }}
                   onClose={(ignore_me, statusObj) => {
                     reactData.myFormListObj[this_formID].isUpdating = false;
-                    if (statusObj.document_status === 'complete') {
+                    if ((statusObj.document_status === 'complete')  && (statusObj.recWritten)) {
                       reactData.myFormListObj[this_formID].completedDocs.push({
                         document_id: statusObj.recWritten.document_id,
                         location: statusObj.recWritten.history[0].url,
@@ -496,7 +496,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                         }
                       }
                     }
-                    else if (statusObj.document_status === 'work_in_process') {
+                    else if ((statusObj.document_status === 'work_in_process') && (statusObj.recWritten)) {
                       reactData.myFormListObj[this_formID].wipDocs.push({
                         document_id: statusObj.recWritten.document_id,
                         due_date: statusObj.recWritten.due_date,
