@@ -666,10 +666,10 @@ export default ({ request = {}, onClose }) => {
     }
     let tempTitle;
     if (pertains_to_name) {
-      tempTitle = `${formRec.form_name} for ${pertains_to_name} - ${makeDate(new Date()).absolute}`;
+      tempTitle = `${formRec.form_name} for ${pertains_to_name}`;
     }
     else {
-      tempTitle = `${formRec.form_name} - ${makeDate(new Date()).absolute}`;
+      tempTitle = `${formRec.form_name}`;
     }
     let response = {
       fields: {},
