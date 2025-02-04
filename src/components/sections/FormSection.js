@@ -680,11 +680,11 @@ export default ({ currentValues, reactData, updateReactData }) => {
           {checkCircleDisplayed &&
             <Box display='flex'
               flexDirection='row'
-              key={`radio-guide_e_buttons`}
+              key={`radio-guide_e_buttons_complete`}
             >
               <CheckCircleIcon
                 style={AVATextStyle({ margin: { right: 0.1 } })}
-                key={`radio-guide_e_button`}
+                key={`radio-guide_e_button_complete`}
                 size='small'
               />
               <Typography
@@ -697,11 +697,11 @@ export default ({ currentValues, reactData, updateReactData }) => {
           {(circleDisplayed || redCircleDisplayed || orangeCircleDisplayed) &&
             <Box display='flex'
               flexDirection='row'
-              key={`radio-guide_e_buttons2`}
+              key={`radio-guide_e_buttons2_noview`}
             >
               <RadioButtonUncheckedIcon
                 style={AVATextStyle({ margin: { right: 0.1 }, color: (redCircleDisplayed ? 'red' : (orangeCircleDisplayed ? 'orange' : null)) })}
-                key={`radio-guide_e_button`}
+                key={`radio-guide_e_button_noview`}
                 size='small'
               />
               <Typography
@@ -731,7 +731,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
           {orangePencilDisplayed &&
             <Box display='flex'
               flexDirection='row'
-              key={`radio-guide_e_buttons2`}
+              key={`radio-guide_e_buttons2_orange`}
             >
               <EditIcon
                 style={AVATextStyle({ margin: { right: 0.1 }, color: 'orange' })}
