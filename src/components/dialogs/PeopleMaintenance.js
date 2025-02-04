@@ -136,14 +136,14 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           version_id: 0,
           component_name: 'Snapshot'
         },
-          {
-            section_name: 'Name & Contact info',
-            color: initialValues?.color || 'orange',
-            isOpen: (options?.sectionToShow ? (options.sectionToShow === 'ProfileSection') : false),
-            isAuthorized: true,
-            version_id: 0,
-            component_name: 'ProfileSection'
-          },
+        {
+          section_name: 'Name & Contact info',
+          color: initialValues?.color || 'orange',
+          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'ProfileSection') : false),
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'ProfileSection'
+        },
         {
           section_name: 'Messaging',
           color: initialValues?.color || 'orange',
@@ -785,10 +785,10 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                         }, true);
                       }
                     }}
-                  justifyContent='center'
-                  flexDirection='column'
-                  minHeight={30}
-                  height={30}
+                    justifyContent='center'
+                    flexDirection='column'
+                    minHeight={30}
+                    height={30}
                   />
                 </React.Fragment>
               }
