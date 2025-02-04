@@ -733,18 +733,34 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
           }
           case 'select&text':
           case 'select': {
-            pdfLine(docData.fields[this_field].prompt.ref, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
-            docData.fields[this_field].value.selection.selectionList.forEach((text, tIndex) => {
-              let radioSelected = docValues[this_field].valueList.includes(text);
-              if (tIndex === 0) {
-                pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
+            if (!docData.fields[this_field].prompt.noPrint) {
+              if (page.line_was_compressed) {
+                pdfDown(1);
+                page.line_was_compressed = false;
               }
-              else {
-                pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+              if (docData.fields[this_field].prompt.compressPrint) {
+                docData.fields[this_field].prompt.value += ':';
               }
-            });
-            pdfDown(1);
-            pdfStyle('reset');
+              pdfLine(docData.fields[this_field].prompt.ref, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+              docData.fields[this_field].value.selection.selectionList.forEach((text, tIndex) => {
+                if (docData.fields[this_field].value && docData.fields[this_field].prompt.compressPrint) {
+                  if (docData.fields[this_field].value.includes(text)) {
+                    pdfLine(text, { style: 'normal', indent: 2, after: 0, noNewLine: true });
+                  }
+                }
+                else {
+                  let radioSelected = docValues[this_field].valueList.includes(text);
+                  if (tIndex === 0) {
+                    pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
+                  }
+                  else {
+                    pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                  }
+                }
+              });
+              pdfDown(1);
+              pdfStyle('reset');
+            }
             break;
           }
           case 'html': {
@@ -771,7 +787,11 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
           }
           default: {
             if (docValues.hasOwnProperty(this_field)) {
-              if (docData.fields[this_field].prompt.ref.includes(docValues[this_field].valueText)) {
+              if (docData.fields[this_field].prompt.compressPrint) {
+                pdfLine(docValues[this_field].valueText,
+                  { style: 'normal', size: 'medium', align: 'left', after: 0 });
+              }
+              else if (docData.fields[this_field].prompt.ref.includes(docValues[this_field].valueText)) {
                 pdfLine(`${docData.fields[this_field].prompt.ref}`,
                   { style: 'normal', size: 'medium', align: 'left', after: 1 });
               }
@@ -845,22 +865,38 @@ export async function printDocumentB({ documentList, options = {} }) {
               }
               case 'select&text':
               case 'select': {
-                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
-                fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
-                  let radioSelected = fields.hasOwnProperty(this_field) && fields[this_field].value && fields[this_field].value.includes(text);
-                  if (tIndex === 0) {
-                    pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
+                if (!fields[this_field].prompt.noPrint) {
+                  if (page.line_was_compressed) {
+                    pdfDown(1);
+                    page.line_was_compressed = false;
                   }
-                  else {
-                    pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                  if (fields[this_field].prompt.compressPrint) {
+                    fields[this_field].prompt.value += ':';
                   }
-                });
-                if (fields[this_field].bonusText) {
-                  const text = `${fields[this_field].prompt.other || 'other'}: ${fields[this_field].bonusText}`;
-                  pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                  pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+                  fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
+                    if (fields[this_field].value && fields[this_field].prompt.compressPrint) {
+                      if (fields[this_field].value.includes(text)) {
+                        pdfLine(text, { style: 'normal', indent: 2, after: 0, noNewLine: true });
+                      }
+                    }
+                    else {
+                      let radioSelected = fields.hasOwnProperty(this_field) && fields[this_field].value && fields[this_field].value.includes(text);
+                      if (tIndex === 0) {
+                        pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
+                      }
+                      else {
+                        pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                      }
+                    }
+                  });
+                  if (fields[this_field].bonusText) {
+                    const text = `${fields[this_field].prompt.other || 'other'}: ${fields[this_field].bonusText}`;
+                    pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                  }
+                  pdfDown(1);
+                  pdfStyle('reset');
                 }
-                pdfDown(1);
-                pdfStyle('reset');
                 break;
               }
               case 'html': {
@@ -887,7 +923,11 @@ export async function printDocumentB({ documentList, options = {} }) {
               }
               default: {
                 if (fields.hasOwnProperty(this_field)) {
-                  if (fields[this_field].prompt.value.includes(fields[this_field].valueText)) {
+                  if (fields[this_field].prompt.compressPrint) {
+                    pdfLine(fields[this_field].valueText,
+                      { style: 'normal', size: 'medium', align: 'left', after: 0 });
+                  }
+                  else if (fields[this_field].prompt.value.includes(fields[this_field].valueText)) {
                     pdfLine(`${fields[this_field].prompt.value}`,
                       { style: 'normal', size: 'medium', align: 'left', after: 1 });
                   }
@@ -955,25 +995,27 @@ export async function printEmptyDocument({ documentList, options = {} }) {
             }
             case 'select&text':
             case 'select': {
-              pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
-              fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
-                let radioSelected = false;
-                if (tIndex === 0) {
-                  pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
+              if (!fields[this_field].prompt.noPrint) {
+                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+                fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
+                  let radioSelected = false;
+                  if (tIndex === 0) {
+                    pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
+                  }
+                  else {
+                    pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                  }
+                });
+                if (printType === 'select&text') {
+                  const text = `${fields[this_field].prompt.other || 'other'}:`;
+                  pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                  let endX = pdfCurrent.xPos + doc.getTextWidth('Sample text thats not too long');
+                  doc.line(pdfCurrent.xPos - 6, pdfCurrent.yPos + 1, endX, pdfCurrent.yPos + 1, 'DF');
+                  pdfCurrent.xPos = endX;
                 }
-                else {
-                  pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
-                }
-              });
-              if (printType === 'select&text') {
-                const text = `${fields[this_field].prompt.other || 'other'}:`;
-                pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
-                let endX = pdfCurrent.xPos + doc.getTextWidth('Sample text thats not too long');
-                doc.line(pdfCurrent.xPos - 6, pdfCurrent.yPos + 1, endX, pdfCurrent.yPos + 1, 'DF');
-                pdfCurrent.xPos = endX;
+                pdfDown(1);
+                pdfStyle('reset');
               }
-              pdfDown(1);
-              pdfStyle('reset');
               break;
             }
             case 'html': {
@@ -1056,6 +1098,7 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
     page.title = title;
     page.document_id = docID;
     page.client_id = client_id;
+    page.line_was_compressed = false;
     page.footerText = `AVA reference: ${page.client_id}_${page.document_id}`;
     pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
     pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
@@ -1074,22 +1117,38 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
               }
               case 'select&text':
               case 'select': {
-                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
-                fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
-                  let radioSelected = fields[this_field].value && fields[this_field].value.includes(text);
-                  if (tIndex === 0) {
-                    pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
+                if (!fields[this_field].prompt.noPrint) {
+                  if (page.line_was_compressed) {
+                    pdfDown(1);
+                    page.line_was_compressed = false;
                   }
-                  else {
-                    pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                  if (fields[this_field].prompt.compressPrint) {
+                    fields[this_field].prompt.value += ':'
                   }
-                });
-                if (fields[this_field].bonusText) {
-                  const text = `${fields[this_field].prompt.other || 'other'}: ${fields[this_field].bonusText}`;
-                  pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                  pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+                  fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
+                    if (fields[this_field].value && fields[this_field].prompt.compressPrint) { 
+                      if (fields[this_field].value.includes(text)) {
+                        pdfLine(text, { style: 'normal', indent: 2, after: 0, noNewLine: true });
+                      }
+                    }
+                    else {
+                      let radioSelected = fields[this_field].value && fields[this_field].value.includes(text);
+                      if (tIndex === 0) {
+                        pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
+                      }
+                      else {
+                        pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                      }
+                    }
+                  });
+                  if (fields[this_field].bonusText) {
+                    const text = `${fields[this_field].prompt.other || 'other'}: ${fields[this_field].bonusText}`;
+                    pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                  }
+                  pdfDown(1);
+                  pdfStyle('reset');
                 }
-                pdfDown(1);
-                pdfStyle('reset');
                 break;
               }
               case 'html': {
@@ -1123,15 +1182,23 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
               }
               default: {
                 if (fields.hasOwnProperty(this_field)) {
-                  if (fields[this_field].valueText) {
-                    pdfCurrent.yPos += 12;
-                    if (fields[this_field].prompt.value.includes(fields[this_field].valueText)) {
+                  if (page.line_was_compressed && !fields[this_field].prompt.compressPrint) {
+                    pdfDown(1);
+                    page.line_was_compressed = false;
+                  }
+                  if (fields[this_field].valueText) {                    
+                    if (fields[this_field].prompt.compressPrint) {
+                      pdfLine(fields[this_field].valueText,
+                        { style: 'normal', size: 'medium', align: 'left', noNewLine: fields[this_field].prompt.noNewLine || false });
+                      page.line_was_compressed = true;
+                    }
+                    else if (fields[this_field].prompt.value.includes(fields[this_field].valueText)) {
                       pdfLine(`${fields[this_field].prompt.value}`,
-                        { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                        { style: 'normal', size: 'medium', align: 'left', before: 1, after: 1 });
                     }
                     else {
                       pdfLine(`${fields[this_field].prompt.value}: ${fields[this_field].valueText}`,
-                        { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                        { style: 'normal', size: 'medium', align: 'left', before: 1, after: 1 });
                     }
                   }
                   else {
@@ -1980,29 +2047,74 @@ async function pdfHTML(text, options = {}) {
   }
   /** calculate the imgWidth, imgHeight to print on PDF 
    *  so it can scale in equal proportions*/
-  const canvasWidth = (page.width - page.margin.right - page.margin.left);
-  let canvasHeight;
-  let computed_height;
+  let estimated_rows_needed;
   if (options.printed_height) {
-    canvasHeight = options.printed_height + 2;
-    computed_height = options.printed_height + 2;
+    estimated_rows_needed = options.printed_height + 2;
   }
   else {
     let sizeEstimate = doc.getTextWidth(text);
-    canvasHeight = Math.ceil(sizeEstimate / page.width) + (text.split('<p').length * 2);
-    computed_height = ((page.width - page.margin.right - page.margin.left) / canvasWidth) * canvasHeight;
+    estimated_rows_needed = Math.ceil(sizeEstimate / page.width) + (text.split('<p').length * 2) + 2;
   }
-  let scale_factor = 1;
+  let estimated_y_units_needed = estimated_rows_needed * (pdfCurrent.fontSize * 0.75);
+  let scale_factor = options.print_scale || 1;
+
   pdfCurrent.yPos += (options.print_ypos || 1);
   pdfCurrent.xPos = page.margin.left + (options.print_xpos || 0);
-  if ((computed_height + pdfCurrent.yPos) > (page.height - page.margin.top - page.margin.bottom)) {
-    scale_factor = (page.height - page.margin.top - page.margin.bottom) / computed_height;
-  }
-  const final_width = ((page.width - page.margin.right - page.margin.left) * scale_factor) / (options.print_scale || 0.6);
-  const final_height = (computed_height * scale_factor) / 0.6;
 
-  const this_page = doc.internal.getNumberOfPages();
-  await doc.html(text, {
+  // estimate the ending y position and shrink if needed to fit on the current page
+  if ((estimated_y_units_needed + pdfCurrent.yPos) > (page.height - page.margin.top - page.margin.bottom)) {
+    let remaining_y_units = page.height - page.margin.bottom - pdfCurrent.yPos;
+    scale_factor = remaining_y_units / estimated_y_units_needed;
+    if (scale_factor < 0.6) {   // if we are going to shrink too much, jump to next page and reset scale
+      let savedStyle = Object.assign({}, pdfCurrent);
+      pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
+      pdfCurrent = Object.assign({}, savedStyle, { yPos: pdfCurrent.yPos });
+      pdfStyle(pdfCurrent);
+      pdfHeader(++pdfCurrent.pageNumber);
+      scale_factor = 1;
+    }
+  }
+
+  const BOLD = '';  // "\x1b[1m";
+  const NORMAL = '';   // "\x1b[22m";
+
+  let html = text + '%%';
+  let left, front, middle, back;
+  let pieces = [];
+  do {
+    [left, back] = html.split(/<\/strong>/ig);
+    if (back) {
+      [front, middle] = left.split(/<strong>/ig);
+      pieces.push({ type: 'normal', text: front });
+      pieces.push({ type: 'bold', text: middle });
+      html = back;
+    }
+    else {
+      pieces.push({ type: 'normal', text: left });
+    }
+  } while (back)
+  let noNewLine = false;
+  for (let this_piece of pieces) {
+    this_piece.text = this_piece.text.replace(/<style([\s\S]*?)<\/style>/gi, '');
+    this_piece.text = this_piece.text.replace(/<script([\s\S]*?)<\/script>/gi, '');
+    this_piece.text = this_piece.text.replace(/<strong>/ig, BOLD);
+    this_piece.text = this_piece.text.replace(/<\/strong>/ig, NORMAL);
+    this_piece.text = this_piece.text.replace(/<\/div>/ig, '\n');
+    this_piece.text = this_piece.text.replace(/<\/li>/ig, '\n');
+    this_piece.text = this_piece.text.replace(/<li>/ig, '  *  ');
+    this_piece.text = this_piece.text.replace(/<\/ul>/ig, '\n');
+    this_piece.text = this_piece.text.replace(/<\/p>/ig, '\n');
+    this_piece.text = this_piece.text.replace(/<br\s*[/]?>/gi, "\n");
+    this_piece.text = this_piece.text.replace(/<[^>]+>/ig, '');
+    this_piece.text = this_piece.text.replace('%%', '')
+    pdfLine(this_piece.text, { size: 'medium', align: 'left', noNewLine, style: this_piece.type });
+    noNewLine = true;
+  }
+
+
+  /*
+  await doc.html(`<p style="font-size:${scale_factor * 10}%;">${text}</p>`, {
+  // await doc.html(`<p style="font-size:10px;">${text}</p>`, {
     callback: function (doc) {
       return doc;
     },
@@ -2011,15 +2123,15 @@ async function pdfHTML(text, options = {}) {
     windowWidth: page.width,
     html2canvas: {
       width: final_width,
-      scale: (options.print_scale || 1)
+      scale: scale_factor * 0.8
     },
     margin: [page.margin.left, page.margin.top, page.margin.right, page.margin.bottom],
     x: (options.print_xpos || 0),
     y: ((this_page - 1) * page.height) + pdfCurrent.yPos,
     autoPaging: 'text'
   });
+  */
 
-  pdfCurrent.yPos += final_height / scale_factor;
   if (!options.noNewPage && ((pdfCurrent.yPos >= page.bottom))) {
     let savedStyle = Object.assign({}, pdfCurrent);
     pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
@@ -2066,7 +2178,7 @@ function pdfLine(text, options = {}) {
       img.onload = function () {
         imageWidth = img.naturalWidth;
         imageHeight = img.naturalHeight;
-      }
+      };
     }
     else {
       imageWidth = pdfCurrent.fontSize * 2 * (pdfCurrent.fontSize / page.font.size['medium']);
@@ -2114,6 +2226,10 @@ function pdfLine(text, options = {}) {
     }
   }
   if (options.radio) {
+    if (((pdfCurrent.xPos + doc.getTextWidth(text) + pdfCurrent.indent + 8) > page.printableArea)) {
+      pdfDown(1);
+      pdfCurrent.xPos += 8;
+    }
     doc.circle(pdfCurrent.xPos + pdfCurrent.indent, pdfCurrent.yPos - 1, 3, (options.radioSelected ? 'F' : 'S'));
     doc.setFontSize(pdfCurrent.fontSize * 0.8);
     doc.text(text, pdfCurrent.xPos + pdfCurrent.indent + 8, pdfCurrent.yPos + 1);
@@ -2155,19 +2271,19 @@ function pdfLine(text, options = {}) {
     if (pdfCurrent.align === 'center') {
       let xOffset = page.centerPoint - (doc.getTextWidth(text) / 2);
       doc.text(text, xOffset, pdfCurrent.yPos);
-      pdfCurrent.xPos = page.centerPoint + (doc.getTextWidth(text) / 2) + pdfCurrent.fontSize;
+      pdfCurrent.xPos = page.centerPoint + (doc.getTextWidth(text) / 2) + (pdfCurrent.fontSize / 4);
     }
     else if (pdfCurrent.align === 'right') {
       doc.text(text, page.width - page.margin.right, pdfCurrent.yPos, { align: 'right' });
       pdfCurrent.xPos = page.margin.right;
     }
-    else if (pdfCurrent.noNewLine) {
-      doc.text(text, pdfCurrent.xPos + pdfCurrent.indent, pdfCurrent.yPos);
-      pdfCurrent.xPos += doc.getTextWidth(text) + pdfCurrent.fontSize;
+    else if (options.noNewLine) {
+      doc.text(text, pdfCurrent.xPos, pdfCurrent.yPos);
+      pdfCurrent.xPos += doc.getTextWidth(text) + (pdfCurrent.fontSize / 4);
     }
     else {
       doc.text(text, pdfCurrent.xPos + pdfCurrent.indent, pdfCurrent.yPos);
-      pdfCurrent.xPos = (pdfCurrent.xPos + pdfCurrent.indent) + doc.getTextWidth(text) + pdfCurrent.fontSize;
+      pdfCurrent.xPos = (pdfCurrent.xPos + pdfCurrent.indent) + doc.getTextWidth(text) + (pdfCurrent.fontSize / 4);
     }
   }
   if (options.after) { pdfDown(options.after); }
@@ -2302,7 +2418,7 @@ async function pdfImage(text, options = {}) {
   return;
 
   function getImageSize(img) {
-    return new Promise(res => {     
+    return new Promise(res => {
       img.onload = () => res();
       img.onerror = () => res();
     });
