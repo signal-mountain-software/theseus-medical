@@ -2,17 +2,21 @@ import React from 'react';
 
 import useSession from '../../hooks/useSession';
 
-import { Box, Typography } from '@material-ui/core/';
+import { Box, Typography, Button } from '@material-ui/core/';
 import { formatPhone } from '../../util/AVAPeople';
 import { deepCopy } from '../../util/AVAUtilities';
-import { AVATextStyle } from '../../util/AVAStyles';
+import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
+import SendIcon from '@material-ui/icons/Send';
 
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
+import MakeMessage from '../forms/MakeMessage';
 
 export default ({ currentValues, reactData, updateReactData }) => {
 
   const { state } = useSession();
   const isMounted = React.useRef(false);
+
+  const AVAClass = AVAclasses();
 
   const makeLocation = () => {
     if (currentValues.peopleRec.hasOwnProperty('address')) {
@@ -124,7 +128,8 @@ export default ({ currentValues, reactData, updateReactData }) => {
           {currentValues.peopleRec.emergency_contact.contact2}
         </Typography>
       }
-      {currentValues.peopleRec.myFamilyMembers &&
+      {(currentValues.peopleRec.myFamilyMembers &&
+        (currentValues.peopleRec.myFamilyMembers.length > 0)) &&
         <React.Fragment>
           <Typography
             style={AVATextStyle({ margin: { top: 1 } })}
@@ -192,14 +197,79 @@ export default ({ currentValues, reactData, updateReactData }) => {
           </Box>
         </React.Fragment>
       }
-      <Box display='flex' alignItems='center'
-        justifyContent='flex-end' flexDirection='row'>
-        <Typography
-          style={AVATextStyle({ opacity: '40%', margin: { top: 1, right: 0.5 } })}
-        >
-          {`User ID: ${currentValues.peopleRec.person_id}`}
-        </Typography>
+      <Box
+        display='flex'
+        alignItems={'center'}
+        justifyContent='space-between' flexDirection='row'
+        key={`bottom_row`}
+        style={{ marginTop: '24px' }}
+      >
+        {(state.session.user_id !== currentValues.peopleRec.person_id) &&
+          <Button
+            onClick={async () => {
+              updateReactData({
+                sendMessage: true
+              }, true);
+            }}
+            className={AVAClass.AVAButton}
+            style={{ marginLeft: 0, backgroundColor: 'white', color: 'black' }}
+            size='small'
+            startIcon={<SendIcon size='small' />}
+          >
+            <Box display='flex' alignItems='center'
+              justifyContent='flex-end' flexDirection='column'>
+              <Typography
+                style={AVATextStyle({ size: 0.7, margin: { top: 0.2, right: 0.5 } })}
+              >
+                {`Message`}
+              </Typography>
+              <Typography
+                style={AVATextStyle({ size: 0.7, margin: { bottom: 0.2, right: 0.5 } })}
+              >
+                {currentValues.peopleRec.name?.first}
+              </Typography>
+            </Box>
+          </Button>
+        }
+        {(reactData.administrative_account || (state.session.user_id === currentValues.peopleRec.person_id)) &&
+          <Box display='flex' alignItems='center'
+            justifyContent='flex-end' flexDirection='row'>
+            <Typography
+              style={AVATextStyle({ opacity: '40%', margin: { top: 1, right: 0.5 } })}
+            >
+              {`User ID: ${currentValues.peopleRec.person_id}`}
+            </Typography>
+          </Box>
+        }
       </Box>
+
+      {reactData.sendMessage &&
+        <MakeMessage
+          titleText={`Send a message to ${currentValues.peopleRec.name?.first} ${currentValues.peopleRec.name?.last}`}
+          promptText={['Subject', `What should your message to ${currentValues.peopleRec.name?.first} say?`]}
+          promptUse={['subject', 'message']}
+          buttonText={'Send'}
+          sender={{
+            "client_id": state.session.client_id,
+            "patient_id": state.session.user_id,
+            "patient_display_name": state.session.user_display_name
+          }}
+          pRecipientID={currentValues.peopleRec.person_id}
+          pRecipientName={`${currentValues.peopleRec.name?.first} ${currentValues.peopleRec.name?.last}`}
+          onCancel={() => {
+            updateReactData({
+              sendMessage: false
+            }, true);
+          }}
+          onComplete={() => {
+            updateReactData({
+              sendMessage: false
+            }, true);
+          }}
+          setMethod={null}
+          allowCancel={true}
+        />
+      }
 
       {reactData.viewFamilySnapshot &&
         <PeopleMaintenance
