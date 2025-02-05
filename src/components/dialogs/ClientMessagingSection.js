@@ -184,8 +184,6 @@ export default ({ pGroup = 'ALL', reactData, updateReactData, currentValues }) =
     if (ndx !== 'new') {
       let rowObj = reactData.bBoardList[reactData.group_id][section_name].generic_activities_list[ndx];
       reactData.bBoardList[reactData.group_id][section_name].generic_activities_list[ndx].title = reactData.textInput[section_name][ndx];
-      let updatedLine = reactData.bBoardList[reactData.group_id].groupRec.common_activities[rowObj.group_list_index];
-      updatedLine = updatedLine.replace(/title=.*/, `title=${sentenceCase(reactData.textInput[section_name][ndx])}]`);
       let updateObj = {
         activity_code: 'form.make_message',
         default: {
@@ -194,8 +192,7 @@ export default ({ pGroup = 'ALL', reactData, updateReactData, currentValues }) =
         },
         title: reactData.textInput[section_name][ndx],
       };
-      console.log(updateObj);  // for future use
-      reactData.bBoardList[reactData.group_id].groupRec.common_activities[rowObj.group_list_index] = updatedLine;
+      reactData.bBoardList[reactData.group_id].groupRec.common_activities[rowObj.group_list_index] = updateObj;
       await dbClient
         .update({
           Key: {
