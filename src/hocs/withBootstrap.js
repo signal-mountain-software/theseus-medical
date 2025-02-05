@@ -509,7 +509,6 @@ export default Component => props => {
             <Box
               display='flex' flexDirection='column' justifyContent='flex-start' alignItems='center'
               key={'loadingBox'}
-              ml={2} mr={2} mt={2}
             >
               <Box
                 display='flex' flexDirection='column' justifyContent='center' alignItems='center'
@@ -525,11 +524,8 @@ export default Component => props => {
               >
                 <Box
                   component="img"
-                  mb={2}
                   minWidth={'80%'}
-                  maxWidth={'80%'}
                   minHeight={'80%'}
-                  maxHeight={'80%'}
                   alt=''
                   src={reactData.currentClientLogo}
                 />
