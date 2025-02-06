@@ -302,6 +302,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                               key={`radio-button_form${form_index}off`}
                               id={`radio-button_form${form_index}off`}
                               style={AVATextStyle({
+                                color: 'green',
                                 size: 1.5,
                                 margin: { right: 0.5 },
                               })}
@@ -727,13 +728,13 @@ export default ({ currentValues, reactData, updateReactData }) => {
               flexDirection='row'
               key={`radio-guide_e_buttons_complete`}
             >
-              <CheckCircleIcon
-                style={AVATextStyle({ margin: { right: 0.1 } })}
+              <CheckCircleIcon                
+                style={AVATextStyle({ color: 'green', margin: { right: 0.1 } })}
                 key={`radio-guide_e_button_complete`}
                 size='small'
               />
               <Typography
-                style={AVATextStyle({ margin: { right: 1 }, size: 0.8 })}
+                style={AVATextStyle({ color: 'green', margin: { right: 1 }, size: 0.8 })}
               >
                 {`View a completed form`}
               </Typography>
