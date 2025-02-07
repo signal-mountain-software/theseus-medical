@@ -40,7 +40,7 @@ import { AVAclasses } from '../../util/AVAStyles';
 const useStyles = makeStyles(theme => ({
   page: {
     height: 950,
-    maxWidth: 1000
+    //    maxWidth: 1000
   },
   AVAButton: {
     marginLeft: theme.spacing(1),
@@ -150,14 +150,12 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
   const [message_filter, setMessageFilter] = React.useState('');
   const [message_filter_lower, setMessageFilterLower] = React.useState('');
   const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
-  const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   const [messageList, setMessageList] = React.useState(pMessageList);
   const [personFilter, setPersonFilter] = React.useState(false);
   const [showAddPrompt, setShowAddPrompt] = React.useState(false);
   const [messageResults, setMessageResults] = React.useState();
   const [deletePending, setDeletePending] = React.useState(false);
-  // const [showDeleted, setShowDeleted] = React.useState(false);
   const showDeleted = false;
   const [confirmMessage, setConfirmMessage] = React.useState('');
   const [confirmID, setConfirmID] = React.useState('');
@@ -169,6 +167,25 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
 
   const placeholderImage =
     'https://theseus-medical-storage.s3.amazonaws.com/public/patients/tboone.jpg';
+
+  const [reactData, setReactData] = React.useState({
+    statusMessage: '',
+    totalInboundCount: 0,
+    totalInboundProcessed: 0,
+    totalOutboundCount: 0,
+    totalOutboundProcessed: 0
+  });
+
+  const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const updateReactData = (newData, force = false) => {
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+  };
+
+
 
   const onImageError = (e) => {
     e.target.src = placeholderImage;
@@ -345,8 +362,10 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
           console.log({ 'Error reading Messages': error });
         });
       if (mRecs && mRecs.hasOwnProperty('Items')) {
+        reactData.totalInboundCount += mRecs.Count;
         let message_number_obj = {};
         for (let x = 0; x < mRecs.Items.length; x++) {
+          reactData.totalInboundProcessed++;
           let m = mRecs.Items[x];
           if (m.author.author_id === pPerson) {
             continue;
@@ -375,7 +394,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
               delete message_number_obj[thread_object[m.thread_id]];
               thread_object[m.thread_id] = (this_message_destination.endsWith('hold') ? this_message_number : false);
             }
-            else if (this_message_destination.endsWith('hold')) {
+            else if (this_message_destination && this_message_destination.endsWith('hold')) {
               continue;  // if this is a hold message and we already have a not held message in the list, don't add this
             };
           }
@@ -390,7 +409,12 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
               partner_id: [m.author.author_id],
               sender_image: this_image,
               message_id: m.composite_key,
-              deliver_method: m.deliver_method,
+              deliver_method: (m.deliver_method === 'email')
+                ? 'email'
+                : ((m.deliver_method === 'sms')
+                  ? 'text'
+                  : ((m.deliver_method === 'voice') ? 'phone' : 'ava')
+                ),
               posted_time: m.created_time,
               deliver_time: m.created_time,
               common_key: m.composite_key,
@@ -401,6 +425,11 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
               thread_id: m.thread_id,
               allowReplyAll: (m.allowReplyAll || false)
             };
+
+
+            let sendMsgRec = {};
+
+            /*
             let sendMsgRec = await dbClient
               .get({
                 Key: {
@@ -416,34 +445,39 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                 }
                 console.log({ 'Error reading Messages': error });
               });
+            
             let rArray = [];
             if (recordExists(sendMsgRec)) {
-              sendMsgRec.Item.results.success.forEach(r => {
-                const p = r.split('.')[0];
-                if (!rArray.includes(p)) {
-                  rArray.push(p);
-                }
-              });
+              if (sendMsgRec.Item.results?.success) {
+                sendMsgRec.Item.results.success.forEach(r => {
+                  const p = r.split('.')[0];
+                  if (!rArray.includes(p)) {
+                    rArray.push(p);
+                  }
+                });
+              }
+              if (sendMsgRec.Item.results?.duplicate) {
+                sendMsgRec.Item.results.duplicate.forEach(r => {
+                  const p = r.split('.')[0];
+                  if (!rArray.includes(p)) {
+                    rArray.push(p);
+                  }
+                });
+              }
             }
-            this_message.toLine = `${m.author.author_name} -> `;
-            if (rArray.length === 1) {
-              this_message.toLine += `Me`;
-              this_message.target = rArray[0];
-            }
-            else if (rArray.length === 0) {
-              this_message.toLine += `Me`;
+            */
+
+
+            this_message.toLine = `${m.author.author_name} -> Me`;
               this_message.target = pPerson;
-            }
-            else {
-              this_message.toLine += `${rArray.length} people`;
-              this_message.target = rArray;
-            }
+            
+
             message_number_obj[this_message_number] = true;
             if (!thread_object.hasOwnProperty(m.thread_id)) {
               thread_object[m.thread_id] = (this_message_destination.endsWith('hold') ? this_message_number : false);
             }
             messageArray.push(this_message);
-            if ((x % 3) === 0) {
+            if ((x % 100) === 0) {
               let presorted = messageArray.sort((a, b) => {
                 return ((a.deliver_time > b.deliver_time) ? -1 : 1);
               });
@@ -460,7 +494,11 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                   }
                 }
               });
+              updateReactData({
+                statusMessage: `Processing inbound - ${reactData.totalInboundProcessed} of ${reactData.totalInboundCount}`
+              }, false);
               setMessageList(finalSort);
+              console.log(`Processing inbound - ${reactData.totalInboundProcessed} of ${reactData.totalInboundCount}`)
             }
           }
         };
@@ -480,6 +518,9 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             }
           }
         });
+        updateReactData({
+          statusMessage: `Processing outbound`
+        }, false);
         setMessageList(finalSort);
         /*
         setMessageList(messageArray.sort((a, b) => {
@@ -513,7 +554,9 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             console.log({ 'Error reading Messages': error });
           });
         if (mRecs && mRecs.hasOwnProperty('Items')) {
+          reactData.totalOutboundCount += mRecs.Count;
           for (let x = 0; x < mRecs.Items.length; x++) {
+            reactData.totalOutboundProcessed++;
             let m = mRecs.Items[x];
             let language = m.language || 'EN-US';
             // convert inline link to an attachment
@@ -629,12 +672,10 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
               }
             }
           });
+          updateReactData({
+            statusMessage: `Processing outbound - ${reactData.totalOutboundProcessed} of ${reactData.totalOutboundCount}`
+          }, false);
           setMessageList(finalSort);
-          /*
-          setMessageList(messageArray.sort((a, b) => {
-            return ((a.deliver_time > b.deliver_time) ? -1 : 1);
-          }));
-          */
           if (mRecs.LastEvaluatedKey) {
             queryObj.ExclusiveStartKey = mRecs.LastEvaluatedKey;
           }
@@ -647,6 +688,10 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
         }
         loopCount++;
       } while (queryObj.ExclusiveStartKey && (loopCount < 10));
+      updateReactData({
+        statusMessage: false
+      }, true);
+
     }
     initialize();
   }, [pPerson, pClient]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -725,7 +770,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                     key={this_item.message_id + 'ibox' + index}
                                     style={{ alignSelf: 'anchor-center' }}
                                     onClick={() => {
-                                      setPersonFilter(this_item.sender_id);
+                                      setPersonFilter(this_item.partner_id[0]);
                                     }}
                                   >
                                     <img
@@ -744,7 +789,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                     alt={''}
                                     src={this_item.sender_image}
                                     onClick={() => {
-                                      setPersonFilter(this_item.sender_id);
+                                      setPersonFilter(this_item.partner_id[0]);
                                     }}
                                   />
                                 }
@@ -823,7 +868,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                           ))}
                                         </Box>
                                         <Typography key={`prefLine-text`}
-                                          style={Object.assign({}, messageStyle(this_item, index), { overflowY: 'auto', maxHeight: '100px' })}
+                                          style={Object.assign({}, messageStyle(this_item, index), { overflowY: 'auto' })}
                                         >
                                           {this_item.message_text}
                                         </Typography>
@@ -1025,7 +1070,24 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                   >
                     {`New Message`}
                   </Button>
+                  {personFilter &&
+                    <Button
+                      onClick={async () => {
+                        setPersonFilter(false);
+                      }}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'blue', color: 'white' }}
+                      size='small'
+                    >
+                      {`Show all`}
+                    </Button>
+                  }
                 </Box>
+                {reactData.statusMessage &&
+                  <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >
+                    {reactData.statusMessage}
+                  </Typography>
+                }
               </Box>
             </DialogActions>
           }
