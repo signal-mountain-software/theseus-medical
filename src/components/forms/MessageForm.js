@@ -1,8 +1,8 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { getImage, getPerson, makeName } from '../../util/AVAPeople';
+import { getImage, getPerson } from '../../util/AVAPeople';
 import { messageHistory, getMessages } from '../../util/AVAMessages';
-import { extract, dbClient, lambda, isObject } from '../../util/AVAUtilities';
+import { extract, dbClient, titleCase, recordExists, listFromArray } from '../../util/AVAUtilities';
 import { AVATextStyle } from '../../util/AVAStyles';
 
 import List from '@material-ui/core/List';
@@ -11,9 +11,9 @@ import Collapse from '@material-ui/core/Collapse';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import CloseIcon from '@material-ui/icons/HighlightOff';
-
-import MarkunreadMailboxOutlinedIcon from '@material-ui/icons/MarkunreadMailboxOutlined';
-import ContactMailOutlinedIcon from '@material-ui/icons/ContactMailOutlined';
+import AttachmentIcon from '@material-ui/icons/Attachment';
+import CallMadeIcon from '@material-ui/icons/CallMade';
+import CallReceivedIcon from '@material-ui/icons/CallReceived';
 
 import MakeMessage from './MakeMessage';
 
@@ -66,11 +66,10 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 0.4,
   },
   imageArea: {
-    minWidth: '100px',
-    maxWidth: '100px',
-    minHeight: '100px',
-    maxHeight: '100px',
-    marginBottom: theme.spacing(1),
+    minWidth: '50px',
+    maxWidth: '50px',
+    minHeight: '50px',
+    maxHeight: '50px',
     marginRight: theme.spacing(1),
   },
   title: {
@@ -154,7 +153,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   const [messageList, setMessageList] = React.useState(pMessageList);
-
+  const [personFilter, setPersonFilter] = React.useState(false);
   const [showAddPrompt, setShowAddPrompt] = React.useState(false);
   const [messageResults, setMessageResults] = React.useState();
   const [deletePending, setDeletePending] = React.useState(false);
@@ -168,27 +167,33 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
   const [recipientIndex, setRecipientIndex] = React.useState(-1);
   const [open, setOpen] = React.useState([]);
 
-  let setDefault = 'in';
+  const placeholderImage =
+    'https://theseus-medical-storage.s3.amazonaws.com/public/patients/tboone.jpg';
+
+  const onImageError = (e) => {
+    e.target.src = placeholderImage;
+  };
+
+  const messageStyle = (this_item, index) => {
+    if ((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id)) {
+      return AVATextStyle({ size: 1 });
+    }
+    else {
+      return AVATextStyle({ size: 0.8 });
+    }
+  };
+
   if (defaultValue) {
     if (Array.isArray(defaultValue)) {
       defaultValue = defaultValue[0];
     }
-    if (['sent', 'out'].includes(defaultValue)) { setDefault = 'out'; }
   }
-  const [inOut_mode, setinOut] = React.useState(setDefault);
 
   const [rowLimit, setRowLimit] = React.useState(20);
   const scrollValue = 20;
   var rowsWritten;
 
   const { enqueueSnackbar } = useSnackbar();
-
-  let params = {
-    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
-    InvocationType: 'RequestResponse',
-    LogType: 'Tail',
-    Payload: ''
-  };
 
   function makeReadableTime(pJavaDate) {
     let dDate = new Date(Number(pJavaDate));
@@ -204,6 +209,9 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
 
   function makeSubject(pContent) {
     if (pContent) {
+      if (pContent.startsWith('Message from')) {
+        return titleCase(pContent.replace('Message from', 'Conversation originated by'));
+      }
       return pContent.slice(0, 1).toUpperCase() + pContent.slice(1);
       /*
       let lContent = pContent.toLowerCase().trim().split(/[^a-zA-Z0-9 ']+/);
@@ -273,150 +281,18 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     return tempMessageList;
   };
 
-  async function getMessageResults(pCommonKey) {
-    let requestBody = {
+  async function getMessageResults(pCommonKey, in_out) {
+    let gotHistory = await messageHistory({
       thread_id: pCommonKey.split('~')[0].slice(2),
-      composite_key: pCommonKey,
-      record_type: 'delivery'
-    };
-    let returnArray = await messageHistory(requestBody);
-    /*
-    let mRecs = await dbClient
-      .query({
-        KeyConditionExpression: 'thread_id = :k AND begins_with(composite_key, :c)',
-        FilterExpression: 'record_type = :t',
-        ExpressionAttributeValues: {
-          ':c': pCommonKey,
-          ':k': pCommonKey.split('~')[0].slice(2),
-          ':t': 'delivery'
-        },
-        TableName: "TheseusMessages",
-        ScanIndexForward: false,
-      })
-      .promise()
-      .catch(error => {
-        if (error.code === 'NetworkingError') {
-          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
-        }
-        console.log({ 'Error reading Messages': error });
-      });
-    if (mRecs && mRecs.hasOwnProperty('Items')) {
-      // let timeZones = ['UTC', 'UTC-1', 'UTC-2', 'UTC-3', 'America/New_York', 'America/New_York', 'America/Chicago'];
-      // let timeZone = timeZones[-1 * (authorRec?.time_offset || -5)] || 'America/New_York';
-      let timeZone = 'America/New_York';
-      const oneMinute = 1000 * 60;
-      const oneHour = 60 * oneMinute;
-      let currentTime = new Date().getTime();
-      let Time24HoursAgo = currentTime - (24 * oneHour);
-      let Time7DaysAgo = currentTime - (7 * 24 * oneHour);
-      mRecs.Items.forEach(mR => {
-        let mTime = mR.posted_time;
-        let mInfo = '';
-        let mLine = `Sent to ${mR.recipient_list.name.first} ${mR.recipient_list.name.last}`;
-        switch (mR.deliver_method) {
-          case 'sms': {
-            mLine += ' via text message';
-            break;
-          }
-          case 'voice':
-          case 'office': {
-            mLine += ' via phone call';
-            break;
-          }
-          case 'email': {
-            mLine += ' via e-Mail';
-            break;
-          }
-          case 'hold': {
-            mLine += " held for later delivery per recipient's instructions";
-            break;
-          }
-          default: { mLine += ` via ${mR.deliver_method}`; }
-        }
-        if (mR.results) {
-          let mRLast = mR.results[0];
-          mTime = mRLast.posted_time;
-          switch (mRLast.result) {
-            case 'reply': {
-              mLine += '.  Reply received';
-              mInfo = ` Reply is "${mRLast.update_contents.replace(':', ' -')}"`;
-              break;
-            }
-            case 'submitted': {
-              break;
-            }
-            case 'replyReceived': {
-              mLine += '.  Reply received';
-              break;
-            }
-            case 'delivered': {
-              mLine += '.  Delivered';
-              break;
-            }
-            case 'open': {
-              mLine += '.  Opened';
-              break;
-            }
-            default: {
-              mLine += `. ${mRLast.result}`;
-            }
-          }
-        }
-
-        let mDateCheck = new Date(mTime);
-        let mDate = '';
-        if (mTime > Time24HoursAgo) {   // date within the last 24 hours?  Use Time only
-          if ((mDateCheck.getHours() > new Date(currentTime).getHours())) {
-            mDate = ' yesterday';
-          }
-        }
-        else if (mTime > Time7DaysAgo) {  // date within the last 7 days?  Use Day of week ("Tue", "Sun", etc)
-          let mWord = 'on';
-          if ((mDateCheck.getDay() % 6 !== 0) && (mDateCheck.getDay() > new Date().getDay())) {
-            mWord = 'last';
-          }
-          mDate = ` ${mWord} ${mDateCheck.toLocaleString([], { timeZone: timeZone, weekday: 'short' })}`;
-        }
-        else {
-          mDate = ` on ${mDateCheck.toLocaleString([], { timeZone: timeZone, month: 'short', day: 'numeric' })}`;
-        }
-        mLine += `${mDate} at ${mDateCheck.toLocaleString([], { timeZone: timeZone, hour: 'numeric', minute: '2-digit' })}`;
-        mLine += mInfo;
-        returnArray.push(mLine);
-      });
-    */
-    return ['~~~', 'Results:', ...returnArray];
-  };
-
-  async function getReceiptDetails(pCommonKey) {
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:MessageMaintenance';
-    params.Payload = JSON.stringify({
-      action: "receipt_results",
-      clientId: pClient,
-      request: {
-        "common_key": pCommonKey,
-        "person_id": pPerson
-      }
+      record_type: 'delivery',
+      returnObject: true
     });
-    let invokeFailed = false;
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let returnData = JSON.parse(fResp.Payload);
-      if (returnData.status === 200) {
-        if (returnData.body.length > 0) {
-          return ['~~~', 'Results:', ...returnData.body];
-        }
-      }
+    if (in_out === 'in') {
+      return { [pPerson]: gotHistory[pPerson] };
     }
-    return [];
+    else {
+      return gotHistory;
+    }
   };
 
   const onScroll = event => {
@@ -426,12 +302,11 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     }
   };
 
-  const toggleOpen = async (pIndex, pMessageID) => {
+  const toggleOpen = async (pIndex, pMessageID, inOut_mode) => {
     let workingOpen = [];
     if (!open[pIndex]) {
       workingOpen[pIndex] = true;
-      if (inOut_mode === 'in') { setMessageResults(await getReceiptDetails(pMessageID)); }
-      else { setMessageResults(await getMessageResults(pMessageID)); }
+      setMessageResults(await getMessageResults(pMessageID, inOut_mode));
     }
     setOpen(workingOpen);
     setForceRedisplay(!forceRedisplay);
@@ -445,18 +320,10 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     }
   }
 
-  function attachmentName(a) {
-    if (isObject(a)) {
-      a = a.Location;
-    }
-    let fNArr = a.split('/').pop().split('.');
-    fNArr.pop();
-    return decodeURI(fNArr.join('.'));
-  }
-
   React.useEffect(() => {
     async function initialize() {
       let messageArray = [];
+      let thread_object = {};
       // Get messages to me
       let mRecs = await dbClient
         .query({
@@ -469,7 +336,6 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
           TableName: "TheseusMessages",
           IndexName: 'deliver_to-index',
           ScanIndexForward: false,
-          Limit: 20
         })
         .promise()
         .catch(error => {
@@ -479,8 +345,12 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
           console.log({ 'Error reading Messages': error });
         });
       if (mRecs && mRecs.hasOwnProperty('Items')) {
+        let message_number_obj = {};
         for (let x = 0; x < mRecs.Items.length; x++) {
           let m = mRecs.Items[x];
+          if (m.author.author_id === pPerson) {
+            continue;
+          }
           let language = m.language || 'EN-US';
           let this_image = await getImage(m.author.author_id);
           if (m.author.author_name === 'AVA notifications') {
@@ -499,99 +369,284 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             m.content.current.attachments.push(hLink);
             m.content.current[language].text = m.content.current[language].text.replace(hLink, '');
           }
-          let this_message = {
-            inOut: 'in',
-            delete_flag: m.delete_flag,
-            person_id: m.deliver_to,
-            patient_name: m.author.author_name,
-            sender_name: m.author.author_name,
-            sender_id: m.author.author_id,
-            sender_image: this_image,
-            message_id: m.composite_key,
-            posted_time: m.created_time,
-            deliver_time: m.created_time,
-            common_key: m.composite_key,
-            message_content: m.content.current[language].text,
-            attachments: m.content.current.attachments,
-            subject: m.subject_line,
-            message_text: m.content.current[language].text,
-            thread_id: m.thread_id,
-            allowReplyAll: (m.allowReplyAll || false)
-          };
-          messageArray.push(this_message);
+          let [this_message_number, this_message_destination] = m.composite_key.split('~D:');
+          if (thread_object.hasOwnProperty(m.thread_id)) {
+            if (thread_object[m.thread_id]) {  // if the only entry already in the messageArray for this thread is a "held" message
+              delete message_number_obj[thread_object[m.thread_id]];
+              thread_object[m.thread_id] = (this_message_destination.endsWith('hold') ? this_message_number : false);
+            }
+            else if (this_message_destination.endsWith('hold')) {
+              continue;  // if this is a hold message and we already have a not held message in the list, don't add this
+            };
+          }
+          if (!message_number_obj.hasOwnProperty(this_message_number)) {
+            let this_message = {
+              inOut: 'in',
+              delete_flag: m.delete_flag,
+              person_id: m.deliver_to,
+              patient_name: m.author.author_name,
+              sender_name: m.author.author_name,
+              sender_id: m.author.author_id,
+              partner_id: [m.author.author_id],
+              sender_image: this_image,
+              message_id: m.composite_key,
+              deliver_method: m.deliver_method,
+              posted_time: m.created_time,
+              deliver_time: m.created_time,
+              common_key: m.composite_key,
+              message_content: m.content.current[language].text,
+              attachments: m.content.current.attachments,
+              subject: m.subject_line,
+              message_text: m.content.current[language].text,
+              thread_id: m.thread_id,
+              allowReplyAll: (m.allowReplyAll || false)
+            };
+            let sendMsgRec = await dbClient
+              .get({
+                Key: {
+                  thread_id: m.thread_id,
+                  composite_key: this_message_number
+                },
+                TableName: "TheseusMessages",
+              })
+              .promise()
+              .catch(error => {
+                if (error.code === 'NetworkingError') {
+                  enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+                }
+                console.log({ 'Error reading Messages': error });
+              });
+            let rArray = [];
+            if (recordExists(sendMsgRec)) {
+              sendMsgRec.Item.results.success.forEach(r => {
+                const p = r.split('.')[0];
+                if (!rArray.includes(p)) {
+                  rArray.push(p);
+                }
+              });
+            }
+            this_message.toLine = `${m.author.author_name} -> `;
+            if (rArray.length === 1) {
+              this_message.toLine += `Me`;
+              this_message.target = rArray[0];
+            }
+            else if (rArray.length === 0) {
+              this_message.toLine += `Me`;
+              this_message.target = pPerson;
+            }
+            else {
+              this_message.toLine += `${rArray.length} people`;
+              this_message.target = rArray;
+            }
+            message_number_obj[this_message_number] = true;
+            if (!thread_object.hasOwnProperty(m.thread_id)) {
+              thread_object[m.thread_id] = (this_message_destination.endsWith('hold') ? this_message_number : false);
+            }
+            messageArray.push(this_message);
+            if ((x % 3) === 0) {
+              let presorted = messageArray.sort((a, b) => {
+                return ((a.deliver_time > b.deliver_time) ? -1 : 1);
+              });
+              let finalSort = [];
+              let skipMe = [];
+              presorted.forEach((this_message, mNdx) => {
+                if (!skipMe.includes(this_message.thread_id)) {
+                  finalSort.push(this_message);
+                  skipMe.push(this_message.thread_id);
+                  for (let n = mNdx + 1; n < presorted.length; n++) {
+                    if (presorted[n].thread_id === this_message.thread_id) {
+                      finalSort.push(presorted[n]);
+                    }
+                  }
+                }
+              });
+              setMessageList(finalSort);
+            }
+          }
         };
+        let presorted = messageArray.sort((a, b) => {
+          return ((a.deliver_time > b.deliver_time) ? -1 : 1);
+        });
+        let finalSort = [];
+        let skipMe = [];
+        presorted.forEach((this_message, mNdx) => {
+          if (!skipMe.includes(this_message.thread_id)) {
+            finalSort.push(this_message);
+            skipMe.push(this_message.thread_id);
+            for (let n = mNdx + 1; n < presorted.length; n++) {
+              if (presorted[n].thread_id === this_message.thread_id) {
+                finalSort.push(presorted[n]);
+              }
+            }
+          }
+        });
+        setMessageList(finalSort);
+        /*
+        setMessageList(messageArray.sort((a, b) => {
+          return ((a.deliver_time > b.deliver_time) ? -1 : 1);
+        }));
+        */
       }
       // Get messages From me
-      mRecs = await dbClient
-        .query({
-          KeyConditionExpression: 'sent_from = :p',
-          FilterExpression: 'delete_flag <> :true AND record_type = :t',
-          ExpressionAttributeValues: {
-            ':p': pPerson,
-            ':t': 'message',
-            ':true': true
-          },
-          TableName: "TheseusMessages",
-          IndexName: 'sent_from-index',
-          ScanIndexForward: false,
-          Limit: 20
-        })
-        .promise()
-        .catch(error => {
-          if (error.code === 'NetworkingError') {
-            enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
-          }
-          console.log({ 'Error reading Messages': error });
-        });
-      if (mRecs && mRecs.hasOwnProperty('Items')) {
-        for (let x = 0; x < mRecs.Items.length; x++) {
-          let m = mRecs.Items[x];
-          let language = m.language || 'EN-US';
-          // convert inline link to an attachment
-          let hLink;
-          if (m.content.current[language].hasOwnProperty('text') && m.content.current[language].text) {
-            hLink = extract(m.content.current[language].text, 'http', ' ', {
-              fuzzyRight: true,  // allow end-of-string as a right delimeter 
-              includeLeft: true,  // return the left delimeter
+      let outbound_threads = [];
+      let queryObj = {
+        KeyConditionExpression: 'sent_from = :p',
+        FilterExpression: 'delete_flag <> :true AND record_type = :t',
+        ExpressionAttributeValues: {
+          ':p': pPerson,
+          ':t': 'message',
+          ':true': true
+        },
+        TableName: "TheseusMessages",
+        IndexName: 'sent_from-index',
+        ScanIndexForward: false,
+      };
+      let loopCount = 0;
+      do {
+        mRecs = await dbClient
+          .query(queryObj)
+          .promise()
+          .catch(error => {
+            if (error.code === 'NetworkingError') {
+              enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+            }
+            console.log({ 'Error reading Messages': error });
+          });
+        if (mRecs && mRecs.hasOwnProperty('Items')) {
+          for (let x = 0; x < mRecs.Items.length; x++) {
+            let m = mRecs.Items[x];
+            let language = m.language || 'EN-US';
+            // convert inline link to an attachment
+            let hLink;
+            if (m.content.current[language].hasOwnProperty('text') && m.content.current[language].text) {
+              hLink = extract(m.content.current[language].text, 'http', ' ', {
+                fuzzyRight: true,  // allow end-of-string as a right delimeter 
+                includeLeft: true,  // return the left delimeter
+              });
+            }
+            else { continue; }
+            if (hLink) {
+              if (!m.content.current.attachments) { m.content.current.attachments = []; }
+              m.content.current.attachments.push(hLink);
+              m.content.current[language].text = m.content.current[language].text.replace(hLink, '');
+            }
+            // is this another message with the same thread_id AND the same message text?
+            // if so, and this recipient_list to the previous one(s)
+            const foundAt = outbound_threads.findIndex(t => {
+              return ((t.thread_id === m.thread_id) && (t.message_text === m.content.current[language].text));
             });
-          }
-          else { continue; }
-          if (hLink) {
-            if (!m.content.current.attachments) { m.content.current.attachments = []; }
-            m.content.current.attachments.push(hLink);
-            m.content.current[language].text = m.content.current[language].text.replace(hLink, '');
-          }
-          let this_message = {
-            inOut: 'out',
-            delete_flag: m.delete_flag,
-            person_id: m.deliver_to,
-            patient_name: m.author.author_name,
-            sender_name: m.author.author_name,
-            sender_id: m.author.author_id,
-            message_id: m.composite_key,
-            posted_time: m.created_time,
-            deliver_time: m.created_time,
-            common_key: m.composite_key,
-            message_content: m.content.current[language].text,
-            attachments: m.content.current.attachments,
-            subject: m.subject_line,
-            message_text: m.content.current[language].text
+            let this_message;
+            let message_index;
+            if (foundAt === -1) {
+              message_index = messageArray.length;
+              outbound_threads.push({
+                index: message_index,
+                thread_id: m.thread_id,
+                message_text: m.content.current[language].text
+              });
+              this_message = {
+                inOut: 'out',
+                delete_flag: m.delete_flag,
+                person_id: m.deliver_to,
+                patient_name: m.author.author_name,
+                sender_name: m.author.author_name,
+                sender_id: m.author.author_id,
+                message_id: m.composite_key,
+                posted_time: m.created_time,
+                deliver_time: m.created_time,
+                common_key: m.composite_key,
+                thread_id: m.thread_id,
+                recipientList: m.recipient_list,
+                message_content: m.content.current[language].text,
+                attachments: m.content.current.attachments,
+                subject: m.subject_line,
+                message_text: m.content.current[language].text
+              };
+            }
+            else {
+              message_index = outbound_threads[foundAt].index;
+              messageArray[message_index].recipientList = Object.assign({},
+                messageArray[message_index].recipientList,
+                m.recipient_list
+              );
+              messageArray[message_index].posted_time = Math.min(m.created_time, messageArray[message_index].posted_time);
+              this_message = messageArray[message_index];
+            }
+            let methodList = {};
+            for (let address of Object.keys(this_message.recipientList)) {
+              const aType = address.split('.')[1];
+              let a2Type = aType.includes('email')
+                ? 'email'
+                : ((aType === 'sms')
+                  ? 'text'
+                  : ((aType === 'voice') ? 'phone' : 'ava')
+                );
+              if (!methodList.hasOwnProperty(a2Type)) {
+                methodList[a2Type] = 1;
+              }
+              else {
+                methodList[a2Type]++;
+              }
+            }
+            let rArray = [];
+            Object.keys(this_message.recipientList).forEach(r => {
+              const p = r.split('.')[0];
+              if (!rArray.includes(p) && (p !== pPerson)) {
+                rArray.push(p);
+              }
+            });
+            this_message.partner_id = rArray;
+            this_message.deliver_method = listFromArray(Object.keys(methodList)).toLowerCase();
+
+            this_message.toLine = `Me -> `;
+
+            if (rArray.length === 1) {
+              const this_recipient = Object.values(m.recipient_list)[0];
+              this_message.sender_image = await getImage(rArray[0]);
+              this_message.toLine += (`${this_recipient.name.first} ${this_recipient.name.last}`).trim();
+              this_message.target = rArray;
+            }
+            else {
+              this_message.toLine += `${rArray.length} people`;
+              this_message.target = rArray;
+              this_message.sender_image = '';
+            }
+            messageArray[message_index] = this_message;
           };
-          let rArray = Object.keys(m.recipient_list);
-          if (rArray.length === 1) {
-            this_message.sender_image = await getImage(m.recipient_list[rArray[0]].id);
-            this_message.toLine = (`${m.recipient_list[rArray[0]].name.first} ${m.recipient_list[rArray[0]].name.last}`).trim();
+          let presorted = messageArray.sort((a, b) => {
+            return ((a.deliver_time > b.deliver_time) ? -1 : 1);
+          });
+          let finalSort = [];
+          let skipMe = [];
+          presorted.forEach((this_message, mNdx) => {
+            if (!skipMe.includes(this_message.thread_id)) {
+              finalSort.push(this_message);
+              skipMe.push(this_message.thread_id);
+              for (let n = mNdx + 1; n < presorted.length; n++) {
+                if (presorted[n].thread_id === this_message.thread_id) {
+                  finalSort.push(presorted[n]);
+                }
+              }
+            }
+          });
+          setMessageList(finalSort);
+          /*
+          setMessageList(messageArray.sort((a, b) => {
+            return ((a.deliver_time > b.deliver_time) ? -1 : 1);
+          }));
+          */
+          if (mRecs.LastEvaluatedKey) {
+            queryObj.ExclusiveStartKey = mRecs.LastEvaluatedKey;
           }
           else {
-            let random = Math.floor(Math.random() * rArray.length);
-            let randomName = await makeName(m.recipient_list[rArray[random]].id);
-            this_message.toLine = `${rArray.length} people, including ${randomName}`;
-            this_message.sender_image = await getImage(m.recipient_list[rArray[random]].id);
+            delete queryObj.ExclusiveStartKey;
           }
-          messageArray.push(this_message);
-        };
-      }
-      setMessageList(messageArray);
+        }
+        else {
+          delete queryObj.ExclusiveStartKey;
+        }
+        loopCount++;
+      } while (queryObj.ExclusiveStartKey && (loopCount < 10));
     }
     initialize();
   }, [pPerson, pClient]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -612,7 +667,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             className={classes.title}
             id='scroll-dialog-title'
           >
-            Recent Messages {inOut_mode === 'out' ? 'from me to others' : 'sent to me'}
+            Recent Messages
           </DialogContentText>
           <TextField
             id='List Filter'
@@ -624,167 +679,265 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             autoComplete='off'
           />
           {(messageList.length > 0) &&
-          <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
-            <List  >
-              <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                {rowsWritten = 0}
-              </Typography>
-              {messageList.map((this_item, index) => (
-                ((rowsWritten <= rowLimit)
-                  && (this_item.inOut === inOut_mode)
-                  && (!message_filter || filteredMessage(this_item, message_filter))
-                  && (!this_item.delete_flag || showDeleted) ?
-                  <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
-                    <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                      {rowsWritten++}
-                    </Typography>
-                    <Box display='flex' flexDirection='column'>
-                      <Box
-                        display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                        key={this_item.message_id + 'r' + index}
-                        className={classes.listItem}
-                        onClick={() => { toggleOpen(index, this_item.common_key); }}
-                      >
-                        <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
-                          {(inOut_mode === 'in') &&
-                            <Box display='flex' flexDirection='column'>
-                              <Box display='flex' flexDirection='row'>
-                                <Box
-                                  className={classes.imageArea}
-                                  component="img"
-                                  alt={''}
-                                  src={this_item.sender_image}
-                                />
-                                <Box display='flex' flexDirection='column'>
-                                  <Typography variant='h5' className={classes.lastName} >{makeSubject(this_item.subject || this_item.message_text)}</Typography>
-                                  <Typography variant='h5' className={classes.firstName}>{`from: ${this_item.patient_name || this_item.sender_name || this_item.sender_id}`}</Typography>
-                                  <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.posted_time || this_item.deliver_time)}</Typography>
+            <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
+              <List  >
+                <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                  {rowsWritten = 0}
+                </Typography>
+                {messageList.map((this_item, index) => (
+                  ((rowsWritten <= rowLimit)
+                    && ((!personFilter)
+                      || (personFilter && (this_item.partner_id.includes(personFilter))))
+                    && (!message_filter || filteredMessage(this_item, message_filter))
+                    && (!this_item.delete_flag || showDeleted) ?
+                    <Box key={this_item.person_id + 'frag' + index}
+                      borderTop={((index !== 0) && (this_item.thread_id !== messageList[index - 1].thread_id)) ? 2 : 0}
+                      borderColor={'black'}
+                      onContextMenu={async (e) => {
+                        e.preventDefault();
+                        console.log({ this_item });
+                      }}
+                    >
+                      <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                        {rowsWritten++}
+                      </Typography>
+                      <Box display='flex' flexDirection='column'>
+                        <Box
+                          display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                          key={this_item.message_id + 'r' + index}
+                          className={classes.listItem}
+                        >
+                          <Box display='flex'
+                            key={this_item.message_id + 'r2' + index}
+                            flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
+                            <Box display='flex'
+                              key={this_item.message_id + 'c' + index}
+                              flexDirection='column'
+                              style={{ flexGrow: 1 }}
+                              justifyContent={'center'}
+                            >
+                              <Box display='flex'
+                                key={this_item.message_id + 'r3' + index}
+                                flexDirection='row'>
+                                {((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id))
+                                  ?
+                                  <Box
+                                    key={this_item.message_id + 'ibox' + index}
+                                    style={{ alignSelf: 'anchor-center' }}
+                                    onClick={() => {
+                                      setPersonFilter(this_item.sender_id);
+                                    }}
+                                  >
+                                    <img
+                                      key={this_item.message_id + 'i' + index}
+                                      className={classes.imageArea}
+                                      alt={''}
+                                      onError={onImageError}
+                                      src={this_item.sender_image}
+                                    />
+                                  </Box >
+                                  :
+                                  <Box
+                                    key={this_item.message_id + 'empty' + index}
+                                    className={classes.imageArea}
+                                    style={{ marginRight: '48px', alignSelf: 'anchor-center' }}
+                                    alt={''}
+                                    src={this_item.sender_image}
+                                    onClick={() => {
+                                      setPersonFilter(this_item.sender_id);
+                                    }}
+                                  />
+                                }
+                                <Box display='flex'
+                                  key={this_item.message_id + 'c2' + index}
+                                  flexDirection='column'
+                                  style={{
+                                    flexGrow: 1
+                                  }}
+                                >
+                                  <Box display='flex'
+                                    key={this_item.message_id + 'r4' + index}
+                                    flexDirection='row'
+                                    justifyContent={'space-between'}
+                                  >
+                                    <Box display='flex'
+                                      key={this_item.message_id + 'c2a' + index}
+                                      flexDirection='row'
+                                      style={{
+                                        flexGrow: 1
+                                      }}
+                                    >
+                                      <Typography key={`in_out_icon`}
+                                        style={{ alignSelf: 'anchor-center', marginRight: '8px' }}
+                                      >
+                                        {(this_item.inOut === 'in') ? <CallReceivedIcon /> : <CallMadeIcon />}
+                                      </Typography>
+                                      <Box display='flex'
+                                        key={this_item.message_id + 'c2b' + index}
+                                        flexDirection='column'
+                                        style={{
+                                          flexGrow: 1
+                                        }}
+                                      >
+                                        <Box display='flex'
+                                          key={this_item.message_id + 'r5' + index}
+                                          flexDirection='row'
+                                          style={{
+                                            flexGrow: 1
+                                          }}
+                                        >
+                                          <Box display='flex'
+                                            key={this_item.message_id + 'c3' + index}
+                                            flexDirection='column'
+                                            style={{ flexGrow: 1 }}
+                                          >
+                                            {((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id)) &&
+                                              <React.Fragment>
+                                                <Typography variant='h5'
+                                                  style={AVATextStyle({ size: 1, bold: true })}
+                                                >
+                                                  {makeSubject(this_item.subject || this_item.message_text)}
+                                                </Typography>
+                                              </React.Fragment>
+                                            }
+                                            <Typography variant='h5'
+                                              style={messageStyle(this_item, index)}
+                                            >
+                                              {this_item.toLine}
+                                            </Typography>
+                                            <Typography variant='h5'
+                                              style={AVATextStyle({ size: 0.8 })}
+                                            >
+                                              {`${makeReadableTime(this_item.posted_time || this_item.deliver_time)} - via ${this_item.deliver_method}`}
+                                            </Typography>
+                                          </Box>
+                                          {this_item.attachments && this_item.attachments.map((aLine, aIndex) => (
+                                            <a
+                                              href={aLine}
+                                              key={`attach-${aIndex}-href`}
+                                              target='_blank'
+                                              rel='noopener noreferrer'
+                                              style={{ color: 'inherit', textDecoration: 'underline' }}>
+                                              <AttachmentIcon />
+                                            </a>
+                                          ))}
+                                        </Box>
+                                        <Typography key={`prefLine-text`}
+                                          style={Object.assign({}, messageStyle(this_item, index), { overflowY: 'auto', maxHeight: '100px' })}
+                                        >
+                                          {this_item.message_text}
+                                        </Typography>
+                                      </Box>
+                                    </Box>
+                                  </Box>
+
                                 </Box>
                               </Box>
-                              {this_item.message_text.split(/[\n\r]+/).map((mLine, mIndex) => (
-                                <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>
-                              ))}
-                              {this_item.attachments && this_item.attachments.map((aLine, aIndex) => (
-                                <a
-                                  href={aLine}
-                                  key={`attach-${aIndex}-href`}
-                                  target='_blank'
-                                  rel='noopener noreferrer'
-                                  style={{ color: 'inherit', textDecoration: 'underline' }}>
-                                  <Typography
-                                    key={`attach-${aIndex}`}
-                                    className={classes.attachmentLine}
-                                  >
-                                    {`Attachment: ${attachmentName(aLine)}`}
-                                  </Typography>
-                                </a>
-                              ))}
+
                               {open[index] &&
-                                messageResults.map((mLine, mIndex) => (
-                                  <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
-                                )
+                                <React.Fragment>
+                                  <Typography
+                                    key={`history header`}
+                                    style={AVATextStyle({ size: 1, bold: true, margin: { top: 1 } })}
+                                  >
+                                    {`Results`}
+                                  </Typography>
+                                  {Object.keys(messageResults).sort((a, b) => {
+                                    return (messageResults[a].name > messageResults[b].name) ? 1 : -1;
+                                  }).map((mObj, mIndex) => (
+                                    <React.Fragment key={`historyFrag-${mIndex}`}>
+                                      {messageResults[mObj].history.sort((a, b) => {
+                                        return (a.time > b.time) ? -1 : 1;
+                                      }).map((h, x) => (
+                                        <Typography
+                                          key={`prefLine-${mIndex}__${x}`}
+                                          style={(x === 0)
+                                            ? AVATextStyle({ size: 1, margin: { left: 0.5, top: 0.3 } })
+                                            : AVATextStyle({ size: 0.8, margin: { left: 1.5 } })}
+                                        >
+                                          {`${(x === 0) ? (messageResults[mObj].name + ':') : ''} ${h.line}`}
+                                        </Typography>
+                                      ))}
+                                    </React.Fragment>
+                                  ))}
+                                  <Typography
+                                    key={`thread_id`}
+                                    style={AVATextStyle({ size: 0.6, margin: { top: 1 } })}
+                                  >
+                                    {(this_item.inOut === 'out')
+                                      ? `(Message ID ${messageResults[Object.keys(messageResults)[0]].composite_key.split('~')[0]})`
+                                      : `(Message ID ${messageResults[Object.keys(messageResults)[0]].composite_key})`
+                                    }
+                                  </Typography>
+                                </React.Fragment>
                               }
                             </Box>
-                          }
-                          {(inOut_mode === 'out') &&
-                            <Box display='flex' flexDirection='column'>
-                              <Box display='flex' flexDirection='row'>
-                                <Box
-                                  className={classes.imageArea}
-                                  component="img"
-                                  alt={''}
-                                  src={this_item.sender_image}
-                                />
-                                <Box display='flex' flexDirection='column'>
-                                  <Typography variant='h5' className={classes.lastName} >{this_item.subject || makeSubject(this_item.message_text)}</Typography>
-                                  <Typography variant='h5' className={classes.firstName}>{`to: ${this_item.toLine}`}</Typography>
-                                  <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.deliver_time)}</Typography>
-                                </Box>
-                              </Box>
-                              {this_item.message_text.split(/[\n\r]+/).map((mLine, mIndex) => (
-                                <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
-                              )}
-                              {this_item.attachments && this_item.attachments.map((aLine, aIndex) => (
-                                <a
-                                  href={aLine}
-                                  key={`attach-${aIndex}-href`}
-                                  target='_blank'
-                                  rel='noopener noreferrer'
-                                  style={{ color: 'inherit', textDecoration: 'underline' }}>
-                                  <Typography
-                                    key={`attach-${aIndex}`}
-                                    className={classes.attachmentLine}
-                                  >
-                                    {`Attachment: ${attachmentName(aLine)}`}
-                                  </Typography>
-                                </a>
-                              ))}
-                              {open[index] &&
-                                messageResults.map((mLine, mIndex) => (
-                                  <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
-                                )
-                              }
-                            </Box>
+                          </Box>
+                          {!open[index] ?
+                            <ExpandMoreIcon
+                              onClick={() => { toggleOpen(index, this_item.common_key, this_item.inOut); }}
+                            />
+                            :
+                            <ExpandLessIcon
+                              onClick={() => { toggleOpen(index, this_item.common_key, this_item.inOut); }}
+                            />}
+                          {((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id)) &&
+                            <DeleteIcon
+                              onClick={() => {
+                                setConfirmMessage(`Delete message from ${this_item.patient_name || this_item.sender_name}?`);
+                                setConfirmID(this_item.message_id);
+                                setConfirmIndex(index);
+                                setDeletePending(true);
+                                setForceRedisplay(false);
+                              }}
+                            />
                           }
                         </Box>
-                        {!open[index] ? <ExpandMoreIcon /> : <ExpandLessIcon />}
-                        {(inOut_mode === 'in') &&
-                          <DeleteIcon
-                            onClick={() => {
-                              setConfirmMessage(`Delete message from ${this_item.patient_name || this_item.sender_name}?`);
-                              setConfirmID(this_item.message_id);
-                              setConfirmIndex(index);
-                              setDeletePending(true);
-                              setForceRedisplay(false);
-                            }}
-                          />
-                        }
+                        <Collapse in={open[index]} timeout="auto" unmountOnExit>
+                          {
+                            <Box display='flex' flexDirection='row' paddingTop={1} paddingBottom={1} justifyContent='center' alignItems='center'>
+                              {(this_item.inOut === 'in') && (this_item.allowReplyAll) &&
+                                <Button
+                                  onClick={async () => {
+                                    let rList = await replyAllList(this_item.thread_id);
+                                    setRecipient(rList);
+                                    setRecipientIndex(index);
+                                    setPromptForMessage(true);
+                                  }}
+                                  className={classes.AVAButton}
+                                  startIcon={<SendIcon fontSize="small" />}
+                                >
+                                  Reply All
+                                </Button>
+                              }
+                              {(this_item.inOut === 'in') &&
+                                <Button
+                                  onClick={() => {
+                                    setPromptForMessage(true);
+                                    setRecipient(`${this_item.sender_name}:${this_item.sender_id}`);
+                                    setRecipientIndex(index);
+                                  }}
+                                  className={classes.AVAButton}
+                                  startIcon={<SendIcon fontSize="small" />}
+                                >
+                                  Reply
+                                </Button>
+                              }
+                            </Box>
+                          }
+                        </Collapse>
                       </Box>
-                      <Collapse in={open[index]} timeout="auto" unmountOnExit>
-                        {
-                          <Box display='flex' flexDirection='row' paddingTop={1} paddingBottom={1} justifyContent='center' alignItems='center'>
-                            {(inOut_mode === 'in') && (this_item.allowReplyAll) &&
-                              <Button
-                                onClick={async () => {
-                                  let rList = await replyAllList(this_item.thread_id);
-                                  setRecipient(rList);
-                                  setRecipientIndex(index);
-                                  setPromptForMessage(true);
-                                }}
-                                className={classes.AVAButton}
-                                startIcon={<SendIcon fontSize="small" />}
-                              >
-                                Reply All
-                              </Button>
-                            }
-                            {(inOut_mode === 'in') &&
-                              <Button
-                                onClick={() => {
-                                  setPromptForMessage(true);
-                                  setRecipient(`${this_item.sender_name}:${this_item.sender_id}`);
-                                  setRecipientIndex(index);
-                                }}
-                                className={classes.AVAButton}
-                                startIcon={<SendIcon fontSize="small" />}
-                              >
-                                Reply
-                              </Button>
-                            }
-                          </Box>
-                        }
-                      </Collapse>
                     </Box>
-                  </Paper>
-                  : null
-                )
-              ))}
-            </List>
-          </Paper>
+                    : null
+                  )
+                ))}
+              </List>
+            </Paper>
           }
           {(messageList.length === 0) &&
             <Box display='flex' flex={4} justifyContent='center' alignItems='center' overflow='hidden'>
               <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center' })} >
-                {`There are no messages to show`}
+                {`Loading!  Please wait...`}
               </Typography>
             </Box>
           }
@@ -862,20 +1015,6 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                     {'Close'}
                   </Button>
                   <Button
-                    className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'blue', color: 'white' }}
-                    size='small'
-                    onClick={() => {
-                      if (inOut_mode === 'in') { setinOut('out'); }
-                      else { setinOut('in'); }
-                    }}
-                    startIcon={
-                      (inOut_mode === 'in' ? <ContactMailOutlinedIcon size="small" /> : <MarkunreadMailboxOutlinedIcon size="small" />)
-                    }
-                  >
-                    {inOut_mode === 'in' ? 'View Sent Messages' : 'View Received Messages'}
-                  </Button>
-                  <Button
                     onClick={async () => {
                       setShowAddPrompt(true);
                     }}
@@ -891,7 +1030,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             </DialogActions>
           }
         </React.Fragment >
-      }      
+      }
     </Dialog >
   );
 };

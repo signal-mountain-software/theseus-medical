@@ -2589,12 +2589,16 @@ export async function messageHistory(body) {
   // body should include thread_id
   let mRecs = await getMessages(body);
   let returnArray = [];
+  let returnObj = {};
   if (!mRecs) { returnArray.push(`No message history`); }
   else {
     mRecs.forEach(mR => {
       let mTime = mR.posted_time || mR.created_time;
       let mInfo = '';
-      let mLine = `Sent to ${mR.recipient_list.name.first} ${mR.recipient_list.name.last}`;
+      let mLine = (mR.deliver_method === 'hold') ? 'Held message ' : 'Sent ';
+      if (!body.returnObject) {
+        mLine += `to ${mR.recipient_list.name.first} ${mR.recipient_list.name.last}`;
+      }
       switch (mR.deliver_method) {
         case 'sms': {
           mLine += ' via text message';
@@ -2607,13 +2611,18 @@ export async function messageHistory(body) {
         }
         case 'email': {
           mLine += ' via e-Mail';
+          if (mR.composite_key.endsWith('alt_email')) {
+            mLine += ' (to alt e-Mail)'
+          }
           break;
         }
         case 'hold': {
-          mLine += " held for later delivery per recipient's instructions";
           break;
         }
         default: { mLine += ` via ${mR.deliver_method}`; }
+      }
+      if (mR.recipientList && mR.recipientList.rule_used) {
+        mLine += ` as per rule "${mR.recipientList.rule_used}"`;
       }
       if (mR.results) {
         let mRLast;
@@ -2649,8 +2658,25 @@ export async function messageHistory(body) {
       }
       mLine += ` ${makeDate(mTime).oaDate}`;
       mLine += mInfo;
+      if (!returnObj.hasOwnProperty(mR.deliver_to)) {
+        returnObj[mR.deliver_to] = {
+          name: `${mR.recipient_list.name.first} ${mR.recipient_list.name.last}`,
+          composite_key: mR.composite_key,
+          history: []
+        }
+      }
+      returnObj[mR.deliver_to].history.push({
+        time: mTime,
+        line: mLine
+      })
       returnArray.push(mLine);
     });
-    return returnArray;
+    returnArray.push(' ', `(${body.thread_id})`);
+    if (body.returnObject) {
+      return returnObj;
+    }
+    else {
+      return returnArray;
+    }
   }
 }
