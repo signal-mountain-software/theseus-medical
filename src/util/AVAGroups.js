@@ -1,4 +1,4 @@
-import { cl, clt, recordExists, makeArray, getCustomizations, dbClient, deepCopy } from './AVAUtilities';
+import { cl, clt, recordExists, makeArray, getCustomizations, dbClient, deepCopy, titleCase } from './AVAUtilities';
 import { AVAname, getPerson, getSession } from '../util/AVAPeople';
 import { makeDate } from './AVADateTime';
 
@@ -1218,6 +1218,7 @@ export async function getGroupHierarchy(pClient_id, options) {
   let hierarchy = {};  // keys are '__TOP__' and any group that has children; value is an object whose keys are the clidren of this entry's key
   let customRec = await getCustomizations('client_name', pClient_id);
   let nameObj = { '__TOP__': customRec.customization_value };   // this object delivers the groups name for each nameObj[group_id]
+  let messagingObj = { '__TOP__': [] };
   let parentObj = { '__TOP__': '' };   // this object tells who the parent is for each parentObj[group_id]
   let classObj = { '__TOP__': 'other' };
   let responsibleObj = { '__TOP__': [] };
@@ -1232,6 +1233,32 @@ export async function getGroupHierarchy(pClient_id, options) {
       }
       hierarchy[thisGroup.belongs_to][thisGroup.group_id] = {};
       nameObj[thisGroup.group_id] = thisGroup.name;
+      messagingObj[thisGroup.group_id] = [];
+      if (thisGroup.common_activities && (thisGroup.common_activities.length > 0)) {
+        thisGroup.common_activities.forEach(activity => {
+          if (typeof (activity) === 'string') {
+            let matchResult = activity.match(/(.+)~\[default={recipientID:(.+),recipientName:(.+)\}\]~\[title=(.+)\]/);
+            if (matchResult) {
+              let [str, inst, pers, pName, pText] = matchResult;
+              console.log(str);
+              if (inst === 'form.make_message') {
+                messagingObj[thisGroup.group_id].push({
+                  personList: [pers],
+                  personNames: [pName],
+                  objText: pText
+                });
+              }
+            }
+          }
+          else if (activity.activity_code === 'form.make_message') {
+            messagingObj[thisGroup.group_id].push({
+              personList: [activity.default.recipientID].flat(),
+              personNames: [activity.default.recipientName].flat(),
+              objText: activity.title
+            });
+          }
+        });
+      }
       parentObj[thisGroup.group_id] = thisGroup.belongs_to;
       responsibleObj[thisGroup.group_id] = thisGroup.admin_list;
       classObj[thisGroup.group_id] = thisGroup.admin_class || 'other';
@@ -1265,6 +1292,33 @@ export async function getGroupHierarchy(pClient_id, options) {
           hierarchy[thisGroup.belongs_to][thisGroup.group_id] = withChildren;
         };
         nameObj[thisGroup.group_id] = thisGroup.name;
+        messagingObj[thisGroup.group_id] = [];
+        if (thisGroup.common_activities && (thisGroup.common_activities.length > 0)) {
+          // eslint-disable-next-line
+          thisGroup.common_activities.forEach(activity => {
+            if (typeof (activity) === 'string') {
+              let matchResult = activity.match(/(.+)~\[default={recipientID:(.+),recipientName:(.+)\}\]~\[title=(.+)\]/);
+              if (matchResult) {
+                let [str, inst, pers, pName, pText] = matchResult;
+                console.log(str);
+                if (inst === 'form.make_message') {
+                  messagingObj[thisGroup.group_id].push({
+                    personList: [pers],
+                    personNames: [pName],
+                    objText: titleCase(pText.toLowerCase().replace('send a message to', '')).trim()
+                  });
+                }
+              }
+            }
+            else if (activity.activity_code === 'form.make_message') {
+              messagingObj[thisGroup.group_id].push({
+                personList: [activity.default.recipientID].flat(),
+                personNames: [activity.default.recipientName].flat(),
+                objText: titleCase(activity.title.toLowerCase().replace('send a message to', '')).trim()
+              });
+            }
+          });
+        }
         parentObj[thisGroup.group_id] = thisGroup.belongs_to;
         classObj[thisGroup.group_id] = thisGroup.admin_class || 'other';
         responsibleObj[thisGroup.group_id] = thisGroup.admin_list;
@@ -1290,14 +1344,25 @@ export async function getGroupHierarchy(pClient_id, options) {
   }
 
   // manipulate the output:
-  if (!options) { return ({ hierarchy, parent_of }); }
+  if (!options) {
+    return ({
+      preferred_recipients: messagingObj,
+      group_names: nameObj, group_tree: hierarchy, hierarchy, parent_of
+    });
+  }
   if (options.sort) {
     return ({
+      group_names: nameObj,
+      preferred_recipients: messagingObj,
+      group_tree: hierarchy,
       hierarchy: recursiveSort(hierarchy, [], 0),
       parent_of
     });
   }
-  return ({ hierarchy, parent_of });
+  return ({
+    preferred_recipients: messagingObj,
+    group_names: nameObj, group_tree: hierarchy, hierarchy, parent_of
+  });
 
   function recursiveSearch(searchObj) {
     let oKeys = Object.keys(searchObj);
@@ -1436,6 +1501,9 @@ export async function getAllGroups(person_id, client_id) {
   }
   let gHResponse = await getGroupHierarchy(client_id, { sort: true });
   responseData.adminHierarchy = gHResponse.hierarchy;
+  responseData.groupTree = gHResponse.group_tree;
+  responseData.preferred_recipients = gHResponse.preferred_recipients;
+  responseData.groupNames = gHResponse.group_names;
   responseData.parent_of = gHResponse.parent_of;    // for every group, this lists all its descendants (children,  grandchildren, etc)
   let gXRef = {};
   responseData.adminHierarchy.forEach((a, x) => {

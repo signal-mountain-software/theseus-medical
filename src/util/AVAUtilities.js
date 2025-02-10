@@ -222,6 +222,9 @@ export function listFromArray(pArray, options) {
   let link = '';
   let nextToLast = inArray.length - 2;
   let threeOrMore = (inArray.length > 2);
+  if (options && options.max && (inArray.length > options.max.length)) {
+    return `${inArray.length} ${options.max.words || 'selections'}`
+  } 
   inArray.forEach((s, x) => {
     let linkWord = 'and';
     if (options) {
@@ -512,15 +515,16 @@ export function array_in_array(a1, a2) {
 
 export function titleCase(pString) {
   if (!pString) { return ''; }
-  let words = pString.split(/\s+/);
+  let words = pString.split(/(\W+)/);
   let returnString = '';
   words.forEach((w, x) => {
     if (x === 0) { returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1)}`; }
     else if ((w.length < 3) || (w === 'and') || (w === 'the')) { returnString += w; }
     else if (w.toLowerCase() === 'ava') { returnString += 'AVA'; }
     else if (w.toLowerCase() === 'bbq') { returnString += 'BBQ'; }
+    else if (w.toLowerCase() === 'ceo') { returnString += 'CEO'; }
     else { returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1)}`; }
-    returnString += ' ';
+//    returnString += ' ';
   });
   return returnString.trim();
 }
