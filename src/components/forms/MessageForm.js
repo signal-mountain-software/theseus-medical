@@ -318,6 +318,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
   async function getMessageResults(pCommonKey, in_out) {
     let gotHistory = await messageHistory({
       thread_id: pCommonKey.split('~')[0].slice(2),
+      composite_key: pCommonKey.split('~D')[0],
       record_type: 'delivery',
       returnObject: true
     });
@@ -408,7 +409,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     }
     let recipient_key = [];
     reactData.newMessageRecipients.forEach(r => {
-      if (r.person_id) { recipient_key.push(r.person_id); }
+      if (r.person_id) { recipient_key.push(...([r.person_id].flat())); }
       else if (r.group_id) { recipient_key.push(`GRP:${r.group_id}`); }
       else if (r.rIndex) { 
         recipient_key.push(...reactData.preferred_recipients[r.rIndex].personList)
@@ -568,48 +569,8 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             allowReplyAll: (m.allowReplyAll || false)
           };
 
-          /*
-          let sendMsgRec = await dbClient
-            .get({
-              Key: {
-                thread_id: m.thread_id,
-                composite_key: this_message_number
-              },
-              TableName: "TheseusMessages",
-            })
-            .promise()
-            .catch(error => {
-              if (error.code === 'NetworkingError') {
-                enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
-              }
-              console.log({ 'Error reading Messages': error });
-            });
-          
-          let rArray = [];
-          if (recordExists(sendMsgRec)) {
-            if (sendMsgRec.Item.results?.success) {
-              sendMsgRec.Item.results.success.forEach(r => {
-                const p = r.split('.')[0];
-                if (!rArray.includes(p)) {
-                  rArray.push(p);
-                }
-              });
-            }
-            if (sendMsgRec.Item.results?.duplicate) {
-              sendMsgRec.Item.results.duplicate.forEach(r => {
-                const p = r.split('.')[0];
-                if (!rArray.includes(p)) {
-                  rArray.push(p);
-                }
-              });
-            }
-          }
-          */
-
-
           this_message.toLine = `${m.author.author_name} -> Me`;
           this_message.target = pPerson;
-
 
           message_number_obj[this_message_number] = true;
           if (!thread_object.hasOwnProperty(m.thread_id)) {
@@ -1308,10 +1269,10 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                       <Typography
                                         key={`prefLine-${mIndex}__${x}`}
                                         style={(x === 0)
-                                          ? AVATextStyle({ size: 1, margin: { left: 0.5, top: 0.3 } })
+                                          ? AVATextStyle({ size: 0.8, margin: { left: 0.5, top: 0.3 } })
                                           : AVATextStyle({ size: 0.8, margin: { left: 1.5 } })}
                                       >
-                                        {`${(x === 0) ? (messageResults[mObj].name + ':') : ''} ${h.line}`}
+                                        {h.line}
                                       </Typography>
                                     ))}
                                   </React.Fragment>
