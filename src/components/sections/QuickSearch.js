@@ -375,7 +375,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                     let selectedPeople_list = [];
                     for (let this_person of reactData.accessList) {
                       if (
-                        this_person.groups.some(g => { return (reactData.selections.some(s => { return s.group_id === g; })); })
+                        (this_person.groups && [this_person.groups].flat().some(g => { return (reactData.selections.some(s => { return s.group_id === g; })); }))
                         ||
                         reactData.selections.some(s => { return s.person_id === this_person.person_id; })
                         ||
