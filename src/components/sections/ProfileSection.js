@@ -454,8 +454,9 @@ export default ({ currentValues, ogValues, errorList, setError, updateField }) =
           helperText={errorList.hasOwnProperty('alt_email') ? errorList.alt_email.errorMessage : 'Alternate e-Mail'}
         />
       </Box>
-      <TextField style={{ width: '550px' }}
+      <TextField style={{ width: '550px', maxWidth: '100%' }}
         id='email'
+        multiline
         key={`profileSection__street1__${currentValues.peopleRec.address?.address || 0}`}
         autoComplete='off'
         onBlur={async (event) => {
@@ -478,8 +479,9 @@ export default ({ currentValues, ogValues, errorList, setError, updateField }) =
         defaultValue={currentValues.peopleRec?.address?.address || ''}
         helperText={'Address'}
       />
-      <TextField style={{ width: '550px' }}
+      <TextField style={{ width: '550px', maxWidth: '100%' }}
         id='email'
+        multiline
         key={`profileSection__street2__${currentValues.peopleRec.address?.address2 || 0}`}
         autoComplete='off'
         onBlur={async (event) => {
@@ -577,8 +579,9 @@ export default ({ currentValues, ogValues, errorList, setError, updateField }) =
           helperText={'Zip'}
         />
       </Box>
-      <TextField style={{ width: '550px' }}
+      <TextField style={{ width: '550px', maxWidth: '100%' }}
         id='email'
+        multiline
         key={`profileSection__eContact1__${currentValues.peopleRec.emergency_contact?.contact1 || 0}`}
         autoComplete='off'
         onBlur={async (event) => {
@@ -599,8 +602,9 @@ export default ({ currentValues, ogValues, errorList, setError, updateField }) =
         defaultValue={currentValues.peopleRec.emergency_contact?.contact1 || ''}
         helperText={'Emergency Contact 1 - Name & Phone'}
       />
-      <TextField style={{ width: '550px' }}
+      <TextField style={{ width: '550px', maxWidth: '100%' }}
         id='email'
+        multiline
         key={`profileSection__eContact2__${currentValues.peopleRec.emergency_contact?.contact2 || 0}`}
         autoComplete='off'
         onBlur={async (event) => {

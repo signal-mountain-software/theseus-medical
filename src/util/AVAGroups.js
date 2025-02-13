@@ -888,7 +888,7 @@ export async function getGroupMembers(request = {}) {
     });
   if (recordExists(gPeopleRecs)) {
     gPeopleRecs.Items.forEach(personRec => {
-      if (personRec.groups.some(this_group => {
+      if (personRec.groups && [personRec.groups].flat().some(this_group => {
         return (all_groups || request.groupList.includes(this_group) || request.groupList.includes(personRec.person_id));
       })) {
         let this_response = {

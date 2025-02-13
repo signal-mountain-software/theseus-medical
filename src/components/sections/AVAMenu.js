@@ -86,7 +86,7 @@ const useStyles = makeStyles(theme => ({
   },
   avatar: {
     marginTop: 0,
-    marginLeft: theme.spacing(2),
+    marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
     marginBottom: 0,
     height: 60,
@@ -247,7 +247,7 @@ const useStyles = makeStyles(theme => ({
 export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   const classes = useStyles();
-
+  const subMenuHead = React.useRef(null);
   const { state } = useSession();
   const { roles, session } = state;
 
@@ -265,6 +265,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     menuNames: [],
     selected: null,
     sectionOpen: {},
+    current_time: new Date(),
     showPersonSelect: false,
     popupMenuOpen: false,
     showProfileEdit: false,
@@ -288,6 +289,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const updateReactData = (newData, force = false) => {
+    newData.current_time = new Date();
     setReactData((prevValues) => (Object.assign(
       prevValues,
       newData
@@ -300,8 +302,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const oneMinute = 1000 * 60;
   const oneHour = 60 * oneMinute;
   const msBeforeSleeping = 1 * oneMinute;
-
-  const subMenuHead = React.useRef(null);
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
@@ -1020,41 +1020,17 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 </Typography>
               </Box>
             </Box>
-            <Box
-              display='flex'
-              overflow='auto'
-              justifySelf='flex-end'
-              alignContent={'end'}
-            >
-              <Box
-                display='flex'
-                overflow='auto'
-                justifySelf='flex-end'
-                flexDirection='column'
-              >
-                <Typography
-                  style={AVATextStyle({ align: 'right', wrap: 'nowrap', size: 1.1, margin: { right: 0 } })}
-                  id='scroll-dialog-title'
-                >
-                  {`${makeDate(new Date()).dateOnly.split(',').pop().trim()}`}
-                </Typography>
-                <Typography
-                  style={AVATextStyle({ align: 'right', size: 1.1, margin: { right: 0 } })}
-                  id='scroll-dialog-title'
-                >
-                  {`${makeDate(new Date()).timeOnly.split(' ').join('').toLowerCase()}`}
-                </Typography>
-              </Box>
-            </Box>
             {/* AVA Logo and Pop-up Menu */}
             <Box
               display='flex'
-              ml={2}
-              overflow='auto'
+              overflow='hidden'
               flexDirection='column'
+              justifyContent={'center'}
+              alignItems={'center'}
             >
               <Tooltip
                 className={classes.avatar}
+                style={{ marginBottom: '4px' }}
                 onClick={(event) => {
                   updateReactData({
                     anchorEl: event.currentTarget,
@@ -1072,9 +1048,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   alt={reactData.greetingName}
                 />
               </Tooltip>
-              {!reactData.menu_reloaded &&
-                <LinearProgress className={classes.pendingBar} style={{ width: 50 }} />
-              }
+              {makeDate(reactData.current_time, { timeZone: state.session.client_timezone }).absolute.split(' at ').map(tLine => (
+                <Typography
+                  style={AVATextStyle({ align: 'center', size: 0.8 })}
+                  id='scroll-dialog-title'
+                >
+                  {tLine}
+                </Typography>
+              ))}
             </Box>
             <Menu
               id='hidden-menu'

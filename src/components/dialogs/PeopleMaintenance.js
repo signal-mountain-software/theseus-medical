@@ -30,6 +30,7 @@ const useStyles = makeStyles(theme => ({
   paperPallette: {
     borderRadius: '30px 30px 30px 30px',
     width: '95%',
+    maxWidth: '800px'
   },
   padRight: {
     marginRight: theme.spacing(2),
@@ -720,7 +721,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       >
         {reactData.sections.map((this_section, sectionNdx) => (
           (this_section.isAuthorized &&
-            (!reactData.options?.sectionToShow || (reactData.options?.sectionToShow === this_section.component_name)) &&
+            (!reactData.options?.sectionToShow || ([reactData.options?.sectionToShow].flat().includes(this_section.component_name))) &&
             (reactData.person_id || (this_section.component_name === 'ProfileSection')) &&
             <Box
               key={`frag__${sectionNdx}`}

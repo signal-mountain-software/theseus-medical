@@ -6,12 +6,14 @@ import { extract, dbClient, titleCase, listFromArray, cl, uuid } from '../../uti
 import { AVATextStyle } from '../../util/AVAStyles';
 import AVAUploadFile from '../../util/AVAUploadFile';
 import { Alert, AlertTitle } from '@material-ui/lab/';
+import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import AttachmentIcon from '@material-ui/icons/Attachment';
 import ReplyIcon from '@material-ui/icons/Reply';
+import SettingsIcon from '@material-ui/icons/Settings';
 
 import QuickSearch from '../sections/QuickSearch';
 
@@ -89,6 +91,15 @@ const useStyles = makeStyles(theme => ({
     minHeight: '50px',
     maxHeight: '50px',
     marginRight: theme.spacing(1),
+    borderRadius: '25px'
+  },
+  myImageArea: {
+    minWidth: '70px',
+    maxWidth: '70px',
+    minHeight: '70px',
+    maxHeight: '70px',
+    marginRight: theme.spacing(1),
+    borderRadius: '35px'
   },
   title: {
     marginTop: theme.spacing(3),
@@ -191,6 +202,8 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     lastReloadTime: new Date(),
     idleState: false,
     newMessageMode: false,
+    viewPeopleMaintenance: false,
+    myImage: null,
     selections: [],    // wip selections from quick search
     selectedPeople_count: 0,
     selectedPeople_list: [],
@@ -493,6 +506,8 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     let totalInboundCount = 0;
     let totalOutboundCount = 0;
     let totalOutboundProcessed = 0;
+    // my Image
+    updateReactData({ myImage: await getImage(pPerson) }, true);
     // Get messages to me
     let mRecs = await dbClient
       .query({
@@ -821,21 +836,51 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     >
       {(messageList || reactData.newMessageMode) &&
         <React.Fragment>
-          <DialogContentText
-            className={classes.title}
-            id='scroll-dialog-title'
-          >
-            Recent Messages
-          </DialogContentText>
-          <TextField
-            id='List Filter'
-            value={message_filter}
-            onChange={handleChangeMessageFilter}
-            className={classes.freeInput}
-            label={'Filter/Search'}
-            variant={'standard'}
-            autoComplete='off'
-          />
+          <Box display='flex'
+            key={'header_row'}
+            flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
+            <Box display='flex'
+              key={'title_and_filter'}
+              flexDirection='column'
+              marginRight={'16px'}
+              style={{ flexGrow: 1 }}
+              justifyContent={'center'}
+            >
+              <DialogContentText
+                className={classes.title}
+                id='scroll-dialog-title'
+              >
+                My Messages
+              </DialogContentText>
+              <TextField
+                id='List Filter'
+                value={message_filter}
+                onChange={handleChangeMessageFilter}
+                className={classes.freeInput}
+                label={'Filter/Search'}
+                variant={'standard'}
+                autoComplete='off'
+              />
+            </Box>
+            <Box
+              key={'my_image_box'}
+              style={{ marginRight: '16px' }}
+              onClick={() => {
+                updateReactData({
+                  viewPeopleMaintenance: true
+                }, true);
+              }}
+            >
+              <img
+                key={'my_image'}
+                className={classes.myImageArea}
+                alt={''}
+                onError={onImageError}
+                src={reactData.myImage}
+              />
+              <SettingsIcon style={{ marginLeft: '-32px' }} />
+            </Box >
+          </Box>
           {reactData.newMessageMode &&
             <Paper component={Box} className={classes.newMessagePage} variant='outlined' overflow='auto' square>
               <Box key={'newMessage_frag'}
@@ -906,6 +951,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                       <Box display='flex'
                                         key={'newMessage_r6names'}
                                         flexDirection='row'
+                                        flexWrap={'wrap'}
                                         alignContent={'center'}
                                         onClick={() => {
                                           updateReactData({
@@ -915,7 +961,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                           }, true);
                                         }}
                                       >
-                                        <Typography 
+                                        <Typography
                                           style={AVATextStyle({ size: 1, bold: true })}
                                           key={`showNames__${reactData.newMessageRecipients.length + reactData.selections.length}`}
                                         >
@@ -930,29 +976,24 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                               : 'Me ->'
                                           }
                                         </Typography>
-                                        <Box display='flex'
-                                          key={'newMessage_r5_tap'}
-                                          flexDirection='row'
-                                          style={{ flexWrap: 'nowrap' }}
+                                        <Typography
+                                          style={Object.assign({}, { display: 'flex', textWrap: 'nowrap', alignSelf: 'flex-end' }, AVATextStyle({ margin: { left: 1 }, size: 0.8 }))}
                                         >
-                                          <Typography
-                                            style={Object.assign({}, { display: 'flex', textWrap: 'nowrap', alignSelf: 'flex-end' }, AVATextStyle({ margin: { left: 1 }, size: 0.8 }))}
-                                          >
-                                            {(!(reactData.newMessageRecipients.length === 0) && (!reactData.selections || reactData.showReplyToSearch))
-                                              ? '(Tap here to select Recipients)'
-                                              : `(Tap here to add/change Recipients)`
-                                            }
-                                          </Typography>
-                                        </Box>
+                                          {(!(reactData.newMessageRecipients.length === 0) && (!reactData.selections || reactData.showReplyToSearch))
+                                            ? '(Tap here to select Recipients)'
+                                            : `(Tap here to add/change Recipients)`
+                                          }
+                                        </Typography>
                                       </Box>
-                                      <Typography 
-                                        style={AVATextStyle({ size: 0.8 })}
+                                      <Typography
+                                        style={AVATextStyle({ size: 0.8, margin: { bottom: 1 } })}
                                       >
                                         {`${makeReadableTime(new Date().getTime())}`}
                                       </Typography>
                                       <React.Fragment>
                                         <TextField
-                                          id='ClientName'
+                                          id='Message_subject_new'
+                                          multiline
                                           autoComplete='off'
                                           style={AVATextStyle({ size: 1.2, bold: true })}
                                           onChange={async (event) => {
@@ -978,10 +1019,11 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                     ))}
                                   </Box>
                                   <TextField
-                                    id='ClientName'
+                                    id='MessageText_new'
+                                    multiline
                                     autoComplete='off'
                                     style={AVATextStyle({ size: 1.2, bold: true })}
-                                    onChange={async (event) => {
+                                    onBlur={async (event) => {
                                       updateReactData({
                                         newMessageText: event.target.value
                                       }, true);
@@ -1005,7 +1047,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                           <Box display='flex'
                             key={'newMessage_c_reply'}
                             flexDirection='column'
-                            style={{ marginLeft: '16px' }}
+                            style={{ marginLeft: '-10px' }}
                             alignItems={'flex-end'}
                             justifyContent={'flex-start'}
                           >
@@ -1028,10 +1070,10 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                           <Box display='flex'
                             key={'newMessage_c_reply_text'}
                             flexDirection='column'
-                            style={{ flexGrow: 1 }}
+                            style={{ flexGrow: 1, marginRight: '-30px' }}
                             alignItems={'flex-end'}
                           >
-                            <Typography 
+                            <Typography
                               style={AVATextStyle({ size: 1 })}
                               onClick={() => {
                                 updateReactData({
@@ -1049,7 +1091,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                 : 'Reply to: Me'
                               }
                             </Typography>
-                            <Typography 
+                            <Typography
                               style={AVATextStyle({ size: 1 })}
                               onClick={() => {
                                 updateReactData({
@@ -1060,7 +1102,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                               {'Add Attachment(s)'}
                             </Typography>
                             {(reactData.attachments_to_send.length > 0) &&
-                              <Typography 
+                              <Typography
                                 style={AVATextStyle({ size: 1 })}
                                 onClick={() => {
                                   updateReactData({
@@ -1076,7 +1118,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                   )}`}
                               </Typography>
                             }
-                            <Typography 
+                            <Typography
                               style={AVATextStyle({ size: 1 })}
                               onClick={() => {
                                 updateReactData({
@@ -1124,7 +1166,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                     onContextMenu={async (e) => {
                       e.preventDefault();
                       console.log({ this_item });
-                      console.log(reactData.window_width)
+                      console.log(reactData.window_width);
                     }}
                   >
                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
@@ -1201,37 +1243,27 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                   >
                                     {((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id)) &&
                                       <React.Fragment>
-                                        <Typography 
+                                        <Typography
                                           style={AVATextStyle({ size: 1, bold: true })}
                                         >
                                           {makeSubject(this_item.subject || this_item.message_text)}
                                         </Typography>
                                       </React.Fragment>
                                     }
-                                    <Typography 
+                                    <Typography
                                       style={Object.assign({}, messageStyle(this_item, index), { fontWeight: 'bold' })}
                                     >
                                       {this_item.toLine}
                                     </Typography>
-                                    <Typography 
+                                    <Typography
                                       style={AVATextStyle({ size: 0.8 })}
                                     >
                                       {`${makeReadableTime(this_item.posted_time || this_item.deliver_time)} - via ${this_item.deliver_method}`}
                                     </Typography>
                                   </Box>
-                                  {this_item.attachments && this_item.attachments.map((aLine, aIndex) => (
-                                    <a
-                                      href={aLine}
-                                      key={`attach-${aIndex}-href`}
-                                      target='_blank'
-                                      rel='noopener noreferrer'
-                                      style={{ color: 'inherit', textDecoration: 'underline' }}>
-                                      <AttachmentIcon />
-                                    </a>
-                                  ))}
                                 </Box>
                                 <Typography key={`prefLine-text`}
-                                  style={Object.assign({}, messageStyle(this_item, index), { overflowY: 'auto' })}
+                                  style={Object.assign({}, messageStyle(this_item, index), { overflowWrap: 'anywhere', overflowY: 'auto' })}
                                 >
                                   {this_item.message_text}
                                 </Typography>
@@ -1279,55 +1311,80 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                           </Box>
                         </Box>
                         <Box display='flex'
-                          key={`options_r5_${index}`}
-                          flexDirection='row'
+                          key={`options_r4col_${index}`}
+                          flexDirection='column'
+                          alignItems='center'
                           style={{
                           }}
                         >
-                          {!open[index] ?
-                            <ExpandMoreIcon
-                              onClick={() => { toggleOpen(index, this_item.common_key, this_item.inOut); }}
-                            />
-                            :
-                            <ExpandLessIcon
-                              onClick={() => { toggleOpen(index, this_item.common_key, this_item.inOut); }}
-                            />}
-                          {((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id)) &&
-                            <React.Fragment>
-                              <ReplyIcon
-                                onClick={async () => {
-                                  let newMessageRecipients = [];
-                                  let replyToList = [];
-                                  if (this_item.replyToList && this_item.replyToList.some(p => { return p !== pPerson; })) {
-                                    for (const this_recipient of this_item.replyToList) {
-                                      newMessageRecipients.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
-                                      replyToList.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
-                                    }
-                                  }
-                                  else {
-                                    newMessageRecipients = [{ person_id: this_item.partner_id, person_name: this_item.patient_name }];
-                                    replyToList = [{ person_id: pPerson, person_name: 'Me' }];
-                                  }
-                                  updateReactData({
-                                    newMessageRecipients,
-                                    replyToList,
-                                    newMessageThread: this_item.thread_id,
-                                    newMessageSubject: this_item.subject,
-                                    newMessageMode: true
-                                  }, true);
-                                }}
-                              />
-                              <DeleteIcon
-                                onClick={() => {
-                                  setConfirmMessage(`Delete message from ${this_item.patient_name || this_item.sender_name}?`);
-                                  setConfirmID(this_item.message_id);
-                                  setConfirmIndex(index);
-                                  setDeletePending(true);
-                                  setForceRedisplay(false);
-                                }}
-                              />
-                            </React.Fragment>
+                          {this_item.attachments &&
+                            <Box display='flex'
+                              key={`attachments_${index}`}
+                              flexDirection='row'
+                              style={{ marginBottom: '8px', marginTop: '8px' }}
+                            >
+                              {this_item.attachments.map((aLine, aIndex) => (
+                                <a
+                                  href={aLine}
+                                  key={`attach_${index}-${aIndex}-href`}
+                                  target='_blank'
+                                  rel='noopener noreferrer'
+                                  style={{ color: 'inherit', textDecoration: 'underline' }}>
+                                  <AttachmentIcon />
+                                </a>
+                              ))}
+                            </Box>
                           }
+                          <Box display='flex'
+                            key={`options_r5_${index}`}
+                            flexDirection='row'
+                            style={this_item.attachments ? { marginBottom: '8px', marginTop: '8px' } : {}}
+                          >
+                            {!open[index] ?
+                              <ExpandMoreIcon
+                                onClick={() => { toggleOpen(index, this_item.common_key, this_item.inOut); }}
+                              />
+                              :
+                              <ExpandLessIcon
+                                onClick={() => { toggleOpen(index, this_item.common_key, this_item.inOut); }}
+                              />}
+                            {((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id)) &&
+                              <React.Fragment>
+                                <ReplyIcon
+                                  onClick={async () => {
+                                    let newMessageRecipients = [];
+                                    let replyToList = [];
+                                    if (this_item.replyToList && this_item.replyToList.some(p => { return p !== pPerson; })) {
+                                      for (const this_recipient of this_item.replyToList) {
+                                        newMessageRecipients.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
+                                        replyToList.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
+                                      }
+                                    }
+                                    else {
+                                      newMessageRecipients = [{ person_id: this_item.partner_id, person_name: this_item.patient_name }];
+                                      replyToList = [{ person_id: pPerson, person_name: 'Me' }];
+                                    }
+                                    updateReactData({
+                                      newMessageRecipients,
+                                      replyToList,
+                                      newMessageThread: this_item.thread_id,
+                                      newMessageSubject: this_item.subject,
+                                      newMessageMode: true
+                                    }, true);
+                                  }}
+                                />
+                                <DeleteIcon
+                                  onClick={() => {
+                                    setConfirmMessage(`Delete message from ${this_item.patient_name || this_item.sender_name}?`);
+                                    setConfirmID(this_item.message_id);
+                                    setConfirmIndex(index);
+                                    setDeletePending(true);
+                                    setForceRedisplay(false);
+                                  }}
+                                />
+                              </React.Fragment>
+                            }
+                          </Box>
                         </Box>
                       </Box>
                     </Box>
@@ -1436,6 +1493,18 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
               }}
             />
           }
+          {reactData.viewPeopleMaintenance &&
+            <PeopleMaintenance
+              person_id={pPerson}
+              initialValues={{ color: 'green' }}
+              options={{ sectionToShow: ['ProfileSection', 'MessagePreferencesSection', 'PersonalizationSection'] }}
+              onClose={() => {
+                updateReactData({
+                  viewPeopleMaintenance: false
+                }, true);
+              }}
+            />
+          }
           { // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
               <Box display='flex' flexDirection='column'>
@@ -1453,7 +1522,13 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                     onClick={async () => {
                       updateReactData({
                         showQuickSearch: true,
-                        newMessageMode: true
+                        newMessageMode: true,
+                        newMessageSubject: '',
+                        newMessageText: '',
+                        newUrgentMessage: false,
+                        newMessageRecipients: [],
+                        replyToList: [{ person_id: pPerson, person_name: 'Me' }],
+                        newMessageThread: false,
                       }, true);
                     }}
                     className={AVAClass.AVAButton}
