@@ -66,6 +66,9 @@ export function makeDate(pInput, optionIn = {}) {
     else {
         options = Object.assign({}, optionIn);
     }
+    if (!options.hasOwnProperty('timeZone')) {
+        options.timeZone = 'America/New_York';
+    }
     let originalInput = pInput;
     let targetDateStamp, targetDate;
     if (pInput instanceof Date) {
@@ -149,7 +152,7 @@ export function makeDate(pInput, optionIn = {}) {
             case 'noFuture': {
                 if (targetDate > currentDate) {
                     foundError =
-                        `${targetDate.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric' })} is in the future and not allowed here`;
+                        `${targetDate.toLocaleString([], { timeZone: options.timeZone, month: 'short', day: 'numeric', year: 'numeric' })} is in the future and not allowed here`;
                 }
                 break;
             }
@@ -205,7 +208,7 @@ export function makeDate(pInput, optionIn = {}) {
             if ((currentDate.getTime() - targetDateStamp) > (4 * 24 * hours)) {
                 mWord = 'last ';
             }
-            relDate = `${mWord}${targetDate.toLocaleString([], { weekday: 'long' })}`;
+            relDate = `${mWord}${targetDate.toLocaleString([], { timeZone: options.timeZone, weekday: 'long' })}`;
         }
     }
     else if (targetDateStamp >= (beginningOfCurrentDay + (24 * hours))) {
@@ -217,7 +220,7 @@ export function makeDate(pInput, optionIn = {}) {
             if (targetDate.getDay() <= currentDate.getDay()) {
                 mWord = 'next ';
             }
-            relDate = `${mWord}${targetDate.toLocaleString([], { weekday: 'long' })}`;
+            relDate = `${mWord}${targetDate.toLocaleString([], { timeZone: options.timeZone, weekday: 'long' })}`;
         }
     }
     else {
@@ -228,9 +231,9 @@ export function makeDate(pInput, optionIn = {}) {
         else (relDate = "this evening");
     }
     // Make absolute date
-    absDate = `${targetDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric' })}`;
-    absFull = `${targetDate.toLocaleString([], { weekday: 'long', month: 'long', year: 'numeric', day: 'numeric' })}`;
-    dateOnly = `${targetDate.toLocaleString([], { month: 'short', day: 'numeric' })}`;
+    absDate = `${targetDate.toLocaleString([], { timeZone: options.timeZone, weekday: 'short', month: 'short', day: 'numeric' })}`;
+    absFull = `${targetDate.toLocaleString([], { timeZone: options.timeZone, weekday: 'long', month: 'long', year: 'numeric', day: 'numeric' })}`;
+    dateOnly = `${targetDate.toLocaleString([], { timeZone: options.timeZone, month: 'short', day: 'numeric' })}`;
     if (!relDate) { relDate = absDate; }
     if (targetDate.getFullYear() !== currentDate.getFullYear()) {
         absDate += ` ${targetDate.getFullYear()}`;
@@ -238,7 +241,7 @@ export function makeDate(pInput, optionIn = {}) {
     }
     oaDate = `on ${absDate}`;
     if ((targetDate.getHours() > 0) || (targetDate.getMinutes() > 0)) {
-        let tOfDay = ` at ${targetDate.toLocaleString([], { hour: 'numeric', minute: '2-digit' })}`;
+        let tOfDay = ` at ${targetDate.toLocaleString([], { timeZone: options.timeZone, hour: 'numeric', minute: '2-digit' })}`;
         absDate += tOfDay;
         oaDate += tOfDay;
         relDate += tOfDay;
@@ -299,7 +302,7 @@ export function makeDate(pInput, optionIn = {}) {
         'relative': titleCase(relDate),
         'absolute': titleCase(absDate),
         'absolute_full': titleCase(absFull),
-        'timeOnly': targetDate.toLocaleString([], { hour: 'numeric', minute: '2-digit' }),
+        'timeOnly': targetDate.toLocaleString([], { timeZone: options.timeZone, hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }),
         'dateOnly': dateOnly,
         'oaDate': titleCase(oaDate),
         'date': targetDate,
@@ -311,7 +314,7 @@ export function makeDate(pInput, optionIn = {}) {
         'dayPart': dayPart,
         'workingHours': workingHours,
         'dayOfWeek': targetDate.getDay(),
-        'dayOfWeek_word': `${targetDate.toLocaleString([], { weekday: 'long' })}`,
+        'dayOfWeek_word': `${targetDate.toLocaleString([], { timeZone: options.timeZone, weekday: 'long' })}`,
         'weekday': (((targetDate.getDay() % 6) === 0) ? 'weekend' : 'weekday'),
         'textOut': pInput
     };
@@ -559,7 +562,7 @@ export function makeTime(pTime) {
                 else if (inTime.includes('p')) { ampm = 'pm'; }
                 else if (inTime.slice(0, 1) === '0') {
                     ampm = 'am';
-                    if (inTime.slice(1, 2) === '0') { inTime = `12${inTime.slice(2)}am` }
+                    if (inTime.slice(1, 2) === '0') { inTime = `12${inTime.slice(2)}am`; }
                 }  // support military times starting with zero
                 [hh$, mm$] = inTime.split(':');
                 const hhClean = hh$.replace(/\D+/g, '');

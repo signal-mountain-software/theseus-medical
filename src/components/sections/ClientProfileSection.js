@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, TextField, Button, Avatar } from '@material-ui/core/';
+import { Box, Typography, TextField, Button, Avatar, Switch } from '@material-ui/core/';
 
 import { AVATextStyle } from '../../util/AVAStyles';
 import { AVAclasses } from '../../util/AVAStyles';
@@ -167,6 +167,64 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
           <Avatar className={AVAClass.AVAAvatar} src={currentValues.customizationRecs.logo.icon} />
         </Box>
       </Box>
+
+
+
+
+
+
+
+  <Typography
+        style={AVATextStyle({ margin: { top: 1 } })}
+      >
+        {'UI style'}
+      </Typography>
+      <Box flexGrow={2} display='flex' alignItems='center'
+        justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+        <Typography
+          style={AVATextStyle({
+            size: 0.8, margin: { right: 0.8 },
+            bold: !currentValues.customizationRecs.client_style.customization_value.ui_tiles
+          })}
+        >
+          {'Menu'}
+        </Typography>
+        <Switch
+          checked={currentValues.customizationRecs.client_style.customization_value?.ui_tiles || false}
+          onClick={async (event) => {
+            await updateField({
+              updateList:
+                [{
+                  tableName: 'customizationRecs',
+                  fieldName: 'client_style.customization_value.ui_tiles',
+                  newData: !currentValues.customizationRecs.client_style.customization_value.ui_tiles
+                }]
+            });
+          }}
+          name="UIStyle"
+          color="primary"
+        />
+        <Typography
+          style={AVATextStyle({
+            size: 0.8, margin: { left: 0.8 },
+            bold: currentValues.customizationRecs.client_style.customization_value.ui_tiles
+          })}
+        >
+          {'Tiles'}
+        </Typography>
+      </Box>
+
+
+
+
+
+
+
+
+
+
+
+
       <Box display='flex' alignItems='center'
         justifyContent='flex-end' flexDirection='row'>
         <Typography

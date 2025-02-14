@@ -154,7 +154,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
       <TextField
         style={isMobile ? AVATextStyle({ width: '90%', margin: { left: 0.5 } }) : AVATextStyle({ margin: { left: 1 } })}
         key={`key_words`}
-        defaultValue={reactData.linkedPersonFilter.raw || ''}
+        defaultValue={reactData.linkedPersonFilter?.raw || ''}
         onChange={(event) => {
           if (event.target.value.length === 0) {
             updateReactData({
@@ -446,7 +446,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                 }}
 
                 onClick={() => {
-                  if (options.pickAndGo) {
+                  if (options.pickAndGo || options.pickOne) {
                     const foundAt = reactData.selections.findIndex(s => { return (s.person_id === this_item.person_id); });
                     if (foundAt > -1) {
                       reactData.selections.splice(foundAt, 1);
@@ -454,7 +454,9 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                     else {
                       reactData.selections.unshift({
                         person_id: this_item.person_id,
-                        person_name: (`${this_item.first.trim()} ${this_item.last.trim()}`).trim()
+                        person_name: (`${this_item.first.trim()} ${this_item.last.trim()}`).trim(),
+                        person_firstName: this_item.first.trim(),
+                        person_lastName: this_item.last.trim()
                       });
                     }
                     let selectedPeople_count = 0;
@@ -481,6 +483,9 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                       selectedPeople_list,
                       selections: reactData.selections
                     }, true);
+                    if (options.pickOne) {
+                      onClose(reactData.selections);
+                    }
                   }
                   else {
                     updateReactData({

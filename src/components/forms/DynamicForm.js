@@ -704,6 +704,7 @@ export default ({
     case 'show_groups':
       return (
         <ShowGroup
+          defaults={defaultObject}
           options={{
             pSession: session,
             pGroup_id: (defaultObject?.groups || defaultValue),
@@ -711,6 +712,30 @@ export default ({
             peopleList: values,
             showList: (defaultObject?.mode || 'full'),
             safeMode: defaultObject.safeMode
+          }}
+          onClose={(updatesMade) => {
+            if (updatesMade) {
+              window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+            }
+            else {
+              onSave();
+            }
+          }}
+          onAbort={onClose}
+        />
+      );
+    case 'manage_groups':
+      return (
+        <ShowGroup
+          defaults={defaultObject}
+          options={{
+            pSession: session,
+            pGroup_id: (defaultObject?.groups || defaultValue),
+            pGroup_name: message,
+            peopleList: values,
+            showList: (defaultObject?.mode || 'full'),
+            safeMode: defaultObject.safeMode,
+            groupManagement: true
           }}
           onClose={(updatesMade) => {
             if (updatesMade) {

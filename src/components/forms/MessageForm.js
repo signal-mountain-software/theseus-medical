@@ -171,7 +171,7 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValue }) => {
+export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValue, options }) => {
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -192,6 +192,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
 
   const placeholderImage =
     'https://theseus-medical-storage.s3.amazonaws.com/public/patients/tboone.jpg';
+  
 
   const [reactData, setReactData] = React.useState({
     statusMessage: false,
@@ -201,14 +202,14 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     lastActiveTime: new Date(),
     lastReloadTime: new Date(),
     idleState: false,
-    newMessageMode: false,
+    newMessageMode: !!options.newMessage || false,
     viewPeopleMaintenance: false,
     myImage: null,
     selections: [],    // wip selections from quick search
     selectedPeople_count: 0,
     selectedPeople_list: [],
     newMessageSubject: '',
-    newMessageRecipients: [],
+    newMessageRecipients: (!!options.newMessage ? options.newMessage :  []),
     alert: false,
     showGroupList: false,
     showIndividualList: false,
