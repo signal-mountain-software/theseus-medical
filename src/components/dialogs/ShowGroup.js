@@ -196,6 +196,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
     let selectAll = pGroupList.includes('*all');
     let selectOpen = pGroupList.includes('*all_open') || pGroupList.includes('*all_public');
     let selectPrivate = pGroupList.includes('*all_closed') || pGroupList.includes('*all_private');
+    const selectMine = !pGroupList || (pGroupList.length === 0) || (pGroupList.includes('*user'));
     let allGroups = await getAllGroups(state.session.person_id, state.session.client_id);
     let gList = allGroups.adminHierarchy;
     let response = {};
@@ -203,6 +204,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
       let g = gList[x];
       if ((g.level > 0)
         && (selectAll
+          || selectMine
           || pGroupList.includes(g.id)
           || pGroupList.includes(g.belongs_to)
           || pGroupList.includes('*responsible'))
@@ -218,15 +220,17 @@ export default ({ options, defaults, onClose, onAbort }) => {
         if (pGroupList.includes('*responsible') && (my_role !== 'responsible')) {
           continue;
         }
-        response[g.id] = {
-          group_name: g.name,
-          group_type: 'admin',
-          group_id: g.id,
-          role: my_role,
-          level: g.level
-        };
-        if (!pGroupList.includes(g.id)) {
-          pGroupList.push(g.id);
+        if (!selectMine || (my_role !== 'non-member')) {
+          response[g.id] = {
+            group_name: g.name,
+            group_type: 'admin',
+            group_id: g.id,
+            role: my_role,
+            level: g.level
+          };
+          if (!pGroupList.includes(g.id)) {
+            pGroupList.push(g.id);
+          }
         }
       }
     };
@@ -289,8 +293,10 @@ export default ({ options, defaults, onClose, onAbort }) => {
       }
     }
     else {
-      reactUpdater.groupsManagedObject = state.groups.belongsTo;
+      // reactUpdater.groupsManagedObject = state.groups.belongsTo;
+      reactUpdater.groupsManagedObject = await prepareGroupObject(groupList);
       reactUpdater.showGroupSelect = true;
+      reactUpdater.building = 'done';
     }
     updateReactData(reactUpdater, true);
   }
