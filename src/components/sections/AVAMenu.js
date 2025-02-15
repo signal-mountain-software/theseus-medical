@@ -1048,8 +1048,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   alt={reactData.greetingName}
                 />
               </Tooltip>
-              {makeDate(reactData.current_time, { timeZone: state.session.client_timezone }).absolute.split(' at ').map(tLine => (
+              {makeDate(reactData.current_time, { timeZone: state.session.client_timezone }).absolute.split(' at ').map((tLine, tX) => (
                 <Typography
+                  key={`time_line-${tX}`}
                   style={AVATextStyle({ align: 'center', size: 0.8 })}
                   id='scroll-dialog-title'
                 >
