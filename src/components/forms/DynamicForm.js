@@ -230,7 +230,7 @@ export default ({
           client_id={session.client_id}
           form_id={'billing_summary_1NEWVERSION'}
           onClose={() => {
-              onClose();
+            onClose();
           }}
         />
       );
@@ -429,7 +429,15 @@ export default ({
           catch { console.log(defaultValue); }
         }
       }
+      let recipients = [];
+      for (const [i, person_id] of [defaultValueObj.recipientID].flat().entries()) {
+        recipients.push({
+          person_id,
+          person_name: ([defaultValueObj.recipientName].flat()[i] || `user ${person_id}`) 
+        })
+      }
       return (
+        /*
         <MakeMessage
           titleText={defaultValueObj.title}
           promptText={defaultValueObj.prompt || `What's the Message?`}
@@ -443,6 +451,17 @@ export default ({
           onCancel={onClose}
           onComplete={onClose}
           allowCancel={true}
+        />
+        */
+        <MessageForm
+          pPerson={session.patient_id}
+          pClient={session.client_id}
+          pMessageList={[]}
+          pSession={session}
+          onReset={onClose}
+          options={{
+            newMessage: recipients
+          }}
         />
       );
     case 'bulletin_board':

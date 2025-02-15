@@ -192,7 +192,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
 
   const placeholderImage =
     'https://theseus-medical-storage.s3.amazonaws.com/public/patients/tboone.jpg';
-  
+
 
   const [reactData, setReactData] = React.useState({
     statusMessage: false,
@@ -202,14 +202,14 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     lastActiveTime: new Date(),
     lastReloadTime: new Date(),
     idleState: false,
-    newMessageMode: !!options.newMessage || false,
+    newMessageMode: (options && !!options.newMessage) || false,
     viewPeopleMaintenance: false,
     myImage: null,
     selections: [],    // wip selections from quick search
     selectedPeople_count: 0,
     selectedPeople_list: [],
     newMessageSubject: '',
-    newMessageRecipients: (!!options.newMessage ? options.newMessage :  []),
+    newMessageRecipients: ((options && !!options.newMessage) ? options.newMessage : []),
     alert: false,
     showGroupList: false,
     showIndividualList: false,
@@ -420,12 +420,20 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     else {
       message_id = `${reactData.newMessageThread}.${postTime}~CuredMessage`;
     }
+    const reply_to = (reactData.replyToList && (reactData.replyToList.length > 0))
+      ? reactData.replyToList.map(r => { return r.person_id; })
+      : [pPerson];
     let recipient_key = [];
     reactData.newMessageRecipients.forEach(r => {
       if (r.person_id) { recipient_key.push(...([r.person_id].flat())); }
       else if (r.group_id) { recipient_key.push(`GRP:${r.group_id}`); }
       else if (r.rIndex) {
         recipient_key.push(...reactData.preferred_recipients[r.rIndex].personList);
+      }
+    });
+    reply_to.forEach(r => {    // this makes sure that everyone on the reply_to list is copied on the original message
+      if ((r !== pPerson) && !recipient_key.includes(r)) {
+        recipient_key.push(r);
       }
     });
     let PostOfficeRec = {
@@ -443,9 +451,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
         recipient_base: 'list',
         recipient_key,
         subject: reactData.newMessageSubject || `Message from ${await makeName(pPerson)}`,
-        reply_to: (reactData.replyToList && reactData.replyToList.some(p => { return p.person_id !== pPerson; }))
-          ? reactData.replyToList.map(r => { return r.person_id; })
-          : null
+        reply_to
       },
       TableName: 'PostOffice'
     };
@@ -1062,6 +1068,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                               disabled={(reactData.newMessageText.length === 0) || (reactData.newMessageRecipients.length === 0)}
                               onClick={async () => {
                                 await sendMessage();
+                                await initialize();
                               }}
                               startIcon={<SendIcon className={classes.tightRight} size="small" />}
                             >
@@ -1272,10 +1279,12 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                             </Box>
 
                             {open[index] &&
-                              <React.Fragment>
+                              <Box
+                                marginLeft={(((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id)) ? '58px' : '100px')}
+                              >
                                 <Typography
                                   key={`history header`}
-                                  style={AVATextStyle({ size: 1, bold: true, margin: { top: 1 } })}
+                                  style={AVATextStyle({ size: (((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id)) ? 1 : 0.8), bold: true, margin: { top: 1 } })}
                                 >
                                   {`Results`}
                                 </Typography>
@@ -1290,8 +1299,8 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                       <Typography
                                         key={`prefLine-${mIndex}__${x}`}
                                         style={(x === 0)
-                                          ? AVATextStyle({ size: 0.8, margin: { left: 0.5, top: 0.3 } })
-                                          : AVATextStyle({ size: 0.8, margin: { left: 1.5 } })}
+                                          ? AVATextStyle({ size: 0.8, margin: { left: 0 } })
+                                          : AVATextStyle({ size: 0.8, margin: { left: 0.5 } })}
                                       >
                                         {h.line}
                                       </Typography>
@@ -1300,14 +1309,14 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                 ))}
                                 <Typography
                                   key={`thread_id`}
-                                  style={AVATextStyle({ size: 0.6, margin: { top: 1 } })}
+                                  style={AVATextStyle({ align: 'right', size: 0.6, margin: { top: 1 } })}
                                 >
                                   {(this_item.inOut === 'out')
                                     ? `(Message ID ${messageResults[Object.keys(messageResults)[0]].composite_key.split('~')[0]})`
                                     : `(Message ID ${messageResults[Object.keys(messageResults)[0]].composite_key})`
                                   }
                                 </Typography>
-                              </React.Fragment>
+                              </Box>
                             }
                           </Box>
                         </Box>

@@ -1123,11 +1123,11 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
                     page.line_was_compressed = false;
                   }
                   if (fields[this_field].prompt.compressPrint) {
-                    fields[this_field].prompt.value += ':'
+                    fields[this_field].prompt.value += ':';
                   }
                   pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
                   fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
-                    if (fields[this_field].value && fields[this_field].prompt.compressPrint) { 
+                    if (fields[this_field].value && fields[this_field].prompt.compressPrint) {
                       if (fields[this_field].value.includes(text)) {
                         pdfLine(text, { style: 'normal', indent: 2, after: 0, noNewLine: true });
                       }
@@ -1186,7 +1186,7 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
                     pdfDown(1);
                     page.line_was_compressed = false;
                   }
-                  if (fields[this_field].valueText) {                    
+                  if (fields[this_field].valueText) {
                     if (fields[this_field].prompt.compressPrint) {
                       pdfLine(fields[this_field].valueText,
                         { style: 'normal', size: 'medium', align: 'left', noNewLine: fields[this_field].prompt.noNewLine || false });
@@ -2092,7 +2092,7 @@ async function pdfHTML(text, options = {}) {
     else {
       pieces.push({ type: 'normal', text: left });
     }
-  } while (back)
+  } while (back);
   let noNewLine = false;
   for (let this_piece of pieces) {
     this_piece.text = this_piece.text.replace(/<style([\s\S]*?)<\/style>/gi, '');
@@ -2106,7 +2106,7 @@ async function pdfHTML(text, options = {}) {
     this_piece.text = this_piece.text.replace(/<\/p>/ig, '\n');
     this_piece.text = this_piece.text.replace(/<br\s*[/]?>/gi, "\n");
     this_piece.text = this_piece.text.replace(/<[^>]+>/ig, '');
-    this_piece.text = this_piece.text.replace('%%', '')
+    this_piece.text = this_piece.text.replace('%%', '');
     pdfLine(this_piece.text, { size: 'medium', align: 'left', noNewLine, style: this_piece.type });
     noNewLine = true;
   }
@@ -2596,9 +2596,12 @@ export async function messageHistory(body) {
       let mTime = mR.posted_time || mR.created_time;
       let mInfo = '';
       let mLine = (mR.deliver_method === 'hold') ? 'Held message ' : 'Sent ';
-      // if (!body.returnObject) {
+      if (!returnObj.hasOwnProperty(mR.deliver_to)) {
         mLine += `from ${mR.author.author_name} to ${mR.recipient_list.name.first} ${mR.recipient_list.name.last}`;
-      // }
+      }
+      else {
+        mLine = `and also sent to ${mR.recipient_list.name.first}`
+      }
       switch (mR.deliver_method) {
         case 'sms': {
           mLine += ' via text message';
@@ -2612,7 +2615,7 @@ export async function messageHistory(body) {
         case 'email': {
           mLine += ' via e-Mail';
           if (mR.composite_key.endsWith('alt_email')) {
-            mLine += ' (to alt e-Mail)'
+            mLine += ' (to alt e-Mail)';
           }
           break;
         }
@@ -2621,8 +2624,8 @@ export async function messageHistory(body) {
         }
         default: { mLine += ` via ${mR.deliver_method}`; }
       }
-      if (mR.recipientList && mR.recipientList.rule_used) {
-        mLine += ` as per rule "${mR.recipientList.rule_used}"`;
+      if (mR.recipient_list && mR.recipient_list.rule_used) {
+        mLine += ` as per rule "${mR.recipient_list.rule_used}"`;
       }
       if (mR.results) {
         let mRLast;
@@ -2639,7 +2642,7 @@ export async function messageHistory(body) {
             break;
           }
           case 'replyReceived': {
-            mLine += '.  Reply received';
+            mLine += `.  ${mR.recipient_list.name.first} replied`;
             break;
           }
           case 'delivery':
@@ -2663,12 +2666,12 @@ export async function messageHistory(body) {
           name: `${mR.recipient_list.name.first} ${mR.recipient_list.name.last}`,
           composite_key: mR.composite_key,
           history: []
-        }
+        };
       }
       returnObj[mR.deliver_to].history.push({
         time: mTime,
         line: mLine
-      })
+      });
       returnArray.push(mLine);
     });
     returnArray.push(' ', `(${body.thread_id})`);
