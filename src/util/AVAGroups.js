@@ -1250,10 +1250,10 @@ export async function getGroupHierarchy(pClient_id, options) {
               }
             }
           }
-          else if (activity.activity_code === 'form.make_message') {
+          else if ((activity.activity_code === 'form.make_message') && (activity.default && activity.default.recipientID)) {
             messagingObj[thisGroup.group_id].push({
               personList: [activity.default.recipientID].flat(),
-              personNames: [activity.default.recipientName].flat(),
+              personNames: [activity.default.recipientName || new Array([activity.default.recipientID].flat().length)].flat(),
               objText: activity.title
             });
           }
@@ -1310,10 +1310,17 @@ export async function getGroupHierarchy(pClient_id, options) {
                 }
               }
             }
-            else if (activity.activity_code === 'form.make_message') {
+            else if ((activity.activity_code === 'form.make_message') && (activity.default && activity.default.recipientID)) {
               messagingObj[thisGroup.group_id].push({
                 personList: [activity.default.recipientID].flat(),
-                personNames: [activity.default.recipientName].flat(),
+                personNames: [activity.default.recipientName || new Array([activity.default.recipientID].flat().length)].flat(),
+                objText: activity.title
+              });
+            }
+            else if ((activity.activity_code === 'form.make_message') && (activity.default && activity.default.recipientID)) {
+              messagingObj[thisGroup.group_id].push({
+                personList: [activity.default.recipientID].flat(),
+                personNames: [activity.default.recipientName || new Array([activity.default.recipientID].flat().length)].flat(),
                 objText: titleCase(activity.title.toLowerCase().replace('send a message to', '')).trim()
               });
             }

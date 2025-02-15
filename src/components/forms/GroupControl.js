@@ -200,12 +200,16 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     let draggedFrom = JSON.parse(ev.dataTransfer.getData('id'));
     console.log(draggedFrom);
     console.log(droppedOn);
+    if (draggedFrom.group_id === droppedOn.group_id) {
+      return;
+    }
     if (draggedFrom.hasOwnProperty('groupObj')) {
       if (droppedOn.levelZero) {
         let top = state.groups.adminHierarchy.find(h => { return h.level === 0; });
         droppedOn.group_id = top.id;
       }
       else if (droppedOn.groupObj.group_type !== 'admin') {
+        // public and private groups cannot be dropped on
         updateReactData({
           alert: {
             severity: 'error',
@@ -215,7 +219,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
         }, true);
         return;
       }
-      // if dropped_on used to be lower in the hierarchy, we need it to now belong to whoever dragged from used to belong to
+      // who are my parent and grandparents before the change?
+      let targetGroup_formerFamilyTree = [];
+      let this_group = myParent(draggedFrom.group_id);
+      for (this_group; !!this_group; this_group = myParent(this_group)) {
+        targetGroup_formerFamilyTree.push(this_group);
+      }
       // dragged now belongs_to dropped
       let UpdateExpression = 'set #b = :b';
       let ExpressionAttributeValues = {
@@ -224,7 +233,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
       let ExpressionAttributeNames = {
         '#b': 'belongs_to'
       };
-      if (draggedFrom.groupObj.group_type !== 'admin') {
+      if (draggedFrom.groupObj.group_type !== 'admin') {  // if this formerly was a public or private group, it will now be an admin type group
         UpdateExpression += ', #t = :t';
         ExpressionAttributeValues[':t'] = 'admin';
         ExpressionAttributeNames['#t'] = 'group_type';
@@ -244,7 +253,22 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
         .catch(error => {
           console.log(`caught error updating Group; error is: `, error);
         });
+
       groupsManagedObject[draggedFrom.group_id].level = (groupsManagedObject[droppedOn.group_id]?.level || 0) + 1;
+
+      // who are my parent and grandparents after the change?
+      let targetGroup_newFamilyTree = [droppedOn.group_id];
+      this_group = myParent(droppedOn.group_id);
+      for (this_group; !!this_group; this_group = myParent(this_group)) {
+        targetGroup_newFamilyTree.push(this_group);
+      }
+      for (const former_parent of targetGroup_formerFamilyTree) {
+        state.groups.parent_of[former_parent].splice(state.groups.parent_of[former_parent].indexOf(draggedFrom.group_id), 1);
+      }
+      for (const new_parent of targetGroup_newFamilyTree) {
+        state.groups.parent_of[new_parent].push(draggedFrom.group_id);
+      }
+
       let foundAt = state.groups.adminHierarchy.findIndex(g => { return g.id === draggedFrom.group_id; });
       if (foundAt > -1) {
         state.groups.adminHierarchy[foundAt].belongs_to = droppedOn.group_id;
@@ -259,13 +283,13 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
         });
       }
       if (reactData.selectedPersonRec) {
-        let addGroupList = [droppedOn.group_id];
-        let this_group = myParent(droppedOn.group_id);
-        for (this_group; !!this_group; this_group = myParent(this_group)) {
-          addGroupList.push(this_group);
-        }
         let newGroupList = deepCopy(reactData.selectedPersonRec.groups);
-        for (let this_group of addGroupList) {
+        for (let this_group of targetGroup_formerFamilyTree) {
+          if (newGroupList.includes(this_group)) {
+            newGroupList.splice(newGroupList.indexOf(this_group), 1);
+          }
+        }
+        for (let this_group of targetGroup_newFamilyTree) {
           if (!newGroupList.includes(this_group)) {
             newGroupList.push(this_group);
           }
@@ -311,7 +335,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
         return;
       }
       // good peopleRec
-      // we are adding the dropped on groups and all its parents to the groupList  Get that list
+      // we are adding the dropped on groups and all its parents to the groupList for this person. Get that list
       let addGroupList = [droppedOn.group_id];
       let this_group = myParent(droppedOn.group_id);
       for (this_group; !!this_group; this_group = myParent(this_group)) {
@@ -625,6 +649,75 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
         alert: alertMessage,
         selectedGroupMembers: reactData.selectedGroupMembers
       }, true);
+    }
+    else if (draggedFrom.hasOwnProperty('groupObj')) {
+      if (Object.keys(reactData.selectedGroupMembers).length > 0) {
+        updateReactData({
+          alert: {
+            severity: 'error',
+            title: `${draggedFrom.groupObj.group_name} has members`,
+            message: `${draggedFrom.groupObj.group_name} has ${Object.keys(reactData.selectedGroupMembers).length} member${(Object.keys(reactData.selectedGroupMembers).length > 1) ? 's' : ''}.  You can't remove this group unless it is empty.`
+          }
+        }, true);
+      }
+      else {
+        // we will delete thie group_id;  before we do, look for any direct descendants and change their parent to my parent
+        let targetGroup_parent = myParent(draggedFrom.groupObj.group_id);
+        if (state.groups.parent_of.hasOwnProperty(draggedFrom.groupObj.group_id)) {
+          for (const this_child of state.groups.parent_of[draggedFrom.groupObj.group_id]) {
+            if (myParent(this_child) === draggedFrom.groupObj.group_id) {    // if the child is a GRANDchild, don't change its parent
+              // take the child and make it a child of the parent of the group we are deleting;
+              await dbClient
+                .update({
+                  Key: {
+                    client_id: pSession.client_id,
+                    group_id: this_child
+                  },
+                  UpdateExpression: 'set #b = :b',
+                  ExpressionAttributeValues: { ':b': targetGroup_parent },
+                  ExpressionAttributeNames: { '#b': 'belongs_to' },
+                  TableName: "Groups",
+                })
+                .promise()
+                .catch(error => {
+                  console.log(`caught error updating Group; error is: `, error);
+                });
+              let foundAt = state.groups.adminHierarchy.findIndex(g => { return g.id === this_child; });
+              if (foundAt > -1) {
+                state.groups.adminHierarchy[foundAt].belongs_to = targetGroup_parent;
+              }
+            }
+            groupsManagedObject[this_child].level--;
+          }
+        }
+        // no children remain; go ahead with the delete
+        delete groupsManagedObject[draggedFrom.groupObj.group_id];
+        await dbClient
+          .delete({
+            Key: {
+              client_id: pSession.client_id,
+              group_id: draggedFrom.groupObj.group_id
+            },
+            TableName: "Groups",
+          })
+          .promise()
+          .catch(error => {
+            console.log(`caught error deleting Group; error is: `, error);
+          });
+        let reactUpdObj = {
+          alert: {
+            severity: 'success',
+            title: `${draggedFrom.groupObj.group_name} removed`,
+            message: `${draggedFrom.groupObj.group_name} was successfully removed.`
+          }
+        };
+        if (reactData.selectedGroup_id === draggedFrom.groupObj.group_id) {
+          reactUpdObj.selectedGroupRec = false;
+          reactUpdObj.selectedGroup_id = false;
+          reactUpdObj.selectedGroupMembers = false;
+        }
+        updateReactData(reactUpdObj, true);
+      }
     };
   };
 
@@ -1018,6 +1111,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                 <Box display='flex' flexDirection='row'
                   justifyContent='space-between'
                   alignItems='center'
+                  onDragStart={(e) => handleDragStart(e, {
+                    person_id: reactData.selectedPerson_id,
+                    personObj: reactData.selectedPersonRec,
+                  })}
                   style={{ width: '100%' }}
                 >
                   <Box display='flex' flexDirection='row'
@@ -1026,19 +1123,25 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                     alignItems='center'
                   >
                     <Typography
-                      key={`g_text_end-last`}
-                      draggable={pSession?.adminAccount}
-                      onDragStart={(e) => handleDragStart(e, {
-                        person_id: reactData.selectedPerson_id,
-                        personObj: reactData.selectedPersonRec,
-                      })}
+                      key={`g_text_end-last_name`}
+                      draggable={true}
                       style={AVATextStyle({
                         size: 1.5,
                         overflow: 'visible',
                         bold: true,
-                        margin: { top: 1, bottom: 1 },
+                        margin: { top: 1, bottom: 1, right: 0 },
                       })}>
-                      {`${reactData.selectedPersonFirstName} ${reactData.selectedPersonLastName.trim()}'${reactData.selectedPersonLastName.trim().endsWith('s') ? '' : 's'} Groups`}
+                      {`${reactData.selectedPersonFirstName} ${reactData.selectedPersonLastName.trim()}`}
+                    </Typography>
+                    <Typography
+                      key={`g_text_end-last_tag`}
+                      style={AVATextStyle({
+                        size: 1.5,
+                        overflow: 'visible',
+                        bold: true,
+                        margin: { top: 1, bottom: 1, left: 0 },
+                      })}>
+                      {`'${reactData.selectedPersonLastName.trim().endsWith('s') ? '' : 's'} Groups`}
                     </Typography>
                   </Box>
                   <Box
@@ -1052,6 +1155,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                   >
                     <img
                       key={'my_image'}
+                      draggable={true}
                       className={classes.myImageArea}
                       alt={''}
                       onError={onImageError}
@@ -1098,18 +1202,20 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                     ))}
                   </Box>
                 </Paper>
-                <DeleteIcon
-                  classes={{ root: classes.rowButton }}
-                  size='medium'
-                  style={{ alignSelf: 'center' }}
-                  aria-label="trash_icon"
-                  onDragOver={(e) => handleDragOver(e)}
-                  onDrop={async (e) => {
-                    await handleDrop_removeGroup(e);
-                    onRefresh();
-                  }}
-                  edge="start"
-                />
+                {pSession.adminAccount &&
+                  <DeleteIcon
+                    classes={{ root: classes.rowButton }}
+                    size='medium'
+                    style={{ alignSelf: 'center' }}
+                    aria-label="trash_icon"
+                    onDragOver={(e) => handleDragOver(e)}
+                    onDrop={async (e) => {
+                      await handleDrop_removeGroup(e);
+                      onRefresh();
+                    }}
+                    edge="start"
+                  />
+                }
               </Box>
             }
             {reactData.selectedGroupRec &&
@@ -1174,18 +1280,20 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                     ))}
                   </Box>
                 </Paper>
-                <DeleteIcon
-                  classes={{ root: classes.rowButton }}
-                  size='medium'
-                  style={{ alignSelf: 'center' }}
-                  aria-label="trash_icon"
-                  onDragOver={(e) => handleDragOver(e)}
-                  onDrop={async (e) => {
-                    await handleDrop_removePerson(e);
-                    onRefresh();
-                  }}
-                  edge="start"
-                />
+                {pSession.adminAccount &&
+                  <DeleteIcon
+                    classes={{ root: classes.rowButton }}
+                    size='medium'
+                    style={{ alignSelf: 'center' }}
+                    aria-label="trash_icon"
+                    onDragOver={(e) => handleDragOver(e)}
+                    onDrop={async (e) => {
+                      await handleDrop_removePerson(e);
+                      onRefresh();
+                    }}
+                    edge="start"
+                  />
+                }
               </Box>
             }
           </Box>
@@ -1201,7 +1309,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
             showAll: true
           }}
           onClose={async (selections) => {
-            if (selections.length > 0) {
+            if (selections && (selections.length > 0)) {
               updateReactData({
                 showQuickSearch: false,
                 selectedGroup_id: false,
@@ -1211,6 +1319,11 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                 selectedPersonRec: await getPerson(selections[0].person_id,),
                 selectedPersonFirstName: selections[0].person_firstName,
                 selectedPersonLastName: selections[0].person_lastName,
+              }, true);
+            }
+            else {
+              updateReactData({
+                showQuickSearch: false,
               }, true);
             }
           }}
