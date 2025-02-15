@@ -32,123 +32,72 @@ export default ({ currentValues, reactData, updateReactData }) => {
   let redCircleDisplayed = false;
   let historyDisplayed = false;
 
-  React.useEffect(() => {
-    async function initialize() {
-      let masterFormList = {};
-      if (!reactData.groupObj) {
-        if (!state.groups) {
-          if (isMounted.current) {
-            updateReactData({
-              alert: {
-                severity: 'warning',
-                title: 'Still loading Group information',
-                message: `AVA is still loading.  Wait just a moment and try again, please.`
-              }
-            }, true);
-            return;
-          }
-        }
-        else {
+  async function initialize() {
+    let masterFormList = {};
+    if (!reactData.groupObj) {
+      if (!state.groups) {
+        if (isMounted.current) {
           updateReactData({
-            groupObj: deepCopy(state.groups)
+            alert: {
+              severity: 'warning',
+              title: 'Still loading Group information',
+              message: `AVA is still loading.  Wait just a moment and try again, please.`
+            }
           }, true);
+          return;
         }
       }
-      // get all the groups that this person belongs to
-      // and build myFormListObj with one object for each form assigned to members of this person's groups
-      let my_form_people = [currentValues.peopleRec.person_id];
-      if (currentValues.peopleRec.myFamilyMembers && (Object.keys(currentValues.peopleRec.myFamilyMembers).length > 0)) {
-        for (let this_person in currentValues.peopleRec.myFamilyMembers) {
-          my_form_people.push(this_person);
-        }
+      else {
+        updateReactData({
+          groupObj: deepCopy(state.groups)
+        }, true);
       }
-      for (let this_person of my_form_people) {
-        let myFormListObj = {};
-        let myPersonRec = await dbClient
-          .get({
-            Key: {
-              person_id: this_person
-            },
-            TableName: "People"
-          })
-          .promise()
-          .catch(error => {
-            console.log({ 'Error reading People': error });
-          });
-        if (recordExists(myPersonRec)) {
-          for (let this_groupID of myPersonRec.Item.groups) {
-            // get all the forms that are assigned people in this group 
-            let this_group;
-            let groupRec = await dbClient
-              .get({
-                Key: {
-                  client_id: state.session.client_id,
-                  group_id: this_groupID
-                },
-                TableName: "Groups"
-              })
-              .promise()
-              .catch(error => {
-                console.log({ 'Error reading Groups': error });
-              });
-            if (recordExists(groupRec)) {
-              this_group = groupRec.Item;
-            }
-            if (this_group && this_group.forms) {
-              for (let this_form of this_group.forms) {
-                const formData = await documentDueDate(state.session.client_id, this_form);
-                let view_only = false;
-                if (formData) {
-                  if (formData.formRec?.options?.restricted_access && !reactData.administrative_account) {
-                    if (formData.formRec.options.restricted_access === 'admin_only') {
-                      continue;
-                    }
-                    if (formData.formRec.options.restricted_access === 'view_only') {
-                      view_only = true;
-                    }
-                  }
-                  myFormListObj[this_form] = {
-                    why: this_group.group_name,
-                    form_id: this_form,
-                    form_name: formData.formRec.form_name,
-                    options: formData.formRec.options || {},
-                    dueDate: formData.due_date,
-                    view_only,
-                    wipDocs: [],
-                    assignedDocs: [],
-                    completedDocs: [],
-                    isUpdating: false,
-                    isAmending: false
-                  };
-                }
-              }
-            }
-          }
-          // get all Documents for this person
-          let allDocs = await dbClient
-            .query({
-              KeyConditionExpression: 'pertains_to = :p',
-              IndexName: 'person_form-index',
-              TableName: 'DocumentMaster',
-              ExpressionAttributeValues: {
-                ':p': this_person
-              }
+    }
+    // get all the groups that this person belongs to
+    // and build myFormListObj with one object for each form assigned to members of this person's groups
+    let my_form_people = [currentValues.peopleRec.person_id];
+    if (currentValues.peopleRec.myFamilyMembers && (Object.keys(currentValues.peopleRec.myFamilyMembers).length > 0)) {
+      for (let this_person in currentValues.peopleRec.myFamilyMembers) {
+        my_form_people.push(this_person);
+      }
+    }
+    for (let this_person of my_form_people) {
+      let myFormListObj = {};
+      let myPersonRec = await dbClient
+        .get({
+          Key: {
+            person_id: this_person
+          },
+          TableName: "People"
+        })
+        .promise()
+        .catch(error => {
+          console.log({ 'Error reading People': error });
+        });
+      if (recordExists(myPersonRec)) {
+        for (let this_groupID of myPersonRec.Item.groups) {
+          // get all the forms that are assigned people in this group 
+          let this_group;
+          let groupRec = await dbClient
+            .get({
+              Key: {
+                client_id: state.session.client_id,
+                group_id: this_groupID
+              },
+              TableName: "Groups"
             })
             .promise()
             .catch(error => {
-              if (error.code === 'NetworkingError') {
-                cl(`Security Violation or no Internet Connection`);
-              }
-              cl(`Error reading CompletedDocuments; error is ${error}`);
+              console.log({ 'Error reading Groups': error });
             });
-          if (recordExists(allDocs)) {
-            for (const this_doc of allDocs.Items) {
-              if ((this_doc.restricted_access === 'admin_only') && (!reactData.administrative_account)) {
-                continue;    // skip this document
-              }
-              if (!myFormListObj.hasOwnProperty(this_doc.form_type)) {
-                let view_only = false;
-                const formData = await documentDueDate(state.session.client_id, this_doc.form_type);
+          if (recordExists(groupRec)) {
+            this_group = groupRec.Item;
+          }
+          if (this_group && this_group.forms) {
+            for (let this_form of this_group.forms) {
+              const formData = await documentDueDate(state.session.client_id, this_form);
+              let view_only = false;
+              if (formData) {
                 if (formData.formRec?.options?.restricted_access && !reactData.administrative_account) {
                   if (formData.formRec.options.restricted_access === 'admin_only') {
                     continue;
@@ -157,12 +106,12 @@ export default ({ currentValues, reactData, updateReactData }) => {
                     view_only = true;
                   }
                 }
-                myFormListObj[this_doc.form_type] = {
-                  why: `Assigned by ${this_doc.history[this_doc.history.length - 1].update_by}`,
-                  form_id: this_doc.form_type,
-                  form_name: formData.formRec.form_name || this_doc.form_type,
-                  dueDate: formData.due_date,
+                myFormListObj[this_form] = {
+                  why: this_group.group_name,
+                  form_id: this_form,
+                  form_name: formData.formRec.form_name,
                   options: formData.formRec.options || {},
+                  dueDate: formData.due_date,
                   view_only,
                   wipDocs: [],
                   assignedDocs: [],
@@ -171,59 +120,123 @@ export default ({ currentValues, reactData, updateReactData }) => {
                   isAmending: false
                 };
               }
-              if (this_doc.status === 'complete') {
-                const completed_count = myFormListObj[this_doc.form_type].completedDocs.length;
-                const cObj = {
-                  document_id: this_doc.document_id,
-                  location: this_doc.history[0].url,
-                  last_update: this_doc.history[0].last_update,
-                  date_completed: makeDate(this_doc.history[0].last_update).relative,
-                  title: this_doc.title,
-                  amendments: this_doc.amendments
-                };
-                if ((completed_count === 0) || (this_doc.history[0].last_update > myFormListObj[this_doc.form_type].completedDocs[0].last_update)) {
-                  myFormListObj[this_doc.form_type].completedDocs.unshift(cObj);
+            }
+          }
+        }
+        // get all Documents for this person
+        let allDocs = await dbClient
+          .query({
+            KeyConditionExpression: 'pertains_to = :p',
+            IndexName: 'person_form-index',
+            TableName: 'DocumentMaster',
+            ExpressionAttributeValues: {
+              ':p': this_person
+            }
+          })
+          .promise()
+          .catch(error => {
+            if (error.code === 'NetworkingError') {
+              cl(`Security Violation or no Internet Connection`);
+            }
+            cl(`Error reading CompletedDocuments; error is ${error}`);
+          });
+        if (recordExists(allDocs)) {
+          for (const this_doc of allDocs.Items) {
+            if ((this_doc.restricted_access === 'admin_only') && (!reactData.administrative_account)) {
+              continue;    // skip this document
+            }
+            if (!myFormListObj.hasOwnProperty(this_doc.form_type)) {
+              let view_only = false;
+              const formData = await documentDueDate(state.session.client_id, this_doc.form_type);
+              if (formData.formRec?.options?.restricted_access && !reactData.administrative_account) {
+                if (formData.formRec.options.restricted_access === 'admin_only') {
+                  continue;
                 }
-                else if (this_doc.history[0].last_update < myFormListObj[this_doc.form_type].completedDocs[completed_count - 1].last_update) {
-                  myFormListObj[this_doc.form_type].completedDocs.push(cObj);
-                }
-                else {
-                  const foundAt = myFormListObj[this_doc.form_type].completedDocs.findIndex(d => {
-                    return (d.last_update < this_doc.history[0].last_update);
-                  });
-                  myFormListObj[this_doc.form_type].completedDocs.splice(foundAt, 0, cObj);
+                if (formData.formRec.options.restricted_access === 'view_only') {
+                  view_only = true;
                 }
               }
-              else if (this_doc.status === 'in_process') {
-                myFormListObj[this_doc.form_type].wipDocs.push({
+              myFormListObj[this_doc.form_type] = {
+                why: `Assigned by ${this_doc.history[this_doc.history.length - 1].update_by}`,
+                form_id: this_doc.form_type,
+                form_name: formData.formRec.form_name || this_doc.form_type,
+                dueDate: formData.due_date,
+                options: formData.formRec.options || {},
+                view_only,
+                wipDocs: [],
+                assignedDocs: [],
+                completedDocs: [],
+                isUpdating: false,
+                isAmending: false
+              };
+            }
+            if (this_doc.status === 'complete') {
+              const completed_count = myFormListObj[this_doc.form_type].completedDocs.length;
+              const cObj = {
+                document_id: this_doc.document_id,
+                location: this_doc.history[0].url,
+                last_update: this_doc.history[0].last_update,
+                date_completed: makeDate(this_doc.history[0].last_update).relative,
+                title: this_doc.title,
+                amendments: this_doc.amendments
+              };
+              if ((completed_count === 0) || (this_doc.history[0].last_update > myFormListObj[this_doc.form_type].completedDocs[0].last_update)) {
+                myFormListObj[this_doc.form_type].completedDocs.unshift(cObj);
+              }
+              else if (this_doc.history[0].last_update < myFormListObj[this_doc.form_type].completedDocs[completed_count - 1].last_update) {
+                myFormListObj[this_doc.form_type].completedDocs.push(cObj);
+              }
+              else {
+                const foundAt = myFormListObj[this_doc.form_type].completedDocs.findIndex(d => {
+                  return (d.last_update < this_doc.history[0].last_update);
+                });
+                myFormListObj[this_doc.form_type].completedDocs.splice(foundAt, 0, cObj);
+              }
+            }
+            else if ((this_doc.status === 'in_process') || (this_doc.status === 'pending')) {
+              if ((myFormListObj[this_doc.form_type].wipDocs.length > 0) && (myFormListObj[this_doc.form_type].wipDocs[0].last_update < this_doc.history[0].last_update)) {
+                myFormListObj[this_doc.form_type].wipDocs.unshift({
                   document_id: this_doc.document_id,
                   last_update: this_doc.history[0].last_update,
+                  doc_status: this_doc.status,
                   due_date: this_doc.due_date || myFormListObj[this_doc.form_type].dueDate,
                   title: this_doc.title
                 });
               }
               else {
-                myFormListObj[this_doc.form_type].assignedDocs.push({
+                myFormListObj[this_doc.form_type].wipDocs.push({
                   document_id: this_doc.document_id,
                   last_update: this_doc.history[0].last_update,
+                  doc_status: this_doc.status,
                   due_date: this_doc.due_date || myFormListObj[this_doc.form_type].dueDate,
                   title: this_doc.title
                 });
               }
             }
+            else {
+              myFormListObj[this_doc.form_type].assignedDocs.push({
+                document_id: this_doc.document_id,
+                last_update: this_doc.history[0].last_update,
+                due_date: this_doc.due_date || myFormListObj[this_doc.form_type].dueDate,
+                title: this_doc.title
+              });
+            }
           }
-          masterFormList[myPersonRec.Item.person_id] = {
-            person_id: myPersonRec.Item.person_id,
-            person_first_name: myPersonRec.Item.name.first,
-            myFormListObj
-          };
         }
+        masterFormList[myPersonRec.Item.person_id] = {
+          person_id: myPersonRec.Item.person_id,
+          person_first_name: myPersonRec.Item.name.first,
+          myFormListObj
+        };
       }
-      updateReactData({
-        masterFormList,
-        formsInitialized: true
-      }, true);
     }
+    updateReactData({
+      masterFormList,
+      formsInitialized: true
+    }, true);
+  }
+
+  React.useEffect(() => {
     initialize();
     isMounted.current = true;
     return () => { isMounted.current = false; };
@@ -245,7 +258,9 @@ export default ({ currentValues, reactData, updateReactData }) => {
   };
 
   return (
-    <React.Fragment>
+    <React.Fragment
+      key={`master_frag`}
+    >
       {!reactData.formHistoryMode && reactData.formsInitialized &&
         <Box
           key={`DocSection_masterBox`}
@@ -262,7 +277,9 @@ export default ({ currentValues, reactData, updateReactData }) => {
             person_id,
             person_first_name,
             myFormListObj }, pIndex) => (
-            <React.Fragment>
+            <React.Fragment
+              key={`myName_frag${pIndex}`}
+            >
               <Typography
                 key={`myName_${pIndex}`}
                 style={AVATextStyle({
@@ -402,7 +419,9 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                 color: ((reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.length > 0) ? 'orange' : 'red')
                               })}
                             >
-                              {`${((reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.length > 0) ? 'Started but incomplete. ' : '')}${(reactData.masterFormList[person_id].myFormListObj[this_formID].dueDate) ? ('Due by ' + makeDate(reactData.masterFormList[person_id].myFormListObj[this_formID].dueDate).relative) : ''}`}
+                              {`${((reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.length > 0)
+                                ? ((reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs[0].doc_status === 'pending') ? 'Pending review' : 'Started but incomplete')
+                                : '')}${((reactData.masterFormList[person_id].myFormListObj[this_formID].dueDate) && (reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs[0].doc_status !== 'pending')) ? (' - Due by ' + makeDate(reactData.masterFormList[person_id].myFormListObj[this_formID].dueDate).relative) : ''}`}
                             </Typography>
                           }
                           {(reactData.masterFormList[person_id].myFormListObj[this_formID].completedDocs.length > 0) &&
@@ -514,47 +533,12 @@ export default ({ currentValues, reactData, updateReactData }) => {
                             document_id: reactData.masterFormList[person_id].myFormListObj[this_formID].isUpdating,
                             person_id: currentValues.peopleRec.person_id,
                           }}
-                        onClose={(ignore_me, statusObj) => {
+                        onClose={async (ignore_me, statusObj) => {
                           reactData.masterFormList[person_id].myFormListObj[this_formID].isUpdating = false;
-                          if ((statusObj.document_status === 'complete') && (statusObj.recWritten)) {
-                            reactData.masterFormList[person_id].myFormListObj[this_formID].completedDocs.push({
-                              document_id: statusObj.recWritten.document_id,
-                              location: statusObj.recWritten.history[0].url,
-                              date_completed: makeDate(new Date().getTime()).relative,
-                              title: statusObj.recWritten.title,
-                              amendments: []
-                            });
-                            let foundAt = reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.findIndex(d => {
-                              return d.document_id === reactData.masterFormList[person_id].myFormListObj[this_formID].isUpdating;
-                            });
-                            if (foundAt > -1) {
-                              reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.splice(foundAt, 1);
-                            }
-                            else {
-                              let foundAt = reactData.masterFormList[person_id].myFormListObj[this_formID].assignedDocs.findIndex(d => {
-                                return d.document_id === reactData.masterFormList[person_id].myFormListObj[this_formID].isUpdating;
-                              });
-                              if (foundAt > -1) {
-                                reactData.masterFormList[person_id].myFormListObj[this_formID].assignedDocs.splice(foundAt, 1);
-                              }
-                            }
-                          }
-                          else if ((statusObj.document_status === 'work_in_process') && (statusObj.recWritten)) {
-                            reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.push({
-                              document_id: statusObj.recWritten.document_id,
-                              due_date: statusObj.recWritten.due_date,
-                              title: statusObj.recWritten.title
-                            });
-                            let foundAt = reactData.masterFormList[person_id].myFormListObj[this_formID].assignedDocs.findIndex(d => {
-                              return d.document_id === reactData.masterFormList[person_id].myFormListObj[this_formID].isUpdating;
-                            });
-                            if (foundAt > -1) {
-                              reactData.masterFormList[person_id].myFormListObj[this_formID].assignedDocs.splice(foundAt, 1);
-                            }
-                          }
                           updateReactData({
                             masterFormList: reactData.masterFormList
-                          }, true);
+                          }, false);
+                          await initialize();
                         }}
                       />
                     }
@@ -613,9 +597,9 @@ export default ({ currentValues, reactData, updateReactData }) => {
               margin: { left: 0, bottom: 1 },
             })}
           >
-            {`History - ${reactData.masterFormList[reactData.formHistoryMode.person_id][reactData.formHistoryMode.this_form_id].form_name}`}
+            {`History - ${reactData.masterFormList[reactData.formHistoryMode.person_id].myFormListObj[reactData.formHistoryMode.this_formID].form_name}`}
           </Typography>
-          {reactData.masterFormList[reactData.formHistoryMode.person_id][reactData.formHistoryMode.this_form_id].completedDocs.map((this_doc, docNdx) => (
+          {reactData.masterFormList[reactData.formHistoryMode.person_id].myFormListObj[reactData.formHistoryMode.this_formID].completedDocs.map((this_doc, docNdx) => (
             <React.Fragment
               key={`historyFrag-col_form${docNdx}`}
             >
@@ -665,7 +649,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                 <Box display='flex' alignItems='center'
                   justifyContent='flex-start' flexDirection='row'
                 >
-                  {reactData.masterFormList[reactData.formHistoryMode.person_id][reactData.formHistoryMode.this_form_id].options?.allowAmendments &&
+                  {reactData.masterFormList[reactData.formHistoryMode.person_id].myFormListObj[reactData.formHistoryMode.this_formID].options?.allowAmendments &&
                     reactData.administrative_account &&
                     <React.Fragment>
                       <Typography style={{ display: 'none', visibility: 'hidden' }}>
@@ -674,7 +658,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                       <AddCircleIcon
                         style={AVATextStyle({ margin: { right: 0.1 } })}
                         onClick={() => {
-                          reactData.masterFormList[reactData.formHistoryMode.person_id][reactData.formHistoryMode.this_form_id].isAmending = this_doc.document_id;
+                          reactData.masterFormList[reactData.formHistoryMode.person_id].myFormListObj[reactData.formHistoryMode.this_formID].isAmending = this_doc.document_id;
                           updateReactData({
                             isAmendingForm: {
                               form_id: reactData.formHistoryMode,
@@ -787,7 +771,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
               <Typography
                 style={AVATextStyle({ margin: { right: 1 }, size: 0.8, color: 'orange' })}
               >
-                {`Continue an incomplete form`}
+                {`Update an incomplete or pending form`}
               </Typography>
             </Box>
           }

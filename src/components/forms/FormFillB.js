@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, sentenceCase, listFromArray, array_in_array, recordExists, isObject } from '../../util/AVAUtilities';
+import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, sentenceCase, listFromArray, array_in_array, recordExists, isObject, uuid } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { formatPhone, getPerson, makeName } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
@@ -1260,8 +1260,10 @@ export default ({ request = {}, onClose }) => {
   const handleReview = async () => {
     let messageList = ['There are problems with this form'];
     let errorsOnForm = 0;
+    let activeErrors = 0;
     for (const sectionObj of reactData.sections) {
-      if (okToShowSection(sectionObj)) {
+      let suppressSection = dontShowSection(sectionObj);
+      if (suppressSection !== 'data') {
         for (const this_field of sectionObj.fields) {
           if (reactData.fields[this_field].ignore) {
             continue;
@@ -1275,15 +1277,18 @@ export default ({ request = {}, onClose }) => {
           }
           if (reactData.fields[this_field]?.options?.required || reactData.fields[this_field]?.value?.required) {
             if (((reactData.fields[this_field].type === 'signature')
-              && ((signatureRef[reactData.fields[this_field].options.sigRefNumber].current.isEmpty())))
+              && ((signatureRef[reactData.fields[this_field].options.sigRefNumber].current) && (signatureRef[reactData.fields[this_field].options.sigRefNumber].current.isEmpty())))
               || ((reactData.fields[this_field].type !== 'signature')
                 && (isEmpty(reactData.fields[this_field].value)))) {
-              reactData.fields[this_field].errorMessage = `${reconcilePrompt({
-                rawValue: reactData.fields[this_field].prompt.value,
-                this_field
-              })} is required`;
-              reactData.fields[this_field].isError = true;
-              messageList.push(reactData.fields[this_field].errorMessage);
+              if (suppressSection) {
+                activeErrors++;
+                reactData.fields[this_field].errorMessage = `${reconcilePrompt({
+                  rawValue: reactData.fields[this_field].prompt.value,
+                  this_field
+                })} is required`;
+                reactData.fields[this_field].isError = true;
+                messageList.push(reactData.fields[this_field].errorMessage);
+              }
               errorsOnForm++;
             }
           }
@@ -1296,21 +1301,27 @@ export default ({ request = {}, onClose }) => {
             }
             if (reactData.fields[this_field].selectionObj.min) {
               if (isEmpty(mySelections)) {
-                reactData.fields[this_field].errorMessage = `Please make a selection for ${reconcilePrompt({
-                  rawValue: reactData.fields[this_field].prompt.value,
-                  this_field
-                })}`;
-                reactData.fields[this_field].isError = true;
-                messageList.push(reactData.fields[this_field].errorMessage);
+                if (suppressSection) {
+                  activeErrors++;
+                  reactData.fields[this_field].errorMessage = `Please make a selection for ${reconcilePrompt({
+                    rawValue: reactData.fields[this_field].prompt.value,
+                    this_field
+                  })}`;
+                  reactData.fields[this_field].isError = true;
+                  messageList.push(reactData.fields[this_field].errorMessage);
+                }
                 errorsOnForm++;
               }
               else if (mySelections.length < reactData.fields[this_field].selectionObj.min) {
-                reactData.fields[this_field].errorMessage = `You must make at least ${reactData.fields[this_field].selectionObj.min} selections for ${reconcilePrompt({
-                  rawValue: reactData.fields[this_field].prompt.value,
-                  this_field
-                })}`;
-                reactData.fields[this_field].isError = true;
-                messageList.push(reactData.fields[this_field].errorMessage);
+                if (suppressSection) {
+                  activeErrors++;
+                  reactData.fields[this_field].errorMessage = `You must make at least ${reactData.fields[this_field].selectionObj.min} selections for ${reconcilePrompt({
+                    rawValue: reactData.fields[this_field].prompt.value,
+                    this_field
+                  })}`;
+                  reactData.fields[this_field].isError = true;
+                  messageList.push(reactData.fields[this_field].errorMessage);
+                }
                 errorsOnForm++;
               }
             }
@@ -1318,12 +1329,18 @@ export default ({ request = {}, onClose }) => {
         };
       }
     }
-    if (!errorsOnForm) {
-      messageList = ['This form is complete!', 'Tap "Save" below to save it'];
+    if (!activeErrors) {
+      if (errorsOnForm) {
+        messageList = ['Your part of this form looks good!', 'Tap "Submit" below to save it and submit for review'];
+      }
+      else {
+        messageList = ['This form is complete!', 'Tap "Complete" below to save it'];
+      }
     }
     updateReactData({
       messageList,
       errorsOnForm,
+      activeErrors,
       fields: reactData.fields,
       stage: 'confirm'
     }, true);
@@ -1352,7 +1369,7 @@ export default ({ request = {}, onClose }) => {
     }
   };
 
-  const handleSave = async ({ document_id, final, timeout }) => {
+  const handleSave = async ({ document_id, final, timeout, pending = false }) => {
     let response = { goodPut: true };
     // always save this in DocumentsInProcess
     if (!document_id) {
@@ -1479,38 +1496,6 @@ export default ({ request = {}, onClose }) => {
           response = { goodPut: false, putError: `Bad put to SessionsV2. Error is: ${error}` };
         });
     }
-    if (needsUpdate.familyRec || reactData.newFamily) {
-      await dbClient
-        .put({
-          Item: reactData.familyRec,
-          TableName: 'FamilyGroups'
-        })
-        .promise()
-        .catch(error => {
-          cl(`Bad put to Family. Error is: ${error}`);
-          response = { goodPut: false, putError: `Bad put to Family. Error is: ${error}` };
-        });
-    }
-    if (reactData.newPerson || reactData.newFamily) {
-      let newFamilyGroupRec = {
-        client_id: state.session.client_id,
-        composite_key: `${reactData.family_id}%%${reactData.pertains_to}`,
-        family_id: reactData.family_id,
-        person_id: reactData.pertains_to,
-        record_type: 'person',
-        role: reactData.formRec.options.role || 'member'
-      };
-      await dbClient
-        .put({
-          Item: newFamilyGroupRec,
-          TableName: 'FamilyGroups'
-        })
-        .promise()
-        .catch(error => {
-          cl(`Bad put to Family (person). Error is: ${error}`);
-          response = { goodPut: false, putError: `Bad put to Family. Error is: ${error}` };
-        });
-    }
 
     // updates - if any - are done
     // if this is the type of document that needs to generate a final printout, do that now
@@ -1522,7 +1507,7 @@ export default ({ request = {}, onClose }) => {
         if (reactData.fields[this_field].ignore) {
           continue;
         }
-        if (reactData.fields[this_field].type === 'signature') {
+        if ((reactData.fields[this_field].type === 'signature') && (signatureRef[reactData.fields[this_field].options.sigRefNumber].current)) {
           signatures[reactData.fields[this_field].options.sigRefNumber] = signatureRef[reactData.fields[this_field].options.sigRefNumber].current.getTrimmedCanvas().toDataURL('image/png');
         }
         if (reactData.fields[this_field].prompt) {
@@ -1546,7 +1531,7 @@ export default ({ request = {}, onClose }) => {
       url = s3Results[0].s3Location;
     }
 
-    // printing - if needed - is done
+    // printing is done (or wasn't necessary)
     // save_type is one of 'final', 'in_process', 'on_timeout', 'printed'
     let docData = {
       client_id: state.session.client_id,
@@ -1566,21 +1551,32 @@ export default ({ request = {}, onClose }) => {
       docData,
       author: state.session.patient_id,
       isNew: false,
+      pending,
       save_type: url ? 'printed' : (final ? 'save_final' : (timeout ? 'on_timeout' : 'in_process')),
       url
     });
 
     if (final && reactData.formRec?.options?.messaging) {
       // conditional based on responses should be allowed here
-      // formRec?.options?.messaging should be an object or array of objects; each object has in instruction key
-      //   { instruction: 'send_message',
-      //     attach_form: <boolean>
-      //     send_to: [user, user, ...]  send this form as an attachment to a message sent to user(s)
-      //     message_text: <text>   send this text 
-      //   }, {}, ...]
       // in user lists, user can be a person: person_id, group: group_id, or author: true
       for (let this_instruction of [reactData.formRec?.options?.messaging].flat()) {
-        if (this_instruction.instruction === 'create_form') {
+        if (this_instruction.hasOwnProperty('status') && this_instruction.status !== docData.status) {
+          continue;
+        }
+        if (this_instruction.hasOwnProperty('send_message')) {
+          if (this_instruction.send_message.attach) {
+            this_instruction.send_message.url = url;
+          };
+          if (!this_instruction.send_message.subject) {
+            this_instruction.send_message.subject = `Form update - status is ${docData.status}`;
+          }
+          else {
+            this_instruction.send_message.subject = await deepResolve(this_instruction.send_message.subject, reactData.peopleRec[reactData.pertains_to]);  
+          }
+          this_instruction.send_message.text = await deepResolve(this_instruction.send_message.text, reactData.peopleRec[reactData.pertains_to]);  
+          await sendMessage(this_instruction.send_message);
+        }
+        if (this_instruction.hasOwnProperty('instruction') && (this_instruction.instruction === 'create_form')) {
           await createForm({        // finishing this form issues an instruction to create another form ("teacher recommendation" use case, for example)
             instructions: this_instruction,
             source_doc: document_id,
@@ -1597,6 +1593,45 @@ export default ({ request = {}, onClose }) => {
     }, true);
     return response;
   };
+
+
+  async function sendMessage(send_instructions) {
+    let postTime = new Date().getTime();
+    let newMessageThread = `${postTime}.${uuid(6)}`;
+    let message_id = `${postTime}.${uuid(6)}.0~CuredMessage`;
+    const reply_to = [state.session.person_id];
+    let recipient_key = [send_instructions.send_to].flat();
+    let PostOfficeRec = {
+      Item: {
+        thread_id: newMessageThread,
+        message_id,
+        allowReplyAll: false,
+        client_id: state.session.client_id,
+        deliver_time: postTime,
+        from: state.session.patient_id,
+        message_text: send_instructions.text,
+        patient_id: state.session.patient_id,
+        preferred_method: null,
+        recipient_base: 'list',
+        recipient_key,
+        subject: send_instructions.subject || ``,
+        reply_to
+      },
+      TableName: 'PostOffice'
+    };
+    if (send_instructions.attach) {
+      PostOfficeRec.attachments = send_instructions.url;
+    }
+    let goodPost = true;
+    await dbClient
+      .put(PostOfficeRec)
+      .promise()
+      .catch(error => {
+        cl(`Error writing to Post Office; error is ${error}`);
+        goodPost = false;
+      });
+    return;
+  }
 
   let preset_values = {};
   async function createForm({ instructions, source_doc, doc_location }) {
@@ -1695,6 +1730,33 @@ export default ({ request = {}, onClose }) => {
       }
     }
 
+  }
+
+  async function deepResolve(s, o) {
+    let a = s.match(/(.*?)%%(.*?)%%(.*)/);
+    if (a) {
+      do {
+        let v = '';
+        if (preset_values && preset_values.hasOwnProperty(a[2])) {
+          v = preset_values[a[2]];
+        }
+        else if (reactData.fields.hasOwnProperty(a[2])) {
+          v = await formatValue({
+            rawValue: reactData.fields[a[2]].value,
+            type: reactData.fields[a[2]].type
+          });
+        }
+        else if (o) {
+          v = resolve({
+            object: o,
+            key: a[2].split('.')
+          });
+        }
+        s = `${a[1]}${v}${a[3]}`;
+        a = s.match(/(.*?)%%(.*?)%%(.*)/);
+      } while (a);
+    }
+    return s;
   }
 
   async function resolveVariables(s, o) {
@@ -1866,18 +1928,34 @@ export default ({ request = {}, onClose }) => {
     return;
   }
 
-  const okToShowSection = (this_sectionObj) => {
+  const dontShowSection = (this_sectionObj) => {
     if (this_sectionObj.hasOwnProperty('show_if')) {
+      let reason = 'unknown';
       for (const this_test of this_sectionObj.show_if) {
-        const this_value = reactData.fields[this_test.field].value;
-        if (array_in_array(this_test.values, this_value)) {
-          return true;
+        if (this_test.hasOwnProperty('pertainsTo_memberOf')) {
+          if (reactData.peopleRec[reactData.pertains_to].groups.some(g => { return [this_test.memberOf].flat().includes(g); })) {
+            return false;
+          }
+          else { reason = 'pertains_to'; }
+        }
+        else if (this_test.hasOwnProperty('memberOf')) {
+          if (state.patient.groups.some(g => { return [this_test.memberOf].flat().includes(g); })) {
+            return false;
+          }
+          else { reason = 'memberOf'; }
+        }
+        else {
+          const this_value = reactData.fields[this_test.field].value;
+          if (array_in_array(this_test.values, this_value)) {
+            return false;
+          }
+          else { reason = 'data'; }
         }
       }
-      return false;
+      return reason;
     }
     else {
-      return true;
+      return false;
     }
   };
 
@@ -1940,7 +2018,7 @@ export default ({ request = {}, onClose }) => {
           </Box>
           <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
             {reactData.sections.map((sectionObj, sectionNdx) => (
-              (okToShowSection(sectionObj) &&
+              (!dontShowSection(sectionObj) &&
                 <React.Fragment
                   key={`sectionFrag__${sectionObj.section_name}_${sectionNdx}`}
                 >
@@ -1971,12 +2049,6 @@ export default ({ request = {}, onClose }) => {
                             {''}
                           </Typography>
                         }
-
-
-
-
-
-
                         {(reactData.fields[this_field].type === 'text') &&
                           <TextField
                             id={`field__${this_field}`}
@@ -2446,7 +2518,7 @@ export default ({ request = {}, onClose }) => {
                   document_id: reactData.document_id,
                   form_type: reactData.form_id,
                   pertains_to: reactData.pertains_to,
-                  client_id: state.session.client_id 
+                  client_id: state.session.client_id
                 }
               ),
               author: state.session.user_id,
@@ -2481,9 +2553,9 @@ export default ({ request = {}, onClose }) => {
         <AVAConfirm
           promptText={reactData.messageList}
           cancelText={'Go back'}
-          confirmText={(reactData.errorsOnForm)
+          confirmText={(reactData.activeErrors)
             ? '*none*'
-            : 'Save'
+            : (reactData.errorsOnForm ? 'Submit' : 'Complete')
           }
           onCancel={() => {
             updateReactData({
@@ -2493,7 +2565,8 @@ export default ({ request = {}, onClose }) => {
           onConfirm={async () => {
             let response = await handleSave({
               document_id: reactData.document_id,
-              final: true
+              final: true,
+              pending: reactData.errorsOnForm
             });
             if (!response.goodPut) {
               updateReactData({

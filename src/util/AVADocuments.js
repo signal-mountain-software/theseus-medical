@@ -131,7 +131,7 @@ export async function documentDueDate(client_id, formIn, dueDate_key) {
     };
 };
 
-export async function updateDocument({ docData, author, isNew = false, save_type, url }) {
+export async function updateDocument({ docData, author, isNew = false, save_type, url, pending }) {
     // save_type is one of 'final', 'in_process', 'on_timeout', 'printed', 'uploaded'
     if ((save_type === 'uploaded') && !url) {
         return false;
@@ -218,12 +218,17 @@ export async function updateDocument({ docData, author, isNew = false, save_type
     }
     docOut.history.unshift({
         last_update: now,
-        status: save_type,
+        status: pending ? 'pending' : save_type,
         update_by: author || 'updateDocument'
     });
-    if (((save_type === 'printed') || (save_type === 'uploaded')) && url) {
+    if (url) {
         docOut.history[0].url = url;
+    }
+    if (((save_type === 'printed') && !pending) || (save_type === 'uploaded')) {
         docOut.status = 'complete';
+    }
+    else {
+        docOut.status = (pending ? 'pending' : 'in_process');
     }
     let goodPut = true;
     await dbClient

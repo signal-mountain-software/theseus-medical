@@ -763,6 +763,11 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
             }
             break;
           }
+          case 'header': {
+            pdfLine((docData.fields[this_field].prompt.ref || docData.fields[this_field].prompt.value), { protectOrphan: true, style: 'italic', size: 'medium', align: 'left', before: 2, after: 1 });
+            break;
+          }
+
           case 'html': {
             await pdfHTML(docData.fields[this_field].prompt.ref || docData.fields[this_field].prompt.value,
               Object.assign({}, docData.fields[this_field]?.prompt, {
@@ -818,10 +823,18 @@ export async function consolidatePDFs({ documentList, options = {} }) {
 function okToShowSection(this_sectionObj, fields) {
   if (this_sectionObj.hasOwnProperty('show_if')) {
     for (const this_test of this_sectionObj.show_if) {
-      const this_value = fields[this_test.field].value;
-      if (!this_value) { return true; }
-      if (array_in_array(this_test.values, this_value)) {
+      if (this_test.hasOwnProperty('pertainsTo_memberOf')) {
         return true;
+      }
+      else if (this_test.hasOwnProperty('memberOf')) {
+        return true;
+      }
+      else {
+        const this_value = fields[this_test.field].value;
+        if (!this_value) { return true; }
+        if (array_in_array(this_test.values, this_value)) {
+          return true;
+        }
       }
     }
     return false;
@@ -897,6 +910,10 @@ export async function printDocumentB({ documentList, options = {} }) {
                   pdfDown(1);
                   pdfStyle('reset');
                 }
+                break;
+              }
+              case 'header': {
+                pdfLine(fields[this_field].prompt.value, { protectOrphan: true, style: 'italic', size: 'medium', align: 'left', before: 2, after: 1 });
                 break;
               }
               case 'html': {
@@ -1018,6 +1035,10 @@ export async function printEmptyDocument({ documentList, options = {} }) {
               }
               break;
             }
+            case 'header': {
+              pdfLine(fields[this_field].prompt.value, { protectOrphan: true, style: 'italic', size: 'medium', align: 'left', before: 2, after: 1 });
+              break;
+            }
             case 'html': {
               await pdfHTML(`${fields[this_field].prompt.value}`,
                 Object.assign({}, fields[this_field].prompt, {
@@ -1106,7 +1127,7 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
     //  sections.forEach((sectionObj, sectionNdx) => {
     for (const sectionObj of sections) {
       if (okToShowSection(sectionObj, fields)) {
-        pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
+        pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', size: 'medium', align: 'left', before: 4, after: 1 });
         for (const this_field of sectionObj.fields) {
           if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore) && !(fields[this_field].hidden)) {
             let printType = fields[this_field].type;
@@ -1149,6 +1170,10 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
                   pdfDown(1);
                   pdfStyle('reset');
                 }
+                break;
+              }
+              case 'header': {
+                pdfLine(fields[this_field].prompt.value, { protectOrphan: true, style: 'italic', size: 'medium', align: 'left', before: 2, after: 1 });
                 break;
               }
               case 'html': {
@@ -2078,38 +2103,21 @@ async function pdfHTML(text, options = {}) {
   const BOLD = '';  // "\x1b[1m";
   const NORMAL = '';   // "\x1b[22m";
 
-  let html = text + '%%';
-  let left, front, middle, back;
-  let pieces = [];
-  do {
-    [left, back] = html.split(/<\/strong>/ig);
-    if (back) {
-      [front, middle] = left.split(/<strong>/ig);
-      pieces.push({ type: 'normal', text: front });
-      pieces.push({ type: 'bold', text: middle });
-      html = back;
-    }
-    else {
-      pieces.push({ type: 'normal', text: left });
-    }
-  } while (back);
   let noNewLine = false;
-  for (let this_piece of pieces) {
-    this_piece.text = this_piece.text.replace(/<style([\s\S]*?)<\/style>/gi, '');
-    this_piece.text = this_piece.text.replace(/<script([\s\S]*?)<\/script>/gi, '');
-    this_piece.text = this_piece.text.replace(/<strong>/ig, BOLD);
-    this_piece.text = this_piece.text.replace(/<\/strong>/ig, NORMAL);
-    this_piece.text = this_piece.text.replace(/<\/div>/ig, '\n');
-    this_piece.text = this_piece.text.replace(/<\/li>/ig, '\n');
-    this_piece.text = this_piece.text.replace(/<li>/ig, '  *  ');
-    this_piece.text = this_piece.text.replace(/<\/ul>/ig, '\n');
-    this_piece.text = this_piece.text.replace(/<\/p>/ig, '\n');
-    this_piece.text = this_piece.text.replace(/<br\s*[/]?>/gi, "\n");
-    this_piece.text = this_piece.text.replace(/<[^>]+>/ig, '');
-    this_piece.text = this_piece.text.replace('%%', '');
-    pdfLine(this_piece.text, { size: 'medium', align: 'left', noNewLine, style: this_piece.type });
-    noNewLine = true;
-  }
+  text = text.replace(/<style([\s\S]*?)<\/style>/gi, '');
+  text = text.replace(/<script([\s\S]*?)<\/script>/gi, '');
+  text = text.replace(/<strong>/ig, BOLD);
+  text = text.replace(/<\/strong>/ig, NORMAL);
+  text = text.replace(/<\/div>/ig, '\n');
+  text = text.replace(/<\/li>/ig, '\n');
+  text = text.replace(/<li>/ig, '  *  ');
+  text = text.replace(/<\/ul>/ig, '\n');
+  text = text.replace(/<\/p>/ig, '\n');
+  text = text.replace(/<br\s*[/]?>/gi, "\n");
+  text = text.replace(/<[^>]+>/ig, '');
+  text = text.replace('%%', '');
+  pdfLine(text, { size: 'medium', align: 'left', noNewLine });
+  noNewLine = true;
 
 
   /*
@@ -2255,15 +2263,24 @@ function pdfLine(text, options = {}) {
   else if (text && (text.length > 0)) {
     // this little chunk deals with text overflow
     let tWords = [];
-    if ((pdfCurrent.align === 'center') && (doc.getTextWidth(text) > page.printableArea)) {
-      tWords = doc.splitTextToSize(text, page.printableArea);
-    }
-    else if ((pdfCurrent.align !== 'center') && ((doc.getTextWidth(text) + pdfCurrent.xPos + pdfCurrent.indent) > page.right)) {
-      tWords = doc.splitTextToSize(text, (page.right - (pdfCurrent.xPos + pdfCurrent.indent)));
+    let split_lines = text.split(/<br\s*[/]?>/gi);
+    for (let this_line of split_lines) {
+      if ((pdfCurrent.align === 'center') && (doc.getTextWidth(this_line) > page.printableArea)) {
+        let pWords = doc.splitTextToSize(this_line, page.printableArea);
+        tWords.push(...pWords);
+      }
+      else if ((pdfCurrent.align !== 'center') && ((doc.getTextWidth(this_line) + pdfCurrent.xPos + pdfCurrent.indent) > page.right)) {
+        let pWords = doc.splitTextToSize(this_line, (page.right - (pdfCurrent.xPos + pdfCurrent.indent)));
+        tWords.push(...pWords);
+      }
+      if (this_line !== split_lines[split_lines.length - 1]) {
+        tWords.push(' ');
+      }
     }
     if (tWords.length > 0) {
       for (let t = 0; t < tWords.length - 1; t++) {
-        pdfLine(tWords[t], Object.assign({}, options, { after: 0 }));
+        pdfDown(1);
+        pdfLine(tWords[t], Object.assign({}, options, { noNewLine: true, after: 0 }));
       }
       pdfDown(1);
       text = tWords[tWords.length - 1];
@@ -2600,7 +2617,7 @@ export async function messageHistory(body) {
         mLine += `from ${mR.author.author_name} to ${mR.recipient_list.name.first} ${mR.recipient_list.name.last}`;
       }
       else {
-        mLine = `and also sent to ${mR.recipient_list.name.first}`
+        mLine = `and also sent to ${mR.recipient_list.name.first}`;
       }
       switch (mR.deliver_method) {
         case 'sms': {

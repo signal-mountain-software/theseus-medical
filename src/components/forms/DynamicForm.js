@@ -28,7 +28,6 @@ import AVASubscription from '../forms/AVASubscription';
 import NumberForm from './NumberForm';
 import Number2Form from './Number2Form';
 import FreeTextForm from './FreeTextForm';
-import MakeMessage from './MakeMessage';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import ClientMaintenance from '../dialogs/ClientMaintenance';
 import FormManagement from '../dialogs/FormManagement';
