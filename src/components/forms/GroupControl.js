@@ -991,10 +991,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                 {`${state.session.client_name} Groups`}
               </Typography>
               <Paper component={Box} elevation={0} overflow='auto' square
-                style={{ scrollbarWidth: 'none' }}
+                style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
               >
                 <Box display='flex' flexDirection='column'
-                  justifyContent='center'
+                  justifyContent='flex-start'
                   alignItems='flex-start'
                 >
                   {Object.keys(groupsManagedObject).map((listEntry, listIndex) => (
