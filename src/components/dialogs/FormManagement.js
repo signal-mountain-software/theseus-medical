@@ -1,308 +1,510 @@
 import React from 'react';
 
-import { deepCopy, isEmpty, dbClient, cl } from '../../util/AVAUtilities';
-import { AVAclasses, AVATextStyle, isDark } from '../../util/AVAStyles';
-
 import useSession from '../../hooks/useSession';
 
-import FormSectionByFormType from '../sections/FormSectionByFormType';
+import { getMemberList } from '../../util/AVAGroups';
+import { dbClient, recordExists, cl } from '../../util/AVAUtilities';
+import QuickSearch from '../sections/QuickSearch';
+import { getPerson, getImage } from '../../util/AVAPeople';
+import PeopleMaintenance from '../dialogs/PeopleMaintenance';
+import { addDays, makeDate } from '../../util/AVADateTime';
 
-import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
+import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
+
+import CloseIcon from '@material-ui/icons/ExitToApp';
+import PeopleIcon from '@material-ui/icons/People';
+import SettingsIcon from '@material-ui/icons/Settings';
+import SendIcon from '@material-ui/icons/Send';
+
+import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
+import MessageForm from '../forms/MessageForm';
+
 const useStyles = makeStyles(theme => ({
-  clientPopUp: {
-    borderRadius: '30px 30px 30px 30px',
+  buttonArea: {
+    justifyContent: 'center',
+    marginTop: theme.spacing(1),
+    marginBottom: theme.spacing(1)
   },
-  popUpMenu: {
-    marginRight: theme.spacing(3),
-    paddingRight: 2,
+  myImageArea: {
+    minWidth: '50px',
+    maxWidth: '50px',
+    minHeight: '50px',
+    maxHeight: '50px',
+    marginRight: theme.spacing(1),
+    borderRadius: '25px'
+  },
+  peopleBox: {
+    paddingTop: 0,
+    paddingBottom: theme.spacing(2),
+    overflowX: 'auto',
+    scrollbarWidth: 'thin',
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    display: 'flex',
+    width: '100%',
+    flexDirection: 'column'
+  },
+  peopleBoxWithSpace: {
+    paddingTop: theme.spacing(2),
+    paddingBottom: theme.spacing(2),
+    overflowX: 'auto',
+    scrollbarWidth: 'thin',
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    display: 'flex',
+    width: '100%',
+    flexDirection: 'row'
   },
   paperPallette: {
     borderRadius: '30px 30px 30px 30px',
     width: '95%',
+    height: '100%',
+    overflow: 'hidden'
   },
-  padRight: {
+  dragNamesFirst: {
+    fontSize: theme.typography.fontSize * 0.8,
+    marginTop: '3px',
+    marginBottom: '-10px'
+  },
+  dragNamesLast: {
+    fontSize: theme.typography.fontSize * 0.8,
+    marginTop: '3px',
+    fontWeight: 'bold',
+    marginBottom: '-10px'
+  },
+  assignment_avatar: {
+    marginTop: 0,
+    marginBottom: 0,
+    height: 40,
+    width: 40,
+    paddingTop: 0,
+    fontSize: '1.2rem',
+  },
+  title: {
+    marginTop: theme.spacing(3),
+    marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
+    marginBottom: 0,
+    fontSize: '1.3rem',
+  },
+  listItemAVA: {
+    fontSize: theme.typography.fontSize * 1.5,
+  },
+  noDisplay: {
+    display: 'none',
+    visibility: 'hidden'
   },
 }));
 
-export default ({ client_id, form_id, formRec, initialValues, options = {}, onClose }) => {
+export default ({ defaults, onClose }) => {
 
-  const isMounted = React.useRef(false);
   const { state } = useSession();
+
+  const [activity_filter, setActivityFilter] = React.useState('');
+  const [lower_activity_filter, setLowerFilter] = React.useState('');
+
+  const [reactData, setReactData] = React.useState({
+    alert: false,
+    window_width: 1,
+    administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
+
+    // from defaults
+    agendaView: defaults.agendaView,
+    allowAssign: defaults.allowAssign,
+    assignmentList: defaults.assignmentList,
+    assignmentView: defaults.assignmentView,
+    viewOnly: defaults.viewOnly,
+
+
+
+
+    anchorEl: null,
+    building: 'not started',
+    defaults,
+    denseView: false,
+    display_name: state.patient?.name?.first || 'My',
+    event_being_edited: false,
+    filterTextLower: null,
+    isDarkMode: useMediaQuery('(prefers-color-scheme: dark)'),
+    loading: false,
+    masterFormList: {},
+    masterPeopleList: {},
+    needRef: false,
+    newGroups: {},
+    popUpOpen: false,
+    progressMessage: 'Building Group List',
+    pWidth: 60,
+    rowLimit: 50,
+    selectDate: null,
+    selectedPerson_id: null,
+    selectedPersonRec: false,
+    selectedPersonFirstName: '',
+    selectedPersonLastName: '',
+    showGroupSelect: false,
+    showQuickSearch: false,
+    selectedGroup_id: null,
+    selectedGroupRec: false,
+    selectedGroupMembers: false,
+    updatesMade: false,
+    viewPeopleMaintenance: false
+  });
+  const [refreshTrigger, setRefreshTrigger] = React.useState(false);
+  const updateReactData = (newData, force = false) => {
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) { setRefreshTrigger(refreshTrigger => !refreshTrigger); }
+  };
+
+
+  function handleResize() {
+    updateReactData({
+      window_width: Math.min(((window.window.innerWidth - 220) / 1400), 1),
+    }, true);
+  }
+
+  const handleDragStart = (ev, id) => {
+    ev.dataTransfer.setData('id', JSON.stringify(id));
+  };
+
+  const handleDragOver = (ev) => {
+    ev.preventDefault();
+  };
+
+  const placeholderImage =
+    'https://theseus-medical-storage.s3.amazonaws.com/public/patients/tboone.jpg';
+
+  const onImageError = (e) => {
+    e.target.src = placeholderImage;
+  };
+
+  // const autoFocus = (element) => element?.focus();
+
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
-  const AWS = require('aws-sdk');
-  AWS.config.update({ region: 'us-east-1' });
+  let user_fontSize = AVADefaults({ fontSize: 'get' });
 
-  const [reactData, setReactData] = React.useState({
-    accessList: [],
-    addAccountList: [],
-    addAttachment: false,
-    addFamilyMember: false,
-    addLink: false,
-    administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
-    alert: false,
-    bBoardList: {},
-    changesMade: false,
-    client_id,
-    confirmMessage: '',
-    deletePending: false,
-    editMode: {},
-    errorList: {},
-    familyFormsObj: {},
-    formHistoryMode: false,
-    form_id: form_id || formRec.form_id,
-    group_id: 'ALL',
-    image_editing: false,
-    initialized: false,
-    isError: false,
-    isMobile: (window.window.innerWidth < 800),
-    linkedPersonFilter: {},
-    MessagingInitialized: false,
-    mode: options.mode || 'edit',
-    myFormListObj: {},
-    myImage: '',
-    needsHeader: false,
-    OKtoSave: false,
-    options,
-    personXRef: [],
-    popupMenuOpen: false,
-    recentlyCompletedDocs: [],
-    selectedForm: form_id || formRec.form_id,
-    selections: [],
-    historyShowMoreCompleted: false,
-    historyShowMoreWIP: false,
-    showQuickSearch: false,
-    spliceAt: -1,
-    textInput: {},
-    user_class: state.user.account_class,
-    user_id: state.user.user_id,
-    viewFamilyMember: false,
-
-    components: {
-      FormSectionByFormType: {
-        component_id: FormSectionByFormType,
-      }
-    },
-    og: {
-      customizationRecs: false,
-    },
-    current: {
-      customizationRecs: {},
-    },
-  });
-
-  const [refreshTrigger, setRefreshTrigger] = React.useState(false);
-  const updateReactData = (newData, force = false) => {
-    if (isMounted.current) {
-      setReactData((prevValues) => (Object.assign(
-        prevValues,
-        newData
-      )));
-      if (force) { setRefreshTrigger(refreshTrigger => !refreshTrigger); }
-    }
+  const handleChangeActivityFilter = event => {
+    setActivityFilter(event.target.value);
+    setLowerFilter(event.target.value.toLowerCase());
   };
 
-  React.useEffect(() => {
-    async function initialize() {
-      let reactUpdObj = {
-        initialized: true,
-        sections: [{
-          section_name: 'Document Management',
-          color: initialValues?.color || 'lightBlue',
-          isOpen: false,
-          isAuthorized: true,
-          version_id: 0,
-          component_name: 'FormSectionByFormType'
-        }]
-      };
-
-      if (formRec) {
-        reactUpdObj.og = { formRec: formRec.Item };
+  function OKtoShow(inObj) {
+    if (!lower_activity_filter) { return true; }
+    if (inObj.hasOwnProperty('group_name')) {
+      if (inObj.group_name.toLowerCase().includes(lower_activity_filter)) {
+        return true;
       }
-      else {
-        let fRec = await dbClient
-          .get({
-            TableName: 'Forms',
-            Key: {
-              client_id: reactData.client_id,
-              form_id: reactData.selectedForm
-            }
-          })
-          .promise()
-          .catch(error => {
-            if (error.code === 'NetworkingError') {
-              cl(`Security Violation or no Internet Connection`);
-            }
-            cl(`Error reading Form ${reactData.selectedForm} for ${reactData.client_id} - error is ${error}`);
-          });
-        reactUpdObj.og = { formRec: fRec.Item };
-      }
-     
-      reactUpdObj.current = {
-        formRec: deepCopy(
-          Object.assign({},
-            reactUpdObj.og.formRec,
-            initialValues
-          ))
-      };
-      updateReactData(reactUpdObj, true);
-      window.addEventListener('resize', handleResize);
     }
-    function handleResize() {
-      updateReactData({
-        isMobile: (window.window.innerWidth < 800),
-      }, true);
-    }
-    isMounted.current = true;
-    initialize();
-    return () => {
-      isMounted.current = false;
-      window.removeEventListener('resize', handleResize);
-    };
-  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+    return (inObj.group_id.toLowerCase().includes(lower_activity_filter));
+  };
 
-  function renderSection(componentName) {
-    const SectionToRender = reactData.components[componentName].component_id;
-    return (
-      <SectionToRender
-        currentValues={reactData.current}
-        ogValues={reactData.og}
-        errorList={reactData.errorList}
-        setError={(errorList) => {
-          for (let errorObj of [errorList].flat()) {
-            const { errorField, isError } = errorObj;
-            if (!isError) {
-              delete reactData.errorList[errorField];
-            }
-            else {
-              reactData.errorList[errorField] = errorObj;
-            }
-          }
-          updateReactData({
-            errorList: reactData.errorList,
-          }, true);
-        }}
-        updateField={async ({ updateList, errorObj, reactUpd }) => {
-          if (reactData.mode !== 'view') {
-            let reactUpdObj = {
-              OKtoSave: true,
-              current: reactData.current,
-            };
-            if (reactUpd) {
-              Object.assign(reactUpdObj, reactUpd);
-            };
-            if (errorObj) {
-              reactUpdObj.errorList = reactData.errorList;
-              for (let errorItem of [errorObj].flat()) {
-                const { errorField, isError } = errorItem;
-                if (!isError) {
-                  delete reactUpdObj.errorList[errorField];
-                }
-                else {
-                  reactUpdObj.errorList[errorField] = errorItem;
-                }
-              }
-            }
-            for (let this_update of [updateList].flat()) {
-              if (this_update) {
-                const { tableName, fieldName, newData } = this_update;   // fieldName as <custom_key>.customization_value...
-                let result = resolve(reactData.current[tableName], fieldName.split('.'), newData);
-                reactUpdObj.current[tableName] = result;
-              }
-            }
-            updateReactData(reactUpdObj, true);
-          }
-        }}
-        reactData={reactData}
-        updateReactData={(newData, force) => {
-          updateReactData(newData, force);
-        }}
-      />);
+  async function personForms(this_person) {
+    reactData.masterPeopleList[this_person] = {};
+    for (let this_form in reactData.masterFormList) {
+      if (reactData.masterFormList[this_form].groupList.some(g => { return reactData.selectedPersonRec.groups.includes(g); })) {
+        reactData.masterPeopleList[this_person][this_form] = {
+          status: 'not started',
+          last_update: 0
+        };
+        if (!reactData.masterFormList[this_form].hasOwnProperty('memberList')) {
+          reactData.masterFormList[this_form].memberList = {};
+        } 
+        reactData.masterFormList[this_form].memberList[this_person] = {
+          person_id: reactData.selectedPerson_id,
+          person_name: `${reactData.selectedPersonRec.name.first} ${reactData.selectedPersonRec.name.last}`,
+          person_first: reactData.selectedPersonRec.name.first,
+          person_last: reactData.selectedPersonRec.name.last,
+          wipDocs: [],
+          assignedDocs: [],
+          completedDocs: [],
+        };
+      }
+    }
+    // get all Documents for this person
+    let allDocs = await dbClient
+      .query({
+        KeyConditionExpression: 'pertains_to = :p',
+        IndexName: 'person_form-index',
+        TableName: 'DocumentMaster',
+        ExpressionAttributeValues: {
+          ':p': this_person
+        }
+      })
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          cl(`Security Violation or no Internet Connection`);
+        }
+        cl(`Error reading CompletedDocuments; error is ${error}`);
+      });
+    if (recordExists(allDocs)) {
+      for (const this_doc of allDocs.Items) {
+        buildMasters(this_doc);
+      }
+    }
+    updateReactData({
+      masterPeopleList: reactData.masterPeopleList,
+      masterFormList: reactData.masterFormList
+    }, true);
   }
 
-  const resolve = (object, key, value) => {
-    const this_key = key.shift();
-    if (key.length === 0) {
-      object[this_key] = value;
-      return object;
+  function buildMasters(this_doc) {
+    if ((this_doc.restricted_access === 'admin_only') && (!reactData.administrative_account)) {
+      return;    // skip this document
     }
-    else if (!object.hasOwnProperty(this_key)) {
-      let resolvedObj = resolve({}, key, value);
-      object[this_key] = resolvedObj;
-      return object;
+    if (!reactData.masterFormList[this_doc.form_type].hasOwnProperty('memberList')) {
+      reactData.masterFormList[this_doc.form_type].memberList = {};
     }
-    else if (isEmpty(object)) {
-      let resolvedObj = resolve({}, key, value);
-      object = resolvedObj;
-      return object;
+    if (!reactData.masterFormList[this_doc.form_type].memberList.hasOwnProperty(this_doc.pertains_to)) {
+      reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to] = {
+        person_id: this_doc.pertains_to,
+        person_name: `${reactData.selectedPersonRec.name.first} ${reactData.selectedPersonRec.name.last}`,
+        person_first: reactData.selectedPersonRec.name.first,
+        person_last: reactData.selectedPersonRec.name.last,
+        wipDocs: [],
+        assignedDocs: [],
+        completedDocs: [],
+      };
+    };
+    if (!reactData.masterPeopleList.hasOwnProperty(this_doc.pertains_to)) {
+      reactData.masterPeopleList[this_doc.pertains_to] = {};
     }
-    else {
-      let resolvedObj = resolve(object[this_key], key, value);
-      object[this_key] = resolvedObj;
-      return object;
+    if (this_doc.history[0].last_update === 0) {
+      let splitter = this_doc.document_id.split('#');
+      this_doc.history[0].last_update = splitter[splitter.length - 1];
     }
-  };
-
-  const handleAbort = () => {
-    updateReactData({
-      alert: {
-        severity: 'warning',
-        title: 'Changes are Pending',
-        message: `There are unsaved changes.  Exit anyway?`,
-        action: [
-          {
-            text: `Keep editing`,
-            function: () => {
-              updateReactData({
-                alert: false
-              }, true);
-            }
-          },
-          {
-            text: `Exit`,
-            function: () => {
-              onClose(false);
-            }
-          }
-        ]
-      }
-    }, true);
-  };
-
-  const saveChanges = async () => {
-    if (JSON.stringify(reactData.og.customizationRecs) !== JSON.stringify(reactData.current.customizationRecs)) {
-      for (const this_key in reactData.current.customizationRecs) {
-        if (JSON.stringify(reactData.og.customizationRecs[this_key]) !== JSON.stringify(reactData.current.customizationRecs[this_key])) {
-          await dbClient
-            .put({
-              TableName: 'Customizations',
-              Item: reactData.current.customizationRecs[this_key]
-            })
-            .promise()
-            .catch(error => {
-              console.log(`caught error putting to Customizations at key ${this_key}; error is:`, error);
-            });
-          reactData.og.customizationRecs[this_key] = deepCopy(reactData.current.customizationRecs[this_key]);
+    if (this_doc.status === 'complete') {
+      const completed_count = reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.length;
+      const cObj = {
+        document_id: this_doc.document_id,
+        location: this_doc.history[0].url,
+        last_update: this_doc.history[0].last_update,
+        date_completed: makeDate(this_doc.history[0].last_update).relative,
+        title: this_doc.title,
+        amendments: this_doc.amendments
+      };
+      if ((completed_count === 0) || (this_doc.history[0].last_update > reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs[0].last_update)) {
+        reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.unshift(cObj);
+        if (!reactData.masterPeopleList[this_doc.pertains_to].hasOwnProperty(this_doc.form_type) || (this_doc.history[0].last_update > reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type].last_update)) {
+          reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type] = {
+            status: 'completed',
+            last_update: this_doc.history[0].last_update
+          };
         }
       }
-      updateReactData({
-        OKtoSave: false,
-        og: reactData.og,
-        current: reactData.current
-      }, true);
+      else if (this_doc.history[0].last_update < reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs[completed_count - 1].last_update) {
+        reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.push(cObj);
+      }
+      else {
+        const foundAt = reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.findIndex(d => {
+          return (d.last_update < this_doc.history[0].last_update);
+        });
+        reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.splice(foundAt, 0, cObj);
+      }
     }
-    return true;
-  };
+    else if ((this_doc.status === 'in_process') || (this_doc.status === 'pending')) {
+      if (!reactData.masterPeopleList[this_doc.pertains_to].hasOwnProperty(this_doc.form_type) || (this_doc.history[0].last_update > reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type].last_update)) {
+        reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type] = {
+          status: this_doc.status,
+          last_update: this_doc.history[0].last_update
+        };
+      }
+      if ((reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].wipDocs.length > 0) && (reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].wipDocs[0].last_update < this_doc.history[0].last_update)) {
+        reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].wipDocs.unshift({
+          document_id: this_doc.document_id,
+          last_update: this_doc.history[0].last_update,
+          doc_status: this_doc.status,
+          due_date: this_doc.due_date || reactData.masterFormList[this_doc.form_type].dueDate,
+          title: this_doc.title
+        });
+      }
+      else {
+        reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].wipDocs.push({
+          document_id: this_doc.document_id,
+          last_update: this_doc.history[0].last_update,
+          doc_status: this_doc.status,
+          due_date: this_doc.due_date || reactData.masterFormList[this_doc.form_type].dueDate,
+          title: this_doc.title
+        });
+      }
+    }
+    else {
+      reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].assignedDocs.push({
+        document_id: this_doc.document_id,
+        last_update: this_doc.history[0].last_update,
+        due_date: this_doc.due_date || reactData.masterFormList[this_doc.form_type].dueDate,
+        title: this_doc.title
+      });
+    }
+  }
+
+  async function formPeople(this_form) {    // gathers all the people tha should (or do) have this form
+    if (!reactData.masterFormList[this_form].hasOwnProperty('groupList')) {
+      return;
+    }
+    reactData.masterFormList[this_form].memberList = {};
+    reactData.masterPeopleList = {};
+    for (let this_group of reactData.masterFormList[this_form].groupList) {
+      let response = await getMemberList(this_group, state.session.client_id, { "exclude": false });
+      for (let this_member of response.peopleList) {
+        reactData.masterFormList[this_form].memberList[this_member.person_id] = {
+          person_id: this_member.person_id,
+          person_name: `${this_member.name.first} ${this_member.name.last}`,
+          person_first: this_member.name.first,
+          person_last: this_member.name.last,
+          wipDocs: [],
+          assignedDocs: [],
+          completedDocs: [],
+        };
+        reactData.masterPeopleList[this_member.person_id] = {
+          [this_form]: {
+            status: 'not started',
+            last_update: 0
+          }
+        };
+      }
+    }
+
+    // get all Documents for this form type
+    let allDocs = await dbClient
+      .query({
+        KeyConditionExpression: 'client_id_form_type = :p',
+        IndexName: 'client_form_person-index',
+        TableName: 'DocumentMaster',
+        ExpressionAttributeValues: {
+          ':p': `${state.session.client_id}%%${this_form}`
+        }
+      })
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          cl(`Security Violation or no Internet Connection`);
+        }
+        cl(`Error reading CompletedDocuments; error is ${error}`);
+      });
+    if (recordExists(allDocs)) {
+      for (const this_doc of allDocs.Items) {
+        buildMasters(this_doc);
+      }
+    }
+    updateReactData({
+      masterPeopleList: reactData.masterPeopleList,
+      masterFormList: reactData.masterFormList
+    }, true);
+  }
+
+  async function initialize() {
+    // this will get a list of forms, and include the groups that each form is attached to (if any)
+    const today = makeDate('today');
+    let temp_dueDate = today.numeric$ + 10000;     // one year from today
+    let masterFormList = {};
+    // and build myFormListObj with one object for each form assigned to members of this person's groups
+    // get all the forms that are assigned people in this group 
+    let allForms = await dbClient
+      .query({
+        KeyConditionExpression: 'client_id = :c',
+        TableName: 'Forms',
+        ExpressionAttributeValues: {
+          ':c': state.session.client_id,
+        }
+      })
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          cl(`Security Violation or no Internet Connection`);
+        }
+        cl(`Error reading Forms; error is ${error}`);
+      });
+    if (recordExists(allForms)) {
+      for (let formRec of allForms.Items) {
+        // due_by works like this...
+        //   if due_by is single date and the date is in the future, use that date
+        //   if due_by is an array of dates, take the nearest date that is in the future
+        //   if due_by is a number, and docData.dueDate_key exists, add/subtract due_by to docData.dueDate_key
+        //   if due_by is a number, and no docData.dueDate_key exists, add due_by to today
+        let date_assigned = false;
+        for (const this_dueBy of [formRec.due_by].flat()) {
+          let candidate = Number(this_dueBy);
+          if ((candidate > today.numeric$) && (candidate < temp_dueDate)) {   // is it a date in the future that is earlier than the current temp_dueDate?
+            temp_dueDate = candidate;
+            date_assigned = true;
+          }
+          else if (candidate < 20000000) {   // it is not a date at all
+            let checkMe = addDays((formRec.dueDate_key || today.date), candidate);
+            if (checkMe.numeric$ > today.numeric$) {
+              temp_dueDate = checkMe.numeric$;
+              date_assigned = true;
+              break;
+            }
+          }
+        }
+        masterFormList[formRec.form_id] = {
+          form_id: formRec.form_id,
+          form_name: formRec.form_name,
+          groupList: [],  // all the groups that require this form
+          options: formRec.options || {},
+          dueDate: date_assigned,
+        };
+      }
+    }
+    // are there one or more groups that require this form?
+    let allGroups = await dbClient
+      .query({
+        KeyConditionExpression: 'client_id = :c',
+        TableName: 'Groups',
+        ExpressionAttributeValues: {
+          ':c': state.session.client_id,
+        }
+      })
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          cl(`Security Violation or no Internet Connection`);
+        }
+        cl(`Error reading Groups; error is ${error}`);
+      });
+    if (recordExists(allGroups)) {
+      for (let groupRec of allGroups.Items) {
+        if (groupRec.forms) {
+          for (let this_form of groupRec.forms) {
+            if (masterFormList.hasOwnProperty(this_form)) {
+              masterFormList[this_form].groupList.push(groupRec.group_id);
+            }
+          }
+        }
+      }
+    }
+    // now we've got a list of all the forms that are attached to all the groups 
+    let sortedForms = Object.keys(masterFormList).sort((a, b) => {
+      return (masterFormList[a].form_name < masterFormList[b].form_name ? -1 : 1);
+    });
+
+    updateReactData({
+      sortedForms,
+      masterFormList,
+      formsInitialized: true
+    }, true);
+  }
+
+  React.useEffect(() => {
+    initialize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [state.session]); // eslint-disable-line react-hooks/exhaustive-deps
+
+
+  // **************************
 
   return (
-    reactData.initialized &&
     <Dialog
-      open={(true || refreshTrigger)}
+      open={true || refreshTrigger}
       maxWidth={false}
       classes={{
         paper: classes.paperPallette
@@ -310,265 +512,519 @@ export default ({ client_id, form_id, formRec, initialValues, options = {}, onCl
       style={{
         borderRadius: ('25px 25px 25px 25px'),
       }}
-      onClose={() => {
-        if (reactData.OKtoSave) {
-          handleAbort();
-        }
-        else {
-          onClose({
-          });
-        }
-      }}
     >
-      <Box
-        display='flex' flexDirection='row'
-        style={{
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginTop: '32px',
-          marginBottom: '32px',
-          marginLeft: '16px',
-          marginRight: '16px',
-        }}
-        key={'topBox'}
-      >
-        <Box
-          display='flex' flexDirection='row'
-          flexGrow={1}
-          style={{
-            alignItems: 'center',
-          }}
-          key={'personBox'}
-        >
-          <Avatar className={AVAClass.AVAAvatar} src={reactData.myImage} alt={reactData.client_id} />
+      {Object.keys(reactData.masterFormList).length === 0
+        ?
+        <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
           <Typography
-            key={`personName`}
-            style={AVATextStyle({
-              size: 1.8,
-              bold: true,
-              margin: {
-                left: 1.5
-              }
-            })}>
-            {reactData.current.formRec.form_name || `Client ${reactData.form_id}`}
+            style={{
+              marginTop: 4,
+              marginBottom: 2,
+              marginLeft: 2,
+              marginRight: 2,
+              paddingTop: 3,
+            }}
+          >
+            {`No Forms to show for ${state.session.user_display_name}`}
           </Typography>
         </Box>
-        {/* Logo and Pop-up Menu */}
-        <Box
-          display='flex'
-          ml={2}
-          overflow='auto'
-          flexDirection='column'
-        >
-          <Avatar className={AVAClass.AVAAvatar}
-            alt=''
-            src={process.env.REACT_APP_AVA_LOGO}
-            ml={2}
-            mr={2}
-            aria-controls='hidden-menu'
-            aria-haspopup='true'
-            onClick={(event) => {
-              updateReactData({
-                anchorEl: event.currentTarget,
-                popupMenuOpen: true
-              }, true);
-            }}
-          />
-
-        </Box>
-        <Menu
-          id='hidden-menu'
-          anchorEl={reactData.anchorEl}
-          open={reactData.popupMenuOpen}
-          classes={{ paper: classes.clientPopUp }}
-          onClose={() => {
-            updateReactData({
-              popupMenuOpen: false
-            }, true);
-          }}
-          keepMounted>
-          <MenuList className={classes.popUpMenu}>
-            <MenuItem>
-              <Box
-                display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
-                key={'vRowRefresh'}
-                style={AVATextStyle({ size: 0.8 })}
-              >
-                <Typography style={AVATextStyle({ size: 0.8 })}>
-                  {`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
-                </Typography>
-                <Typography style={AVATextStyle({ size: 0.8 })}>
-                  {`User ${state.session.user_id}${state.session.patient_id !== state.session.user_id ? (' (' + state.session.patient_id + ')') : ''}`}
-                </Typography>
-              </Box>
-            </MenuItem>
-          </MenuList>
-        </Menu>
-      </Box>
-
-      <Paper component={Box}
-        key={`section_frame`} variant='outlined' overflow={'auto'}
-      >
-        {reactData.sections.map((this_section, sectionNdx) => (
-          (this_section.isAuthorized &&
+        :
+        <React.Fragment>
+          <Box style={{ borderRadius: '30px 30px 30px 30px', marginRight: '16px' }}
+            key={'topRow'}
+            display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+          >
             <Box
-              key={`frag__${sectionNdx}`}
+              key={'topBox'}
+              display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
             >
-              <Box
-                display='flex'
-                ml={2} mr={2} mt={'8px'}
-                key={`sectionRow__${sectionNdx}`}
-                style={{
-                  borderRadius: (this_section.isOpen ? '30px 30px 0px 0px' : '30px 30px 30px 30px'),
-                  marginBottom: (this_section.isOpen ? 0 : '8px'),
-                  backgroundColor: this_section.color,
-                  textDecoration: 'none',
-                  position: 'sticky',
-                  top: 0,
-                  zIndex: 1,
-                  opacity: 1
-                }}
-                borderTop={1}
-                borderLeft={1}
-                borderRight={1}
-                borderBottom={!this_section.isOpen ? 1 : 0}
-                justifyContent='center'
-                flexDirection='column'
-                minHeight={80}
-                onClick={async () => {
-                  reactData.sections[sectionNdx].isOpen = !reactData.sections[sectionNdx].isOpen;
-                  updateReactData({
-                    sections: reactData.sections
-                  }, true);
-                }}
+              <Typography
+                className={classes.title}
+                style={AVATextStyle({ size: 1.3, bold: true, margin: { top: 1.5, left: 1, right: 1 } })}
+                id='scroll-dialog-title'
               >
-                <Typography
-                  style={AVATextStyle({ size: 1.5, bold: true, align: 'center', color: (isDark(this_section.color) ? 'cornsilk' : 'black') })} >
-                  {this_section.section_name.trim()}
-                </Typography>
-              </Box>
-              {this_section.isOpen &&
-                <React.Fragment
-                  key={`${this_section.section_name}__callFrag`}
+                {'Select a form from this list'}
+              </Typography>
+              <TextField
+                style={{
+                  marginLeft: '25px',
+                  marginRight: '16px',
+                  marginBottom: '16px',
+                  paddingLeft: 0,
+                  paddingRight: 0,
+                  paddingBottom: '8px',
+                  width: '40%',
+                  verticalAlign: 'middle',
+                  fontSize: 0.4,
+                  minHeight: 2.8,
+                }}
+                id='List Filter'
+                value={activity_filter}
+                className={classes.freeInput}
+                onChange={handleChangeActivityFilter}
+                helperText={'Filter Forms'}
+                inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                variant={'standard'}
+                autoComplete='off'
+              />
+            </Box>
+            <PeopleIcon
+              style={{ marginRight: '32px' }}
+              onClick={() => {
+                updateReactData({ showQuickSearch: true }, true);
+              }}
+            />
+          </Box>
+
+          {/*   TOP SECTION PEOPLE WITH IMAGES
+          {reactData.assignmentList && (reactData.assignmentList.length > 0) &&
+            <Paper component={Box} variant='outlined' style={{ scrollbarWidth: 'thin' }} height={'130px'} minHeight={'fit-content'} width='100%' overflow='auto' square>
+              <List component={'nav'} >
+                <Box
+                  key={`candidates`}
+                  mx={1}
+                  display='flex'
+                  justifyContent='flex-start'
+                  alignItems='center'
+                  flexDirection='row'
                 >
-                  <Box
-                    border={1}
-                    ml={2} mr={2}
+                  {reactData.assignmentList && reactData.assignmentList.map((this_candidate, cX) => (
+                    <Box
+                      key={`candidate-${cX}`}
+                      mx={1}
+                      display='flex'
+                      justifyContent='center'
+                      alignItems='center'
+                      flexDirection='column'
+                      borderRadius={'45px 45px 45px 45px'}
+                      paddingTop={'8px'}
+                      paddingRight={'4px'}
+                      paddingBottom={'16px'}
+                      paddingLeft={'4px'}
+                      draggable={state.session?.adminAccount}
+                      onDragStart={(e) => handleDragStart(e, {
+                        person_id: this_candidate.person_id,
+                        personObj: this_candidate,
+                        listIndex: cX
+                      })}
+                      onClick={async () => {
+                        updateReactData({
+                          selectedGroup_id: false,
+                          selectedGroupRec: false,
+                          seletedGroupMembers: false,
+                          selectedPerson_id: this_candidate.person_id,
+                          selectedPersonRec: await getPerson(this_candidate.person_id),
+                          selectedPersonFirstName: this_candidate.first_name,
+                          selectedPersonLastName: this_candidate.last_name,
+                        }, true);
+                      }}
+                    >
+                      <Avatar className={classes.assignment_avatar}
+                        style={((this_candidate.person_id === reactData.selectedPerson_id) || (reactData.selectedGroup_id && (reactData.selectedGroupMembers.hasOwnProperty(this_candidate.person_id))))
+                          ? {
+                            borderRadius: '20px',
+                            boxShadow: '0 0 20px 5px rgba(255, 145, 0, 0.7)'
+                          }
+                          : {}
+                        }
+                        src={getImage(this_candidate.person_id)}
+                      >
+                        {`${this_candidate.first_name.slice(0, 1)}${this_candidate.last_name.slice(0, 1)}`}
+                      </Avatar>
+                      <React.Fragment>
+                        <Typography
+                          noWrap={true}
+                          className={classes.dragNamesFirst}
+                        >
+                          {this_candidate.first_name}
+                        </Typography>
+                        <Typography
+                          noWrap={true}
+                          className={classes.dragNamesLast}
+                        >
+                          {this_candidate.last_name}
+                        </Typography>
+                      </React.Fragment>
+                    </Box>
+                  ))}
+                </Box>
+              </List>
+            </Paper>
+          }
+          */}
+
+          <Box display='flex' flexDirection='row' style={{ flexGrow: 1, height: '100px' }}>
+
+            {/* LEFT SIDE */}
+            <Box display='flex' style={{ width: '44.5%' }}
+              flexDirection='column'
+              justifyContent='flex-start'
+              alignItems='flex-start'
+              marginLeft={'32px'}
+            >
+              <Typography
+                key={`g_client_name_header`}
+                style={AVATextStyle({
+                  size: 1.5,
+                  bold: true,
+                  overflow: 'visible',
+                  margin: { top: 1, bottom: 1 },
+                })}>
+                {`${state.session.client_name} Forms`}
+              </Typography>
+              <Paper component={Box} elevation={0} overflow='auto' square
+                style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
+              >
+                <Box display='flex' flexDirection='column'
+                  justifyContent='flex-start'
+                  alignItems='flex-start'
+                >
+                  {reactData.sortedForms.map((this_formID, listIndex) => (
+                    (OKtoShow(reactData.masterFormList[this_formID]) &&
+                      <React.Fragment key={`frag_${listIndex}`}>
+                        <Box
+                          key={`activity-list_${listIndex}_1`}
+                          onClick={async () => {
+                            await formPeople(this_formID);
+                            updateReactData({
+                              selectedForm_id: this_formID,
+                              selectedFormRec: reactData.masterFormList[this_formID],
+                              selectedFormMembers: reactData.masterFormList[this_formID].memberList,
+                              selectedPerson_id: false,
+                              selectedPersonRec: false,
+                              selectedPersonFirstName: false,
+                              selectedPersonLastName: false,
+                            }, true);
+                          }}
+                        >
+                          <Typography
+                            key={`g_text_${listIndex}_0`}
+                            style={AVATextStyle({
+                              size: 1.2,
+                              margin: { left: 0, top: 0, bottom: 0.8 },
+                            })}>
+                            {reactData.masterFormList[this_formID].form_name}
+                          </Typography>
+                        </Box>
+                      </React.Fragment>
+                    )
+                  ))}
+                </Box>
+              </Paper>
+            </Box>
+
+            {/* RIGHT SIDE */}
+            {reactData.selectedPerson_id &&
+              <Box display='flex' style={{ width: '50%' }} flexDirection='column'
+                justifyContent='flex-start'
+                alignItems='flex-start'
+                borderLeft={2}
+                paddingLeft={'32px'}
+              >
+                <Box display='flex' flexDirection='row'
+                  justifyContent='space-between'
+                  alignItems='center'
+                  onDragStart={(e) => handleDragStart(e, {
+                    person_id: reactData.selectedPerson_id,
+                    person_name: `${reactData.selectedPersonRec.name.first} ${reactData.selectedPersonRec.name.last}`,
+                  })}
+                  style={{ width: '100%' }}
+                >
+                  <Box display='flex' flexDirection='row'
+                    flexGrow={1}
+                    justifyContent='flex-start'
+                    alignItems='center'
                   >
-                    {renderSection(this_section.component_name)}
+                    <Typography
+                      key={`g_text_end-last_name`}
+                      draggable={true}
+                      style={Object.assign({},
+                        AVATextStyle({
+                          size: 1.5,
+                          overflow: 'visible',
+                          bold: true,
+                          margin: { top: 1, bottom: 1, right: 0 },
+                        }), { textWrap: 'nowrap' }
+                      )}
+                    >
+                      {`${reactData.selectedPersonRec.name.first} ${reactData.selectedPersonRec.name.last}`}
+                    </Typography>
+                    <Typography
+                      key={`g_text_end-last_tag`}
+                      style={Object.assign({},
+                        AVATextStyle({
+                          size: 1.5,
+                          overflow: 'visible',
+                          bold: true,
+                        }), { textWrap: 'nowrap' }
+                      )}
+                    >
+                      {`'${reactData.selectedPersonRec.name.last.trim().endsWith('s') ? '' : 's'} Forms`}
+                    </Typography>
                   </Box>
                   <Box
-                    display='flex'
-                    border={1}
-                    style={{
-                      borderRadius: '0px 0px 30px 30px',
-                      backgroundColor: this_section.color,
-                      textDecoration: 'none'
-                    }}
-                    ml={2} mr={2} mb={1.5}
-                    onClick={async () => {
-                      reactData.sections[sectionNdx].isOpen = !reactData.sections[sectionNdx].isOpen;
+                    key={'my_image_box'}
+                    style={{ marginRight: '16px' }}
+                    onClick={() => {
                       updateReactData({
-                        sections: reactData.sections
+                        viewPeopleMaintenance: reactData.selectedPerson_id
                       }, true);
                     }}
-                    justifyContent='center'
-                    flexDirection='column'
-                    minHeight={30}
-                    height={30}
-                  />
-                </React.Fragment>
-              }
-            </Box>
-          )
-        ))}
-      </Paper>
+                  >
+                    <img
+                      key={'my_image'}
+                      draggable={true}
+                      className={classes.myImageArea}
+                      alt={''}
+                      onError={onImageError}
+                      src={getImage(reactData.selectedPerson_id)}
+                    />
+                    <SettingsIcon style={{ marginLeft: '-26px' }} />
+                  </Box >
+                </Box>
+                <Paper component={Box} width='100%' elevation={0} overflow='auto' square
+                  style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
+                >
+                  <Box display='flex' flexDirection='column'
+                    justifyContent='flex-start'
+                    alignItems='flex-start'
+                  >
+                    {reactData.masterPeopleList.hasOwnProperty(reactData.selectedPerson_id) &&
+                      Object.keys(reactData.masterPeopleList[reactData.selectedPerson_id]).map((this_form, gX) => (
+                        <Typography
+                          key={`g_text_end_group-${gX}`}
+                          style={AVATextStyle({
+                            size: 1.2,
+                            margin: { top: 0, bottom: 0.8 },
+                            color: ((!reactData.masterPeopleList.hasOwnProperty(reactData.selectedPerson_id))
+                              ? 'red'
+                              : (!reactData.masterPeopleList[reactData.selectedPerson_id].hasOwnProperty(this_form)
+                                ? 'red'
+                                : ((reactData.masterPeopleList[reactData.selectedPerson_id][this_form].status === 'completed')
+                                  ? 'green'
+                                  : ((reactData.masterPeopleList[reactData.selectedPerson_id][this_form].status === 'not started')
+                                    ? 'red'
+                                    : 'orange')
+                                )))
+                          })}
+                          onClick={async () => {
+                            await formPeople(this_form);
+                            updateReactData({
+                              selectedForm_id: this_form,
+                              selectedFormRec: reactData.masterFormList[this_form],
+                              selectedFormMembers: reactData.masterFormList[this_form].memberList,
+                              selectedPerson_id: false,
+                              selectedPersonRec: false,
+                            }, true);
+                          }}
+                        >
+                          {`${reactData.masterFormList[this_form].form_name}`}
+                        </Typography>
+                      ))}
+                  </Box>
+                </Paper>
+                <SendIcon
+                  classes={{ root: classes.rowButton }}
+                  size='medium'
+                  style={{ alignSelf: 'center' }}
+                  aria-label="trash_icon"
+                  onDragOver={(e) => handleDragOver(e)}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
+                    let sendMessage = [];
+                    if (draggedFrom.hasOwnProperty('personObj')) {
+                      sendMessage.push({
+                        person_id: draggedFrom.personObj.person_id,
+                        person_name: `${draggedFrom.personObj.name.first} ${draggedFrom.personObj.name.last}`
+                      });
+                    }
+                    else {
+                      sendMessage.push({
+                        group_id: draggedFrom.group_id,
+                        group_name: draggedFrom.groupObj.group_name
+                      });
+                    }
+                    updateReactData({
+                      sendMessage
+                    }, true);
+                  }}
+                  edge="start"
+                />
+              </Box>
+            }
+            {reactData.selectedForm_id &&
+              <Box display='flex' style={{ width: '50%' }} flexDirection='column'
+                justifyContent='flex-start'
+                alignItems='flex-start'
+                borderLeft={2}
+                paddingLeft={'32px'}
+              >
 
-      <Box
-        display='flex'
-        flexDirection='row'
-        alignItems={'center'}
-        marginTop={'16px'}
-        marginBottom={'16px'}
-        justifyContent={'space-around'}
-      >
+                <Box display='flex' flexDirection='row'
+                  justifyContent='flex-start'
+                  alignItems='center'
+                >
+                  <Typography
+                    key={`g_name`}
+                    style={AVATextStyle({
+                      size: 1.5,
+                      overflow: 'visible',
+                      bold: true,
+                      margin: { top: 1, bottom: 1 },
+                    })}>
+                    {`${reactData.masterFormList[reactData.selectedForm_id].form_name}`}
+                  </Typography>
+                </Box>
+                <Paper component={Box} width='100%' elevation={0} overflow='auto' square
+                  style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
+                >
+                  <Box display='flex' flexDirection='column'
+                    justifyContent='flex-start'
+                    alignItems='flex-start'
+                  >
+                    {reactData.masterFormList[reactData.selectedForm_id] && Object.keys(reactData.masterFormList[reactData.selectedForm_id].memberList).sort((a, b) => {
+                      return (reactData.masterFormList[reactData.selectedForm_id].memberList[a].person_name > reactData.masterFormList[reactData.selectedForm_id].memberList[b].person_name) ? 1 : -1;
+                    }).map((this_person, cX) => (
+                      <Typography
+                        key={`g_textpeople-${cX}`}
+                        style={AVATextStyle({
+                          overflow: 'visible',
+                          size: 1.2,
+                          margin: { top: 0, bottom: 0.8 },
+                          color: ((!reactData.masterPeopleList.hasOwnProperty(this_person))
+                            ? 'red'
+                            : (!reactData.masterPeopleList[this_person].hasOwnProperty(reactData.selectedForm_id)
+                              ? 'red'
+                              : ((reactData.masterPeopleList[this_person][reactData.selectedForm_id].status === 'completed')
+                                ? 'green'
+                                : ((reactData.masterPeopleList[this_person][reactData.selectedForm_id].status === 'not started')
+                                  ? 'red'
+                                  : 'orange')
+                              )))
+                        })}
+                        onClick={async () => {
+                          updateReactData({
+                            selectedForm_id: false,
+                            selectedFormRec: false,
+                            selectedFormMembers: false,
+                            selectedPerson_id: this_person,
+                            selectedPersonRec: await getPerson(this_person),
+                          }, true);
+                          await personForms(this_person);
+                        }}
+                        draggable={state.session?.adminAccount}
+                        onDragStart={(e) => handleDragStart(e, {
+                          person_id: this_person,
+                          person_name: `${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`
+                        })}
+                      >
+                        {`${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`}
+                      </Typography>
+                    ))}
+                  </Box>
+                </Paper>
+                <SendIcon
+                  classes={{ root: classes.rowButton }}
+                  size='medium'
+                  style={{ alignSelf: 'center' }}
+                  aria-label="trash_icon"
+                  onDragOver={(e) => handleDragOver(e)}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
+                    let sendMessage = [];
+                    sendMessage.push({
+                      person_id: draggedFrom.person_id,
+                      person_name: draggedFrom.person_name
+                    });
+                    updateReactData({
+                      sendMessage
+                    }, true);
+                  }}
+                  edge="start"
+                />
+              </Box>
+            }
+          </Box>
+
+        </React.Fragment >
+      }
+      {
+        reactData.showQuickSearch &&
+        <QuickSearch
+          reactData={reactData}
+          updateReactData={updateReactData}
+          options={{
+            pickOne: true,
+            showAll: true
+          }}
+          onClose={async (selections) => {
+            if (selections && (selections.length > 0)) {
+              updateReactData({
+                showQuickSearch: false,
+                selectedForm_id: false,
+                selectedFormRec: false,
+                selectedFormMembers: false,
+                selectedPerson_id: selections[0].person_id,
+                selectedPersonRec: await getPerson(selections[0].person_id,),
+              }, true);
+              await personForms(selections[0].person_id);
+            }
+            else {
+              updateReactData({
+                showQuickSearch: false,
+              }, true);
+            }
+          }}
+        />
+      }
+      {
+        reactData.sendMessage &&
+        <MessageForm
+          pPerson={state.session.person_id}
+          pClient={state.session.client_id}
+          pMessageList={[]}
+          pSession={state.session}
+          onReset={() => {
+            updateReactData({
+              sendMessage: false
+            }, true);
+          }}
+          options={{
+            newMessage: reactData.sendMessage
+          }}
+        />
+      }
+      {
+        reactData.viewPeopleMaintenance &&
+        <PeopleMaintenance
+          person_id={reactData.viewPeopleMaintenance}
+          initialValues={{ color: 'green' }}
+          options={{}}
+          onClose={() => {
+            updateReactData({
+              viewPeopleMaintenance: false
+            }, true);
+          }}
+        />
+      }
+      <DialogActions className={classes.buttonArea} >
         <Button
           className={AVAClass.AVAButton}
           style={{ backgroundColor: 'red', color: 'white' }}
           size='small'
+          startIcon={<CloseIcon fontSize="small" />}
           onClick={() => {
-            if (reactData.OKtoSave) {
-              handleAbort();
-            }
-            else {
-              onClose({});
-            }
+            onClose();
           }}
         >
-          {'Exit'}
+          {'Done'}
         </Button>
-        {reactData.OKtoSave ?
-          (isEmpty(reactData.errorList) ?
-            <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-              <Button
-                onClick={async () => {
-                  const result = await saveChanges();
-                  updateReactData({
-                    OKtoSave: !result
-                  }, true);
-                }}
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'lightcyan', color: 'black' }}
-                size='small'
-              >
-                {reactData.isMobile ? 'Save' : 'Save/Continue'}
-              </Button>
-              <Button
-                onClick={async () => {
-                  let result = await saveChanges();
-                  if (result) {
-                    onClose({
-                      newName: reactData.current.customizationRecs.client_name.customization_value
-                    });
-                  }
-                }}
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'green', color: 'white' }}
-                size='small'
-              >
-                {'Save/Finish'}
-              </Button>
-            </Box>
-            :
-            <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-              <Typography style={{ color: 'red', bold: true }}>
-                {(Object.keys(reactData.errorList).length === 1)
-                  ? `${reactData.errorList[Object.keys(reactData.errorList)[0]].errorMessage}`
-                  : `${Object.keys(reactData.errorList).length} issues`
-                }
-              </Typography>
-            </Box>
-          )
-          :
-          <Box display='flex' flexDirection='column' justifyContent='flex-end' alignItems='center'>
-            <Typography style={{ size: 1.2, bold: true }}>
-              {reactData.current.formRec.form_name}
-            </Typography>
-            {(reactData.mode === 'view') &&
-              <Typography style={{ size: 1.2, bold: true }}>
-                {`** View only **`}
-              </Typography>
-            }
-            {(reactData.mode === 'view') &&
-              <Typography style={{ marginTop: 0, size: 1 }}>
-                {`No Changes allowed`}
-              </Typography>
-            }
-          </Box>
-        }
-      </Box>
-
-      {reactData.alert &&
+      </DialogActions>;
+      {
+        reactData.alert &&
         <Snackbar
           open={!!reactData.alert}
           px={3}

@@ -766,6 +766,14 @@ export default ({
           onAbort={onClose}
         />
       );
+    case 'manage_forms':
+      return (
+        // defaults, focusAt, onCancel, onSelect, onRefresh 
+        <FormManagement
+          defaults={defaultObject}
+          onClose={onClose}
+        />
+      );
     case 'carousel':
     case 'in_home':
       return (
