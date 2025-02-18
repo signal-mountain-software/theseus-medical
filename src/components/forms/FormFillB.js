@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, sentenceCase, listFromArray, array_in_array, recordExists, isObject, uuid } from '../../util/AVAUtilities';
+import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, sentenceCase, listFromArray, array_in_array, recordExists, isObject, uuid, isMobile } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { formatPhone, getPerson, makeName } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
@@ -188,8 +188,8 @@ export default ({ request = {}, onClose }) => {
     lastActiveTime: nowObj,
     version: 1,
     idleState: false,
-    //   pertains_to: options.person_id || options.family_id || state.session.patient_id
-    pertains_to: options.person_id || options.family_id
+    pertains_to: options.person_id,
+    clientSampleMode: (!options.person_id || (options.person_id === state.session.client_id))
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -660,7 +660,12 @@ export default ({ request = {}, onClose }) => {
       peopleRec: reactData.peopleRec,
       formRec
     }, false);
-    pertains_to_name = reactData.peopleRec[pertains_to].display_name;
+    if (reactData.clientSampleMode) {
+      pertains_to_name = state.session.client_name;
+    }
+    else {
+      pertains_to_name = reactData.peopleRec[pertains_to].display_name;
+    }
     if (!pertains_to_name && (reactData.peopleRec[pertains_to] && reactData.peopleRec[pertains_to].hasOwnProperty('name'))) {
       pertains_to_name = (`${reactData.peopleRec[pertains_to]?.name.first} ${reactData.peopleRec[pertains_to]?.name.last}`).trim();
     }
@@ -1280,7 +1285,7 @@ export default ({ request = {}, onClose }) => {
               && ((signatureRef[reactData.fields[this_field].options.sigRefNumber].current) && (signatureRef[reactData.fields[this_field].options.sigRefNumber].current.isEmpty())))
               || ((reactData.fields[this_field].type !== 'signature')
                 && (isEmpty(reactData.fields[this_field].value)))) {
-              if (suppressSection) {
+              if (!suppressSection) {
                 activeErrors++;
                 reactData.fields[this_field].errorMessage = `${reconcilePrompt({
                   rawValue: reactData.fields[this_field].prompt.value,
@@ -1301,7 +1306,7 @@ export default ({ request = {}, onClose }) => {
             }
             if (reactData.fields[this_field].selectionObj.min) {
               if (isEmpty(mySelections)) {
-                if (suppressSection) {
+                if (!suppressSection) {
                   activeErrors++;
                   reactData.fields[this_field].errorMessage = `Please make a selection for ${reconcilePrompt({
                     rawValue: reactData.fields[this_field].prompt.value,
@@ -1313,7 +1318,7 @@ export default ({ request = {}, onClose }) => {
                 errorsOnForm++;
               }
               else if (mySelections.length < reactData.fields[this_field].selectionObj.min) {
-                if (suppressSection) {
+                if (!suppressSection) {
                   activeErrors++;
                   reactData.fields[this_field].errorMessage = `You must make at least ${reactData.fields[this_field].selectionObj.min} selections for ${reconcilePrompt({
                     rawValue: reactData.fields[this_field].prompt.value,
@@ -1555,7 +1560,10 @@ export default ({ request = {}, onClose }) => {
       save_type: url ? 'printed' : (final ? 'save_final' : (timeout ? 'on_timeout' : 'in_process')),
       url
     });
-
+    response.location = url;
+    response.document_status = docData.status;
+    response.status = docData.status;
+    response.document_id = docData.document_id;
     if (final && reactData.formRec?.options?.messaging) {
       // conditional based on responses should be allowed here
       // in user lists, user can be a person: person_id, group: group_id, or author: true
@@ -1571,9 +1579,9 @@ export default ({ request = {}, onClose }) => {
             this_instruction.send_message.subject = `Form update - status is ${docData.status}`;
           }
           else {
-            this_instruction.send_message.subject = await deepResolve(this_instruction.send_message.subject, reactData.peopleRec[reactData.pertains_to]);  
+            this_instruction.send_message.subject = await deepResolve(this_instruction.send_message.subject, reactData.peopleRec[reactData.pertains_to]);
           }
-          this_instruction.send_message.text = await deepResolve(this_instruction.send_message.text, reactData.peopleRec[reactData.pertains_to]);  
+          this_instruction.send_message.text = await deepResolve(this_instruction.send_message.text, reactData.peopleRec[reactData.pertains_to]);
           await sendMessage(this_instruction.send_message);
         }
         if (this_instruction.hasOwnProperty('instruction') && (this_instruction.instruction === 'create_form')) {
@@ -1622,13 +1630,11 @@ export default ({ request = {}, onClose }) => {
     if (send_instructions.attach) {
       PostOfficeRec.attachments = send_instructions.url;
     }
-    let goodPost = true;
     await dbClient
       .put(PostOfficeRec)
       .promise()
       .catch(error => {
         cl(`Error writing to Post Office; error is ${error}`);
-        goodPost = false;
       });
     return;
   }
@@ -2447,7 +2453,7 @@ export default ({ request = {}, onClose }) => {
               {'Exit'}
             </Button>
             <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-              {!reactData.formRec?.options?.noSaveContinue &&
+              {!reactData.formRec?.options?.noSaveContinue && !reactData.clientSampleMode &&
                 <Button
                   onClick={async () => {
                     const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
@@ -2460,19 +2466,21 @@ export default ({ request = {}, onClose }) => {
                   style={{ backgroundColor: 'lightcyan', color: 'black' }}
                   size='small'
                 >
-                  {'Save/Continue'}
+                  {isMobile() ? 'Save' : 'Save/Continue'}
                 </Button>
               }
-              <Button
-                onClick={async () => {
-                  await handleReview();
-                }}
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'green', color: 'white' }}
-                size='small'
-              >
-                {'Finish'}
-              </Button>
+              {!reactData.clientSampleMode &&
+                <Button
+                  onClick={async () => {
+                    await handleReview();
+                  }}
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'green', color: 'white' }}
+                  size='small'
+                >
+                  {'Finish'}
+                </Button>
+              }
               <PrintIcon
                 classes={{ root: classes.rowButton }}
                 size='medium'
@@ -2482,18 +2490,20 @@ export default ({ request = {}, onClose }) => {
                 }}
                 edge="start"
               />
-              <CloudUploadIcon
-                classes={{ root: classes.rowButton }}
-                style={{ marginLeft: '16px' }}
-                key={`radio-button_upload`}
-                id={`radio-button_upload`}
-                size='medium'
-                onClick={() => {
-                  updateReactData({
-                    stage: 'upload'
-                  }, true);
-                }}
-              />
+              {!reactData.clientSampleMode &&
+                <CloudUploadIcon
+                  classes={{ root: classes.rowButton }}
+                  style={{ marginLeft: '16px' }}
+                  key={`radio-button_upload`}
+                  id={`radio-button_upload`}
+                  size='medium'
+                  onClick={() => {
+                    updateReactData({
+                      stage: 'upload'
+                    }, true);
+                  }}
+                />
+              }
             </Box>
           </Box>
         </React.Fragment>

@@ -8,8 +8,10 @@ import QuickSearch from '../sections/QuickSearch';
 import { getPerson, getImage } from '../../util/AVAPeople';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import { addDays, makeDate } from '../../util/AVADateTime';
+import FormFillB from '../forms/FormFillB';
 
-import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography } from '@material-ui/core';
+import { Snackbar, Paper, Box, Dialog, DialogActions, Button, Typography } from '@material-ui/core';
+import Select from "react-dropdown-select";
 import { Alert, AlertTitle } from '@material-ui/lab/';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -20,7 +22,11 @@ import PeopleIcon from '@material-ui/icons/People';
 import SettingsIcon from '@material-ui/icons/Settings';
 import SendIcon from '@material-ui/icons/Send';
 
-import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
+import CheckCircleIcon from '@material-ui/icons/CheckCircle';
+import EditIcon from '@material-ui/icons/Edit';
+import VisibilityIcon from '@material-ui/icons/Visibility';
+
+import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import MessageForm from '../forms/MessageForm';
 
 const useStyles = makeStyles(theme => ({
@@ -104,9 +110,6 @@ export default ({ defaults, onClose }) => {
 
   const { state } = useSession();
 
-  const [activity_filter, setActivityFilter] = React.useState('');
-  const [lower_activity_filter, setLowerFilter] = React.useState('');
-
   const [reactData, setReactData] = React.useState({
     alert: false,
     window_width: 1,
@@ -119,17 +122,35 @@ export default ({ defaults, onClose }) => {
     assignmentView: defaults.assignmentView,
     viewOnly: defaults.viewOnly,
 
-
-
-
+    activity_filter: '',
+    lower_activity_filter: null,
+    filterComplete: false,
+    filterNotStarted: false,
+    filterInProcess: false,
+    default_filters: [{
+      value: 'completed',
+      label: 'Complete'
+    },
+    {
+      value: 'in_process',
+      label: 'In Process'
+    },
+    {
+      value: 'pending',
+      label: 'Pending'
+    },
+    {
+      value: 'not started',
+      label: 'Not Started'
+    }],
     anchorEl: null,
     building: 'not started',
     defaults,
     denseView: false,
     display_name: state.patient?.name?.first || 'My',
     event_being_edited: false,
-    filterTextLower: null,
     isDarkMode: useMediaQuery('(prefers-color-scheme: dark)'),
+    isEditing: false,
     loading: false,
     masterFormList: {},
     masterPeopleList: {},
@@ -188,21 +209,34 @@ export default ({ defaults, onClose }) => {
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
-  let user_fontSize = AVADefaults({ fontSize: 'get' });
-
-  const handleChangeActivityFilter = event => {
-    setActivityFilter(event.target.value);
-    setLowerFilter(event.target.value.toLowerCase());
+  const handleChangeActivityFilter = selectedValue => {
+    let lower = selectedValue.value.toLowerCase();
+    updateReactData({
+      activity_filter: selectedValue.label,
+      lower_activity_filter: lower,
+      filterComplete: lower.includes('complete'),
+      filterNotStarted: lower.includes('not start'),
+      filterInProcess: lower.includes('process'),
+      filterPending: lower.includes('pending')
+    }, true);
   };
 
-  function OKtoShow(inObj) {
-    if (!lower_activity_filter) { return true; }
-    if (inObj.hasOwnProperty('group_name')) {
-      if (inObj.group_name.toLowerCase().includes(lower_activity_filter)) {
-        return true;
-      }
+  function OKtoShow(this_person, this_form, display_data) {
+    if (!reactData.lower_activity_filter) { return true; }
+    if (reactData.filterComplete) {
+      return (reactData.masterPeopleList[this_person]?.[this_form]?.status === 'completed');
     }
-    return (inObj.group_id.toLowerCase().includes(lower_activity_filter));
+    else if (reactData.filterInProcess) {
+      return (reactData.masterPeopleList[this_person]?.[this_form]?.status === 'in_process');
+    }
+    else if (reactData.filterPending) {
+      return (reactData.masterPeopleList[this_person]?.[this_form]?.status === 'pending');
+    }
+    else if (reactData.filterNotStarted) {
+      return (!reactData.masterPeopleList[this_person].hasOwnProperty(this_form)
+        || (reactData.masterPeopleList[this_person]?.[this_form]?.status === 'not started'));
+    }
+    return (display_data.toLowerCase().includes(reactData.lower_activity_filter));
   };
 
   async function personForms(this_person) {
@@ -215,7 +249,7 @@ export default ({ defaults, onClose }) => {
         };
         if (!reactData.masterFormList[this_form].hasOwnProperty('memberList')) {
           reactData.masterFormList[this_form].memberList = {};
-        } 
+        }
         reactData.masterFormList[this_form].memberList[this_person] = {
           person_id: reactData.selectedPerson_id,
           person_name: `${reactData.selectedPersonRec.name.first} ${reactData.selectedPersonRec.name.last}`,
@@ -265,9 +299,12 @@ export default ({ defaults, onClose }) => {
     if (!reactData.masterFormList[this_doc.form_type].memberList.hasOwnProperty(this_doc.pertains_to)) {
       reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to] = {
         person_id: this_doc.pertains_to,
-        person_name: `${reactData.selectedPersonRec.name.first} ${reactData.selectedPersonRec.name.last}`,
-        person_first: reactData.selectedPersonRec.name.first,
-        person_last: reactData.selectedPersonRec.name.last,
+        //person_name: `${reactData.selectedPersonRec.name.first} ${reactData.selectedPersonRec.name.last}`,
+        //person_first: reactData.selectedPersonRec.name.first,
+        //person_last: reactData.selectedPersonRec.name.last,
+        person_name: `${this_doc.pertains_to}`,
+        person_first: `${this_doc.pertains_to}`,
+        person_last: `${this_doc.pertains_to}`,
         wipDocs: [],
         assignedDocs: [],
         completedDocs: [],
@@ -424,6 +461,7 @@ export default ({ defaults, onClose }) => {
       });
     if (recordExists(allForms)) {
       for (let formRec of allForms.Items) {
+        if (!formRec.active) { continue; }
         // due_by works like this...
         //   if due_by is single date and the date is in the future, use that date
         //   if due_by is an array of dates, take the nearest date that is in the future
@@ -513,7 +551,7 @@ export default ({ defaults, onClose }) => {
         borderRadius: ('25px 25px 25px 25px'),
       }}
     >
-      {Object.keys(reactData.masterFormList).length === 0
+      {(Object.keys(reactData.masterFormList).length === 0)
         ?
         <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
           <Typography
@@ -525,17 +563,17 @@ export default ({ defaults, onClose }) => {
               paddingTop: 3,
             }}
           >
-            {`No Forms to show for ${state.session.user_display_name}`}
+            {reactData.formsInitialized ? `No Forms to show for ${state.session.user_display_name}` : 'Loading'}
           </Typography>
         </Box>
         :
         <React.Fragment>
           <Box style={{ borderRadius: '30px 30px 30px 30px', marginRight: '16px' }}
-            key={'topRow'}
+            key={'topRow'} height={'120px'}
             display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
           >
             <Box
-              key={'topBox'}
+              key={'topBox'} flexGrow={1}
               display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
             >
               <Typography
@@ -545,29 +583,80 @@ export default ({ defaults, onClose }) => {
               >
                 {'Select a form from this list'}
               </Typography>
-              <TextField
-                style={{
-                  marginLeft: '25px',
-                  marginRight: '16px',
-                  marginBottom: '16px',
-                  paddingLeft: 0,
-                  paddingRight: 0,
-                  paddingBottom: '8px',
-                  width: '40%',
-                  verticalAlign: 'middle',
-                  fontSize: 0.4,
-                  minHeight: 2.8,
-                }}
-                id='List Filter'
-                value={activity_filter}
-                className={classes.freeInput}
-                onChange={handleChangeActivityFilter}
-                helperText={'Filter Forms'}
-                inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                variant={'standard'}
-                autoComplete='off'
-              />
+
+              <React.Fragment>
+                <Box
+                  key={`selectBox_filterdrop`}
+                  display='flex' flexGrow={1} flexDirection='column'
+                  pt={1} pb={1} marginLeft={'32px'} width={'40%'}
+                >
+                  {(reactData.selectedPerson_id || reactData.selectedForm_id) &&
+                    <React.Fragment>
+                      <Select
+                        options={reactData.default_filters}
+                        searchBy={'label'}
+                        style={{
+                          fontSize: '0.8rem',
+                          marginLeft: -5,
+                          marginBottom: -4,
+                          marginTop: 1,
+                          borderWidth: 0
+                        }}
+                        dropdownHandle={true}
+                        variant={'standard'}
+                        dropdownPosition={'auto'}
+                        value={reactData.activity_filter}
+                        clearable={true}
+                        clearOnSelect={false}
+                        placeholder={reactData.activity_filter}
+                        clearOnBlur={false}
+                        key={`selectBox_filterdrop_select${reactData.lower_activity_filter}`}
+                        searchable={true}
+                        multi={false}
+                        closeOnClickInput={true}
+                        closeOnSelect={true}
+                        create={true}
+                        keepSelectedInList={true}
+                        noDataLabel={''}
+                        onInputChange={(values) => {
+                          if (values.length === 0) {
+                            handleChangeActivityFilter({ value: '', label: '' });
+                          }
+                          else {
+                            handleChangeActivityFilter(values[0]);
+                          }
+                        }}
+                        onChange={(values) => {
+                          if (values.length === 0) {
+                            handleChangeActivityFilter({ value: '', label: '' });
+                          }
+                          else {
+                            handleChangeActivityFilter(values[0]);
+                          }
+                        }}
+                      />
+                      <Box display='flex'
+                        flexDirection='row'
+                        minWidth={'100%'}
+                        paddingTop={'4px'}
+                        key={`select_wrapper_box`}
+                        borderTop={1}
+                      >
+                        <Typography
+                          style={AVATextStyle({
+                            size: 0.8,
+                            margin: { left: 0, top: 0, bottom: 0.5 },
+                            color: 'black',
+                            opacity: '54%',
+                          })}
+                        >
+                          {`Filter`}
+                        </Typography>
+                      </Box>
+                    </React.Fragment>
+                  }
+                </Box>
+              </React.Fragment>
             </Box>
             <PeopleIcon
               style={{ marginRight: '32px' }}
@@ -576,83 +665,6 @@ export default ({ defaults, onClose }) => {
               }}
             />
           </Box>
-
-          {/*   TOP SECTION PEOPLE WITH IMAGES
-          {reactData.assignmentList && (reactData.assignmentList.length > 0) &&
-            <Paper component={Box} variant='outlined' style={{ scrollbarWidth: 'thin' }} height={'130px'} minHeight={'fit-content'} width='100%' overflow='auto' square>
-              <List component={'nav'} >
-                <Box
-                  key={`candidates`}
-                  mx={1}
-                  display='flex'
-                  justifyContent='flex-start'
-                  alignItems='center'
-                  flexDirection='row'
-                >
-                  {reactData.assignmentList && reactData.assignmentList.map((this_candidate, cX) => (
-                    <Box
-                      key={`candidate-${cX}`}
-                      mx={1}
-                      display='flex'
-                      justifyContent='center'
-                      alignItems='center'
-                      flexDirection='column'
-                      borderRadius={'45px 45px 45px 45px'}
-                      paddingTop={'8px'}
-                      paddingRight={'4px'}
-                      paddingBottom={'16px'}
-                      paddingLeft={'4px'}
-                      draggable={state.session?.adminAccount}
-                      onDragStart={(e) => handleDragStart(e, {
-                        person_id: this_candidate.person_id,
-                        personObj: this_candidate,
-                        listIndex: cX
-                      })}
-                      onClick={async () => {
-                        updateReactData({
-                          selectedGroup_id: false,
-                          selectedGroupRec: false,
-                          seletedGroupMembers: false,
-                          selectedPerson_id: this_candidate.person_id,
-                          selectedPersonRec: await getPerson(this_candidate.person_id),
-                          selectedPersonFirstName: this_candidate.first_name,
-                          selectedPersonLastName: this_candidate.last_name,
-                        }, true);
-                      }}
-                    >
-                      <Avatar className={classes.assignment_avatar}
-                        style={((this_candidate.person_id === reactData.selectedPerson_id) || (reactData.selectedGroup_id && (reactData.selectedGroupMembers.hasOwnProperty(this_candidate.person_id))))
-                          ? {
-                            borderRadius: '20px',
-                            boxShadow: '0 0 20px 5px rgba(255, 145, 0, 0.7)'
-                          }
-                          : {}
-                        }
-                        src={getImage(this_candidate.person_id)}
-                      >
-                        {`${this_candidate.first_name.slice(0, 1)}${this_candidate.last_name.slice(0, 1)}`}
-                      </Avatar>
-                      <React.Fragment>
-                        <Typography
-                          noWrap={true}
-                          className={classes.dragNamesFirst}
-                        >
-                          {this_candidate.first_name}
-                        </Typography>
-                        <Typography
-                          noWrap={true}
-                          className={classes.dragNamesLast}
-                        >
-                          {this_candidate.last_name}
-                        </Typography>
-                      </React.Fragment>
-                    </Box>
-                  ))}
-                </Box>
-              </List>
-            </Paper>
-          }
-          */}
 
           <Box display='flex' flexDirection='row' style={{ flexGrow: 1, height: '100px' }}>
 
@@ -681,10 +693,46 @@ export default ({ defaults, onClose }) => {
                   alignItems='flex-start'
                 >
                   {reactData.sortedForms.map((this_formID, listIndex) => (
-                    (OKtoShow(reactData.masterFormList[this_formID]) &&
-                      <React.Fragment key={`frag_${listIndex}`}>
-                        <Box
-                          key={`activity-list_${listIndex}_1`}
+                    <React.Fragment key={`frag_${listIndex}`}>
+                      <Box display='flex' flexDirection='row'
+                        key={`form_master_list_${listIndex}`}
+                        justifyContent='flex-start'
+                        alignItems='center'
+                        style={AVATextStyle({
+                          size: 1.2,
+                          margin: { top: 0, bottom: 0.8 }
+                        })}
+                      >
+                        <VisibilityIcon
+                          key={`view-button_form${listIndex}edit`}
+                          onClick={() => {
+                            updateReactData({
+                              selectedForm_id: false,
+                              selectedFormRec: false,
+                              selectedFormMembers: false,
+                              selectedPerson_id: false,
+                              selectedPersonRec: false,
+                              activity_filter: '',
+                              lower_activity_filter: '',
+                              filterComplete: false,
+                              filterNotStarted: false,
+                              filterInProcess: false,
+                              isEditing: {
+                                calledFrom: 'master',
+                                person_id: state.session.client_id,
+                                form_id: this_formID,
+                                document_id: 'new'
+                              }
+                            }, true);
+                          }}
+                          style={AVATextStyle({
+                            size: 1.5,
+                            margin: { right: 0.5 },
+                          })}
+                          size='small'
+                        />
+                        <Typography
+                          key={`g_text_${listIndex}_0`}
                           onClick={async () => {
                             await formPeople(this_formID);
                             updateReactData({
@@ -695,20 +743,21 @@ export default ({ defaults, onClose }) => {
                               selectedPersonRec: false,
                               selectedPersonFirstName: false,
                               selectedPersonLastName: false,
+                              activity_filter: '',
+                              lower_activity_filter: '',
+                              filterComplete: false,
+                              filterNotStarted: false,
+                              filterInProcess: false
                             }, true);
                           }}
-                        >
-                          <Typography
-                            key={`g_text_${listIndex}_0`}
-                            style={AVATextStyle({
-                              size: 1.2,
-                              margin: { left: 0, top: 0, bottom: 0.8 },
-                            })}>
-                            {reactData.masterFormList[this_formID].form_name}
-                          </Typography>
-                        </Box>
-                      </React.Fragment>
-                    )
+                          style={AVATextStyle({
+                            size: 1.2,
+                            margin: { left: 0, top: 0 },
+                          })}>
+                          {reactData.masterFormList[this_formID].form_name}
+                        </Typography>
+                      </Box>
+                    </React.Fragment>
                   ))}
                 </Box>
               </Paper>
@@ -787,40 +836,106 @@ export default ({ defaults, onClose }) => {
                   style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
                 >
                   <Box display='flex' flexDirection='column'
+                    key={`form_column`}
                     justifyContent='flex-start'
                     alignItems='flex-start'
                   >
                     {reactData.masterPeopleList.hasOwnProperty(reactData.selectedPerson_id) &&
                       Object.keys(reactData.masterPeopleList[reactData.selectedPerson_id]).map((this_form, gX) => (
-                        <Typography
-                          key={`g_text_end_group-${gX}`}
-                          style={AVATextStyle({
-                            size: 1.2,
-                            margin: { top: 0, bottom: 0.8 },
-                            color: ((!reactData.masterPeopleList.hasOwnProperty(reactData.selectedPerson_id))
-                              ? 'red'
-                              : (!reactData.masterPeopleList[reactData.selectedPerson_id].hasOwnProperty(this_form)
-                                ? 'red'
-                                : ((reactData.masterPeopleList[reactData.selectedPerson_id][this_form].status === 'completed')
-                                  ? 'green'
-                                  : ((reactData.masterPeopleList[reactData.selectedPerson_id][this_form].status === 'not started')
+                        (OKtoShow(reactData.selectedPerson_id, this_form, reactData.masterFormList[this_form].form_name) &&
+                          <Box display='flex' flexDirection='row'
+                            key={`form_row_list_${gX}`}
+                            justifyContent='flex-start'
+                            alignItems='center'
+                            style={AVATextStyle({
+                              size: 1.2,
+                              margin: { top: 0, bottom: 0.8 }
+                            })}
+                          >
+                            {(reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status === 'completed')
+                              ?
+                              <CheckCircleIcon
+                                key={`radio-button_form${gX}off`}
+                                id={`radio-button_form${gX}off`}
+                                style={AVATextStyle({
+                                  color: 'green',
+                                  size: 1.5,
+                                  margin: { right: 0.5 },
+                                })}
+                                onClick={() => {
+                                  let nowJ = new Date().getTime();
+                                  window.open(`${reactData.masterFormList[this_form].memberList[reactData.selectedPerson_id].completedDocs[0].location}?qt=${nowJ.toString()}`
+                                    , reactData.masterFormList[this_form].memberList[reactData.selectedPerson_id].completedDocs[0].location);
+                                }}
+                                size='small'
+                              />
+                              :
+                              <EditIcon
+                                key={`radio-button_form${gX}edit`}
+                                id={`radio-button_form${gX}edit`}
+                                onClick={() => {
+                                  updateReactData({
+                                    isEditing: {
+                                      calledFrom: 'people',
+                                      person_id: reactData.selectedPerson_id,
+                                      form_id: this_form,
+                                      document_id: (reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.document_id || 'new')
+                                    }
+                                  }, true);
+                                }}
+                                style={AVATextStyle({
+                                  size: 1.5,
+                                  margin: { right: 0.5 },
+                                  color: ((reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status === 'not started')
                                     ? 'red'
                                     : 'orange')
-                                )))
-                          })}
-                          onClick={async () => {
-                            await formPeople(this_form);
-                            updateReactData({
-                              selectedForm_id: this_form,
-                              selectedFormRec: reactData.masterFormList[this_form],
-                              selectedFormMembers: reactData.masterFormList[this_form].memberList,
-                              selectedPerson_id: false,
-                              selectedPersonRec: false,
-                            }, true);
-                          }}
-                        >
-                          {`${reactData.masterFormList[this_form].form_name}`}
-                        </Typography>
+                                })}
+                                size='small'
+                              />
+                            }
+                            <Typography
+                              key={`g_text_end_group-${gX}`}
+                              draggable={true}
+                              onDragStart={(e) => handleDragStart(e, {
+                                person_id: reactData.selectedPerson_id,
+                                person_name: `${reactData.selectedPersonRec.name.first} ${reactData.selectedPersonRec.name.last}`,
+                                reason: 'form'
+                              })}
+                              style={AVATextStyle({
+                                size: 1.2,
+                                margin: { top: 0, bottom: 0 },
+                                color: ((!reactData.masterPeopleList.hasOwnProperty(reactData.selectedPerson_id))
+                                  ? 'red'
+                                  : (!reactData.masterPeopleList[reactData.selectedPerson_id].hasOwnProperty(this_form)
+                                    ? 'red'
+                                    : ((reactData.masterPeopleList[reactData.selectedPerson_id][this_form].status === 'completed')
+                                      ? 'green'
+                                      : ((reactData.masterPeopleList[reactData.selectedPerson_id][this_form].status === 'not started')
+                                        ? 'red'
+                                        : 'orange')
+                                    )))
+                              })}
+                              onClick={async () => {
+                                await formPeople(this_form);
+                                updateReactData({
+                                  selectedForm_id: this_form,
+                                  selectedFormRec: reactData.masterFormList[this_form],
+                                  selectedFormMembers: reactData.masterFormList[this_form].memberList,
+                                  selectedPerson_id: false,
+                                  selectedPersonRec: false,
+                                  activity_filter: '',
+                                  lower_activity_filter: '',
+                                  filterComplete: false,
+                                  filterNotStarted: false,
+                                  filterInProcess: false
+
+                                }, true);
+                              }}
+                            >
+                              {`${reactData.masterFormList[this_form].form_name}`}
+                            </Typography>
+                          </Box>
+                        )
                       ))}
                   </Box>
                 </Paper>
@@ -834,16 +949,23 @@ export default ({ defaults, onClose }) => {
                     e.preventDefault();
                     let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
                     let sendMessage = [];
-                    if (draggedFrom.hasOwnProperty('personObj')) {
+                    if (draggedFrom.reason === 'form') {
+                      let jumpTo = window.location.href.replace('refresh', 'theseus');
+                      if (jumpTo.includes('?')) {
+                        jumpTo = jumpTo.split('?')[0];
+                      }
                       sendMessage.push({
-                        person_id: draggedFrom.personObj.person_id,
-                        person_name: `${draggedFrom.personObj.name.first} ${draggedFrom.personObj.name.last}`
+                        person_id: draggedFrom.person_id,
+                        person_name: draggedFrom.person_name, 
+                        subject: `Your ${state.session.client_name} forms`,
+                        messageText: `To access your ${state.session.client_name} forms, click the attached link!`,
+                        attachmentList: [`${jumpTo}?user=${draggedFrom.person_id}&forms=true`]
                       });
                     }
-                    else {
+                    else if (draggedFrom.hasOwnProperty('person_id')) {
                       sendMessage.push({
-                        group_id: draggedFrom.group_id,
-                        group_name: draggedFrom.groupObj.group_name
+                        person_id: draggedFrom.person_id,
+                        person_name: `${draggedFrom.person_name}`
                       });
                     }
                     updateReactData({
@@ -881,47 +1003,104 @@ export default ({ defaults, onClose }) => {
                   style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
                 >
                   <Box display='flex' flexDirection='column'
+                    key={`person_column`}
                     justifyContent='flex-start'
                     alignItems='flex-start'
                   >
                     {reactData.masterFormList[reactData.selectedForm_id] && Object.keys(reactData.masterFormList[reactData.selectedForm_id].memberList).sort((a, b) => {
                       return (reactData.masterFormList[reactData.selectedForm_id].memberList[a].person_name > reactData.masterFormList[reactData.selectedForm_id].memberList[b].person_name) ? 1 : -1;
                     }).map((this_person, cX) => (
-                      <Typography
-                        key={`g_textpeople-${cX}`}
-                        style={AVATextStyle({
-                          overflow: 'visible',
-                          size: 1.2,
-                          margin: { top: 0, bottom: 0.8 },
-                          color: ((!reactData.masterPeopleList.hasOwnProperty(this_person))
-                            ? 'red'
-                            : (!reactData.masterPeopleList[this_person].hasOwnProperty(reactData.selectedForm_id)
-                              ? 'red'
-                              : ((reactData.masterPeopleList[this_person][reactData.selectedForm_id].status === 'completed')
-                                ? 'green'
-                                : ((reactData.masterPeopleList[this_person][reactData.selectedForm_id].status === 'not started')
+                      (OKtoShow(this_person, reactData.selectedForm_id, reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name) &&
+                        <Box display='flex' flexDirection='row'
+                          key={`formperson_row_list_${cX}`}
+                          justifyContent='flex-start'
+                          alignItems='center'
+                          style={{ marginBottom: '6px' }}
+                        >
+                          {(reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'completed')
+                            ?
+                            <CheckCircleIcon
+                              key={`radio-button_person${cX}off`}
+                              id={`radio-button_person${cX}off`}
+                              style={AVATextStyle({
+                                color: 'green',
+                                size: 1.5,
+                                margin: { right: 0.5 },
+                              })}
+                              onClick={() => {
+                                let nowJ = new Date().getTime();
+                                window.open(`${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].completedDocs[0].location}?qt=${nowJ.toString()}`
+                                  , reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].completedDocs[0].location);
+                              }}
+                              size='small'
+                            />
+                            :
+                            <EditIcon
+                              key={`radio-button_person${cX}edit`}
+                              id={`radio-button_person${cX}edit`}
+                              onClick={() => {
+                                updateReactData({
+                                  isEditing: {
+                                    calledFrom: 'forms',
+                                    person_id: this_person,
+                                    form_id: reactData.selectedForm_id,
+                                    document_id: (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'new')
+                                  }
+                                }, true);
+                              }}
+                              style={AVATextStyle({
+                                size: 1.5,
+                                margin: { right: 0.5 },
+                                color: ((reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'not started')
                                   ? 'red'
                                   : 'orange')
-                              )))
-                        })}
-                        onClick={async () => {
-                          updateReactData({
-                            selectedForm_id: false,
-                            selectedFormRec: false,
-                            selectedFormMembers: false,
-                            selectedPerson_id: this_person,
-                            selectedPersonRec: await getPerson(this_person),
-                          }, true);
-                          await personForms(this_person);
-                        }}
-                        draggable={state.session?.adminAccount}
-                        onDragStart={(e) => handleDragStart(e, {
-                          person_id: this_person,
-                          person_name: `${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`
-                        })}
-                      >
-                        {`${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`}
-                      </Typography>
+                              })}
+                              size='small'
+                            />
+                          }
+                          <Typography
+                            key={`g_textpeople-${cX}`}
+                            style={AVATextStyle({
+                              overflow: 'visible',
+                              size: 1.2,
+                              margin: { top: 0 },
+                              color: ((!reactData.masterPeopleList.hasOwnProperty(this_person))
+                                ? 'red'
+                                : (!reactData.masterPeopleList[this_person].hasOwnProperty(reactData.selectedForm_id)
+                                  ? 'red'
+                                  : ((reactData.masterPeopleList[this_person][reactData.selectedForm_id].status === 'completed')
+                                    ? 'green'
+                                    : ((reactData.masterPeopleList[this_person][reactData.selectedForm_id].status === 'not started')
+                                      ? 'red'
+                                      : 'orange')
+                                  )))
+                            })}
+                            draggable={true}
+                            onDragStart={(e) => handleDragStart(e, {
+                              person_id: this_person,
+                              person_name: `${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`,
+                              reason: 'form'
+                            })}
+                            onClick={async () => {
+                              updateReactData({
+                                selectedForm_id: false,
+                                selectedFormRec: false,
+                                selectedFormMembers: false,
+                                selectedPerson_id: this_person,
+                                selectedPersonRec: await getPerson(this_person),
+                                activity_filter: '',
+                                lower_activity_filter: '',
+                                filterComplete: false,
+                                filterNotStarted: false,
+                                filterInProcess: false
+                              }, true);
+                              await personForms(this_person);
+                            }}
+                          >
+                            {`${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`}
+                          </Typography>
+                        </Box>
+                      )
                     ))}
                   </Box>
                 </Paper>
@@ -935,10 +1114,25 @@ export default ({ defaults, onClose }) => {
                     e.preventDefault();
                     let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
                     let sendMessage = [];
-                    sendMessage.push({
-                      person_id: draggedFrom.person_id,
-                      person_name: draggedFrom.person_name
-                    });
+                    if (draggedFrom.reason === 'form') {
+                      let jumpTo = window.location.href.replace('refresh', 'theseus');
+                      if (jumpTo.includes('?')) {
+                        jumpTo = jumpTo.split('?')[0];
+                      }
+                      sendMessage.push({
+                        person_id: draggedFrom.person_id,
+                        person_name: draggedFrom.person_name,
+                        subject: `Your ${state.session.client_name} forms`,
+                        messageText: `To access your ${state.session.client_name} forms, click the attached link!`,
+                        attachmentList: [`${jumpTo}?user=${draggedFrom.person_id}&forms=true`]
+                      });
+                    }
+                    else if (draggedFrom.hasOwnProperty('person_id')) {
+                      sendMessage.push({
+                        person_id: draggedFrom.person_id,
+                        person_name: draggedFrom.person_name
+                      });
+                    }
                     updateReactData({
                       sendMessage
                     }, true);
@@ -950,6 +1144,85 @@ export default ({ defaults, onClose }) => {
           </Box>
 
         </React.Fragment >
+      }
+      {reactData.isEditing &&
+        <FormFillB
+          key={`doc_update_ffB`}
+          request={(reactData.isEditing.document_id === 'new') ?
+            {
+              form_id: reactData.isEditing.form_id,
+              person_id: reactData.isEditing.person_id,
+              mode: 'new',
+            }
+            :
+            {
+              form_id: reactData.isEditing.form_id,
+              document_id: reactData.isEditing.document_id,
+              person_id: reactData.isEditing.person_id,
+            }}
+          onClose={async (ignore_me, statusObj) => {
+            if (statusObj.document_status === 'work_in_process') {
+              reactData.masterPeopleList[reactData.isEditing.person_id][reactData.isEditing.form_id].status = 'in_process';
+              if (!reactData.masterFormList[reactData.isEditing.form_id].memberList.hasOwnProperty(reactData.isEditing.person_id)) {
+                reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id] = {
+                  person_id: reactData.isEditing.person_id,
+                  person_name: reactData.isEditing.person_id,
+                  person_first: reactData.isEditing.person_id,
+                  person_last: reactData.isEditing.person_id,
+                  wipDocs: [],
+                  assignedDocs: [],
+                  completedDocs: [],
+                };
+              }
+              if (reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].wipDocs.length === 0) {
+                reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].wipDocs.unshift({
+                  document_id: statusObj.document_id,
+                  last_update: new Date().getTime(),
+                  doc_status: 'in_process',
+                  due_date: reactData.masterFormList[reactData.isEditing.form_id].dueDate,
+                  title: statusObj.document_title
+                });
+              }
+              else {
+                reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].wipDocs[0].document_id = statusObj.document_id;
+              }
+            }
+            else if (statusObj.document_status === 'complete') {
+              reactData.masterPeopleList[reactData.isEditing.person_id][reactData.isEditing.form_id].status = 'completed';
+              if (!reactData.masterFormList[reactData.isEditing.form_id].memberList.hasOwnProperty(reactData.isEditing.person_id)) {
+                reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id] = {
+                  person_id: reactData.isEditing.person_id,
+                  person_name: reactData.isEditing.person_id,
+                  person_first: reactData.isEditing.person_id,
+                  person_last: reactData.isEditing.person_id,
+                  wipDocs: [],
+                  assignedDocs: [],
+                  completedDocs: [],
+                };
+              }
+              reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].completedDocs.unshift({
+                document_id: statusObj.document_id,
+                location: statusObj.location,
+                last_update: new Date().getTime(),
+                date_completed: makeDate(new Date().getTime()).relative,
+                title: statusObj.document_title
+              });
+            }
+            updateReactData({
+              masterPeopleList: reactData.masterPeopleList,
+              masterFormList: reactData.masterFormList,
+            }, false);
+            if (reactData.isEditing.calledFrom === 'people') {
+              await personForms(reactData.isEditing.person_id);
+            }
+            else {
+              await formPeople(reactData.isEditing.form_id);
+            }
+            updateReactData({
+              isEditing: false
+            }, true);
+          }}
+        />
       }
       {
         reactData.showQuickSearch &&
@@ -983,7 +1256,7 @@ export default ({ defaults, onClose }) => {
       {
         reactData.sendMessage &&
         <MessageForm
-          pPerson={state.session.person_id}
+          pPerson={state.session.patient_id}
           pClient={state.session.client_id}
           pMessageList={[]}
           pSession={state.session}
@@ -993,7 +1266,18 @@ export default ({ defaults, onClose }) => {
             }, true);
           }}
           options={{
-            newMessage: reactData.sendMessage
+            newMessage: true,
+            recipients: reactData.sendMessage.map(r => {
+              return {
+                person_id: r.person_id,
+                person_name: r.person_name
+              };
+            }),
+            subject: reactData.sendMessage[0].subject,
+            messageText: reactData.sendMessage[0].messageText,
+            attachmentList: reactData.sendMessage.map(a => {
+              return a.attachmentList;
+            }).flat(),
           }}
         />
       }

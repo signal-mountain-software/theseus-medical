@@ -202,14 +202,13 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     lastActiveTime: new Date(),
     lastReloadTime: new Date(),
     idleState: false,
-    newMessageMode: (options && !!options.newMessage) || false,
+    newMessageMode: (options && options.newMessage) || false,
     viewPeopleMaintenance: false,
     myImage: null,
     selections: [],    // wip selections from quick search
     selectedPeople_count: 0,
     selectedPeople_list: [],
-    newMessageSubject: '',
-    newMessageRecipients: ((options && !!options.newMessage) ? options.newMessage : []),
+    newMessageRecipients: ((options && options.newMessage && options.recipients) ? options.recipients : []),
     alert: false,
     showGroupList: false,
     showIndividualList: false,
@@ -217,9 +216,10 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     preferred_recipients: [],
     newUrgentMessage: false,
     replyToList: [{ person_id: pPerson, person_name: 'Me' }],
-    newMessageText: '',
+    newMessageText: ((options && options.newMessage && options.messageText) ? options.messageText : ''),
+    newMessageSubject: ((options && options.newMessage && options.subject) ? options.subject : ''),
     newMessageThread: false,
-    attachments_to_send: [],
+    attachments_to_send: ((options && options.newMessage && options.attachmentList) ? options.attachmentList : []),
     linkedPersonFilter: '',
   });
 
@@ -777,6 +777,11 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             this_message.toLine += (`${this_recipient.name.first} ${this_recipient.name.last}`).trim();
             this_message.target = rArray;
           }
+          else if ((rArray.length === 0) && (Object.keys(this_message.recipientList).length > 0)) {
+            this_message.toLine += `Myself only`;
+            this_message.target = [pPerson];
+            this_message.sender_image = '';
+          }
           else {
             this_message.toLine += `${rArray.length} people`;
             this_message.target = rArray;
@@ -973,7 +978,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                           key={`showNames__${reactData.newMessageRecipients.length + reactData.selections.length}`}
                                         >
                                           {((reactData.newMessageRecipients.length > 4) || ((reactData.selections.length > 4) && !reactData.showReplyToSearch))
-                                            ? (`Me -> ${reactData.selectedPeople_count || reactData.selectedPeople_count} recipients`)
+                                            ? (`Me -> ${reactData.selectedPeople_count || reactData.selections.length} recipients`)
                                             : ((reactData.newMessageRecipients.length > 0) || ((reactData.selections.length > 0) && !reactData.showReplyToSearch))
                                               ? `Me -> ${listFromArray(((reactData.newMessageRecipients.length > 0)
                                                 ? reactData.newMessageRecipients
@@ -1035,7 +1040,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                         newMessageText: event.target.value
                                       }, true);
                                     }}
-                                    defaultValue={''}
+                                    defaultValue={reactData.newMessageText}
                                     helperText={'Message Text'}
                                   />
                                 </Box>
@@ -1462,7 +1467,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                         ? `Send to ${reactData.selections[0].person_name.split(' ')[0]}`
                         : `Send to ${reactData.selections[0].group_name}`
                       )
-                      : `Send to ${reactData.selectedPeople_count} people`
+                      : `Send to ${reactData.selectedPeople_count || reactData.selections.length} people`
                     ),
                 showAll: true,
                 title: 'Select Recipients'

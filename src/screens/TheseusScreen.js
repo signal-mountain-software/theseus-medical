@@ -7,6 +7,7 @@ import useSession from '../hooks/useSession';
 import AVAMenu from '../components/sections/AVAMenu';
 import ConnectMenu from '../components/sections/ConnectMenu';
 import FormFillB from '../components/forms/FormFillB';
+import PeopleMaintenance from '../components/dialogs/PeopleMaintenance';
 
 import { useCookies } from 'react-cookie';
 
@@ -49,6 +50,17 @@ export default () => {
             }
             let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
             window.location.replace(jumpTo);
+          }}
+        />
+      );
+    }
+    else if (cookies.AVAaction.forms) {
+      return (
+        <PeopleMaintenance
+          person_id={patient.person_id}
+          options={{ sectionToShow: ['FormSection'] }}
+          onClose={() => { 
+            removeCookie("AVAaction");
           }}
         />
       );

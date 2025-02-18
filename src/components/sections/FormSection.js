@@ -419,9 +419,13 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                 color: ((reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.length > 0) ? 'orange' : 'red')
                               })}
                             >
-                              {`${((reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.length > 0)
-                                ? ((reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs[0].doc_status === 'pending') ? 'Pending review' : 'Started but incomplete')
-                                : '')}${((reactData.masterFormList[person_id].myFormListObj[this_formID].dueDate) && (reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs[0].doc_status !== 'pending')) ? (' - Due by ' + makeDate(reactData.masterFormList[person_id].myFormListObj[this_formID].dueDate).relative) : ''}`}
+                              {(reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.length > 0)
+                                ? `${((reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs[0].doc_status === 'pending') ? 'Pending review' : 'Started but incomplete')}`
+                                : `Not started`
+                              }
+                              {(reactData.masterFormList[person_id].myFormListObj[this_formID].dueDate) &&
+                                ` - Due by ${makeDate(reactData.masterFormList[person_id].myFormListObj[this_formID].dueDate).relative}`
+                              }
                             </Typography>
                           }
                           {(reactData.masterFormList[person_id].myFormListObj[this_formID].completedDocs.length > 0) &&
@@ -712,7 +716,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
               flexDirection='row'
               key={`radio-guide_e_buttons_complete`}
             >
-              <CheckCircleIcon                
+              <CheckCircleIcon
                 style={AVATextStyle({ color: 'green', margin: { right: 0.1 } })}
                 key={`radio-guide_e_button_complete`}
                 size='small'

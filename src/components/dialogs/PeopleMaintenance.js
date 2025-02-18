@@ -132,7 +132,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         sections: [{
           section_name: 'Snapshot',
           color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'Snapshot') : false),
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('Snapshot')) : false),
           isAuthorized: true,
           version_id: 0,
           component_name: 'Snapshot'
@@ -140,7 +140,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'Name & Contact info',
           color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'ProfileSection') : false),
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('ProfileSection')) : false),
           isAuthorized: true,
           version_id: 0,
           component_name: 'ProfileSection'
@@ -148,7 +148,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'Messaging',
           color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'MessagePreferencesSection') : false),
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('MessagePreferencesSection')) : false),
           isAuthorized: true,
           version_id: 0,
           component_name: 'MessagePreferencesSection'
@@ -156,7 +156,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'My Family',
           color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'LinkedAccounts') : false),
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('LinkedAccounts')) : false),
           isAuthorized: true,
           version_id: 0,
           component_name: 'LinkedAccounts'
@@ -164,7 +164,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'Photo & Personalization',
           color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'PersonalizationSection') : false),
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PersonalizationSection')) : false),
           isAuthorized: true,
           version_id: 0,
           component_name: 'PersonalizationSection'
@@ -172,7 +172,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'Groups',
           color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'GroupAssignments') : false),
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('GroupAssignments')) : false),
           isAuthorized: reactData.administrative_account,
           version_id: 0,
           component_name: 'GroupAssignments'
@@ -180,7 +180,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'Forms',
           color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'FormSection') : false),
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('FormSection')) : false),
           isAuthorized: true,
           version_id: 0,
           component_name: 'FormSection'
@@ -188,7 +188,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'Password & Tech Stuff',
           color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? (options.sectionToShow === 'TechInfoSection') : false),
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('TechInfoSection')) : false),
           isAuthorized: reactData.administrative_account || (state.session.user_id === reactData.person_id),
           version_id: 0,
           component_name: 'TechInfoSection'

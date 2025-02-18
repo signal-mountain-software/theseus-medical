@@ -1500,8 +1500,16 @@ export default Component => props => {
     loadSyncInfo(currentSession, currentPatient);
 
     putValidationCookie();
-    if (currentSession.url_parameters && (currentSession.url_parameters).hasOwnProperty('document')) {
-      putActionCookie(currentSession.url_parameters);
+    if (currentSession.url_parameters) {
+      if (currentSession.url_parameters.hasOwnProperty('document')) {
+        putActionCookie(currentSession.url_parameters);
+      }
+      else if (currentSession.url_parameters.hasOwnProperty('forms')) {
+        removeCookie("AVAaction");
+        setCookie('AVAaction', JSON.stringify({
+          forms: true
+        }), { path: '/' });
+      }
     }
     else if (reactData.urlData.hasOwnProperty('document')) {
       putActionCookie(reactData.urlData);

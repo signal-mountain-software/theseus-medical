@@ -2613,12 +2613,7 @@ export async function messageHistory(body) {
       let mTime = mR.posted_time || mR.created_time;
       let mInfo = '';
       let mLine = (mR.deliver_method === 'hold') ? 'Held message ' : 'Sent ';
-      if (!returnObj.hasOwnProperty(mR.deliver_to)) {
-        mLine += `from ${mR.author.author_name} to ${mR.recipient_list.name.first} ${mR.recipient_list.name.last}`;
-      }
-      else {
-        mLine = `and also sent to ${mR.recipient_list.name.first}`;
-      }
+      mLine += `from ${mR.author.author_name} to ${mR.recipient_list.name.first} ${mR.recipient_list.name.last}`;
       switch (mR.deliver_method) {
         case 'sms': {
           mLine += ' via text message';
