@@ -7,7 +7,6 @@ import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import CloseIcon from '@material-ui/icons/Close';
 import { Box, Button, TextField, Typography, Dialog, Paper, DialogContentText, DialogActions, Switch } from '@material-ui/core/';
 
 const useStyles = makeStyles(theme => ({
@@ -517,7 +516,6 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
           onClick={() => {
             onClose(reactData.selections);
           }}
-          startIcon={<CloseIcon fontSize="small" />}
         >
           {options.buttonText || 'Exit'}
         </Button>

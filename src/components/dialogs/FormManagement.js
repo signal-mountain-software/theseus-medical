@@ -9,6 +9,7 @@ import { getPerson, getImage } from '../../util/AVAPeople';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import { addDays, makeDate } from '../../util/AVADateTime';
 import FormFillB from '../forms/FormFillB';
+import { createDocument } from '../../util/AVADocuments';
 
 import { Snackbar, Paper, Box, Dialog, DialogActions, Button, Typography } from '@material-ui/core';
 import Select from "react-dropdown-select";
@@ -293,7 +294,10 @@ export default ({ defaults, onClose }) => {
     if ((this_doc.restricted_access === 'admin_only') && (!reactData.administrative_account)) {
       return;    // skip this document
     }
-    if (!reactData.masterFormList[this_doc.form_type].hasOwnProperty('memberList')) {
+    if (!reactData.masterFormList.hasOwnProperty(this_doc.form_type)) {
+      reactData.masterFormList[this_doc.form_type] = { memberList: {} };
+    }
+    else if (!reactData.masterFormList[this_doc.form_type].hasOwnProperty('memberList')) {
       reactData.masterFormList[this_doc.form_type].memberList = {};
     }
     if (!reactData.masterFormList[this_doc.form_type].memberList.hasOwnProperty(this_doc.pertains_to)) {
@@ -699,6 +703,7 @@ export default ({ defaults, onClose }) => {
                         justifyContent='flex-start'
                         alignItems='center'
                         style={AVATextStyle({
+                          overflow: 'visible',
                           size: 1.2,
                           margin: { top: 0, bottom: 0.8 }
                         })}
@@ -732,7 +737,12 @@ export default ({ defaults, onClose }) => {
                           size='small'
                         />
                         <Typography
-                          key={`g_text_${listIndex}_0`}
+                          key={`g_text_${listIndex}_0_${reactData.selectedPerson_id}`}
+                          draggable={!!reactData.selectedPerson_id}
+                          onDragStart={(e) => handleDragStart(e, {
+                            form_id: this_formID,
+                            reason: 'createForm'
+                          })}
                           onClick={async () => {
                             await formPeople(this_formID);
                             updateReactData({
@@ -774,15 +784,27 @@ export default ({ defaults, onClose }) => {
                 <Box display='flex' flexDirection='row'
                   justifyContent='space-between'
                   alignItems='center'
-                  onDragStart={(e) => handleDragStart(e, {
-                    person_id: reactData.selectedPerson_id,
-                    person_name: `${reactData.selectedPersonRec.name.first} ${reactData.selectedPersonRec.name.last}`,
-                  })}
                   style={{ width: '100%' }}
                 >
                   <Box display='flex' flexDirection='row'
                     flexGrow={1}
                     justifyContent='flex-start'
+                    onDragOver={(e) => handleDragOver(e)}
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
+                      if (draggedFrom.reason === 'createForm') {
+                        let newDocument = await createDocument({
+                          docData: {
+                            client_id: state.session.client_id,
+                            form_type: draggedFrom.form_id,
+                            pertains_to: reactData.selectedPerson_id
+                          },
+                          author: state.session.patient_id
+                        });
+                        cl(newDocument);
+                      }
+                    }}
                     alignItems='center'
                   >
                     <Typography
@@ -834,8 +856,39 @@ export default ({ defaults, onClose }) => {
                 </Box>
                 <Paper component={Box} width='100%' elevation={0} overflow='auto' square
                   style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
+                  onDragOver={(e) => handleDragOver(e)}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
+                    if (draggedFrom.reason === 'createForm') {
+                      let newDocument = await createDocument({
+                        docData: {
+                          client_id: state.session.client_id,
+                          form_type: draggedFrom.form_id,
+                          pertains_to: reactData.selectedPerson_id
+                        },
+                        author: state.session.patient_id
+                      });
+                      cl(newDocument);
+                    }
+                  }}
                 >
                   <Box display='flex' flexDirection='column'
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
+                      if (draggedFrom.reason === 'createForm') {
+                        let newDocument = await createDocument({
+                          docData: {
+                            client_id: state.session.client_id,
+                            form_type: draggedFrom.form_id,
+                            pertains_to: reactData.selectedPerson_id
+                          },
+                          author: state.session.patient_id
+                        });
+                        cl(newDocument)
+                      }
+                    }}
                     key={`form_column`}
                     justifyContent='flex-start'
                     alignItems='flex-start'
@@ -956,7 +1009,7 @@ export default ({ defaults, onClose }) => {
                       }
                       sendMessage.push({
                         person_id: draggedFrom.person_id,
-                        person_name: draggedFrom.person_name, 
+                        person_name: draggedFrom.person_name,
                         subject: `Your ${state.session.client_name} forms`,
                         messageText: `To access your ${state.session.client_name} forms, click the attached link!`,
                         attachmentList: [`${jumpTo}?user=${draggedFrom.person_id}&forms=true`]

@@ -1111,10 +1111,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                 <Box display='flex' flexDirection='row'
                   justifyContent='space-between'
                   alignItems='center'
-                  onDragStart={(e) => handleDragStart(e, {
-                    person_id: reactData.selectedPerson_id,
-                    personObj: reactData.selectedPersonRec,
-                  })}
                   style={{ width: '100%' }}
                 >
                   <Box display='flex' flexDirection='row'
@@ -1331,7 +1327,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
       }
       {reactData.sendMessage &&
         <MessageForm
-          pPerson={state.session.person_id}
+          pPerson={state.session.patient_id}
           pClient={state.session.client_id}
           pMessageList={[]}
           pSession={state.session}
@@ -1341,7 +1337,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
             }, true);
           }}
           options={{
-            newMessage: reactData.sendMessage
+            newMessage: true,
+            recipients: reactData.sendMessage
           }}
         />
       }
