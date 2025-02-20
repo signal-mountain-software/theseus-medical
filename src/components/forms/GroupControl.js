@@ -1121,6 +1121,11 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                     <Typography
                       key={`g_text_end-last_name`}
                       draggable={true}
+                      onDragStart={(e) => handleDragStart(e, {
+                        person_id: reactData.selectedPerson_id,
+                        personObj: reactData.selectedPersonRec,
+                        intent: 'person'
+                      })}
                       style={AVATextStyle({
                         size: 1.5,
                         overflow: 'visible',
@@ -1152,6 +1157,11 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                     <img
                       key={'my_image'}
                       draggable={true}
+                      onDragStart={(e) => handleDragStart(e, {
+                        person_id: reactData.selectedPerson_id,
+                        personObj: reactData.selectedPersonRec,
+                        intent: 'person'
+                      })}
                       className={classes.myImageArea}
                       alt={''}
                       onError={onImageError}
