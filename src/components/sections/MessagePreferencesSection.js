@@ -83,20 +83,20 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
     }
   ];
 
-  const urgentOptions = () => {
+  const proxyOptions = () => {
     let response = [{
-      option: 'use_standard',
-      label: `Use`,
-      enabled: ` standard preferences`,
+      option: 'hold',
+      label: `Hold`,
+      enabled: ` all messages`,
       show: true,
       exclusive: true
     }];
-    if (currentValues.peopleRec.may_proxy_to) {
-      for (let proxy_id in currentValues.peopleRec.may_proxy_to) {
+    if (currentValues.peopleRec.proxy_allowed_from) {
+      for (let proxy_id in currentValues.peopleRec.proxy_allowed_from) {
         response.unshift({
           option: `person_id:${proxy_id}`,
           label: `Send to `,
-          enabled: currentValues.peopleRec.may_proxy_to[proxy_id],
+          enabled: currentValues.peopleRec.proxy_allowed_from[proxy_id],
           show: true,
           exclusive: false
         });
@@ -177,83 +177,6 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
       <Typography
         style={AVATextStyle({ italic: true, margin: { top: 2, bottom: 0.4 } })}
       >
-        {`When an urgent message is received, do this instead...`}
-      </Typography>
-      <Box
-        display='flex'
-        flexDirection='column'
-        marginLeft={-0.5}
-      >
-        {(messageOptions.concat(urgentOptions())).map((this_option, tIndex) => (
-          this_option.show &&
-          <Box
-            display='flex'
-            flexDirection='row'
-            alignItems={'center'}
-            key={`MessagePref_option__${tIndex}`}
-            style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
-          >
-            <Checkbox
-              aria-label={`MessagePref_option__${tIndex}`}
-              name={`MessagePref_option__${tIndex}`}
-              key={`MessagePref_option__${tIndex}`}
-              size='small'
-              checked={currentValues.peopleRec.urgent_methods
-                ? currentValues.peopleRec.urgent_methods.includes(this_option.option)
-                : (this_option.option === 'use_standard')
-              }
-              onClick={async () => {
-                if (!currentValues.peopleRec.urgent_methods) {
-                  currentValues.peopleRec.urgent_methods = [];
-                }
-                let optionAt = currentValues.peopleRec.urgent_methods.findIndex(this_method => {
-                  return (this_method === this_option.option);
-                });
-                if (optionAt === -1) {
-                  // wasn't there before; you must have clicked it ON
-                  if (this_option.exclusive) {
-                    currentValues.peopleRec.urgent_methods = [this_option.option];
-                  }
-                  else {
-                    // have to turn off any exclusive option that was previously on
-                    let previous_option = messageOptions.find(check_option => {
-                      return (check_option.option === currentValues.peopleRec.urgent_methods[0]);
-                    });
-                    if ((currentValues.peopleRec.urgent_methods[0] === 'use_standard') || previous_option?.exclusive) {
-                      currentValues.peopleRec.urgent_methods = [this_option.option];
-                    }
-                    else {
-                      currentValues.peopleRec.urgent_methods.push(this_option.option);
-                    }
-                  }
-                }
-                else {
-                  currentValues.peopleRec.urgent_methods.splice(optionAt, 1);
-                }
-                await updateField({
-                  updateList:
-                    [{
-                      tableName: 'peopleRec',
-                      fieldName: 'urgent_methods',
-                      newData: currentValues.peopleRec.urgent_methods
-                    }]
-                });
-              }}
-              disableRipple
-              inputProps={{ 'aria-labelledby': `message_routing_3` }}
-            />
-            <Typography
-              style={AVATextStyle({})}
-            >
-              {`${this_option.label}${this_option.enabled || ''}`}
-            </Typography>
-          </Box>
-        ))}
-      </Box>
-
-      <Typography
-        style={AVATextStyle({ italic: true, margin: { top: 2, bottom: 0.4 } })}
-      >
         {`You may add keywords here that automatically flag an incoming message as urgent.`}
       </Typography>
       <TextField
@@ -284,7 +207,7 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
         <Typography
           style={AVATextStyle({ italic: true, margin: { bottom: 0 } })}
         >
-          {`You may also choose alternate delivery methods based on time of day and day of week`}
+          {`Use Rules to set alternate delivery options based on content, urgency, time of day, and day of week`}
         </Typography>
         {currentValues.peopleRec.time_based_rules && (currentValues.peopleRec.time_based_rules.length > 1) &&
           <Typography
@@ -328,7 +251,7 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
               border={1}
               p={2}
               marginBottom={1}
-              maxWidth={'max-content'}
+              maxWidth={'95%'}
               display='flex' flexDirection='column' key={`message_fragment_${i}`}
             >
               <Box key={`header_message_${i}`}
@@ -635,6 +558,71 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
                     />
                   ))}
                 </Box>
+              </Box>  
+              <TextField
+                multiline
+                style={AVATextStyle({ width: '90%', margin: { top: 1 } })}
+                disabled={this_rule.global_rule}
+                key={`keyWords_${i}__${this_rule.keyWords}`}
+                defaultValue={this_rule.keyWords || ''}
+                onBlur={async (event) => {
+                  if (!currentValues.peopleRec.time_based_rules[i]) {
+                    currentValues.peopleRec.time_based_rules[i] = this_rule;
+                  }
+                  currentValues.peopleRec.time_based_rules[i].keyWords = event.target.value;
+                  await updateField({
+                    updateList:
+                      [{
+                        tableName: 'peopleRec',
+                        fieldName: 'time_based_rules',
+                        newData: currentValues.peopleRec.time_based_rules
+                      }]
+                  });
+                }}
+                helperText='During these times, only use this rule if a message contains any of these keywords'
+              />
+
+
+
+              <Box
+                display='flex'
+                flexDirection='row'
+                alignItems={'center'}
+                key={`urgent_option__${i}`}
+                style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', marginLeft: '-12px', textWrapStyle: 'balance' }}
+              >
+                <Checkbox
+                  aria-label={`urgent_checkbox__${i}`}
+                  name={`urgent_checkbox__${i}`}
+                  key={`urgent_checkbox__${i}`}
+                  disabled={this_rule.global_rule}
+                  size='small'
+                  checked={this_rule.when_urgent || false}
+                  onClick={async () => {
+                    if (!currentValues.peopleRec.time_based_rules[i]) {
+                      currentValues.peopleRec.time_based_rules[i] = this_rule;
+                    }
+                    currentValues.peopleRec.time_based_rules[i].when_urgent = !currentValues.peopleRec.time_based_rules[i].when_urgent;
+                    await updateField({
+                      updateList:
+                        [{
+                          tableName: 'peopleRec',
+                          fieldName: 'time_based_rules',
+                          newData: currentValues.peopleRec.time_based_rules
+                        }]
+                    });
+                  }}
+                  disableRipple
+                  inputProps={{ 'aria-labelledby': `message_routing_3` }}
+                />
+                <Typography
+                  style={this_rule.global_rule
+                    ? AVATextStyle({ opacity: '40%' })
+                    : AVATextStyle({})
+                  }
+                >
+                  {`During these times, only use this rule if a message is marked Urgent`}
+                </Typography>
               </Box>
               <Box >
                 <Typography
@@ -644,8 +632,8 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
                   }
                 >
                   {this_rule.global_rule
-                    ? `During these times, adminstrators force communications via...`
-                    : `During these times, I prefer to receive communications via...`
+                    ? `When this rule applies, adminstrators force communications via...`
+                    : `When this rule applies, I prefer communications via...`
                   }
                 </Typography>
                 <Box
@@ -653,13 +641,7 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
                   flexDirection='column'
                   marginLeft={-0.5}
                 >
-                  {(messageOptions.concat([{
-                    option: 'hold',
-                    label: `Hold`,
-                    enabled: ` all messages`,
-                    show: true,
-                    exclusive: true
-                  }])).map((this_option, tIndex) => (
+                  {(messageOptions.concat(proxyOptions())).map((this_option, tIndex) => (
                     this_option.show &&
                     <Box
                       display='flex'
