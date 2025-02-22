@@ -2609,11 +2609,19 @@ export async function messageHistory(body) {
   let returnObj = {};
   if (!mRecs) { returnArray.push(`No message history`); }
   else {
+    let headerLine = false;
+    if (body.in_out && (body.in_out === 'in') && (mRecs.length > 1) && (!body.was_held)) {
+      headerLine = `From ${mRecs[0].author.author_name} to ${mRecs.length} addresses`;
+      returnArray.push(headerLine);
+    }
     mRecs.forEach(mR => {
       let mTime = mR.posted_time || mR.created_time;
       let mInfo = '';
       let mLine = (mR.deliver_method === 'hold') ? 'Held message ' : 'Sent ';
-      mLine += `from ${mR.author.author_name} to ${mR.recipient_list.name.first} ${mR.recipient_list.name.last}`;
+      if (!headerLine && (body.in_out && (body.in_out === 'in'))) {
+        mLine += `from ${mR.author.author_name}  `;
+      }
+      mLine += `to ${mR.recipient_list.name.first} ${mR.recipient_list.name.last}`;
       switch (mR.deliver_method) {
         case 'sms': {
           mLine += ' via text message';
@@ -2677,7 +2685,10 @@ export async function messageHistory(body) {
         returnObj[mR.deliver_to] = {
           name: `${mR.recipient_list.name.first} ${mR.recipient_list.name.last}`,
           composite_key: mR.composite_key,
-          history: []
+          history: (headerLine ? [{
+            time: new Date().getTime() + (60 * 60 * 1000),    // make sure tis is the most recent date (and displayed first) by setting it an hour in the future
+            line: headerLine
+          }] : [])
         };
       }
       returnObj[mR.deliver_to].history.push({

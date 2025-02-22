@@ -4,6 +4,7 @@ import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { messageHistory } from '../../util/AVAMessages';
 import { extract, dbClient, titleCase, listFromArray, cl, uuid } from '../../util/AVAUtilities';
 import { AVATextStyle } from '../../util/AVAStyles';
+import { makeDate } from '../../util/AVADateTime';
 import AVAUploadFile from '../../util/AVAUploadFile';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
@@ -171,7 +172,7 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValue, options }) => {
+export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options }) => {
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -200,11 +201,13 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     isSmall: (window.window.innerWidth < 800),
     isTiny: (window.window.innerWidth < 500),
     lastActiveTime: new Date(),
-    lastReloadTime: new Date(),
+    lastReloadTime: 0,
+    forceReloadTime: 0,
     idleState: false,
     newMessageMode: (options && options.newMessage) || false,
     viewPeopleMaintenance: false,
     myImage: null,
+    myName: null,
     selections: [],    // wip selections from quick search
     selectedPeople_count: 0,
     selectedPeople_list: [],
@@ -328,14 +331,16 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     return tempMessageList;
   };
 
-  async function getMessageResults(pCommonKey, in_out) {
+  async function getMessageResults({this_item}) {
     let gotHistory = await messageHistory({
-      thread_id: pCommonKey.split('~M')[0].slice(2),
-      composite_key: pCommonKey.split('~D')[0],
+      thread_id: this_item.common_key.split('~M')[0].slice(2),
+      composite_key: this_item.common_key.split('~D')[0],
       record_type: 'delivery',
+      in_out: this_item.inOut,
+      was_held: this_item.wasHeld,
       returnObject: true
     });
-    if (in_out === 'in') {
+    if (this_item.inOut === 'in') {
       return { [pPerson]: gotHistory[pPerson] };
     }
     else {
@@ -350,11 +355,32 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     }
   };
 
-  const toggleOpen = async (pIndex, pMessageID, inOut_mode) => {
+  const toggleOpen = async ({ index, this_item }) => {
     let workingOpen = [];
-    if (!open[pIndex]) {
-      workingOpen[pIndex] = true;
-      setMessageResults(await getMessageResults(pMessageID, inOut_mode));
+    if (!open[index]) {
+      workingOpen[index] = true;
+      let results = await getMessageResults({ this_item });
+      if (this_item.wasHeld) {
+        let ogMsgRec = await dbClient
+          .get({
+            Key: {
+              thread_id: this_item.thread_id,
+              composite_key: this_item.held_messageKey,
+            },
+            TableName: 'TheseusMessages'
+          })
+          .promise()
+          .catch(error => {
+            cl({ 'Error reading TheseusMessages': error });
+          });
+        console.log(ogMsgRec.Item);
+        let ogCount = Object.keys(ogMsgRec.Item.recipient_list).length;
+        results[this_item.person_id].history.push({
+          time: this_item.wasHeld,
+          line: `Message was sent ${(ogCount > 1) ? 'to ' + ogCount + ' people ' : ''}${makeDate(this_item.wasHeld).oaDate} but held per rule`
+        });
+      }
+      setMessageResults(results);
     }
     setOpen(workingOpen);
     setForceRedisplay(!forceRedisplay);
@@ -371,7 +397,13 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
   const oneMinute = 1000 * 60;
   const msBeforeSleeping = 1 * oneMinute;
 
-  function onAction() {
+  const onAction = async () => {
+    if (reactData.forceReloadTime) {
+      let now = new Date().getTime();
+      if (reactData.forceReloadTime < now) {
+        await initialize();
+      }
+    }
     if (reactData.idleState) {
       updateReactData({
         idleState: false,
@@ -383,6 +415,12 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
   const onIdle = async () => {
     let now = new Date();
     let minutesSinceActive = 0;
+    if (reactData.forceReloadTime) {
+      let now = new Date().getTime();
+      if (reactData.forceReloadTime < now) {
+        await initialize();
+      }
+    }
     if (!reactData.idleState) {    // if we weren't previously in an idle state and we are now...
       cl(`Went idle at ${now.toLocaleString()}.  Idle for ${minutesSinceActive} minutes.`);
       updateReactData({
@@ -479,6 +517,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
         newMessageText: '',
         newMessageThread: false,
         attachments_to_send: [],
+        forceReloadTime: new Date().getTime() + (1000 * 30),
         alert: {
           severity: 'success',
           title: 'Your Message',
@@ -508,13 +547,16 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
 
   async function initialize() {
     let messageArray = [];
-    let thread_object = {};
+    let messageMethods = {};
     let totalInboundProcessed = 0;
     let totalInboundCount = 0;
     let totalOutboundCount = 0;
     let totalOutboundProcessed = 0;
     // my Image
-    updateReactData({ myImage: await getImage(pPerson) }, true);
+    updateReactData({
+      myImage: await getImage(pPerson),
+      myName: await makeName(pPerson)
+    }, true);
     // Get messages to me
     let mRecs = await dbClient
       .query({
@@ -537,7 +579,6 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
       });
     if (mRecs && mRecs.hasOwnProperty('Items')) {
       totalInboundCount += mRecs.Count;
-      let message_number_obj = {};
       for (let x = 0; x < mRecs.Items.length; x++) {
         totalInboundProcessed++;
         let m = mRecs.Items[x];
@@ -562,17 +603,18 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
           m.content.current.attachments.push(hLink);
           m.content.current[language].text = m.content.current[language].text.replace(hLink, '');
         }
-        let [this_message_number, this_message_destination] = m.composite_key.split('~D:');
-        if (thread_object.hasOwnProperty(m.thread_id)) {
-          if (thread_object[m.thread_id]) {  // if the only entry already in the messageArray for this thread is a "held" message
-            delete message_number_obj[thread_object[m.thread_id]];
-            thread_object[m.thread_id] = (this_message_destination.endsWith('hold') ? this_message_number : false);
-          }
-          else if (this_message_destination && this_message_destination.endsWith('hold')) {
-            continue;  // if this is a hold message and we already have a not held message in the list, don't add this
-          };
+        let deliver_method = (m.deliver_method === 'email')
+          ? 'email'
+          : ((m.deliver_method === 'sms')
+            ? 'text'
+            : ((m.deliver_method === 'voice') ? 'phone' : 'ava')
+          )
+        let message_key = m.composite_key.split('~D')[0];
+        if (messageMethods.hasOwnProperty(message_key)) {
+          messageMethods[message_key].push(deliver_method);
         }
-        if (!message_number_obj.hasOwnProperty(this_message_number)) {
+        else {
+          messageMethods[message_key] = [deliver_method];
           let this_message = {
             inOut: 'in',
             delete_flag: m.delete_flag,
@@ -583,12 +625,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             partner_id: [m.author.author_id],
             sender_image: this_image,
             message_id: m.composite_key,
-            deliver_method: (m.deliver_method === 'email')
-              ? 'email'
-              : ((m.deliver_method === 'sms')
-                ? 'text'
-                : ((m.deliver_method === 'voice') ? 'phone' : 'ava')
-              ),
+            deliver_method,
             posted_time: m.created_time,
             deliver_time: m.created_time,
             common_key: m.composite_key,
@@ -604,24 +641,30 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
           this_message.toLine = `${m.author.author_name} -> Me`;
           this_message.target = pPerson;
 
-          message_number_obj[this_message_number] = true;
-          if (!thread_object.hasOwnProperty(m.thread_id)) {
-            thread_object[m.thread_id] = (this_message_destination.endsWith('hold') ? this_message_number : false);
-          }
           messageArray.push(this_message);
           if ((x % 100) === 0) {
+            // put everything in reverse chronological order
             let presorted = messageArray.sort((a, b) => {
               return ((a.deliver_time > b.deliver_time) ? -1 : 1);
             });
             let finalSort = [];
             let skipMe = [];
             presorted.forEach((this_message, mNdx) => {
+              const message_key = presorted[mNdx].common_key.split('~D')[0];
+              this_message.deliver_method = listFromArray(messageMethods[message_key]);
+              // this clumps all the same thread_ids together behind the most recent one
               if (!skipMe.includes(this_message.thread_id)) {
-                finalSort.push(this_message);
-                skipMe.push(this_message.thread_id);
+                finalSort.push(this_message);   // this is the message on the thread that was most recent
+                skipMe.push(this_message.thread_id);   // dont process this thread again in the main loop
                 for (let n = mNdx + 1; n < presorted.length; n++) {
                   if (presorted[n].thread_id === this_message.thread_id) {
-                    finalSort.push(presorted[n]);
+                    if (presorted[n].common_key.endsWith('hold')) {
+                      finalSort[finalSort.length - 1].wasHeld = presorted[n].posted_time;
+                      finalSort[finalSort.length - 1].held_messageKey = presorted[n].common_key.split('~D')[0];
+                    }
+                    else {
+                      finalSort.push(presorted[n]);
+                    }
                   }
                 }
               }
@@ -640,12 +683,19 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
       let finalSort = [];
       let skipMe = [];
       presorted.forEach((this_message, mNdx) => {
+        // this clumps all the same thread_ids together behind the most recent one
         if (!skipMe.includes(this_message.thread_id)) {
-          finalSort.push(this_message);
-          skipMe.push(this_message.thread_id);
+          finalSort.push(this_message);   // this is the message on the thread that was most recent
+          skipMe.push(this_message.thread_id);  // dont process this thread again in the main loop
           for (let n = mNdx + 1; n < presorted.length; n++) {
             if (presorted[n].thread_id === this_message.thread_id) {
-              finalSort.push(presorted[n]);
+              if (presorted[n].common_key.endsWith('hold')) {
+                finalSort[finalSort.length - 1].wasHeld = presorted[n].posted_time;
+                finalSort[finalSort.length - 1].held_messageKey = presorted[n].common_key.split('~D')[0];
+              }
+              else {
+                finalSort.push(presorted[n]);
+              }
             }
           }
         }
@@ -795,12 +845,19 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
         let finalSort = [];
         let skipMe = [];
         presorted.forEach((this_message, mNdx) => {
+          // this clumps all the same thread_ids together behind the most recent one
           if (!skipMe.includes(this_message.thread_id)) {
-            finalSort.push(this_message);
-            skipMe.push(this_message.thread_id);
+            finalSort.push(this_message);  // this is the message on the thread that was most recent
+            skipMe.push(this_message.thread_id);   // dont process this thread again in the main loop
             for (let n = mNdx + 1; n < presorted.length; n++) {
               if (presorted[n].thread_id === this_message.thread_id) {
-                finalSort.push(presorted[n]);
+                if (presorted[n].common_key.endsWith('hold')) {
+                  finalSort[finalSort.length - 1].wasHeld = presorted[n].posted_time;
+                  finalSort[finalSort.length - 1].held_messageKey = presorted[n].common_key.split('~D')[0];
+                }
+                else {
+                  finalSort.push(presorted[n]);
+                }
               }
             }
           }
@@ -825,6 +882,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     updateReactData({
       lastReloadTime: new Date(),
       lastActiveTime: new Date(),
+      forceReloadTime: 0,
       idleState: false,
       statusMessage: false
     }, true);
@@ -850,7 +908,9 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
         <React.Fragment>
           <Box display='flex'
             key={'header_row'}
-            flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
+            flexDirection='row' justifyContent='space-between' alignItems='center'
+            height={'135px'}
+          >
             <Box display='flex'
               key={'title_and_filter'}
               flexDirection='column'
@@ -862,7 +922,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                 className={classes.title}
                 id='scroll-dialog-title'
               >
-                My Messages
+                {`${reactData.myName ? (reactData.myName + "'" + (reactData.myName.endsWith('s') ? '' : 's')) : 'My'} Messages`}
               </DialogContentText>
               <TextField
                 id='List Filter'
@@ -1204,36 +1264,32 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                           >
                             <Box display='flex'
                               key={this_item.message_id + 'r3' + index}
-                              flexDirection='row'>
-                              {((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id))
-                                ?
-                                <Box
-                                  key={this_item.message_id + 'ibox' + index}
-                                  style={{ alignSelf: 'anchor-center' }}
-                                  onClick={() => {
-                                    setPersonFilter(this_item.partner_id[0]);
-                                  }}
-                                >
-                                  <img
-                                    key={this_item.message_id + 'i' + index}
-                                    className={classes.imageArea}
-                                    alt={''}
-                                    onError={onImageError}
-                                    src={this_item.sender_image}
-                                  />
-                                </Box >
-                                :
-                                <Box
-                                  key={this_item.message_id + 'empty' + index}
-                                  className={classes.imageArea}
-                                  style={{ marginRight: '48px', alignSelf: 'anchor-center' }}
-                                  alt={''}
-                                  src={this_item.sender_image}
-                                  onClick={() => {
-                                    setPersonFilter(this_item.partner_id[0]);
-                                  }}
-                                />
-                              }
+                              flexDirection='row'
+                            >
+                              <Box display='flex'
+                                key={this_item.left + 'r3a' + index}
+                                flexDirection='row'
+                                minWidth={'65px'}
+                              >
+                                {((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id))
+                                  &&
+                                  <Box
+                                    key={this_item.message_id + 'ibox' + index}
+                                    style={{ alignSelf: 'anchor-center' }}
+                                    onClick={() => {
+                                      setPersonFilter(this_item.partner_id[0]);
+                                    }}
+                                  >
+                                    <img
+                                      key={this_item.message_id + 'i' + index}
+                                      className={classes.imageArea}
+                                      alt={''}
+                                      onError={onImageError}
+                                      src={this_item.sender_image}
+                                    />
+                                  </Box >
+                                }
+                              </Box>
                               <Box display='flex'
                                 key={this_item.message_id + 'c2b' + index}
                                 flexDirection='column'
@@ -1264,7 +1320,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                       </React.Fragment>
                                     }
                                     <Typography
-                                      style={Object.assign({}, messageStyle(this_item, index), { fontWeight: 'bold' })}
+                                      style={AVATextStyle({ size: 0.8, bold: true })}
                                     >
                                       {this_item.toLine}
                                     </Typography>
@@ -1285,11 +1341,11 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
 
                             {open[index] &&
                               <Box
-                                marginLeft={(((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id)) ? '58px' : '100px')}
+                                marginLeft={'65px'}
                               >
                                 <Typography
                                   key={`history header`}
-                                  style={AVATextStyle({ size: (((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id)) ? 1 : 0.8), bold: true, margin: { top: 1 } })}
+                                  style={AVATextStyle({ size: 0.8, bold: true, margin: { top: 1 } })}
                                 >
                                   {`Results`}
                                 </Typography>
@@ -1303,9 +1359,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                     }).map((h, x) => (
                                       <Typography
                                         key={`prefLine-${mIndex}__${x}`}
-                                        style={(x === 0)
-                                          ? AVATextStyle({ size: 0.8, margin: { left: 0 } })
-                                          : AVATextStyle({ size: 0.8, margin: { left: 0.5 } })}
+                                        style={AVATextStyle({ size: 0.8, margin: { left: 0 } })}
                                       >
                                         {h.line}
                                       </Typography>
@@ -1316,10 +1370,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                   key={`thread_id`}
                                   style={AVATextStyle({ align: 'right', size: 0.6, margin: { top: 1 } })}
                                 >
-                                  {(this_item.inOut === 'out')
-                                    ? `(Message ID ${messageResults[Object.keys(messageResults)[0]].composite_key.split('~')[0]})`
-                                    : `(Message ID ${messageResults[Object.keys(messageResults)[0]].composite_key})`
-                                  }
+                                  {`(Message ID ${messageResults[Object.keys(messageResults)[0]].composite_key.split('~D')[0]})`}
                                 </Typography>
                               </Box>
                             }
@@ -1357,11 +1408,11 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                           >
                             {!open[index] ?
                               <ExpandMoreIcon
-                                onClick={() => { toggleOpen(index, this_item.common_key, this_item.inOut); }}
+                                onClick={() => { toggleOpen({ index, this_item }); }}
                               />
                               :
                               <ExpandLessIcon
-                                onClick={() => { toggleOpen(index, this_item.common_key, this_item.inOut); }}
+                                onClick={() => { toggleOpen({ index, this_item }); }}
                               />}
                             {((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id)) &&
                               <React.Fragment>
@@ -1376,7 +1427,9 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                       }
                                     }
                                     else {
-                                      newMessageRecipients = [{ person_id: this_item.partner_id, person_name: this_item.patient_name }];
+                                      for (let this_person of this_item.partner_id) {
+                                        newMessageRecipients.push({ person_id: this_person, person_name: await makeName(this_person) });
+                                      }
                                       replyToList = [{ person_id: pPerson, person_name: 'Me' }];
                                     }
                                     updateReactData({
@@ -1409,9 +1462,9 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             </Paper>
           }
           {(messageList.length === 0) &&
-            <Box display='flex' flex={4} justifyContent='center' alignItems='center' overflow='hidden'>
-              <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center' })} >
-                {`Loading!  Please wait...`}
+            <Box display='flex' flex={4} justifyContent='center' alignItems='flex-start' overflow='hidden'>
+              <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center', margin: { top: 3 } })} >
+                {(reactData.lastReloadTime === 0) ? `Loading!  Please wait...` : `You don't have any message activity yet!`}
               </Typography>
             </Box>
           }
@@ -1464,10 +1517,10 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                     ? 'Exit'
                     : ((reactData.selections.length === 1)
                       ? (reactData.selections[0].hasOwnProperty('person_id')
-                        ? `Send to ${reactData.selections[0].person_name.split(' ')[0]}`
-                        : `Send to ${reactData.selections[0].group_name}`
+                        ? `Select ${reactData.selections[0].person_name.split(' ')[0]}`
+                        : `Select ${reactData.selections[0].group_name}`
                       )
-                      : `Send to ${reactData.selectedPeople_count || reactData.selections.length} people`
+                      : `Select ${reactData.selectedPeople_count || reactData.selections.length} people`
                     ),
                 showAll: true,
                 title: 'Select Recipients'
