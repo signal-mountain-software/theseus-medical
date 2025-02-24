@@ -6,7 +6,7 @@ import useSession from '../../hooks/useSession';
 import { titleCase, lambda } from '../../util/AVAUtilities';
 import AVATextInput from './AVATextInput';
 
-export default ({ report_id, title, buttonText, options, onClose }) => {
+export default ({ report_id, title, buttonText, requestor, options, onClose }) => {
 
   const { state } = useSession();
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
@@ -19,7 +19,7 @@ export default ({ report_id, title, buttonText, options, onClose }) => {
     options: [options].flat(),
     payload: {
       client_id: state.session.client_id,
-      requestor: state.session.user_id
+      requestor: requestor || state.session.user_id
     },
     lambda_parms: {
       FunctionName: `arn:aws:lambda:us-east-1:125549937716:function:${report_id}`,

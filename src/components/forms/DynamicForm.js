@@ -472,11 +472,19 @@ export default ({
         />
       );
     case 'submit_report':
+      let requestor = [];
+      if (defaultObject.hasOwnProperty('requestor') && ([defaultObject.requestor].flat().length > 0)) {
+        requestor = [defaultObject.requestor].flat();
+      }
+      if (!requestor.includes(session.user_id)) {
+        requestor.push(session.user_id)
+      }
       return (
         <ReportRequest
           report_id={defaultObject.report_id}
           title={defaultObject.title}
           buttonText={defaultObject.buttonText}
+          requestor={requestor}
           options={defaultObject.options}
           onClose={(response) => {
             onClose(response);
