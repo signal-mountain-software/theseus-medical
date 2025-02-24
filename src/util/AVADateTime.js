@@ -48,6 +48,7 @@ export function makeDate(pInput, optionIn = {}) {
             'date': null,
             'timestamp': 0,
             'ymd': '2099.01.01',
+            'input': '2099-01-01',
             'obs': '2099.1.1',
             'numeric': 20990101,
             'numeric$': '20990101',
@@ -125,6 +126,7 @@ export function makeDate(pInput, optionIn = {}) {
                 'date': null,
                 'timestamp': 0,
                 'ymd': '2099.01.01',
+                'input': '2099-01-01',
                 'obs': '2099.1.1',
                 'numeric': 20990101,
                 'numeric$': '20990101',
@@ -176,6 +178,7 @@ export function makeDate(pInput, optionIn = {}) {
                 'date': null,
                 'timestamp': 0,
                 'ymd': '2099.01.01',
+                'input': '2099-01-01',
                 'obs': '2099.1.1',
                 'numeric': 20990101,
                 'numeric$': '20990101',
@@ -296,6 +299,9 @@ export function makeDate(pInput, optionIn = {}) {
     let targetDateYMD = targetDate.getFullYear()
         + '.' + (targetDate.getMonth() + 101).toString().slice(1)
         + '.' + (targetDate.getDate() + 100).toString().slice(1);
+    let targetDateInput = targetDate.getFullYear()
+        + '-' + (targetDate.getMonth() + 101).toString().slice(1)
+        + '-' + (targetDate.getDate() + 100).toString().slice(1);
     let regEx = /\.0/g;
     return {
         'error': false,
@@ -308,6 +314,7 @@ export function makeDate(pInput, optionIn = {}) {
         'date': targetDate,
         'timestamp': targetDateStamp,
         'ymd': targetDateYMD,
+        'input': targetDateInput,
         'obs': targetDateYMD.replace(regEx, '.'),
         'numeric': Number(targetDateYMD.replace(/\./g, '')),
         'numeric$': targetDateYMD.replace(/\./g, ''),
