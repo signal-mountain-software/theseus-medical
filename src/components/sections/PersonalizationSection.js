@@ -3,7 +3,7 @@ import Box from '@material-ui/core/Box';
 import { Slider, Typography, Button } from '@material-ui/core';
 import { AVATextStyle, AVAclasses, AVADefaults } from '../../util/AVAStyles';
 import { s3, cloudfront } from '../../util/AVAUtilities';
-
+import Select from 'react-dropdown-select';
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
 
@@ -11,6 +11,94 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
   const AVAClass = AVAclasses();
   const hiddenFileInput = React.useRef(null);
+
+  const languageTable = [
+    { label: "English", value: "en" },
+    { label: "Afrikaans", value: "af" },
+    { label: "Albanian", value: "sq" },
+    { label: "Amharic", value: "am" },
+    { label: "Arabic", value: "ar" },
+    { label: "Armenian", value: "hy" },
+    { label: "Azerbaijani", value: "az" },
+    { label: "Bengali", value: "bn" },
+    { label: "Bosnian", value: "bs" },
+    { label: "Bulgarian", value: "bg" },
+    { label: "Catalan", value: "ca" },
+    { label: "Chinese (Simplified)", value: "zh" },
+    { label: "Chinese (Traditional)", value: "zh-TW" },
+    { label: "Croatian", value: "hr" },
+    { label: "Czech", value: "cs" },
+    { label: "Danish", value: "da" },
+    { label: "Dari", value: "fa-AF" },
+    { label: "Dutch", value: "nl" },
+//    { label: "English", value: "en-US" },
+    { label: "Estonian", value: "et" },
+    { label: "Farsi (Persian)", value: "fa" },
+    { label: "Filipino, Tagalog", value: "tl" },
+    { label: "Finnish", value: "fi" },
+    { label: "French", value: "fr" },
+    { label: "French (Canada)", value: "fr-CA" },
+    { label: "Georgian", value: "ka" },
+    { label: "German", value: "de" },
+    { label: "Greek", value: "el" },
+    { label: "Gujarati", value: "gu" },
+    { label: "Haitian Creole", value: "ht" },
+    { label: "Hausa", value: "ha" },
+    { label: "Hebrew", value: "he" },
+    { label: "Hindi", value: "hi" },
+    { label: "Hungarian", value: "hu" },
+    { label: "Icelandic", value: "is" },
+    { label: "Indonesian", value: "id" },
+    { label: "Irish", value: "ga" },
+    { label: "Italian", value: "it" },
+    { label: "Japanese", value: "ja" },
+    { label: "Kannada", value: "kn" },
+    { label: "Kazakh", value: "kk" },
+    { label: "Korean", value: "ko" },
+    { label: "Latvian", value: "lv" },
+    { label: "Lithuanian", value: "lt" },
+    { label: "Macedonian", value: "mk" },
+    { label: "Malay", value: "ms" },
+    { label: "Malayalam", value: "ml" },
+    { label: "Maltese", value: "mt" },
+    { label: "Marathi", value: "mr" },
+    { label: "Mongolian", value: "mn" },
+    { label: "Norwegian (Bokmål)", value: "no" },
+    { label: "Pashto", value: "ps" },
+    { label: "Polish", value: "pl" },
+    { label: "Portuguese (Brazil)", value: "pt" },
+    { label: "Portuguese (Portugal)", value: "pt-PT" },
+    { label: "Punjabi", value: "pa" },
+    { label: "Romanian", value: "ro" },
+    { label: "Russian", value: "ru" },
+    { label: "Serbian", value: "sr" },
+    { label: "Sinhala", value: "si" },
+    { label: "Slovak", value: "sk" },
+    { label: "Slovenian", value: "sl" },
+    { label: "Somali", value: "so" },
+    { label: "Spanish", value: "es" },
+    { label: "Spanish (Mexico)", value: "es-MX" },
+    { label: "Swahili", value: "sw" },
+    { label: "Swedish", value: "sv" },
+    { label: "Tamil", value: "ta" },
+    { label: "Telugu", value: "te" },
+    { label: "Thai", value: "th" },
+    { label: "Turkish", value: "tr" },
+    { label: "Ukrainian", value: "uk" },
+    { label: "Urdu", value: "ur" },
+    { label: "Uzbek", value: "uz" },
+    { label: "Vietnamese", value: "vi" },
+    { label: "Welsh", value: "cy" }
+  ];
+
+  let myAnswer = {
+    label: languageTable.find(l => {
+      return l.value === currentValues.peopleRec.preferred_language;
+    }).label,
+    value: currentValues.peopleRec.preferred_language
+  };
+  console.log(myAnswer);
+
 
   let upload;
   async function handleSaveFile({
@@ -251,6 +339,96 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
           }, true);
         }}
       />
+
+
+      <React.Fragment>
+        <Box
+          key={`selectBox_filterdrop`}
+          display='flex' flexGrow={1} flexDirection='column'
+          marginTop={2}
+          pt={1} pb={1} 
+        >
+          <React.Fragment>
+            <Select
+              options={languageTable}
+              searchBy={'label'}
+              style={{
+                fontSize: '1.2rem',
+                marginLeft: -5,
+                marginBottom: -4,
+                marginTop: 1,
+                borderWidth: 0
+              }}
+              dropdownHandle={true}
+              variant={'standard'}
+              dropdownPosition={'auto'}
+              values={(currentValues.peopleRec.preferred_language
+                ? [myAnswer]
+                : [{ label: 'English', value: 'en' }]
+              )}
+              clearable={true}
+              clearOnSelect={false}
+              placeholder={'Please select your preferred language'}
+              clearOnBlur={false}
+              key={`selectBox_filterdrop_select`}
+              searchable={true}
+              multi={false}
+              closeOnClickInput={true}
+              closeOnSelect={true}
+              create={true}
+              keepSelectedInList={true}
+              noDataLabel={''}
+              onInputChange={async (values) => {
+                if (values.length > 0) {
+                  await updateField({
+                    updateList:
+                      [{
+                        tableName: 'peopleRec',
+                        fieldName: 'preferred_language',
+                        newData: values[0].value
+                      }]
+                  });
+                }
+              }}
+              onChange={async (values) => {
+                if (values.length > 0) {
+                  await updateField({
+                    updateList:
+                      [{
+                        tableName: 'peopleRec',
+                        fieldName: 'preferred_language',
+                        newData: values[0].value
+                      }]
+                  });
+                }
+              }}
+            />
+            <Box display='flex'
+              flexDirection='row'
+              minWidth={'100%'}
+              paddingTop={'4px'}
+              key={`select_wrapper_box`}
+              borderTop={1}
+            >
+              <Typography
+                style={AVATextStyle({
+                  size: 1,
+                  margin: { left: 0, top: 0, bottom: 0.5 },
+                  color: 'black',
+                  //           opacity: '54%',
+                })}
+              >
+                {`My preferred language`}
+              </Typography>
+            </Box>
+          </React.Fragment>
+        </Box>
+      </React.Fragment>
+
+
+
+
+
     </Box >
   );
 };
