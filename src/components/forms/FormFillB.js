@@ -14,6 +14,7 @@ import Select from "react-dropdown-select";
 import PrintIcon from '@material-ui/icons/Print';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 
+import Input from '@material-ui/core/Input';
 import Box from '@material-ui/core/Box';
 import { Dialog, DialogContent } from '@material-ui/core';
 import Typography from '@material-ui/core/Typography';
@@ -921,6 +922,7 @@ export default ({ request = {}, onClose }) => {
       case 'phone': {
         return formatPhone(rawValue);
       }
+      case 'date_select':
       case 'date': {
         return makeDate(rawValue, { noTime: true, noYearCorrection: true }).absolute;
       }
@@ -2091,31 +2093,13 @@ export default ({ request = {}, onClose }) => {
                             })}
                           />
                         }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
                         {(reactData.fields[this_field].type === 'header') &&
                           <Typography
                             style={AVATextStyle(Object.assign(
                               {},
                               {
                                 size: 0.75,
-                                margin: { top: 2, bottom: 0.5, left: 0.5, right: 3 }
+                                margin: { top: 2, bottom: 0.5, right: 3 }
                               },
                               reactData.fields[this_field].prompt.style || {}
                             ))}
@@ -2173,6 +2157,66 @@ export default ({ request = {}, onClose }) => {
                               this_field
                             })}
                           />
+                        }
+                        {(reactData.fields[this_field].type === 'date_select') &&
+                          <Box
+                            display='flex'
+                            flexDirection='column'
+                            id={`dateBox__${this_field}`}
+                            key={`datebox__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
+                              ? reactData.fields[this_field].value
+                              : ''}`}
+                            justifyContent='flex-start'
+                            marginTop={1}
+                            marginLeft={0}
+                            alignItems='flex-start'
+                          >
+                            <input
+                              type="date"
+                              id={`field__${fieldNdx}`}
+                              key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
+                                ? reactData.fields[this_field].value
+                                : ''}`}
+                              min={reactData.fields[this_field].prompt.min}
+                              max={reactData.fields[this_field].prompt.max}
+                              value={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                                ? makeDate(reactData.fields[this_field].value).input
+                                : ''
+                              }
+                              onChange={async (event) => {
+                                if (event.target.value) {
+                                  let dObj = makeDate(event.target.value, { noTime: true, noYearCorrection: true });
+                                  if (!dObj.error) {
+                                    await handleChangeValue({
+                                      newText: dObj.absolute,
+                                      newValue: dObj.numeric$,
+                                      prop: this_field,
+                                      sentenceCase: false
+                                    });
+                                  }
+                                }
+                              }}
+                            />
+                            {reactData.fields[this_field].prompt.newLine &&
+                              <Typography
+                                key={`section__${sectionObj.section_name}_${reactData.fields[this_field]}-breakRow`}
+                                className={classes.breakRow}
+                                style={AVATextStyle({
+                                  lineHeight: 1,
+                                  width: `${reactData.fields[this_field].prompt.width || 200}px`,
+                                  maxWidth: '90%',
+                                  size: 0.75,
+                                  opacity: '60%',
+                                  margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
+                                })}
+                              >
+                                {reconcilePrompt({
+                                  rawValue: reactData.fields[this_field].prompt.value,
+                                  this_field
+                                })}
+                              </Typography>
+                            }
+                          </Box>
                         }
                         {((reactData.fields[this_field].type === 'date')
                           || (reactData.fields[this_field].type === 'time')) &&
