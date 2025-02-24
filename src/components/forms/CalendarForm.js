@@ -2065,7 +2065,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                     calRef.wait_list = updatedData.wait_list;
                   }
                   if (calRef.time24 !== updatedData.time24) {
-                    calRef.time = updatedData.time$;
+                    calRef.time = deepCopy(updatedData.time);
+                    calRef.time$ = updatedData.time$;
                     calRef.time24 = updatedData.time24;
                     localStorage.setItem(`calendarChanged`, true);
                   }

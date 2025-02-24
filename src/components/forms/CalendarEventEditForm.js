@@ -849,24 +849,38 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     if (newTime) {
       updateExpression += `${previousEntry ? ', ' : ''}#t = :t`;
       expressionAttributeNames['#t'] = 'time';
+      let timeStart;
+      let timeEnd;
       if (newTime.toLowerCase().includes(' to ')) {
         let [newFrom, newTo] = newTime.toLowerCase().split(' to ');
-        let timeOut = makeTime(newFrom);
-        expressionAttributeValues[':t'] = {
-          from: timeOut.time,
-          to: makeTime(newTo).time
-        };
-        pOccData.time$ = timeOut.time;
-        pOccData.time24 = timeOut.numeric24;
+        timeStart = makeTime(newFrom);
+        timeEnd = makeTime(newTo);
+        pOccData.time.duration = timeEnd.minutesSinceMidnight - timeStart.minutesSinceMidnight;
       }
       else {
-        let timeOut = makeTime(newTime);
-        expressionAttributeValues[':t'] = {
-          from: timeOut.time
-        };
-        pOccData.time$ = timeOut.time;
-        pOccData.time24 = timeOut.numeric24;
+        timeStart = makeTime(newTime);
+        let tempEnd = timeStart.minutesSinceMidnight + (pOccData.time.duration || 0);
+        let tempMM = tempEnd % 60;
+        tempEnd -= tempMM;
+        let tempHH = Math.trunc(tempEnd / 60) % 24;
+        timeEnd = makeTime((tempHH * 100) + tempMM);
       }
+      expressionAttributeValues[':t'] = {
+        allDay: pOccData.time.allDay,
+        duration: pOccData.time.duration,
+        from_minutesSinceMidnight: timeStart.minutesSinceMidnight,
+        from: timeStart.time,
+        to: timeEnd.time
+      };
+      pOccData.time = {
+        allDay: pOccData.time.allDay,
+        duration: pOccData.time.duration,
+        from_minutesSinceMidnight: timeStart.minutesSinceMidnight,
+        from: timeStart.time,
+        to: timeEnd.time
+      };
+      pOccData.time$ = `${timeStart.time} to ${timeEnd.time}`;
+      pOccData.time24 = timeStart.numeric24;
       needsSlotTimeMessage = (eventSlotList && (eventSlotList.length > 0));
     }
 
