@@ -11,6 +11,7 @@ import Snapshot from '../sections/Snapshot';
 import FormSection from '../sections/FormSection';
 import TechInfoSection from '../sections/TechInfoSection';
 import MessagePreferencesSection from '../sections/MessagePreferencesSection';
+import PersonNotes from './PersonNotes';
 import LinkedAccounts from '../sections/LinkedAccounts';
 import PersonalizationSection from '../sections/PersonalizationSection';
 import GroupAssignments from '../sections/GroupAssignments';
@@ -89,6 +90,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       },
       GroupAssignments: {
         component_id: GroupAssignments,
+      },
+      PersonNotes: {
+        component_id: PersonNotes,
       },
       TechInfoSection: {
         component_id: TechInfoSection
@@ -184,7 +188,15 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           isAuthorized: true,
           version_id: 0,
           component_name: 'FormSection'
-        },
+          },
+          {
+            section_name: 'Notes',
+            color: initialValues?.color || 'orange',
+            isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PersonNotes')) : false),
+            isAuthorized: reactData.administrative_account,
+            version_id: 0,
+            component_name: 'PersonNotes'
+          },
         {
           section_name: 'Password & Tech Stuff',
           color: initialValues?.color || 'orange',
