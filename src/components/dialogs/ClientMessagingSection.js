@@ -325,10 +325,12 @@ export default ({ pGroup = 'ALL', reactData, updateReactData, currentValues }) =
           else {
             let activity_name, recipient_id, recipient_name, title;
             if (isObject(activity_line)) {
-              activity_name = activity_line.activity_code;
-              recipient_id = activity_line.default.recipientID;
-              recipient_name = activity_line.default.recipientName;
-              title = activity_line.title;
+              if (activity_line.hasOwnProperty('default') && activity_line.default.hasOwnProperty('recipientID')) {
+                activity_name = activity_line.activity_code;
+                recipient_id = activity_line.default.recipientID;
+                recipient_name = activity_line.default.recipientName;
+                title = activity_line.title;
+              }
             }
             else {
               let parsed;

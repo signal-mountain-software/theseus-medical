@@ -7,6 +7,7 @@ import { formatPhone } from '../../util/AVAPeople';
 import { deepCopy } from '../../util/AVAUtilities';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import SendIcon from '@material-ui/icons/Send';
+import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
 
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import MakeMessage from '../forms/MakeMessage';
@@ -69,7 +70,8 @@ export default ({ currentValues, reactData, updateReactData }) => {
       key={`profileSection_masterBox`}
       flexGrow={2} px={2} py={4} display='flex' flexDirection='column'
     >
-      {(currentValues.peopleRec.person_notes.length > 0) &&
+      {currentValues.peopleRec.hasOwnProperty('person_notes') &&
+        (currentValues.peopleRec.person_notes.length > 0) &&
         (currentValues.peopleRec.person_notes.some(n => { return n.urgent; })) &&
         (currentValues.peopleRec.person_notes.filter(n => { return n.urgent; }).map((this_urgentNote, uNx) => (
           <Box display='flex' alignItems='flex-start'
@@ -90,6 +92,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
         )))
       }
       <Box display='flex' alignItems='center'
+        style={{marginBottom: '16px'}}
         justifyContent='flex-start' flexDirection='row'>
         <Box
           component="img"
@@ -115,11 +118,34 @@ export default ({ currentValues, reactData, updateReactData }) => {
           >
             {makeLocation()}
           </Typography>
+          {(Object.keys(reactData.local_customFields).length > 0) && Object.keys(reactData.local_customFields).map((this_customField, cFNdx) => (
+            (currentValues.peopleRec?.local_data?.[this_customField] &&
+              <Box
+                key={`local_box__${cFNdx}`}
+                display='flex' flexDirection='row'
+                style={{ marginTop: ((cFNdx === 0) ? '12px' : '4px') }}
+              >
+                <Typography
+                  key={`local_prompt__${cFNdx}`}
+                  style={AVATextStyle({ size: 0.8 })}
+                >
+                  {`${reactData.local_customFields[this_customField].prompt}: `}
+                </Typography>
+                <Typography
+                  key={`local_prompt__${cFNdx}`}
+                  style={AVATextStyle({ size: 0.8, margin: { left: 0.5 }, bold: true })}
+                >
+                  {currentValues.peopleRec?.local_data?.[this_customField]}
+                </Typography>
+              </Box>
+            )
+          ))}
+
         </Box>
       </Box>
       {(currentValues.peopleRec?.contact_info?.cell?.number || currentValues.peopleRec?.messaging?.sms) &&
         <Typography
-          style={AVATextStyle({ margin: { top: 1 } })}
+          style={AVATextStyle({ margin: { top: 0.5 } })}
         >
           {`Cell phone: ${(formatPhone(currentValues.peopleRec?.contact_info?.cell?.number
             ? currentValues.peopleRec.contact_info.cell.number
@@ -127,9 +153,23 @@ export default ({ currentValues, reactData, updateReactData }) => {
           ))}`}
         </Typography>
       }
+      {(currentValues.peopleRec?.contact_info?.work?.number) &&
+        <Typography
+          style={AVATextStyle({ margin: { top: 0.5 } })}
+        >
+          {`Work phone: ${(formatPhone(currentValues.peopleRec?.contact_info?.work?.number))}`}
+        </Typography>
+      }
+      {(currentValues.peopleRec?.contact_info?.home?.number) &&
+        <Typography
+          style={AVATextStyle({ margin: { top: 0.5 } })}
+        >
+          {`Home phone: ${(formatPhone(currentValues.peopleRec?.contact_info?.home?.number))}`}
+        </Typography>
+      }
       {(currentValues.peopleRec.emergency_contact?.contact1 || currentValues.peopleRec.emergency_contact?.contact2) &&
         <Typography
-          style={AVATextStyle({ margin: { top: 1 } })}
+          style={AVATextStyle({ margin: { top: 0.5 } })}
         >
           {`Emergency contacts:`}
         </Typography>
@@ -197,27 +237,41 @@ export default ({ currentValues, reactData, updateReactData }) => {
           <Typography
             style={AVATextStyle({ margin: { top: 1 } })}
           >
-            {`${currentValues.peopleRec.name?.first}'s account may be managed by:`}
+            {`${currentValues.peopleRec.name?.first}'s Caregiver(s):`}
           </Typography>
           <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
             {reactData.accessList.map((this_item, tIndex) => (
               currentValues.peopleRec.proxy_allowed_from.hasOwnProperty(this_item.person_id) &&
-              <Typography
-                style={AVATextStyle({ margin: { top: 0, left: 1 }, bold: true })}
+              <Button
+                className={AVAClass.AVAButton_noBorder}
+                key={`parent_button__${tIndex}`}
                 onClick={async () => {
                   updateReactData({
                     viewFamilySnapshot: this_item.person_id
                   }, true);
                 }}
+                style={{ marginLeft: '18px', backgroundColor: 'white', color: 'black' }}
+                size='small'
+                startIcon={<SendIcon size='small' />}
               >
-                {`${this_item.first} ${this_item.last}`}
-              </Typography>
+                <Box display='flex' alignItems='center'
+                  key={`parent_box__${tIndex}`}
+                  justifyContent='flex-end' flexDirection='column'>
+                  <Typography
+                    key={`parent_name__${tIndex}`}
+                    style={AVATextStyle({ margin: { top: 0, left: 0 }, bold: true })}
+                  >
+                    {`${this_item.first} ${this_item.last}`}
+                  </Typography>
+                </Box>
+              </Button>
             )
             )}
           </Box>
         </React.Fragment>
       }
-      {(currentValues.peopleRec.person_notes.length > 0) &&
+      {currentValues.peopleRec.hasOwnProperty('person_notes') &&
+        (currentValues.peopleRec.person_notes.length > 0) &&
         (currentValues.peopleRec.person_notes.some(n => { return !n.urgent; })) &&
         <Box display='flex' alignItems='flex-start'
           justifyContent='flex-start' flexDirection='column'>
@@ -253,33 +307,81 @@ export default ({ currentValues, reactData, updateReactData }) => {
         key={`bottom_row`}
         style={{ marginTop: '24px' }}
       >
-        {(state.session.user_id !== currentValues.peopleRec.person_id) &&
-          <Button
-            onClick={async () => {
-              updateReactData({
-                sendMessage: true
-              }, true);
-            }}
-            className={AVAClass.AVAButton}
-            style={{ marginLeft: 0, backgroundColor: 'white', color: 'black' }}
-            size='small'
-            startIcon={<SendIcon size='small' />}
-          >
-            <Box display='flex' alignItems='center'
-              justifyContent='flex-end' flexDirection='column'>
-              <Typography
-                style={AVATextStyle({ size: 0.7, margin: { top: 0.2, right: 0.5 } })}
-              >
-                {`Message`}
-              </Typography>
-              <Typography
-                style={AVATextStyle({ size: 0.7, margin: { bottom: 0.2, right: 0.5 } })}
-              >
-                {currentValues.peopleRec.name?.first}
-              </Typography>
-            </Box>
-          </Button>
-        }
+        <Box
+          display='flex'
+          alignItems={'center'}
+          justifyContent='flex-start' flexDirection='row'
+          key={`bottom_buttons`}
+          style={{}}
+        >
+          {(state.session.user_id !== currentValues.peopleRec.person_id) &&
+            <Button
+              key={`sendMessagesButton`}
+              onClick={async () => {
+                updateReactData({
+                  sendMessage: true
+                }, true);
+              }}
+              className={AVAClass.AVAButton}
+              style={{ marginLeft: 0, backgroundColor: 'white', color: 'black' }}
+              size='small'
+              startIcon={<SendIcon size='small' />}
+            >
+              <Box display='flex' alignItems='center'
+                key={`sendMessages`}
+                justifyContent='flex-end' flexDirection='column'>
+                <Typography
+                  key={`sendMessage`}
+                  style={AVATextStyle({ size: 0.7, margin: { right: 0.5 } })}
+                >
+                  {`Message`}
+                </Typography>
+              </Box>
+            </Button>
+          }
+          {(state.session.user_id !== currentValues.peopleRec.person_id) &&
+            (currentValues.peopleRec.contact_info.cell.number) &&
+            <Button
+              className={AVAClass.AVAButton}
+              key={`callCellButton`}
+              style={{ marginLeft: 0, backgroundColor: 'white', color: 'black' }}
+              size='small'
+              startIcon={<PhoneInTalkIcon size='small' />}
+            >
+              <a href={`tel:${currentValues.peopleRec.contact_info.cell.number}`}
+                key={`callCell`}
+                style={{ color: 'inherit', textDecoration: 'none' }}>
+                <Typography
+                  key={`callCell_words`}
+                  style={AVATextStyle({ size: 0.7, margin: { right: 0.5 } })}
+                >
+                  {`Call Cell`}
+                </Typography>
+              </a>
+            </Button>
+          }
+          {(state.session.user_id !== currentValues.peopleRec.person_id) &&
+            (currentValues.peopleRec.contact_info?.work?.number) &&
+            <Button
+              className={AVAClass.AVAButton}
+              key={`callWorkButton`}
+              style={{ marginLeft: 0, backgroundColor: 'white', color: 'black' }}
+              size='small'
+              startIcon={<PhoneInTalkIcon size='small' />}
+            >
+              <a href={`tel:${currentValues.peopleRec.contact_info.work.number}`}
+                key={`callWork`}
+                style={{ color: 'inherit', textDecoration: 'none' }}>
+                <Typography
+                  key={`callWork_words`}
+                  style={AVATextStyle({ size: 0.7, margin: { right: 0.5 } })}
+                >
+                  {`Call Work`}
+                </Typography>
+              </a>
+            </Button>
+          }
+        </Box>
         {(reactData.administrative_account || (state.session.user_id === currentValues.peopleRec.person_id)) &&
           <Box display='flex' alignItems='center'
             justifyContent='flex-end' flexDirection='row'>

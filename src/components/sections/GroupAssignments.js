@@ -13,8 +13,11 @@ export default ({ currentValues, updateField, reactData, setError, updateReactDa
   const isMounted = React.useRef(false);
 
   const updateGroupList = async (clicked_group) => {
+    if (currentValues.peopleRec.hasOwnProperty('groups')) {
+      currentValues.peopleRec.groups = [];
+    }
     let foundIt = currentValues.peopleRec.groups.indexOf(clicked_group.id || clicked_group.group_id);
-    if (foundIt < 0) {
+    if (foundIt < 0) { 
       currentValues.peopleRec.groups.push(clicked_group.id || clicked_group.group_id);
       if (clicked_group.belongs_to) {
         let parentGroup = clicked_group.belongs_to;
@@ -160,13 +163,13 @@ export default ({ currentValues, updateField, reactData, setError, updateReactDa
                 <Checkbox
                   size="small"
                   onClick={async () => { await updateGroupList(gObj); }}
-                  checked={currentValues.peopleRec.groups.includes(gObj.id)}
+                  checked={currentValues.peopleRec.groups && currentValues.peopleRec.groups.includes(gObj.id)}
                 />
               }
               <Typography style={AVATextStyle({
                 margin: { left: 0 },
                 padding: { left: 0 },
-                bold: currentValues.peopleRec.groups.includes(gObj.id)
+                bold: (currentValues.peopleRec.groups && currentValues.peopleRec.groups.includes(gObj.id))
               })}
               >
                 {gObj.name}

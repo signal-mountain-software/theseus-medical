@@ -243,7 +243,8 @@ export default ({ defaults, onClose }) => {
   async function personForms(this_person) {
     reactData.masterPeopleList[this_person] = {};
     for (let this_form in reactData.masterFormList) {
-      if (reactData.masterFormList[this_form].groupList.some(g => { return reactData.selectedPersonRec.groups.includes(g); })) {
+      if (reactData.masterFormList[this_form].hasOwnProperty('groupList') &&
+        reactData.masterFormList[this_form].groupList.some(g => { return reactData.selectedPersonRec.groups.includes(g); })) {
         reactData.masterPeopleList[this_person][this_form] = {
           status: 'not started',
           last_update: 0
@@ -886,7 +887,7 @@ export default ({ defaults, onClose }) => {
                           },
                           author: state.session.patient_id
                         });
-                        cl(newDocument)
+                        cl(newDocument);
                       }
                     }}
                     key={`form_column`}
@@ -900,6 +901,21 @@ export default ({ defaults, onClose }) => {
                             key={`form_row_list_${gX}`}
                             justifyContent='flex-start'
                             alignItems='center'
+                            onContextMenu={async (e) => {
+                              e.preventDefault();
+                              updateReactData({
+                                alert: {
+                                  severity: 'info',
+                                  title: `${reactData.masterFormList[this_form].form_name}`,
+                                  message: <div>
+                                    Person ID: <strong>{reactData.selectedPerson_id}</strong><br />
+                                    Form Type: <strong>{this_form}</strong><br />
+                                    Status: {reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status}<br />
+                                    WIP Doc ID: {(reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.document_id || 'n/a')}<br />
+                                    Completed Doc ID: {(reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.completedDocs[0]?.document_id || 'n/a')}</div>
+                                }
+                              }, true);
+                            }}
                             style={AVATextStyle({
                               size: 1.2,
                               margin: { top: 0, bottom: 0.8 }
@@ -1068,6 +1084,22 @@ export default ({ defaults, onClose }) => {
                           key={`formperson_row_list_${cX}`}
                           justifyContent='flex-start'
                           alignItems='center'
+                          onContextMenu={async (e) => {
+                            e.preventDefault();
+                            updateReactData({
+                              alert: {
+                                severity: 'info',
+                                title: `${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`,
+                                message: <div>
+                                  Person ID: {this_person}
+                                  Form Type: {reactData.selectedForm_id}<br />
+                                  Status: {reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status}<br />
+                                  WIP Doc ID: {(reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'n/a')}<br />
+                                  Completed Doc ID: {(reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.document_id || 'n/a')}</div>
+                              }
+                            }, true);
+                          }}
+
                           style={{ marginBottom: '6px' }}
                         >
                           {(reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'completed')

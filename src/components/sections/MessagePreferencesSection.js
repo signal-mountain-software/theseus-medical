@@ -222,7 +222,9 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
               currentValues.peopleRec.time_based_rules = [];
             }
             currentValues.peopleRec.time_based_rules.unshift({
-              name: `${(currentValues.peopleRec.name?.first ? (currentValues.peopleRec.name?.first + "'s").replace("s's", "s'") : 'My')} New Rule`
+              name: `${(currentValues.peopleRec.name?.first ? (currentValues.peopleRec.name?.first + "'s").replace("s's", "s'") : 'My')} New Rule`,
+              methods: ['ava'],
+              method: 'ava'
             });
             await updateField({
               updateList:

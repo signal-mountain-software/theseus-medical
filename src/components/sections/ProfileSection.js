@@ -6,7 +6,7 @@ import { isEmpty } from '../../util/AVAUtilities';
 import { AVATextStyle } from '../../util/AVAStyles';
 import TextField from '@material-ui/core/TextField';
 
-export default ({ currentValues, ogValues, errorList, setError, updateField }) => {
+export default ({ currentValues, ogValues, errorList, setError, reactData, updateField }) => {
 
   const makeLocation = () => {
     if (currentValues.peopleRec.hasOwnProperty('address')) {
@@ -625,6 +625,33 @@ export default ({ currentValues, ogValues, errorList, setError, updateField }) =
         defaultValue={currentValues.peopleRec.emergency_contact?.contact2 || ''}
         helperText={'Emergency Contact 2 - Name & Phone'}
       />
+      {(Object.keys(reactData.local_customFields).length > 0) && Object.keys(reactData.local_customFields).map((this_customField, cFNdx) => (
+        <Box display='flex' alignItems='center'
+          key={`local_box__${cFNdx}`}
+          justifyContent='flex-start' flexDirection='row'>
+          <TextField style={{ width: '400px' }}
+            id='email'
+            key={`local__${cFNdx}`}
+            autoComplete='off'
+            onBlur={async (event) => {
+              let updateObj = {
+                updateList:
+                  [{
+                    tableName: 'peopleRec',
+                    fieldName: `local_data.${this_customField}`,
+                    newData: event.target.value
+                  }]
+              };
+              await updateField(updateObj);
+            }}
+            defaultValue={currentValues.peopleRec?.local_data?.[this_customField] || ''}
+            helperText={reactData.local_customFields[this_customField].prompt}
+          />
+        </Box>
+      ))}
+
+
+
       <Box display='flex' alignItems='center'
         justifyContent='flex-end' flexDirection='row'>
         <Typography

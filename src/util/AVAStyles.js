@@ -31,6 +31,16 @@ export const AVAclasses = makeStyles(theme => ({
         fontWeight: 'bold',
         size: 'small',
     },
+    AVAButton_noBorder: {
+        borderRadius: '16px',
+        variant: 'outlined',
+        border: '0px',
+        textTransform: 'none',
+        textDecoration: 'none',
+        textWrap: 'nowrap',
+        fontWeight: 'bold',
+        size: 'small',
+    },
     AVAMicroButton: {
         marginLeft: theme.spacing(1),
         marginRight: theme.spacing(1),

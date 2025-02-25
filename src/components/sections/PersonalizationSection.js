@@ -91,6 +91,9 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
     { label: "Welsh", value: "cy" }
   ];
 
+  if (!currentValues.peopleRec.preferred_language) {
+    currentValues.peopleRec.preferred_language = 'en';
+  }
   let myAnswer = {
     label: languageTable.find(l => {
       return l.value === currentValues.peopleRec.preferred_language;
@@ -160,10 +163,10 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
       <Box flexGrow={1}
         display="flex"
         flexDirection='column'
-        alignItems="center"
+        alignItems="flex-start"
         justifyContent="center"
       >
-        <Box width={300} >
+        <Box width={300} style={{marginLeft: '16px'}}>
           <Slider
             value={currentValues.sessionRec.customizations?.font_size || 1}
             onChange={async (event, newValue) => {
@@ -194,7 +197,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         </Typography>
       </Box>
       <Typography
-        style={AVATextStyle({ italic: true, margin: { top: 3, bottom: 0.4 } })}
+        style={AVATextStyle({ margin: { top: 2, bottom: 0.4 } })}
       >
         {`Load and customize your photo here`}
       </Typography>
@@ -228,7 +231,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
           />
           <Box display='flex'
             flexDirection='row'
-            justifyContent='center'
+            justifyContent='flex-start'
             alignItems='center'
             marginTop={1}
           >
@@ -282,10 +285,11 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Box display='flex'
           flexDirection='column'
           justifyContent='center'
-          alignItems='center'
-          marginTop={2}
+          alignItems='flex-start'
+          marginTop={1}
         >
           <Box
+            style={{marginLeft: '40px'}}
             component="img"
             minWidth={150}
             maxWidth={150}
@@ -353,7 +357,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
               options={languageTable}
               searchBy={'label'}
               style={{
-                fontSize: '1.2rem',
+                fontSize: '1rem',
                 marginLeft: -5,
                 marginBottom: -4,
                 marginTop: 1,
@@ -411,12 +415,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
               borderTop={1}
             >
               <Typography
-                style={AVATextStyle({
-                  size: 1,
-                  margin: { left: 0, top: 0, bottom: 0.5 },
-                  color: 'black',
-                  //           opacity: '54%',
-                })}
+                style={AVATextStyle({ size: 0.9, opacity: '40%', margin: { left: 0, top: 0, bottom: 0.5 } })}
               >
                 {`My preferred language`}
               </Typography>

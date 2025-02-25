@@ -196,7 +196,7 @@ export default ({
           person_id={session.patient_id}
           options={defaultValueObj.options}
           onClose={(updatedPerson) => {
-            if (updatedPerson) {
+            if (updatedPerson && updatedPerson.saveCompleted) {
               sessionStorage.removeItem('AVASessionData');
               window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
             }
