@@ -585,7 +585,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         if (m.author.author_id === pPerson) {
           continue;
         }
-        let language = m.language || 'EN-US';
+        // let language = m.language || 'EN-US';
+        let language = 'EN-US';
         let this_image = await getImage(m.author.author_id);
         if (m.author.author_name === 'AVA notifications') {
           let sRec = await getPerson(m.author.author_id);
