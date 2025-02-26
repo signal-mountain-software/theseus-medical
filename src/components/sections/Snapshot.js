@@ -270,6 +270,44 @@ export default ({ currentValues, reactData, updateReactData }) => {
           </Box>
         </React.Fragment>
       }
+      {currentValues.peopleRec.myFamilyMembers &&
+        (Object.keys(currentValues.peopleRec.myFamilyMembers).length > 0) &&
+        reactData.accessList &&
+        <React.Fragment>
+          <Typography
+            style={AVATextStyle({ margin: { top: 1 } })}
+          >
+            {`${currentValues.peopleRec.name?.first} is a Caregiver for:`}
+          </Typography>
+          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+            {Object.keys(currentValues.peopleRec.myFamilyMembers).map((this_item, tIndex) => (
+              <Button
+                className={AVAClass.AVAButton_noBorder}
+                key={`child_button__${tIndex}`}
+                onClick={async () => {
+                  updateReactData({
+                    viewFamilySnapshot: this_item
+                  }, true);
+                }}
+                style={{ marginLeft: '18px', backgroundColor: 'white', color: 'black' }}
+                size='small'
+              >
+                <Box display='flex' alignItems='center'
+                  key={`child_box__${tIndex}`}
+                  justifyContent='flex-end' flexDirection='column'>
+                  <Typography
+                    key={`child_name__${tIndex}`}
+                    style={AVATextStyle({ margin: { top: 0, left: 0 }, bold: true })}
+                  >
+                    {`${currentValues.peopleRec.myFamilyMembers[this_item].name}`}
+                  </Typography>
+                </Box>
+              </Button>
+            )
+            )}
+          </Box>
+        </React.Fragment>
+      }
       {currentValues.peopleRec.hasOwnProperty('person_notes') &&
         (currentValues.peopleRec.person_notes.length > 0) &&
         (currentValues.peopleRec.person_notes.some(n => { return !n.urgent; })) &&
