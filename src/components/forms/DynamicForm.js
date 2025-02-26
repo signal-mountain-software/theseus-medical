@@ -450,6 +450,20 @@ export default ({
           onCancel={onClose}
           onComplete={onClose}
           allowCancel={true}
+
+
+                     newMessage: true,
+            recipients: reactData.sendMessage.map(r => {
+              return {
+                person_id: r.person_id,
+                person_name: r.person_name
+              };
+            }),
+            subject: reactData.sendMessage[0].subject,
+            messageText: reactData.sendMessage[0].messageText,
+            attachmentList: reactData.sendMessage.map(a => {
+              return a.attachmentList;
+            }).flat(),
         />
         */
         <MessageForm
@@ -459,7 +473,8 @@ export default ({
           pSession={session}
           onReset={onClose}
           options={{
-            newMessage: recipients
+            newMessage: true,
+            recipients,
           }}
         />
       );
