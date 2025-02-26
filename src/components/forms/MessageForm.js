@@ -736,7 +736,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         for (let x = 0; x < mRecs.Items.length; x++) {
           totalOutboundProcessed++;
           let m = mRecs.Items[x];
-          let language = m.language || 'EN-US';
+          // let language = m.language || 'EN-US';
+          let language = 'EN-US';
           // convert inline link to an attachment
           let hLink;
           if (m.content.current[language].hasOwnProperty('text') && m.content.current[language].text) {
