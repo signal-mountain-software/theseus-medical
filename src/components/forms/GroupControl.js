@@ -365,7 +365,16 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
         };
       }
       // make the update
-      let newClientGroupsObj = deepCopy(peopleRec.Item.clients);
+      let newClientGroupsObj;
+      if (peopleRec.Item.clients) {
+        newClientGroupsObj = deepCopy(peopleRec.Item.clients);
+      }
+      else {
+        newClientGroupsObj = {
+          id: pSession.client_id,
+          groups: newGroupList
+        }
+      }
       if (newClientGroupsObj.hasOwnProperty('id')) {     // expected and standard
         if (newClientGroupsObj.id !== pSession.client_id) {     // but we are in a client other than the typical one (this should be very rare)
           newClientGroupsObj[newClientGroupsObj.id] = Object.assign({}, newClientGroupsObj);
