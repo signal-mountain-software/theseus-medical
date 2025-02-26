@@ -57,7 +57,7 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
       option: 'voice_cell',
       label: `Phone call`,
       enabled: ` to ${formatPhone(currentValues.peopleRec.contact_info?.cell?.number)}`,
-      show: !isEmpty(currentValues.peopleRec.contact_info?.cell?.number) && (currentValues.peopleRec.contact_info?.cell.number !== currentValues.peopleRec.contact_info.landline.number),
+      show: !isEmpty(currentValues.peopleRec.contact_info?.cell?.number) && (currentValues.peopleRec.contact_info?.cell.number !== currentValues.peopleRec.contact_info?.landline?.number),
       exclusive: false
     },
     {
