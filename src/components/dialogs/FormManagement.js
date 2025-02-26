@@ -811,6 +811,11 @@ export default ({ defaults, onClose }) => {
                     <Typography
                       key={`g_text_end-last_name`}
                       draggable={true}
+                      onDragStart={(e) => handleDragStart(e, {
+                        person_id: reactData.selectedPerson_id,
+                        person_name: `${reactData.selectedPersonRec.name.first} ${reactData.selectedPersonRec.name.last}`,
+                      })}
+
                       style={Object.assign({},
                         AVATextStyle({
                           size: 1.5,
