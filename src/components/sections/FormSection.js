@@ -528,14 +528,14 @@ export default ({ currentValues, reactData, updateReactData }) => {
                         request={(reactData.masterFormList[person_id].myFormListObj[this_formID].isUpdating === 'new') ?
                           {
                             form_id: this_formID,
-                            person_id: currentValues.peopleRec.person_id,
+                            person_id: person_id || currentValues.peopleRec.person_id,
                             mode: 'new',
                           }
                           :
                           {
                             form_id: this_formID,
                             document_id: reactData.masterFormList[person_id].myFormListObj[this_formID].isUpdating,
-                            person_id: currentValues.peopleRec.person_id,
+                            person_id: person_id || currentValues.peopleRec.person_id,
                           }}
                         onClose={async (ignore_me, statusObj) => {
                           reactData.masterFormList[person_id].myFormListObj[this_formID].isUpdating = false;

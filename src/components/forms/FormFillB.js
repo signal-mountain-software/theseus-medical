@@ -1544,7 +1544,7 @@ export default ({ request = {}, onClose }) => {
       document_id,
       title: reactData.document_title,
       pertains_to: reactData.pertains_to,
-      status: url ? 'complete' : 'in_process',
+      status: url ? (pending ? 'pending' : 'complete') : 'in_process',   // need to set pending when appropriate
       form_type: reactData.form_id,
       client_id_form_type: `${state.session.client_id}%%${reactData.form_id}`,
       field_values,
@@ -1629,7 +1629,7 @@ export default ({ request = {}, onClose }) => {
       TableName: 'PostOffice'
     };
     if (send_instructions.attach) {
-      PostOfficeRec.attachments = send_instructions.url;
+      PostOfficeRec.Item.attachments = [send_instructions.url];
     }
     await dbClient
       .put(PostOfficeRec)
@@ -2619,7 +2619,7 @@ export default ({ request = {}, onClose }) => {
             let response = await handleSave({
               document_id: reactData.document_id,
               final: true,
-              pending: reactData.errorsOnForm
+              pending: !!reactData.errorsOnForm
             });
             if (!response.goodPut) {
               updateReactData({
