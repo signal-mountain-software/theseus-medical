@@ -250,12 +250,12 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
               <Typography
                 style={AVATextStyle({ size: 0.5, margin: { top: 1 } })}
               >
-                {`by: ${this_note.user_name}`}
+                {`by: ${this_note.user_name || reactData.user_id}`}
               </Typography>
               <Typography
                 style={AVATextStyle({ size: 0.5, margin: { top: 0 } })}
               >
-                {`on: ${makeDate(this_note.last_update).absolute}`}
+                {`on: ${makeDate(this_note.last_update || new Date()).absolute}`}
               </Typography>
               <Typography
                 style={AVATextStyle({ size: 0.5, margin: { top: 0 } })}

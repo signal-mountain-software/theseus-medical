@@ -59,7 +59,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     mode: options.mode || 'edit',
     addFamilyMember: false,
     viewFamilyMember: false,
-    user_id: state.user.user_id,
+    user_id: state.user.person_id,
     formHistoryMode: false,
     isAmendingForm: false,
     recentlyCompletedDocs: [],
