@@ -288,6 +288,28 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     else { return 'AVA Message'; }
   }
 
+  function searchButtonText() {
+    if (reactData.selections.length === 0) {
+      return 'Exit';
+    }
+    if (reactData.selections.length > 1) { 
+      return `Select ${reactData.selectedPeople_count} people`
+    }
+    // options below if only one item selected
+    if (reactData.selections[0].hasOwnProperty('person_id')) {
+      return `Select ${reactData.selections[0].person_name.split(' ')[0]}`;
+    }
+    else if (reactData.selections[0].hasOwnProperty('personList')) {
+      return `Select ${reactData.selections[0].listName}`
+    }
+    else if (reactData.selections[0].hasOwnProperty('group_name')) {
+      return `Select ${reactData.selections[0].group_name}`
+    }
+    else {
+      return `Select`
+    }
+  }
+
   const handleChangeMessageFilter = event => {
     if (event.target.value.length === 0) {
       setMessageFilter(null);
@@ -331,7 +353,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     return tempMessageList;
   };
 
-  async function getMessageResults({this_item}) {
+  async function getMessageResults({ this_item }) {
     let gotHistory = await messageHistory({
       thread_id: this_item.common_key.split('~M')[0].slice(2),
       composite_key: this_item.common_key.split('~D')[0],
@@ -609,7 +631,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           : ((m.deliver_method === 'sms')
             ? 'text'
             : ((m.deliver_method === 'voice') ? 'phone' : 'ava')
-          )
+          );
         let message_key = m.composite_key.split('~D')[0];
         if (messageMethods.hasOwnProperty(message_key)) {
           messageMethods[message_key].push(deliver_method);
@@ -1514,16 +1536,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                 withGroups: true,
                 withPreferred: true,
                 buttonColor: (reactData.selections.length === 0) ? 'red' : 'green',
-                buttonText:
-                  (reactData.selections.length === 0)
-                    ? 'Exit'
-                    : ((reactData.selections.length === 1)
-                      ? (reactData.selections[0].hasOwnProperty('person_id')
-                        ? `Select ${reactData.selections[0].person_name.split(' ')[0]}`
-                        : `Select ${reactData.selections[0].group_name}`
-                      )
-                      : `Select ${reactData.selectedPeople_count || reactData.selections.length} people`
-                    ),
+                buttonText: searchButtonText(),
                 showAll: true,
                 title: 'Select Recipients'
               }}

@@ -247,7 +247,8 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                       reactData.selections.unshift({
                         rIndex,
                         personList: this_recipient.personList,
-                        personNames: this_recipient.personNames
+                        personNames: this_recipient.personNames,
+                        listName: this_recipient.objText
                       });
                     }
                     let selectedPeople_count = 0;
@@ -286,20 +287,6 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
             )}
           </Box>
         }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         {options.withGroups && reactData.groupInfo &&
           <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
             <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
@@ -460,22 +447,17 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                     }
                     let selectedPeople_count = 0;
                     let selectedPeople_list = [];
-                    if (options.withGroups && reactData.selections.some(s => { return s.hasOwnProperty('group_id'); })) {
-                      for (let this_person of reactData.accessList) {
-                        if (
-                          this_person.groups.some(g => { return (reactData.selections.some(s => { return s.group_id === g; })); })
-                          ||
-                          reactData.selections.some(s => { return s.person_id === this_person.person_id; })
-                          ||
-                          reactData.selections.some(s => { return s.rIndex && reactData.preferred_recipients[s.rIndex].personList.includes(this_person.person_id); })
-                        ) {
-                          selectedPeople_count++;
-                          selectedPeople_list.push(this_person.person_id);
-                        }
+                    for (let this_person of reactData.accessList) {
+                      if (
+                        this_person.groups.some(g => { return (reactData.selections.some(s => { return s.group_id === g; })); })
+                        ||
+                        reactData.selections.some(s => { return s.person_id === this_person.person_id; })
+                        ||
+                        reactData.selections.some(s => { return s.rIndex && reactData.preferred_recipients[s.rIndex].personList.includes(this_person.person_id); })
+                      ) {
+                        selectedPeople_count++;
+                        selectedPeople_list.push(this_person.person_id);
                       }
-                    }
-                    else {
-                      selectedPeople_count = reactData.selections.length;
                     }
                     updateReactData({
                       selectedPeople_count,
