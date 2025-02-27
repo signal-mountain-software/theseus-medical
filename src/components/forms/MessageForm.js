@@ -535,7 +535,6 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
           TableName: "TheseusMessages",
           IndexName: 'sent_from-index',
           ScanIndexForward: false,
-          Limit: 20
         })
         .promise()
         .catch(error => {
