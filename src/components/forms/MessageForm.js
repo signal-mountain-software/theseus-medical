@@ -1052,6 +1052,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                         onClick={() => {
                                           updateReactData({
                                             newMessageRecipients: [],
+                                            linkedPersonFilter: '',
                                             showQuickSearch: true,
                                             selections: reactData.newMessageRecipients
                                           }, true);
@@ -1605,6 +1606,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                     onClick={async () => {
                       updateReactData({
                         showQuickSearch: true,
+                        linkedPersonFilter: '',
                         newMessageMode: true,
                         newMessageSubject: '',
                         newMessageText: '',
