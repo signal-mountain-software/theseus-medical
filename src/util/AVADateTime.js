@@ -333,6 +333,40 @@ export function makeDate(pInput, optionIn = {}) {
                 leftOver_text: ''
             };
         }
+        // is the text a good date on its own?
+        let parsed = pString.match(/[+-]/);
+        let datePart;
+        let addendPart = 0;
+        let delimiter = '+';
+        console.log({ parsed });
+        if (parsed) {
+            delimiter = parsed[0];
+            [datePart, addendPart] = pString.split(delimiter);
+            if (isNaN(addendPart)) {
+                addendPart = 0;
+            }
+        }
+        else {
+            datePart = pString;
+        }
+        datePart = datePart.replace(/st|th|nd|rd/, '');
+        const today = new Date();
+        console.log({ datePart });
+        let validateDate = new Date(datePart);
+        if (isDate(validateDate)) {
+            let textDate = new Date(`${datePart} ${today.getFullYear()}`);
+            console.log({ textDate });
+            if (isDate(textDate) && (textDate < today)) {
+                textDate = new Date(`${datePart} ${today.getFullYear() + 1}`);
+            }
+            let finalAnswer = addDays(textDate, ((delimiter === '-') ? -1 : 1) * Number(addendPart));
+            console.log({ finalAnswer });
+            return {
+                date: finalAnswer,
+                leftOver_text: ''
+            };
+        }
+        // the text is some odd combination
         let daysToAdd = 0;
         let words, plusMinus, days$;
         let timePart;
