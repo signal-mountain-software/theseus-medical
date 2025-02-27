@@ -481,7 +481,8 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
       if (mRecs && mRecs.hasOwnProperty('Items')) {
         for (let x = 0; x < mRecs.Items.length; x++) {
           let m = mRecs.Items[x];
-          let language = m.language || 'EN-US';
+          // let language = m.language || 'EN-US';
+          let language = 'EN-US';
           let this_image = await getImage(m.author.author_id);
           if (m.author.author_name === 'AVA notifications') {
             let sRec = await getPerson(m.author.author_id);
@@ -546,7 +547,8 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
       if (mRecs && mRecs.hasOwnProperty('Items')) {
         for (let x = 0; x < mRecs.Items.length; x++) {
           let m = mRecs.Items[x];
-          let language = m.language || 'EN-US';
+          // let language = m.language || 'EN-US';
+          let language = 'EN-US';
           // convert inline link to an attachment
           let hLink;
           if (m.content.current[language].hasOwnProperty('text') && m.content.current[language].text) {
@@ -624,162 +626,162 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             autoComplete='off'
           />
           {(messageList.length > 0) &&
-          <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
-            <List  >
-              <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                {rowsWritten = 0}
-              </Typography>
-              {messageList.map((this_item, index) => (
-                ((rowsWritten <= rowLimit)
-                  && (this_item.inOut === inOut_mode)
-                  && (!message_filter || filteredMessage(this_item, message_filter))
-                  && (!this_item.delete_flag || showDeleted) ?
-                  <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
-                    <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                      {rowsWritten++}
-                    </Typography>
-                    <Box display='flex' flexDirection='column'>
-                      <Box
-                        display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                        key={this_item.message_id + 'r' + index}
-                        className={classes.listItem}
-                        onClick={() => { toggleOpen(index, this_item.common_key); }}
-                      >
-                        <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
-                          {(inOut_mode === 'in') &&
-                            <Box display='flex' flexDirection='column'>
-                              <Box display='flex' flexDirection='row'>
-                                <Box
-                                  className={classes.imageArea}
-                                  component="img"
-                                  alt={''}
-                                  src={this_item.sender_image}
-                                />
-                                <Box display='flex' flexDirection='column'>
-                                  <Typography variant='h5' className={classes.lastName} >{makeSubject(this_item.subject || this_item.message_text)}</Typography>
-                                  <Typography variant='h5' className={classes.firstName}>{`from: ${this_item.patient_name || this_item.sender_name || this_item.sender_id}`}</Typography>
-                                  <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.posted_time || this_item.deliver_time)}</Typography>
-                                </Box>
-                              </Box>
-                              {this_item.message_text.split(/[\n\r]+/).map((mLine, mIndex) => (
-                                <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>
-                              ))}
-                              {this_item.attachments && this_item.attachments.map((aLine, aIndex) => (
-                                <a
-                                  href={aLine}
-                                  key={`attach-${aIndex}-href`}
-                                  target='_blank'
-                                  rel='noopener noreferrer'
-                                  style={{ color: 'inherit', textDecoration: 'underline' }}>
-                                  <Typography
-                                    key={`attach-${aIndex}`}
-                                    className={classes.attachmentLine}
-                                  >
-                                    {`Attachment: ${attachmentName(aLine)}`}
-                                  </Typography>
-                                </a>
-                              ))}
-                              {open[index] &&
-                                messageResults.map((mLine, mIndex) => (
-                                  <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
-                                )
-                              }
-                            </Box>
-                          }
-                          {(inOut_mode === 'out') &&
-                            <Box display='flex' flexDirection='column'>
-                              <Box display='flex' flexDirection='row'>
-                                <Box
-                                  className={classes.imageArea}
-                                  component="img"
-                                  alt={''}
-                                  src={this_item.sender_image}
-                                />
-                                <Box display='flex' flexDirection='column'>
-                                  <Typography variant='h5' className={classes.lastName} >{this_item.subject || makeSubject(this_item.message_text)}</Typography>
-                                  <Typography variant='h5' className={classes.firstName}>{`to: ${this_item.toLine}`}</Typography>
-                                  <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.deliver_time)}</Typography>
-                                </Box>
-                              </Box>
-                              {this_item.message_text.split(/[\n\r]+/).map((mLine, mIndex) => (
-                                <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
-                              )}
-                              {this_item.attachments && this_item.attachments.map((aLine, aIndex) => (
-                                <a
-                                  href={aLine}
-                                  key={`attach-${aIndex}-href`}
-                                  target='_blank'
-                                  rel='noopener noreferrer'
-                                  style={{ color: 'inherit', textDecoration: 'underline' }}>
-                                  <Typography
-                                    key={`attach-${aIndex}`}
-                                    className={classes.attachmentLine}
-                                  >
-                                    {`Attachment: ${attachmentName(aLine)}`}
-                                  </Typography>
-                                </a>
-                              ))}
-                              {open[index] &&
-                                messageResults.map((mLine, mIndex) => (
-                                  <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
-                                )
-                              }
-                            </Box>
-                          }
-                        </Box>
-                        {!open[index] ? <ExpandMoreIcon /> : <ExpandLessIcon />}
-                        {(inOut_mode === 'in') &&
-                          <DeleteIcon
-                            onClick={() => {
-                              setConfirmMessage(`Delete message from ${this_item.patient_name || this_item.sender_name}?`);
-                              setConfirmID(this_item.message_id);
-                              setConfirmIndex(index);
-                              setDeletePending(true);
-                              setForceRedisplay(false);
-                            }}
-                          />
-                        }
-                      </Box>
-                      <Collapse in={open[index]} timeout="auto" unmountOnExit>
-                        {
-                          <Box display='flex' flexDirection='row' paddingTop={1} paddingBottom={1} justifyContent='center' alignItems='center'>
-                            {(inOut_mode === 'in') && (this_item.allowReplyAll) &&
-                              <Button
-                                onClick={async () => {
-                                  let rList = await replyAllList(this_item.thread_id);
-                                  setRecipient(rList);
-                                  setRecipientIndex(index);
-                                  setPromptForMessage(true);
-                                }}
-                                className={classes.AVAButton}
-                                startIcon={<SendIcon fontSize="small" />}
-                              >
-                                Reply All
-                              </Button>
-                            }
+            <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
+              <List  >
+                <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                  {rowsWritten = 0}
+                </Typography>
+                {messageList.map((this_item, index) => (
+                  ((rowsWritten <= rowLimit)
+                    && (this_item.inOut === inOut_mode)
+                    && (!message_filter || filteredMessage(this_item, message_filter))
+                    && (!this_item.delete_flag || showDeleted) ?
+                    <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
+                      <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                        {rowsWritten++}
+                      </Typography>
+                      <Box display='flex' flexDirection='column'>
+                        <Box
+                          display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                          key={this_item.message_id + 'r' + index}
+                          className={classes.listItem}
+                          onClick={() => { toggleOpen(index, this_item.common_key); }}
+                        >
+                          <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
                             {(inOut_mode === 'in') &&
-                              <Button
-                                onClick={() => {
-                                  setPromptForMessage(true);
-                                  setRecipient(`${this_item.sender_name}:${this_item.sender_id}`);
-                                  setRecipientIndex(index);
-                                }}
-                                className={classes.AVAButton}
-                                startIcon={<SendIcon fontSize="small" />}
-                              >
-                                Reply
-                              </Button>
+                              <Box display='flex' flexDirection='column'>
+                                <Box display='flex' flexDirection='row'>
+                                  <Box
+                                    className={classes.imageArea}
+                                    component="img"
+                                    alt={''}
+                                    src={this_item.sender_image}
+                                  />
+                                  <Box display='flex' flexDirection='column'>
+                                    <Typography variant='h5' className={classes.lastName} >{makeSubject(this_item.subject || this_item.message_text)}</Typography>
+                                    <Typography variant='h5' className={classes.firstName}>{`from: ${this_item.patient_name || this_item.sender_name || this_item.sender_id}`}</Typography>
+                                    <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.posted_time || this_item.deliver_time)}</Typography>
+                                  </Box>
+                                </Box>
+                                {this_item.message_text.split(/[\n\r]+/).map((mLine, mIndex) => (
+                                  <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>
+                                ))}
+                                {this_item.attachments && this_item.attachments.map((aLine, aIndex) => (
+                                  <a
+                                    href={aLine}
+                                    key={`attach-${aIndex}-href`}
+                                    target='_blank'
+                                    rel='noopener noreferrer'
+                                    style={{ color: 'inherit', textDecoration: 'underline' }}>
+                                    <Typography
+                                      key={`attach-${aIndex}`}
+                                      className={classes.attachmentLine}
+                                    >
+                                      {`Attachment: ${attachmentName(aLine)}`}
+                                    </Typography>
+                                  </a>
+                                ))}
+                                {open[index] &&
+                                  messageResults.map((mLine, mIndex) => (
+                                    <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
+                                  )
+                                }
+                              </Box>
+                            }
+                            {(inOut_mode === 'out') &&
+                              <Box display='flex' flexDirection='column'>
+                                <Box display='flex' flexDirection='row'>
+                                  <Box
+                                    className={classes.imageArea}
+                                    component="img"
+                                    alt={''}
+                                    src={this_item.sender_image}
+                                  />
+                                  <Box display='flex' flexDirection='column'>
+                                    <Typography variant='h5' className={classes.lastName} >{this_item.subject || makeSubject(this_item.message_text)}</Typography>
+                                    <Typography variant='h5' className={classes.firstName}>{`to: ${this_item.toLine}`}</Typography>
+                                    <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.deliver_time)}</Typography>
+                                  </Box>
+                                </Box>
+                                {this_item.message_text.split(/[\n\r]+/).map((mLine, mIndex) => (
+                                  <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
+                                )}
+                                {this_item.attachments && this_item.attachments.map((aLine, aIndex) => (
+                                  <a
+                                    href={aLine}
+                                    key={`attach-${aIndex}-href`}
+                                    target='_blank'
+                                    rel='noopener noreferrer'
+                                    style={{ color: 'inherit', textDecoration: 'underline' }}>
+                                    <Typography
+                                      key={`attach-${aIndex}`}
+                                      className={classes.attachmentLine}
+                                    >
+                                      {`Attachment: ${attachmentName(aLine)}`}
+                                    </Typography>
+                                  </a>
+                                ))}
+                                {open[index] &&
+                                  messageResults.map((mLine, mIndex) => (
+                                    <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
+                                  )
+                                }
+                              </Box>
                             }
                           </Box>
-                        }
-                      </Collapse>
-                    </Box>
-                  </Paper>
-                  : null
-                )
-              ))}
-            </List>
-          </Paper>
+                          {!open[index] ? <ExpandMoreIcon /> : <ExpandLessIcon />}
+                          {(inOut_mode === 'in') &&
+                            <DeleteIcon
+                              onClick={() => {
+                                setConfirmMessage(`Delete message from ${this_item.patient_name || this_item.sender_name}?`);
+                                setConfirmID(this_item.message_id);
+                                setConfirmIndex(index);
+                                setDeletePending(true);
+                                setForceRedisplay(false);
+                              }}
+                            />
+                          }
+                        </Box>
+                        <Collapse in={open[index]} timeout="auto" unmountOnExit>
+                          {
+                            <Box display='flex' flexDirection='row' paddingTop={1} paddingBottom={1} justifyContent='center' alignItems='center'>
+                              {(inOut_mode === 'in') && (this_item.allowReplyAll) &&
+                                <Button
+                                  onClick={async () => {
+                                    let rList = await replyAllList(this_item.thread_id);
+                                    setRecipient(rList);
+                                    setRecipientIndex(index);
+                                    setPromptForMessage(true);
+                                  }}
+                                  className={classes.AVAButton}
+                                  startIcon={<SendIcon fontSize="small" />}
+                                >
+                                  Reply All
+                                </Button>
+                              }
+                              {(inOut_mode === 'in') &&
+                                <Button
+                                  onClick={() => {
+                                    setPromptForMessage(true);
+                                    setRecipient(`${this_item.sender_name}:${this_item.sender_id}`);
+                                    setRecipientIndex(index);
+                                  }}
+                                  className={classes.AVAButton}
+                                  startIcon={<SendIcon fontSize="small" />}
+                                >
+                                  Reply
+                                </Button>
+                              }
+                            </Box>
+                          }
+                        </Collapse>
+                      </Box>
+                    </Paper>
+                    : null
+                  )
+                ))}
+              </List>
+            </Paper>
           }
           {(messageList.length === 0) &&
             <Box display='flex' flex={4} justifyContent='center' alignItems='center' overflow='hidden'>
@@ -891,7 +893,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             </DialogActions>
           }
         </React.Fragment >
-      }      
+      }
     </Dialog >
   );
 };
