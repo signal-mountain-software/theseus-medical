@@ -30,7 +30,13 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
       reactUpd.preferred_recipients = [];
       for (let this_group in state.groups.preferred_recipients) {
         if (state.groups.preferred_recipients[this_group].length > 0) {
-          reactUpd.preferred_recipients.push(...state.groups.preferred_recipients[this_group]);
+          for (const this_pref of state.groups.preferred_recipients[this_group]) {
+            reactUpd.preferred_recipients.push({
+              objText: titleCase((this_pref.objText.toLowerCase().split('message to')).pop()),
+              personList: this_pref.personList,
+              personNames: this_pref.personNames
+            });
+          }
         } 
       }
       if (options.withGroups && !reactData.groupInfo) {
@@ -178,11 +184,64 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
       <Paper p={2} component={Box} elevation={0}
         width='100%' height={250} overflow='auto' square
       >
-        {options.withPreferred && (reactData.preferred_recipients.length > 0) &&
+        {reactData.selections && (reactData.selections.length > 0) &&
           <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
             <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
               <Typography
                 style={{ fontWeight: 'bold', paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
+              >
+                {'Selected'}
+              </Typography>
+            </Box>
+            {reactData.selections.map((this_selection, sIndex) => (
+              <Box
+                display='flex'
+                flexDirection='row'
+                alignItems={'center'}
+                key={`select_group_opt${sIndex}`}
+                style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
+                onClick={() => {
+                  if (options.pickAndGo) {
+                    reactData.selections.splice(sIndex, 1);
+                    let selectedPeople_count = 0;
+                    let selectedPeople_list = [];
+                    for (let this_person of reactData.accessList) {
+                      if (
+                        this_person.groups.some(g => { return (reactData.selections.some(s => { return s.group_id === g; })); })
+                        ||
+                        reactData.selections.some(s => { return s.person_id === this_person.person_id; })
+                        ||
+                        reactData.selections.some(s => {
+                          return s.rIndex && reactData.preferred_recipients[s.rIndex].personList.includes(this_person.person_id);
+                        })
+                      ) {
+                        selectedPeople_count++;
+                        selectedPeople_list.push(this_person.person_id);
+                      }
+                    }
+                    updateReactData({
+                      selectedPeople_count,
+                      selectedPeople_list,
+                      selections: reactData.selections
+                    }, true);
+                  }
+                }}
+              >
+                <Typography
+                  style={AVATextStyle({ bold: true, color: 'green' })}
+                >
+                  {this_selection.person_name || this_selection.listName || this_selection.group_name}
+                </Typography>
+              </Box>
+            )
+            )}
+          </Box>
+        }
+        {options.withPreferred && (reactData.preferred_recipients.length > 0) &&
+          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+            <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+              <Typography
+                style={{ fontWeight: 'bold', paddingTop: '2px', marginTop: '6.5px', marginBottom: '4px', textWrapStyle: 'balance' }}
               >
                 {'Preferred Recipients'}
               </Typography>

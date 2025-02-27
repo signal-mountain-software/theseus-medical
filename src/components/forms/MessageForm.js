@@ -293,7 +293,14 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       return 'Exit';
     }
     if (reactData.selections.length > 1) { 
-      return `Select ${reactData.selectedPeople_count} people`
+      if (!reactData.selectedPeople_count || (reactData.selectedPeople_count === 0)) {
+        return `Select ${reactData.selections.reduce((total, this_selection) => {
+          return (this_selection.peopleList ? (total + this_selection.peopleList.length) : (total + 1));
+         }, 0)} people`;
+      }
+      else {
+        return `Select ${reactData.selectedPeople_count} people`;
+      }
     }
     // options below if only one item selected
     if (reactData.selections[0].hasOwnProperty('person_id')) {
