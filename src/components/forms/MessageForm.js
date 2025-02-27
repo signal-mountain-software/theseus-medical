@@ -292,11 +292,11 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     if (reactData.selections.length === 0) {
       return 'Exit';
     }
-    if (reactData.selections.length > 1) { 
+    if (reactData.selections.length > 1) {
       if (!reactData.selectedPeople_count || (reactData.selectedPeople_count === 0)) {
         return `Select ${reactData.selections.reduce((total, this_selection) => {
           return (this_selection.peopleList ? (total + this_selection.peopleList.length) : (total + 1));
-         }, 0)} people`;
+        }, 0)} people`;
       }
       else {
         return `Select ${reactData.selectedPeople_count} people`;
@@ -307,13 +307,13 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       return `Select ${reactData.selections[0].person_name.split(' ')[0]}`;
     }
     else if (reactData.selections[0].hasOwnProperty('personList')) {
-      return `Select ${reactData.selections[0].listName}`
+      return `Select ${reactData.selections[0].listName}`;
     }
     else if (reactData.selections[0].hasOwnProperty('group_name')) {
-      return `Select ${reactData.selections[0].group_name}`
+      return `Select ${reactData.selections[0].group_name}`;
     }
     else {
-      return `Select`
+      return `Select`;
     }
   }
 
@@ -1128,15 +1128,25 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                     autoComplete='off'
                                     style={AVATextStyle({ size: 1.2, bold: true })}
                                     onBlur={async (event) => {
-                                      updateReactData({
+                                      let reactUpdObj = {
                                         newMessageText: event.target.value
-                                      }, true);
+                                      };
+                                      if (event.target.value.length > 500) {
+                                        reactUpdObj.alert = {
+                                          severity: 'warning',
+                                          title: 'Message length',
+                                          message: <div>Your message is {event.target.value.length} characters long.<br />
+                                            Some text messaging networks limit message size to 500 characters.<br />
+                                            You may send the message as is.  If you choose to do that, we will break the message into {Math.floor(event.target.value.length / 500) + 1} parts and send each part as a separate message for text message recipients.
+                                            (All other recipients will receive the message as entered.)</div>,
+                                        };
+                                      }
+                                      updateReactData(reactUpdObj, true);
                                     }}
                                     defaultValue={reactData.newMessageText}
                                     helperText={'Message Text'}
                                   />
                                 </Box>
-
                               </Box>
                             </Box>
 

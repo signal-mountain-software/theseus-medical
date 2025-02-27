@@ -456,15 +456,16 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                 </Typography>
               </Box>
             )
-            )}
-            <Typography
-              style={{ fontWeight: 'bold', paddingTop: '2px', marginTop: '6.5px', marginBottom: '4px', textWrapStyle: 'balance' }}
-            >
-              {'Individuals'}
-            </Typography>
+            )}           
           </Box>
         }
-
+        {((options.withGroups && reactData.groupInfo) || (reactData.selections && (reactData.selections.length > 0))) &&
+          <Typography
+            style={{ fontWeight: 'bold', paddingTop: '2px', marginTop: '6.5px', marginBottom: '4px', textWrapStyle: 'balance' }}
+          >
+            {'Individuals'}
+          </Typography>
+        }
         {reactData.accessList &&
           <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
             {reactData.accessList.map((this_item, tIndex) => (
