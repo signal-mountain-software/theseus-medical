@@ -1193,6 +1193,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               onClick={() => {
                                 updateReactData({
                                   replyToList: [],
+                                  linkedPersonFilter: '',
                                   showReplyToSearch: true,
                                   selections: reactData.replyToList
                                 }, true);

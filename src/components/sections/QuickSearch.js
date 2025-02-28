@@ -101,6 +101,34 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
     return responseA.join('');
   };
 
+  const countSelections = () => {
+    let selectedPeople_count = 0;
+    let selectedPeople_list = [];
+    if (reactData.selections) {
+      let selectionPeople_obj = {};
+      for (let this_selection of reactData.selections) {
+        if (this_selection.hasOwnProperty('person_id')) {
+          selectionPeople_obj[this_selection.person_id] = true;
+        }
+        else if (this_selection.hasOwnProperty('personList')) {
+          for (let this_person of this_selection.personList) {
+            selectionPeople_obj[this_person] = true;
+          }
+        }
+        else if (this_selection.hasOwnProperty('group_id')) {
+          for (let this_person of reactData.accessList) {
+            if (this_person.groups && this_person.groups.includes(this_selection.group_id)) {
+              selectionPeople_obj[this_person] = true;
+            }
+          }
+        }
+      }
+      selectedPeople_list = Object.keys(selectionPeople_obj);
+      selectedPeople_count = selectedPeople_list.length;
+    }
+    return { selectedPeople_count, selectedPeople_list };
+  }
+
   const OKtoShowPreferred = (this_object) => {
     return (
       (options.showAll && (isEmpty(reactData.linkedPersonFilter) || reactData.linkedPersonFilter?.raw?.length < 2))
@@ -203,22 +231,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                 onClick={() => {
                   if (options.pickAndGo) {
                     reactData.selections.splice(sIndex, 1);
-                    let selectedPeople_count = 0;
-                    let selectedPeople_list = [];
-                    for (let this_person of reactData.accessList) {
-                      if (
-                        this_person.groups.some(g => { return (reactData.selections.some(s => { return s.group_id === g; })); })
-                        ||
-                        reactData.selections.some(s => { return s.person_id === this_person.person_id; })
-                        ||
-                        reactData.selections.some(s => {
-                          return s.rIndex && reactData.preferred_recipients[s.rIndex].personList.includes(this_person.person_id);
-                        })
-                      ) {
-                        selectedPeople_count++;
-                        selectedPeople_list.push(this_person.person_id);
-                      }
-                    }
+                    let { selectedPeople_count, selectedPeople_list } = countSelections();
                     updateReactData({
                       selectedPeople_count,
                       selectedPeople_list,
@@ -310,20 +323,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                         listName: this_recipient.objText
                       });
                     }
-                    let selectedPeople_count = 0;
-                    let selectedPeople_list = [];
-                    for (let this_person of reactData.accessList) {
-                      if (
-                        this_person.groups.some(g => { return (reactData.selections.some(s => { return s.group_id === g; })); })
-                        ||
-                        reactData.selections.some(s => { return s.person_id === this_person.person_id; })
-                        ||
-                        reactData.selections.some(s => { return s.rIndex && reactData.preferred_recipients[rIndex].personList.includes(this_person.person_id); })
-                      ) {
-                        selectedPeople_count++;
-                        selectedPeople_list.push(this_person.person_id);
-                      }
-                    }
+                    let { selectedPeople_count, selectedPeople_list } = countSelections();
                     updateReactData({
                       selectedPeople_count,
                       selectedPeople_list,
@@ -416,21 +416,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                         group_name: this_group.group_name
                       });
                     }
-                    let selectedPeople_count = 0;
-                    let selectedPeople_list = [];
-                    for (let this_person of reactData.accessList) {
-                      if (
-                        (this_person.groups && [this_person.groups].flat().some(g => { return (reactData.selections.some(s => { return s.group_id === g; })); }))
-                        ||
-                        reactData.selections.some(s => { return s.person_id === this_person.person_id; })
-                        ||
-                        reactData.selections.some(s => { return s.rIndex && reactData.preferred_recipients[s.rIndex].personList.includes(this_person.person_id); })
-
-                      ) {
-                        selectedPeople_count++;
-                        selectedPeople_list.push(this_person.person_id);
-                      }
-                    }
+                    let { selectedPeople_count, selectedPeople_list } = countSelections();
                     updateReactData({
                       selectedPeople_count,
                       selectedPeople_list,
@@ -505,20 +491,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                         person_lastName: this_item.last.trim()
                       });
                     }
-                    let selectedPeople_count = 0;
-                    let selectedPeople_list = [];
-                    for (let this_person of reactData.accessList) {
-                      if (
-                        this_person.groups.some(g => { return (reactData.selections.some(s => { return s.group_id === g; })); })
-                        ||
-                        reactData.selections.some(s => { return s.person_id === this_person.person_id; })
-                        ||
-                        reactData.selections.some(s => { return s.rIndex && reactData.preferred_recipients[s.rIndex].personList.includes(this_person.person_id); })
-                      ) {
-                        selectedPeople_count++;
-                        selectedPeople_list.push(this_person.person_id);
-                      }
-                    }
+                    let { selectedPeople_count, selectedPeople_list } = countSelections();
                     updateReactData({
                       selectedPeople_count,
                       selectedPeople_list,
@@ -536,8 +509,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                 }}
               >
                 <Typography
-                    style={((reactData.selectedPeople_list && reactData.selectedPeople_list.includes(this_item.person_id))
-                    || reactData.selections.some(s => { return s.person_id === this_item.person_id; }))
+                    style={(reactData.selections.some(s => { return s.person_id === this_item.person_id; }))
                     ? AVATextStyle({ bold: true, color: 'green' })
                     : AVATextStyle()
                   }
