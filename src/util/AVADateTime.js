@@ -350,19 +350,31 @@ export function makeDate(pInput, optionIn = {}) {
             datePart = pString;
         }
         datePart = datePart.replace(/st|th|nd|rd/, '');
-        const today = new Date();
-        console.log({ datePart });
         let validateDate = new Date(datePart);
-        if (isDate(validateDate)) {
-            let textDate = new Date(`${datePart} ${today.getFullYear()}`);
-            console.log({ textDate });
-            if (isDate(textDate) && (textDate < today)) {
-                textDate = new Date(`${datePart} ${today.getFullYear() + 1}`);
+        if (isDate(validateDate)) {    // if something came in (say "Feb 20" or "2/20") that is a good date, we'll use it
+            // BUT... if there was no year, the default is 2001 (probably not what they want); check for that here
+            const today = new Date();
+            let finalAnswer = validateDate;
+            if (validateDate < today) {
+                // this tries to take a date in the past and make it current year
+                // note that we APPEND the year, so if the incoming date string had a year explicity stated, that year will be used
+                let date_asCorrected = new Date(`${datePart} ${today.getFullYear()}`);
+                // in some cases, however, that doesn't work (example: on Dec 15, you enter January 5 - you want the date to be next year)
+                if (!isDate(date_asCorrected) || (date_asCorrected < today)) {
+                    let try_me = new Date(`${datePart} ${today.getFullYear() + 1}`);
+                    if (isDate(try_me)) {
+                        finalAnswer = try_me;
+                    }
+                }
+                else if (isDate(date_asCorrected)) {
+                    finalAnswer = date_asCorrected;
+                }
+                else {
+                    finalAnswer = validateDate;
+                }
             }
-            let finalAnswer = addDays(textDate, ((delimiter === '-') ? -1 : 1) * Number(addendPart));
-            console.log({ finalAnswer });
             return {
-                date: finalAnswer,
+                date: addDays(finalAnswer, ((delimiter === '-') ? -1 : 1) * Number(addendPart)),
                 leftOver_text: ''
             };
         }
