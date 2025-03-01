@@ -216,6 +216,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     showGroupList: false,
     showIndividualList: false,
     showPreferredList: true,
+    warning: false,
     preferred_recipients: [],
     newUrgentMessage: false,
     replyToList: [{ person_id: pPerson, person_name: 'Me' }],
@@ -1132,10 +1133,11 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                         newMessageText: event.target.value
                                       };
                                       if (event.target.value.length > 500) {
+                                        reactUpdObj.warning = true;
                                         reactUpdObj.alert = {
                                           severity: 'warning',
                                           title: 'Message length',
-                                          message: <div>Your message is {event.target.value.length} characters long.<br />
+                                          message: <div>Your message is {event.target.value.length.toLocaleString('en-US')} characters long.<br />
                                             Some text messaging networks limit message size to 500 characters.<br />
                                             You may send the message as is.  If you choose to do that, we will break the message into {Math.floor(event.target.value.length / 500) + 1} parts and send each part as a separate message for text message recipients.
                                             (All other recipients will receive the message as entered.)</div>,
@@ -1174,8 +1176,10 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               size='small'
                               disabled={(reactData.newMessageText.length === 0) || (reactData.newMessageRecipients.length === 0)}
                               onClick={async () => {
-                                await sendMessage();
-                                await initialize();
+                                if (!reactData.warning) {
+                                  await sendMessage();
+                                  await initialize();
+                                }
                               }}
                               startIcon={<SendIcon className={classes.tightRight} size="small" />}
                             >
