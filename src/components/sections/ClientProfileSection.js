@@ -11,7 +11,7 @@ import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
   const AVAClass = AVAclasses();
-  let localColor = currentValues.customizationRecs.client_style.customization_value.backgroundColor;
+  let localColor = currentValues.customizationRecs?.client_style?.customization_value?.backgroundColor;
 
   return (
     <Box

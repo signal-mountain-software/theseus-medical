@@ -203,7 +203,12 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
             client_id: reactData.client_id,
             custom_key: 'global_mail_rules',
             customization_value: {}
-          }
+          },
+          client_style: {
+            client_id: reactData.client_id,
+            custom_key: 'client_style',
+            customization_value: {}
+          },
         }
       };
       if (recordExists(cRecs)) {
