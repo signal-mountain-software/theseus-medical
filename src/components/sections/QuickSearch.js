@@ -142,6 +142,9 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   };
 
   const OKtoShowGroup = (this_group) => {
+    if (this_group.level === 0) {
+      return false;
+    }
     return (
       (options.showAll && (isEmpty(reactData.linkedPersonFilter) || reactData.linkedPersonFilter?.raw?.length < 2))
       ||
@@ -214,7 +217,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
         autoComplete='off'
         helperText='Name Search'
       />
-      <Paper p={2} component={Box} elevation={0}
+      <Paper pY={2} paddingLeft={'8px'} component={Box} elevation={0}
         width='100%' height={250} overflow='auto' square
       >
         {reactData.showAll && reactData.selections && (reactData.selections.length > 0) &&
@@ -228,33 +231,37 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                 {'Selected'}
               </Typography>
             </Box>
-            {reactData.selections.map((this_selection, sIndex) => (
-              <Box
-                display='flex'
-                flexDirection='row'
-                alignItems={'center'}
-                key={`select_group_opt${sIndex}`}
-                style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
-                onClick={() => {
-                  if (options.pickAndGo) {
-                    reactData.selections.splice(sIndex, 1);
-                    let { selectedPeople_count, selectedPeople_list } = countSelections();
-                    updateReactData({
-                      selectedPeople_count,
-                      selectedPeople_list,
-                      selections: reactData.selections
-                    }, true);
-                  }
-                }}
-              >
-                <Typography
-                  style={AVATextStyle({ bold: true, color: 'green' })}
+            <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
+              style={{ marginLeft: '16px' }}
+            >
+              {reactData.selections.map((this_selection, sIndex) => (
+                <Box
+                  display='flex'
+                  flexDirection='row'
+                  alignItems={'center'}
+                  key={`select_group_opt${sIndex}`}
+                  style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
+                  onClick={() => {
+                    if (options.pickAndGo) {
+                      reactData.selections.splice(sIndex, 1);
+                      let { selectedPeople_count, selectedPeople_list } = countSelections();
+                      updateReactData({
+                        selectedPeople_count,
+                        selectedPeople_list,
+                        selections: reactData.selections
+                      }, true);
+                    }
+                  }}
                 >
-                  {this_selection.person_name || this_selection.listName || this_selection.group_name}
-                </Typography>
-              </Box>
-            )
-            )}
+                  <Typography
+                    style={AVATextStyle({ bold: true, color: 'green' })}
+                  >
+                    {this_selection.person_name || this_selection.listName || this_selection.group_name}
+                  </Typography>
+                </Box>
+              )
+              )}
+            </Box>
           </Box>
         }
         {options.withPreferred && (reactData.preferred_recipients.length > 0) &&
@@ -296,61 +303,66 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                 </Typography>
               </Box>
             </Box>
-            {reactData.showPreferredList && reactData.preferred_recipients.map((this_recipient, rIndex) => (
-              OKtoShowPreferred(this_recipient) &&
-              <Box
-                display='flex'
-                flexDirection='row'
-                alignItems={'center'}
-                key={`select_group_opt${rIndex}`}
-                style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
-                onContextMenu={async (e) => {
-                  e.preventDefault();
-                  updateReactData({
-                    alert: {
-                      severity: 'info',
-                      title: `${this_recipient.objText}`,
-                      message: <div>
-                        Person IDs: <strong>{listFromArray(this_recipient.personList)}</strong>
-                        Person Names: <strong>{listFromArray(this_recipient.personNames)}</strong><br /></div>
-                    }
-                  }, true);
-                }}
-                onClick={() => {
-                  if (options.pickAndGo) {
-                    const foundAt = reactData.selections.findIndex(s => { return (s.rIndex === rIndex); });
-                    if (foundAt > -1) {
-                      reactData.selections.splice(foundAt, 1);
-                    }
-                    else {
-                      reactData.selections.unshift({
-                        rIndex,
-                        personList: this_recipient.personList,
-                        personNames: this_recipient.personNames,
-                        listName: this_recipient.objText
-                      });
-                    }
-                    let { selectedPeople_count, selectedPeople_list } = countSelections();
+            <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
+              style={{ marginLeft: '16px' }}
+            >
+
+              {reactData.showPreferredList && reactData.preferred_recipients.map((this_recipient, rIndex) => (
+                OKtoShowPreferred(this_recipient) &&
+                <Box
+                  display='flex'
+                  flexDirection='row'
+                  alignItems={'center'}
+                  key={`select_group_opt${rIndex}`}
+                  style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
+                  onContextMenu={async (e) => {
+                    e.preventDefault();
                     updateReactData({
-                      selectedPeople_count,
-                      selectedPeople_list,
-                      selections: reactData.selections
+                      alert: {
+                        severity: 'info',
+                        title: `${this_recipient.objText}`,
+                        message: <div>
+                          Person IDs: <strong>{listFromArray(this_recipient.personList)}</strong>
+                          Person Names: <strong>{listFromArray(this_recipient.personNames)}</strong><br /></div>
+                      }
                     }, true);
-                  }
-                }}
-              >
-                <Typography
-                  style={Object.assign({},
-                    (reactData.selections.some(s => { return s.rIndex === rIndex; }))
-                      ? AVATextStyle({ bold: true, color: 'green' })
-                      : AVATextStyle()
-                  )}
+                  }}
+                  onClick={() => {
+                    if (options.pickAndGo) {
+                      const foundAt = reactData.selections.findIndex(s => { return (s.rIndex === rIndex); });
+                      if (foundAt > -1) {
+                        reactData.selections.splice(foundAt, 1);
+                      }
+                      else {
+                        reactData.selections.unshift({
+                          rIndex,
+                          personList: this_recipient.personList,
+                          personNames: this_recipient.personNames,
+                          listName: this_recipient.objText
+                        });
+                      }
+                      let { selectedPeople_count, selectedPeople_list } = countSelections();
+                      updateReactData({
+                        selectedPeople_count,
+                        selectedPeople_list,
+                        selections: reactData.selections
+                      }, true);
+                    }
+                  }}
                 >
-                  {this_recipient.objText}
-                </Typography>
-              </Box>
-            )
-            )}
+                  <Typography
+                    style={Object.assign({},
+                      (reactData.selections.some(s => { return s.rIndex === rIndex; }))
+                        ? AVATextStyle({ bold: true, color: 'green' })
+                        : AVATextStyle()
+                    )}
+                  >
+                    {this_recipient.objText}
+                  </Typography>
+                </Box>
+              )
+              )}
+            </Box>
           </Box>
         }
         {options.withGroups && reactData.groupInfo &&
@@ -361,169 +373,181 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
               >
                 {'Groups'}
               </Typography>
-              <Box flexGrow={2} display='flex' alignItems='center'
-                style={{ paddingTop: '2px', marginTop: '4px', marginLeft: '32px', marginBottom: '4px', textWrapStyle: 'balance' }}
-                justifyContent='flex-start' marginBottom={1} flexDirection='row'>
-                <Typography
-                  style={AVATextStyle({
-                    size: 0.8, margin: { right: -0.4 },
-                    bold: !reactData.showGroupList
-                  })}
-                >
-                  {'Hide'}
-                </Typography>
-                <Switch
-                  checked={reactData.showGroupList || false}
-                  onClick={async (event) => {
+              {(!options.hidePeople || !reactData.showGroupList) &&
+                <Box
+                  flexGrow={2} display='flex' alignItems='center'
+                  style={{ paddingTop: '2px', marginTop: '4px', marginLeft: '32px', marginBottom: '4px', textWrapStyle: 'balance' }}
+                  justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+                  <Typography
+                    style={AVATextStyle({
+                      size: 0.8, margin: { right: -0.4 },
+                      bold: !reactData.showGroupList
+                    })}
+                  >
+                    {'Hide'}
+                  </Typography>
+                  <Switch
+                    checked={reactData.showGroupList || false}
+                    onClick={async (event) => {
+                      updateReactData({
+                        showGroupList: !reactData.showGroupList
+                      }, true);
+                    }}
+                    name="ShowGroups"
+                    color="primary"
+                  />
+                  <Typography
+                    style={AVATextStyle({
+                      size: 0.8, margin: { left: -0.4 },
+                      bold: reactData.showGroupList
+                    })}
+                  >
+                    {'Show'}
+                  </Typography>
+                </Box>
+              }
+            </Box>
+            <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
+              style={{ marginLeft: '16px' }}
+            >
+              {reactData.showGroupList && reactData.groupInfo.groupList.map((this_group, gIndex) => (
+                OKtoShowGroup(this_group) &&
+                <Box
+                  display='flex'
+                  flexDirection='row'
+                  alignItems={'center'}
+                  key={`select_group_opt${gIndex}`}
+                  style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
+                  onContextMenu={async (e) => {
+                    e.preventDefault();
                     updateReactData({
-                      showGroupList: !reactData.showGroupList
+                      alert: {
+                        severity: 'info',
+                        title: `${this_group.group_name}`,
+                        message: <div>
+                          Group ID: <strong>{this_group.group_id}</strong><br /></div>
+                      }
                     }, true);
                   }}
-                  name="ShowGroups"
-                  color="primary"
-                />
-                <Typography
-                  style={AVATextStyle({
-                    size: 0.8, margin: { left: -0.4 },
-                    bold: reactData.showGroupList
-                  })}
-                >
-                  {'Show'}
-                </Typography>
-              </Box>
-            </Box>
-            {reactData.showGroupList && reactData.groupInfo.groupList.map((this_group, gIndex) => (
-              OKtoShowGroup(this_group) &&
-              <Box
-                display='flex'
-                flexDirection='row'
-                alignItems={'center'}
-                key={`select_group_opt${gIndex}`}
-                style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
-                onContextMenu={async (e) => {
-                  e.preventDefault();
-                  updateReactData({
-                    alert: {
-                      severity: 'info',
-                      title: `${this_group.group_name}`,
-                      message: <div>
-                        Group ID: <strong>{this_group.group_id}</strong><br /></div>
-                    }
-                  }, true);
-                }}
-                onClick={() => {
-                  if (options.pickAndGo) {
-                    const foundAt = reactData.selections.findIndex(s => { return (s.group_id === this_group.group_id); });
-                    if (foundAt > -1) {
-                      reactData.selections.splice(foundAt, 1);
+                  onClick={() => {
+                    if (options.pickAndGo) {
+                      const foundAt = reactData.selections.findIndex(s => { return (s.group_id === this_group.group_id); });
+                      if (foundAt > -1) {
+                        reactData.selections.splice(foundAt, 1);
+                      }
+                      else {
+                        reactData.selections.unshift({
+                          group_id: this_group.group_id,
+                          group_name: this_group.group_name
+                        });
+                      }
+                      let { selectedPeople_count, selectedPeople_list } = countSelections();
+                      updateReactData({
+                        selectedPeople_count,
+                        selectedPeople_list,
+                        selections: reactData.selections
+                      }, true);
                     }
                     else {
-                      reactData.selections.unshift({
-                        group_id: this_group.group_id,
-                        group_name: this_group.group_name
-                      });
+                      updateReactData({
+                        showGroupEdit_id: this_group.group_id
+                      }, true);
                     }
-                    let { selectedPeople_count, selectedPeople_list } = countSelections();
-                    updateReactData({
-                      selectedPeople_count,
-                      selectedPeople_list,
-                      selections: reactData.selections
-                    }, true);
-                  }
-                  else {
-                    updateReactData({
-                      showGroupEdit_id: this_group.group_id
-                    }, true);
-                  }
-                }}
-              >
-                <Typography
-                  style={Object.assign({},
-                    (reactData.selections.some(s => { return s.group_id === this_group.group_id; }))
-                      ? AVATextStyle({ bold: true, color: 'green' })
-                      : AVATextStyle(),
-                    { marginLeft: `${(this_group.level * 10)}px` }
-                  )}
+                  }}
                 >
-                  {this_group.group_name}
-                </Typography>
-              </Box>
-            )
-            )}
+                  <Typography
+                    style={Object.assign({},
+                      (reactData.selections.some(s => { return s.group_id === this_group.group_id; }))
+                        ? AVATextStyle({ bold: true, color: 'green' })
+                        : AVATextStyle(),
+                      { marginLeft: `${((this_group.level - 1) * 10)}px` }
+                    )}
+                  >
+                    {this_group.group_name}
+                  </Typography>
+                </Box>
+              )
+              )}
+            </Box>
           </Box>
         }
-        <Typography
-          style={{ fontWeight: 'bold', paddingTop: '2px', marginTop: '6.5px', marginBottom: '4px', textWrapStyle: 'balance' }}
-        >
-          {(options.showAll ? 'People' : `People (use search above to find ${(reactData.selections && (reactData.selections.length > 0)) ? 'more ' : ''}names)`)}
-        </Typography>
-        {reactData.accessList &&
-          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-            {((options.withSpecialValues ? reactData.special_values : []).concat(reactData.accessList)).map((this_item, tIndex) => (
-              OKtoShow(this_item) &&
-              <Box
-                display='flex'
-                flexDirection='row'
-                alignItems={'center'}
-                key={`select_person_opt${tIndex}`}
-                style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
-                onContextMenu={async (e) => {
-                  e.preventDefault();
-                  updateReactData({
-                    alert: {
-                      severity: 'info',
-                      title: `${this_item.first} ${this_item.last}`,
-                      message: <div>
-                        User ID: <strong>{this_item.person_id}</strong><br />
-                        Groups: {listFromArray(this_item.groups.map(g => {
-                          return clean(g);
-                        }), { ignoreBlank: true })}<br /></div>
-                    }
-                  }, true);
-                }}
 
-                onClick={() => {
-                  if (options.pickAndGo || options.pickOne) {
-                    const foundAt = reactData.selections.findIndex(s => { return (s.person_id === this_item.person_id); });
-                    if (foundAt > -1) {
-                      reactData.selections.splice(foundAt, 1);
+        {reactData.accessList && !options.hidePeople &&
+          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+            <Typography
+              style={{ fontWeight: 'bold', paddingTop: '2px', marginTop: '6.5px', marginBottom: '4px', textWrapStyle: 'balance' }}
+            >
+              {(options.showAll ? 'People' : `People (use search above to find ${(reactData.selections && (reactData.selections.length > 0)) ? 'more ' : ''}names)`)}
+            </Typography>
+            <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
+              style={{ marginLeft: '16px' }}
+            >
+              {((options.withSpecialValues ? reactData.special_values : []).concat(reactData.accessList)).map((this_item, tIndex) => (
+                OKtoShow(this_item) &&
+                <Box
+                  display='flex'
+                  flexDirection='row'
+                  alignItems={'center'}
+                  key={`select_person_opt${tIndex}`}
+                  style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
+                  onContextMenu={async (e) => {
+                    e.preventDefault();
+                    updateReactData({
+                      alert: {
+                        severity: 'info',
+                        title: `${this_item.first} ${this_item.last}`,
+                        message: <div>
+                          User ID: <strong>{this_item.person_id}</strong><br />
+                          Groups: {listFromArray(this_item.groups.map(g => {
+                            return clean(g);
+                          }), { ignoreBlank: true })}<br /></div>
+                      }
+                    }, true);
+                  }}
+
+                  onClick={() => {
+                    if (options.pickAndGo || options.pickOne) {
+                      const foundAt = reactData.selections.findIndex(s => { return (s.person_id === this_item.person_id); });
+                      if (foundAt > -1) {
+                        reactData.selections.splice(foundAt, 1);
+                      }
+                      else {
+                        reactData.selections.unshift({
+                          person_id: this_item.person_id,
+                          person_name: (`${this_item.first.trim()} ${this_item.last.trim()}`).trim(),
+                          person_firstName: this_item.first.trim(),
+                          person_lastName: this_item.last.trim()
+                        });
+                      }
+                      let { selectedPeople_count, selectedPeople_list } = countSelections();
+                      updateReactData({
+                        selectedPeople_count,
+                        selectedPeople_list,
+                        selections: reactData.selections
+                      }, true);
+                      if (options.pickOne) {
+                        onClose(reactData.selections);
+                      }
                     }
                     else {
-                      reactData.selections.unshift({
-                        person_id: this_item.person_id,
-                        person_name: (`${this_item.first.trim()} ${this_item.last.trim()}`).trim(),
-                        person_firstName: this_item.first.trim(),
-                        person_lastName: this_item.last.trim()
-                      });
+                      updateReactData({
+                        showProfileEdit_id: this_item.person_id
+                      }, true);
                     }
-                    let { selectedPeople_count, selectedPeople_list } = countSelections();
-                    updateReactData({
-                      selectedPeople_count,
-                      selectedPeople_list,
-                      selections: reactData.selections
-                    }, true);
-                    if (options.pickOne) {
-                      onClose(reactData.selections);
-                    }
-                  }
-                  else {
-                    updateReactData({
-                      showProfileEdit_id: this_item.person_id
-                    }, true);
-                  }
-                }}
-              >
-                <Typography
-                  style={(reactData.selections.some(s => { return s.person_id === this_item.person_id; }))
-                    ? AVATextStyle({ bold: true, color: 'green' })
-                    : AVATextStyle()
-                  }
+                  }}
                 >
-                  {`${this_item.first} ${this_item.last}`}
-                </Typography>
-              </Box>
-            )
-            )}
+                  <Typography
+                    style={(reactData.selections.some(s => { return s.person_id === this_item.person_id; }))
+                      ? AVATextStyle({ bold: true, color: 'green' })
+                      : AVATextStyle()
+                    }
+                  >
+                    {`${this_item.first} ${this_item.last}`}
+                  </Typography>
+                </Box>
+              )
+              )}
+            </Box>
           </Box>
         }
       </Paper>

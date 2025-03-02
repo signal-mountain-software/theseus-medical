@@ -70,6 +70,22 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
     }
   }
 
+  function groupButtonText() {
+    if (reactData.selections.length === 0) {
+      return 'Exit';
+    }
+    if (reactData.selections.length > 1) {
+      return `Select ${reactData.selections.length} groups`;
+    }
+    // options below if only one item selected
+    if (reactData.selections[0].hasOwnProperty('group_id')) {
+      return `Select ${reactData.selections[0].group_name}`;
+    }
+    else {
+      return `Select`;
+    }
+  }
+
   return (
     <Box
       key={`MessagePrefSection_masterBox`}
@@ -495,9 +511,109 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
                   {`During these times, only use this rule if a message is marked Urgent`}
                 </Typography>
               </Box>
+
+
+
+
+
+
+
+
+
+
+              <Box
+                display='flex'
+                flexDirection='row'
+                alignItems={'center'}
+                key={`groupOption__${i}`}
+                style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', marginLeft: '-12px', textWrapStyle: 'balance' }}
+              >
+                <Checkbox
+                  aria-label={`groupList_checkbox__${i}`}
+                  name={`groupList_checkbox__${i}`}
+                  key={`groupList_checkbox__${i}`}
+                  size='small'
+                  checked={(this_rule.groupList && (this_rule.groupList.length > 0)) || false}
+                  onClick={async () => {
+                    if (!currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules[i]) {
+                      currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules[i] = this_rule;
+                    }
+                    if (!currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules[i].groupList) {
+                      currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules[i].groupList = [];
+                    }
+                    await updateField({
+                      updateList:
+                        [{
+                          tableName: 'customizationRecs',
+                          fieldName: 'global_mail_rules.customization_value.time_based_rules',
+                          newData: currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules
+                        }]
+                    });
+                  }}
+                  disableRipple
+                  inputProps={{ 'aria-labelledby': `groupList_checkbox_3` }}
+                />
+                <Box
+                  display='flex'
+                  flexDirection='column'
+                  alignItems={'flex-start'}
+                  key={`GroupList_header__${i}`}
+                  style={{ textWrapStyle: 'balance' }}
+                >
+                  <Typography
+                    style={AVATextStyle({})}
+                  >
+                    {`Use this rule if the Addressee is a member of one of these selected Groups:`}
+                  </Typography>
+                  <Box display='flex'
+                    key={'newMessage_r6names'}
+                    flexDirection='column'
+                    flexWrap={'wrap'}
+                    alignContent={'flex-start'}
+                    onClick={() => {
+                      updateReactData({
+                        showRuleGroupsQuickSearch: true,
+                        showGroupList: true,
+                        ruleIndex: i,
+                        linkedPersonFilter: '',
+                        selections: (this_rule.groupList
+                          ? (this_rule.groupList.map((this_group, pX) => {
+                            return { group_id: this_group, group_name: this_rule.groupNames[pX] };
+                          }))
+                          : []
+                        )
+                      }, true);
+                    }}
+                  >
+                    {(this_rule.hasOwnProperty('groupList')
+                      && (this_rule.groupList.length > 0)) &&
+                      <Typography
+                        style={AVATextStyle({ margin: { left: 1 }, size: 0.8, bold: true })}
+                        key={`showGroups__${this_rule.groupList.length}`}
+                      >
+                        {(this_rule.groupList.length > 3)
+                          ? (`${this_rule.groupList.length} groups`)
+                          : (`${listFromArray(this_rule.groupNames, {or: true})}`)
+                        }
+                      </Typography>
+                    }
+                    <Typography
+                      style={AVATextStyle({ margin: { left: 1 }, size: 0.8 })}
+                    >
+                      {(!this_rule.hasOwnProperty('groupList')
+                        || this_rule.groupList.length === 0)
+                        ? '(Tap here to select Groups)'
+                        : `(Tap here to add/change Groups)`
+                      }
+                    </Typography>
+                  </Box>
+                </Box>
+
+
+              </Box>
               <Box >
                 <Typography
-                  style={AVATextStyle({ margin: { top: 2, right: 2, bottom: 1 } })}
+                  style={AVATextStyle({ margin: { top: 2, right: 2, bottom: 0.5 } })}
                 >
                   {`When this rule applies, the system will automatically...`}
                 </Typography>
@@ -660,6 +776,7 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
               pickAndGo: true,
               withSpecialValues: true,
               keepSelections: true,
+              showAll: true,
               buttonColor: (reactData.selections.length === 0) ? 'red' : 'green',
               buttonText: searchButtonText()
             }}
@@ -680,7 +797,8 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
                   currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules[reactData.ruleIndex][reactData.selectedOption].peopleList.push(this_selection.person_id);
                   currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules[reactData.ruleIndex][reactData.selectedOption].peopleNames.push(this_selection.person_name);
                 }
-              }
+              }             
+              
               await updateField({
                 updateList:
                   [{
@@ -690,6 +808,50 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
                   }],
                 reactUpd: {
                   showRulesQuickSearch: false,
+                  changesMade: true
+                }
+              });
+            }}
+          />
+        }
+
+        {reactData.showRuleGroupsQuickSearch &&
+          <QuickSearch
+            reactData={reactData}
+            updateReactData={updateReactData}
+            options={{
+              pickAndGo: true,
+              withGroups: true,
+              hidePeople: true,
+              showAll: true,
+              keepSelections: true,
+              buttonColor: (reactData.selections.length === 0) ? 'red' : 'green',
+              buttonText: groupButtonText()
+            }}
+            onClose={async (selections) => {
+              currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules[reactData.ruleIndex] =
+              {
+                groupList: [],
+                groupNames: []
+              };
+              if (selections.length > 0) {
+                for (const this_selection of selections) {
+                  if (this_selection.hasOwnProperty('group_id')) {
+                    currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules[reactData.ruleIndex].groupList.push(this_selection.group_id);
+                    currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules[reactData.ruleIndex].groupNames.push(this_selection.group_name);
+                  }
+                }
+              }
+              await updateField({
+                updateList:
+                  [{
+                    tableName: 'customizationRecs',
+                    fieldName: 'global_mail_rules.customization_value.time_based_rules',
+                    newData: currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules
+                  }],
+                reactUpd: {
+                  showRuleGroupsQuickSearch: false,
+                  showGroupList: false,
                   changesMade: true
                 }
               });

@@ -68,8 +68,8 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
     special_values: [{
       person_id: '*Caregivers*',
       groups: [],
-      first: 'Caregivers /',
-      last: 'Responsible Parties'
+      first: 'Caregiver(s)',
+      last: 'of Addressee'
     }],
     group_id: 'ALL',
     MessagingInitialized: false,
@@ -197,9 +197,13 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
           }
           cl(`Error reading Cusomtizations for client ${reactData.client_id} - error is ${error}`);
         });
-      reactUpdObj.og = {
+      reactUpdObj.og = {              // this default will be replaced in the for...of loop below if a legitimate global_mail_rules key exists
         customizationRecs: {
-          global_mail_rules: []
+          global_mail_rules: {
+            client_id: reactData.client_id,
+            custom_key: 'global_mail_rules',
+            customization_value: {}
+          }
         }
       };
       if (recordExists(cRecs)) {
@@ -216,6 +220,20 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
               this_cRec.customization_value = reactUpdObj.myImage;
               this_cRec.icon = reactUpdObj.myImage;
               reactUpdObj.og.customizationRecs[this_cRec.custom_key] = this_cRec;
+              break;
+            }
+            case 'global_mail_rules': {
+              if (this_cRec.customization_value?.time_based_rules && (this_cRec.customization_value?.time_based_rules.length > 0)) {
+                this_cRec.customization_value.time_based_rules.forEach((this_rule, ndx) => {
+                  if (this_rule.method && !this_rule.methods) {
+                    this_cRec.customization_value.time_based_rules[ndx].methods = [this_rule.method];
+                  }
+                });
+              }
+              else {
+                this_cRec.customization_value.time_based_rules = [];
+              }
+              reactUpdObj.og.customizationRecs['global_mail_rules'].customization_value.time_based_rules = this_cRec.customization_value.time_based_rules;
               break;
             }
             default: {
@@ -362,26 +380,62 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
   };
 
   const saveChanges = async () => {
-    if (JSON.stringify(reactData.og.customizationRecs) !== JSON.stringify(reactData.current.customizationRecs)) {
-      for (const this_key in reactData.current.customizationRecs) {
-        if (JSON.stringify(reactData.og.customizationRecs[this_key]) !== JSON.stringify(reactData.current.customizationRecs[this_key])) {
-          await dbClient
-            .put({
-              TableName: 'Customizations',
-              Item: reactData.current.customizationRecs[this_key]
-            })
-            .promise()
-            .catch(error => {
-              console.log(`caught error putting to Customizations at key ${this_key}; error is:`, error);
-            });
-          reactData.og.customizationRecs[this_key] = deepCopy(reactData.current.customizationRecs[this_key]);
+    // validation
+    let errorsExist = false;
+    if (reactData.current.customizationRecs?.global_mail_rules?.customization_value?.time_based_rules
+      && (reactData.current.customizationRecs.global_mail_rules.customization_value.time_based_rules.length > 0)
+    ) {
+      for (let check_rule of reactData.current.customizationRecs.global_mail_rules.customization_value.time_based_rules) {
+        if (!check_rule.methods || (check_rule.methods.length === 0)) {
+          updateReactData({
+            alert: {
+              severity: 'error',
+              title: `Error on Rule "${check_rule.name}"`,
+              message: `You didn't select any actions for this rule`,
+            }
+          }, false);
+          errorsExist = true;
+        }
+        else {
+          if (((check_rule.methods.includes('add_recipients') && (!check_rule.hasOwnProperty('add_recipients') || (check_rule['add_recipients'].length === 0))))
+            || (check_rule.methods.includes('replace_recipients') && (!check_rule.hasOwnProperty('replace_recipients') || (check_rule['replace_recipients'].length === 0)))) {
+            updateReactData({
+              alert: {
+                severity: 'error',
+                title: `Error on Rule "${check_rule.name}"`,
+                message: `When using "instead of" or "in addition to" rules, you must select at least one recipient`
+              }
+            }, false);
+            errorsExist = true;
+          }
         }
       }
-      updateReactData({
-        OKtoSave: false,
-        og: reactData.og,
-        current: reactData.current
-      }, true);
+    }
+    if (errorsExist) {
+      return false;
+    }
+    else {
+      if (JSON.stringify(reactData.og.customizationRecs) !== JSON.stringify(reactData.current.customizationRecs)) {
+        for (const this_key in reactData.current.customizationRecs) {
+          if (JSON.stringify(reactData.og.customizationRecs[this_key]) !== JSON.stringify(reactData.current.customizationRecs[this_key])) {
+            await dbClient
+              .put({
+                TableName: 'Customizations',
+                Item: reactData.current.customizationRecs[this_key]
+              })
+              .promise()
+              .catch(error => {
+                console.log(`caught error putting to Customizations at key ${this_key}; error is:`, error);
+              });
+            reactData.og.customizationRecs[this_key] = deepCopy(reactData.current.customizationRecs[this_key]);
+          }
+        }
+        updateReactData({
+          OKtoSave: false,
+          og: reactData.og,
+          current: reactData.current
+        }, true);
+      }
     }
     return true;
   };
