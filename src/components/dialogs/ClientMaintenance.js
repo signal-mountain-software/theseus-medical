@@ -8,6 +8,7 @@ import useSession from '../../hooks/useSession';
 import ClientProfileSection from '../sections/ClientProfileSection';
 import ClientMessagingSection from './ClientMessagingSection';
 import WeatherSection from '../sections/WeatherSection';
+import GlobalMessagePreferencesSection from '../sections/GlobalMessagePreferencesSection';
 
 import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -62,6 +63,14 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
     myImage: '',
     image_editing: false,
     selections: [],
+    showRulesQuickSearch: false,
+    selectedRulesPeople: [],
+    special_values: [{
+      person_id: '*Caregivers*',
+      groups: [],
+      first: 'Caregivers /',
+      last: 'Responsible Parties'
+    }],
     group_id: 'ALL',
     MessagingInitialized: false,
     bBoardList: {},
@@ -88,7 +97,11 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
       },
       ClientMessagingSection: {
         component_id: ClientMessagingSection,
+      },
+      GlobalMessagePreferencesSection: {
+        component_id: GlobalMessagePreferencesSection,
       }
+
     },
     og: {
       customizationRecs: false,
@@ -132,14 +145,21 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
           component_name: 'ClientWeatherSection'
         },
         {
-          section_name: 'Messaging',
+          section_name: 'Global Messaging Rules',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'GlobalMessagePreferencesSection'
+        },
+        {
+          section_name: 'Preferred Recipients',
           color: initialValues?.color || 'orange',
           isOpen: false,
           isAuthorized: true,
           version_id: 0,
           component_name: 'ClientMessagingSection'
-        }
-        ]
+        }]
       };
       // incoming client_id should tell us who we are editing here
 
@@ -177,7 +197,11 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
           }
           cl(`Error reading Cusomtizations for client ${reactData.client_id} - error is ${error}`);
         });
-      reactUpdObj.og = { customizationRecs: {} };
+      reactUpdObj.og = {
+        customizationRecs: {
+          global_mail_rules: []
+        }
+      };
       if (recordExists(cRecs)) {
         for (const this_cRec of cRecs.Items) {
           switch (this_cRec.custom_key) {
@@ -194,7 +218,9 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
               reactUpdObj.og.customizationRecs[this_cRec.custom_key] = this_cRec;
               break;
             }
-            default: { }
+            default: {
+              reactUpdObj.og.customizationRecs[this_cRec.custom_key] = this_cRec;
+            }
           }
         }
         reactUpdObj.current = {
@@ -213,7 +239,7 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
       }
       updateReactData(reactUpdObj, true);
       window.addEventListener('resize', handleResize);
-    }
+    };
     function handleResize() {
       updateReactData({
         isMobile: (window.window.innerWidth < 800),

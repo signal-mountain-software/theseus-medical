@@ -434,7 +434,9 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
                         start: from_time.numeric24,
                         end: (this_rule.time_range?.end
                           ? this_rule.time_range.end
-                          : makeTime(this_rule.time_to).numeric24
+                          : (this_rule.time_to
+                            ? makeTime(this_rule.time_to).numeric24
+                            : 2359)
                         )
                       };
                       let updateObj = {
@@ -489,7 +491,9 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
                         end: to_time.numeric24,
                         start: (this_rule.time_range?.start
                           ? this_rule.time_range.start
-                          : makeTime(this_rule.time_from).numeric24
+                          : (this_rule.time_from
+                            ? makeTime(this_rule.time_from).numeric24
+                            : 0)
                         )
                       };
                       let updateObj = {
@@ -560,7 +564,7 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
                     />
                   ))}
                 </Box>
-              </Box>  
+              </Box>
               <TextField
                 multiline
                 style={AVATextStyle({ width: '90%', margin: { top: 1 } })}

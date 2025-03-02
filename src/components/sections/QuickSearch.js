@@ -37,7 +37,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
               personNames: this_pref.personNames
             });
           }
-        } 
+        }
       }
       if (options.withGroups && !reactData.groupInfo) {
         if (state.hasOwnProperty('groups')) {
@@ -127,7 +127,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
       selectedPeople_count = selectedPeople_list.length;
     }
     return { selectedPeople_count, selectedPeople_list };
-  }
+  };
 
   const OKtoShowPreferred = (this_object) => {
     return (
@@ -137,7 +137,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
         && (this_object.objText.toLowerCase().includes(reactData.linkedPersonFilter.lower)))
       ||
       ((reactData.linkedPersonFilter?.raw?.length > 1)
-        && (this_object.personNames.some(p => {return p.toLowerCase().includes(reactData.linkedPersonFilter.lower) })))
+        && (this_object.personNames.some(p => { return p.toLowerCase().includes(reactData.linkedPersonFilter.lower); })))
     );
   };
 
@@ -154,13 +154,18 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
     return (
       (options.showAll && (isEmpty(reactData.linkedPersonFilter) || reactData.linkedPersonFilter?.raw?.length < 2))
       ||
+      (options.withSpecialValues
+        && (reactData.special_values.some(this_special => { return (this_special.person_id === this_person.person_id); }))
+      )
+      ||
       (
         ((reactData.selections.length > 0) && (reactData.selections.some(s => {
           return s.person_id === this_person.person_id;
         })))
         ||
         ((reactData.linkedPersonFilter?.raw?.length > 1)
-          && (`${this_person.last} ${this_person.first}`).toLowerCase().includes(reactData.linkedPersonFilter.lower)))
+          && (`${this_person.last} ${this_person.first}`).toLowerCase().includes(reactData.linkedPersonFilter.lower))
+      )
     );
   };
 
@@ -212,8 +217,10 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
       <Paper p={2} component={Box} elevation={0}
         width='100%' height={250} overflow='auto' square
       >
-        {reactData.selections && (reactData.selections.length > 0) &&
-          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+        {reactData.showAll && reactData.selections && (reactData.selections.length > 0) &&
+          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
+            style={{ marginBottom: '20px' }}
+          >
             <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
               <Typography
                 style={{ fontWeight: 'bold', paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
@@ -339,7 +346,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                       : AVATextStyle()
                   )}
                 >
-                    {this_recipient.objText}
+                  {this_recipient.objText}
                 </Typography>
               </Box>
             )
@@ -442,19 +449,17 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                 </Typography>
               </Box>
             )
-            )}           
+            )}
           </Box>
         }
-        {((options.withGroups && reactData.groupInfo) || (reactData.selections && (reactData.selections.length > 0))) &&
-          <Typography
-            style={{ fontWeight: 'bold', paddingTop: '2px', marginTop: '6.5px', marginBottom: '4px', textWrapStyle: 'balance' }}
-          >
-            {'Individuals'}
-          </Typography>
-        }
+        <Typography
+          style={{ fontWeight: 'bold', paddingTop: '2px', marginTop: '6.5px', marginBottom: '4px', textWrapStyle: 'balance' }}
+        >
+          {(options.showAll ? 'People' : `People (use search above to find ${(reactData.selections && (reactData.selections.length > 0)) ? 'more ' : ''}names)`)}
+        </Typography>
         {reactData.accessList &&
           <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-            {reactData.accessList.map((this_item, tIndex) => (
+            {((options.withSpecialValues ? reactData.special_values : []).concat(reactData.accessList)).map((this_item, tIndex) => (
               OKtoShow(this_item) &&
               <Box
                 display='flex'
@@ -509,7 +514,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                 }}
               >
                 <Typography
-                    style={(reactData.selections.some(s => { return s.person_id === this_item.person_id; }))
+                  style={(reactData.selections.some(s => { return s.person_id === this_item.person_id; }))
                     ? AVATextStyle({ bold: true, color: 'green' })
                     : AVATextStyle()
                   }
