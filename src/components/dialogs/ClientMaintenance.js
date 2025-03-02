@@ -675,6 +675,11 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
                       newName: reactData.current.customizationRecs.client_name.customization_value
                     });
                   }
+                  else {
+                    updateReactData({
+                      OKtoSave: !result
+                    }, true);
+                  }
                 }}
                 className={AVAClass.AVAButton}
                 style={{ backgroundColor: 'green', color: 'white' }}

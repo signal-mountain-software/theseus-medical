@@ -829,11 +829,8 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
               buttonText: groupButtonText()
             }}
             onClose={async (selections) => {
-              currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules[reactData.ruleIndex] =
-              {
-                groupList: [],
-                groupNames: []
-              };
+              currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules[reactData.ruleIndex].groupList = [];
+              currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules[reactData.ruleIndex].groupNames = [];
               if (selections.length > 0) {
                 for (const this_selection of selections) {
                   if (this_selection.hasOwnProperty('group_id')) {
