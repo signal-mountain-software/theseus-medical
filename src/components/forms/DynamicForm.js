@@ -5,6 +5,7 @@ import { Box, FormGroup, FormControl } from '@material-ui/core';
 
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageForm from '../forms/MessageForm';
+import MessageFormLegacy from './MessageFormLegacy';
 import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
 import FamilyMaintenance from './FamilyMaintenance';
@@ -396,16 +397,38 @@ export default ({
      );
     */
     case 'message_list':
-      return (
-        <MessageForm
-          pPerson={session.patient_id}
-          pClient={session.client_id}
-          pMessageList={[]}
-          pSession={session}
-          onReset={onSave}
-          defaultValue={defaultValue}
-        />
-      );
+      if ((session.client_style.allow_old_messaging) && !state.patient.useNewMessaging) {
+        return (
+          <MessageFormLegacy
+            pPerson={session.patient_id}
+            pClient={session.client_id}
+            pMessageList={[]}
+            pSession={session}
+            onReset={(instruction) => {
+              if (instruction !== 'restart') {
+                onSave();
+              }
+              else {
+                sessionStorage.removeItem('AVASessionData');
+                window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+              }
+            }}
+            defaultValue={defaultValue}
+          />
+        );
+      }
+      else {
+        return (
+          <MessageForm
+            pPerson={session.patient_id}
+            pClient={session.client_id}
+            pMessageList={[]}
+            pSession={session}
+            onReset={onSave}
+            defaultValue={defaultValue}
+          />
+        );
+      }
     case 'make_message':
       let defaultValueObj = {};
       if (!defaultValue) { defaultValueObj = { recipientID: '*select' }; }

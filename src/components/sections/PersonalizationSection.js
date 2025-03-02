@@ -1,6 +1,6 @@
 import React from 'react';
 import Box from '@material-ui/core/Box';
-import { Slider, Typography, Button } from '@material-ui/core';
+import { Slider, Typography, Button, Switch } from '@material-ui/core';
 import { AVATextStyle, AVAclasses, AVADefaults } from '../../util/AVAStyles';
 import { s3, cloudfront } from '../../util/AVAUtilities';
 import Select from 'react-dropdown-select';
@@ -31,7 +31,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
     { label: "Danish", value: "da" },
     { label: "Dari", value: "fa-AF" },
     { label: "Dutch", value: "nl" },
-//    { label: "English", value: "en-US" },
+    //    { label: "English", value: "en-US" },
     { label: "Estonian", value: "et" },
     { label: "Farsi (Persian)", value: "fa" },
     { label: "Filipino, Tagalog", value: "tl" },
@@ -166,7 +166,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         alignItems="flex-start"
         justifyContent="center"
       >
-        <Box width={300} style={{marginLeft: '16px'}}>
+        <Box width={300} style={{ marginLeft: '16px' }}>
           <Slider
             value={currentValues.sessionRec.customizations?.font_size || 1}
             onChange={async (event, newValue) => {
@@ -289,7 +289,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
           marginTop={1}
         >
           <Box
-            style={{marginLeft: '40px'}}
+            style={{ marginLeft: '40px' }}
             component="img"
             minWidth={150}
             maxWidth={150}
@@ -350,7 +350,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
           key={`selectBox_filterdrop`}
           display='flex' flexGrow={1} flexDirection='column'
           marginTop={2}
-          pt={1} pb={1} 
+          pt={1} pb={1}
         >
           <React.Fragment>
             <Select
@@ -424,6 +424,50 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         </Box>
       </React.Fragment>
 
+
+      {!reactData.new_messaging_required &&
+        <React.Fragment>
+          <Typography
+            style={AVATextStyle({ margin: { top: 1 } })}
+          >
+            {'Messaging Version'}
+          </Typography>
+          <Box flexGrow={2} display='flex' alignItems='center'
+            justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+            <Typography
+              style={AVATextStyle({
+                size: 0.8, margin: { right: 0.8 },
+                bold: !currentValues.peopleRec.useNewMessaging
+              })}
+            >
+              {'Legacy'}
+            </Typography>
+            <Switch
+              checked={currentValues.peopleRec.useNewMessaging}
+              onClick={async (event) => {
+                await updateField({
+                  updateList:
+                    [{
+                      tableName: 'peopleRec',
+                      fieldName: 'useNewMessaging',
+                      newData: !currentValues.peopleRec.useNewMessaging
+                    }]
+                });
+              }}
+              name="MessagingStyle"
+              color="primary"
+            />
+            <Typography
+              style={AVATextStyle({
+                size: 0.8, margin: { left: 0.8 },
+                bold: currentValues.peopleRec.useNewMessaging
+              })}
+            >
+              {'New'}
+            </Typography>
+          </Box>
+        </React.Fragment>
+      }
 
 
 

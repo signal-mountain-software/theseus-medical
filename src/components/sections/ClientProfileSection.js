@@ -218,7 +218,93 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
 
 
+      <Typography
+        style={AVATextStyle({ margin: { top: 1 } })}
+      >
+        {'People Maintenance version'}
+      </Typography>
+      <Box flexGrow={2} display='flex' alignItems='center'
+        justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+        <Typography
+          style={AVATextStyle({
+            size: 0.8, margin: { right: 0.8 },
+            bold: currentValues.customizationRecs.useOldVersion?.customization_value
+          })}
+        >
+          {'Legacy'}
+        </Typography>
+        <Switch
+          checked={!(currentValues.customizationRecs.useOldVersion?.customization_value)}
+          onClick={async (event) => {
+            await updateField({
+              updateList:
+                [{
+                  tableName: 'customizationRecs',
+                  fieldName: 'useOldVersion',
+                  newData: {
+                    client_id: currentValues.customizationRecs.client_name.client_id,
+                    custom_key: 'useOldVersion',
+                    customization_value: !currentValues.customizationRecs.useOldVersion?.customization_value
+                  }
+                }]
+            });
+          }}
+          name="UIStyle"
+          color="primary"
+        />
+        <Typography
+          style={AVATextStyle({
+            size: 0.8, margin: { left: 0.8 },
+            bold: !currentValues.customizationRecs.useOldVersion?.customization_value
+          })}
+        >
+          {'New'}
+        </Typography>
+      </Box>
 
+
+
+
+
+      <Typography
+        style={AVATextStyle({ margin: { top: 1 } })}
+      >
+        {'Messaging Version'}
+      </Typography>
+      <Box flexGrow={2} display='flex' alignItems='center'
+        justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+        <Typography
+          style={AVATextStyle({
+            size: 0.8, margin: { right: 0.8 },
+            bold: currentValues.customizationRecs.client_style.customization_value.allow_old_messaging
+          })}
+        >
+          {'Legacy Allowed'}
+        </Typography>
+        <Switch
+          checked={!(currentValues.customizationRecs.client_style.customization_value?.allow_old_messaging)}
+          onClick={async (event) => {
+            await updateField({
+              updateList:
+                [{
+                  tableName: 'customizationRecs',
+                  fieldName: 'client_style.customization_value.allow_old_messaging',
+                  newData: !currentValues.customizationRecs.client_style.customization_value.allow_old_messaging
+                }]
+            });
+          }}
+          name="MessagingStyle"
+          color="primary"
+        />
+        <Typography
+          style={AVATextStyle({
+            size: 0.8, margin: { left: 0.8 },
+            bold: !currentValues.customizationRecs.client_style.customization_value.allow_old_messaging
+          })}
+        >
+          {'New Required'}
+        </Typography>
+      </Box>
 
 
 

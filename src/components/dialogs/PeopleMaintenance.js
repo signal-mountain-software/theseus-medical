@@ -65,6 +65,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     recentlyCompletedDocs: [],
     addAccountList: [],
     familyFormsObj: {},
+    new_messaging_required: !state.session.client_style.allow_old_messaging,
     local_customFields: ((state.session.local_data && (Object.keys(state.session.local_data).length > 0)) ? state.session.local_data : {}),
     user_class: state.user.account_class,
     administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
