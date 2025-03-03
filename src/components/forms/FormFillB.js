@@ -609,6 +609,7 @@ export default ({ request = {}, onClose }) => {
         // set options
         response.fields[this_field].options = {
           required: !!formRec.fields[this_field].value.required,
+          log_results: formRec.fields[this_field].value.log_results || false,
           viewOnly: (formRec.fields[this_field].value.edit === 'view'),
           hidden: (formRec.fields[this_field].value.edit === 'hidden'),
           ifEmpty: formRec.fields[this_field].options ? formRec.fields[this_field].options.ifEmpty : null,
@@ -705,10 +706,7 @@ export default ({ request = {}, onClose }) => {
             continue;
           }
         }
-        if (preset_values && preset_values[this_field]) {
-          response.fields[this_field].value = preset_values[this_field];
-        }
-        else if (formRec.fields[this_field].default) {
+        if (formRec.fields[this_field].default) {
           if (formRec.fields[this_field].default.source) {
             let sourceDefaults = [];
             if (Array.isArray(formRec.fields[this_field].default.source)) {
@@ -833,6 +831,16 @@ export default ({ request = {}, onClose }) => {
         if (!response.fields[this_field].value) {
           response.fields[this_field].value = null;
         }
+        // Set type
+        response.fields[this_field].type = formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type || 'text';
+        // Override computed defaults with preset values (if any)
+        if (preset_values && preset_values[this_field]) {
+          response.fields[this_field].og_default = await formatValue({
+            rawValue: response.fields[this_field].value,
+            type: response.fields[this_field].type
+          });
+          response.fields[this_field].value = preset_values[this_field];
+        }
         // if prompt.ignore_if exists, check the value
         if (formRec.fields[this_field]?.prompt?.ignore_if) {
           const ignoreList = makeArray(formRec.fields[this_field]?.prompt?.ignore_if);
@@ -845,8 +853,6 @@ export default ({ request = {}, onClose }) => {
             response.fields[this_field].ignore = true;
           }
         }
-        // Set type
-        response.fields[this_field].type = formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type || 'text';
         // Set default valueText (this may require conversion of value data as in types phone or date or time)
         response.fields[this_field].valueText = await formatValue({
           rawValue: response.fields[this_field].value,
@@ -861,6 +867,7 @@ export default ({ request = {}, onClose }) => {
         // set options
         response.fields[this_field].options = {
           required: !!formRec.fields[this_field].value.required,
+          log_results: formRec.fields[this_field].value.log_results || false,
           viewOnly: (formRec.fields[this_field].value.edit === 'view'),
           hidden: (formRec.fields[this_field].value.edit === 'hidden'),
           ifEmpty: formRec.fields[this_field].options ? formRec.fields[this_field].options.ifEmpty : null,
@@ -895,6 +902,13 @@ export default ({ request = {}, onClose }) => {
         else {
           response.fields[this_field].saveAs = false;
         }
+        // set logAs
+        if (!isEmpty(formRec.fields[this_field].value.log_results)) {
+          response.fields[this_field].logAs = formRec.fields[this_field].value.log_results.path
+        }
+        else {
+          response.fields[this_field].logAs = false;
+        }
         // finish initializations
         response.fields[this_field].isError = false;
       }
@@ -909,7 +923,7 @@ export default ({ request = {}, onClose }) => {
       return null;
     }
     if (key.length === 0) {
-      return object[this_key];
+      return deepCopy(object[this_key]);
     }
     else {
       return resolve({ object: object[this_key], key });
@@ -1127,8 +1141,11 @@ export default ({ request = {}, onClose }) => {
     if (answer) {
       do {
         let variable = answer[0];
-        if ((variable === '%%default%%') || (variable === '%%OG_default%%') || (variable === '%%value%%')) {
+        if (variable === '%%value%%') {
           response = response.replace(variable, (reactData.fields[this_field] ? reactData.fields[this_field].valueText : ''));
+        }
+        else if ((variable === '%%default%%') || (variable === '%%OG_default%%')) {
+          response = response.replace(variable, (reactData.fields[this_field] ? (reactData.fields[this_field].og_default || reactData.fields[this_field].valueText) : ''));
           if (variable === '%%OG_default%%') {
             rememberAnswer = true;
           }
@@ -1157,6 +1174,15 @@ export default ({ request = {}, onClose }) => {
         answer = response.match(/%%.*?%%/);
       }
       while (answer);
+    }
+    if (!response.endsWith(')') && reactData.fields[this_field].prompt.show_log && reactData.fields[this_field].logAs) {
+      let path = reactData.fields[this_field].logAs.split('.');
+      let pathFile = path.shift();
+      let logLine = resolve({
+        object: reactData[pathFile]?.[reactData.pertains_to],
+        key: path
+      });
+      response += ` (${logLine})`
     }
     if (rememberAnswer) {
       reactData.fields[this_field].prompt.value = response;
@@ -1391,6 +1417,7 @@ export default ({ request = {}, onClose }) => {
       familyRec: false
     };
     let field_values = {};
+    let now = makeDate(new Date());
     for (const this_field in reactData.fields) {
       if (reactData.fields[this_field].bonusText) {
         if (reactData.fields[this_field].value) {
@@ -1473,6 +1500,54 @@ export default ({ request = {}, onClose }) => {
             }
           }
         }
+        if ((!!reactData.fields[this_field].options?.log_results)
+          && (!reactData.fields[this_field].options.log_results.if_value
+          || reactData.fields[this_field].options.log_results.if_value.some(v => {
+            if (typeof (reactData.fields[this_field].value) === 'string') { return v = reactData.fields[this_field].value; }
+            else { return reactData.fields[this_field].value.includes(v); }
+          }))) {
+          const log_instructions = reactData.fields[this_field].options.log_results.path.split('.');
+          const log_file = log_instructions.shift();
+          if (log_file === 'peopleRec') {
+            if (!reactData.peopleRec.hasOwnProperty(reactData.pertains_to)) {
+              reactData.peopleRec[reactData.pertains_to] = await getDb({
+                Key: {
+                  person_id: reactData.pertains_to
+                },
+                TableName: "People"
+              });
+              updateReactData({
+                peopleRec: reactData.peopleRec
+              }, false);
+            }
+            reactData.peopleRec[reactData.pertains_to] = resolveValue(
+              reactData.peopleRec[reactData.pertains_to],
+              log_instructions,
+              sentenceCase(`Previously ${reactData.fields[this_field].value} ${now.oaDate} by ${state.profile.name.first} ${state.profile.name.last}`)
+            );
+            needsUpdate.peopleRec = true;
+          }
+          else if (log_file === 'sessionRec') {
+            if (!reactData.sessionRec.hasOwnProperty(reactData.pertains_to)) {
+              reactData.sessionRec[reactData.pertains_to] = await getDb({
+                Key: {
+                  person_id: reactData.pertains_to
+                },
+                TableName: "SessionsV2"
+              });
+              updateReactData({
+                sessionRec: reactData.sessionRec
+              }, false);
+            }
+            reactData.sessionRec[reactData.pertains_to] = resolveValue(
+              reactData.sessionRec[reactData.pertains_to],
+              log_instructions,
+              sentenceCase(`Previously ${reactData.fields[this_field].value} ${now.oaDate} by ${state.profile.name.first} ${state.profile.name.last}`)
+            );
+            needsUpdate.sessionRec = true;
+          }
+        }
+
       }
     }
     if (needsUpdate.peopleRec || reactData.newPerson) {
