@@ -217,6 +217,12 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       for (let a = 0; a < aL; a++) {
         screenStatus('Loading Favorites', ((a / aL) * 100), ((aL / 40) + .75), returnArray);
         let this_activity = requestor.favorite_activities[a];
+        // pick off "~[section=<section>]" and put this favorite in that section
+        let parsed = this_activity.match(/(.*?)~\[section=(.*?)](.*)/mi);
+        if (parsed) {
+          sectionName = parsed[2];
+          this_activity = `${parsed[1]}${parsed[3] || ''}`;
+        }
         let this_row = await addRow(this_activity, 'main', null, null, sectionSort, sectionName, sectionColor, sectionIcon, 'Favorite');
         if (this_row) { returnArray.push(this_row); }
       }
