@@ -1141,22 +1141,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                         bold: true,
                         margin: { top: 1, bottom: 1, right: 0 },
                       })}>
-                      {`${reactData.selectedPersonFirstName} ${reactData.selectedPersonLastName.trim()}`}
-                    </Typography>
-                    <Typography
-                      key={`g_text_end-last_tag`}
-                      style={AVATextStyle({
-                        size: 1.5,
-                        overflow: 'visible',
-                        bold: true,
-                        margin: { top: 1, bottom: 1, left: 0 },
-                      })}>
-                      {`'${reactData.selectedPersonLastName.trim().endsWith('s') ? '' : 's'} Groups`}
+                      {`${reactData.selectedPersonFirstName} ${reactData.selectedPersonLastName.trim()}'${reactData.selectedPersonLastName.trim().endsWith('s') ? '' : 's'} Groups`}
                     </Typography>
                   </Box>
                   <Box
                     key={'my_image_box'}
-                    style={{ marginRight: '16px' }}
+                    style={{ marginRight: '16px', marginLeft: '6px' }}
                     onClick={() => {
                       updateReactData({
                         viewPeopleMaintenance: reactData.selectedPerson_id

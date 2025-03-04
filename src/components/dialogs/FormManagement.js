@@ -3,9 +3,9 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 
 import { getMemberList } from '../../util/AVAGroups';
-import { dbClient, recordExists, cl } from '../../util/AVAUtilities';
+import { dbClient, recordExists, cl, titleCase } from '../../util/AVAUtilities';
 import QuickSearch from '../sections/QuickSearch';
-import { getPerson, getImage } from '../../util/AVAPeople';
+import { getPerson, getImage, makeName } from '../../util/AVAPeople';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import { addDays, makeDate } from '../../util/AVADateTime';
 import FormFillB from '../forms/FormFillB';
@@ -282,7 +282,7 @@ export default ({ defaults, onClose }) => {
       });
     if (recordExists(allDocs)) {
       for (const this_doc of allDocs.Items) {
-        buildMasters(this_doc);
+        await buildMasters(this_doc);
       }
     }
     updateReactData({
@@ -291,7 +291,7 @@ export default ({ defaults, onClose }) => {
     }, true);
   }
 
-  function buildMasters(this_doc) {
+  async function buildMasters(this_doc) {
     if ((this_doc.restricted_access === 'admin_only') && (!reactData.administrative_account)) {
       return;    // skip this document
     }
@@ -307,7 +307,7 @@ export default ({ defaults, onClose }) => {
         //person_name: `${reactData.selectedPersonRec.name.first} ${reactData.selectedPersonRec.name.last}`,
         //person_first: reactData.selectedPersonRec.name.first,
         //person_last: reactData.selectedPersonRec.name.last,
-        person_name: `${this_doc.pertains_to}`,
+        person_name: await makeName(this_doc.pertains_to),
         person_first: `${this_doc.pertains_to}`,
         person_last: `${this_doc.pertains_to}`,
         wipDocs: [],
@@ -433,7 +433,7 @@ export default ({ defaults, onClose }) => {
       });
     if (recordExists(allDocs)) {
       for (const this_doc of allDocs.Items) {
-        buildMasters(this_doc);
+        await buildMasters(this_doc);
       }
     }
     updateReactData({
@@ -490,7 +490,7 @@ export default ({ defaults, onClose }) => {
         }
         masterFormList[formRec.form_id] = {
           form_id: formRec.form_id,
-          form_name: formRec.form_name,
+          form_name: formRec.form_name || `Form ${titleCase(formRec.form_id.replace(/[^a-zA-z0-9]|_/g, ' '))}`,
           groupList: [],  // all the groups that require this form
           options: formRec.options || {},
           dueDate: date_assigned,
@@ -825,24 +825,12 @@ export default ({ defaults, onClose }) => {
                         }), { textWrap: 'nowrap' }
                       )}
                     >
-                      {`${reactData.selectedPersonRec.name.first} ${reactData.selectedPersonRec.name.last}`}
-                    </Typography>
-                    <Typography
-                      key={`g_text_end-last_tag`}
-                      style={Object.assign({},
-                        AVATextStyle({
-                          size: 1.5,
-                          overflow: 'visible',
-                          bold: true,
-                        }), { textWrap: 'nowrap' }
-                      )}
-                    >
-                      {`'${reactData.selectedPersonRec.name.last.trim().endsWith('s') ? '' : 's'} Forms`}
+                      {`${reactData.selectedPersonRec.name.first} ${reactData.selectedPersonRec.name.last}'${reactData.selectedPersonRec.name.last.trim().endsWith('s') ? '' : 's'} Forms`}
                     </Typography>
                   </Box>
                   <Box
                     key={'my_image_box'}
-                    style={{ marginRight: '16px' }}
+                    style={{ marginRight: '16px', marginLeft: '6px' }}
                     onClick={() => {
                       updateReactData({
                         viewPeopleMaintenance: reactData.selectedPerson_id
@@ -1096,8 +1084,8 @@ export default ({ defaults, onClose }) => {
                                 severity: 'info',
                                 title: `${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`,
                                 message: <div>
-                                  Person ID: {this_person}
-                                  Form Type: {reactData.selectedForm_id}<br />
+                                  Person ID: <strong>{this_person}</strong><br />
+                                  Form Type: <strong>{reactData.selectedForm_id}</strong><br />
                                   Status: {reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status}<br />
                                   WIP Doc ID: {(reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'n/a')}<br />
                                   Completed Doc ID: {(reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.document_id || 'n/a')}</div>
