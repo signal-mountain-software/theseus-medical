@@ -512,6 +512,43 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
                 </Typography>
               </Box>
 
+              <Box
+                display='flex'
+                flexDirection='row'
+                alignItems={'center'}
+                key={`not_urgent_option__${i}`}
+                style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', marginLeft: '-12px', textWrapStyle: 'balance' }}
+              >
+                <Checkbox
+                  aria-label={`urgent_checkbox__${i}`}
+                  name={`not_urgent_checkbox__${i}`}
+                  key={`not_urgent_checkbox__${i}`}
+                  size='small'
+                  checked={this_rule.when_urgent || false}
+                  onClick={async () => {
+                    if (!currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules[i]) {
+                      currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules[i] = this_rule;
+                    }
+                    currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules[i].when_notUrgent = !currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules[i].when_notUrgent;
+                    await updateField({
+                      updateList:
+                        [{
+                          tableName: 'customizationRecs',
+                          fieldName: 'global_mail_rules.customization_value.time_based_rules',
+                          newData: currentValues.customizationRecs.global_mail_rules.customization_value.time_based_rules
+                        }]
+                    });
+                  }}
+                  disableRipple
+                  inputProps={{ 'aria-labelledby': `message_routing_3` }}
+                />
+                <Typography
+                  style={AVATextStyle({})}
+                >
+                  {`During these times, only use this rule if a message is NOT marked Urgent`}
+                </Typography>
+              </Box>
+
 
 
 
