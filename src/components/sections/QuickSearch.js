@@ -217,7 +217,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
         autoComplete='off'
         helperText='Name Search'
       />
-      <Paper pY={2} paddingLeft={'8px'} component={Box} elevation={0}
+      <Paper paddingTop={'8px'} paddingBottom={'8px'} paddingLeft={'8px'} component={Box} elevation={0}
         width='100%' height={250} overflow='auto' square
       >
         {reactData.showAll && reactData.selections && (reactData.selections.length > 0) &&

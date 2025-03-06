@@ -11,18 +11,14 @@ import { sendMessages } from '../../util/AVAMessages';
 import { printDocumentB, printEmptyDocument, printDocumentHybrid } from '../../util/AVAMessages';
 import SignatureCanvas from 'react-signature-canvas';
 import Select from "react-dropdown-select";
+import { CloudUploadIcon } from '@material-ui/icons/CloudUpload';
 import PrintIcon from '@material-ui/icons/Print';
-import CloudUploadIcon from '@material-ui/icons/CloudUpload';
-
-import Box from '@material-ui/core/Box';
-import { Dialog, DialogContent } from '@material-ui/core';
-import Typography from '@material-ui/core/Typography';
+import { Dialog, DialogContent, Snackbar, Box, Typography, FormControlLabel, Button, TextField, Checkbox } from '@material-ui/core';
+import { Alert, AlertTitle } from '@material-ui/lab/';
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import Checkbox from '@material-ui/core/Checkbox';
-import { FormControlLabel } from '@material-ui/core';
 
-import TextField from '@material-ui/core/TextField';
-import Button from '@material-ui/core/Button';
+import AVA_AlertSound from '../../ava_alert.mp3';
+import useSound from 'use-sound';
 
 import useSession from '../../hooks/useSession';
 import { useIdleTimer } from 'react-idle-timer';
@@ -146,6 +142,8 @@ export default ({ request = {}, onClose }) => {
     options = Object.assign({}, request);
   }
 
+  const [play] = useSound(AVA_AlertSound, { volume: 1 });
+
   const nowObj = new Date();
 
   const [reactData, setReactData] = React.useState({
@@ -258,10 +256,32 @@ export default ({ request = {}, onClose }) => {
       onClose('timeout', {
         document_id: reactData.document_id,
         document_title: reactData.document_title,
-        document_status: 'work_in_process',
+        document_status: (reactData.clientSampleMode ? 'cancel' : 'work_in_process'),
         pertains_to: reactData.pertains_to,
         recWritten: reactData.recWritten
       });
+    }
+    else if (minutesSinceActive > 3) {
+      updateReactData({
+        alert: {
+          severity: 'info',
+          title: `Are you there?`,
+          message: <div>We haven't heard from you in over {minutesSinceActive} minutes.<br />
+            We'll automatically {reactData.clientSampleMode ? '' : 'save your work and '} close this form in {5 - minutesSinceActive} minutes.<br />
+            To keep this form active, just move your mouse or tap somewhere.</div>
+        }
+      }, true);
+    }
+    else if (minutesSinceActive === 5) {
+      play();
+      updateReactData({
+        alert: {
+          severity: 'warning',
+          title: `Close imminent`,
+          message: <div>Heads up!  We'll automatically {reactData.clientSampleMode ? '' : 'save your work and '} close this form in 1 minute!<br />
+            <strong>To keep this form active, just move your mouse or tap somewhere.</strong></div>
+        }
+      }, true);
     }
     reset();
   };
@@ -904,7 +924,7 @@ export default ({ request = {}, onClose }) => {
         }
         // set logAs
         if (!isEmpty(formRec.fields[this_field].value.log_results)) {
-          response.fields[this_field].logAs = formRec.fields[this_field].value.log_results.path
+          response.fields[this_field].logAs = formRec.fields[this_field].value.log_results.path;
         }
         else {
           response.fields[this_field].logAs = false;
@@ -1182,7 +1202,7 @@ export default ({ request = {}, onClose }) => {
         object: reactData[pathFile]?.[reactData.pertains_to],
         key: path
       });
-      response += ` (${logLine})`
+      response += ` (${logLine})`;
     }
     if (rememberAnswer) {
       reactData.fields[this_field].prompt.value = response;
@@ -1502,10 +1522,10 @@ export default ({ request = {}, onClose }) => {
         }
         if ((!!reactData.fields[this_field].options?.log_results)
           && (!reactData.fields[this_field].options.log_results.if_value
-          || reactData.fields[this_field].options.log_results.if_value.some(v => {
-            if (typeof (reactData.fields[this_field].value) === 'string') { return v = reactData.fields[this_field].value; }
-            else { return reactData.fields[this_field].value.includes(v); }
-          }))) {
+            || reactData.fields[this_field].options.log_results.if_value.some(v => {
+              if (typeof (reactData.fields[this_field].value) === 'string') { return v = reactData.fields[this_field].value; }
+              else { return reactData.fields[this_field].value.includes(v); }
+            }))) {
           const log_instructions = reactData.fields[this_field].options.log_results.path.split('.');
           const log_file = log_instructions.shift();
           if (log_file === 'peopleRec') {
@@ -2766,6 +2786,60 @@ export default ({ request = {}, onClose }) => {
             }, true);
           }}
         />
+      }
+      {
+        reactData.alert &&
+        <Snackbar
+          open={!!reactData.alert}
+          px={3}
+          key={`alert_wrapper`}
+          autoHideDuration={(reactData.alert.severity === 'success') ? 5000 : ((reactData.alert.severity === 'info') ? 15000 : null)}
+          onClose={() => {
+            updateReactData({
+              alert: false
+            }, true);
+          }}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'center'
+          }}
+        >
+          <Alert
+            severity={reactData.alert.severity || 'info'}
+            key={`alert_box`}
+            style={{ marginX: '8px', borderRadius: '20px', border: 1 }}
+            action={(reactData.alert.action
+              ?
+              <Box
+                display='flex'
+                key={`alert_action`}
+                mx={1}
+                overflow='auto'
+                flexDirection='column'
+              >
+                {([reactData.alert.action].flat()).map((this_action, actionNdx) => (
+                  <Button
+                    key={`alert_button__${actionNdx}`}
+                    className={AVAClass.AVAButton} color="inherit"
+                    onClick={() => this_action.function()}
+                  >
+                    {this_action.text}
+                  </Button>
+                ))}
+              </Box>
+              : null
+            )}
+            variant='filled'
+            onClose={() => {
+              updateReactData({
+                alert: false
+              }, true);
+            }}
+          >
+            {reactData.alert.title && <AlertTitle>{reactData.alert.title}</AlertTitle>}
+            {reactData.alert.message}
+          </Alert>
+        </Snackbar >
       }
     </Dialog>
   );
