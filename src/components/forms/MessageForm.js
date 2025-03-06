@@ -206,6 +206,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     idleState: false,
     newMessageMode: (options && options.newMessage) || false,
     viewPeopleMaintenance: false,
+    viewOnly: (options && options.viewOnly) || false,
     myImage: null,
     myName: null,
     selections: [],    // wip selections from quick search
@@ -1462,6 +1463,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                 onClick={() => { toggleOpen({ index, this_item }); }}
                               />}
                             {((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id)) &&
+                              !reactData.viewOnly &&
                               <React.Fragment>
                                 <ReplyIcon
                                   onClick={async () => {
@@ -1624,27 +1626,29 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                   >
                     {'Close'}
                   </Button>
-                  <Button
-                    onClick={async () => {
-                      updateReactData({
-                        showQuickSearch: true,
-                        linkedPersonFilter: '',
-                        newMessageMode: true,
-                        newMessageSubject: '',
-                        newMessageText: '',
-                        newUrgentMessage: false,
-                        newMessageRecipients: [],
-                        replyToList: [{ person_id: pPerson, person_name: 'Me' }],
-                        newMessageThread: false,
-                      }, true);
-                    }}
-                    className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'green', color: 'white' }}
-                    size='small'
-                    startIcon={<SendIcon size='small' />}
-                  >
-                    {`New Message`}
-                  </Button>
+                  {!reactData.viewOnly &&
+                    <Button
+                      onClick={async () => {
+                        updateReactData({
+                          showQuickSearch: true,
+                          linkedPersonFilter: '',
+                          newMessageMode: true,
+                          newMessageSubject: '',
+                          newMessageText: '',
+                          newUrgentMessage: false,
+                          newMessageRecipients: [],
+                          replyToList: [{ person_id: pPerson, person_name: 'Me' }],
+                          newMessageThread: false,
+                        }, true);
+                      }}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'green', color: 'white' }}
+                      size='small'
+                      startIcon={<SendIcon size='small' />}
+                    >
+                      {`New Message`}
+                    </Button>
+                  }
                   {personFilter &&
                     <Button
                       onClick={async () => {

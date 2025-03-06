@@ -5,6 +5,7 @@ import { Box, FormGroup, FormControl } from '@material-ui/core';
 
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageForm from '../forms/MessageForm';
+import MessageMonitor from './MessageMonitor';
 import MessageFormLegacy from './MessageFormLegacy';
 import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
@@ -429,6 +430,37 @@ export default ({
           />
         );
       }
+    case 'message_monitor': {
+      let defaultValueObj = {};
+      if (!defaultValue) { defaultValueObj = { recipientID: '*select' }; }
+      else {
+        if (Array.isArray(defaultValue)) {
+          defaultValue.forEach(d => {
+            if (typeof d === 'string') {
+              let [dKey, dVal] = d.split('=');
+              defaultValueObj[dKey] = dVal;
+            }
+            else {
+              for (let dKey in d) {
+                defaultValueObj[dKey] = d[dKey];
+              }
+            }
+          });
+        }
+        else {
+          try { defaultValueObj = JSON.parse(defaultValue); }
+          catch { console.log(defaultValue); }
+        }
+      }
+      return (
+        <MessageMonitor
+          defaults={defaultValueObj}
+          onCancel={() => {
+            onClose();
+          }}
+        />
+      );
+    }
     case 'make_message':
       let defaultValueObj = {};
       if (!defaultValue) { defaultValueObj = { recipientID: '*select' }; }
@@ -455,8 +487,8 @@ export default ({
       for (const [i, person_id] of [defaultValueObj.recipientID].flat().entries()) {
         recipients.push({
           person_id,
-          person_name: ([defaultValueObj.recipientName].flat()[i] || `user ${person_id}`) 
-        })
+          person_name: ([defaultValueObj.recipientName].flat()[i] || `user ${person_id}`)
+        });
       }
       return (
         /*
@@ -515,7 +547,7 @@ export default ({
         requestor = [defaultObject.requestor].flat();
       }
       if (!requestor.includes(session.user_id)) {
-        requestor.push(session.user_id)
+        requestor.push(session.user_id);
       }
       return (
         <ReportRequest
