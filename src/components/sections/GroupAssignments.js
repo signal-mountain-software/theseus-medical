@@ -13,7 +13,7 @@ export default ({ currentValues, updateField, reactData, setError, updateReactDa
   const isMounted = React.useRef(false);
 
   const updateGroupList = async (clicked_group) => {
-    if (currentValues.peopleRec.hasOwnProperty('groups')) {
+    if (!currentValues.peopleRec.hasOwnProperty('groups')) {
       currentValues.peopleRec.groups = [];
     }
     let foundIt = currentValues.peopleRec.groups.indexOf(clicked_group.id || clicked_group.group_id);
