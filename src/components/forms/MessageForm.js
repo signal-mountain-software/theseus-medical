@@ -524,6 +524,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       },
       TableName: 'PostOffice'
     };
+    if (window.location.href.split('//')[1].slice(0, 1).toUpperCase() !== 'D') {
+      PostOfficeRec.TableName = 'TestPostOffice';
+    }
     let goodPost = true;
     await dbClient
       .put(PostOfficeRec)
