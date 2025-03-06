@@ -20,6 +20,8 @@ import SendIcon from '@material-ui/icons/Send';
 import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 import MessageForm from './MessageForm';
 
+import { useIdleTimer } from 'react-idle-timer';
+
 const useStyles = makeStyles(theme => ({
   buttonArea: {
     justifyContent: 'center',
@@ -119,6 +121,7 @@ export default ({ defaults, onCancel }) => {
     event_being_edited: false,
     filterTextLower: null,
     focusAt: (defaults.focusAt || 0),
+    forceReloadTime: 0,
     groupID: (defaults.group_id || '*all'),
     groupName: '',
     groupRec: {},
@@ -144,7 +147,7 @@ export default ({ defaults, onCancel }) => {
     selectedGroupRec: false,
     selectedGroupMembers: false,
     timeLastFetched: 0,
-    timeWindowStart: new Date().getTime() - (30 * 24 * 60 * 60 * 1000),     // 24-hours ago
+    timeWindowStart: new Date().getTime() - (24 * 60 * 60 * 1000),     // 24-hours ago
     updatesMade: false,
     viewPeopleMaintenance: false
   });
@@ -175,6 +178,80 @@ export default ({ defaults, onCancel }) => {
   }
   const [minimumGroupLevel,] = React.useState(calcMinimumGroupLevel() - 1);
 
+  const oneMinute = 1000 * 60;
+  const msBeforeSleeping = 1 * oneMinute;
+
+  const onAction = async () => {
+    if (reactData.forceReloadTime) {
+      let now = new Date().getTime();
+      if (reactData.forceReloadTime < now) {
+        const timeLastFetched = new Date().getTime();
+        let groupMembersUpdated = await messageFetch({
+          response: reactData.selectedGroupMembers,
+          startTime: reactData.timeLastFetched,
+        });
+        updateReactData({
+          selectedGroupMembers: groupMembersUpdated,
+          timeLastFetched,
+        }, true);
+      }
+    }
+    if (reactData.idleState) {
+      updateReactData({
+        idleState: false,
+      }, false);
+    }
+    reset();
+  };
+
+  const onIdle = async () => {
+    let now = new Date();
+    let minutesSinceActive = 0;
+    if (reactData.forceReloadTime) {
+      let now = new Date().getTime();
+      if (reactData.forceReloadTime < now) {
+        const timeLastFetched = new Date().getTime();
+        let groupMembersUpdated = await messageFetch({
+          response: reactData.selectedGroupMembers,
+          startTime: reactData.timeLastFetched,
+        });
+        updateReactData({
+          selectedGroupMembers: groupMembersUpdated,
+          timeLastFetched,
+        }, true);
+      }
+    }
+    if (!reactData.idleState) {    // if we weren't previously in an idle state and we are now...
+      updateReactData({
+        idleState: true,
+        enteredIdleStateTime: now,
+      }, true);
+    }
+    else {   // we are still in an idle state
+      minutesSinceActive = Math.floor((now.getTime() - reactData.enteredIdleStateTime.getTime()) / oneMinute);
+      if (minutesSinceActive > 1) {
+        const timeLastFetched = new Date().getTime();
+        let groupMembersUpdated = await messageFetch({
+          response: reactData.selectedGroupMembers,
+          startTime: reactData.timeLastFetched,
+        });
+        updateReactData({
+          selectedGroupMembers: groupMembersUpdated,
+          timeLastFetched,
+        }, true);
+      }
+      else {
+      }
+    }
+    reset();
+  };
+
+  const { start, reset } = useIdleTimer({
+    onIdle,
+    onAction,
+    timeout: msBeforeSleeping,
+    throttle: 500
+  });
 
   function prepareGroupObject(pGroupList) {
     let selectAll = pGroupList.includes('*all');
@@ -325,6 +402,10 @@ export default ({ defaults, onCancel }) => {
         }
       }
     } while (queryObj.ExclusiveStartKey);
+    updateReactData({
+      forceReloadTime: new Date().getTime() + (1000 * 30)
+    }, true);
+    return response;
   };
 
   async function initialize() {
@@ -333,7 +414,13 @@ export default ({ defaults, onCancel }) => {
   React.useEffect(() => {
     initialize();
     window.addEventListener('resize', handleResize);
+    start();  // idle timer
     updateReactData({
+      lastReloadTime: new Date(),
+      lastActiveTime: new Date(),
+      forceReloadTime: 0,
+      idleState: false,
+      statusMessage: false,
       showGroupSelect: true,
       building: 'done'
     }, true);
@@ -685,7 +772,7 @@ export default ({ defaults, onCancel }) => {
       }
       {reactData.personMessages &&
         <MessageForm
-        pPerson={reactData.personMessages}
+          pPerson={reactData.personMessages}
           pClient={state.session.client_id}
           pMessageList={[]}
           pSession={state.session}
