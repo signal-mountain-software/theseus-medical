@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, sentenceCase, listFromArray, array_in_array, recordExists, isObject, uuid, isMobile } from '../../util/AVAUtilities';
+import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, sentenceCase, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { formatPhone, getPerson, makeName } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
@@ -11,7 +11,7 @@ import { sendMessages } from '../../util/AVAMessages';
 import { printDocumentB, printEmptyDocument, printDocumentHybrid } from '../../util/AVAMessages';
 import SignatureCanvas from 'react-signature-canvas';
 import Select from "react-dropdown-select";
-import { CloudUploadIcon } from '@material-ui/icons/CloudUpload';
+import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import PrintIcon from '@material-ui/icons/Print';
 import { Dialog, DialogContent, Snackbar, Box, Typography, FormControlLabel, Button, TextField, Checkbox } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -1162,10 +1162,18 @@ export default ({ request = {}, onClose }) => {
       do {
         let variable = answer[0];
         if (variable === '%%value%%') {
-          response = response.replace(variable, (reactData.fields[this_field] ? reactData.fields[this_field].valueText : ''));
+          let vValue = (reactData.fields[this_field] ? reactData.fields[this_field].valueText : '');
+          if (!vValue) {
+            vValue = `<${titleCase(this_field.toLowerCase().replace(/[^a-z]/, ' '))}>`;
+          }
+          response = response.replace(variable, vValue);
         }
         else if ((variable === '%%default%%') || (variable === '%%OG_default%%')) {
-          response = response.replace(variable, (reactData.fields[this_field] ? (reactData.fields[this_field].og_default || reactData.fields[this_field].valueText) : ''));
+          let vValue = (reactData.fields[this_field] ? (reactData.fields[this_field].og_default || reactData.fields[this_field].valueText) : '');
+          if (!vValue) {
+            vValue = `<${titleCase(this_field.toLowerCase().replace(/[^a-z]/, ' '))}>`;
+          }
+          response = response.replace(variable, vValue);
           if (variable === '%%OG_default%%') {
             rememberAnswer = true;
           }
@@ -1173,12 +1181,20 @@ export default ({ request = {}, onClose }) => {
         else {
           let extracted_field = variable.slice(2, -2);
           if (reactData.fields[extracted_field] && reactData.fields[extracted_field].valueText) {
-            response = response.replace(variable, reactData.fields[extracted_field].valueText);
+            let vValue = reactData.fields[extracted_field].valueText;
+            if (!vValue) {
+              vValue = `<${titleCase(extracted_field.toLowerCase().replace(/[^a-z]/, ' '))}>`;
+            }
+            response = response.replace(variable, vValue);
           }
           else if (extracted_field.includes('//')) {
             let [field_part, regex_part] = extracted_field.split('//');
             if (reactData.fields[field_part]) {
-              response = response.replace(variable, reactData.fields[field_part].value.match(RegExp(regex_part, 'gm'))[0]);
+              let vValue = reactData.fields[field_part].value.match(RegExp(regex_part, 'gm'))[0];
+              if (!vValue) {
+                vValue = `<${titleCase(field_part.toLowerCase().replace(/[^a-z]/, ' '))}>`;
+              }
+              response = response.replace(variable, vValue);
             }
             else {
               response = response.replace(variable, '');
@@ -1870,16 +1886,26 @@ export default ({ request = {}, onClose }) => {
           v = preset_values[a[2]];
         }
         else if (reactData.fields.hasOwnProperty(a[2])) {
-          v = await formatValue({
-            rawValue: reactData.fields[a[2]].value,
-            type: reactData.fields[a[2]].type
-          });
+          if (!reactData.fields[a[2]].value) {
+            v = `<${reactData.fields[a[2]]?.prompt?.value || titleCase(a[2].toLowerCase().replace(/[^a-z]/, ' '))}>`;
+          }
+          else {
+            v = await formatValue({
+              rawValue: reactData.fields[a[2]].value,
+              type: reactData.fields[a[2]].type
+            });
+          }
         }
         else if (o && o.hasOwnProperty(a[2])) {
-          v = await formatValue({
-            rawValue: o[a[2]].value,
-            type: o[a[2]].type
-          });
+          if (!o[a[2]].value) {
+            v = `<${o[a[2]]?.prompt?.value || titleCase(a[2].toLowerCase().replace(/[^a-z]/, ' '))}>`;
+          }
+          else {
+            v = await formatValue({
+              rawValue: o[a[2]].value,
+              type: o[a[2]].type
+            });
+          }
         }
         s = `${a[1]}${v}${a[3]}`;
         a = s.match(/(.*?)%%(.*?)%%(.*)/);
@@ -2239,12 +2265,6 @@ export default ({ request = {}, onClose }) => {
                                   sentenceCase: false
                                 });
                               }
-                              if (event.relatedTarget) {
-                                event.relatedTarget.focus({ focusVisible: true });
-                                if (event.relatedTarget.type !== 'button') {
-                                  event.relatedTarget.click();
-                                }
-                              }
                             }}
                             helperText={reconcilePrompt({
                               rawValue: reactData.fields[this_field].prompt.value,
@@ -2344,12 +2364,6 @@ export default ({ request = {}, onClose }) => {
                                     prop: this_field,
                                     sentenceCase: false
                                   });
-                                }
-                              }
-                              if (event.relatedTarget) {
-                                event.relatedTarget.focus({ focusVisible: true });
-                                if (event.relatedTarget.type !== 'button') {
-                                  event.relatedTarget.click();
                                 }
                               }
                             }}

@@ -21,16 +21,18 @@ export default ({ currentValues, reactData, updateReactData }) => {
   const { state } = useSession();
   const isMounted = React.useRef(false);
 
-  let checkCircleDisplayed = false;
-  let redPencilDisplayed = false;
-  let orangePencilDisplayed = false;
-  let pencilDisplayed = false;
-  let addAmendmentDisplayed = false;
-  let historyAmendmentDisplayed = false;
-  let circleDisplayed = false;
-  let orangeCircleDisplayed = false;
-  let redCircleDisplayed = false;
-  let historyDisplayed = false;
+  const checkCircleDisplayed = React.useRef(false);
+  const circleDisplayed = React.useRef(false);
+  const orangeCircleDisplayed = React.useRef(false);
+  const redCircleDisplayed = React.useRef(false);
+
+  const redPencilDisplayed = React.useRef(false);
+  const orangePencilDisplayed = React.useRef(false);
+  const pencilDisplayed = React.useRef(false);
+
+  const addAmendmentDisplayed = React.useRef(false);
+  const historyAmendmentDisplayed = React.useRef(false);
+  const historyDisplayed = React.useRef(false);
 
   async function initialize() {
     let masterFormList = {};
@@ -236,6 +238,47 @@ export default ({ currentValues, reactData, updateReactData }) => {
     }, true);
   }
 
+  const setPencilColor = (rObj) => {
+    if (!rObj || (rObj.completedDocs.length > 0)) {
+      pencilDisplayed.current = true;
+      return null;
+    }
+    else if (rObj.wipDocs.length > 0) {
+      orangePencilDisplayed.current = true;
+      return 'orange';
+    }
+    else {
+      redPencilDisplayed.current = true;
+      return 'red';
+    }
+  }
+
+  const setCheckCircleColor = (rObj) => {
+    if (!rObj) {
+      checkCircleDisplayed.current = true;
+      return 'green';
+    }
+    if (!rObj || (rObj.completedDocs.length > 0)) {
+      circleDisplayed.current = true;
+      return null;
+    }
+    else if (rObj.wipDocs.length > 0) {
+      orangeCircleDisplayed.current = true;
+      return 'orange';
+    }
+    else {
+      redCircleDisplayed.current = true;
+      return 'red';
+    }
+  }
+
+  const setRefTrue = (refToSet) => {
+    if (refToSet) {
+      refToSet.current = true;
+    }
+    return null;
+  }
+
   React.useEffect(() => {
     initialize();
     isMounted.current = true;
@@ -312,14 +355,11 @@ export default ({ currentValues, reactData, updateReactData }) => {
                         {((reactData.masterFormList[person_id].myFormListObj[this_formID].completedDocs.length > 0) &&
                           (reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.length === 0)) ?
                           <React.Fragment>
-                            <Typography style={{ display: 'none', visibility: 'hidden' }}>
-                              {checkCircleDisplayed = true}
-                            </Typography>
                             <CheckCircleIcon
                               key={`radio-button_form${form_index}off`}
                               id={`radio-button_form${form_index}off`}
                               style={AVATextStyle({
-                                color: 'green',
+                                color: setCheckCircleColor(),
                                 size: 1.5,
                                 margin: { right: 0.5 },
                               })}
@@ -342,11 +382,6 @@ export default ({ currentValues, reactData, updateReactData }) => {
                           )
                             ?
                             <React.Fragment>
-                              <Typography style={{ display: 'none', visibility: 'hidden' }}>
-                                {((reactData.masterFormList[person_id].myFormListObj[this_formID].completedDocs.length > 0)
-                                  ? (pencilDisplayed = true)
-                                  : (reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.length > 0) ? (orangePencilDisplayed = true) : (redPencilDisplayed = true))}
-                              </Typography>
                               <EditIcon
                                 key={`radio-button_form${form_index}edit`}
                                 id={`radio-button_form${form_index}edit`}
@@ -356,28 +391,19 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                 style={AVATextStyle({
                                   size: 1.5,
                                   margin: { right: 0.5 },
-                                  color: ((reactData.masterFormList[person_id].myFormListObj[this_formID].completedDocs.length > 0)
-                                    ? null
-                                    : (reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.length > 0) ? 'orange' : 'red')
+                                  color: setPencilColor(reactData.masterFormList[person_id].myFormListObj[this_formID])                                   
                                 })}
                                 size='small'
                               />
                             </React.Fragment>
                             :
                             <React.Fragment>
-                              <Typography style={{ display: 'none', visibility: 'hidden' }}>
-                                {((reactData.masterFormList[person_id].myFormListObj[this_formID].completedDocs.length > 0)
-                                  ? (circleDisplayed = true)
-                                  : (reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.length > 0) ? (orangeCircleDisplayed = true) : (redCircleDisplayed = true))}
-                              </Typography>
                               <RadioButtonUncheckedIcon
                                 key={`radio-button_open_form${form_index}edit`}
                                 style={AVATextStyle({
                                   size: 1.5,
                                   margin: { right: 0.5 },
-                                  color: ((reactData.masterFormList[person_id].myFormListObj[this_formID].completedDocs.length > 0)
-                                    ? null
-                                    : (reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.length > 0) ? 'orange' : 'red')
+                                  color: setCheckCircleColor(reactData.masterFormList[person_id].myFormListObj[this_formID])
                                 })}
                                 size='small'
                               />
@@ -464,11 +490,8 @@ export default ({ currentValues, reactData, updateReactData }) => {
                             {reactData.masterFormList[person_id].myFormListObj[this_formID].options?.allowAmendments &&
                               reactData.administrative_account &&
                               <React.Fragment>
-                                <Typography style={{ display: 'none', visibility: 'hidden' }}>
-                                  {addAmendmentDisplayed = true}
-                                </Typography>
                                 <AddCircleIcon
-                                  style={AVATextStyle({ margin: { right: 0.1 } })}
+                                  style={AVATextStyle({ margin: { right: 0.1 }, color: setRefTrue(addAmendmentDisplayed) })}
                                   onClick={() => {
                                     reactData.masterFormList[person_id].myFormListObj[this_formID].isAmending = reactData.masterFormList[person_id].myFormListObj[this_formID].completedDocs[0].document_id;
                                     updateReactData({
@@ -485,11 +508,8 @@ export default ({ currentValues, reactData, updateReactData }) => {
                             }
                             {(reactData.masterFormList[person_id].myFormListObj[this_formID].completedDocs.length > 1) &&
                               <React.Fragment >
-                                <Typography style={{ display: 'none', visibility: 'hidden' }}>
-                                  {historyDisplayed = true}
-                                </Typography>
                                 <DynamicFeedIcon
-                                  style={AVATextStyle({ margin: { right: 0.1 } })}
+                                  style={AVATextStyle({ margin: { right: 0.1 }, color: setRefTrue(historyDisplayed) })}
                                   onClick={() => {
                                     updateReactData({
                                       formHistoryMode: {
@@ -504,11 +524,8 @@ export default ({ currentValues, reactData, updateReactData }) => {
                             {(reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.length === 0) &&
                               (reactData.administrative_account || !reactData.masterFormList[person_id].myFormListObj[this_formID].view_only) &&
                               <React.Fragment>
-                                <Typography style={{ display: 'none', visibility: 'hidden' }}>
-                                  {pencilDisplayed = true}
-                                </Typography>
                                 <EditIcon
-                                  style={AVATextStyle({ margin: { right: 0.1 } })}
+                                  style={AVATextStyle({ margin: { right: 0.1 }, color: setPencilColor() })}
                                   key={`radio-button_form${form_index}add`}
                                   id={`radio-button_form${form_index}add`}
                                   onClick={() => {
@@ -656,11 +673,8 @@ export default ({ currentValues, reactData, updateReactData }) => {
                   {reactData.masterFormList[reactData.formHistoryMode.person_id].myFormListObj[reactData.formHistoryMode.this_formID].options?.allowAmendments &&
                     reactData.administrative_account &&
                     <React.Fragment>
-                      <Typography style={{ display: 'none', visibility: 'hidden' }}>
-                        {historyAmendmentDisplayed = true}
-                      </Typography>
                       <AddCircleIcon
-                        style={AVATextStyle({ margin: { right: 0.1 } })}
+                        style={AVATextStyle({ margin: { right: 0.1 }, color: setRefTrue(historyAmendmentDisplayed) })}
                         onClick={() => {
                           reactData.masterFormList[reactData.formHistoryMode.person_id].myFormListObj[reactData.formHistoryMode.this_formID].isAmending = this_doc.document_id;
                           updateReactData({
@@ -711,7 +725,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
           >
             {`Icon guide`}
           </Typography>
-          {checkCircleDisplayed &&
+          {checkCircleDisplayed.current &&
             <Box display='flex'
               flexDirection='row'
               key={`radio-guide_e_buttons_complete`}
@@ -728,24 +742,24 @@ export default ({ currentValues, reactData, updateReactData }) => {
               </Typography>
             </Box>
           }
-          {(circleDisplayed || redCircleDisplayed || orangeCircleDisplayed) &&
+          {(circleDisplayed.current || redCircleDisplayed.current || orangeCircleDisplayed.current) &&
             <Box display='flex'
               flexDirection='row'
               key={`radio-guide_e_buttons2_noview`}
             >
               <RadioButtonUncheckedIcon
-                style={AVATextStyle({ margin: { right: 0.1 }, color: (redCircleDisplayed ? 'red' : (orangeCircleDisplayed ? 'orange' : null)) })}
+                style={AVATextStyle({ margin: { right: 0.1 }, color: (redCircleDisplayed.current ? 'red' : (orangeCircleDisplayed.current ? 'orange' : null)) })}
                 key={`radio-guide_e_button_noview`}
                 size='small'
               />
               <Typography
-                style={AVATextStyle({ margin: { right: 1 }, size: 0.8, color: (redCircleDisplayed ? 'red' : (orangeCircleDisplayed ? 'orange' : null)) })}
+                style={AVATextStyle({ margin: { right: 1 }, size: 0.8, color: (redCircleDisplayed.current ? 'red' : (orangeCircleDisplayed.current ? 'orange' : null)) })}
               >
                 {`You will be able to view this form after it is completed`}
               </Typography>
             </Box>
           }
-          {redPencilDisplayed &&
+          {redPencilDisplayed.current &&
             <Box display='flex'
               flexDirection='row'
               key={`radio-guide_e_buttons2`}
@@ -762,7 +776,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
               </Typography>
             </Box>
           }
-          {orangePencilDisplayed &&
+          {orangePencilDisplayed.current &&
             <Box display='flex'
               flexDirection='row'
               key={`radio-guide_e_buttons2_orange`}
@@ -779,7 +793,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
               </Typography>
             </Box>
           }
-          {addAmendmentDisplayed &&
+          {addAmendmentDisplayed.current &&
             <Box display='flex'
               flexDirection='row'
               key={`radio-guide_e_buttons3`}
@@ -795,7 +809,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
               </Typography>
             </Box>
           }
-          {pencilDisplayed &&
+          {pencilDisplayed.current &&
             <Box display='flex'
               flexDirection='row'
               key={`radio-guide_e_buttons4`}
@@ -812,7 +826,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
               </Typography>
             </Box>
           }
-          {historyDisplayed &&
+          {historyDisplayed.current &&
             <Box display='flex'
               flexDirection='row'
               key={`radio-guide_e_buttons5`}
@@ -834,7 +848,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
       {reactData.formHistoryMode &&
         isMounted.current &&
         reactData.formsInitialized &&
-        historyAmendmentDisplayed &&
+        historyAmendmentDisplayed.current &&
         <Box
           display='flex'
           flexDirection='column'
@@ -848,7 +862,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
           >
             {`Icon guide - History screen`}
           </Typography>
-          {historyAmendmentDisplayed &&
+          {historyAmendmentDisplayed.current &&
             <Box display='flex'
               flexDirection='row'
               key={`radio-guide_e_buttons3`}
