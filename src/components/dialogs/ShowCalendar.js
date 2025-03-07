@@ -2,7 +2,7 @@ import React from 'react';
 
 import { useSnackbar } from 'notistack';
 
-import { getCalendarEntries, getAllOccurrences } from '../../util/AVACalendars';
+import { getCalendarEntries, getAllOccurrences, v2buildCalendar } from '../../util/AVACalendars';
 import { makeTime, addDays, makeDate } from '../../util/AVADateTime';
 import { isEmpty, isObject, deepCopy, makeArray, array_in_array } from '../../util/AVAUtilities';
 import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
@@ -409,7 +409,7 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
       else {
         endDate = addDays(startDate, 35);
       }
-      oList = await getAllOccurrences(
+      oList = await v2buildCalendar(
         {
           client_id: patient.client_id,
           this_person: patient.patient_id,

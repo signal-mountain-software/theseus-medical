@@ -410,9 +410,9 @@ export async function myAvailability(requestBody) {
 }
 
 export function slotTimes(eventRec, occRec, slotRec) {
-  let eventStart24 = eventRec.time?.from;
+  let eventStart24 = eventRec.time?.from || occRec.time?.from;
   let event_start_time24 = eventStart24 ? makeTime(eventStart24.trim()).numeric24 : 0;
-  let eventEnd24 = eventRec.time?.to;
+  let eventEnd24 = eventRec.time?.to || occRec.time?.to;
   let event_end_time24 = eventEnd24 ? makeTime(eventEnd24.trim()).numeric24 : 2359;
   if (eventRec.slotPattern) {
     let slotArray = eventRec.slotPattern;
@@ -2498,18 +2498,18 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
     });
   if (!recordExists(calendarRecs)) { return response; }
 
-  let ccL = calendarRecs.Items.length;
+  let total_oRecs = calendarRecs.Items.length;
   let screenDate = 0;
   let found_events = {};
   let cancelled_occurrences = {};
-  for (let c = 0; c < ccL; c++) {
+  for (let c = 0; c < total_oRecs; c++) {
     let occurrenceRec = deepCopy(calendarRecs.Items[c]);
     if (occurrenceRec.occurrence_date !== screenDate) {  // send a message back... now processing date xxxx
       screenDate = occurrenceRec.occurrence_date;
-      screenStatus(makeDate(occurrenceRec.occurrence_date).relative, ccL * 3, ((c / ccL) * 90), response);
+      screenStatus(makeDate(occurrenceRec.occurrence_date).relative, total_oRecs * 3, ((c / total_oRecs) * 90), response);
     }
     else if ((c % 10) === 0) {
-      screenStatus(makeDate(occurrenceRec.occurrence_date).relative, ccL * 3, ((c / ccL) * 90), response);
+      screenStatus(makeDate(occurrenceRec.occurrence_date).relative, total_oRecs * 3, ((c / total_oRecs) * 90), response);
     }
     if (!found_events.hasOwnProperty(occurrenceRec.event_id)) {
       // for each event we come across, gather event data (eventData) and create any missing occurrences in this date range (getOccurrenceList)
@@ -2692,7 +2692,7 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
     }
   };
 
-  screenStatus('Wrapping things up', ccL * 3, 95, response);
+  screenStatus('Wrapping things up', total_oRecs * 3, 95, response);
   let greetings = await getCustomizations('greetings', this_client);
   let greetingsAll = await getCustomizations('greetings', '*all');
   let holidays = Object.assign({}, greetingsAll.customization_value, greetings.customization_value);
@@ -2777,6 +2777,389 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
   for (let this_person in conflicts) {
     for (let this_date in conflicts[this_person]) {
       if (this_date !== 'summaries') {
+        conflicts[this_person][this_date].sort((a, b) => {
+          if (a.time === b.time) {
+            return (!a.open ? 1 : -1);
+          }
+          else {
+            return ((a.time < b.time) ? -1 : 1);
+          }
+        });
+      }
+    }
+  }
+  response.conflicts = conflicts;
+  response.peopleInfo = peopleInfo;
+  return response;
+
+  function setDateRange(start_date, end_date) {
+    let this_start, this_end;
+    let candidate = makeDate(start_date);
+    if (candidate.error || isEmpty(start_date)) {
+      if (isEmpty(end_date)) {
+        this_start = new Date();
+        this_end = addDays(this_start, 14);
+      }
+      else if (isObject(end_date)) {
+        this_end = end_date;
+        this_start = addDays(this_end, -14);
+      }
+      else {
+        let candidate = makeDate(end_date);
+        if (candidate.error) {
+          this_start = new Date();
+          this_end = addDays(this_start, 14);
+        }
+        else {
+          this_end = candidate.date;
+          this_start = addDays(this_end, -14);
+        }
+      }
+    }
+    else {
+      this_start = candidate.date;
+      if (isEmpty(end_date)) {
+        this_end = addDays(this_start, 14);
+      }
+      else if (isObject(end_date)) {
+        this_end = end_date;
+      }
+      else {
+        let candidate = makeDate(end_date);
+        if (candidate.error) {
+          this_end = addDays(this_start, 14);
+        }
+        else {
+          this_end = candidate.date;
+        }
+      }
+    }
+
+    if (this_end < this_start) {
+      return [this_end, this_start];
+    }
+    else {
+      return [this_start, this_end];
+    }
+  }
+}
+
+
+
+export async function v2buildCalendar(body, screenStatus = () => { }) {
+  const [start_date, end_date] = setDateRange(body.start_date, body.end_date);
+
+  let peopleInfo = {};
+  let conflicts = {};
+  const this_client = body.client || body.client_id;
+  // key = person_id; value = { <date - YYYYMMDD>: [ {yymm24: "open"/<event_key>} ] }
+  //   sort inner array { person: {date: [array]}} by keys (time)
+  //   then, search through array from to back for last entry before the time you're interested in
+
+  // create response as an object with keys = each of the dates in the date range
+  let response = {};
+  let startObj = makeDate(start_date);
+  let endObj = makeDate(end_date);
+  for (let this_date = startObj; this_date.date <= endObj.date; this_date = makeDate(addDays(this_date.date, 1), { noTime: true })) {
+    response[this_date.numeric] = {
+      events: {},
+      date_words: this_date.relative
+    };
+  };
+
+  let oRecs = await dbClient
+    .query({
+      KeyConditionExpression: 'client = :c AND occurrence_date BETWEEN :s and :e',
+      ExpressionAttributeValues: {
+        ':c': this_client,
+        ':s': startObj.numeric$,
+        ':e': endObj.numeric$,
+      },
+      TableName: "Calendar",
+      IndexName: "occurrence_date-index",
+    })
+    .promise()
+    .catch(error => {
+      if (error.code === 'NetworkingError') {
+        cl(`Security Violation or no Internet Connection`);
+      }
+      cl(`Error reading Calendar in v2buildCalendar - error is: ${error}`);
+    });
+  if (!recordExists(oRecs)) { return response; }
+  let sorted_oRecs = oRecs.Items.sort((a, b) => { return ((a.event_key < b.event_key) ? -1 : 1); });
+  const total_oRecs = sorted_oRecs.length;
+  let current_oRec = 0;
+  let current_event = null;
+  let this_event = false;
+  let current_occurrenceDate = null;
+  let current_occurence_asDate = {};
+  let current_occurence_tomorrow_asDate = {};
+  let this_occurrence = false;
+  let skip_event = false;
+  let filter_groups = ((body.filter && body.filter.group) ? (isObject(body.filter.group) ? Object.keys(body.filter.group) : [body.filter.group].flat()) : false);
+  let filter_owners = ((body.filter && body.filter.slot_owner & ![body.filter.slot_owner].flat().includes('*all')) ? [body.filter.slot_owner].flat() : false);
+  for (let this_oRec of sorted_oRecs) {
+    current_oRec++;
+    if ((this_oRec.occurrence_date !== current_occurrenceDate) || (this_oRec.event_id !== current_event)) {
+      // finish this occurrence
+      if (current_event && current_occurrenceDate && this_occurrence) {
+        //     if (!filter_owners)
+        //       || (!this_occurrence.slot_owners.some(this_slotOwner => { return filter_owners.includes(this_slotOwner); }))
+        //     ) {
+        response[current_occurrenceDate].events[current_event] = this_occurrence;
+      }
+      if (this_oRec.event_id !== current_event) {
+        // start new event - will create this_event
+        let eRec = await dbClient
+          .get({
+            Key: {
+              client: this_client,
+              event_key: this_oRec.event_id
+            },
+            TableName: "Calendar"
+          })
+          .promise()
+          .catch(error => {
+            if (error.code === 'NetworkingError') {
+              cl(`Security Violation or no Internet Connection`);
+            }
+            cl(`Error reading Calendar in v2buildCalendar - error is: ${error}`);
+          });
+        current_event = this_oRec.event_id;
+        if (!recordExists(eRec)) {
+          skip_event = true;
+          continue;
+        }
+        if (body.this_person && (eRec.Item.type === 'personal') &&
+          (!eRec.Item.owner.includes(body.this_person))) {
+          skip_event = true;
+          continue;
+        }
+        if (filter_groups && eRec.Item.groups &&
+          !eRec.Item.groups.includes('*all') && (!eRec.Item.groups.some(allowed_group => {
+            return filter_groups.includes(allowed_group);
+          }
+          ))) {
+          skip_event = true;
+          continue;
+        };
+        skip_event = false;
+        this_event = Object.assign({},
+          eRec.Item,
+          {
+            slotPattern: ((eRec.Item.eventData?.slotPattern && (eRec.Item.eventData?.slotPattern.length > 0)) ? eRec.Item.eventData?.slotPattern : []),
+            slot_object_list: ((eRec.Item.eventData?.slot_object_list && (eRec.Item.eventData?.slot_object_list.length > 0)) ? eRec.Item.eventData?.slot_object_list : []),
+            slot_names: makeSlotNames(eRec.Item.eventData),
+          }
+        );
+      }
+      else if (skip_event) {
+        continue;
+      }
+      // start new occurrence - will create this_occurrence
+      this_occurrence = false;
+      if (this_oRec.occurrence_cancelled) {
+        cl(`${this_oRec.event_key} cancelled... skipping`);
+        continue;
+      }
+      if (this_oRec.record_type !== 'occurrence') {
+        cl(`${this_oRec.event_key} not occurrence when occurrence expected... skipping`);
+        continue;
+      }
+      current_occurrenceDate = this_oRec.occurrence_date;
+      current_occurence_asDate = makeDate(current_occurrenceDate);
+      current_occurence_tomorrow_asDate = makeDate(addDays(current_occurence_asDate.date, 1));
+      if ((current_oRec % 10) === 0) {
+        screenStatus(current_occurence_asDate.relative, total_oRecs * 3, ((current_oRec / total_oRecs) * 90), response);
+      }
+      this_occurrence = Object.assign({},
+        deepCopy(this_event.eventData.event_data),
+        deepCopy(this_oRec),
+        makeSort24(Object.assign({}, this_event.eventData.event_data, this_oRec)),
+        {
+          default_forms: this_event.default_forms || [],
+          customizations: this_event.customizations || [],
+          slot_owners: {}
+        }
+      );
+      continue;
+    }
+    // if we arrive here, we have a slot record in the current occurrence
+    if (!this_occurrence) { continue; }
+    if (this_oRec.record_type !== 'slot') { continue; }
+    if ((this_oRec.slotData.status.current !== 'selected') && (this_oRec.slotData.status.current !== 'notes')) { continue; }
+    let this_owner = this_oRec.slotData.owner;
+    let instance_number = 0;
+    let try_again = false;
+    do {
+      if (this_occurrence.slot_owners.hasOwnProperty(this_owner)) {
+        this_owner = `${this_owner}%%${instance_number++}`;
+        try_again = true;
+      }
+    } while (try_again);
+    if (this_event.slot_names && this_event.slot_names.hasOwnProperty(this_oRec.slotData.slot)) {
+      this_occurrence.slot_owners[this_owner] = this_event.slot_names[this_oRec.slotData.slot];
+    }
+    else if (this_event.eventData.event_data.type !== 'seats') {
+      this_occurrence.slot_owners[this_owner] = this_oRec.slotData.slot;
+    }
+    else {
+      this_occurrence.slot_owners[this_owner] = '';
+    }
+    // set up people info
+    if (!peopleInfo.hasOwnProperty(this_oRec.slotData.owner)) {
+      peopleInfo[this_oRec.slotData.owner] = [];
+      conflicts[this_oRec.slotData.owner] = {};
+    }
+    let slotTimesResponse = slotTimes(this_event, this_occurrence, this_oRec);
+    peopleInfo[this_oRec.slotData.owner].push(Object.assign({},
+      {
+        occurrence_date: current_occurrenceDate,
+        event_id: current_event,
+        event_description: this_occurrence.description,
+        start_time24: slotTimesResponse.start24,
+        end_time24: slotTimesResponse.end24,
+      },
+      this_oRec.slotData)
+    );
+    if (!conflicts[this_oRec.slotData.owner].hasOwnProperty(current_occurrenceDate)) {
+      conflicts[this_oRec.slotData.owner][current_occurrenceDate] = [{ time: 0, open: true }];
+    }
+    let this_Sunday = makeDate(addDays(current_occurence_asDate.date, -(current_occurence_asDate.dayOfWeek)));
+    if (!conflicts[this_oRec.slotData.owner].hasOwnProperty('summaries')) {
+      conflicts[this_oRec.slotData.owner].summaries = {
+        [this_Sunday.numeric$]: {
+          description: this_Sunday.dateOnly,
+          minutes: 0
+        }
+      };
+    }
+    else if (!conflicts[this_oRec.slotData.owner].summaries.hasOwnProperty(this_Sunday.numeric$)) {
+      conflicts[this_oRec.slotData.owner].summaries[this_Sunday.numeric$] = {
+        description: this_Sunday.dateOnly,
+        minutes: 0
+      };
+    }
+    if (!conflicts[this_oRec.slotData.owner].hasOwnProperty('availability')) {
+      conflicts[this_oRec.slotData.owner].availability = {
+        [current_occurence_asDate.numeric$]: 540,      // any day, alllow 8 hours of availability
+        [current_occurence_tomorrow_asDate.numeric$]: 540
+      };
+    }
+    else {
+      if (!conflicts[this_oRec.slotData.owner].availability.hasOwnProperty(current_occurence_asDate.numeric$)) {
+        conflicts[this_oRec.slotData.owner].availability[current_occurence_asDate.numeric$] = 540;
+      }
+      if (!conflicts[this_oRec.slotData.owner].availability.hasOwnProperty(current_occurence_tomorrow_asDate.numeric$)) {
+        conflicts[this_oRec.slotData.owner].availability[current_occurence_tomorrow_asDate.numeric$] = 540;
+      }
+    }
+    let start_time = makeTime(slotTimesResponse.start24);
+    let end_time = makeTime(slotTimesResponse.end24);
+    let minutes_booked = 0;
+    if (end_time.minutesSinceMidnight < start_time.minutesSinceMidnight) {
+      minutes_booked = end_time.minutesSinceMidnight + (1440 - start_time.minutesSinceMidnight);
+      conflicts[this_oRec.slotData.owner].availability[current_occurence_asDate.numeric$] -= (1440 - start_time.minutesSinceMidnight);
+      conflicts[this_oRec.slotData.owner].availability[current_occurence_tomorrow_asDate.numeric$] -= end_time.minutesSinceMidnight;
+    }
+    else {
+      minutes_booked = end_time.minutesSinceMidnight - start_time.minutesSinceMidnight;
+      conflicts[this_oRec.slotData.owner].availability[current_occurence_asDate.numeric$] -= minutes_booked;
+    }
+    if (minutes_booked < 1200) {
+      conflicts[this_oRec.slotData.owner].summaries[this_Sunday.numeric$].minutes += minutes_booked;
+    }
+    conflicts[this_oRec.slotData.owner][current_occurrenceDate].push(
+      {
+        time: start_time.numeric24,
+        open: false,
+        event_id: current_event,
+        event_title: this_occurrence.description
+      },
+      {
+        time: end_time.numeric24,
+        open: true
+      }
+    );
+  }
+  function makeSort24(this_eventData) {
+    let response = `0001-${this_eventData.description}`;
+    if ((!this_eventData.hasOwnProperty('time')) || (!this_eventData.time)) {
+      return { sort24: response, time$: '' };
+    }
+    else if (!isObject(this_eventData.time)) {
+      return {
+        sort24: makeTime(this_eventData.time.split(' to')[0]).string24,
+        time$: this_eventData.time
+      };
+    }
+    else {
+      return {
+        sort24: makeTime(this_eventData.time.from).string24,
+        time$: `${this_eventData.time.from}${this_eventData.time.to ? ' - ' + this_eventData.time.to : ''}`
+      };
+    }
+  }
+  function makeSlotNames(this_eventData) {
+    if ((this_eventData.event_data.type !== 'seats') || !this_eventData.slotPattern || !this_event.slot_object_list) {
+      return {};
+    }
+    else {
+      let response = {};
+      let lastID = '';
+      this_eventData.slotPattern.forEach(sID => {
+        let found_slotObj = this_eventData.slot_object_list.find(sO => {
+          return (sO.key === sID);
+        });
+        if (found_slotObj?.value) {
+          lastID = found_slotObj.value;
+        }
+        response[sID] = lastID;
+      });
+      return response;
+    }
+  };
+
+  // find and add this event in the proper date
+
+  screenStatus('Wrapping things up', oRecs.Items.length * 3, 95, response);
+  let greetings = await getCustomizations('greetings', this_client);
+  let greetingsAll = await getCustomizations('greetings', '*all');
+  let holidays = Object.assign({}, greetingsAll.customization_value, greetings.customization_value);
+
+  for (let this_date in response) {
+    // Add Holidays from the Greetings or Holidays Customization
+    let today = makeDate(this_date);
+    let mmdd = today.obs.slice(5);
+    let yymmdd = `${today.obs.slice(2, 4)}.${mmdd}`;
+    if (holidays.hasOwnProperty(today.obs)) {
+      response[this_date].events[`#greeting_${yymmdd}#`] = {
+        description: holidays[today.obs],
+        sort24: `0000-${holidays[today.obs]}`,
+        slot_owners: {},
+        type: 'holiday'
+      };
+    }
+    else if (holidays.hasOwnProperty(yymmdd)) {
+      response[this_date].events[`#greeting_${yymmdd}#`] = {
+        description: holidays[yymmdd],
+        sort24: `0000-${holidays[yymmdd]}`,
+        slot_owners: {},
+        type: 'holiday'
+      };
+    }
+    else if (holidays.hasOwnProperty(mmdd)) {
+      response[this_date].events[`#greeting_${yymmdd}#`] = {
+        description: holidays[mmdd],
+        sort24: `0000-${holidays[mmdd]}`,
+        slot_owners: {},
+        type: 'holiday'
+      };
+    }
+  }
+  for (let this_person in conflicts) {
+    for (let this_date in conflicts[this_person]) {
+      if ((this_date !== 'summaries') && (this_date !== 'availability')) {
         conflicts[this_person][this_date].sort((a, b) => {
           if (a.time === b.time) {
             return (!a.open ? 1 : -1);

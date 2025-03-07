@@ -6,6 +6,7 @@ import { isObject, deepCopy, titleCase, makeArray, isEmpty } from '../../util/AV
 import { getCalendarEntries, writeSlot, getSlotList, publishCalendar } from '../../util/AVACalendars';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import AVATextInput from './AVATextInput';
+import { make_rgba } from '../../util/AVAStyles';
 
 import { Box, Typography, Avatar } from '@material-ui/core';
 import Tooltip from '@material-ui/core/Tooltip';
@@ -354,6 +355,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       display_name: state.patient?.name?.first || 'My',
       filterTextLower: null,
       selectDate: null,
+      clicked_on_date: false,
       popUpOpen: false,
       needRef: false,
       loading: false,
@@ -986,6 +988,14 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     };
   };
 
+  const setAvailabilityColor = (minutes) => {
+    if (minutes <= 0) { return 'red'; }
+    else if (minutes >= 540) { return 'green'; }
+    let g = Math.min((minutes / 270), 1);
+    let r = (minutes <= 270) ? 1 : ((540 - minutes) / 270);
+    return make_rgba(r, g, 0, 0.5);
+  };
+
   function setBackgroundColor(this_date) {
     let this_background = reactData.calendar_fill;
     if (this_date.date_words === 'Today') {
@@ -1439,9 +1449,29 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                           }
                           placement='top-end'
                         >
-                          <Avatar className={classes.assignment_avatar} src={getImage(this_candidate.person_id)} >
-                            {`${this_candidate.first_name.slice(0, 1)}${this_candidate.last_name.slice(0, 1)}`}
-                          </Avatar>
+                          <Box
+                            key={`avatar_box-${lX}_${cX}`}
+                            border={reactData.clicked_on_date ? 2 : 0}
+                            display='flex'
+                            flexDirection='column'
+                            justifyContent={'center'}
+                            alignItems={'center'}
+                            style={{
+                              marginTop: 0,
+                              marginBottom: 0,
+                              height: 55,
+                              width: 55,
+                              border: 0,
+                              borderRadius: '30px 30px 30px 30px',
+                              backgroundColor: reactData.clicked_on_date
+                                ? setAvailabilityColor(reactData.conflictInfo?.[this_candidate.person_id]?.availability?.[reactData.clicked_on_date.numeric$] || 540)
+                                : null
+                            }}
+                          >
+                            <Avatar className={classes.assignment_avatar} src={getImage(this_candidate.person_id)} >
+                              {`${this_candidate.first_name.slice(0, 1)}${this_candidate.last_name.slice(0, 1)}`}
+                            </Avatar>
+                          </Box>
                         </Tooltip>
                         {(reactData.defaultValues.assignmentDisplayBy
                           && reactData.defaultValues.assignmentDisplayBy.toLowerCase().includes('last'))
@@ -1575,13 +1605,16 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                   alignItems={'center'}
                                   onClick={() => {
                                     let denseView = deepCopy(reactData.denseView);
+                                    let showColors = false;
                                     if (denseView.hasOwnProperty(this_date.dateObj.numeric$)) {
                                       denseView[this_date.dateObj.numeric$] = !denseView[this_date.dateObj.numeric$];
                                     }
                                     else {
                                       denseView[this_date.dateObj.numeric$] = !denseView['*all'];
                                     }
+                                    showColors = !denseView[this_date.dateObj.numeric$];
                                     updateReactData({
+                                      clicked_on_date: (showColors ? this_date.dateObj : false),
                                       denseView
                                     }, true);
                                   }}
@@ -1749,7 +1782,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                                   { signup_type: eventInfo.eventData.sign_up.type },
                                                   occInfo,
                                                   { date: occInfo.occurrence_date },
-                                                  { time$: `${eventInfo.eventData.event_data.time.from}${((eventInfo.eventData.event_data.time.to && eventInfo.eventData.event_data.time.to.trim() !== '') ? ' to ' + eventInfo.eventData.event_data.time.to : '')}` },
+                                                  { time$: this_event.time$ },
                                                   { time24: this_event.time24 }
                                                 );
                                                 this_event.date_index = dateIndex;
@@ -1764,14 +1797,14 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                           <Box display='flex' flexDirection='row'
                                             justifyContent={agendaView() ? 'flex-start' : 'center'}
                                             alignItems='center'
-                                              color={setTextColor(this_event, this_date, agendaView()).color}
+                                            color={setTextColor(this_event, this_date, agendaView()).color}
                                           >
                                             <Box display='flex' flexDirection='column'
                                               justifyContent={agendaView() ? 'flex-start' : 'center'}
                                               ml={agendaView() ? 0 : 1}
                                               mr={1}
                                               alignItems={agendaView() ? 'flex-start' : 'center'}
-                                                color={setTextColor(this_event, this_date, agendaView()).color}
+                                              color={setTextColor(this_event, this_date, agendaView()).color}
                                             >
                                               <Typography style={AVATextStyle({
                                                 size: 1,
@@ -2039,23 +2072,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                   event_being_edited: false
                 };
                 if (updatedData.event_cancelled) {
-                  let minutes_removed = 0;
-                  let found_conflict = reactData.conflictInfo[reactData.selectedPerson_id][reactData.event_being_edited.occData.occurrence_date].findIndex(this_conflict => {
-                    if (this_conflict.event_id === reactData.event_being_edited.event_id) {
-                      minutes_removed = reactData.event_being_edited.time.duration;
-                      return true;
-                    }
-                    return false;
+                  onClose({
+                    action: 'reset',
                   });
-                  if (found_conflict > -1) {
-                    reactData.conflictInfo[reactData.selectedPerson_id][reactData.event_being_edited.occData.occurrence_date].splice(found_conflict, 1);
-                    if (minutes_removed < 1400) {
-                      reactData.conflictInfo[reactData.selectedPerson_id].summaries[reactData.event_being_edited.occData.occurrence_date].minutes -= minutes_removed;
-                    }
-                  }
-                  reactData.myCalendar[reactData.event_being_edited.date_index].eventList.splice(reactData.event_being_edited.event_index, 1);
-                  updateObj.myCalendar = reactData.myCalendar;
-                  localStorage.setItem(`calendarChanged`, true);
                 }
                 else {
                   let calRef = reactData.myCalendar[reactData.event_being_edited.date_index].eventList[reactData.event_being_edited.event_index];

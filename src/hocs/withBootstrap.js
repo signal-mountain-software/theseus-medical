@@ -1,7 +1,7 @@
 import React from 'react';
 import { dbClient, lambda, makeArray, getCustomizations, deepCopy, uuid } from '../util/AVAUtilities';
 import { accountAccess, getAllGroups, getGroupsBelongTo } from '../util/AVAGroups';
-import { getAllOccurrences } from '../util/AVACalendars';
+import { getAllOccurrences, v2buildCalendar } from '../util/AVACalendars';
 import { sendMessages } from '../util/AVAMessages';
 import { addDays } from '../util/AVADateTime';
 import { useSnackbar } from 'notistack';
@@ -1557,6 +1557,21 @@ export default Component => props => {
     })
       .catch(error => {
         console.log(`error in loadSyncInfo Calendar. Message is ${error.message}`);
+      });
+    v2buildCalendar(
+      {
+        client_id: pSession.client_id,
+        this_person: pSession.patient_id,
+        start_date: rightNow,
+        end_date: addDays(rightNow, 35),
+        filter: { group: belongsTo },
+      },
+    ).then(sampleList => {
+      console.log(`done with test calendar load.`);
+      console.log({ sampleList });
+    })
+      .catch(error => {
+        console.log(`error in test load Calendar. Message is ${error.message}`);
       });
     // await Promise.allSettled([aPromise, cPromise, dPromise])
     await Promise.allSettled([aPromise, dPromise])

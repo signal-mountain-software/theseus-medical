@@ -343,7 +343,6 @@ export function makeDate(pInput, optionIn = {}) {
         let datePart;
         let addendPart = 0;
         let delimiter = '+';
-        console.log({ parsed });
         if (parsed) {
             delimiter = parsed[0];
             [datePart, addendPart] = pString.split(delimiter);
