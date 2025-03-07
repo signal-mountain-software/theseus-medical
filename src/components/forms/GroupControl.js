@@ -1207,7 +1207,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                     ))}
                   </Box>
                 </Paper>
-                {pSession.adminAccount &&
+                {reactData.administrative_account &&
                   <DeleteIcon
                     classes={{ root: classes.rowButton }}
                     size='medium'
@@ -1285,7 +1285,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                     ))}
                   </Box>
                 </Paper>
-                {pSession.adminAccount &&
+                {reactData.administrative_account &&
                   <DeleteIcon
                     classes={{ root: classes.rowButton }}
                     size='medium'
