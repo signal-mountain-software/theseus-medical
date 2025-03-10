@@ -2903,10 +2903,13 @@ export async function v2buildCalendar(body, screenStatus = () => { }) {
     if ((this_oRec.occurrence_date !== current_occurrenceDate) || (this_oRec.event_id !== current_event)) {
       // finish this occurrence
       if (current_event && current_occurrenceDate && this_occurrence) {
-        //     if (!filter_owners)
-        //       || (!this_occurrence.slot_owners.some(this_slotOwner => { return filter_owners.includes(this_slotOwner); }))
-        //     ) {
-        response[current_occurrenceDate].events[current_event] = this_occurrence;
+        let write_me = true;
+        if (filter_owners) {
+          write_me = this_occurrence.slot_owners.some(this_slotOwner => { return filter_owners.includes(this_slotOwner); });
+        }
+        if (write_me) {
+          response[current_occurrenceDate].events[current_event] = this_occurrence;
+        }
       }
       if (this_oRec.event_id !== current_event) {
         // start new event - will create this_event
@@ -3082,46 +3085,8 @@ export async function v2buildCalendar(body, screenStatus = () => { }) {
       }
     );
   }
-  function makeSort24(this_eventData) {
-    let response = `0001-${this_eventData.description}`;
-    if ((!this_eventData.hasOwnProperty('time')) || (!this_eventData.time)) {
-      return { sort24: response, time$: '' };
-    }
-    else if (!isObject(this_eventData.time)) {
-      return {
-        sort24: makeTime(this_eventData.time.split(' to')[0]).string24,
-        time$: this_eventData.time
-      };
-    }
-    else {
-      return {
-        sort24: makeTime(this_eventData.time.from).string24,
-        time$: `${this_eventData.time.from}${this_eventData.time.to ? ' - ' + this_eventData.time.to : ''}`
-      };
-    }
-  }
-  function makeSlotNames(this_eventData) {
-    if ((this_eventData.event_data.type !== 'seats') || !this_eventData.slotPattern || !this_event.slot_object_list) {
-      return {};
-    }
-    else {
-      let response = {};
-      let lastID = '';
-      this_eventData.slotPattern.forEach(sID => {
-        let found_slotObj = this_eventData.slot_object_list.find(sO => {
-          return (sO.key === sID);
-        });
-        if (found_slotObj?.value) {
-          lastID = found_slotObj.value;
-        }
-        response[sID] = lastID;
-      });
-      return response;
-    }
-  };
-
+  // throw out any event that doesn't include a filter_owner
   // find and add this event in the proper date
-
   screenStatus('Wrapping things up', oRecs.Items.length * 3, 95, response);
   let greetings = await getCustomizations('greetings', this_client);
   let greetingsAll = await getCustomizations('greetings', '*all');
@@ -3225,6 +3190,44 @@ export async function v2buildCalendar(body, screenStatus = () => { }) {
       return [this_start, this_end];
     }
   }
+  function makeSort24(this_eventData) {
+    let response = `0001-${this_eventData.description}`;
+    if ((!this_eventData.hasOwnProperty('time')) || (!this_eventData.time)) {
+      return { sort24: response, time$: '' };
+    }
+    else if (!isObject(this_eventData.time)) {
+      return {
+        sort24: makeTime(this_eventData.time.split(' to')[0]).string24,
+        time$: this_eventData.time
+      };
+    }
+    else {
+      return {
+        sort24: makeTime(this_eventData.time.from).string24,
+        time$: `${this_eventData.time.from}${this_eventData.time.to ? ' - ' + this_eventData.time.to : ''}`
+      };
+    }
+  }
+  function makeSlotNames(this_eventData) {
+    if ((this_eventData.event_data.type !== 'seats') || !this_eventData.slotPattern || !this_event.slot_object_list) {
+      return {};
+    }
+    else {
+      let response = {};
+      let lastID = '';
+      this_eventData.slotPattern.forEach(sID => {
+        let found_slotObj = this_eventData.slot_object_list.find(sO => {
+          return (sO.key === sID);
+        });
+        if (found_slotObj?.value) {
+          lastID = found_slotObj.value;
+        }
+        response[sID] = lastID;
+      });
+      return response;
+    }
+  };
+
 }
 
 export function occurrenceDateBuilder(eventRec, start_date, end_date) {
