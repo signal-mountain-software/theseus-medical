@@ -1412,7 +1412,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             <React.Fragment>
               {!session.useOldVersion &&
                 <PeopleMaintenance
-                  patient={patient}
+                  patient={state.session.patient_id}
                   onClose={(updatedPerson) => {
                     if (updatedPerson || !reactData.menu_reloaded) {
                       sessionStorage.removeItem('AVASessionData');
@@ -1428,7 +1428,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               }
               {session.useOldVersion &&
                 <PatientDialog
-                  patient={patient}
+                  patient={state.session.patient_id}
                   groupData={reactData.groupData}
                   open={true}
                   options={{

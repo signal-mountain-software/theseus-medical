@@ -1095,28 +1095,28 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 )}
                 {(session?.patient_id !== session?.user_id) && (
                   <MenuItem onClick={async () => {
-                  //  let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
-                      updateReactData({
-                        popupMenuOpen: false
-                      }, true);
-                      await switchActiveAccount(
-                        session,
-                        (session.client_id || session.user_homeClient),
-                        {
-                          id: session.patient_id,
-                          name: reactData.greetingName
-                        },
-                        { resetUser: true }
-                      );
-                    }}>
-                      <Box
-                        display='flex' flexDirection='row' alignItems={'center'}
-                        key={'switch2self'}
-                      >
-                        <HomeIcon />
-                        <Typography className={classes.popUpMenuRow} >{`Reload as ${session?.patient_id}`}</Typography>
-                      </Box>
-                    </MenuItem>
+                    //  let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
+                    updateReactData({
+                      popupMenuOpen: false
+                    }, true);
+                    await switchActiveAccount(
+                      session,
+                      (session.client_id || session.user_homeClient),
+                      {
+                        id: session.patient_id,
+                        name: reactData.greetingName
+                      },
+                      { resetUser: true }
+                    );
+                  }}>
+                    <Box
+                      display='flex' flexDirection='row' alignItems={'center'}
+                      key={'switch2self'}
+                    >
+                      <HomeIcon />
+                      <Typography className={classes.popUpMenuRow} >{`Reload as ${session?.patient_id}`}</Typography>
+                    </Box>
+                  </MenuItem>
                 )}
                 {!session?.kiosk_mode && (
                   <MenuItem onClick={async () => {
@@ -1628,7 +1628,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             <React.Fragment>
               {!session.useOldVersion &&
                 <PeopleMaintenance
-                  patient={patient}
+                  patient={state.session.patient_id}
                   onClose={(updatedPerson) => {
                     if (updatedPerson || !reactData.menu_reloaded) {
                       sessionStorage.removeItem('AVASessionData');
@@ -1644,7 +1644,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               }
               {session.useOldVersion &&
                 <PatientDialog
-                  patient={patient}
+                  patient={state.session.patient_id}
                   groupData={reactData.groupData}
                   open={true}
                   options={{

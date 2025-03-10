@@ -52,7 +52,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
   const [reactData, setReactData] = React.useState({
     initialized: false,
     popupMenuOpen: false,
-    person_id,
+    person_id: person_id || state.session.patient_id,
     accessList: null,
     isMobile: (window.window.innerWidth < 800),
     linkedPersonFilter: {},
@@ -74,7 +74,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     alert: false,
     myFormListObj: {},
     formsInitialized: false,
-    myImage: (options.mode === 'add') ? '' : getImage(person_id),
+    myImage: (options.mode === 'add') ? '' : getImage(person_id || state.session.patient_id),
     image_editing: false,
     components: {
       Snapshot: {
