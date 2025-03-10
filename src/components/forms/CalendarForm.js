@@ -97,7 +97,8 @@ const useStyles = makeStyles(theme => ({
     color: 'rgba(0, 0, 0, 0.87)',
     minHeight: 30,
     paddingBottom: 1,
-    fontSize: theme.typography.pxToRem(6),
+    borderRadius: '30px',
+    fontSize: 1,
     border: '1px solid #242426',
   },
   arrowBody: {
@@ -514,7 +515,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       return false;
     }
     if (!reactData.filterTextLower) {
-      return true;
+      return !this_event.customizations?.show_as_unavailable;   // if no filtering, show only events that are NOT "unavailable"
     }
     else if (reactData.idFilter) {
       return (this_event.slot_owners.hasOwnProperty(reactData.idFilter));
@@ -1408,7 +1409,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                               <Typography
                                 noWrap={true}
                                 key={`conflict-${cX}_conflictName`}
-                                style={AVATextStyle({ bold: true, size: 1.2, margin: { top: 0.2 } })}
+                                style={AVATextStyle({ bold: true, size: 1, margin: { top: 0.2 } })}
                               >
                                 {this_candidate.display_name}
                               </Typography>
@@ -1444,6 +1445,24 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                     {'Nothing Scheduled'}
                                   </Typography>
                                 </Box>
+                              }
+                              {reactData.conflictInfo[this_candidate.person_id] && reactData.clicked_on_date &&
+                                reactData.conflictInfo[this_candidate.person_id][reactData.clicked_on_date.numeric$] &&
+                                reactData.conflictInfo[this_candidate.person_id][reactData.clicked_on_date.numeric$].map((this_conflict, cN) => (
+                                  !this_conflict.open &&
+                                  <Box
+                                    key={`conflict-${cX}_${cN}`}
+                                    display='flex' justifyContent='center'
+                                    alignItems='center' flexDirection='row'
+                                    textOverflow={'ellipsis'}
+                                  >
+                                    <Typography
+                                      noWrap={true}
+                                      style={AVATextStyle({ italic: true, size: 0.8 })}>
+                                      {`${Math.floor((this_conflict.time - (this_conflict.time >= 1300 ? 1200 : 0)) / 100)}:${('0' + (this_conflict.time % 100).toString()).slice(-2)} ${this_conflict.event_title}`}
+                                    </Typography>
+                                  </Box>
+                                ))
                               }
                             </Box>
                           }
@@ -1604,19 +1623,29 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                   justifyContent={agendaView() ? 'flex-start' : 'center'}
                                   alignItems={'center'}
                                   onClick={() => {
-                                    let denseView = deepCopy(reactData.denseView);
-                                    let showColors = false;
-                                    if (denseView.hasOwnProperty(this_date.dateObj.numeric$)) {
-                                      denseView[this_date.dateObj.numeric$] = !denseView[this_date.dateObj.numeric$];
+                                    let clicked_on_date = false;
+                                    if (agendaView()) { 
+                                      if (!reactData.clicked_on_date || (reactData.clicked_on_date.numeric$ !== this_date.dateObj.numeric$)) {
+                                        clicked_on_date = this_date.dateObj;
+                                      }
+                                      updateReactData({
+                                        clicked_on_date
+                                      }, true);
                                     }
                                     else {
-                                      denseView[this_date.dateObj.numeric$] = !denseView['*all'];
+                                      let denseView = {
+                                        '*all': reactData.denseView['*all']
+                                      };
+                                      if (!reactData.denseView.hasOwnProperty(this_date.dateObj.numeric$) ||
+                                        (reactData.denseView[this_date.dateObj.numeric$] === reactData.denseView['*all'])) {
+                                        denseView[this_date.dateObj.numeric$] = !reactData.denseView['*all'];
+                                        clicked_on_date = (denseView[this_date.dateObj.numeric$] ? false : this_date.dateObj);
+                                      }
+                                      updateReactData({
+                                        clicked_on_date,
+                                        denseView
+                                      }, true);
                                     }
-                                    showColors = !denseView[this_date.dateObj.numeric$];
-                                    updateReactData({
-                                      clicked_on_date: (showColors ? this_date.dateObj : false),
-                                      denseView
-                                    }, true);
                                   }}
                                 >
                                   <Typography
@@ -2198,7 +2227,6 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         });
                       });
                       reactData.myCalendar[foundIt].eventList.sort((a, b) => {
-                        //           return ((a.sort24 < b.sort24) ? -1 : 1);
                         if (a.customizations && a.customizations.show_as_unavailable) {
                           return 1;
                         }
@@ -2347,7 +2375,6 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                     }
                     if (foundIt > -1) {
                       reactData.myCalendar[foundIt].eventList.sort((a, b) => {
-                        //              return ((a.sort24 < b.sort24) ? -1 : 1);
                         if (a.customizations && a.customizations.show_as_unavailable) {
                           return 1;
                         }
