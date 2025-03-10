@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { getPerson, getImage } from '../../util/AVAPeople';
-import { deepCopy, isEmpty, dbClient, cl, recordExists } from '../../util/AVAUtilities';
+import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount } from '../../util/AVAUtilities';
 import { AVAclasses, AVADefaults, AVATextStyle, isDark } from '../../util/AVAStyles';
 
 import useSession from '../../hooks/useSession';
@@ -19,6 +19,9 @@ import GroupAssignments from '../sections/GroupAssignments';
 
 import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
+
+import HomeIcon from '@material-ui/icons/Home';
+import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 const useStyles = makeStyles(theme => ({
@@ -793,7 +796,58 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             }, true);
           }}
           keepMounted>
-          <MenuList className={classes.popUpMenu}>
+            <MenuList className={classes.popUpMenu}>
+              {reactData.administrative_account && (reactData.person_id !== state.session?.patient_id) && (
+                <MenuItem onClick={async () => {
+                  updateReactData({
+                    popupMenuOpen: false
+                  }, true);
+                  await switchActiveAccount(
+                    state.session,
+                    (state.session.client_id || state.session.user_homeClient),
+                    {
+                      id: reactData.person_id,
+                      name: `${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`
+                    }
+                  );
+                }}>
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'} justifyContent={'center'}
+                    key={'switch2self'}
+                  >
+                    <SwapHorizIcon />
+                    <Typography style={AVATextStyle({ size: 0.8, margin: { left: 0.5 } })} >
+                      {`Switch to ${reactData.current.peopleRec.name.first}`}
+                    </Typography>
+                  </Box>
+                </MenuItem>
+              )}
+              {reactData.administrative_account && (reactData.person_id !== state.session?.user_id) && (
+                <MenuItem onClick={async () => {
+                  updateReactData({
+                    popupMenuOpen: false
+                  }, true);
+                  await switchActiveAccount(
+                    state.session,
+                    (state.session.client_id || state.session.user_homeClient),
+                    {
+                      id: reactData.person_id,
+                      name: `${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`
+                    },
+                    { resetUser: true }
+                  );
+                }}>
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'} justifyContent={'center'}
+                    key={'switch2self'}
+                  >
+                    <HomeIcon />
+                    <Typography style={AVATextStyle({ size: 0.8, margin: { left: 0.5 } })} >
+                      {`Sign-in as ${reactData.current.peopleRec.name.first}`}
+                    </Typography>
+                  </Box>
+                </MenuItem>
+              )}
             <MenuItem>
               <Box
                 display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
@@ -809,7 +863,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
               </Box>
             </MenuItem>
           </MenuList>
-        </Menu>
+          </Menu>
       </Box>
 
       <Paper component={Box}

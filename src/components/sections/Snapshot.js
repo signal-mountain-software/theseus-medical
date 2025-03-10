@@ -378,7 +378,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
             </Button>
           }
           {(state.session.user_id !== currentValues.peopleRec.person_id) &&
-            (currentValues.peopleRec.contact_info.cell.number) &&
+            (currentValues.peopleRec.contact_info?.cell.number) &&
             <Button
               className={AVAClass.AVAButton}
               key={`callCellButton`}

@@ -1412,9 +1412,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             <React.Fragment>
               {!session.useOldVersion &&
                 <PeopleMaintenance
-                  patient={state.session.patient_id}
+                  patient={patient}
+                  person_id={state.session.patient_id}
                   onClose={(updatedPerson) => {
-                    if (updatedPerson || !reactData.menu_reloaded) {
+                    if (updatedPerson.saveCompleted || !reactData.menu_reloaded) {
                       sessionStorage.removeItem('AVASessionData');
                       window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
                     }
@@ -1428,7 +1429,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               }
               {session.useOldVersion &&
                 <PatientDialog
-                  patient={state.session.patient_id}
+                  patient={patient}
                   groupData={reactData.groupData}
                   open={true}
                   options={{
