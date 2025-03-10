@@ -2,7 +2,7 @@ import React from 'react';
 
 import { useSnackbar } from 'notistack';
 
-import { getCalendarEntries, getAllOccurrences, v2buildCalendar } from '../../util/AVACalendars';
+import { getCalendarEntries, v2buildCalendar } from '../../util/AVACalendars';
 import { makeTime, addDays, makeDate } from '../../util/AVADateTime';
 import { isEmpty, isObject, deepCopy, makeArray, array_in_array } from '../../util/AVAUtilities';
 import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
