@@ -7,7 +7,7 @@ import { dbClient } from '../../util/AVAUtilities';
 import QuickSearch from '../sections/QuickSearch';
 import { getPerson } from '../../util/AVAPeople';
 
-import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography } from '@material-ui/core';
+import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Switch } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -134,6 +134,7 @@ export default ({ defaults, onCancel }) => {
     popUpOpen: false,
     progressMessage: 'Building Group List',
     pWidth: 60,
+    received_mode: false,
     rowLimit: 50,
     selectDate: null,
     selectedPerson_id: null,
@@ -331,10 +332,27 @@ export default ({ defaults, onCancel }) => {
     for (const this_member of memberList.peopleList) {
       response[this_member.person_id] = this_member;
       response[this_member.person_id].messageData = {
-        number_sent: 0,
-        number_received: 0,
-        number_sent_with_rules: 0,
-        number_sent_urgent: 0
+        sent: {
+          count: 0,
+          urgent: 0,
+          held: 0,
+          blocked: 0,    // hold_reason === 'blocked'
+          redirected: 0,    // hold_reason === 'replaced'
+          bounced: 0,
+          with_attachment: 0,
+          with_rules: 0
+        },
+        received: {
+          count: 0,
+          urgent: 0,
+          held: 0,
+          blocked: 0,    // hold_reason === 'blocked'
+          redirected: 0,    // hold_reason === 'replaced'
+          bounced: 0,
+          with_attachment: 0,
+          with_rules: 0,
+          not_og: 0    // you were not an original receipient (recipient_list.not_original_recipient is true)
+        },
       };
     }
     await messageFetch({
@@ -379,25 +397,45 @@ export default ({ defaults, onCancel }) => {
       }
       if (mRecs && mRecs.hasOwnProperty('Items')) {
         for (const this_message of mRecs.Items) {
-          // outbound
-          if (this_message.delivery_status !== 'held') {
-            if (response.hasOwnProperty(this_message.author?.author_id)) {
-              response[this_message.author?.author_id].messageData.number_sent++;
-              if (this_message.urgency.startsWith('urg')) {
-                response[this_message.author?.author_id].messageData.number_sent_urgent++;
-              }
-              if (this_message.recipient_list?.rule_used) {
-                response[this_message.author.author_id].messageData.number_sent_with_rules++;
-                if (!response[this_message.author.author_id].hasOwnProperty(this_message.recipient_list.rule_used)) {
-                  response[this_message.author.author_id][this_message.recipient_list.rule_used] = 0;
-                }
-                response[this_message.author.author_id][this_message.recipient_list.rule_used]++;
-              }
+          let isUrgent = (this_message.urgency.startsWith('urg') ? 1 : 0);
+          let isAttachment = ((this_message.content?.current?.attachments && (this_message.content.current.attachments.length > 0)) ? 1 : 0);
+          let ruleUsed = this_message.recipient_list?.rule_used ? 1 : 0;
+          let blocked = 0;
+          let redirected = 0;
+          let held = 0;
+          if (this_message.delivery_status === 'held') {
+            held = 1;
+            blocked = ((this_message.recipient_list.hold_reason === 'blocked') ? 1 : 0);
+            redirected = ((this_message.recipient_list.hold_reason === 'replaced') ? 1 : 0);
+          }
+          if (response.hasOwnProperty(this_message.author?.author_id)) {
+            let sender = this_message.author?.author_id;
+            response[sender].messageData.sent.count++;
+            response[sender].messageData.sent.urgent += isUrgent;
+            response[sender].messageData.sent.with_attachment += isAttachment;
+            response[sender].messageData.sent.with_rules += ruleUsed;
+            response[sender].messageData.sent.held += held;
+            response[sender].messageData.sent.blocked += blocked;
+            response[sender].messageData.sent.redirected += redirected;
+            if (ruleUsed) {
+              objRefIncrement(response[sender].messageData.sent.rule_list, this_message.recipient_list.rule_used);
             }
-            // inbound
-            if (response.hasOwnProperty(this_message.deliver_to)) {
-              response[this_message.deliver_to].messageData.number_received++;
+          }
+          if (response.hasOwnProperty(this_message.deliver_to)) {
+            let recipient = this_message.deliver_to;
+            response[recipient].messageData.received.count++;
+            response[recipient].messageData.received.urgent += isUrgent;
+            response[recipient].messageData.received.with_attachment += isAttachment;
+            response[recipient].messageData.received.with_rules += ruleUsed;
+            response[recipient].messageData.received.held += held;
+            response[recipient].messageData.received.blocked += blocked;
+            response[recipient].messageData.received.redirected += redirected;
+            if (ruleUsed) {
+              objRefIncrement(response[recipient].messageData.received.rule_list, this_message.recipient_list.rule_used);
             }
+            if (this_message.recipient_list.not_original_recipient) {
+              response[recipient].messageData.received.not_og++;
+            };
           }
         }
       }
@@ -407,6 +445,12 @@ export default ({ defaults, onCancel }) => {
     }, true);
     return response;
   };
+
+  function objRefIncrement(obj, key) {
+    if (!obj) { obj = { key: 1 }; }
+    else if (!(key in obj)) { obj[key] = 1; } 
+    else { return obj[key] + 1; }
+  }
 
   async function initialize() {
   }
@@ -594,16 +638,54 @@ export default ({ defaults, onCancel }) => {
                 borderLeft={2}
                 paddingLeft={'32px'}
               >
-                <Typography
-                  key={`g_name`}
-                  style={AVATextStyle({
-                    size: 1.5,
-                    overflow: 'visible',
-                    bold: true,
-                    margin: { top: 1, bottom: 1 },
-                  })}>
-                  {`${reactData.selectedGroupRec.group_name} Members`}
-                </Typography>
+                <Box display='flex' flexDirection='row'
+                  justifyContent='space-between'
+                  alignItems='flex-start'
+                  width={'100%'}
+                  paddingRight={'4px'}
+                >
+                  <Typography
+                    key={`g_name`}
+                    style={AVATextStyle({
+                      size: 1.5,
+                      overflow: 'visible',
+                      bold: true,
+                      margin: { top: 1, bottom: 1 },
+                    })}>
+                    {`${reactData.selectedGroupRec.group_name} Members`}
+                  </Typography>
+                  <Box flexGrow={2} display='flex' alignItems='center'
+                    justifyContent='flex-end' flexDirection='row'
+                    marginTop={'16px'} marginBottom={'13px'}
+                  >
+                    <Typography
+                      style={AVATextStyle({
+                        size: 0.8, margin: { right: 0.8 },
+                        bold: !reactData.received_mode
+                      })}
+                    >
+                      {'Sent'}
+                    </Typography>
+                    <Switch
+                      checked={reactData.received_mode}
+                      onClick={() => {
+                        updateReactData({
+                          received_mode: !reactData.received_mode
+                        }, true);
+                      }}
+                      name="Mode"
+                      color="primary"
+                    />
+                    <Typography
+                      style={AVATextStyle({
+                        size: 0.8, margin: { left: 0.8 },
+                        bold: reactData.received_mode
+                      })}
+                    >
+                      {`Rec'd`}
+                    </Typography>
+                  </Box>
+                </Box>
                 <Paper component={Box} width='100%' elevation={0} overflow='auto' square
                   key={`right_paper`}
                   style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
@@ -617,7 +699,7 @@ export default ({ defaults, onCancel }) => {
                     <Box display='flex' flexDirection='row' width={'100%'}
                       key={`right_paper_boxrow`}
                     >
-                      <Box display='flex' flexDirection='row' flexGrow={1}
+                      <Box display='flex' flexDirection='row' flexGrow={1} width={'200px'}
                         key={`right_paper_detailrow`}
                       >
                         <Typography
@@ -625,77 +707,53 @@ export default ({ defaults, onCancel }) => {
                           style={AVATextStyle({
                             overflow: 'visible',
                             size: 1,
+                            width: '200px',
                             margin: { top: 0, bottom: 0.8 },
                           })}
                         >
                           {``}
                         </Typography>
                       </Box>
-                      <Typography
-                        key={`g_sent-head`}
-                        style={AVATextStyle({
-                          overflow: 'visible',
-                          align: 'center',
-                          size: 1,
-                          bold: (reactData.columnSort === 'sent'),
-                          width: '40px',
-                          margin: { left: 2, right: 2, top: 0, bottom: 0.8 },
-                        })}
-                        onClick={async () => {
-                          updateReactData({
-                            columnSort: 'sent'
-                          }, true);
-                        }}
+                      {(['#', 'Urg', 'Hld', 'Blk', 'Chg', 'Att', 'Rul'].concat(reactData.received_mode ? ['xOG'] : [])).map((this_key, kX) =>
+                        <Typography
+                          key={`g_count-head_${kX}`}
+                          style={AVATextStyle({
+                            overflow: 'visible',
+                            align: 'center',
+                            size: 1,
+                            width: '25px',
+                            margin: { left: 0.2, right: 0.2, top: 0, bottom: 0.8 },
+                          })}
+                        >
+                          {this_key}
+                        </Typography>
+                      )}
 
-                      >
-                        {`Sent`}
-                      </Typography>
-                      <Typography
-                        key={`g_received-head`}
-                        style={AVATextStyle({
-                          overflow: 'visible',
-                          align: 'center',
-                          size: 1,
-                          bold: (reactData.columnSort === 'recd'),
-                          width: '40px',
-                          margin: { left: 2, right: 2, top: 0, bottom: 0.8 },
-                        })}
-                        onClick={async () => {
-                          updateReactData({
-                            columnSort: 'recd'
-                          }, true);
-                        }}
-                      >
-                        {`Recd`}
-                      </Typography>
                     </Box>
                     {reactData.selectedGroupMembers && Object.keys(reactData.selectedGroupMembers).sort((a, b) => {
-                      if (reactData.columnSort === 'sent') {
-                        return (reactData.selectedGroupMembers[a].messageData.number_sent < reactData.selectedGroupMembers[b].messageData.number_sent) ? 1 : -1;
-                      }
-                      else if (reactData.columnSort === 'recd') {
-                        return (reactData.selectedGroupMembers[a].messageData.number_received < reactData.selectedGroupMembers[b].messageData.number_received) ? 1 : -1;
-                      }
-                      else if (reactData.selectedGroupMembers[a].name.last === reactData.selectedGroupMembers[b].name.last) {
-                        return (reactData.selectedGroupMembers[a].name.first > reactData.selectedGroupMembers[b].name.first) ? 1 : -1;
+                      if (!reactData.received_mode) {
+                        return (reactData.selectedGroupMembers[a].messageData.sent.count < reactData.selectedGroupMembers[b].messageData.sent.count) ? 1 : -1;
                       }
                       else {
-                        return (reactData.selectedGroupMembers[a].name.last > reactData.selectedGroupMembers[b].name.last) ? 1 : -1;
+                        return (reactData.selectedGroupMembers[a].messageData.received.count < reactData.selectedGroupMembers[b].messageData.received.count) ? 1 : -1;
                       }
                     }).map((this_person, cX) => (
                       <Box display='flex' flexDirection='row' width={'100%'}
                         key={`g_peopleoutbox-${cX}`}
                       >
-                        <Box display='flex' flexDirection='row' flexGrow={1}
+                        <Box display='flex' flexDirection='row' flexGrow={1} width={'200px'}
                           key={`g_peopleinnerbox-${cX}`}
                         >
                           <Typography
                             key={`g_textpeople-${cX}`}
-                            style={AVATextStyle({
-                              overflow: 'visible',
-                              size: 1,
-                              margin: { top: 0, bottom: 0.8 },
-                            })}
+                            style={Object.assign({},
+                              { width: '100%' },
+                              AVATextStyle({
+                                overflow: 'visible',
+                                size: 1,
+                                margin: { top: 0, bottom: 0.8 },
+                              })
+                            )}
                             onClick={async () => {
                               updateReactData({
                                 personMessages: this_person
@@ -705,32 +763,32 @@ export default ({ defaults, onCancel }) => {
                             {`${reactData.selectedGroupMembers[this_person].name.first} ${reactData.selectedGroupMembers[this_person].name.last}`}
                           </Typography>
                         </Box>
-                        <Typography
-                          key={`g_sent-${cX}`}
-                          style={AVATextStyle({
-                            overflow: 'visible',
-                            align: 'center',
-                            size: 1,
-                            bold: (reactData.selectedGroupMembers[this_person].messageData.number_sent_with_rules > 0),
-                            color: ((reactData.selectedGroupMembers[this_person].messageData.number_sent_with_rules > 0) ? 'red' : ''),
-                            width: '40px',
-                            margin: { left: 2, right: 2, top: 0, bottom: 0.8 },
-                          })}
-                        >
-                          {`${reactData.selectedGroupMembers[this_person].messageData.number_sent}${(reactData.selectedGroupMembers[this_person].messageData.number_sent_urgent > 0) ? ' !' : ''}`}
-                        </Typography>
-                        <Typography
-                          key={`g_received-${cX}`}
-                          style={AVATextStyle({
-                            overflow: 'visible',
-                            align: 'center',
-                            size: 1,
-                            width: '40px',
-                            margin: { left: 2, right: 2, top: 0, bottom: 0.8 },
-                          })}
-                        >
-                          {`${reactData.selectedGroupMembers[this_person].messageData.number_received}`}
-                        </Typography>
+                        {(['count', 'urgent', 'held', 'blocked', 'redirected', 'with_attachment', 'with_rules'].concat(reactData.received_mode ? ['not_og'] : [])).map((this_key, kX) =>
+                          <Typography
+                            key={`g_count-${cX}_${kX}`}
+                            onClick={async () => {
+                              updateReactData({
+                                personMessages: this_person,
+                                personMessages_statusFilter: ((this_key === 'count') ? false : this_key)
+                              }, true);
+                            }}
+                            style={AVATextStyle({
+                              overflow: 'visible',
+                              align: 'center',
+                              size: 1,
+                              width: '25px',
+                              opacity: (((reactData.received_mode && reactData.selectedGroupMembers[this_person].messageData.received[this_key] === 0)
+                                || (!reactData.received_mode && reactData.selectedGroupMembers[this_person].messageData.sent[this_key] === 0)
+                              ) ? '30%' : ''),
+                              margin: { left: 0.2, right: 0.2, top: 0, bottom: 0.8 },
+                            })}
+                          >
+                            {reactData.received_mode
+                              ? `${reactData.selectedGroupMembers[this_person].messageData.received[this_key]}`
+                              : `${reactData.selectedGroupMembers[this_person].messageData.sent[this_key]}`
+                            }
+                          </Typography>
+                        )}
                       </Box>
                     ))}
                   </Box>
@@ -778,11 +836,13 @@ export default ({ defaults, onCancel }) => {
           pSession={state.session}
           onReset={() => {
             updateReactData({
-              personMessages: false
+              personMessages: false,
+              personMessages_statusFilter: false
             }, true);
           }}
           options={{
-            viewOnly: true
+            viewOnly: true,
+            statusFilter: reactData.personMessages_statusFilter
           }}
         />
       }

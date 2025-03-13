@@ -484,11 +484,13 @@ export default ({
         }
       }
       let recipients = [];
-      for (const [i, person_id] of [defaultValueObj.recipientID].flat().entries()) {
-        recipients.push({
-          person_id,
-          person_name: ([defaultValueObj.recipientName].flat()[i] || `user ${person_id}`)
-        });
+      if ((defaultValueObj.hasOwnProperty('recipientID')) && (Object.keys(defaultValueObj.recipientID).length > 0)) {
+        for (const [i, person_id] of [defaultValueObj.recipientID].flat().entries()) {
+          recipients.push({
+            person_id,
+            person_name: ([defaultValueObj.recipientName].flat()[i] || `user ${person_id}`)
+          });
+        }
       }
       return (
         /*

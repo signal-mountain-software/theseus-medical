@@ -1,8 +1,9 @@
 import React from 'react';
+import useSession from '../../hooks/useSession';
+
 import { useSnackbar } from 'notistack';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
-import { messageHistory } from '../../util/AVAMessages';
-import { extract, dbClient, titleCase, listFromArray, cl, uuid } from '../../util/AVAUtilities';
+import { extract, dbClient, titleCase, listFromArray, cl, uuid, recordExists } from '../../util/AVAUtilities';
 import { AVATextStyle } from '../../util/AVAStyles';
 import { makeDate } from '../../util/AVADateTime';
 import AVAUploadFile from '../../util/AVAUploadFile';
@@ -174,58 +175,64 @@ const useStyles = makeStyles(theme => ({
 
 export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options }) => {
 
+  const { state } = useSession();
   const classes = useStyles();
   const AVAClass = AVAclasses();
-
-  const [message_filter, setMessageFilter] = React.useState('');
-  const [message_filter_lower, setMessageFilterLower] = React.useState('');
-  const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
-
-  const [messageList, setMessageList] = React.useState(pMessageList);
-  const [personFilter, setPersonFilter] = React.useState(false);
-  const [messageResults, setMessageResults] = React.useState();
-  const [deletePending, setDeletePending] = React.useState(false);
-  const showDeleted = false;
-  const [confirmMessage, setConfirmMessage] = React.useState('');
-  const [confirmID, setConfirmID] = React.useState('');
-  const [confirmIndex, setConfirmIndex] = React.useState('');
-  const [open, setOpen] = React.useState([]);
 
   const placeholderImage =
     'https://theseus-medical-storage.s3.amazonaws.com/public/patients/tboone.jpg';
 
 
   const [reactData, setReactData] = React.useState({
-    statusMessage: false,
-    window_width: window.window.innerWidth,
+    alert: false,
+    attachments_to_send: ((options && options.newMessage && options.attachmentList) ? options.attachmentList : []),
+    confirmMessage: false,
+    confirmessage_index: false,
+    deletePending: false,
+    expanded_composite_key: false,
+    forceReloadTime: 0,
+    idleState: false,
+    imageTable: {},
     isSmall: (window.window.innerWidth < 800),
     isTiny: (window.window.innerWidth < 500),
     lastActiveTime: new Date(),
     lastReloadTime: 0,
-    forceReloadTime: 0,
-    idleState: false,
-    newMessageMode: (options && options.newMessage) || false,
-    viewPeopleMaintenance: false,
-    viewOnly: (options && options.viewOnly) || false,
+    messageFilter: false,
+    messageFilterLower: false,
+    messageList: pMessageList,
     myImage: null,
     myName: null,
-    selections: [],    // wip selections from quick search
+    newMessageMode: (options && options.newMessage) || false,
+    newMessageRecipients: ((options && options.newMessage && options.recipients) ? options.recipients : []),
+    newMessageSubject: ((options && options.newMessage && options.subject) ? options.subject : ''),
+    newMessageText: ((options && options.newMessage && options.messageText) ? options.messageText : ''),
+    newMessageThread: false,
+    newUrgentMessage: false,
+    preferred_recipients: [],
+    replyToList: [{ person_id: pPerson, person_name: 'Me' }],
     selectedPeople_count: 0,
     selectedPeople_list: [],
-    newMessageRecipients: ((options && options.newMessage && options.recipients) ? options.recipients : []),
-    alert: false,
+    selections: [], // wip selections from quick search
+    showDeleted: (options && options.showDeleted) || false,
     showGroupList: false,
     showIndividualList: false,
     showPreferredList: true,
+    showQuickSearch: (options && options.newMessage && (!options.recipients || (options.recipients.length === 0))) || false,
+    singleFilterDigit: false,
+    start_time: (options && options.hasOwnProperty('start_time')) ? makeDate(options.start_time).timeStamp : false,
+    statusFilter: (options && options.statusFilter) || false,
+    statusMessage: false,
+    sorted_threads: [],
+    threadObj: {},
+    threads: {},
+    // threads is {[<thread_id>]: {last_update: <>, messages: []}}, {[<thread_id>]: {}}...]
+    // threads[n].messages is [{message_text: <>, last_update: <>, attachments: [], recipients: []}, {}...]
+    // threads[n].messages[m].recipients is [{recipient_id: <>, recipient_name: <>, wasHeld: <t/f>, methods: []}, {}...] 
+    // threads[n].messages[m].recipients[o].methods is [{method: <>, sent_time: <>, last_update_time: <>, result: <>}, {}...]
+    viewOnly: (options && options.viewOnly) || false,
+    viewPeopleMaintenance: false,
     warning: false,
-    preferred_recipients: [],
-    newUrgentMessage: false,
-    replyToList: [{ person_id: pPerson, person_name: 'Me' }],
-    newMessageText: ((options && options.newMessage && options.messageText) ? options.messageText : ''),
-    newMessageSubject: ((options && options.newMessage && options.subject) ? options.subject : ''),
-    newMessageThread: false,
-    attachments_to_send: ((options && options.newMessage && options.attachmentList) ? options.attachmentList : []),
-    linkedPersonFilter: '',
+    window_width: window.window.innerWidth,
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -237,19 +244,11 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
 
-
+  let last_displayed_thread = null;
+  let status_filter_result = false;
 
   const onImageError = (e) => {
     e.target.src = placeholderImage;
-  };
-
-  const messageStyle = (this_item, index) => {
-    if ((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id)) {
-      return AVATextStyle({ size: 1 });
-    }
-    else {
-      return AVATextStyle({ size: 0.8 });
-    }
   };
 
   if (defaultValue) {
@@ -260,7 +259,6 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
 
   const [rowLimit, setRowLimit] = React.useState(20);
   const scrollValue = 20;
-  var rowsWritten;
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -276,18 +274,13 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     });
   }
 
-  function makeSubject(pContent) {
-    if (pContent) {
-      if (pContent.startsWith('Message from')) {
-        return titleCase(pContent.replace('Message from', 'Conversation originated by'));
-      }
-      return pContent.slice(0, 1).toUpperCase() + pContent.slice(1);
-      /*
-      let lContent = pContent.toLowerCase().trim().split(/[^a-zA-Z0-9 ']+/);
-      return (lContent[0] || lContent[1]).split(/[ ]+/g).map(w => { return (w.charAt(0).toUpperCase() + w.substring(1)); }).join(' ');
-      */
+  function makeSubject(this_thread, message_number) {
+    last_displayed_thread = this_thread;
+    let response = reactData.threads[this_thread].messages[message_number].subject || `Conversation originated by ${reactData.threads[this_thread].messages[message_number].author_name}`;
+    if (reactData.threads[this_thread].messages[message_number].subject.startsWith('Message from')) {
+      response = reactData.threads[this_thread].messages[message_number].subject.replace('Message from', 'Conversation originated by');
     }
-    else { return 'AVA Message'; }
+    return titleCase(response);
   }
 
   function searchButtonText() {
@@ -321,23 +314,27 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
 
   const handleChangeMessageFilter = event => {
     if (event.target.value.length === 0) {
-      setMessageFilter(null);
-      setMessageFilterLower(null);
+      updateReactData({
+        messageFilter: false,
+        messageFilterLower: false,
+        singleFilterDigit: false
+      }, true);
     }
     else {
-      setMessageFilter(event.target.value);
-      setMessageFilterLower(event.target.value.toLowerCase());
-      setSingleFilterDigit(event.target.value.length === 1);
+      updateReactData({
+        messageFilter: event.target.value,
+        messageFilterLower: event.target.value.toLowerCase(),
+        singleFilterDigit: (event.target.value.length === 1)
+      }, true);
     }
-    setRowLimit(scrollValue);
   };
 
-  const handleRemoveMessage = async (pMessage_id, pIndex) => {
-    await dbClient
-      .update({
+  const handleRemoveMessage = async ({ thread_id, composite_key }) => {
+    let dRec = await dbClient
+      .get({
         Key: {
-          thread_id: pMessage_id.split('~')[0].slice(2),
-          composite_key: pMessage_id
+          thread_id: thread_id,
+          composite_key: composite_key
         },
         UpdateExpression: 'set delete_flag = :t',
         ExpressionAttributeValues: {
@@ -347,83 +344,59 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       })
       .promise()
       .catch(error => {
-        enqueueSnackbar(`AVA couldn't delete that message.  Error is ${error}`,
+        enqueueSnackbar(`AVA couldn't find that message.  Error is ${error}`,
           { variant: 'error', persist: true }
         );
         return;
       });
-    let tempMessageList = messageList;
-    tempMessageList.splice(pIndex, 1);
-    setMessageList(tempMessageList);
-    let workingOpen = open;
-    workingOpen.splice(pIndex, 1);
-    setOpen(workingOpen);
-    setForceRedisplay(!forceRedisplay);
-    return tempMessageList;
-  };
-
-  async function getMessageResults({ this_item }) {
-    let gotHistory = await messageHistory({
-      thread_id: this_item.common_key.split('~M')[0].slice(2),
-      composite_key: this_item.common_key.split('~D')[0],
-      record_type: 'delivery',
-      in_out: this_item.inOut,
-      was_held: this_item.wasHeld,
-      returnObject: true
-    });
-    if (this_item.inOut === 'in') {
-      return { [pPerson]: gotHistory[pPerson] };
+    if (recordExists(dRec)) {
+      let new_deleted_by = (dRec.Item.deleted_by || []);
+      new_deleted_by.push(state.session.user_id);
+      await dbClient
+        .update({
+          Key: {
+            thread_id: thread_id,
+            composite_key: composite_key
+          },
+          UpdateExpression: 'set delete_flag = :t, deleted_by = :d',
+          ExpressionAttributeValues: {
+            ':t': true,
+            ':d': new_deleted_by
+          },
+          TableName: "TheseusMessages",
+        })
+        .promise()
+        .catch(error => {
+          enqueueSnackbar(`AVA couldn't delete that message.  Error is ${error}`,
+            { variant: 'error', persist: true }
+          );
+          return;
+        });
     }
     else {
-      return gotHistory;
+      enqueueSnackbar(`AVA couldn't delete that message.`,
+        { variant: 'error', persist: true }
+      );
+      return;
     }
+    delete reactData.threads[thread_id];
+    let foundIt = reactData.sorted_threads.findIndex(t => { return t === thread_id; });
+    if (foundIt > -1) {
+      reactData.sorted_threads.splice(foundIt, 1);
+    }
+    updateReactData({
+      threads: reactData.threads,
+      sorted_threads: reactData.sorted_threads,
+      expanded_composite_key: false
+    }, true);
   };
 
   const onScroll = event => {
-    if (rowLimit < messageList.length) {
+    if (rowLimit < reactData.messageList.length) {
       setRowLimit(rowLimit + scrollValue);
       setForceRedisplay(!forceRedisplay);
     }
   };
-
-  const toggleOpen = async ({ index, this_item }) => {
-    let workingOpen = [];
-    if (!open[index]) {
-      workingOpen[index] = true;
-      let results = await getMessageResults({ this_item });
-      if (this_item.wasHeld) {
-        let ogMsgRec = await dbClient
-          .get({
-            Key: {
-              thread_id: this_item.thread_id,
-              composite_key: this_item.held_messageKey,
-            },
-            TableName: 'TheseusMessages'
-          })
-          .promise()
-          .catch(error => {
-            cl({ 'Error reading TheseusMessages': error });
-          });
-        console.log(ogMsgRec.Item);
-        let ogCount = Object.keys(ogMsgRec.Item.recipient_list).length;
-        results[this_item.person_id].history.push({
-          time: this_item.wasHeld,
-          line: `Message was sent ${(ogCount > 1) ? 'to ' + ogCount + ' people ' : ''}${makeDate(this_item.wasHeld).oaDate} but held per rule`
-        });
-      }
-      setMessageResults(results);
-    }
-    setOpen(workingOpen);
-    setForceRedisplay(!forceRedisplay);
-  };
-
-  function filteredMessage(pMessageRec, pFilter) {
-    if (singleFilterDigit) { return true; }
-    else {
-      let searchString = [pMessageRec.message_text, pMessageRec.sender_name, pMessageRec.sender_id].join(' ');
-      return searchString.toLowerCase().includes(message_filter_lower);
-    }
-  }
 
   const oneMinute = 1000 * 60;
   const msBeforeSleeping = 1 * oneMinute;
@@ -477,7 +450,6 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     timeout: msBeforeSleeping,
     throttle: 500
   });
-
 
   async function sendMessage() {
     let postTime = new Date().getTime();
@@ -579,184 +551,29 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     }, true);
   }
 
-  async function initialize() {
-    let messageArray = [];
-    let messageMethods = {};
-    let totalInboundProcessed = 0;
-    let totalInboundCount = 0;
-    let totalOutboundCount = 0;
-    let totalOutboundProcessed = 0;
-    // my Image
-    updateReactData({
-      myImage: await getImage(pPerson),
-      myName: await makeName(pPerson)
-    }, true);
-    // Get messages to me
-    let mRecs = await dbClient
-      .query({
-        KeyConditionExpression: 'deliver_to = :p',
-        FilterExpression: 'delete_flag <> :true',
-        ExpressionAttributeValues: {
-          ':p': pPerson,
-          ':true': true
-        },
-        TableName: "TheseusMessages",
-        IndexName: 'deliver_to-index',
-        ScanIndexForward: false,
-      })
-      .promise()
-      .catch(error => {
-        if (error.code === 'NetworkingError') {
-          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
-        }
-        console.log({ 'Error reading Messages': error });
-      });
-    if (mRecs && mRecs.hasOwnProperty('Items')) {
-      totalInboundCount += mRecs.Count;
-      for (let x = 0; x < mRecs.Items.length; x++) {
-        totalInboundProcessed++;
-        let m = mRecs.Items[x];
-        if (m.author.author_id === pPerson) {
-          continue;
-        }
-        // let language = m.language || 'EN-US';
-        let language = 'EN-US';
-        let this_image = await getImage(m.author.author_id);
-        if (m.author.author_name === 'AVA notifications') {
-          let sRec = await getPerson(m.author.author_id);
-          if (sRec && sRec.name) {
-            m.author.author_name = `${sRec.name.first} ${sRec.name.last}`;
-          }
-        }
-        // convert inline link to an attachment by extracting all text after (and including http:)
-        let hLink = extract(m.content.current[language].text, 'http', ' ', {
-          fuzzyRight: true,  // allow end-of-string as a right delimeter 
-          includeLeft: true,  // return the left delimeter
-        });
-        if (hLink) {
-          if (!m.content.current.attachments) { m.content.current.attachments = []; }
-          m.content.current.attachments.push(hLink);
-          m.content.current[language].text = m.content.current[language].text.replace(hLink, '');
-        }
-        let deliver_method = (m.deliver_method === 'email')
-          ? 'email'
-          : ((m.deliver_method === 'sms')
-            ? 'text'
-            : ((m.deliver_method === 'voice') ? 'phone' : 'ava')
-          );
-        let message_key = m.composite_key.split('~D')[0];
-        if (messageMethods.hasOwnProperty(message_key)) {
-          messageMethods[message_key].push(deliver_method);
-        }
-        else {
-          messageMethods[message_key] = [deliver_method];
-          let this_message = {
-            inOut: 'in',
-            delete_flag: m.delete_flag,
-            person_id: m.deliver_to,
-            patient_name: m.author.author_name,
-            sender_name: m.author.author_name,
-            sender_id: m.author.author_id,
-            partner_id: [m.author.author_id],
-            sender_image: this_image,
-            message_id: m.composite_key,
-            deliver_method,
-            posted_time: m.created_time,
-            deliver_time: m.created_time,
-            common_key: m.composite_key,
-            replyToList: m.reply_to,
-            message_content: m.content.current[language].text,
-            attachments: m.content.current.attachments,
-            subject: m.subject_line,
-            message_text: m.content.current[language].text,
-            thread_id: m.thread_id,
-            allowReplyAll: (m.allowReplyAll || false)
-          };
+  const oneDay = 24 * 60 * 60 * 1000;
 
-          this_message.toLine = `${m.author.author_name} -> Me`;
-          this_message.target = pPerson;
-
-          messageArray.push(this_message);
-          if ((x % 100) === 0) {
-            // put everything in reverse chronological order
-            let presorted = messageArray.sort((a, b) => {
-              return ((a.deliver_time > b.deliver_time) ? -1 : 1);
-            });
-            let finalSort = [];
-            let skipMe = [];
-            presorted.forEach((this_message, mNdx) => {
-              const message_key = presorted[mNdx].common_key.split('~D')[0];
-              this_message.deliver_method = listFromArray(messageMethods[message_key]);
-              // this clumps all the same thread_ids together behind the most recent one
-              if (!skipMe.includes(this_message.thread_id)) {
-                finalSort.push(this_message);   // this is the message on the thread that was most recent
-                skipMe.push(this_message.thread_id);   // dont process this thread again in the main loop
-                for (let n = mNdx + 1; n < presorted.length; n++) {
-                  if (presorted[n].thread_id === this_message.thread_id) {
-                    if (presorted[n].common_key.endsWith('hold')) {
-                      finalSort[finalSort.length - 1].wasHeld = presorted[n].posted_time;
-                      finalSort[finalSort.length - 1].held_messageKey = presorted[n].common_key.split('~D')[0];
-                    }
-                    else {
-                      finalSort.push(presorted[n]);
-                    }
-                  }
-                }
-              }
-            });
-            updateReactData({
-              statusMessage: `Processing inbound - ${totalInboundProcessed} of ${totalInboundCount}`
-            }, false);
-            setMessageList(finalSort);
-            console.log(`Processing inbound - ${totalInboundProcessed} of ${totalInboundCount}`);
-          }
-        }
-      };
-      let presorted = messageArray.sort((a, b) => {
-        return ((a.deliver_time > b.deliver_time) ? -1 : 1);
-      });
-      let finalSort = [];
-      let skipMe = [];
-      presorted.forEach((this_message, mNdx) => {
-        // this clumps all the same thread_ids together behind the most recent one
-        if (!skipMe.includes(this_message.thread_id)) {
-          finalSort.push(this_message);   // this is the message on the thread that was most recent
-          skipMe.push(this_message.thread_id);  // dont process this thread again in the main loop
-          for (let n = mNdx + 1; n < presorted.length; n++) {
-            if (presorted[n].thread_id === this_message.thread_id) {
-              if (presorted[n].common_key.endsWith('hold')) {
-                finalSort[finalSort.length - 1].wasHeld = presorted[n].posted_time;
-                finalSort[finalSort.length - 1].held_messageKey = presorted[n].common_key.split('~D')[0];
-              }
-              else {
-                finalSort.push(presorted[n]);
-              }
-            }
-          }
-        }
-      });
-      updateReactData({
-        statusMessage: `Processing outbound`
-      }, false);
-      setMessageList(finalSort);
+  async function allMessages({ person_id, start_time, end_time }) {
+    if (!start_time) {
+      let nowTime = new Date().getTime();
+      start_time = nowTime - (7 * oneDay);
+      end_time = nowTime + oneDay;
     }
-    // Get messages From me
-    let outbound_threads = [];
+    // Get messages to me
+    let inRecs;
     let queryObj = {
-      KeyConditionExpression: 'sent_from = :p',
-      FilterExpression: 'delete_flag <> :true AND record_type = :t',
+      KeyConditionExpression: 'deliver_to = :p AND created_time between :s and :e',
       ExpressionAttributeValues: {
-        ':p': pPerson,
-        ':t': 'message',
-        ':true': true
+        ':p': person_id,
+        ':s': start_time.toString(),
+        ':e': end_time.toString()
       },
       TableName: "TheseusMessages",
-      IndexName: 'sent_from-index',
+      IndexName: 'deliver_to-index',
       ScanIndexForward: false,
     };
-    let loopCount = 0;
     do {
-      mRecs = await dbClient
+      inRecs = await dbClient
         .query(queryObj)
         .promise()
         .catch(error => {
@@ -765,155 +582,316 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           }
           console.log({ 'Error reading Messages': error });
         });
-      if (mRecs && mRecs.hasOwnProperty('Items')) {
-        totalOutboundCount += mRecs.Count;
-        for (let x = 0; x < mRecs.Items.length; x++) {
-          totalOutboundProcessed++;
-          let m = mRecs.Items[x];
-          // let language = m.language || 'EN-US';
-          let language = 'EN-US';
-          // convert inline link to an attachment
-          let hLink;
-          if (m.content.current[language].hasOwnProperty('text') && m.content.current[language].text) {
-            hLink = extract(m.content.current[language].text, 'http', ' ', {
-              fuzzyRight: true,  // allow end-of-string as a right delimeter 
-              includeLeft: true,  // return the left delimeter
-            });
-          }
-          else { continue; }
-          if (hLink) {
-            if (!m.content.current.attachments) { m.content.current.attachments = []; }
-            m.content.current.attachments.push(hLink);
-            m.content.current[language].text = m.content.current[language].text.replace(hLink, '');
-          }
-          // is this another message with the same thread_id AND the same message text?
-          // if so, and this recipient_list to the previous one(s)
-          const foundAt = outbound_threads.findIndex(t => {
-            return ((t.thread_id === m.thread_id) && (t.message_text === m.content.current[language].text));
-          });
-          let this_message;
-          let message_index;
-          if (foundAt === -1) {
-            message_index = messageArray.length;
-            outbound_threads.push({
-              index: message_index,
-              thread_id: m.thread_id,
-              message_text: m.content.current[language].text
-            });
-            this_message = {
-              inOut: 'out',
-              delete_flag: m.delete_flag,
-              person_id: m.deliver_to,
-              patient_name: m.author.author_name,
-              sender_name: m.author.author_name,
-              sender_id: m.author.author_id,
-              message_id: m.composite_key,
-              posted_time: m.created_time,
-              deliver_time: m.created_time,
-              common_key: m.composite_key,
-              thread_id: m.thread_id,
-              replyToList: m.reply_to,
-              recipientList: m.recipient_list,
-              message_content: m.content.current[language].text,
-              attachments: m.content.current.attachments,
-              subject: m.subject_line,
-              message_text: m.content.current[language].text
-            };
-          }
-          else {
-            message_index = outbound_threads[foundAt].index;
-            messageArray[message_index].recipientList = Object.assign({},
-              messageArray[message_index].recipientList,
-              m.recipient_list
-            );
-            messageArray[message_index].posted_time = Math.min(m.created_time, messageArray[message_index].posted_time);
-            this_message = messageArray[message_index];
-          }
-          let methodList = {};
-          for (let address of Object.keys(this_message.recipientList)) {
-            const aType = address.split('.')[1];
-            let a2Type = aType.includes('email')
-              ? 'email'
-              : ((aType === 'sms')
-                ? 'text'
-                : ((aType === 'voice') ? 'phone' : 'ava')
-              );
-            if (!methodList.hasOwnProperty(a2Type)) {
-              methodList[a2Type] = 1;
-            }
-            else {
-              methodList[a2Type]++;
-            }
-          }
-          let rArray = [];
-          Object.keys(this_message.recipientList).forEach(r => {
-            const p = r.split('.')[0];
-            if (!rArray.includes(p) && (p !== pPerson)) {
-              rArray.push(p);
-            }
-          });
-          this_message.partner_id = rArray;
-          this_message.deliver_method = listFromArray(Object.keys(methodList)).toLowerCase();
-
-          this_message.toLine = `Me -> `;
-
-          if (rArray.length === 1) {
-            const this_recipient = Object.values(m.recipient_list)[0];
-            this_message.sender_image = await getImage(rArray[0]);
-            this_message.toLine += (`${this_recipient.name.first} ${this_recipient.name.last}`).trim();
-            this_message.target = rArray;
-          }
-          else if ((rArray.length === 0) && (Object.keys(this_message.recipientList).length > 0)) {
-            this_message.toLine += `Myself only`;
-            this_message.target = [pPerson];
-            this_message.sender_image = '';
-          }
-          else {
-            this_message.toLine += `${rArray.length} people`;
-            this_message.target = rArray;
-            this_message.sender_image = '';
-          }
-          messageArray[message_index] = this_message;
-        };
-        let presorted = messageArray.sort((a, b) => {
-          return ((a.deliver_time > b.deliver_time) ? -1 : 1);
-        });
-        let finalSort = [];
-        let skipMe = [];
-        presorted.forEach((this_message, mNdx) => {
-          // this clumps all the same thread_ids together behind the most recent one
-          if (!skipMe.includes(this_message.thread_id)) {
-            finalSort.push(this_message);  // this is the message on the thread that was most recent
-            skipMe.push(this_message.thread_id);   // dont process this thread again in the main loop
-            for (let n = mNdx + 1; n < presorted.length; n++) {
-              if (presorted[n].thread_id === this_message.thread_id) {
-                if (presorted[n].common_key.endsWith('hold')) {
-                  finalSort[finalSort.length - 1].wasHeld = presorted[n].posted_time;
-                  finalSort[finalSort.length - 1].held_messageKey = presorted[n].common_key.split('~D')[0];
-                }
-                else {
-                  finalSort.push(presorted[n]);
-                }
-              }
-            }
-          }
-        });
-        updateReactData({
-          statusMessage: `Processing outbound - ${totalOutboundProcessed} of ${totalOutboundCount}`
-        }, false);
-        setMessageList(finalSort);
-        if (mRecs.LastEvaluatedKey) {
-          queryObj.ExclusiveStartKey = mRecs.LastEvaluatedKey;
-        }
-        else {
-          delete queryObj.ExclusiveStartKey;
-        }
+      if (inRecs.LastEvaluatedKey) {
+        queryObj.ExclusiveStartKey = inRecs.LastEvaluatedKey;
       }
       else {
         delete queryObj.ExclusiveStartKey;
       }
-      loopCount++;
-    } while (queryObj.ExclusiveStartKey && (loopCount < 10));
+      if (recordExists(inRecs)) {
+        if (queryObj.ExclusiveStartKey) {
+          await processDeliveryRecs(inRecs.Items, '', person_id);
+        }
+      }
+    } while (queryObj.ExclusiveStartKey);
+    // inRecs will have data in it from the last query round above; that will be concat'ed to outRecs on the first processing run below
+
+    // Get messages from me
+    let outRecs;
+    queryObj = {
+      KeyConditionExpression: 'sent_from = :p AND created_time between :s and :e',
+      FilterExpression: 'record_type = :t',
+      ExpressionAttributeValues: {
+        ':p': person_id,
+        ':s': start_time.toString(),
+        ':e': end_time.toString(),
+        ':t': 'delivery',
+      },
+      TableName: "TheseusMessages",
+      IndexName: 'sent_from-index',
+      ScanIndexForward: false,
+    };
+    do {
+      outRecs = await dbClient
+        .query(queryObj)
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+          }
+          console.log({ 'Error reading Messages': error });
+        });
+      if (outRecs && outRecs.LastEvaluatedKey) {
+        queryObj.ExclusiveStartKey = outRecs.LastEvaluatedKey;
+      }
+      else {
+        delete queryObj.ExclusiveStartKey;
+      }
+      if (recordExists(outRecs)) {
+        await processDeliveryRecs((outRecs.Items.concat(inRecs.Items || [])), '', person_id);
+        inRecs = {};
+      }
+      else if (recordExists(inRecs)) {
+        await processDeliveryRecs(inRecs.Items, '', person_id);
+        inRecs = {};
+      }
+    } while (queryObj.ExclusiveStartKey);
+  }
+
+  async function processDeliveryRecs(deliveryRecs, inOut, my_id) {
+    let totalProcessed = 0;
+    let totalCount = deliveryRecs.length;
+    for (let this_deliveryRec of deliveryRecs) {
+      totalProcessed++;
+      if (this_deliveryRec.sent_from === this_deliveryRec.deliver_to) {    // a message to myself?  ignore...
+        continue;
+      }
+      inOut = ((this_deliveryRec.sent_from === my_id) ? 'out' : 'in');
+      // threads is {[<thread_id>]: {last_update: <>, delete_flag: <t/f>, messages: []}}, {[<thread_id>]: {}}...]
+      // threads[n].messages is [{message_text: <>, last_update: <>, attachments: [], sent_time: <>, author_id: <>, author_name: <>, author_image: <>, inOut: <in/out> ,recipients: []}, {}...]
+      // threads[n].messages[m].recipients is [{recipient_id: <>, recipient_name: <>, wasHeld: <t/f>, methods: {}}, {}...] 
+      // YOU ARE HERE -> threads[n].messages[m].recipients[o].methods is {[method]: {last_update_time: <>, result: <>}}, {[method]: {}}...]
+      if (!(this_deliveryRec.thread_id in reactData.threads)) {  // does this thread exist yet?
+        reactData.threads[this_deliveryRec.thread_id] = {
+          last_update: 0,
+          delete_flag: false,
+          messages: []
+        };
+      }
+      let message_number = -1;
+      let message_added = false;
+      if (reactData.threads[this_deliveryRec.thread_id].messages.length > 0) {
+        message_number = reactData.threads[this_deliveryRec.thread_id].messages.findIndex(this_message => {
+          return ((this_message.author_id === this_deliveryRec.author.author_id) && (this_message.message_text === this_deliveryRec.content.current['EN-US'].text));
+        });
+      };
+      if (message_number === -1) {
+        // convert inline link to an attachment by extracting all text after (and including http:)
+        let hLink = extract(this_deliveryRec.content.current['EN-US'].text, 'http', ' ', {
+          fuzzyRight: true,  // allow end-of-string as a right delimeter 
+          includeLeft: true,  // return the left delimeter
+        });
+        if (hLink) {
+          if (!this_deliveryRec.content.current.attachments) {
+            this_deliveryRec.content.current.attachments = [hLink];
+          }
+          else {
+            this_deliveryRec.content.current.attachments.push(hLink);
+          }
+          this_deliveryRec.content.current['EN-US'].text = this_deliveryRec.content.current['EN-US'].text.replace(hLink, 'the attachment');
+        }
+        if (this_deliveryRec.author.author_name === 'AVA notifications') {
+          let sRec = await getPerson(this_deliveryRec.author.author_id);
+          if (sRec && sRec.name) {
+            this_deliveryRec.author.author_name = (`${sRec.name.first} ${sRec.name.last}`).trim();
+          }
+        }
+        if (!reactData.imageTable.hasOwnProperty(this_deliveryRec.author.author_id)) {
+          reactData.imageTable[this_deliveryRec.author.author_id] = await getImage(this_deliveryRec.author.author_id);
+        }
+        reactData.threads[this_deliveryRec.thread_id].messages.push({
+          message_text: this_deliveryRec.content.current['EN-US'].text,
+          subject: this_deliveryRec.subject_line,
+          last_update: 0,
+          attachments: this_deliveryRec.content.current.attachments,
+          composite_key: this_deliveryRec.composite_key,
+          inOut,
+          my_id,
+          sent_time: this_deliveryRec.created_time,
+          author_id: this_deliveryRec.author.author_id,
+          author_name: this_deliveryRec.author.author_name,
+          author_image: reactData.imageTable[this_deliveryRec.author.author_id],
+          reply_to: [],
+          allowReplyAll: this_deliveryRec.allowReplyAll || false,
+          status_urgent: this_deliveryRec.urgency.startsWith('urg'),
+          status_with_attachment: Boolean(this_deliveryRec.content.current.attachments && (this_deliveryRec.content.current.attachments.length > 0)),
+          partner_id: [],
+          recipients: [],
+          other_recipients: []   // these are IDs of people who - on an inbound message to me - also received the same message
+        });
+        message_added = true;
+        message_number = reactData.threads[this_deliveryRec.thread_id].messages.length - 1;
+      }
+      let recipient_number = -1;
+      if (reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.length > 0) {
+        recipient_number = reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.findIndex(this_recipient => {
+          return ((this_recipient.recipient_id === this_deliveryRec.deliver_to));
+        });
+      };
+      if (recipient_number === -1) {
+        if (inOut === 'in') {
+          reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.push(this_deliveryRec.author.author_id);
+          // if it is INBOUND to me, I won't have any information about other recipients (people, other than me, that also received this message)
+          // to get that information, we need to look at other inbound messages on the same thread.
+          // we want other messages that have the same author and text and thread.  We'll get a list of recipient_ids and load them in the partner_id area
+          /*
+          reactData.threads[this_deliveryRec.thread_id].messages[message_number].other_recipients = await getRecipientList({
+            my_id,
+            thread_id: this_deliveryRec.thread_id,
+            author_id: this_deliveryRec.author.author_id,
+            message_text: reactData.threads[this_deliveryRec.thread_id].messages[message_number].message_text
+          });
+          */
+        }
+        else {
+          reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.push(this_deliveryRec.deliver_to);
+        }
+        recipient_number = reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.push({
+          recipient_id: this_deliveryRec.deliver_to,
+          recipient_name: (`${this_deliveryRec.recipient_list.name.first} ${this_deliveryRec.recipient_list.name.last}`).trim(),
+          wasHeld: false,
+          status_blocked: false,
+          status_redirected: false,
+          status_with_rules: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.rule_used),
+          status_not_og: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.not_original_recipient),
+          heldUntil: 0,
+          methods: {}
+        }) - 1;
+      }
+      let this_method = standardizeMethod(this_deliveryRec.deliver_method);
+      if (this_method === 'held') {
+        reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].wasHeld = true;
+        reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].heldUntil = this_deliveryRec.recipient_list.holdUntil;
+        if (this_deliveryRec.recipient_list.hold_reason === 'blocked') {
+          reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_blocked = true;
+        }
+        if (this_deliveryRec.recipient_list.hold_reason === 'replaced') {
+          reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_redirected = true;
+        }
+      }
+      let this_result = this_deliveryRec.results[0];
+      this_deliveryRec.last_update = Number(this_result.posted_time || this_deliveryRec.created_time);
+      if (((this_method !== 'held') && (this_method !== 'AVA'))
+        || (Object.keys(reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].methods).length === 0)) {
+        if (reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].methods) {
+          delete reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].methods['held'];
+          delete reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].methods['AVA'];
+        }
+        reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].methods[this_method] = {
+          last_update_time: (this_result.posted_time || this_deliveryRec.created_time).toString(),
+          result: this_result.result,
+          composite_key: this_deliveryRec.composite_key,
+        };
+      }
+      if (this_deliveryRec.last_update > reactData.threads[this_deliveryRec.thread_id].messages[message_number].last_update) {
+        reactData.threads[this_deliveryRec.thread_id].messages[message_number].last_update = this_deliveryRec.last_update;
+        if (this_deliveryRec.last_update > reactData.threads[this_deliveryRec.thread_id].last_update) {
+          reactData.threads[this_deliveryRec.thread_id].last_update = this_deliveryRec.last_update;
+        }
+      }
+      if ((this_deliveryRec.delete_flag) && this_deliveryRec.deleted_by && (this_deliveryRec.deleted_by.includes(state.session.user_id))) {
+        reactData.threads[this_deliveryRec.thread_id].delete_flag = true;
+      }
+      if (this_deliveryRec.reply_to) {
+        reactData.threads[this_deliveryRec.thread_id].messages[message_number].reply_to.push(this_deliveryRec.reply_to);
+      }
+      // re-sort messages in this thread (if necessary)
+      if (message_added && (reactData.threads[this_deliveryRec.thread_id].messages.length > 1)) {
+        reactData.threads[this_deliveryRec.thread_id].messages.sort((a, b) => {
+          return ((a.sent_time > b.sent_time) ? -1 : 1);
+        });
+      }
+      // every 50 records, send info back
+      if (((totalProcessed % 50) === 0) || (totalProcessed >= totalCount)) {
+        let sorted_threads = Object.keys(reactData.threads).sort((a, b) => {
+          return ((reactData.threads[a].last_update > reactData.threads[b].last_update) ? -1 : 1);
+        });
+        updateReactData({
+          statusMessage: `Processing inbound - ${totalProcessed} of ${totalCount}`,
+          threads: reactData.threads,
+          sorted_threads
+        }, true);
+      }
+    }
+  }
+
+  function makeRecipientLines(this_recipient) {
+    let response = [];
+    let this_line = `${this_recipient.recipient_name}`;
+    if (Object.keys(this_recipient.methods).length > 1) {
+      response.push(this_line);
+      this_line = '';
+    }
+    for (let this_method in this_recipient.methods) {
+      this_line += ` via ${this_method} - ${this_recipient.methods[this_method].result} ${makeDate(this_recipient.methods[this_method].last_update_time).relative}`;
+      response.push(this_line);
+      this_line = '';
+    }
+    return response;
+  }
+
+  function makeMethodLine(this_message) {
+    let response = [];
+    let wasHeld = false;
+    let heldUntil = false;
+    for (let this_recipient of this_message.recipients) {
+      if (this_recipient.wasHeld) {
+        wasHeld = true;
+        heldUntil = this_recipient.heldUntil;
+      }
+      for (let this_method in this_recipient.methods) {
+        if ((this_method !== 'hold') && (this_method !== 'AVA') && (!response.includes(this_method))) {
+          response.push(this_method);
+        }
+      }
+    }
+    if (response.length === 0) {
+      if (wasHeld) {
+        return `Holding until ${makeDate(heldUntil).relative}`;
+      }
+      else {
+        return 'AVA';
+      }
+    }
+    else {
+      return `${wasHeld ? 'Held, then ' : ''}${listFromArray(response)}`;
+    }
+  }
+
+  function makeToLine(this_thread, message_index) {
+    let response;
+    if (reactData.threads[this_thread].messages[message_index].inOut === 'out') {
+      response = `Me -> `;
+      if (reactData.threads[this_thread].messages[message_index].recipients.length < 4) {
+        response += listFromArray(reactData.threads[this_thread].messages[message_index].recipients.map(r => { return r.recipient_name; }));
+      }
+      else {
+        response += `${reactData.threads[this_thread].messages[message_index].recipients.length} people`;
+      }
+    }
+    else {
+      response = `${reactData.threads[this_thread].messages[message_index].author_name} -> `;
+      if (reactData.threads[this_thread].messages[message_index].other_recipients.length < 3) {
+        response += listFromArray(reactData.threads[this_thread].messages[message_index].other_recipients.concat(['Me']));
+      }
+      else {
+        response += `Me and ${reactData.threads[this_thread].messages[message_index].other_recipients.length} other people`;
+      }
+    }
+    return response;
+  }
+
+  async function initialize() {
+    // my Image
+    updateReactData({
+      myImage: await getImage(pPerson),
+      myName: await makeName(pPerson)
+    }, true);
+    let nowTime = new Date().getTime();
+    let loop_until;
+    if (!reactData.start_time) {
+      loop_until = nowTime - (30 * oneDay);
+    }
+    else {
+      loop_until = reactData.start_time;
+    }
+    let this_start = nowTime - (2 * oneDay);
+    let this_end = nowTime + oneDay;
+    do {
+      await allMessages({ person_id: pPerson, start_time: this_start, end_time: this_end });
+      this_end = this_start;
+      this_start -= (7 * oneDay);
+    } while (this_start > loop_until);
     start();  // idle timer
     updateReactData({
       lastReloadTime: new Date(),
@@ -924,12 +902,78 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     }, true);
   }
 
+  function standardizeMethod(raw_method) {
+    if (raw_method === 'email') {
+      return 'e-Mail';
+    }
+    else if (raw_method === 'sms') {
+      return 'text';
+    }
+    else if (raw_method === 'voice') {
+      return 'phone';
+    }
+    else if (raw_method === 'hold') {
+      return 'held';
+    }
+    else {
+      return 'AVA';
+    }
+  }
+
   React.useEffect(() => {
     initialize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [pPerson, pClient]);  // eslint-disable-line react-hooks/exhaustive-deps
 
+
+  function okToShow(this_thread, this_messageIndex) {
+    let response = true;
+    status_filter_result = false;
+    if (reactData.personFilter) {
+      response = reactData.threads[this_thread].messages[this_messageIndex].partner_id.includes(reactData.personFilter);
+    }
+    else if (reactData.messageFilter) {
+      response = false;
+      if (reactData.singleFilterDigit) {
+        response = true;
+      }
+      else if (reactData.threads[this_thread].messages[this_messageIndex].message_text.toLowerCase().includes(reactData.messageFilterLower)) {
+        response = true;
+      }
+      else if (reactData.threads[this_thread].messages[this_messageIndex].subject.toLowerCase().includes(reactData.messageFilterLower)) {
+        response = true;
+      }
+      else if (reactData.threads[this_thread].messages[this_messageIndex].author_name.toLowerCase().includes(reactData.messageFilterLower)) {
+        response = true;
+      }
+      else if (reactData.threads[this_thread].messages[this_messageIndex].recipients.some(r => {
+        return r.recipient_name.inculdes(reactData.messageFilterLower);
+      })) {
+        response = true;
+      }
+    }
+    else if (reactData.statusFilter) {
+      if (reactData.threads[this_thread].messages[this_messageIndex].hasOwnProperty(`status_${reactData.statusFilter}`)) {
+        response = reactData.threads[this_thread].messages[this_messageIndex][`status_${reactData.statusFilter}`];
+      }
+      else {
+        response = (reactData.threads[this_thread].messages[this_messageIndex].recipients.some(r => {
+          if (r.hasOwnProperty(`status_${reactData.statusFilter}`)) {
+            return r[`status_${reactData.statusFilter}`];
+          }
+          else {
+            return false;
+          }
+        }));
+      }
+      status_filter_result = response;
+    }
+    else if (reactData.threads[this_thread].delete_flag) {
+      response = reactData.showDeleted;
+    }
+    return response;
+  }
 
   // ******************
 
@@ -940,7 +984,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       p={2}
       fullScreen
     >
-      {(messageList || reactData.newMessageMode) &&
+      {(reactData.threads || reactData.newMessageMode) &&
         <React.Fragment>
           <Box display='flex'
             key={'header_row'}
@@ -962,7 +1006,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
               </DialogContentText>
               <TextField
                 id='List Filter'
-                value={message_filter}
+                value={reactData.messageFilter || ''}
                 onChange={handleChangeMessageFilter}
                 className={classes.freeInput}
                 label={'Filter/Search'}
@@ -995,547 +1039,493 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                 marginLeft={'16px'}
                 marginRight={'16px'}
                 borderRadius={'30px'}
+                padding={'16px'}
                 border={2}
                 borderColor={reactData.newUrgentMessage ? 'red' : 'black'}
               >
                 <Box display='flex' flexDirection='column'>
-                  <Box
-                    display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                    key={'newMessage_r'}
-                    className={classes.listItem}
-                  >
+                  <Box display='flex'
+                    key={'newMessage_r2'}
+                    flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
                     <Box display='flex'
-                      key={'newMessage_r2'}
-                      flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
+                      key={'newMessage_c2b'}
+                      flexDirection='column'
+                      style={{
+                        flexGrow: 1
+                      }}
+                    >
                       <Box display='flex'
-                        key={'newMessage_c'}
-                        flexDirection='column'
-                        marginRight={'16px'}
-                        style={{ flexGrow: 1 }}
-                        justifyContent={'center'}
+                        key={'newMessage_r5'}
+                        flexDirection='row'
+                        style={{
+                          flexGrow: 1
+                        }}
                       >
                         <Box display='flex'
-                          key={'newMessage_r3'}
-                          flexDirection='row'>
+                          key={'newMessage_c3'}
+                          flexDirection='column'
+                          paddingTop='8px'
+                          style={{ flexGrow: 1 }}
+                        >
                           <Box display='flex'
-                            key={'newMessage_c2'}
-                            flexDirection='column'
-                            style={{
-                              flexGrow: 1
+                            key={'newMessage_r6names'}
+                            flexDirection='row'
+                            flexWrap={'wrap'}
+                            alignContent={'center'}
+                            onClick={() => {
+                              updateReactData({
+                                newMessageRecipients: [],
+                                showQuickSearch: true,
+                                selections: reactData.newMessageRecipients
+                              }, true);
                             }}
                           >
+                            <Typography
+                              style={AVATextStyle({ size: 1, bold: true })}
+                              key={`showNames__${(reactData.newMessageRecipients?.length || 0) + (reactData.selections?.length || 0)}`}
+                            >
+                              {((reactData.newMessageRecipients.length > 4) || ((reactData.selections.length > 4) && !reactData.showReplyToSearch))
+                                ? (`Me -> ${reactData.selectedPeople_count || reactData.selections.length} recipients`)
+                                : ((reactData.newMessageRecipients.length > 0) || ((reactData.selections.length > 0) && !reactData.showReplyToSearch))
+                                  ? `Me -> ${listFromArray(((reactData.newMessageRecipients.length > 0)
+                                    ? reactData.newMessageRecipients
+                                    : reactData.selections)
+                                    .map(r => (r.person_name || r.group_name || reactData.preferred_recipients?.[r.rIndex]?.objText)),
+                                    { max: { length: 4, words: 'recipients' } })}`
+                                  : 'Me ->'
+                              }
+                            </Typography>
+                            <Typography
+                              style={Object.assign({}, { display: 'flex', textWrap: 'nowrap', alignSelf: 'flex-end' }, AVATextStyle({ margin: { left: 1 }, size: 0.8 }))}
+                            >
+                              {(!(reactData.newMessageRecipients.length === 0) && (!reactData.selections || reactData.showReplyToSearch))
+                                ? '(Tap here to select Recipients)'
+                                : `(Tap here to add/change Recipients)`
+                              }
+                            </Typography>
+                          </Box>
+                          <Typography
+                            style={AVATextStyle({ size: 0.8, margin: { bottom: 1 } })}
+                          >
+                            {`${makeReadableTime(new Date().getTime())}`}
+                          </Typography>
+                          <TextField
+                            id='Message_subject_new'
+                            multiline
+                            autoComplete='off'
+                            style={AVATextStyle({ size: 1.2, bold: true, margin: {right: 1.5} })}
+                            onChange={async (event) => {
+                              updateReactData({
+                                newMessageSubject: event.target.value
+                              }, true);
+                            }}
+                            defaultValue={reactData.newMessageSubject}
+                            helperText={'Subject'}
+                          />
+                        </Box>
+                        {reactData.attachments_to_send && reactData.attachments_to_send.map((aLine, aIndex) => (
+                          <a
+                            href={aLine}
+                            key={`attach-${aIndex}-href`}
+                            target='_blank'
+                            rel='noopener noreferrer'
+                            style={{ color: 'green', textDecoration: 'underline' }}>
+                            <AttachmentIcon />
+                          </a>
+                        ))}
+                      </Box>
+                      <TextField
+                        id='MessageText_new'
+                        multiline
+                        autoComplete='off'
+                        style={AVATextStyle({ size: 1.2, bold: true, margin: { right: 1.5 } })}
+                        onBlur={async (event) => {
+                          let reactUpdObj = {
+                            newMessageText: event.target.value
+                          };
+                          if (event.target.value.length > 500) {
+                            reactUpdObj.warning = true;
+                            reactUpdObj.alert = {
+                              severity: 'warning',
+                              title: 'Message length',
+                              message: <div>Your message is {event.target.value.length.toLocaleString('en-US')} characters long.<br />
+                                Some text messaging networks limit message size to 500 characters.<br />
+                                You may send the message as is.  If you choose to do that, we will break the message into {Math.floor(event.target.value.length / 500) + 1} parts and send each part as a separate message for text message recipients.
+                                (All other recipients will receive the message as entered.)</div>,
+                            };
+                          }
+                          updateReactData(reactUpdObj, true);
+                        }}
+                        defaultValue={reactData.newMessageText}
+                        helperText={'Message Text'}
+                      />
+                      <Box display='flex'
+                        key={'newMessage_rNewBottom'}
+                        flexDirection='row'
+                      >
+                        <Box display='flex'
+                          key={'newMessage_c_reply'}
+                          flexDirection='column'
+                          style={{ marginLeft: '-10px' }}
+                          alignItems={'flex-end'}
+                          justifyContent={'flex-start'}
+                        >
+                          <Button
+                            className={AVAClass.AVAButton}
+                            style={((reactData.newMessageText.length > 0) && (reactData.newMessageRecipients.length > 0))
+                              ? { marginTop: '24px', backgroundColor: 'green', color: 'white' }
+                              : { marginTop: '24px', backgroundColor: 'white', color: 'green' }
+                            }
+                            size='small'
+                            disabled={(reactData.newMessageText.length === 0) || (reactData.newMessageRecipients.length === 0)}
+                            onClick={async () => {
+                              if (!reactData.warning) {
+                                await sendMessage();
+                                await initialize();
+                              }
+                            }}
+                            startIcon={<SendIcon className={classes.tightRight} size="small" />}
+                          >
+                            {'Send'}
+                          </Button>
+                        </Box>
+                        <Box display='flex'
+                          key={'newMessage_c_reply_text'}
+                          flexDirection='column'
+                          style={{ flexGrow: 1, marginRight: '-30px' }}
+                          alignItems={'flex-end'}
+                        >
+                          <Typography
+                            style={AVATextStyle({ size: 1 })}
+                            onClick={() => {
+                              updateReactData({
+                                replyToList: [],
+                                showReplyToSearch: true,
+                                selections: reactData.replyToList
+                              }, true);
+                            }}
+                          >
+                            {((reactData.replyToList.length > 0) || ((reactData.selections.length > 0) && !reactData.showQuickSearch))
+                              ? `Reply to: ${listFromArray(((reactData.replyToList.length > 0)
+                                ? reactData.replyToList
+                                : reactData.selections).map(r => r.person_name),
+                                { max: { length: 2, words: 'people' } })}`
+                              : 'Reply to: Me'
+                            }
+                          </Typography>
+                          <Typography
+                            style={AVATextStyle({ size: 1 })}
+                            onClick={() => {
+                              updateReactData({
+                                getAttachment: true
+                              }, true);
+                            }}
+                          >
+                            {'Add Attachment(s)'}
+                          </Typography>
+                          {(reactData.attachments_to_send.length > 0) &&
+                            <Typography
+                              style={AVATextStyle({ size: 1 })}
+                              onClick={() => {
+                                updateReactData({
+                                  attachments_to_send: []
+                                }, true);
+                              }}
+                            >
+                              {`Remove ${(reactData.attachments_to_send.length > 2)
+                                ? 'all attachments'
+                                : ((reactData.attachments_to_send.length === 2)
+                                  ? 'both attachments'
+                                  : 'the attachment'
+                                )}`}
+                            </Typography>
+                          }
+                          <Typography
+                            style={AVATextStyle({ size: 1 })}
+                            onClick={() => {
+                              updateReactData({
+                                newUrgentMessage: !reactData.newUrgentMessage
+                              }, true);
+                            }}
+                          >
+                            {(reactData.newUrgentMessage) ? 'Mark as not urgent' : 'Mark as urgent'}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Box>
+                    <DeleteIcon
+                      onClick={() => {
+                        updateReactData({
+                          newMessageRecipients: [],
+                          replyToList: [{ person_id: pPerson, person_name: 'Me' }],
+                          newMessageMode: false
+                        }, true);
+                      }}
+                    />
+                  </Box>
+                </Box>
+              </Box>
+            </Paper>
+          }
+          {(Object.keys(reactData.threads).length > 0) &&
+            <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
+              {reactData.sorted_threads.map((this_thread, thread_index) => (
+                reactData.threads[this_thread].messages.map((this_message, message_index) => (
+                  (okToShow(this_thread, message_index) &&
+                    <Box key={`${thread_index}_frag_${message_index}_${reactData.personFilter || ''}`}
+                      borderTop={((thread_index !== 0) && (this_thread !== last_displayed_thread)) ? 2 : 0}
+                      borderColor={'black'}
+                      onContextMenu={async (e) => {
+                        e.preventDefault();
+                      }}
+                    >
+                      <Box display='flex' flexDirection='column'>
+                        <Box
+                          display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                          key={`${thread_index}_r_${message_index}`}
+                          className={classes.listItem}
+                        >
+                          <Box display='flex'
+                            key={`${thread_index}_r2_${message_index}`}
+                            maxWidth={(reactData.isTiny ? '80%' : null)}
+                            flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'
+                          >
                             <Box display='flex'
-                              key={'newMessage_r4'}
-                              flexDirection='row'
-                              justifyContent={'space-between'}
+                              key={`${thread_index}_c_${message_index}`}
+                              flexDirection='column'
+                              style={{ flexGrow: 1 }}
+                              justifyContent={'center'}
                             >
                               <Box display='flex'
-                                key={'newMessage_c2a'}
+                                key={`${thread_index}_r3_${message_index}`}
                                 flexDirection='row'
-                                style={{
-                                  flexGrow: 1
-                                }}
                               >
                                 <Box display='flex'
-                                  key={'newMessage_c2b'}
+                                  key={`${thread_index}_r3a_${message_index}`}
+                                  flexDirection='row'
+                                  minWidth={'65px'}
+                                >
+                                  {(this_thread !== last_displayed_thread) &&
+                                    <Box
+                                      key={`${thread_index}_ibox_${message_index}`}
+                                      style={{ alignSelf: 'anchor-center' }}
+                                      onClick={() => {
+                                        updateReactData({
+                                          personFilter: this_message.partner_id[0]
+                                        }, true);
+                                      }}
+                                    >
+                                      <img
+                                        key={`${thread_index}_i_${message_index}`}
+                                        className={classes.imageArea}
+                                        alt={''}
+                                        onError={onImageError}
+                                        src={this_message.author_image}
+                                      />
+                                    </Box >
+                                  }
+                                </Box>
+                                <Box display='flex'
+                                  key={`${thread_index}_c2b_${message_index}`}
                                   flexDirection='column'
                                   style={{
+                                    maxWidth: (reactData.isTiny ? '70%' : null),
                                     flexGrow: 1
                                   }}
                                 >
                                   <Box display='flex'
-                                    key={'newMessage_r5'}
+                                    key={`${thread_index}_r5_${message_index}`}
                                     flexDirection='row'
                                     style={{
                                       flexGrow: 1
                                     }}
                                   >
                                     <Box display='flex'
-                                      key={'newMessage_c3'}
+                                      key={`${thread_index}_c3_${message_index}`}
                                       flexDirection='column'
-                                      paddingTop='8px'
                                       style={{ flexGrow: 1 }}
                                     >
-                                      <Box display='flex'
-                                        key={'newMessage_r6names'}
-                                        flexDirection='row'
-                                        flexWrap={'wrap'}
-                                        alignContent={'center'}
-                                        onClick={() => {
-                                          updateReactData({
-                                            newMessageRecipients: [],
-                                            linkedPersonFilter: '',
-                                            showQuickSearch: true,
-                                            selections: reactData.newMessageRecipients
-                                          }, true);
-                                        }}
-                                      >
-                                        <Typography
-                                          style={AVATextStyle({ size: 1, bold: true })}
-                                          key={`showNames__${reactData.newMessageRecipients.length + reactData.selections.length}`}
-                                        >
-                                          {((reactData.newMessageRecipients.length > 4) || ((reactData.selections.length > 4) && !reactData.showReplyToSearch))
-                                            ? (`Me -> ${reactData.selectedPeople_count || reactData.selections.length} recipients`)
-                                            : ((reactData.newMessageRecipients.length > 0) || ((reactData.selections.length > 0) && !reactData.showReplyToSearch))
-                                              ? `Me -> ${listFromArray(((reactData.newMessageRecipients.length > 0)
-                                                ? reactData.newMessageRecipients
-                                                : reactData.selections)
-                                                .map(r => (r.person_name || r.group_name || reactData.preferred_recipients[r.rIndex].objText)),
-                                                { max: { length: 4, words: 'recipients' } })}`
-                                              : 'Me ->'
-                                          }
-                                        </Typography>
-                                        <Typography
-                                          style={Object.assign({}, { display: 'flex', textWrap: 'nowrap', alignSelf: 'flex-end' }, AVATextStyle({ margin: { left: 1 }, size: 0.8 }))}
-                                        >
-                                          {(!(reactData.newMessageRecipients.length === 0) && (!reactData.selections || reactData.showReplyToSearch))
-                                            ? '(Tap here to select Recipients)'
-                                            : `(Tap here to add/change Recipients)`
-                                          }
-                                        </Typography>
-                                      </Box>
+                                      {(this_thread !== last_displayed_thread) &&
+                                        <React.Fragment>
+                                          <Typography
+                                            style={AVATextStyle({ size: 1, bold: true })}
+                                          >
+                                            {makeSubject(this_thread, message_index)}
+                                          </Typography>
+                                        </React.Fragment>
+                                      }
                                       <Typography
-                                        style={AVATextStyle({ size: 0.8, margin: { bottom: 1 } })}
+                                        style={AVATextStyle({ size: 0.8, bold: true, color: (status_filter_result ? 'red' : null) })}
                                       >
-                                        {`${makeReadableTime(new Date().getTime())}`}
+                                        {makeToLine(this_thread, message_index)}
                                       </Typography>
-                                      <React.Fragment>
-                                        <TextField
-                                          id='Message_subject_new'
-                                          multiline
-                                          autoComplete='off'
-                                          style={AVATextStyle({ size: 1.2, bold: true })}
-                                          onChange={async (event) => {
-                                            updateReactData({
-                                              newMessageSubject: event.target.value
-                                            }, true);
-                                          }}
-                                          defaultValue={reactData.newMessageSubject}
-                                          helperText={'Subject'}
-                                        />
-                                      </React.Fragment>
-
+                                      <Typography
+                                        style={AVATextStyle({ size: 0.8 })}
+                                      >
+                                        {`${makeReadableTime(this_message.sent_time)} - ${makeMethodLine(this_message)}`}
+                                      </Typography>
                                     </Box>
-                                    {reactData.attachments_to_send && reactData.attachments_to_send.map((aLine, aIndex) => (
-                                      <a
-                                        href={aLine}
-                                        key={`attach-${aIndex}-href`}
-                                        target='_blank'
-                                        rel='noopener noreferrer'
-                                        style={{ color: 'green', textDecoration: 'underline' }}>
-                                        <AttachmentIcon />
-                                      </a>
-                                    ))}
                                   </Box>
-                                  <TextField
-                                    id='MessageText_new'
-                                    multiline
-                                    autoComplete='off'
-                                    style={AVATextStyle({ size: 1.2, bold: true })}
-                                    onBlur={async (event) => {
-                                      let reactUpdObj = {
-                                        newMessageText: event.target.value
-                                      };
-                                      if (event.target.value.length > 500) {
-                                        reactUpdObj.warning = true;
-                                        reactUpdObj.alert = {
-                                          severity: 'warning',
-                                          title: 'Message length',
-                                          message: <div>Your message is {event.target.value.length.toLocaleString('en-US')} characters long.<br />
-                                            Some text messaging networks limit message size to 500 characters.<br />
-                                            You may send the message as is.  If you choose to do that, we will break the message into {Math.floor(event.target.value.length / 500) + 1} parts and send each part as a separate message for text message recipients.
-                                            (All other recipients will receive the message as entered.)</div>,
-                                        };
-                                      }
-                                      updateReactData(reactUpdObj, true);
-                                    }}
-                                    defaultValue={reactData.newMessageText}
-                                    helperText={'Message Text'}
-                                  />
+                                  <Typography key={`prefLine-text`}
+                                    style={Object.assign({}, AVATextStyle({ size: ((message_index === 0) ? 1 : 0.9) }), { overflowWrap: 'anywhere', overflowY: 'auto' })}
+                                  >
+                                    {this_message.message_text}
+                                  </Typography>
                                 </Box>
                               </Box>
-                            </Box>
-
-                          </Box>
-
-
-                        </Box>
-
-                        <Box display='flex'
-                          key={'newMessage_rNewBottom'}
-                          flexDirection='row'>
-                          <Box display='flex'
-                            key={'newMessage_c_reply'}
-                            flexDirection='column'
-                            style={{ marginLeft: '-10px' }}
-                            alignItems={'flex-end'}
-                            justifyContent={'flex-start'}
-                          >
-                            <Button
-                              className={AVAClass.AVAButton}
-                              style={((reactData.newMessageText.length > 0) && (reactData.newMessageRecipients.length > 0))
-                                ? { marginTop: '24px', backgroundColor: 'green', color: 'white' }
-                                : { marginTop: '24px', backgroundColor: 'white', color: 'green' }
-                              }
-                              size='small'
-                              disabled={(reactData.newMessageText.length === 0) || (reactData.newMessageRecipients.length === 0)}
-                              onClick={async () => {
-                                if (!reactData.warning) {
-                                  await sendMessage();
-                                  await initialize();
-                                }
-                              }}
-                              startIcon={<SendIcon className={classes.tightRight} size="small" />}
-                            >
-                              {'Send'}
-                            </Button>
-                          </Box>
-                          <Box display='flex'
-                            key={'newMessage_c_reply_text'}
-                            flexDirection='column'
-                            style={{ flexGrow: 1, marginRight: '-30px' }}
-                            alignItems={'flex-end'}
-                          >
-                            <Typography
-                              style={AVATextStyle({ size: 1 })}
-                              onClick={() => {
-                                updateReactData({
-                                  replyToList: [],
-                                  linkedPersonFilter: '',
-                                  showReplyToSearch: true,
-                                  selections: reactData.replyToList
-                                }, true);
-                              }}
-                            >
-                              {((reactData.replyToList.length > 0) || ((reactData.selections.length > 0) && !reactData.showQuickSearch))
-                                ? `Reply to: ${listFromArray(((reactData.replyToList.length > 0)
-                                  ? reactData.replyToList
-                                  : reactData.selections).map(r => r.person_name),
-                                  { max: { length: 2, words: 'people' } })}`
-                                : 'Reply to: Me'
-                              }
-                            </Typography>
-                            <Typography
-                              style={AVATextStyle({ size: 1 })}
-                              onClick={() => {
-                                updateReactData({
-                                  getAttachment: true
-                                }, true);
-                              }}
-                            >
-                              {'Add Attachment(s)'}
-                            </Typography>
-                            {(reactData.attachments_to_send.length > 0) &&
-                              <Typography
-                                style={AVATextStyle({ size: 1 })}
-                                onClick={() => {
-                                  updateReactData({
-                                    attachments_to_send: []
-                                  }, true);
-                                }}
-                              >
-                                {`Remove ${(reactData.attachments_to_send.length > 2)
-                                  ? 'all attachments'
-                                  : ((reactData.attachments_to_send.length === 2)
-                                    ? 'both attachments'
-                                    : 'the attachment'
-                                  )}`}
-                              </Typography>
-                            }
-                            <Typography
-                              style={AVATextStyle({ size: 1 })}
-                              onClick={() => {
-                                updateReactData({
-                                  newUrgentMessage: !reactData.newUrgentMessage
-                                }, true);
-                              }}
-                            >
-                              {(reactData.newUrgentMessage) ? 'Mark as not urgent' : 'Mark as urgent'}
-                            </Typography>
-                          </Box>
-                        </Box>
-
-                      </Box>
-                      <DeleteIcon
-                        onClick={() => {
-                          updateReactData({
-                            newMessageRecipients: [],
-                            replyToList: [{ person_id: pPerson, person_name: 'Me' }],
-                            newMessageMode: false
-                          }, true);
-                        }}
-                      />
-                    </Box>
-
-                  </Box>
-                </Box>
-              </Box>
-            </Paper>
-          }
-          {(messageList.length > 0) &&
-            <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
-              <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                {rowsWritten = 0}
-              </Typography>
-              {messageList.map((this_item, index) => (
-                ((rowsWritten <= rowLimit)
-                  && ((!personFilter)
-                    || (personFilter && (this_item.partner_id.includes(personFilter))))
-                  && (!message_filter || filteredMessage(this_item, message_filter))
-                  && (!this_item.delete_flag || showDeleted)
-                  &&
-                  <Box key={this_item.person_id + 'frag' + index}
-                    borderTop={((index !== 0) && (this_item.thread_id !== messageList[index - 1].thread_id)) ? 2 : 0}
-                    borderColor={'black'}
-                    onContextMenu={async (e) => {
-                      e.preventDefault();
-                      console.log({ this_item });
-                      console.log(reactData.window_width);
-                    }}
-                  >
-                    <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                      {rowsWritten++}
-                    </Typography>
-                    <Box display='flex' flexDirection='column'>
-                      <Box
-                        display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                        key={this_item.message_id + 'r' + index}
-                        className={classes.listItem}
-                      >
-                        <Box display='flex'
-                          key={this_item.message_id + 'r2' + index}
-                          maxWidth={(reactData.isTiny ? '80%' : null)}
-                          flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'
-                        >
-                          <Box display='flex'
-                            key={this_item.message_id + 'c' + index}
-                            flexDirection='column'
-                            style={{ flexGrow: 1 }}
-                            justifyContent={'center'}
-                          >
-                            <Box display='flex'
-                              key={this_item.message_id + 'r3' + index}
-                              flexDirection='row'
-                            >
-                              <Box display='flex'
-                                key={this_item.left + 'r3a' + index}
-                                flexDirection='row'
-                                minWidth={'65px'}
-                              >
-                                {((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id))
-                                  &&
-                                  <Box
-                                    key={this_item.message_id + 'ibox' + index}
-                                    style={{ alignSelf: 'anchor-center' }}
-                                    onClick={() => {
-                                      setPersonFilter(this_item.partner_id[0]);
-                                    }}
+                              {reactData.expanded_composite_key === this_message.composite_key &&
+                                <Box
+                                  marginLeft={'65px'}
+                                >
+                                  <Typography
+                                    key={`history header`}
+                                    style={AVATextStyle({ size: 0.8, bold: true, margin: { top: 1 } })}
                                   >
-                                    <img
-                                      key={this_item.message_id + 'i' + index}
-                                      className={classes.imageArea}
-                                      alt={''}
-                                      onError={onImageError}
-                                      src={this_item.sender_image}
-                                    />
-                                  </Box >
-                                }
-                              </Box>
-                              <Box display='flex'
-                                key={this_item.message_id + 'c2b' + index}
-                                flexDirection='column'
-                                style={{
-                                  maxWidth: (reactData.isTiny ? '70%' : null),
-                                  flexGrow: 1
-                                }}
-                              >
-                                <Box display='flex'
-                                  key={this_item.message_id + 'r5' + index}
-                                  flexDirection='row'
-                                  style={{
-                                    flexGrow: 1
-                                  }}
-                                >
-                                  <Box display='flex'
-                                    key={this_item.message_id + 'c3' + index}
-                                    flexDirection='column'
-                                    style={{ flexGrow: 1 }}
-                                  >
-                                    {((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id)) &&
-                                      <React.Fragment>
-                                        <Typography
-                                          style={AVATextStyle({ size: 1, bold: true })}
-                                        >
-                                          {makeSubject(this_item.subject || this_item.message_text)}
-                                        </Typography>
-                                      </React.Fragment>
-                                    }
-                                    <Typography
-                                      style={AVATextStyle({ size: 0.8, bold: true })}
-                                    >
-                                      {this_item.toLine}
-                                    </Typography>
-                                    <Typography
-                                      style={AVATextStyle({ size: 0.8 })}
-                                    >
-                                      {`${makeReadableTime(this_item.posted_time || this_item.deliver_time)} - via ${this_item.deliver_method}`}
-                                    </Typography>
-                                  </Box>
-                                </Box>
-                                <Typography key={`prefLine-text`}
-                                  style={Object.assign({}, messageStyle(this_item, index), { overflowWrap: 'anywhere', overflowY: 'auto' })}
-                                >
-                                  {this_item.message_text}
-                                </Typography>
-                              </Box>
-                            </Box>
-
-                            {open[index] &&
-                              <Box
-                                marginLeft={'65px'}
-                              >
-                                <Typography
-                                  key={`history header`}
-                                  style={AVATextStyle({ size: 0.8, bold: true, margin: { top: 1 } })}
-                                >
-                                  {`Results`}
-                                </Typography>
-                                {messageResults && Object.keys(messageResults).sort((a, b) => {
-                                  return (messageResults[a].name > messageResults[b].name) ? 1 : -1;
-                                }).map((mObj, mIndex) => (
-                                  mObj && messageResults[mObj] &&
-                                  <React.Fragment key={`historyFrag-${mIndex}`}>
-                                    {messageResults[mObj].history.sort((a, b) => {
-                                      return (a.time > b.time) ? -1 : 1;
-                                    }).map((h, x) => (
+                                    {`Results`}
+                                  </Typography>
+                                  {(this_message.recipients.sort((a, b) => { return ((a.recipient_name > b.recipient_name) ? 1 : -1); })).map((this_recipient) => (
+                                    (makeRecipientLines(this_recipient)).map((this_line, result_index) => (
                                       <Typography
-                                        key={`prefLine-${mIndex}__${x}`}
-                                        style={AVATextStyle({ size: 0.8, margin: { left: 0 } })}
+                                        key={`prefLine-${message_index}_${result_index}`}
+                                        style={AVATextStyle({ size: 0.8, margin: { left: ((result_index === 0) ? 0 : 2) } })}
                                       >
-                                        {h.line}
+                                        {this_line}
                                       </Typography>
-                                    ))}
-                                  </React.Fragment>
+                                    ))
+                                  ))}
+                                  <Typography
+                                    key={`thread_id`}
+                                    style={AVATextStyle({ align: 'right', size: 0.6, margin: { top: 1 } })}
+                                  >
+                                    {`(Message ID ${this_message.composite_key.split('~D')[0]})`}
+                                  </Typography>
+                                </Box>
+                              }
+                            </Box>
+                          </Box>
+                          <Box display='flex'
+                            key={`options_r4col_${message_index}`}
+                            flexDirection='column'
+                            alignItems='center'
+                            style={{
+                            }}
+                          >
+                            {this_message.attachments &&
+                              <Box display='flex'
+                                key={`attachments_${message_index}`}
+                                flexDirection='row'
+                                style={{ marginBottom: '8px', marginTop: '8px' }}
+                              >
+                                {this_message.attachments.map((aLine, aIndex) => (
+                                  <a
+                                    href={aLine}
+                                    key={`attach_${message_index}-${aIndex}-href`}
+                                    target='_blank'
+                                    rel='noopener noreferrer'
+                                    style={{ color: 'inherit', textDecoration: 'underline' }}>
+                                    <AttachmentIcon />
+                                  </a>
                                 ))}
-                                <Typography
-                                  key={`thread_id`}
-                                  style={AVATextStyle({ align: 'right', size: 0.6, margin: { top: 1 } })}
-                                >
-                                  {`(Message ID ${messageResults[Object.keys(messageResults)[0]].composite_key.split('~D')[0]})`}
-                                </Typography>
                               </Box>
                             }
-                          </Box>
-                        </Box>
-                        <Box display='flex'
-                          key={`options_r4col_${index}`}
-                          flexDirection='column'
-                          alignItems='center'
-                          style={{
-                          }}
-                        >
-                          {this_item.attachments &&
                             <Box display='flex'
-                              key={`attachments_${index}`}
+                              key={`options_r5_${message_index}`}
                               flexDirection='row'
-                              style={{ marginBottom: '8px', marginTop: '8px' }}
+                              style={this_message.attachments ? { marginBottom: '8px', marginTop: '8px' } : {}}
                             >
-                              {this_item.attachments.map((aLine, aIndex) => (
-                                <a
-                                  href={aLine}
-                                  key={`attach_${index}-${aIndex}-href`}
-                                  target='_blank'
-                                  rel='noopener noreferrer'
-                                  style={{ color: 'inherit', textDecoration: 'underline' }}>
-                                  <AttachmentIcon />
-                                </a>
-                              ))}
-                            </Box>
-                          }
-                          <Box display='flex'
-                            key={`options_r5_${index}`}
-                            flexDirection='row'
-                            style={this_item.attachments ? { marginBottom: '8px', marginTop: '8px' } : {}}
-                          >
-                            {!open[index] ?
-                              <ExpandMoreIcon
-                                onClick={() => { toggleOpen({ index, this_item }); }}
-                              />
-                              :
-                              <ExpandLessIcon
-                                onClick={() => { toggleOpen({ index, this_item }); }}
-                              />}
-                            {((index === 0) || (this_item.thread_id !== messageList[index - 1].thread_id)) &&
-                              !reactData.viewOnly &&
-                              <React.Fragment>
-                                <ReplyIcon
-                                  onClick={async () => {
-                                    let newMessageRecipients = [];
-                                    let replyToList = [];
-                                    if (this_item.replyToList && this_item.replyToList.some(p => { return p !== pPerson; })) {
-                                      for (const this_recipient of this_item.replyToList) {
-                                        newMessageRecipients.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
-                                        replyToList.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
-                                      }
-                                    }
-                                    else {
-                                      for (let this_person of this_item.partner_id) {
-                                        newMessageRecipients.push({ person_id: this_person, person_name: await makeName(this_person) });
-                                      }
-                                      replyToList = [{ person_id: pPerson, person_name: 'Me' }];
-                                    }
+                              {reactData.expanded_composite_key !== this_message.composite_key ?
+                                <ExpandMoreIcon
+                                  onClick={() => {
                                     updateReactData({
-                                      newMessageRecipients,
-                                      replyToList,
-                                      newMessageThread: this_item.thread_id,
-                                      newMessageSubject: this_item.subject,
-                                      newMessageMode: true
+                                      expanded_composite_key: this_message.composite_key
                                     }, true);
                                   }}
                                 />
-                                <DeleteIcon
+                                :
+                                <ExpandLessIcon
                                   onClick={() => {
-                                    setConfirmMessage(`Delete message from ${this_item.patient_name || this_item.sender_name}?`);
-                                    setConfirmID(this_item.message_id);
-                                    setConfirmIndex(index);
-                                    setDeletePending(true);
-                                    setForceRedisplay(false);
+                                    updateReactData({
+                                      expanded_composite_key: false
+                                    }, true);
                                   }}
                                 />
-                              </React.Fragment>
-                            }
+                              }
+                              {(message_index === 0) &&
+                                !reactData.viewOnly &&
+                                <React.Fragment>
+                                  <ReplyIcon
+                                    onClick={async () => {
+                                      let newMessageRecipients = [];
+                                      let replyToList = [];
+                                      if (this_message.replyToList && this_message.replyToList.some(p => { return p !== pPerson; })) {
+                                        for (const this_recipient of this_message.replyToList) {
+                                          newMessageRecipients.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
+                                          replyToList.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
+                                        }
+                                      }
+                                      else {
+                                        for (let this_person of this_message.partner_id) {
+                                          newMessageRecipients.push({ person_id: this_person, person_name: await makeName(this_person) });
+                                        }
+                                        replyToList = [{ person_id: pPerson, person_name: 'Me' }];
+                                      }
+                                      updateReactData({
+                                        newMessageRecipients,
+                                        replyToList,
+                                        newMessageThread: this_message.thread_id,
+                                        newMessageSubject: this_message.subject,
+                                        newMessageMode: true
+                                      }, true);
+                                    }}
+                                  />
+                                  <DeleteIcon
+                                    onClick={() => {
+                                      updateReactData({
+                                        deletePending: {
+                                          composite_key: this_message.composite_key,
+                                          thread_id: this_thread
+                                        },
+                                        confirmMessage: `Delete this message?`
+                                      }, true);
+                                    }}
+                                  />
+                                </React.Fragment>
+                              }
+                            </Box>
                           </Box>
                         </Box>
                       </Box>
                     </Box>
-                  </Box>
-                )
+                  )
+                ))
               ))}
             </Paper>
           }
-          {(messageList.length === 0) &&
+          {(Object.keys(reactData.threads).length === 0) &&
             <Box display='flex' flex={4} justifyContent='center' alignItems='flex-start' overflow='hidden'>
               <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center', margin: { top: 3 } })} >
                 {(reactData.lastReloadTime === 0) ? `Loading!  Please wait...` : `You don't have any message activity yet!`}
               </Typography>
             </Box>
           }
-          {
-            deletePending &&
+          {reactData.deletePending &&
             <AVAConfirm
-              promptText={confirmMessage}
+              promptText={reactData.confirmMessage}
               onCancel={() => {
-                setDeletePending(false);
+                updateReactData({
+                  deletePending: false
+                }, true);
               }}
               onConfirm={() => {
-                handleRemoveMessage(confirmID, confirmIndex);
-                setDeletePending(false);
+                handleRemoveMessage(reactData.deletePending);
+                updateReactData({
+                  deletePending: false
+                }, true);
               }}
             >
             </AVAConfirm>
           }
-          {
-            reactData.getAttachment &&
+          {reactData.getAttachment &&
             <AVAUploadFile
               options={{
                 buttonText: ['Choose', 'Save & Continue'],
@@ -1632,17 +1622,24 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                   {!reactData.viewOnly &&
                     <Button
                       onClick={async () => {
-                        updateReactData({
-                          showQuickSearch: true,
-                          linkedPersonFilter: '',
-                          newMessageMode: true,
-                          newMessageSubject: '',
-                          newMessageText: '',
-                          newUrgentMessage: false,
-                          newMessageRecipients: [],
-                          replyToList: [{ person_id: pPerson, person_name: 'Me' }],
-                          newMessageThread: false,
-                        }, true);
+                      let reactUpd = {
+                        showQuickSearch: true,
+                        newMessageMode: true,
+                        newMessageSubject: '',
+                        newMessageText: '',
+                        newUrgentMessage: false,
+                        newMessageRecipients: [],
+                        replyToList: [{ person_id: pPerson, person_name: 'Me' }],
+                        newMessageThread: false,
+                        };
+                        if (reactData.personFilter) {
+                          reactUpd.newMessageRecipients = [{
+                            person_id: reactData.personFilter,
+                            person_name: await makeName(reactData.personFilter)
+                          }];
+                          reactUpd.showQuickSearch = false;
+                        }
+                        updateReactData(reactUpd, true);
                       }}
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'green', color: 'white' }}
@@ -1652,10 +1649,12 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                       {`New Message`}
                     </Button>
                   }
-                  {personFilter &&
+                  {reactData.personFilter &&
                     <Button
                       onClick={async () => {
-                        setPersonFilter(false);
+                        updateReactData({
+                          personFilter: false
+                        }, true);
                       }}
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'blue', color: 'white' }}
