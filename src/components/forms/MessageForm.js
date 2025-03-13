@@ -1,7 +1,6 @@
 import React from 'react';
 import useSession from '../../hooks/useSession';
 
-import { useSnackbar } from 'notistack';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { extract, dbClient, titleCase, listFromArray, cl, uuid, recordExists } from '../../util/AVAUtilities';
 import { AVATextStyle } from '../../util/AVAStyles';
@@ -208,6 +207,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     newMessageSubject: ((options && options.newMessage && options.subject) ? options.subject : ''),
     newMessageText: ((options && options.newMessage && options.messageText) ? options.messageText : ''),
     newMessageThread: false,
+    newMessageVMAlternative: false,
+    newMessageVMAltText: '',
     newUrgentMessage: false,
     preferred_recipients: [],
     replyToList: [{ person_id: pPerson, person_name: 'Me' }],
@@ -500,6 +501,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       },
       TableName: 'PostOffice'
     };
+    if (reactData.newMessageVMAlternative && reactData.newMessageVMAltText && (reactData.newMessageVMAltText.length > 0)) {
+      PostOfficeRec.Item.voice_mail = reactData.newMessageVMAltText;
+    }
     if (window.location.href.split('//')[1].slice(0, 1).toUpperCase() !== 'D') {
       PostOfficeRec.TableName = 'TestPostOffice';
     }
@@ -512,6 +516,52 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         goodPost = false;
       });
     if (goodPost) {
+      let nowTime = new Date().getTime();
+      reactData.threads[reactData.newMessageThread] = {
+        last_update: nowTime,
+        delete_flag: false,
+        messages: [
+          {
+            message_text: PostOfficeRec.Item.message_text,
+            subject: PostOfficeRec.Item.subject,
+            last_update: nowTime,
+            attachments: PostOfficeRec.Item.attachments,
+            composite_key: `T:${reactData.newMessageThread}~M:001~D:${recipient_key[0]}`,
+            inOut: 'out',
+            my_id: pPerson,
+            sent_time: nowTime,
+            author_id: pPerson,
+            author_name: await makeName(pPerson),
+            author_image: getImage(pPerson),
+            reply_to: PostOfficeRec.Item.reply_to,
+            allowReplyAll: PostOfficeRec.Item.allowReplyAll,
+            status_urgent: reactData.newUrgentMessage,
+            status_with_attachment: Boolean(reactData.attachments_to_send && (reactData.attachments_to_send.length > 0)),
+            partner_id: PostOfficeRec.recipient_key,
+            recipients: reactData.newMessageRecipients.map((r, x) => {
+              return {
+                recipient_id: r.person_id || r.group_id || reactData.preferred_recipients[r.rIndex].personList[0],
+                recipient_name: r.person_name || r.group_name || reactData.preferred_recipients[r.rIndex].objText,
+                wasHeld: false,
+                status_blocked: false,
+                status_redirected: false,
+                status_with_rules: false,
+                status_not_og: false,
+                heldUntil: 0,
+                methods: {
+                  'in Process': {
+                    last_update_time: nowTime,
+                    result: 'Recently sent',
+                    composite_key: `T:${reactData.newMessageThread}~M:001~D:${x}`
+                  }
+                }
+              };
+            }),
+            other_recipients: []   // these are IDs of people who - on an inbound message to me - also received the same message
+          }
+        ]
+      };
+      reactData.sorted_threads.unshift(reactData.newMessageThread);
       const recipientMessageText = `${listFromArray(((reactData.newMessageRecipients.length > 0)
         ? reactData.newMessageRecipients
         : reactData.selections)
@@ -519,6 +569,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         { max: { length: 4, words: 'recipients' } })}`;
       updateReactData({
         newMessageMode: false,
+        threads: reactData.threads,
+        sorted_threads: reactData.sorted_threads,
         selections: [],    // wip selections from quick search
         newMessageSubject: '',
         newMessageRecipients: [],
@@ -526,6 +578,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         replyToList: [{ person_id: pPerson, person_name: 'Me' }],
         newMessageText: '',
         newMessageThread: false,
+        newMessageVMAlternative: false,
+        newMessageVMAltText: '',
         attachments_to_send: [],
         forceReloadTime: new Date().getTime() + (1000 * 30),
         alert: {
@@ -1145,7 +1199,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                             id='Message_subject_new'
                             multiline
                             autoComplete='off'
-                            style={AVATextStyle({ size: 1.2, bold: true, margin: {right: 1.5} })}
+                            style={AVATextStyle({ size: 1.2, bold: true, margin: { right: 1.5 } })}
                             onChange={async (event) => {
                               updateReactData({
                                 newMessageSubject: event.target.value
@@ -1191,6 +1245,21 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                         defaultValue={reactData.newMessageText}
                         helperText={'Message Text'}
                       />
+                      {reactData.newMessageVMAlternative &&
+                        <TextField
+                          id='MessageText_altVM'
+                          multiline
+                          autoComplete='off'
+                          style={AVATextStyle({ size: 1.2, bold: true, margin: { right: 1.5 } })}
+                          onBlur={async (event) => {
+                            updateReactData({
+                              newMessageVMAltText: event.target.value
+                            }, true);
+                          }}
+                          defaultValue={reactData.newMessageVMAltText}
+                          helperText={'Alternative Message to use leaving a Voice Mail'}
+                        />
+                      }
                       <Box display='flex'
                         key={'newMessage_rNewBottom'}
                         flexDirection='row'
@@ -1282,6 +1351,18 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               }}
                             >
                               {(reactData.newUrgentMessage) ? 'Mark as not urgent' : 'Mark as urgent'}
+                            </Typography>
+                          }
+                          {reactData.administrative_account &&
+                            <Typography
+                              style={AVATextStyle({ size: 1 })}
+                              onClick={() => {
+                                updateReactData({
+                                  newMessageVMAlternative: !reactData.newMessageVMAlternative
+                                }, true);
+                              }}
+                            >
+                              {(reactData.newMessageVMAlternative) ? 'Remove VM Alt message' : 'Add VM Alt message'}
                             </Typography>
                           }
                         </Box>
@@ -1656,15 +1737,15 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                   {!reactData.viewOnly &&
                     <Button
                       onClick={async () => {
-                      let reactUpd = {
-                        showQuickSearch: true,
-                        newMessageMode: true,
-                        newMessageSubject: '',
-                        newMessageText: '',
-                        newUrgentMessage: false,
-                        newMessageRecipients: [],
-                        replyToList: [{ person_id: pPerson, person_name: 'Me' }],
-                        newMessageThread: false,
+                        let reactUpd = {
+                          showQuickSearch: true,
+                          newMessageMode: true,
+                          newMessageSubject: '',
+                          newMessageText: '',
+                          newUrgentMessage: false,
+                          newMessageRecipients: [],
+                          replyToList: [{ person_id: pPerson, person_name: 'Me' }],
+                          newMessageThread: false,
                         };
                         if (reactData.personFilter) {
                           reactUpd.newMessageRecipients = [{
