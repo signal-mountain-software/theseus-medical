@@ -184,6 +184,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
 
 
   const [reactData, setReactData] = React.useState({
+    administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
     alert: false,
     attachments_to_send: ((options && options.newMessage && options.attachmentList) ? options.attachmentList : []),
     confirmMessage: false,
@@ -259,8 +260,6 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
 
   const [rowLimit, setRowLimit] = React.useState(20);
   const scrollValue = 20;
-
-  const { enqueueSnackbar } = useSnackbar();
 
   function makeReadableTime(pJavaDate) {
     let dDate = new Date(Number(pJavaDate));
@@ -344,12 +343,19 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       })
       .promise()
       .catch(error => {
-        enqueueSnackbar(`AVA couldn't find that message.  Error is ${error}`,
-          { variant: 'error', persist: true }
-        );
-        return;
+        dRec = null;
       });
-    if (recordExists(dRec)) {
+    if (!recordExists(dRec)) {
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: 'Not Deleted',
+          message: `We couldn't retrieve the message you want to delete`,
+        }
+      }, true);
+      return;
+    }
+    else {
       let new_deleted_by = (dRec.Item.deleted_by || []);
       new_deleted_by.push(state.session.user_id);
       await dbClient
@@ -367,17 +373,15 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         })
         .promise()
         .catch(error => {
-          enqueueSnackbar(`AVA couldn't delete that message.  Error is ${error}`,
-            { variant: 'error', persist: true }
-          );
+          updateReactData({
+            alert: {
+              severity: 'error',
+              title: 'Not Deleted',
+              message: `We were unable to delete that message`,
+            }
+          }, true);
           return;
         });
-    }
-    else {
-      enqueueSnackbar(`AVA couldn't delete that message.`,
-        { variant: 'error', persist: true }
-      );
-      return;
     }
     delete reactData.threads[thread_id];
     let foundIt = reactData.sorted_threads.findIndex(t => { return t === thread_id; });
@@ -578,11 +582,25 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         .promise()
         .catch(error => {
           if (error.code === 'NetworkingError') {
-            enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+            updateReactData({
+              alert: {
+                severity: 'error',
+                title: 'No Internet',
+                message: `There is no internet connection`,
+              }
+            }, true);
           }
-          console.log({ 'Error reading Messages': error });
+          else {
+            updateReactData({
+              alert: {
+                severity: 'error',
+                title: 'Database problem',
+                message: `Error reading inbound Messages: ${error}`,
+              }
+            }, true);
+          }
         });
-      if (inRecs.LastEvaluatedKey) {
+      if (inRecs && inRecs.LastEvaluatedKey) {
         queryObj.ExclusiveStartKey = inRecs.LastEvaluatedKey;
       }
       else {
@@ -617,9 +635,23 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         .promise()
         .catch(error => {
           if (error.code === 'NetworkingError') {
-            enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+            updateReactData({
+              alert: {
+                severity: 'error',
+                title: 'No Internet',
+                message: `There is no internet connection`,
+              }
+            }, true);
           }
-          console.log({ 'Error reading Messages': error });
+          else {
+            updateReactData({
+              alert: {
+                severity: 'error',
+                title: 'Database problem',
+                message: `Error reading outbound Messages: ${error}`,
+              }
+            }, true);
+          }
         });
       if (outRecs && outRecs.LastEvaluatedKey) {
         queryObj.ExclusiveStartKey = outRecs.LastEvaluatedKey;
@@ -1240,16 +1272,18 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                 )}`}
                             </Typography>
                           }
-                          <Typography
-                            style={AVATextStyle({ size: 1 })}
-                            onClick={() => {
-                              updateReactData({
-                                newUrgentMessage: !reactData.newUrgentMessage
-                              }, true);
-                            }}
-                          >
-                            {(reactData.newUrgentMessage) ? 'Mark as not urgent' : 'Mark as urgent'}
-                          </Typography>
+                          {reactData.administrative_account &&
+                            <Typography
+                              style={AVATextStyle({ size: 1 })}
+                              onClick={() => {
+                                updateReactData({
+                                  newUrgentMessage: !reactData.newUrgentMessage
+                                }, true);
+                              }}
+                            >
+                              {(reactData.newUrgentMessage) ? 'Mark as not urgent' : 'Mark as urgent'}
+                            </Typography>
+                          }
                         </Box>
                       </Box>
                     </Box>
