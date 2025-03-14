@@ -495,9 +495,18 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   };
 
   const allSlotsFull = (this_event) => {
-    let response = (((this_event.type === 'seats') || (this_event.type === 'time'))
-      && (this_event.slotPattern.length <= Object.keys(this_event.slot_owners).length));
-    return response;
+    if ((this_event.type !== 'seats') || (this_event.type !== 'time')) {
+      return false;
+    }
+    else if (!this_event.slotPattern) {
+      return false;
+    }
+    else if (!this_event.slot_owners) {
+      return false;
+    }
+    else {
+      return (this_event.slotPattern.length <= Object.keys(this_event.slot_owners).length);
+    }
   };
 
   const allSlotsEmpty = (this_event) => {

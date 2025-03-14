@@ -963,7 +963,11 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     // remove all the slots
     if (goodUpdate) {
       if (eventSlotList && (eventSlotList.length > 0)) {
-        for (const [index, this_item] of eventSlotList.entries()) {
+        let recipientList = [];
+        for (const [index, this_item] of eventSlotList.entries()) {  
+          if (this_item.slotData?.status?.current?.selected) {
+            recipientList.push(this_item.slotData.owner)
+          }
           await handleAllocateSlot({
             person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
             slot: this_item.slotData.id,
@@ -971,6 +975,18 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
             index: (index || 0)
           });
         };
+        if (recipientList.length > 0) {
+          let messageText = `${state.session.patient_display_name} has assigned you to "${pOccData.description}" - ${makeDate(pOccData.date).relative}`;
+          let messageObj = {
+            client: state.session.client_id,
+            author: state.session.patient_id,
+            messageText: messageText,
+            thread_id: `cancel_${pEventCode}`,
+            recipientList: eventSlotList.map(),
+            subject: `${pOccData.description} ${makeDate(pOccData.date).relative} has been cancelled`
+          };
+          await sendMessages(messageObj);
+        }
       }
       enqueueSnackbar('Event cancelled!', { variant: 'success' });
     }
