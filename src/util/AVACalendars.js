@@ -2993,13 +2993,19 @@ export async function v2buildCalendar(body, screenStatus = () => { }) {
     if ((this_oRec.slotData.status.current !== 'selected') && (this_oRec.slotData.status.current !== 'notes')) { continue; }
     let this_owner = this_oRec.slotData.owner;
     let instance_number = 0;
+
+    // this little bit of code deals with one person being signed up twice for an event...
     let try_again = false;
     do {
       if (this_occurrence.slot_owners.hasOwnProperty(this_owner)) {
         this_owner = `${this_owner}%%${instance_number++}`;
         try_again = true;
       }
+      else {
+        try_again = false;
+      }
     } while (try_again);
+    
     if (this_event.slot_names && this_event.slot_names.hasOwnProperty(this_oRec.slotData.slot)) {
       this_occurrence.slot_owners[this_owner] = this_event.slot_names[this_oRec.slotData.slot];
     }
