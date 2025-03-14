@@ -62,7 +62,7 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 0,
     flexGrow: 2,
-    fontSize: theme.typography.fontSize * 1.3,
+    width: '95%',
   },
   confirm: {
     backgroundColor: theme.palette.confirm[theme.palette.type],
@@ -240,6 +240,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         localData_maxDName = Math.max((localData_maxDName || 0), dName.length);
         let rowDetails = await buildDisplayRows(listValues, defaultObj, qualifiers);
         for (let r = 0; r < rowDetails.length; r++) {
+          rowDetails[r].version = 1;
           if (rowDetails[r].checkbox && rowDetails[r].observationKey && !rowDetails[r].qualData) {
             let qualResponse = await buildQualifiers(rowDetails[r].observationKey);
             if (Object.keys(qualResponse.selections).length > 0) {
@@ -295,6 +296,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           localData_maxDName = Math.max((localData_maxDName || 0), dName.length);
           let rowDetails = await buildDisplayRows(defaultValue.activities[a].activityRec.valid_values_list, defaultsToUse, qualifiers);
           for (let r = 0; r < rowDetails.length; r++) {
+            rowDetails[r].version = 1;
             if (rowDetails[r].checkbox && rowDetails[r].observationKey && !rowDetails[r].qualData) {
               let qualResponse = await buildQualifiers(rowDetails[r].observationKey);
               if (Object.keys(qualResponse.selections).length > 0) {
@@ -459,38 +461,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     return;
   }
 
-  const onCheckEnter = (event, columnNumber, rowNumber) => {
-    if (event.key === 'Enter' || event.type === 'blur') {
-      if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'date') {
-        handleDateExit(event.target.value, columnNumber, rowNumber);
-      }
-      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'time') {
-        handleTimeExit(event.target.value, columnNumber, rowNumber);
-      }
-      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
-        handleTextAll(event.target.value, reactData.columnList[columnNumber].rowDetails[rowNumber].text);
-      }
-      else {
-        if ((reactData.columnList[columnNumber].rowDetails[rowNumber].obo_line)
-          || (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'obo')) {
-          handleOBOText(event.target.value, columnNumber, rowNumber);
-        }
-        else {
-          handleTextExit(event.target.value, columnNumber, rowNumber);
-          if (reactData.columnList[columnNumber].rowDetails[rowNumber].required) {
-            if (!event.target.value) {
-              reactData.columnList[columnNumber].rowDetails[rowNumber].error = 'This information is required';
-            }
-            else {
-              reactData.columnList[columnNumber].rowDetails[rowNumber].error = '';
-            }
-          }
-        }
-      }
-    }
-    setForceRedisplay(!forceRedisplay);
-  };
-
   const hiddenFileInput = React.useRef(null);
   const handleFileUpload = event => {
     hiddenFileInput.current.click();
@@ -581,18 +551,43 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     if (!reactData.columnList[columnNumber].rowDetails[rowNumber].hasOwnProperty('textValue')) {
       reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = {};
     }
+    reactData.columnList[columnNumber].rowDetails[rowNumber].error = '';
     if (!vText || (vText === '')) {
-      handleTextExit(vText, columnNumber, rowNumber);
+      reactData.columnList[columnNumber].rowDetails[rowNumber].isChecked = false;
+      if (reactData.columnList[columnNumber].rowDetails[rowNumber].required) {
+        reactData.columnList[columnNumber].rowDetails[rowNumber].error = 'This information is required';
+      }
+      reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = '';
     }
     else {
+      reactData.columnList[columnNumber].rowDetails[rowNumber].isChecked = true;
       if (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
         handleTextAll(vText, reactData.columnList[columnNumber].rowDetails[rowNumber].text);
       }
+      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'date') {
+        handleDateExit(vText, columnNumber, rowNumber);
+      }
+      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'time') {
+        handleTimeExit(vText, columnNumber, rowNumber);
+      }
+      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
+        handleTextAll(vText, reactData.columnList[columnNumber].rowDetails[rowNumber].text);
+      }
+      else if ((reactData.columnList[columnNumber].rowDetails[rowNumber].obo_line)
+        || (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'obo')) {
+        handleOBOText(vText, columnNumber, rowNumber);
+      }
       else {
-        handleTextExit(vText.replace(/[\r\n]+/gm, ''), columnNumber, rowNumber);
+        reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = vText.replace(/[\r\n]+/gm, '');
       }
     }
-    setForceRedisplay(!forceRedisplay);
+    if (isNaN(reactData.columnList[columnNumber].rowDetails[rowNumber].version)) {
+      reactData.columnList[columnNumber].rowDetails[rowNumber].version = new Date().getTime();
+    }
+    else {
+      reactData.columnList[columnNumber].rowDetails[rowNumber].version++;
+    }
+    updateReactData({ columnList: reactData.columnList }, true);
     return;
   };
 
@@ -605,8 +600,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       reactData.columnList[columnNumber].rowDetails[rowNumber].error = '';
       reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = AVAdate.absolute_full;
     }
-    // reactData.errorOnScreen = (AVAdate.error && !!AVAdate.absolute);
-    updateReactData({ columnList: reactData.columnList }, true);
+    return;
   };
 
   function handleTimeExit(vText, columnNumber, rowNumber) {
@@ -640,12 +634,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
     if (!ampm) { ampm = ((hh > 6) && (hh < 12)) ? 'am' : 'pm'; }
     reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = `${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`;
-    updateReactData({ columnList: reactData.columnList }, true);
-  };
-
-  function handleTextExit(vText, columnNumber, rowNumber) {
-    reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = vText;
-    updateReactData({ columnList: reactData.columnList }, true);
+    return;
   };
 
   function handleOBOText(vText, columnNumber, rowNumber) {
@@ -678,18 +667,17 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     else {
       guestGroups = [guestAssignment];
     }
-    let typed_in_words = vText.toLowerCase().split(/\s+/);
+    let typed_in_words = vText.toLowerCase().split(/\s+/).filter(w => { return w.length > 2; });
     let hits = [];
-    let hitCount = [];
     let errorText = null;
-    let winner = false;
-    let winner_at;
     let winnerList = [];
+    let selections = {};
     if (!state?.accessList?.[state.session.client_id]?.list) {
       errorText = `AVA is still loading names.  Please wait a few seconds and try again.`;
     }
     else {
-      hits = state.accessList[state.session.client_id].list.filter(accessList_person => {
+      let maxMatch = 1;
+      for (let accessList_person of state.accessList[state.session.client_id].list) {
         if (prohibitedGroups.includes(accessList_person.member_of)) {
           return false;
         }
@@ -702,125 +690,95 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           };
           return total_matches;
         }, 0);
-        if (wordsMatched > 0) {
-          hitCount.push(wordsMatched);
-          return true;
+        if (wordsMatched >= maxMatch) {
+          maxMatch = Math.min(wordsMatched, typed_in_words.length);  // you can't match 4 words if only 2 words were typed in
+          hits.push({
+            accessRec: accessList_person,
+            wordsMatched
+          });
         }
-        return false;
-      });
+      };
       if (hits.length === 0) {
         errorText = `Nobody found to match that name`;
       }
-      else if (hits.length === 1) {
-        winner = true;
-        winner_at = 0;
-        let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
+      else {
         winnerList = [{
-          person_id: hits[winner_at].id,
-          dName: newDName,
-          display: `${newDName}${guestGroups.includes(hits[winner_at].member_of) ? ' (Guest)' : ' (' + hits[winner_at].location + ')'}`,
-          type: 'checkbox'
+          default: '',
+          max_allowed: 1,
+          min_required: 1,
+          option: [],
         }];
-      }
-      else if (hits.length > 1) {
-        // is there a clear winner in the hit_count array?
-        let maxHits = 0;
-        let maxHitCount = 0;
-        hitCount.forEach((h, x) => {
-          if (h > maxHits) {
-            winner_at = x;
-            winner = true;
-            maxHits = h;
-            maxHitCount = 1;
-            let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
-            let dText = `${newDName}${guestGroups.includes(hits[winner_at].member_of) ? ' (Guest)' : ' (' + hits[winner_at].location + ')'}`;
-            winnerList = [{
-              default: dText,
-              max_allowed: 1,
-              min_required: 1,
-              option: [{
-                person_id: hits[winner_at].id,
-                location: hits[winner_at].location,
-                dName: newDName,
-                display: dText,
-                type: 'checkbox'
-              }],
-            }];
-          }
-          else if (h === maxHits) {
-            winner = false;
-            maxHitCount++;
-            let newDName = `${hits[x].name?.first} ${hits[x].name?.last}`.trim() || hits[x].display_name;
-            winnerList[0].option.push({
-              person_id: hits[x].id,
-              location: hits[x].location,
-              dName: newDName,
-              display: `${newDName}${guestGroups.includes(hits[x].member_of) ? ' (Guest)' : ' (' + hits[x].location + ')'}`,
-              type: 'checkbox'
-            });
-          }
-        });
-        if (!winner) {
-          winnerList[0].title = `AVA found ${maxHitCount} people to match that name.`;
+        for (let this_hit of (hits.filter(h => { return h.wordsMatched >= maxMatch; }))) {
+          let newDName = `${this_hit.accessRec.name?.first} ${this_hit.accessRec.name?.last}`.trim() || this_hit.accessRec.display_name;
+          let select_name = `${newDName}${guestGroups.includes(this_hit.accessRec.member_of)
+            ? ' (Guest)'
+            : (this_hit.accessRec.location ? ' (' + this_hit.accessRec.location + ')' : '')
+            }`;
+          winnerList[0].option.push({
+            person_id: this_hit.accessRec.id,
+            location: this_hit.location,
+            dName: newDName,
+            display: select_name,
+            type: 'checkbox'
+          });
+          selections[select_name] = false;
+        }
+        if (winnerList[0].option.length > 1) {
+          winnerList[0].title = `AVA found ${winnerList[0].option.length} people to match that name.`;
         }
       }
-    }
-    let targetColumns = [];
-    if (!defaultValue.selectList) {
-      reactData.columnList.forEach((c, x) => {
-        targetColumns.push(x);
-      });
-    }
-    else {
-      targetColumns.push(columnNumber);
-    }
-    targetColumns.forEach(c => {
-      reactData.columnList[c].rowDetails[rowNumber].error = '';
-      reactData.columnList[c].rowDetails[rowNumber].qualData = [];
-      reactData.columnList[c].rowDetails[rowNumber].qualSelections = {};
-      if (winner) {
-        reactData.columnList[c].person_id = hits[winner_at].id;
-        let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
-        reactData.columnList[c].display_name = newDName;
-        reactData.columnList[c].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(newDName.split(/\s+/).splice(-3))));
-        vText = `${newDName}`;
-        if (guestGroups.includes(hits[winner_at].member_of)) {
-          vText += ` (Guest)`;
-        }
-        resetTitleName();
-        reactData.columnList[c].rowDetails.forEach((checkRow, r) => {
-          if (checkRow.location_line) {
-            reactData.columnList[c].rowDetails[r].textValue = hits[winner_at].location || '';
-          }
+      let targetColumns = [];
+      if (!defaultValue.selectList) {
+        reactData.columnList.forEach((c, x) => {
+          targetColumns.push(x);
         });
-      }
-      else if (errorText) {
-        reactData.columnList[c].rowDetails[rowNumber].error = errorText;
       }
       else {
-        reactData.columnList[c].person_id = winnerList[0].option[0].person_id;
-        reactData.columnList[c].display_name = winnerList[0].option[0].dName;
-        reactData.columnList[c].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(winnerList[0].option[0].dName.split(/\s+/).splice(-3))));
-        resetTitleName();
-        reactData.columnList[c].rowDetails[rowNumber].isChecked = true;
-        reactData.columnList[c].rowDetails[rowNumber].isExpanded = true;
-        reactData.columnList[c].rowDetails[rowNumber].version = new Date().getTime();
-        reactData.columnList[c].rowDetails[rowNumber].qualData = winnerList;
-        reactData.columnList[c].rowDetails[rowNumber].qualSelections = {
-          [winnerList[0].title]: {
-            [winnerList[0].option[0].display]: true
-          }
-        };
-        vText = winnerList[0].option[0].dName;
-        reactData.columnList[c].rowDetails.forEach((checkRow, r) => {
-          if (checkRow.location_line) {
-            reactData.columnList[c].rowDetails[r].textValue = winnerList[0].option[0].location || '';
-          }
-        });
+        targetColumns.push(columnNumber);
       }
-      reactData.columnList[c].rowDetails[rowNumber].textValue = titleCase(vText);
-    });
-    updateReactData({ columnList: reactData.columnList }, true);
+      targetColumns.forEach(c => {
+        reactData.columnList[c].rowDetails[rowNumber].error = '';
+        reactData.columnList[c].rowDetails[rowNumber].qualData = [];
+        reactData.columnList[c].rowDetails[rowNumber].qualSelections = {};
+        if (winnerList[0].option.length === 1) {
+          reactData.columnList[c].person_id = winnerList[0].option[0].person_id;
+          let newDName = winnerList[0].option[0].dName;
+          reactData.columnList[c].display_name = newDName;
+          reactData.columnList[c].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(newDName.split(/\s+/).splice(-3))));
+          vText = winnerList[0].option[0].display;
+          resetTitleName();
+          reactData.columnList[c].rowDetails.forEach((checkRow, r) => {
+            if (checkRow.location_line) {
+              reactData.columnList[c].rowDetails[r].textValue = winnerList[0].option[0].location || '';
+            }
+          });
+        }
+        else if (errorText) {
+          reactData.columnList[c].rowDetails[rowNumber].error = errorText;
+        }
+        else {
+          reactData.columnList[c].person_id = winnerList[0].option[0].person_id;
+          reactData.columnList[c].display_name = winnerList[0].option[0].dName;
+          reactData.columnList[c].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(winnerList[0].option[0].dName.split(/\s+/).splice(-3))));
+          resetTitleName();
+          reactData.columnList[c].rowDetails[rowNumber].isChecked = true;
+          reactData.columnList[c].rowDetails[rowNumber].isExpanded = true;
+          reactData.columnList[c].rowDetails[rowNumber].version = new Date().getTime();
+          reactData.columnList[c].rowDetails[rowNumber].qualData = winnerList;
+          reactData.columnList[c].rowDetails[rowNumber].qualSelections = {
+            [winnerList[0].title]: selections
+          };
+          vText = winnerList[0].option[0].dName;
+          reactData.columnList[c].rowDetails.forEach((checkRow, r) => {
+            if (checkRow.location_line) {
+              reactData.columnList[c].rowDetails[r].textValue = winnerList[0].option[0].location || '';
+            }
+          });
+        }
+        reactData.columnList[c].rowDetails[rowNumber].textValue = titleCase(vText);
+      });
+      return;
+    }
   };
 
   function resetTitleName() {
@@ -864,7 +822,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = vText;
       }
     });
-    updateReactData({ columnList: reactData.columnList }, true);
+    return;
   };
 
   function isQualChecked(rowData, pOption, pSelection) {
@@ -877,7 +835,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let this_row = reactData.columnList[columnNumber].rowDetails[rowNumber];
     this_row.isChecked = !this_row.isChecked;
     this_row.isExpanded = this_row.isChecked;
-    this_row.version++;
+    if (isNaN(this_row.version)) {
+      this_row.version = new Date().getTime();
+    }
+    else {
+      this_row.version++;
+    }
     if (this_row.isChecked && this_row.observationKey && !this_row.qualData) {
       // let [myQualSelections, myQualData] = await buildQualifiers(this_row.observationKey);
       let qualResponse = await buildQualifiers(this_row.observationKey);
@@ -917,7 +880,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     if (optionAt < 0) {
       return;
     }
-    rowData.version++;
+    if (isNaN(rowData.version)) {
+      rowData.version = new Date().getTime();
+    }
+    else {
+      rowData.version++;
+    }
+
     let qualRules = rowData.qualData[optionAt];
     // which option in rowData.qualData[optionAt] contains the qChoice information?
 
@@ -1046,7 +1015,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           maxDName: myDefaultColumns[c].dName.length
         }, false);
       }
-      if (!defaultValue.suppressDuplicateCheck) {
+      if (defaultValue.checkForDuplicates) {
         let existingRequest = await checkExistingRequests({
           client_id: state.session.client_id,
           foreign_key: myDefaultColumns[c].foreign_key || myDefaultColumns[c].foreignKey,
@@ -1350,7 +1319,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
         for (let rowNumber = 0; rowNumber < this_column.rowDetails.length; rowNumber++) {
           let this_row = this_column.rowDetails[rowNumber];
-          if (this_row.isChecked) {
+          if (this_row.isChecked && !this_row.input) {
             let choices_list = [];
             for (let this_option in this_row.qualSelections) {
               for (let this_choice in this_row.qualSelections[this_option]) {
@@ -1379,9 +1348,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           }
           if (this_row.textValue) {
             // special Values/
-            if ((this_column.defaultValues.hasOwnProperty('onBehalfOf') && (this_column.defaultValues['onBehalfOf'] === this_row.text))
+            if ((this_row.obo_line) || (this_column.defaultValues.hasOwnProperty('onBehalfOf') && (this_column.defaultValues['onBehalfOf'] === this_row.text))
               || (this_row.input === 'obo')) {
               oBo = this_row.textValue;
+              textInput[this_row.text] = `Changed to ${this_row.textValue}`;
             }
             else {
               textInput[this_row.text] = this_row.textValue;
@@ -1462,6 +1432,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             local_key = result.requestRec.local_key;
             message_body = result.body;
             writtenRecords.push(result.requestRec);
+            if (result.message) {
+              enqueueSnackbar(
+                result.message,
+                { variant: 'warning', persist: true }
+              );
+            }
           }
         }
       }
@@ -1969,7 +1945,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     borderRadius={'16px'}
                     marginLeft={2}
                     marginRight={2}
-                    maxWidth={this_item.checkbox ? 400 : 'auto'}
+                    maxWidth={(this_item.checkbox && !this_item.isChecked) ? 400 : 'auto'}
                     width={!this_item.checkbox ? '100%' : 'auto'}
                     marginTop={(this_item.header ? 0 : 2)}
                     marginBottom={(this_item.header ? 1 : 2)}
@@ -2000,7 +1976,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                           style={this_item.style
                             ? AVATextStyle(this_item.style)
                             : (this_item.header
-                              ? AVATextStyle({ size: 1.5, bold: true, margin: { top: 2 } })
+                              ? AVATextStyle({ size: 1.2, bold: true, margin: { top: 2 } })
                               : AVATextStyle({ size: 1.3, margin: { right: 0.5 } }))
                           }
                         >
@@ -2012,38 +1988,133 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     }
                     { /* Text prompt line for this row - headers don't have this */}
                     {this_item.input && !reactData.viewOnly &&
-                      <TextField
-                        className={classes.freeInput}
-                        variant={'standard'}
-                        key={`inputtextprompt_${selectedColumn}.${this_index}`}
-                        id={`inputtextprompt_${selectedColumn}.${this_index}`}
-                        helperText={(this_item.error ? (`${this_item.error} - `) : '') + this_item.text}
-                        multiline
-                        inputProps={{ style: { fontSize: `${user_fontSize * 1}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                        onChange={event => {
-                          if (!event.target.value) {
-                            reactData.errorOnScreen = false;
+                      <Card elevation={0} sx={{ maxWidth: 345 }} style={{ width: '100%', padding: '4px', paddingBottom: '6px' }}>
+                        <TextField
+                          style={Object.assign({
+                            marginLeft: '8px',
+                            paddingLeft: 0,
+                            paddingRight: 0,
+                            flexGrow: 2,
+                            width: '95%',
+                          },
+                            (this_item.isChecked && !isEmpty(this_item.qualData) ? { marginTop: '12px' } : {}))
                           }
-                          handleChangeTextField(event.target.value, selectedColumn, this_index);
-                        }}
-                        FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                        onKeyPress={(event) => {
-                          onCheckEnter(event, selectedColumn, this_index);
-                        }}
-                        onBlur={(event) => {
-                          onCheckEnter(event, selectedColumn, this_index);
-                        }}
-                        autoComplete='off'
-                        value={this_item.textValue || ''}
-                      />
+                          variant={'standard'}
+                          key={`inputtextprompt_${selectedColumn}.${this_index}-${this_item.version}`}
+                          id={`inputtextprompt_${selectedColumn}.${this_index}-${this_item.version}`}
+                          helperText={(this_item.error ? (`${this_item.error} - `) : '') + this_item.text}
+                          multiline
+                          inputProps={{ style: AVATextStyle({ size: 1.2 }) }}
+                          InputProps={{ style: AVATextStyle({ size: 1.2 }), }}
+                          FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                          onBlur={(event) => {
+                            if (!event.target.value) {
+                              reactData.errorOnScreen = false;
+                            }
+                            handleChangeTextField(event.target.value, selectedColumn, this_index);
+                          }}
+                          autoComplete='off'
+                          defaultValue={this_item.textValue || ''}
+                        />
+                        {(this_item.isChecked && !isEmpty(this_item.qualData)) &&
+                          <Box
+                            key={`cardinfowrap_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
+                            id={`cardinfowrap_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
+                            style={{ marginBottom: '12px' }}
+                            display="flex"
+                            flexDirection='column'
+                            justifyContent="flex-start"
+                            alignItems='flex-start'
+                          >
+                            {makeArray(this_item.qualData).map((qR, qRndx) => (
+                              <Box
+                                key={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                id={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                display="flex"
+                                style={AVATextStyle({
+                                  margin: { left: 1, right: 1 },
+                                  padding: { left: 0, right: 3 }
+                                })}
+                                flexDirection='column'
+                                justifyContent="center"
+                              >
+                                <Box display='flex' flexDirection='column' justifyContent='center'
+                                  key={`qualbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                  id={`qualbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                  alignItems='flex-start'>
+                                  <Typography
+                                    key={`qualboxtitle_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                    id={`qualboxtitle_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                    style={AVATextStyle({
+                                      margin: { top: 0.8, bottom: 0, left: 0 },
+                                      padding: { left: 0, right: 3 },
+                                      size: 1
+                                    })}
+                                  >
+                                    {qR.title}
+                                  </Typography>
+                                  <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                                    key={`optionbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                    id={`optionbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                    alignItems='center' flexWrap='wrap'
+                                  >
+                                    {qR.option && qR.option.map((opt, oX) => (
+                                      <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                                        key={`option_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                        id={`option_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                        alignItems='center'
+                                      >
+                                        <React.Fragment>
+                                          <Checkbox
+                                            key={`optioncheckbox_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                            id={`optioncheckbox_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                            className={classes.radioButton}
+                                            size="small"
+                                            onClick={() => {
+                                              reactData.columnList[selectedColumn].rowDetails[this_index].error = '';
+                                              reactData.columnList[selectedColumn].rowDetails[this_index].qualData = [];
+                                              reactData.columnList[selectedColumn].rowDetails[this_index].qualSelections = {};
+                                              reactData.columnList[selectedColumn].rowDetails[this_index].textValue = opt.dName;
+                                              reactData.columnList[selectedColumn].rowDetails[this_index].version++;
+                                              reactData.columnList[selectedColumn].person_id = opt.person_id;
+                                              reactData.columnList[selectedColumn].display_name = opt.dName;
+                                              reactData.columnList[selectedColumn].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(opt.dName.split(/\s+/).splice(-3))));
+                                              resetTitleName();
+                                              reactData.columnList[selectedColumn].rowDetails.forEach((checkRow, r) => {
+                                                if (checkRow.location_line) {
+                                                  reactData.columnList[selectedColumn].rowDetails[r].textValue = opt.location;
+                                                }
+                                              });
+                                              updateReactData({
+                                                columnList: reactData.columnList
+                                              }, true);
+                                            }}
+                                            checked={false}
+                                          />
+                                          <Typography
+                                            key={`optionchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                            id={`optionchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                            style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}>
+                                            {opt.display}
+                                          </Typography>
+                                        </React.Fragment>
+                                      </Box>
+                                    ))}
+                                  </Box>
+                                </Box>
+                              </Box>
+                            ))
+                            }
+                          </Box>
+                        }
+                      </Card>
                     }
                     {this_item.checkbox && !this_item.header &&
-                      <Card elevation={(this_item.isChecked || this_item.isExpanded) ? 0 : 0} sx={{ maxWidth: 345 }}>
+                      <Card elevation={0} sx={{ maxWidth: 345 }}>
                         <Box
                           key={`cardboxmaster_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
                           id={`cardboxmaster_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
                           display="flex"
-                          padding={1}
                           flexDirection='column'
                           justifyContent="flex-start"
                           alignItems='flex-start'
@@ -2070,7 +2141,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                             >
                               {!reactData.viewOnly && !this_item.noUpdate &&
                                 <IconButton aria-label="select this item">
-                                    {this_item.isChecked ? <CheckBoxIcon /> : <CheckBoxOutlineBlankIcon />}
+                                  {this_item.isChecked ? <CheckBoxIcon /> : <CheckBoxOutlineBlankIcon />}
                                 </IconButton>
                               }
                               <Box
@@ -2086,7 +2157,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                   id={`textout_${selectedColumn}.${this_index}`}
                                   style={this_item.style
                                     ? AVATextStyle(this_item.style)
-                                    : AVATextStyle({ size: 1.5, margin: { right: 2 } })
+                                    : AVATextStyle({ size: 1.2, margin: { right: 2 } })
                                   }
                                 >
                                   {this_item.text}
@@ -2128,178 +2199,180 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                               />
                             }
                           </Box>
-                          <Box
-                            key={`cardinfowrap_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
-                            id={`cardinfowrap_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
-                            display="flex"
-                            flexDirection='column'
-                            justifyContent="flex-start"
-                            alignItems='flex-start'
-                          >
-                            {(this_item.isChecked || this_item.isExpanded)
-                              && !isEmpty(this_item.moreInfo) &&
-                              <Box
-                                key={`qualboxwrap_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
-                                id={`qualboxwrap_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
-                                display="flex"
-                                style={AVATextStyle({
-                                  margin: { right: 1 },
-                                  padding: { left: 0, right: 3 }
-                                })}
-                                flexDirection='column'
-                                justifyContent="center"
-                                alignItems='flex-start'
-                              >
-                                {Object.keys(this_item.moreInfo).map((opt, oX) => (
-                                  <React.Fragment
-                                    key={`optionbox_${selectedColumn}.${this_index}.fragment-${this_item.version}-${oX}`}
-                                  >
-                                    {(opt !== 'image') && (opt !== 'fee') && (opt !== 'restriction') &&
-                                      <Typography
-                                        key={`optionchecktext_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.version}`}
-                                        id={`optionchecktext_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.version}`}
-                                        style={AVATextStyle({ size: 0.75, margin: { left: 1 } })}
-                                      >
-                                        {`${sentenceCase(opt.replace('_', ' '))}${this_item.moreInfo[opt].trim() ? (': ' + this_item.moreInfo[opt]) : ''}`}
-                                      </Typography>
-                                    }
-                                    {(opt === 'restriction')
-                                      && (
-                                        state
-                                          .accessList[state.session.client_id]
-                                          .list
-                                          .find(p => { return (p.person_id === reactData.columnList[selectedColumn].person_id); })
-                                          .groups
-                                          .includes(this_item.moreInfo[opt].trim())
-                                      )
-                                      &&
-                                      <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                                        key={`option_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.version}`}
-                                        id={`option_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.version}`}
-                                        style={AVATextStyle({ size: 0.7, margin: { right: 3 } })}
-                                        alignItems='center'
-                                      >
-                                        <Typography
-                                          key={`optionchecktext_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.version}`}
-                                          id={`optionchecktext_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.version}`}
-                                          style={AVATextStyle({ color: 'red', style: 'bold', size: 1.2, margin: { left: 1 } })}
-                                        >
-                                          {`*** THIS ITEM IS NOT RECOMMENDED FOR ${reactData.columnList[selectedColumn].display_name.toUpperCase()} ***`}
-                                        </Typography>
-                                      </Box>
-                                    }
-                                  </React.Fragment>
-                                ))}
-                              </Box>
-                            }
-                            {(this_item.isChecked || this_item.isExpanded)
-                                && (!isEmpty(this_item.qualData))
-                              && makeArray(this_item.qualData).map((qR, qRndx) => (
+                          {(this_item.isChecked || this_item.isExpanded) &&
+                            (!isEmpty(this_item.moreInfo) || !isEmpty(this_item.qualData)) &&
+                            <Box
+                              key={`cardinfowrap_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
+                              id={`cardinfowrap_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
+                              style={{ marginBottom: '12px' }}
+                              display="flex"
+                              flexDirection='column'
+                              justifyContent="flex-start"
+                              alignItems='flex-start'
+                            >
+                              {!isEmpty(this_item.moreInfo) &&
                                 <Box
-                                  key={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
-                                  id={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                  key={`qualboxwrap_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
+                                  id={`qualboxwrap_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
                                   display="flex"
                                   style={AVATextStyle({
-                                    margin: { left: 1, right: 1 },
+                                    margin: { right: 1 },
                                     padding: { left: 0, right: 3 }
                                   })}
                                   flexDirection='column'
                                   justifyContent="center"
+                                  alignItems='flex-start'
                                 >
-                                  <Box display='flex' flexDirection='column' justifyContent='center'
-                                    key={`qualbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
-                                    id={`qualbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
-                                    alignItems='flex-start'>
-                                    <Typography
-                                      key={`qualboxtitle_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
-                                      id={`qualboxtitle_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
-                                      style={AVATextStyle({
-                                        margin: { top: 0.8, bottom: 0, left: 0 },
-                                        padding: { left: 0, right: 3 },
-                                        size: 1
-                                      })}
+                                  {Object.keys(this_item.moreInfo).map((opt, oX) => (
+                                    <React.Fragment
+                                      key={`optionbox_${selectedColumn}.${this_index}.fragment-${this_item.version}-${oX}`}
                                     >
-                                      {qR.title}
-                                    </Typography>
-                                    <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                                      key={`optionbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
-                                      id={`optionbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
-                                      alignItems='center' flexWrap='wrap'
-                                    >
-                                      {qR.option && qR.option.map((opt, oX) => (
+                                      {(opt !== 'image') && (opt !== 'fee') && (opt !== 'restriction') &&
+                                        <Typography
+                                          key={`optionchecktext_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.version}`}
+                                          id={`optionchecktext_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.version}`}
+                                          style={AVATextStyle({ size: 0.75, margin: { left: 1 } })}
+                                        >
+                                          {`${sentenceCase(opt.replace('_', ' '))}${this_item.moreInfo[opt].trim() ? (': ' + this_item.moreInfo[opt]) : ''}`}
+                                        </Typography>
+                                      }
+                                      {(opt === 'restriction')
+                                        && (
+                                          state
+                                            .accessList[state.session.client_id]
+                                            .list
+                                            .find(p => { return (p.person_id === reactData.columnList[selectedColumn].person_id); })
+                                            .groups
+                                            .includes(this_item.moreInfo[opt].trim())
+                                        )
+                                        &&
                                         <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                                          key={`option_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
-                                          id={`option_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                          key={`option_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.version}`}
+                                          id={`option_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.version}`}
+                                          style={AVATextStyle({ size: 0.7, margin: { right: 3 } })}
                                           alignItems='center'
                                         >
-                                          {(!opt.type || (opt.type === 'checkbox')) &&
-                                            <React.Fragment>
-                                              {!reactData.viewOnly &&
-                                                <Checkbox
-                                                  key={`optioncheckbox_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
-                                                  id={`optioncheckbox_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
-                                                  className={classes.radioButton}
-                                                  size="small"
-                                                  onClick={() => {
-                                                    optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display);
-                                                    reactData.columnList[selectedColumn].columnActivated = true;
-                                                    updateReactData({
-                                                      columnList: reactData.columnList
-                                                    }, true);
-                                                  }}
-                                                  checked={isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
-                                                />
-                                              }
-                                              <Typography
-                                                key={`optionchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
-                                                id={`optionchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
-                                                style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}>
-                                                {opt.display}
-                                              </Typography>
-                                            </React.Fragment>
-                                          }
-                                          {(opt.type === 'prompt' || opt.type === 'promptOnly') &&
-                                            <React.Fragment>
-                                              {!reactData.viewOnly && (opt.type === 'prompt') &&
-                                                <Checkbox
-                                                  className={classes.radioButton}
-                                                  key={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.version}`}
-                                                  id={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.version}`}
-                                                  size="small"
-                                                  checked={isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
-                                                />
-                                              }
-                                              <Typography style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 0.1 } })}>
-                                                {opt.display}:
-                                              </Typography>
-                                              {!reactData.viewOnly &&
-                                                <TextField
-                                                  key={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.version}`}
-                                                  id={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.version}`}
-                                                  style={AVATextStyle({ 'line-height': 1, size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}
-                                                  defaultValue={getQualTextValue(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
-                                                  variant={'standard'}
-                                                  inputProps={{ style: { paddingBottom: 0, paddingTop: 0, fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                                                  FormHelperTextProps={{ style: { paddingBottom: 0, paddingTop: 0, fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                                                  onChange={(event) => {
-                                                    optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display, event.target.value);
-                                                    updateReactData({
-                                                      columnList: reactData.columnList
-                                                    }, true);
-                                                  }}
-                                                  autoComplete='off'
-                                                />
-                                              }
-                                            </React.Fragment>
-                                          }
+                                          <Typography
+                                            key={`optionchecktext_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.version}`}
+                                            id={`optionchecktext_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.version}`}
+                                            style={AVATextStyle({ color: 'red', style: 'bold', size: 1.2, margin: { left: 1 } })}
+                                          >
+                                            {`*** THIS ITEM IS NOT RECOMMENDED FOR ${reactData.columnList[selectedColumn].display_name.toUpperCase()} ***`}
+                                          </Typography>
                                         </Box>
-                                      ))}
+                                      }
+                                    </React.Fragment>
+                                  ))}
+                                </Box>
+                              }
+                              {(!isEmpty(this_item.qualData))
+                                && makeArray(this_item.qualData).map((qR, qRndx) => (
+                                  <Box
+                                    key={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                    id={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                    display="flex"
+                                    style={AVATextStyle({
+                                      margin: { left: 1, right: 1 },
+                                      padding: { left: 0, right: 3 }
+                                    })}
+                                    flexDirection='column'
+                                    justifyContent="center"
+                                  >
+                                    <Box display='flex' flexDirection='column' justifyContent='center'
+                                      key={`qualbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                      id={`qualbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                      alignItems='flex-start'>
+                                      <Typography
+                                        key={`qualboxtitle_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                        id={`qualboxtitle_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                        style={AVATextStyle({
+                                          margin: { top: 0.8, bottom: 0, left: 0 },
+                                          padding: { left: 0, right: 3 },
+                                          size: 1
+                                        })}
+                                      >
+                                        {qR.title}
+                                      </Typography>
+                                      <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                                        key={`optionbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                        id={`optionbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                        alignItems='center' flexWrap='wrap'
+                                      >
+                                        {qR.option && qR.option.map((opt, oX) => (
+                                          <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                                            key={`option_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                            id={`option_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                            alignItems='center'
+                                          >
+                                            {(!opt.type || (opt.type === 'checkbox')) &&
+                                              <React.Fragment>
+                                                {!reactData.viewOnly &&
+                                                  <Checkbox
+                                                    key={`optioncheckbox_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                                    id={`optioncheckbox_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                                    className={classes.radioButton}
+                                                    size="small"
+                                                    onClick={() => {
+                                                      optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display);
+                                                      reactData.columnList[selectedColumn].columnActivated = true;
+                                                      updateReactData({
+                                                        columnList: reactData.columnList
+                                                      }, true);
+                                                    }}
+                                                    checked={isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
+                                                  />
+                                                }
+                                                <Typography
+                                                  key={`optionchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                                  id={`optionchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                                  style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}>
+                                                  {opt.display}
+                                                </Typography>
+                                              </React.Fragment>
+                                            }
+                                            {(opt.type === 'prompt' || opt.type === 'promptOnly') &&
+                                              <React.Fragment>
+                                                {!reactData.viewOnly && (opt.type === 'prompt') &&
+                                                  <Checkbox
+                                                    className={classes.radioButton}
+                                                    key={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.version}`}
+                                                    id={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.version}`}
+                                                    size="small"
+                                                    checked={isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
+                                                  />
+                                                }
+                                                <Typography style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 0.1 } })}>
+                                                  {opt.display}:
+                                                </Typography>
+                                                {!reactData.viewOnly &&
+                                                  <TextField
+                                                    key={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.version}`}
+                                                    id={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.version}`}
+                                                    style={AVATextStyle({ 'line-height': 1, size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}
+                                                    defaultValue={getQualTextValue(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
+                                                    variant={'standard'}
+                                                    inputProps={{ style: { paddingBottom: 0, paddingTop: 0, fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                                                    FormHelperTextProps={{ style: { paddingBottom: 0, paddingTop: 0, fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                                                    onChange={(event) => {
+                                                      optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display, event.target.value);
+                                                      updateReactData({
+                                                        columnList: reactData.columnList
+                                                      }, true);
+                                                    }}
+                                                    autoComplete='off'
+                                                  />
+                                                }
+                                              </React.Fragment>
+                                            }
+                                          </Box>
+                                        ))}
+                                      </Box>
                                     </Box>
                                   </Box>
-                                </Box>
-                              ))
-                            }
-                          </Box>
+                                ))
+                              }
+                            </Box>
+                          }
                           {false && (this_item.moreInfo || this_item.qualData) &&
                             <CardActions disableSpacing>
                               <IconButton

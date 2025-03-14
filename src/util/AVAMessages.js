@@ -558,19 +558,23 @@ export async function formatRequestDetails(body, summaryType) {
 
   let renderCheckBox = '';
   if (summaryType === 'mealOrder') {
-    for (let x = 0; x < body.selections.length; x++) {
-      let aVal = body.selections[x];
-      if (['Dinner', 'Lunch', 'Pick-up', 'Deliver'].includes(aVal.split(/\s+/)[0])) {
+    // special selections
+    body.selections = body.selections.filter(aVal => {
+      if (['dinner', 'lunch', 'pick-up', 'deliver'].includes(aVal.split(/\s+/)[0].toLowerCase())) {
         htmlMessage += `<h2 style="color: black;">${aVal.trim()}</h2>`;
         rawMessage += `${aVal}\r\n`;
         pdfLine(aVal);
-        body.selections.splice(x, 1);
-        x--;
+        return false;
       }
-    };
+      else {
+        return true;
+      }
+    });
     renderCheckBox = '&#8414;   ';
+    htmlMessage += '<br /><br />';
+    rawMessage += `\n\n`;
     htmlMessage += `<h2 style="color: black;">Order Details</h2><dl style="padding-left: 40px;">`;
-    pdfLine('Order Details', { style: 'bold', before: 1, align: 'left' });
+    pdfLine('Order Details', { style: 'bold', before: 3, align: 'left' });
   }
   else {
     if (textInput && (Object.keys(textInput).length > 0)) {
@@ -609,12 +613,13 @@ export async function formatRequestDetails(body, summaryType) {
       htmlMessage += `<img src="${body.images[aVal_raw]}" />`;
     }
     else {
-      htmlMessage += `<dt style="margin-top: ${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>&nbsp;&nbsp;&nbsp;${sVal}&nbsp;&nbsp;&nbsp;</strong>${textInput[aVal] || ''}</dt>`;
+      htmlMessage += `<dt style="margin-top: ${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>&nbsp;&nbsp;&nbsp;${sVal}</strong></dt>`;
       rawMessage += `\n${sVal}\n`;
       pdfStyle('reset');
       pdfLine(sVal, { before: 1 });
       if (textInput[aVal]) {
         pdfLine(textInput[aVal], { noNewLine: true, before: 1, indent: 15, size: 'small' });
+        htmlMessage += `<dd>${textInput[aVal]}</dd>`;
         rawMessage += `${textInput[aVal]}\n`;
         delete textInput[aVal];
       }
@@ -652,10 +657,13 @@ export async function formatRequestDetails(body, summaryType) {
   pdfStyle('reset');
 
   if (textInput && (Object.keys(textInput).length > 0)) {
+    pdfDown(2);
+    htmlMessage += '<br /><br />';
+    rawMessage += `\n\n`;
     for (let topic in textInput) {
       if (!body.images || !body.images.hasOwnProperty(topic)) {
         let sVal = sentenceCase(topic.trim());
-        htmlMessage += `<dt style="padding-top:${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>&nbsp;&nbsp;&nbsp;${sVal}&nbsp;&nbsp;&nbsp;</strong>${textInput[topic]}</dt>`;
+        htmlMessage += `<dt style="padding-top:${lineSpacing}; font-size: 1.2em; color: black;">${sVal}&nbsp;&nbsp;&nbsp;</strong>${textInput[topic]}</dt>`;
         rawMessage += `\n${sVal}\n${textInput[topic]}\n`;
         pdfStyle('reset');
         pdfLine(sVal, { before: 1 });
@@ -2591,10 +2599,10 @@ export async function sendMessages(body) {
       if (goodPost) {
         if (ind.length === 1) {
           let sName = await makeName(ind[0]);
-          results.push({ sent: true, message: `Sent message to ${sName}` });
+          results.push({ sent: true, message: `Successfully sent to ${sName}` });
         }
         else {
-          results.push({ sent: true, message: `Sent message to ${ind.length} people` });
+          results.push({ sent: true, message: `Successfully sent to ${ind.length} recipients` });
         }
       }
     }
