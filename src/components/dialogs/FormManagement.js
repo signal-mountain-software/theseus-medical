@@ -117,11 +117,6 @@ export default ({ defaults, onClose }) => {
     administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
 
     // from defaults
-    agendaView: defaults.agendaView,
-    allowAssign: defaults.allowAssign,
-    assignmentList: defaults.assignmentList,
-    assignmentView: defaults.assignmentView,
-    viewOnly: defaults.viewOnly,
 
     activity_filter: '',
     lower_activity_filter: null,
