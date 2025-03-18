@@ -402,6 +402,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               await executePublish(response);
               updateReactData({
                 setPublishDates: false,
+                alert: false
               }, true);
             })
           },
@@ -413,6 +414,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               await executePublish(response);
               updateReactData({
                 setPublishDates: false,
+                alert: false
               }, true);
             })
           },
@@ -421,6 +423,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
             function: () => {
               updateReactData({
                 setPublishDates: false,
+                alert: false
               }, true);
             }
           }
