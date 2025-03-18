@@ -352,7 +352,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <AVAUploadFile
           options={{
             buttonText: ['Choose', 'Save & Continue'],
-            title: ['Background Image', 'Tap "Choose a File" to select a new image'],
+            title: ['Logo', 'Tap "Choose a File" to select a new image'],
             oneOnly: true
           }}
           onCancel={() => {
