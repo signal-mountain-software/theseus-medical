@@ -945,6 +945,46 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     return (needsSlotUpdates || needsSlotTimeMessage);
   };
 
+  const checkOtherOccurrences = async () => {
+    let this_event = pEventCode;
+    let [this_eventID, this_occurrence] = this_event.split('#');
+    let other_occurrences = [];
+    // does this event have other occurrences?
+
+    let queryObj = {
+      TableName: 'Calendar',
+      KeyConditionExpression: 'client = :c and begins_with(event_key, :eV)',
+      FilterExpression: 'record_type = :t',
+      ExpressionAttributeValues: {
+        ':c': pClient,
+        ':eV': `${this_eventID}#`,
+        ':t': 'occurrence'
+      }
+    };
+    let queryResult = await dbClient
+      .query(queryObj)
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          cl(`Security Violation or no Internet Connection`);
+        }
+        cl(`Error reading ${queryObj.TableName} id ${error}`);
+      });
+    if (recordExists(queryResult)) {
+      for (let this_oRec of queryResult.Items) {
+        if ((this_oRec.occurrence_date !== this_occurrence) && (!this_oRec.occurrence_cancelled)) {
+          other_occurrences.push(this_oRec.occurrence_date);
+        }
+      }
+    }
+    updateReactData({
+      other_occurrences,
+      cancelPending: false,
+      ask_cancelSeries: (other_occurrences.length > 0)
+    }, true);
+    return (other_occurrences.length > 0);
+  };
+
   const handleCancelEvent = async () => {
     let updateExpression = 'set occurrence_cancelled = :true';
     let expressionAttributeValues = { ':true': true };
@@ -980,7 +1020,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
           });
         };
         if (recipientList.length > 0) {
-          let messageText = `${state.session.patient_display_name} has assigned you to "${pOccData.description}" - ${makeDate(pOccData.date).relative}`;
+          let messageText = `${pOccData.description} ${makeDate(pOccData.date).relative} has been cancelled`;
           let messageObj = {
             client: state.session.client_id,
             author: state.session.patient_id,
@@ -2039,10 +2079,39 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               reactData.cancelPending = false;
               setReactData(reactData);
               setForceRedisplay(!forceRedisplay);
-            }
-            }
+            }}
+            onConfirm={async () => {
+              let othersExist = await checkOtherOccurrences();
+              if (!othersExist) {
+                await handleCancelEvent();
+                reactData.cancelPending = false;
+                setReactData(reactData);
+                setForceRedisplay(!forceRedisplay);
+                onReset({ event_cancelled: true });
+              }
+            }}
+            allowCancel={true}
+          />
+        }
+        {reactData.ask_cancelSeries &&
+          <AVAConfirm
+            promptText={[`This event has ${reactData.other_occurrences.length} occurences`, `Do you want to cancel them all?`]}
+            cancelText={`No, just cancel this`}
+            confirmText={`Yes, cancel them all`}
+            onCancel={async () => {
+              await handleCancelEvent();
+              reactData.cancelPending = false;
+              setReactData(reactData);
+              setForceRedisplay(!forceRedisplay);
+              onReset({ event_cancelled: true });
+            }}
             onConfirm={async () => {
               await handleCancelEvent();
+              let eventID = pEventCode.split('#')[0];
+              for (let next_event of reactData.other_occurrences) {
+                pEventCode = `${eventID}#${next_event}`;
+                await handleCancelEvent();
+              }
               reactData.cancelPending = false;
               setReactData(reactData);
               setForceRedisplay(!forceRedisplay);

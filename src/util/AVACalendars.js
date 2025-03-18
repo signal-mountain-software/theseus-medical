@@ -3647,6 +3647,9 @@ export async function publishCalendar(request) {
       response.already_published++;
       results.alreadyPublished++;
       console.log('rejected - already published');
+      if (request.filters && request.filters.filterTextLower && request.filters.filterTextLower.startsWith('unpub')) {
+        results.failedFilter++;
+      }
       return false;
     }
     if (this_event.date === '29991231') {
@@ -3658,19 +3661,26 @@ export async function publishCalendar(request) {
       console.log('accepted - no filters');
       return true;
     }
-    else if ((!!request.filters.filterTextLower) && (request.filters.filterTextLower.startsWith('publish') || request.filters.filterTextLower.startsWith('unpub'))) {
-      return true;
-    }
     else if ((!request.filters.ownerFilter) && (!request.filters.eventFilter) && (!request.filters.filterTextLower)) {
       console.log('accepted - no owner filter, event filter, or text filter ');
       return true;
     }
-    else if (request.filters.ownerFilter && (this_event.slot_owners.hasOwnProperty(request.filters.ownerFilter))) {
-      console.log('accepted - owner filter matched slot owner ');
+    else if (request.filters.ownerFilter && (!this_event.slot_owners.hasOwnProperty(request.filters.ownerFilter))) {
+      console.log('failed - owner filter but no slot owner is a match');
+      results.failedFilter++;
+      return false;
+    }
+    else if (request.filters.eventFilter && (!this_event.event_id === request.filters.eventFilter)) {
+      console.log('failed - event filter doesnt match event id ');
+      results.failedFilter++;
+      return false;
+    }
+    else if (!request.filters.filterTextLower) {
+      console.log('accepted - no other filters to test');
       return true;
     }
-    else if (request.filters.eventFilter && (this_event.event_id === request.filters.eventFilter)) {
-      console.log('accepted - event filter matched event id ');
+    else if (request.filters.filterTextLower.startsWith('publish') || request.filters.filterTextLower.startsWith('unpub')) {
+      console.log('accepted - only filters left to test are publish (already dealt with) or unpublished (always true)')
       return true;
     }
     else {

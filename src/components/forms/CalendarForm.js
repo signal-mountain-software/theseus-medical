@@ -1,5 +1,4 @@
 import React from 'react';
-import { useSnackbar } from 'notistack';
 
 import { makeTime, makeDate, addDays } from '../../util/AVADateTime';
 import { isObject, deepCopy, titleCase, makeArray, isEmpty } from '../../util/AVAUtilities';
@@ -401,8 +400,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               response.proceedWithoutWarning = true;
               await executePublish(response);
               updateReactData({
-                setPublishDates: false,
-                alert: false
+                setPublishDates: false              
               }, true);
             })
           },
@@ -413,8 +411,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               response.ignoreFilters = true;
               await executePublish(response);
               updateReactData({
-                setPublishDates: false,
-                alert: false
+                setPublishDates: false
               }, true);
             })
           },
@@ -469,7 +466,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       }
       let previouslyPublishedMessage = '';
       if (publishData.already_published > 0) {
-        previouslyPublishedMessage = `${publishData.already_published} event${(publishData.already_published > 1) ? 's' : ''} had already been published`
+        previouslyPublishedMessage = `${publishData.already_published} event${(publishData.already_published > 1) ? 's' : ''} had already been published`;
       }
       let skippedMessage = '';
       if (publishData.results && (publishData.results.failedFilter > 0)) {
@@ -673,22 +670,26 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       && (!this_event.published)) {
       return false;
     }
-    if (!reactData.filterTextLower) {
-      return !this_event.customizations?.show_as_unavailable;   // if no filtering, show only events that are NOT "unavailable"
+    if ((reactData.idFilter) && (!this_event.slot_owners.hasOwnProperty(reactData.idFilter))) {
+      //    console.log(`failed - ${reactData.idFilter} in ${Object.keys(this_event.slot_owners)}`)
+      return false;
     }
-    if (reactData.filterTextLower.startsWith('publish')
+    else if (reactData.eventIDFilter) {
+      return (this_event.event_id === reactData.eventIDFilter);
+    }
+    else if ((!reactData.idFilter) && (this_event.customizations?.show_as_unavailable)) {
+      return false;
+    }
+    else if (!reactData.filterTextLower) {
+      return true;
+    }
+    else if (reactData.filterTextLower.startsWith('publish')
       && (this_event.published)) {
       return true;
     }
     else if (reactData.filterTextLower.startsWith('unpub')
       && (!this_event.published)) {
       return true;
-    }
-    else if (reactData.idFilter) {
-      return (this_event.slot_owners.hasOwnProperty(reactData.idFilter));
-    }
-    else if (reactData.eventIDFilter) {
-      return (this_event.event_id === reactData.eventIDFilter);
     }
     else {
       return ((`${this_event.description} ${this_event.location}`).toLowerCase().includes(reactData.filterTextLower));
@@ -778,15 +779,14 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           updateReactData({
             eventIDFilter: templateRec.event_data.event_id,
             idFilter: false,
-            filterTextLower: templateRec.event_data.generic_description.toLowerCase()
+            //          filterTextLower: templateRec.event_data.generic_description.toLowerCase()
           }, true);
         }
         else {
-          let personRec = await getPerson(dragged_id);
           updateReactData({
             eventIDFilter: false,
             idFilter: dragged_id,
-            filterTextLower: `${personRec.name.last.toLowerCase()} ${personRec.name.first.toLowerCase()}`
+            //         filterTextLower: `${personRec.name.last.toLowerCase()} ${personRec.name.first.toLowerCase()}`
           }, true);
         }
         break;
@@ -849,7 +849,6 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       ) {
         let isAvailable = true;
         let conflictingEvent;
-        let status_message = 'No conflicts';
         reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].some(this_time => {
           if (this_time.time < eventStart24) {
             // event hasn't started - hold onto current availability and (if not available) the event that causes the potential conflict,
@@ -1633,6 +1632,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                               height: 55,
                               width: 55,
                               border: 0,
+                              boxShadow: (reactData.idFilter === this_candidate.person_id) ? '0 0 8px 12px #0ff' : null,
                               borderRadius: '30px 30px 30px 30px',
                               backgroundColor: reactData.clicked_on_date
                                 ? setAvailabilityColor(reactData.conflictInfo?.[this_candidate.person_id]?.availability?.[reactData.clicked_on_date.numeric$] || 540)
@@ -1830,7 +1830,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                     style={AVATextStyle({
                                       size: 1.2,
                                       color: setTextColor(null, this_date, agendaView()).color,
-                                      margin: { left: 0.2, right: 0.2 }
+                                      margin: (isDense(this_date.dateObj.numeric$) ? { left: 3, right: 3 } : { left: 0.2, right: 0.2 })
                                     })}
                                     key={this_date.dateObj.numeric$ + 'head2' + dateIndex}
                                   >
@@ -1886,7 +1886,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                         size: 1,
                                         textWrap: 'wrap',
                                       })}>
-                                        {`No Events Scheduled`}
+                                        {((this_date.eventList.length === 0) ? `No Events Scheduled` : `No Events Match your Filter`)}
                                       </Typography>
                                     </Box>
                                     :
@@ -2089,6 +2089,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               promptText={['Words to filter on']}
               buttonText={['Set Filter', 'Cancel/Go Back', 'Clear Filter',]}
               valueText={[reactData.filterTextLower]}
+              options={{
+                save_on_enter: true
+              }}
               onCancel={() => {
                 updateReactData({
                   setFilter: false
@@ -2645,7 +2648,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           open={!!reactData.alert}
           px={3}
           key={`alert_wrapper`}
-          autoHideDuration={(reactData.alert.severity === 'success') ? 5000 : ((reactData.alert.severity === 'info') ? 15000 : null)}
+          autoHideDuration={(reactData.alert.severity === 'success') ? 15000 : ((reactData.alert.severity === 'info') ? 15000 : null)}
           onClose={() => {
             updateReactData({
               alert: false
