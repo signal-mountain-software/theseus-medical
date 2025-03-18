@@ -3658,7 +3658,7 @@ export async function publishCalendar(request) {
       console.log('accepted - no filters');
       return true;
     }
-    else if (request.filters.filterTextLower.startsWith('publish') || request.filters.filterTextLower.startsWith('unpub')) {
+    else if ((!!request.filters.filterTextLower) && (request.filters.filterTextLower.startsWith('publish') || request.filters.filterTextLower.startsWith('unpub'))) {
       return true;
     }
     else if ((!request.filters.ownerFilter) && (!request.filters.eventFilter) && (!request.filters.filterTextLower)) {
