@@ -8,7 +8,9 @@ import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import AVATextInput from './AVATextInput';
 import { make_rgba } from '../../util/AVAStyles';
 
-import { Box, Typography, Avatar } from '@material-ui/core';
+import { Alert, AlertTitle } from '@material-ui/lab/';
+
+import { Snackbar, Box, Typography, Avatar } from '@material-ui/core';
 import Tooltip from '@material-ui/core/Tooltip';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -298,8 +300,6 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     }
   */
 
-  const { enqueueSnackbar, closeSnackbar } = useSnackbar();
-
   const classes = useStyles();
   const AVAClass = AVAclasses();
   const { state } = useSession();
@@ -349,6 +349,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
 
   const [reactData, setReactData] = React.useState(
     {
+      alert: false,
       rowLimit: 50,
       todayYMD: makeDate(new Date()).numeric,
       selectedPerson_id: person_id,
@@ -382,10 +383,153 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
 
+  const handlePublishOptions = async ({ response, results }) => {
+    updateReactData({
+      alert: {
+        severity: 'warning',
+        title: 'Publish warning!',
+        message: <div>
+          There is a filter on.  This will cause {results.failedFilter} event(s) to be skipped.<br /><br />
+          You may: <br />
+          <strong>Continue</strong> with the filter as is, skipping the {results.failedFilter} event(s),<br />
+          <strong>Ignore</strong> the filter, publishing all available events, or<br />
+          <strong>Cancel</strong> and go back without publishing anything</div>,
+        action: [
+          {
+            text: `Continue`,
+            function: (async () => {
+              response.proceedWithoutWarning = true;
+              await executePublish(response);
+              updateReactData({
+                setPublishDates: false,
+              }, true);
+            })
+          },
+          {
+            text: `Ignore`,
+            function: (async () => {
+              response.proceedWithoutWarning = true;
+              response.ignoreFilters = true;
+              await executePublish(response);
+              updateReactData({
+                setPublishDates: false,
+              }, true);
+            })
+          },
+          {
+            text: `Cancel`,
+            function: () => {
+              updateReactData({
+                setPublishDates: false,
+              }, true);
+            }
+          }
+        ]
+      }
+    }, true);
+  };
+
+  const executePublish = async (response) => {
+    let publishData = await publishCalendar(
+      {
+        client: {
+          client_id: state.session.client_id,
+          client_name: state.session.client_name
+        },
+        myCalendar: reactData.myCalendar,
+        requestor: state.session.user_id,
+        filters: {
+          filterTextLower: response.ignoreFilters ? '' : reactData.filterTextLower,
+          ownerFilter: response.ignoreFilters ? false : reactData.idFilter,
+          eventFilter: response.ignoreFilters ? false : reactData.eventIDFilter
+        },
+        startDate: makeDate(response[0]).date,
+        endDate: makeDate(response[1]).date,
+        proceedWithoutWarning: response.proceedWithoutWarning || false
+      }
+    );
+    if (publishData.warningsExist) {
+      await handlePublishOptions({ response, results: publishData.results });
+      return;
+    }
+    else {
+      reactData.myCalendar.forEach((pDate, pDx) => {
+        pDate.eventList.forEach((pEvent, pEx) => {
+          if (publishData.event_list.includes(pEvent.event_key)) {
+            reactData.myCalendar[pDx].eventList[pEx].published = true;
+          }
+        });
+      });
+      let dateRangeMessage = `Publish complete for ${publishData.dates.from}`;
+      if (publishData.dates.from !== publishData.dates.to) {
+        dateRangeMessage += ` to ${publishData.dates.to}`;
+      }
+      let previouslyPublishedMessage = '';
+      if (publishData.already_published > 0) {
+        previouslyPublishedMessage = `${publishData.already_published} event${(publishData.already_published > 1) ? 's' : ''} had already been published`
+      }
+      let skippedMessage = '';
+      if (publishData.results && (publishData.results.failedFilter > 0)) {
+        skippedMessage = `${publishData.results.failedFilter} event(s) were skipped due to a filter you have set`;
+      }
+      updateReactData({
+        myCalendar: reactData.myCalendar,
+        alert: {
+          severity: 'success',
+          title: `Publish complete`,
+          message: <div>
+            {dateRangeMessage}< br />
+            <br />
+            <strong>{publishData.results.willPublish}</strong> events were published<br />
+            <strong>{(publishData.people_count === 0) ? 'No' : publishData.people_count}</strong> notifications sent<br />
+            {previouslyPublishedMessage}<br />
+            {skippedMessage}</div >,
+        }
+      }, true);
+    }
+    return;
+  };
+
+  const handleConflictOptions = ({ conflictingEvent, dragged_id, eventObj }) => {
+    let { droppedOn_event, eventIndex, dateIndex, eventStart24, eventEnd24 } = eventObj;
+    updateReactData({
+      alert: {
+        severity: 'warning',
+        title: 'Conflict warning!',
+        message: `This conflicts with ${conflictingEvent}`,
+        action: [
+          {
+            text: `Go ahead`,
+            function: (async () => {
+              await proceedWithSignUp(dragged_id, { droppedOn_event, eventIndex, dateIndex, eventStart24, eventEnd24 });
+              updateReactData({
+                alert: false
+              }, true);
+              return;
+            })
+          },
+          {
+            text: `Don't assign`,
+            function: () => {
+              updateReactData({
+                alert: false
+              }, true);
+              return;
+            }
+          }
+        ]
+      }
+    }, true);
+  };
+
   if (reactData.myCalendar.loadError || (reactData.myCalendar.length === 0)) {
-    enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
-    //   onClose();
-    //   return [];
+    updateReactData({
+      alert: {
+        severity: 'warning',
+        title: 'Loading',
+        message: `AVA is still loading.  Wait just a moment and try again, please.`
+      }
+    }, true);
   }
 
   if ((reactData.defaultValues.start_date !== defaultValues.start_date)
@@ -455,6 +599,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   };
 
   const getPersonName = (idToFind) => {
+    if (!state.accessList?.[state.session.client_id]?.list) {
+      return idToFind;
+    }
     let this_person = state.accessList[state.session.client_id].list.find(this_member => {
       return (this_member.id === idToFind);
     });
@@ -525,6 +672,14 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     }
     if (!reactData.filterTextLower) {
       return !this_event.customizations?.show_as_unavailable;   // if no filtering, show only events that are NOT "unavailable"
+    }
+    if (reactData.filterTextLower.startsWith('publish')
+      && (this_event.published)) {
+      return true;
+    }
+    else if (reactData.filterTextLower.startsWith('unpub')
+      && (!this_event.published)) {
+      return true;
     }
     else if (reactData.idFilter) {
       return (this_event.slot_owners.hasOwnProperty(reactData.idFilter));
@@ -672,7 +827,13 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   async function eventSignup(dragged_id, { droppedOn_event, eventIndex, dateIndex }) {
     console.log(`dropped ${dragged_id} onto ${droppedOn_event.description}`);
     if (ownerOfSlots(droppedOn_event, dragged_id)) {
-      enqueueSnackbar(`${dragged_id} is already included in ${droppedOn_event.description}`, { variant: 'warning' });
+      updateReactData({
+        alert: {
+          severity: 'warning',
+          title: 'Already included',
+          message: `${dragged_id} is already included in ${droppedOn_event.description}`
+        }
+      }, true);
     }
     else {
       // does this person have a conflict with this event?
@@ -712,116 +873,95 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           return false;     // return false to the .some function to keep it running
         });
         if (!isAvailable) {
-          status_message = `This conflicts with ${conflictingEvent}`;
-          let requestAction = await orderWarning(status_message);
-          if (requestAction === 'stop') {
-            return;
-          }
-        }
-      }
-      let { slotAssigned, slotUpdates } = await handleAllocateSlot({
-        person_id: dragged_id,
-        this_event: droppedOn_event,
-        eventIndex,
-        dateIndex
-      });
-      if ((eventIndex > -1) && (dateIndex > -1)) {
-        if (slotUpdates.newDescription) {
-          reactData.myCalendar[dateIndex].eventList[eventIndex].description = slotUpdates.newDescription;
-        }
-        if (slotAssigned) {
-          if (!reactData.myCalendar[dateIndex].eventList[eventIndex].hasOwnProperty('slot_owners')) {
-            reactData.myCalendar[dateIndex].eventList[eventIndex].slot_owners = {};
-          }
-          reactData.myCalendar[dateIndex].eventList[eventIndex].slot_owners[dragged_id] = slotAssigned;
-          if (!reactData.conflictInfo.hasOwnProperty(dragged_id)) {
-            reactData.conflictInfo[dragged_id] = {};
-          }
-          let this_date = makeDate(droppedOn_event.occurrence_date);
-          let this_Sunday = makeDate(addDays(this_date.date, -(this_date.dayOfWeek)));
-          if (!reactData.conflictInfo[dragged_id].hasOwnProperty('summaries')) {
-            reactData.conflictInfo[dragged_id].summaries = {
-              [this_Sunday.numeric$]: {
-                description: this_Sunday.dateOnly,
-                minutes: 0
-              }
-            };
-          }
-          else if (!reactData.conflictInfo[dragged_id].summaries.hasOwnProperty(this_Sunday.numeric$)) {
-            reactData.conflictInfo[dragged_id].summaries[this_Sunday.numeric$] = {
-              description: this_Sunday.dateOnly,
-              minutes: 0
-            };
-          }
-          let start_time = makeTime(eventStart24);
-          let end_time = makeTime(eventEnd24);
-          let minutes_booked = 0;
-          if (end_time.minutesSinceMidnight < start_time.minutesSinceMidnight) {
-            minutes_booked = end_time.minutesSinceMidnight + (1440 - start_time.minutesSinceMidnight);
-          }
-          else {
-            minutes_booked = end_time.minutesSinceMidnight - start_time.minutesSinceMidnight;
-          }
-          if (minutes_booked < 1200) {
-            reactData.conflictInfo[dragged_id].summaries[this_Sunday.numeric$].minutes += minutes_booked;
-          }
-          if (!reactData.conflictInfo[dragged_id].hasOwnProperty(droppedOn_event.occurrence_date)) {
-            reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date] = [];
-          }
-          reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].push(
-            {
-              time: eventStart24,
-              open: false,
-              event_id: reactData.myCalendar[dateIndex].eventList[eventIndex].event_id,
-              event_title: reactData.myCalendar[dateIndex].eventList[eventIndex].description
-            },
-            { time: eventEnd24, open: true }
-          );
-          reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].sort((a, b) => {
-            if (a.time === b.time) {
-              return (!a.open ? 1 : -1);
-            }
-            else {
-              return ((a.time < b.time) ? -1 : 1);
-            }
+          handleConflictOptions({
+            conflictingEvent,
+            dragged_id,
+            eventObj: { droppedOn_event, eventIndex, dateIndex, eventStart24, eventEnd24 }
           });
-          updateReactData({
-            myCalendar: reactData.myCalendar
-          }, true);
+          return;
         }
       }
+      await proceedWithSignUp(dragged_id, { droppedOn_event, eventIndex, dateIndex, eventStart24, eventEnd24 });
     }
   }
 
-  async function orderWarning(status_message) {
-    const showWarning = new Promise((resolve, reject) => {
-      let response = '';
-      const snackAction = (
-        <React-Fragment>
-          <Button className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'green', color: 'white' }}
-            size='small'
-            onClick={() => { response = 'assign'; resolve(response); }}
-          >
-            Go ahead
-          </Button>
-          <Button className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'red', color: 'white' }}
-            size='small'
-            onClick={() => { response = 'stop'; resolve(response); }}
-          >
-            Don't assign
-          </Button>
-        </React-Fragment>
-      );
-      enqueueSnackbar(
-        `${status_message}.  What would you like to do?`,
-        { variant: 'warning', persist: true, action: snackAction }
-      );
+  async function proceedWithSignUp(dragged_id, { droppedOn_event, eventIndex, dateIndex, eventStart24, eventEnd24 }) {
+    let { slotAssigned, slotUpdates } = await handleAllocateSlot({
+      person_id: dragged_id,
+      this_event: droppedOn_event,
+      eventIndex,
+      dateIndex
     });
-    let rValue = await showWarning;
-    closeSnackbar();
-    return rValue;
+    if ((eventIndex > -1) && (dateIndex > -1)) {
+      if (slotUpdates.newDescription) {
+        reactData.myCalendar[dateIndex].eventList[eventIndex].description = slotUpdates.newDescription;
+      }
+      if (slotAssigned) {
+        if (!reactData.myCalendar[dateIndex].eventList[eventIndex].hasOwnProperty('slot_owners')) {
+          reactData.myCalendar[dateIndex].eventList[eventIndex].slot_owners = {};
+        }
+        reactData.myCalendar[dateIndex].eventList[eventIndex].slot_owners[dragged_id] = slotAssigned;
+        if (!reactData.conflictInfo.hasOwnProperty(dragged_id)) {
+          reactData.conflictInfo[dragged_id] = {};
+        }
+        let this_date = makeDate(droppedOn_event.occurrence_date);
+        let this_Sunday = makeDate(addDays(this_date.date, -(this_date.dayOfWeek)));
+        if (!reactData.conflictInfo[dragged_id].hasOwnProperty('summaries')) {
+          reactData.conflictInfo[dragged_id].summaries = {
+            [this_Sunday.numeric$]: {
+              description: this_Sunday.dateOnly,
+              minutes: 0
+            }
+          };
+        }
+        else if (!reactData.conflictInfo[dragged_id].summaries.hasOwnProperty(this_Sunday.numeric$)) {
+          reactData.conflictInfo[dragged_id].summaries[this_Sunday.numeric$] = {
+            description: this_Sunday.dateOnly,
+            minutes: 0
+          };
+        }
+        let start_time = makeTime(eventStart24);
+        let end_time = makeTime(eventEnd24);
+        let minutes_booked = 0;
+        if (end_time.minutesSinceMidnight < start_time.minutesSinceMidnight) {
+          minutes_booked = end_time.minutesSinceMidnight + (1440 - start_time.minutesSinceMidnight);
+        }
+        else {
+          minutes_booked = end_time.minutesSinceMidnight - start_time.minutesSinceMidnight;
+        }
+        if (minutes_booked < 1200) {
+          reactData.conflictInfo[dragged_id].summaries[this_Sunday.numeric$].minutes += minutes_booked;
+        }
+        if (!reactData.conflictInfo[dragged_id].hasOwnProperty(droppedOn_event.occurrence_date)) {
+          reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date] = [];
+        }
+        reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].push(
+          {
+            time: eventStart24,
+            open: false,
+            event_id: reactData.myCalendar[dateIndex].eventList[eventIndex].event_id,
+            event_title: reactData.myCalendar[dateIndex].eventList[eventIndex].description
+          },
+          { time: eventEnd24, open: true }
+        );
+        reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].sort((a, b) => {
+          if (a.time === b.time) {
+            return (!a.open ? 1 : -1);
+          }
+          else {
+            return ((a.time < b.time) ? -1 : 1);
+          }
+        });
+        updateReactData({
+          myCalendar: reactData.myCalendar
+        }, true);
+      }
+    }
+    updateReactData({
+      checkConflict: false,
+      conflictProceed: false
+    }, true);
+    return;
   }
 
   const handleAllocateSlot = async ({ this_event, person_id, eventIndex, dateIndex }) => {
@@ -1633,7 +1773,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                   alignItems={'center'}
                                   onClick={() => {
                                     let clicked_on_date = false;
-                                    if (agendaView()) { 
+                                    if (agendaView()) {
                                       if (!reactData.clicked_on_date || (reactData.clicked_on_date.numeric$ !== this_date.dateObj.numeric$)) {
                                         clicked_on_date = this_date.dateObj;
                                       }
@@ -2047,41 +2187,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               }}
               onSave={async (response) => {
                 if (response.length > 1) {
-                  let publishData = await publishCalendar(
-                    {
-                      client: {
-                        client_id: state.session.client_id,
-                        client_name: state.session.client_name
-                      },
-                      myCalendar: reactData.myCalendar,
-                      requestor: state.session.user_id,
-                      filters: {
-                        filterTextLower: reactData.filterTextLower,
-                        ownerFilter: reactData.idFilter,
-                        eventFilter: reactData.eventIDFilter
-                      },
-                      startDate: makeDate(response[0]).date,
-                      endDate: makeDate(response[1]).date
-                    }
-                  );
-                  let message = `Publish complete for ${publishData.dates.from}`;
-                  if (publishData.dates.from !== publishData.dates.to) {
-                    message += ` to ${publishData.dates.to}`;
-                  }
-                  message += `.  ${(publishData.people_count === 0) ? 'No' : publishData.people_count} notification${(publishData.people_count > 1) ? 's' : ''} sent.`;
-                  if (publishData.already_published > 0) {
-                    message += `  ${publishData.already_published} event${(publishData.already_published > 1) ? 's' : ''} had already been published.`;
-                  }
-                  reactData.myCalendar.forEach((pDate, pDx) => {
-                    pDate.eventList.forEach((pEvent, pEx) => {
-                      if (publishData.event_list.includes(pEvent.event_key)) {
-                        reactData.myCalendar[pDx].eventList[pEx].published = true;
-                      }
-                    });
-                  });
-                  enqueueSnackbar(message, { variant: 'success' });
+                  await executePublish(response);
                 }
-
                 updateReactData({
                   myCalendar: reactData.myCalendar,
                   setPublishDates: false
@@ -2529,6 +2636,71 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           </Button>
         </Box>
       </Box>
+      {reactData.alert &&
+        <Snackbar
+          style={{ zIndex: 2000 }}
+          open={!!reactData.alert}
+          px={3}
+          key={`alert_wrapper`}
+          autoHideDuration={(reactData.alert.severity === 'success') ? 5000 : ((reactData.alert.severity === 'info') ? 15000 : null)}
+          onClose={() => {
+            updateReactData({
+              alert: false
+            }, true);
+          }}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'center'
+          }}
+        >
+          <Alert
+            severity={reactData.alert.severity || 'info'}
+            key={`alert_box`}
+            icon={false}
+            style={{
+              flexDirection: 'column', borderRadius: '20px', border: 1, justifyContent: 'center', alignItems: 'center'
+            }}
+            action={(reactData.alert.action
+              ?
+              <Box
+                display='flex'
+                key={`alert_action`}
+                overflow='auto'
+                flexDirection='row'
+              >
+                {([reactData.alert.action].flat()).map((this_action, actionNdx) => (
+                  <Button
+                    key={`alert_button__${actionNdx}`}
+                    className={AVAClass.AVAButton} color="inherit"
+                    onClick={() => this_action.function()}
+                  >
+                    {this_action.text}
+                  </Button>
+                ))}
+              </Box>
+              : null
+            )}
+            variant='filled'
+            onClose={() => {
+              updateReactData({
+                alert: false
+              }, true);
+            }}
+          >
+            <Box
+              display='flex'
+              key={`alert_message`}
+              overflow='auto'
+              alignItems={'center'}
+              justifyContent={'center'}
+              flexDirection='column'
+            >
+              {reactData.alert.title && <AlertTitle>{reactData.alert.title}</AlertTitle>}
+              {reactData.alert.message}
+            </Box>
+          </Alert>
+        </Snackbar >
+      }
     </Dialog >
   );
 };

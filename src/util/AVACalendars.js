@@ -3005,7 +3005,7 @@ export async function v2buildCalendar(body, screenStatus = () => { }) {
         try_again = false;
       }
     } while (try_again);
-    
+
     if (this_event.slot_names && this_event.slot_names.hasOwnProperty(this_oRec.slotData.slot)) {
       this_occurrence.slot_owners[this_owner] = this_event.slot_names[this_oRec.slotData.slot];
     }
@@ -3090,6 +3090,16 @@ export async function v2buildCalendar(body, screenStatus = () => { }) {
         open: true
       }
     );
+  }
+  // since we write AFTER a break on occurrence date or event_id, we have deal with the very last record
+  if (current_event && current_occurrenceDate && this_occurrence) {
+    let write_me = true;
+    if (filter_owners) {
+      write_me = this_occurrence.slot_owners.some(this_slotOwner => { return filter_owners.includes(this_slotOwner); });
+    }
+    if (write_me) {
+      response[current_occurrenceDate].events[current_event] = this_occurrence;
+    }
   }
   // throw out any event that doesn't include a filter_owner
   // find and add this event in the proper date
@@ -3462,9 +3472,11 @@ export async function publishCalendar(request) {
     client_id: state.session.client_id,
     myCalendar: reactData.myCalendar,
     requestor: state.session.user_id,
+    filters: {},
     filterTextLower: reactData.filterTextLower,
     startDate: makeDate(response[0]).date,
-    endDate: makeDate(response[1]).date
+    endDate: makeDate(response[1]).date,
+    proceedWithoutWarning: false
   }
   */
 
@@ -3485,20 +3497,56 @@ export async function publishCalendar(request) {
     },
     people_count: 0,
     already_published: 0,
-    event_list: []
+    event_list: [],
+    warningsExist: false
   };
+
+  let results = {
+    eventsFound: 0,
+    willPublish: 0,
+    alreadyPublished: 0,
+    failedFilter: 0
+  };
+
+  // check for events to publish
+  if (!request.proceedWithoutWarning) {
+    for (let dX = 0; dX < request.myCalendar.length; dX++) {
+      let this_date = request.myCalendar[dX];
+      console.log(this_date);
+      if (this_date.dateObj.numeric < request.startDateObj.numeric) { continue; }
+      if (this_date.dateObj.numeric > request.endDateObj.numeric) { break; }
+      // good date, get events
+      for (let eX = 0; eX < this_date.eventList.length; eX++) {
+        let this_event = this_date.eventList[eX];
+        console.log('got event');
+        console.log(this_event);
+        if (!okToShow(this_event, results)) { continue; }
+        response.event_list.push(this_event.event_key);
+      }
+    }
+    if (results.failedFilter > 0) {
+      response.warningsExist = true;
+      response.results = results;
+      return response;
+    }
+  }
 
   // get a calendar date, check to see if the date is in the range
   for (let dX = 0; dX < request.myCalendar.length; dX++) {
     let this_date = request.myCalendar[dX];
+    console.log(this_date);
     if (this_date.dateObj.numeric < request.startDateObj.numeric) { continue; }
     if (this_date.dateObj.numeric > request.endDateObj.numeric) { break; }
     // good date, get events
     for (let eX = 0; eX < this_date.eventList.length; eX++) {
       let this_event = this_date.eventList[eX];
-      if (!okToShow(this_event)) { continue; }
+      console.log('got event');
+      console.log(this_event);
+      if (!okToShow(this_event, results)) { continue; }
       // mark this occurrence as published
+      results.willPublish++;
       response.event_list.push(this_event.event_key);
+      console.log('OK to publish - updating Calendar');
       await dbClient
         .update({
           Key: {
@@ -3590,31 +3638,51 @@ export async function publishCalendar(request) {
     response.people_count++;
     await sendMessages(messageObj);
   }
-
+  response.results = results;
   return response;
 
-  function okToShow(this_event) {
+  function okToShow(this_event, results) {
+    results.eventsFound++;
     if (this_event.published) {
       response.already_published++;
+      results.alreadyPublished++;
+      console.log('rejected - already published');
       return false;
     }
-    if (this_event.date === '29991231') { return false; }   // event was soft-deleted
-    if (!request.filters) {
+    if (this_event.date === '29991231') {
+      console.log('rejected - soft deleted');
+      results.eventsFound--;
+      return false;
+    }   // event was soft-deleted
+    if (!request.filters) {    
+      console.log('accepted - no filters');
+      return true;
+    }
+    else if (request.filters.filterTextLower.startsWith('publish') || request.filters.filterTextLower.startsWith('unpub')) {
       return true;
     }
     else if ((!request.filters.ownerFilter) && (!request.filters.eventFilter) && (!request.filters.filterTextLower)) {
+      console.log('accepted - no owner filter, event filter, or text filter ');
       return true;
     }
     else if (request.filters.ownerFilter && (this_event.slot_owners.hasOwnProperty(request.filters.ownerFilter))) {
+      console.log('accepted - owner filter matched slot owner ');
       return true;
     }
     else if (request.filters.eventFilter && (this_event.event_id === request.filters.eventFilter)) {
+      console.log('accepted - event filter matched event id ');
       return true;
     }
     else {
-      return ((`${this_event.description} ${this_event.location}`).toLowerCase().includes(request.filters.filterTextLower));
+      if ((`${this_event.description} ${this_event.location}`).toLowerCase().includes(request.filters.filterTextLower)) {
+        console.log('accepted - text filter was found in description or location');
+        return true;
+      }
+      else {
+        results.failedFilter++;
+        console.log('failed - text filter was found in neither description nor location');
+        return false;
+      }
     }
   }
-
-
 }

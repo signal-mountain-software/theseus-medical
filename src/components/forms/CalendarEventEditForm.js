@@ -221,6 +221,8 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     promptForMessage: '',
     messageType: null,
     recipient: null,
+    messageRecipientIDs: false,
+    messageRecipientNames: false,
     editEventInfo: false,
     editInfoErrorList: [],
     editOwnerInfo: false,
@@ -851,8 +853,10 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       expressionAttributeNames['#t'] = 'time';
       let timeStart;
       let timeEnd;
-      if (newTime.toLowerCase().includes(' to ')) {
-        let [newFrom, newTo] = newTime.toLowerCase().split(' to ');
+      let delimiters = ['to', '-', 'through', 'thru', 'until'];
+      let foundIt = delimiters.findIndex(d => newTime.toLowerCase().includes(` ${d} `));
+      if (foundIt > -1) {
+        let [newFrom, newTo] = newTime.toLowerCase().split(` ${delimiters[foundIt]} `);
         timeStart = makeTime(newFrom);
         timeEnd = makeTime(newTo);
         pOccData.time.duration = timeEnd.minutesSinceMidnight - timeStart.minutesSinceMidnight;
@@ -964,9 +968,9 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     if (goodUpdate) {
       if (eventSlotList && (eventSlotList.length > 0)) {
         let recipientList = [];
-        for (const [index, this_item] of eventSlotList.entries()) {  
+        for (const [index, this_item] of eventSlotList.entries()) {
           if (this_item.slotData?.status?.current?.selected) {
-            recipientList.push(this_item.slotData.owner)
+            recipientList.push(this_item.slotData.owner);
           }
           await handleAllocateSlot({
             person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
@@ -1244,7 +1248,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                         popupMenuOpen: false,
                         messageType: 'group',
                         recipient: (filteredList.map(e => {
-                          return `${e.slotData.display_name}:${e.slotData.id}`;
+                          return `${e.slotData.display_name}%%${e.slotData.id}`;
                         }))
                       }, true);
                     }}
@@ -1570,7 +1574,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                                         updateReactData({
                                           promptForMessage: true,
                                           messageType: '',
-                                          recipient: (`${this_item.slotData.display_name}:` + this_item.slotData.owner)
+                                          recipient: (`${this_item.slotData.display_name}%%${this_item.slotData.owner}`)
                                         }, true);
                                       }}
                                     />
@@ -1797,8 +1801,16 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               "patient_id": state.session.patient_id,
               "patient_display_name": state.session.patient_display_name
             }}
-            pRecipientID={reactData.recipient.split('%%')[1]}
-            pRecipientName={reactData.recipient.split('%%')[0]}
+            pRecipientID={reactData.messageRecipientIDs
+              || (Array.isArray(reactData.recipient)
+                ? reactData.recipient.map(r => { return r.split('%%')[1]; })
+                : [reactData.recipient.split('%%')[1]])
+            }
+            pRecipientName={reactData.messageRecipientNames
+              || (Array.isArray(reactData.recipient)
+                ? reactData.recipient.map(r => { return r.split('%%')[0]; })
+                : [reactData.recipient.split('%%')[0]])
+            }
             onCancel={() => {
               updateReactData({
                 promptForMessage: false
@@ -1829,8 +1841,16 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               "patient_id": state.session.patient_id,
               "patient_display_name": state.session.patient_display_name
             }}
-            pRecipientID={Array.isArray(reactData.recipient) ? reactData.recipient.map(r => { return r.split('%%')[1]; }) : [reactData.recipient.split('%%')[1]]}
-            pRecipientName={Array.isArray(reactData.recipient) ? reactData.recipient.map(r => { return r.split('%%')[0]; }) : [reactData.recipient.split('%%')[0]]}
+            pRecipientID={reactData.messageRecipientIDs
+              || (Array.isArray(reactData.recipient)
+                ? reactData.recipient.map(r => { return r.split('%%')[1]; })
+                : [reactData.recipient.split('%%')[1]])
+            }
+            pRecipientName={reactData.messageRecipientNames
+              || (Array.isArray(reactData.recipient)
+                ? reactData.recipient.map(r => { return r.split('%%')[0]; })
+                : [reactData.recipient.split('%%')[0]])
+            }
             onCancel={() => {
               updateReactData({
                 promptForMessage: false
@@ -1892,8 +1912,11 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                       messageSubject: messageSubject,
                       messageText: messageText,
                       messageType: 'group',
-                      recipient: (filteredList.map(e => {
-                        return `${e.slotData.display_name}:${e.slotData.id}`;
+                      messageRecipientIDs: (filteredList.map(e => {
+                        return e.slotData.id;
+                      })),
+                      messageRecipientNames: (filteredList.map(e => {
+                        return e.slotData.display_name;
                       }))
                     });
                   }
