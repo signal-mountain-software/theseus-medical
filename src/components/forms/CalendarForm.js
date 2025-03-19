@@ -400,7 +400,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               response.proceedWithoutWarning = true;
               await executePublish(response);
               updateReactData({
-                setPublishDates: false              
+                setPublishDates: false
               }, true);
             })
           },
@@ -1813,6 +1813,15 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                       : this_date.dateObj.dayOfWeek_word
                                     }
                                   </Typography>
+                                  <Typography
+                                    key={this_date.dateObj.numeric$ + 'skiprow' + dateIndex}
+                                    style={{
+                                      flexBasis: '100%',
+                                      height: 0
+                                    }}
+                                  >
+                                    {''}
+                                  </Typography>
                                   {(this_date.dateObj.date.getDate() === 1) &&
                                     (!isDense(this_date.dateObj.numeric$)) &&
                                     <Typography
@@ -1830,7 +1839,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                     style={AVATextStyle({
                                       size: 1.2,
                                       color: setTextColor(null, this_date, agendaView()).color,
-                                      margin: (isDense(this_date.dateObj.numeric$) ? { left: 3, right: 3 } : { left: 0.2, right: 0.2 })
+                                      margin: { left: 0.2, right: 0.2 }
                                     })}
                                     key={this_date.dateObj.numeric$ + 'head2' + dateIndex}
                                   >
