@@ -193,6 +193,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     forceReloadTime: 0,
     idleState: false,
     imageTable: {},
+    inOut_filter: (options && options.inOut_filter) || false,
     isSmall: (window.window.innerWidth < 800),
     isTiny: (window.window.innerWidth < 500),
     lastActiveTime: new Date(),
@@ -221,7 +222,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     showPreferredList: true,
     showQuickSearch: (options && options.newMessage && (!options.recipients || (options.recipients.length === 0))) || false,
     singleFilterDigit: false,
-    start_time: (options && options.hasOwnProperty('start_time')) ? makeDate(options.start_time).timeStamp : false,
+    start_time: (options && options.hasOwnProperty('start_time')) ? makeDate(options.start_time).timestamp : false,
     statusFilter: (options && options.statusFilter) || false,
     statusMessage: false,
     sorted_threads: [],
@@ -543,6 +544,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                 recipient_id: r.person_id || r.group_id || reactData.preferred_recipients[r.rIndex].personList[0],
                 recipient_name: r.person_name || r.group_name || reactData.preferred_recipients[r.rIndex].objText,
                 wasHeld: false,
+                status_held: false,
                 status_blocked: false,
                 status_redirected: false,
                 status_with_rules: false,
@@ -617,111 +619,107 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       start_time = nowTime - (7 * oneDay);
       end_time = nowTime + oneDay;
     }
+    let queryObj;
     // Get messages to me
-    let inRecs;
-    let queryObj = {
-      KeyConditionExpression: 'deliver_to = :p AND created_time between :s and :e',
-      ExpressionAttributeValues: {
-        ':p': person_id,
-        ':s': start_time.toString(),
-        ':e': end_time.toString()
-      },
-      TableName: "TheseusMessages",
-      IndexName: 'deliver_to-index',
-      ScanIndexForward: false,
-    };
-    do {
-      inRecs = await dbClient
-        .query(queryObj)
-        .promise()
-        .catch(error => {
-          if (error.code === 'NetworkingError') {
-            updateReactData({
-              alert: {
-                severity: 'error',
-                title: 'No Internet',
-                message: `There is no internet connection`,
-              }
-            }, true);
-          }
-          else {
-            updateReactData({
-              alert: {
-                severity: 'error',
-                title: 'Database problem',
-                message: `Error reading inbound Messages: ${error}`,
-              }
-            }, true);
-          }
-        });
-      if (inRecs && inRecs.LastEvaluatedKey) {
-        queryObj.ExclusiveStartKey = inRecs.LastEvaluatedKey;
-      }
-      else {
-        delete queryObj.ExclusiveStartKey;
-      }
-      if (recordExists(inRecs)) {
-        if (queryObj.ExclusiveStartKey) {
-          await processDeliveryRecs(inRecs.Items, '', person_id);
+    if (!reactData.inOut_filter || (reactData.inOut_filter === 'in')) {
+      let inRecs;
+      queryObj = {
+        KeyConditionExpression: 'deliver_to = :p AND created_time between :s and :e',
+        ExpressionAttributeValues: {
+          ':p': person_id,
+          ':s': start_time.toString(),
+          ':e': end_time.toString()
+        },
+        TableName: "TheseusMessages",
+        IndexName: 'deliver_to-index',
+        ScanIndexForward: false,
+      };
+      do {
+        inRecs = await dbClient
+          .query(queryObj)
+          .promise()
+          .catch(error => {
+            if (error.code === 'NetworkingError') {
+              updateReactData({
+                alert: {
+                  severity: 'error',
+                  title: 'No Internet',
+                  message: `There is no internet connection`,
+                }
+              }, true);
+            }
+            else {
+              updateReactData({
+                alert: {
+                  severity: 'error',
+                  title: 'Database problem',
+                  message: `Error reading inbound Messages: ${error}`,
+                }
+              }, true);
+            }
+          });
+        if (inRecs && inRecs.LastEvaluatedKey) {
+          queryObj.ExclusiveStartKey = inRecs.LastEvaluatedKey;
         }
-      }
-    } while (queryObj.ExclusiveStartKey);
-    // inRecs will have data in it from the last query round above; that will be concat'ed to outRecs on the first processing run below
-
+        else {
+          delete queryObj.ExclusiveStartKey;
+        }
+        if (recordExists(inRecs)) {
+            await processDeliveryRecs(inRecs.Items, '', person_id);
+        }
+      } while (queryObj.ExclusiveStartKey);
+    }
     // Get messages from me
-    let outRecs;
-    queryObj = {
-      KeyConditionExpression: 'sent_from = :p AND created_time between :s and :e',
-      FilterExpression: 'record_type = :t',
-      ExpressionAttributeValues: {
-        ':p': person_id,
-        ':s': start_time.toString(),
-        ':e': end_time.toString(),
-        ':t': 'delivery',
-      },
-      TableName: "TheseusMessages",
-      IndexName: 'sent_from-index',
-      ScanIndexForward: false,
-    };
-    do {
-      outRecs = await dbClient
-        .query(queryObj)
-        .promise()
-        .catch(error => {
-          if (error.code === 'NetworkingError') {
-            updateReactData({
-              alert: {
-                severity: 'error',
-                title: 'No Internet',
-                message: `There is no internet connection`,
-              }
-            }, true);
-          }
-          else {
-            updateReactData({
-              alert: {
-                severity: 'error',
-                title: 'Database problem',
-                message: `Error reading outbound Messages: ${error}`,
-              }
-            }, true);
-          }
-        });
-      if (outRecs && outRecs.LastEvaluatedKey) {
-        queryObj.ExclusiveStartKey = outRecs.LastEvaluatedKey;
-      }
-      else {
-        delete queryObj.ExclusiveStartKey;
-      }
-      if (recordExists(outRecs)) {
-        await processDeliveryRecs((outRecs.Items.concat(inRecs.Items || [])), '', person_id);
-        inRecs = {};
-      }
-      else if (recordExists(inRecs)) {
-        await processDeliveryRecs(inRecs.Items, '', person_id);
-        inRecs = {};
-      }
-    } while (queryObj.ExclusiveStartKey);
+    if (!reactData.inOut_filter || (reactData.inOut_filter === 'out')) {
+      let outRecs;
+      queryObj = {
+        KeyConditionExpression: 'sent_from = :p AND created_time between :s and :e',
+        FilterExpression: 'record_type = :t',
+        ExpressionAttributeValues: {
+          ':p': person_id,
+          ':s': start_time.toString(),
+          ':e': end_time.toString(),
+          ':t': 'delivery',
+        },
+        TableName: "TheseusMessages",
+        IndexName: 'sent_from-index',
+        ScanIndexForward: false,
+      };
+      do {
+        outRecs = await dbClient
+          .query(queryObj)
+          .promise()
+          .catch(error => {
+            if (error.code === 'NetworkingError') {
+              updateReactData({
+                alert: {
+                  severity: 'error',
+                  title: 'No Internet',
+                  message: `There is no internet connection`,
+                }
+              }, true);
+            }
+            else {
+              updateReactData({
+                alert: {
+                  severity: 'error',
+                  title: 'Database problem',
+                  message: `Error reading outbound Messages: ${error}`,
+                }
+              }, true);
+            }
+          });
+        if (outRecs && outRecs.LastEvaluatedKey) {
+          queryObj.ExclusiveStartKey = outRecs.LastEvaluatedKey;
+        }
+        else {
+          delete queryObj.ExclusiveStartKey;
+        }
+        if (recordExists(outRecs)) {
+          await processDeliveryRecs(outRecs.Items, '', person_id);
+        }
+      } while (queryObj.ExclusiveStartKey);
+    }
   }
 
   async function processDeliveryRecs(deliveryRecs, inOut, my_id) {
@@ -729,9 +727,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     let totalCount = deliveryRecs.length;
     for (let this_deliveryRec of deliveryRecs) {
       totalProcessed++;
-      if (this_deliveryRec.sent_from === this_deliveryRec.deliver_to) {    // a message to myself?  ignore...
-        continue;
-      }
+  //    if (this_deliveryRec.sent_from === this_deliveryRec.deliver_to) {    // a message to myself?  ignore...
+  //      continue;
+  //    }
       inOut = ((this_deliveryRec.sent_from === my_id) ? 'out' : 'in');
       // threads is {[<thread_id>]: {last_update: <>, delete_flag: <t/f>, messages: []}}, {[<thread_id>]: {}}...]
       // threads[n].messages is [{message_text: <>, last_update: <>, attachments: [], sent_time: <>, author_id: <>, author_name: <>, author_image: <>, inOut: <in/out> ,recipients: []}, {}...]
@@ -826,6 +824,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           recipient_id: this_deliveryRec.deliver_to,
           recipient_name: (`${this_deliveryRec.recipient_list.name.first} ${this_deliveryRec.recipient_list.name.last}`).trim(),
           wasHeld: false,
+          status_held: false,
           status_blocked: false,
           status_redirected: false,
           status_with_rules: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.rule_used),
@@ -837,6 +836,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       let this_method = standardizeMethod(this_deliveryRec.deliver_method);
       if (this_method === 'held') {
         reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].wasHeld = true;
+        reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_held = true;
         reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].heldUntil = this_deliveryRec.recipient_list.holdUntil;
         if (this_deliveryRec.recipient_list.hold_reason === 'blocked') {
           reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_blocked = true;
@@ -878,7 +878,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         });
       }
       // every 50 records, send info back
-      if (((totalProcessed % 50) === 0) || (totalProcessed >= totalCount)) {
+      if ((totalProcessed % 50) === 0) {
         let sorted_threads = Object.keys(reactData.threads).sort((a, b) => {
           return ((reactData.threads[a].last_update > reactData.threads[b].last_update) ? -1 : 1);
         });
@@ -888,6 +888,16 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           sorted_threads
         }, true);
       }
+    }
+    if (totalProcessed > 0) {
+      let sorted_threads = Object.keys(reactData.threads).sort((a, b) => {
+        return ((reactData.threads[a].last_update > reactData.threads[b].last_update) ? -1 : 1);
+      });
+      updateReactData({
+        statusMessage: `Processing inbound - ${totalProcessed} of ${totalCount}`,
+        threads: reactData.threads,
+        sorted_threads
+      }, true);
     }
   }
 
@@ -899,7 +909,37 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       this_line = '';
     }
     for (let this_method in this_recipient.methods) {
-      this_line += ` via ${this_method} - ${this_recipient.methods[this_method].result} ${makeDate(this_recipient.methods[this_method].last_update_time).relative}`;
+      let result;
+      switch (this_recipient.methods[this_method].result) {
+        case 'submitted': {
+          result = 'Sent';
+          break;
+        }
+        case 'userDisconnect': {
+          result = 'Call answered; user disconnected';
+          break;
+        }
+        case 'callComplete': {
+          result = 'Call completed';
+          break;
+        }
+        case 'delivered': {
+          result = 'Delivery confirmed';
+          break;
+        }
+        case 'open': {
+          result = 'Message opened';
+          break;
+        }
+        case 'duplicate': {
+          result = `Duplicated another person's address`;
+          break;
+        }
+        default: {
+          result = this_recipient.methods[this_method].result;
+        }
+      }
+      this_line += ` ${this_recipient.wasHeld ? 'held, then ' : ''}via ${this_method} - ${result} ${makeDate(this_recipient.methods[this_method].last_update_time).relative}`;
       response.push(this_line);
       this_line = '';
     }
@@ -971,13 +1011,14 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     else {
       loop_until = reactData.start_time;
     }
-    let this_start = nowTime - (2 * oneDay);
+    let this_start = Math.max((nowTime - (2 * oneDay)), loop_until);
     let this_end = nowTime + oneDay;
     do {
       await allMessages({ person_id: pPerson, start_time: this_start, end_time: this_end });
       this_end = this_start;
       this_start -= (7 * oneDay);
     } while (this_start > loop_until);
+    await allMessages({ person_id: pPerson, start_time: loop_until, end_time: this_end });
     start();  // idle timer
     updateReactData({
       lastReloadTime: new Date(),

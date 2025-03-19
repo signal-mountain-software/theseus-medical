@@ -7,7 +7,7 @@ import { dbClient } from '../../util/AVAUtilities';
 import QuickSearch from '../sections/QuickSearch';
 import { getPerson } from '../../util/AVAPeople';
 
-import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Switch } from '@material-ui/core';
+import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Switch, Slider } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -115,6 +115,7 @@ export default ({ defaults, onCancel }) => {
     anchorEl: null,
     building: 'not started',
     columnSort: 'sent',
+    daysToMonitor: 1,
     defaults,
     denseView: false,
     display_name: state.patient?.name?.first || 'My',
@@ -161,6 +162,37 @@ export default ({ defaults, onCancel }) => {
     if (force) { setRefreshTrigger(refreshTrigger => !refreshTrigger); }
   };
 
+  const sliderMarks = [
+    {
+      value: 1,
+      label: '',
+    },
+    {
+      value: 2,
+      label: '2',
+    },
+    {
+      value: 3,
+      label: '3',
+    },
+    {
+      value: 4,
+      label: '4',
+    },
+    {
+      value: 5,
+      label: '5',
+    },
+    {
+      value: 6,
+      label: '6',
+    },
+    {
+      value: 7,
+      label: '',
+    },
+  ];
+
 
   function handleResize() {
     updateReactData({
@@ -193,6 +225,7 @@ export default ({ defaults, onCancel }) => {
         });
         updateReactData({
           selectedGroupMembers: groupMembersUpdated,
+          forceReloadTime: new Date().getTime() + (1000 * 300),
           timeLastFetched,
         }, true);
       }
@@ -218,6 +251,7 @@ export default ({ defaults, onCancel }) => {
         });
         updateReactData({
           selectedGroupMembers: groupMembersUpdated,
+          forceReloadTime: new Date().getTime() + (1000 * 300),
           timeLastFetched,
         }, true);
       }
@@ -238,6 +272,7 @@ export default ({ defaults, onCancel }) => {
         });
         updateReactData({
           selectedGroupMembers: groupMembersUpdated,
+          forceReloadTime: new Date().getTime() + (1000 * 300),
           timeLastFetched,
         }, true);
       }
@@ -325,6 +360,46 @@ export default ({ defaults, onCancel }) => {
     }
     return (inObj.group_id.toLowerCase().includes(lower_activity_filter));
   };
+
+  async function resetTimeWindow(daysToMonitor) {
+    for (const this_member in reactData.selectedGroupMembers) {
+      reactData.selectedGroupMembers[this_member].messageData = {
+        sent: {
+          count: 0,
+          urgent: 0,
+          held: 0,
+          blocked: 0,    // hold_reason === 'blocked'
+          redirected: 0,    // hold_reason === 'replaced'
+          bounced: 0,
+          with_attachment: 0,
+          with_rules: 0
+        },
+        received: {
+          count: 0,
+          urgent: 0,
+          held: 0,
+          blocked: 0,    // hold_reason === 'blocked'
+          redirected: 0,    // hold_reason === 'replaced'
+          bounced: 0,
+          with_attachment: 0,
+          with_rules: 0,
+          not_og: 0    // you were not an original receipient (recipient_list.not_original_recipient is true)
+        },
+      };
+    }
+    const start_time = new Date().getTime() - (daysToMonitor * 24 * 60 * 60 * 1000);
+    let updatedSelections = await messageFetch({
+      response: reactData.selectedGroupMembers,
+      startTime: start_time,
+    });
+    updateReactData({
+      daysToMonitor: daysToMonitor,
+      timeWindowStart: start_time,
+      forceReloadTime: new Date().getTime() + (1000 * 300),
+      selectedGroupMembers: updatedSelections
+    }, true);
+    return;
+  }
 
   async function selectMembers(this_group) {
     let response = {};
@@ -440,15 +515,12 @@ export default ({ defaults, onCancel }) => {
         }
       }
     } while (queryObj.ExclusiveStartKey);
-    updateReactData({
-      forceReloadTime: new Date().getTime() + (1000 * 30)
-    }, true);
     return response;
   };
 
   function objRefIncrement(obj, key) {
     if (!obj) { obj = { key: 1 }; }
-    else if (!(key in obj)) { obj[key] = 1; } 
+    else if (!(key in obj)) { obj[key] = 1; }
     else { return obj[key] + 1; }
   }
 
@@ -574,6 +646,7 @@ export default ({ defaults, onCancel }) => {
                               selectedGroup_id: listEntry,
                               selectedGroupRec: reactData.groupsManagedObject[listEntry],
                               selectedGroupMembers: await selectMembers(listEntry),
+                              forceReloadTime: new Date().getTime() + (1000 * 300),
                               timeLastFetched,
                               selectedPerson_id: false,
                               selectedPersonRec: false,
@@ -721,7 +794,7 @@ export default ({ defaults, onCancel }) => {
                             overflow: 'visible',
                             align: 'center',
                             size: 1,
-                            width: '25px',
+                            width: '35px',
                             margin: { left: 0.2, right: 0.2, top: 0, bottom: 0.8 },
                           })}
                         >
@@ -742,6 +815,7 @@ export default ({ defaults, onCancel }) => {
                         key={`g_peopleoutbox-${cX}`}
                       >
                         <Box display='flex' flexDirection='row' flexGrow={1} width={'200px'}
+                          
                           key={`g_peopleinnerbox-${cX}`}
                         >
                           <Typography
@@ -769,6 +843,7 @@ export default ({ defaults, onCancel }) => {
                             onClick={async () => {
                               updateReactData({
                                 personMessages: this_person,
+                                personMessages_inOutFilter: ((this_key === 'count') ? (reactData.received_mode ? 'in' : 'out') : false),
                                 personMessages_statusFilter: ((this_key === 'count') ? false : this_key)
                               }, true);
                             }}
@@ -776,7 +851,7 @@ export default ({ defaults, onCancel }) => {
                               overflow: 'visible',
                               align: 'center',
                               size: 1,
-                              width: '25px',
+                              width: '35px',
                               opacity: (((reactData.received_mode && reactData.selectedGroupMembers[this_person].messageData.received[this_key] === 0)
                                 || (!reactData.received_mode && reactData.selectedGroupMembers[this_person].messageData.sent[this_key] === 0)
                               ) ? '30%' : ''),
@@ -793,6 +868,63 @@ export default ({ defaults, onCancel }) => {
                     ))}
                   </Box>
                 </Paper>
+                <Box flexGrow={1}
+                  key={`slider_parent`}
+                  display="flex"
+                  flexDirection='column'
+                  alignItems="center"
+                  justifyContent="center"
+                  marginTop={'16px'}
+                  width={'100%'}
+                >
+                  <Typography key={`slider_top`}
+                    style={{
+                      fontSize: `0.8rem`,
+                      marginTop: '-6px',
+                      lineHeight: 1.2,
+                      overflow: ('hidden')
+                    }}
+                  >
+                    {`Days to Monitor`}
+                  </Typography>
+                  <Box width={300} display="flex"
+                    key={`slider_display-${reactData.daysToMonitor || 1}`}
+                    flexDirection='row'
+                    alignItems="center"
+                    justifyContent="center"
+                  >
+                    <Typography key={`slider_left`}
+                      style={{
+                        fontSize: `0.8rem`,
+                        overflow: ('hidden'),
+                        marginRight: '16px'
+                      }}
+                    >
+                      {`1`}
+                    </Typography>
+                    <Slider
+                      key={`slider_value-${reactData.daysToMonitor || 1}`}
+                      value={reactData.daysToMonitor || 1}
+                      onChangeCommitted={async (event, newValue) => {
+                        await resetTimeWindow(newValue);
+                      }}
+                      aria-labelledby="continuous-slider"
+                      marks={sliderMarks}
+                      step={1}
+                      min={1}
+                      max={7}
+                    />
+                    <Typography key={`slider_right`}
+                      style={{
+                        fontSize: `0.8rem`,
+                        overflow: ('hidden'),
+                        marginLeft: '16px'
+                      }}
+                    >
+                      {`7`}
+                    </Typography>
+                  </Box>
+                </Box>
               </Box>
             }
           </Box>
@@ -837,11 +969,14 @@ export default ({ defaults, onCancel }) => {
           onReset={() => {
             updateReactData({
               personMessages: false,
+              personMessages_inOutFilter: false,
               personMessages_statusFilter: false
             }, true);
           }}
           options={{
             viewOnly: true,
+            start_time: reactData.timeWindowStart,
+            inOut_filter: reactData.personMessages_inOutFilter,
             statusFilter: reactData.personMessages_statusFilter
           }}
         />
