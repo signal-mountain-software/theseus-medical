@@ -330,7 +330,31 @@ export default Component => props => {
         return 'invalid';
       }
     }
-    if (foundSession.requirePassword && ((pSource === 'entered') || (pSource === 'selection'))) {
+    if (
+      (foundSession.forceSetPassword || (reactData.customizationData.client_style?.mandatory_passwords && !foundSession.last_login))
+      && ((pSource === 'entered') || (pSource === 'selection'))
+    ) {
+      await logAccessAttempt(pUser, '', true, 'Good UserID entered.  Password must be set/reset for this account.');
+      closeSnackbar();
+      enqueueSnackbar(`Please set a new password.`, { variant: 'error', persist: true });
+      let [goodUser, foundPatient] = await getPerson(pUser);
+      if (!goodUser) {
+        let eMessage = `When fetching People account for this password-required Session, ${pUser} is not found`;
+        await logAccessAttempt(pUser, '', false, eMessage);
+        setDoneTrying(true);
+        enqueueSnackbar(`${eMessage}.  This is an unusual situation.  AVA Support has been notified.`, { variant: 'error', persist: true });
+        sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
+        setAVAFollowUpData({ 'NeedUser': true });
+        return 'invalid';
+      }
+      foundPatient.sessionRec = foundSession;
+      setAVAFollowUpData({ 'passwordRequired': true, 'forceSetPassword': true, 'enteredUserID': pUser, 'possibleUserRecs': [foundPatient] });
+      return 'password';
+    }
+    else if (
+      (foundSession.requirePassword || reactData.customizationData.client_style?.mandatory_passwords)
+      && ((pSource === 'entered') || (pSource === 'selection'))
+    ) {
       await logAccessAttempt(pUser, '', true, 'Good UserID entered.  Password is required for this account.');
       closeSnackbar();
       enqueueSnackbar(`This account requires a password.`, { variant: 'error', persist: true });
@@ -415,7 +439,17 @@ export default Component => props => {
 
   function promptForPassword() {
     if (testModeErrorTrap()) { return false; }
-    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID'));
+    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID') && !AVAFollowUpData.forceSetPassword);
+  }
+
+  function promptSetPassword() {
+    if (testModeErrorTrap()) { return false; }
+    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID') && AVAFollowUpData.forceSetPassword);
+  }
+
+  function promptConfirmPassword() {
+    if (testModeErrorTrap()) { return false; }
+    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID') && AVAFollowUpData.confirmSetPassword);
   }
 
   const selectFromMultipleAccounts = () => {
@@ -690,6 +724,100 @@ export default Component => props => {
               }
               let eMessage = `AVA could not log you in with "${enteredPass}"`;
               await logAccessAttempt('Text - not a UserID', '', false, eMessage);
+              enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
+              setDoneTrying(true);
+              return;
+            }}
+          />
+        }
+        {promptSetPassword() &&
+          <AVATextInput
+            titleText={reactData.customizationData.client_name}
+            promptText={"New Password"}
+            options={{ 'save_on_enter': true }}
+            buttonText={['Continue', 'Cancel']}
+            onCancel={() => {
+              setMessageList([]);
+              closeSnackbar();
+              enqueueSnackbar(`Please enter your User ID or Name`, { variant: 'info', persist: true });
+              setAVAFollowUpData({ 'NeedUser': true });
+            }}
+            onSave={async (enteredPass) => {
+              setMessageList([]);
+              closeSnackbar();
+              setAVAFollowUpData({
+                passwordRequired: true,
+                proposedPassword: enteredPass,
+                confirmSetPassword: true,
+                enteredUserID: AVAFollowUpData.enteredUserID,
+                possibleUserRecs: AVAFollowUpData.possibleUserRecs
+              });
+              return;
+            }}
+          />
+        }
+        {promptConfirmPassword() &&
+          <AVAConfirm
+            promptText={[
+              reactData.customizationData.client_name,
+              `[style={size:0.7,top:0}]Please confirm that you wish to set ${AVAFollowUpData.proposedPassword} as your new password`,
+            ]}
+            cancelText={`No, that's not right`}
+            confirmText={`Yes - set ${AVAFollowUpData.proposedPassword} as my password`}
+            onCancel={() => {
+              setMessageList([]);
+              closeSnackbar();
+              setAVAFollowUpData({
+                passwordRequired: true,
+                forceSetPassword: true,
+                enteredUserID: AVAFollowUpData.enteredUserID,
+                possibleUserRecs: AVAFollowUpData.possibleUserRecs
+              });
+              return;
+            }}
+            onConfirm={async () => {
+              setMessageList([]);
+              let this_user = AVAFollowUpData.possibleUserRecs[0];
+              // update SessionV2 with this password
+              await updateDb(
+                [                  
+                  {
+                    table: "SessionsV2",
+                    key: {
+                      session_id: AVAFollowUpData.enteredUserID.toLowerCase()
+                    },
+                    data: {
+                      last_login: AVAFollowUpData.proposedPassword,
+                      forceSetPassword: false,
+                      storePassword: true,
+                      password_change_date: new Date().toLocaleString()
+                    }
+                  },
+                  {
+                    table: "People",
+                    key: {
+                      person_id: AVAFollowUpData.enteredUserID.toLowerCase()
+                    },
+                    data: {
+                      newPassword: AVAFollowUpData.proposedPassword,
+                      storePassword: true,
+                      password_change_date: new Date().toLocaleString()
+                    }
+                  },
+                ]
+              );
+              closeSnackbar();
+              enqueueSnackbar(`Your new password has been set to ${AVAFollowUpData.proposedPassword} and you are being signed-in now...`, { variant: 'info' });
+              let result = await tryUser(this_user.person_id, this_user.client_id, 'stored password match', { waiveTFA: true });
+              if (result === 'good') {
+                let eMessage = `Successful Login for ${this_user.person_id}`;
+                enqueueSnackbar(eMessage, { variant: 'info', persist: false });
+                await logAccessAttempt(this_user.person_id, '', true, eMessage);
+                launchAVA(this_user.person_id);
+                return;
+              }
+              let eMessage = `Something went wrong.`;
+              await logAccessAttempt('Text - new password set, but login failed', '', false, eMessage);
               enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
               setDoneTrying(true);
               return;

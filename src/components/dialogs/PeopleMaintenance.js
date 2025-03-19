@@ -58,6 +58,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     person_id: person_id || state.session.patient_id,
     accessList: null,
     isMobile: (window.window.innerWidth < 800),
+    client_name: state.session.client_name,
     linkedPersonFilter: {},
     mode: options.mode || 'edit',
     addFamilyMember: false,
@@ -69,6 +70,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     addAccountList: [],
     familyFormsObj: {},
     new_messaging_required: !state.session.client_style.allow_old_messaging,
+    mandatory_passwords: state.session.client_style.mandatory_passwords,
     local_customFields: ((state.session.local_data && (Object.keys(state.session.local_data).length > 0)) ? state.session.local_data : {}),
     user_class: state.user.account_class,
     administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
@@ -279,7 +281,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                 peopleRec.Item.time_based_rules[i].name += ` (Administrative Rule)`;
               }
               else {
-                peopleRec.Item.time_based_rules[i].name = `${state.session.client_name} Administrative Rule`;
+                peopleRec.Item.time_based_rules[i].name = `${reactData.client_name} Administrative Rule`;
               }
               peopleRec.Item.time_based_rules[i].global_rule = true;
             }
@@ -308,6 +310,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           }
           if (!sessionRec.Item.customizations.font_size) {
             sessionRec.Item.customizations.font_size = 1;
+          }
+          if (!sessionRec.Item.forceSetPassword) {
+            sessionRec.Item.forceSetPassword = false;
           }
           AVADefaults({ fontSize: sessionRec.Item.customizations.font_size });
           reactUpdObj.og.sessionRec = sessionRec.Item;

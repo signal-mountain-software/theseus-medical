@@ -305,7 +305,49 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
           {'New Required'}
         </Typography>
       </Box>
+      
 
+
+
+      <Typography
+        style={AVATextStyle({ margin: { top: 1 } })}
+      >
+        {'Mandatory Passwords'}
+      </Typography>
+      <Box flexGrow={2} display='flex' alignItems='center'
+        justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+        <Typography
+          style={AVATextStyle({
+            size: 0.8, margin: { right: 0.8 },
+            bold: !currentValues.customizationRecs.client_style.customization_value.mandatory_passwords
+          })}
+        >
+          {'Passwords Optional'}
+        </Typography>
+        <Switch
+          checked={currentValues.customizationRecs.client_style.customization_value?.mandatory_passwords}
+          onClick={async (event) => {
+            await updateField({
+              updateList:
+                [{
+                  tableName: 'customizationRecs',
+                  fieldName: 'client_style.customization_value.mandatory_passwords',
+                  newData: !currentValues.customizationRecs.client_style.customization_value.mandatory_passwords
+                }]
+            });
+          }}
+          name="MessagingStyle"
+          color="primary"
+        />
+        <Typography
+          style={AVATextStyle({
+            size: 0.8, margin: { left: 0.8 },
+            bold: currentValues.customizationRecs.client_style.customization_value.mandatory_passwords
+          })}
+        >
+          {'Password Mandatory'}
+        </Typography>
+      </Box>
 
 
 
