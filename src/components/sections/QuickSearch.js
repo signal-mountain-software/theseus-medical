@@ -539,7 +539,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                   <Typography
                     style={(reactData.selections.some(s => { return s.person_id === this_item.person_id; }))
                       ? AVATextStyle({ bold: true, color: 'green' })
-                      : (reactData.selectedPeople_list.includes(this_item.person_id)
+                        : (reactData.selectedPeople_list && reactData.selectedPeople_list.includes(this_item.person_id)
                         ? AVATextStyle({ bold: true, color: 'orange' })
                         : AVATextStyle())
                     }
