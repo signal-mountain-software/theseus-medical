@@ -827,7 +827,10 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                   </Box>
                 </MenuItem>
               )}
-              {reactData.administrative_account && (reactData.person_id !== state.session?.user_id) && (
+              {reactData.administrative_account
+                && reactData.current.peopleRec.person_id
+                && (reactData.person_id !== state.session?.user_id)
+                && (
                 <MenuItem onClick={async () => {
                   updateReactData({
                     popupMenuOpen: false
@@ -848,7 +851,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                   >
                     <HomeIcon />
                     <Typography style={AVATextStyle({ size: 0.8, margin: { left: 0.5 } })} >
-                      {`Sign-in as ${reactData.current.peopleRec.name.first}`}
+                      {`Sign-in as ${reactData.current.peopleRec.name.first || reactData.current.peopleRec.name.last}`}
                     </Typography>
                   </Box>
                 </MenuItem>
