@@ -7,6 +7,7 @@ import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageForm from '../forms/MessageForm';
 import MessageMonitor from './MessageMonitor';
 import MessageFormLegacy from './MessageFormLegacy';
+import MakeMessage from './MakeMessage';
 import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
 import FamilyMaintenance from './FamilyMaintenance';
@@ -461,7 +462,7 @@ export default ({
         />
       );
     }
-    case 'make_message':
+    case 'make_message': {
       let defaultValueObj = {};
       if (!defaultValue) { defaultValueObj = { recipientID: '*select' }; }
       else {
@@ -492,49 +493,41 @@ export default ({
           });
         }
       }
-      return (
-        /*
-        <MakeMessage
-          titleText={defaultValueObj.title}
-          promptText={defaultValueObj.prompt || `What's the Message?`}
-          promptUse={defaultValueObj.promptUse}
-          buttonText={defaultValueObj.button || 'Send'}
-          sender={session}
-          pRecipientID={defaultValueObj.recipientID || '*select'}
-          pRecipientName={defaultValueObj.recipientName || `user ${defaultValueObj.recipientID}`}
-          peopleList={defaultValueObj.peopleList || []}
-          options={defaultValueObj.options}
-          onCancel={onClose}
-          onComplete={onClose}
-          allowCancel={true}
-
-
-                     newMessage: true,
-            recipients: reactData.sendMessage.map(r => {
-              return {
-                person_id: r.person_id,
-                person_name: r.person_name
-              };
-            }),
-            subject: reactData.sendMessage[0].subject,
-            messageText: reactData.sendMessage[0].messageText,
-            attachmentList: reactData.sendMessage.map(a => {
-              return a.attachmentList;
-            }).flat(),
-        />
-        */
-        <MessageForm
-          pPerson={session.patient_id}
-          pClient={session.client_id}
-          pMessageList={[]}
-          pSession={session}
-          onReset={onClose}
-          options={{
-            newMessage: true,
-            recipients,
-          }}
-        />
-      );
+      if ((session.client_style.allow_old_messaging) && !state.patient.useNewMessaging) {
+        return (
+          <MakeMessage
+            titleText={defaultValueObj.title}
+            promptText={defaultValueObj.prompt || `What's the Message?`}
+            promptUse={defaultValueObj.promptUse}
+            buttonText={defaultValueObj.button || 'Send'}
+            sender={session}
+            pRecipientID={defaultValueObj.recipientID || '*select'}
+            pRecipientName={defaultValueObj.recipientName || `user ${defaultValueObj.recipientID}`}
+            peopleList={defaultValueObj.peopleList || []}
+            options={defaultValueObj.options}
+            onCancel={onClose}
+            onComplete={onClose}
+            allowCancel={true}
+          />
+        );
+      }
+      else {
+        return (
+          <MessageForm
+            pPerson={session.patient_id}
+            pClient={session.client_id}
+            pMessageList={[]}
+            pSession={session}
+            onReset={onClose}
+            options={{
+              newMessage: true,
+              recipients,
+              showPreferredList: (defaultValueObj.options === 'groupOnly' ? false : true),
+              showGroupList: (defaultValueObj.options === 'groupOnly' ? true : false),
+            }}
+          />);
+      }
+    };
     case 'bulletin_board':
       return (
         <BulletinBoard

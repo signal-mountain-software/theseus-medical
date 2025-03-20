@@ -118,7 +118,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
         else if (this_selection.hasOwnProperty('group_id')) {
           for (let this_person of reactData.accessList) {
             if (this_person.groups && this_person.groups.includes(this_selection.group_id)) {
-              selectionPeople_obj[this_person] = true;
+              selectionPeople_obj[this_person.person_id] = true;
             }
           }
         }
@@ -539,7 +539,9 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                   <Typography
                     style={(reactData.selections.some(s => { return s.person_id === this_item.person_id; }))
                       ? AVATextStyle({ bold: true, color: 'green' })
-                      : AVATextStyle()
+                      : (reactData.selectedPeople_list.includes(this_item.person_id)
+                        ? AVATextStyle({ bold: true, color: 'orange' })
+                        : AVATextStyle())
                     }
                   >
                     {`${this_item.first} ${this_item.last}`}
