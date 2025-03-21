@@ -1211,7 +1211,7 @@ export default ({ request = {}, onClose }) => {
       }
       while (answer);
     }
-    if (!response.endsWith(')') && reactData.fields[this_field].prompt.show_log && reactData.fields[this_field].logAs) {
+    if (!response.endsWith(')') && reactData.fields[this_field] && reactData.fields[this_field].prompt.show_log && reactData.fields[this_field].logAs) {
       let path = reactData.fields[this_field].logAs.split('.');
       let pathFile = path.shift();
       let logLine = resolve({
