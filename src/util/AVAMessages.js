@@ -912,8 +912,8 @@ export async function printDocumentB({ documentList, options = {} }) {
                     }
                   });
                   if (fields[this_field].bonusText) {
-                    const text = `${fields[this_field].prompt.other || 'other'}: ${fields[this_field].bonusText}`;
-                    pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                    const text = `${fields[this_field].prompt.other || 'Other'}: ${fields[this_field].bonusText}`;
+                    pdfLine(text, { radio: true, radioSelected: true, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
                   }
                   pdfDown(1);
                   pdfStyle('reset');
@@ -948,6 +948,9 @@ export async function printDocumentB({ documentList, options = {} }) {
               }
               default: {
                 if (fields.hasOwnProperty(this_field)) {
+                  if ((fields[this_field].valueText.length === 0) && fields[this_field].prompt.showNA) {
+                    fields[this_field].valueText = 'n/a';
+                  }
                   if (fields[this_field].prompt.compressPrint) {
                     pdfLine(fields[this_field].valueText,
                       { style: 'normal', size: 'medium', align: 'left', after: 0 });
@@ -1172,8 +1175,9 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
                     }
                   });
                   if (fields[this_field].bonusText) {
-                    const text = `${fields[this_field].prompt.other || 'other'}: ${fields[this_field].bonusText}`;
-                    pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                    const text = `${fields[this_field].prompt.other || 'Other'}: ${fields[this_field].bonusText}`;
+                    pdfLine(text, { radio: true, radioSelected: true, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+
                   }
                   pdfDown(1);
                   pdfStyle('reset');
@@ -1219,7 +1223,7 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
                     pdfDown(1);
                     page.line_was_compressed = false;
                   }
-                  if (fields[this_field].valueText) {
+                  if (fields[this_field].valueText.length > 0) {
                     if (fields[this_field].prompt.compressPrint) {
                       pdfLine(fields[this_field].valueText,
                         { style: 'normal', size: 'medium', align: 'left', noNewLine: fields[this_field].prompt.noNewLine || false });

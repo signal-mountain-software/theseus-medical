@@ -493,7 +493,16 @@ export default ({ request = {}, onClose }) => {
     };
     for (let this_section of response.sections) {
       this_section.section_name = await resolveVariables(this_section.section_name);
-      for (let this_field of this_section.fields) {
+      let field_variables = {};
+      let field_key;
+      //     for (let this_field of this_section.fields) {
+      for (let [index, this_field] of this_section.fields.entries()) {
+        if (isObject(this_field)) {
+          field_variables = Object.assign({}, this_field);
+          field_key = this_field.form_field;
+          this_field = this_field.field_name;
+          this_section.fields[index] = this_field;
+        }
         response.fields[this_field] = {};
         // Set default value
         const defaultObj = {};
@@ -501,11 +510,20 @@ export default ({ request = {}, onClose }) => {
           const formFieldRec = await getDb({
             Key: {
               client_id: state.session.client_id,
-              field_name: this_field
+              field_name: field_key || this_field
             },
             TableName: "Form_Fields"
           });
           if (formFieldRec) {
+            if (field_variables.prompt) {
+              formFieldRec.prompt.value = field_variables.prompt;
+            }
+            if (field_variables.default_source && formFieldRec.default.source && formFieldRec.default.source.startsWith('%%')) {
+              formFieldRec.default.source = field_variables.default_source;
+            }
+            if (field_variables.saveAs && formFieldRec.value.saveAs && formFieldRec.value.saveAs.startsWith('%%')) {
+              formFieldRec.value.saveAs = field_variables.saveAs;
+            }
             formRec.fields[this_field] = formFieldRec;
             updateReactData({
               formRec
@@ -599,7 +617,12 @@ export default ({ request = {}, onClose }) => {
           }
         }
         if (!response.fields[this_field].value) {
-          response.fields[this_field].value = null;
+          if (formRec.fields[this_field].prompt?.occurrences && (formRec.fields[this_field].prompt.occurrences > 1)) {
+            response.fields[this_field].value = new Array(formRec.fields[this_field].prompt.occurrences).fill(null);
+          }
+          else {
+            response.fields[this_field].value = null;
+          }
         }
         // if prompt.ignore_if exists, check the value
         if (formRec.fields[this_field]?.prompt?.ignore_if) {
@@ -699,11 +722,38 @@ export default ({ request = {}, onClose }) => {
     }
     let response = {
       fields: {},
-      sections: formRec.sections,
+      //     sections: formRec.sections,
+      sections: [],
       document_title: reactData.document_title || tempTitle
     };
+    for (let this_section of formRec.sections) {
+      if (this_section.occurrences && !isNaN(this_section.occurrences)) {
+        for (let section_number = 1; section_number <= this_section.occurrences; section_number++) {       
+          response.sections.push(deepCopy(this_section));
+          this_section.section_name = this_section.section_name.replace(section_number.toString(), `${section_number + 1}`);
+          for (let [field_index, this_field] of this_section.fields.entries()) {
+            this_section.fields[field_index].field_name = this_field.field_name.replace(section_number.toString(), `${section_number + 1}`);
+            this_section.fields[field_index].default_source = this_field.default_source.replace(section_number.toString(), `${section_number + 1}`);
+            this_section.fields[field_index].saveAs = this_field.saveAs.replace(section_number.toString(), `${section_number + 1}`);
+          }
+        }
+      }
+      else {
+        response.sections.push(this_section);
+      }
+    }
     for (let this_section of response.sections) {
-      for (let this_field of this_section.fields) {
+      this_section.section_name = await resolveVariables(this_section.section_name);
+      let field_variables = {};
+      let field_key;
+      //     for (let this_field of this_section.fields) {
+      for (let [index, this_field] of this_section.fields.entries()) {
+        if (isObject(this_field)) {
+          field_variables = Object.assign({}, this_field);
+          field_key = this_field.form_field;
+          this_field = this_field.field_name;
+          this_section.fields[index] = this_field;
+        }
         response.fields[this_field] = {};
         // Set default value
         const defaultObj = {};
@@ -711,11 +761,29 @@ export default ({ request = {}, onClose }) => {
           const formFieldRec = await getDb({
             Key: {
               client_id: state.session.client_id,
-              field_name: this_field
+              field_name: field_key || this_field
             },
             TableName: "Form_Fields"
           });
           if (formFieldRec) {
+            if (field_variables.prompt) {
+              formFieldRec.prompt.value = field_variables.prompt;
+            }
+            if (field_variables.default_source && formFieldRec.default.source && formFieldRec.default.source.startsWith('%%')) {
+              formFieldRec.default.source = field_variables.default_source;
+            }
+            if (field_variables.saveAs && formFieldRec.value.saveAs && formFieldRec.value.saveAs.startsWith('%%')) {
+              formFieldRec.value.saveAs = field_variables.saveAs;
+            }
+            if (field_variables.occurrences) {
+              formFieldRec.prompt.occurrences = field_variables.occurrences;
+            }
+            if (field_variables.newLine) {
+              formFieldRec.prompt.newLine = field_variables.newLine;
+            };
+            if (field_variables.width) {
+              formFieldRec.prompt.width = field_variables.width;
+            }
             formRec.fields[this_field] = formFieldRec;
             updateReactData({
               formRec
@@ -849,7 +917,12 @@ export default ({ request = {}, onClose }) => {
           }
         }
         if (!response.fields[this_field].value) {
-          response.fields[this_field].value = null;
+          if (formRec.fields[this_field].prompt?.occurrences && (formRec.fields[this_field].prompt.occurrences > 1)) {
+            response.fields[this_field].value = new Array(formRec.fields[this_field].prompt.occurrences).fill(null);
+          }
+          else {
+            response.fields[this_field].value = null;
+          }
         }
         // Set type
         response.fields[this_field].type = formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type || 'text';
@@ -883,6 +956,19 @@ export default ({ request = {}, onClose }) => {
         // Selection Obj should be set for the special case - type = select or type = select & text
         if (response.fields[this_field].type.startsWith('select')) {
           response.fields[this_field].selectionObj = formRec.fields[this_field]?.value.selection;
+          if ((response.fields[this_field].value) && (Array.isArray(response.fields[this_field].value))
+            && (response.fields[this_field].selectionObj.selectionList && Array.isArray(response.fields[this_field].selectionObj.selectionList))
+          ) {
+            let bonusList = [];
+            for (let this_value of response.fields[this_field].value) {
+              if (!response.fields[this_field].selectionObj.selectionList.includes(this_value)) {
+                bonusList.push(this_value);
+              }
+            }
+            if (bonusList.length > 0) {
+              response.fields[this_field].bonusText = listFromArray(bonusList);
+            }
+          }
         }
         // set options
         response.fields[this_field].options = {
@@ -951,29 +1037,51 @@ export default ({ request = {}, onClose }) => {
   };
 
   const formatValue = async ({ rawValue, type }) => {
-    switch (type) {
-      case 'phone': {
-        return formatPhone(rawValue);
-      }
-      case 'date_select':
-      case 'date': {
-        return makeDate(rawValue, { noTime: true, noYearCorrection: true }).absolute;
-      }
-      case 'time': {
-        return makeDate(rawValue, { noTime: true, noYearCorrection: true }).timeOnly;
-      }
-      case 'id': {
-        if (reactData.peopleRec[rawValue]) {
-          return reactData.peopleRec[rawValue].display_name
-            || (`${reactData.peopleRec[rawValue]?.name.first} ${reactData.peopleRec[rawValue]?.name.last}`).trim();
+    let source = makeArray(rawValue);
+    let response = [];
+    for (let [index, this_value] of source.entries()) {
+      switch (type) {
+        case 'phone': {
+          // return formatPhone(rawValue);
+          response[index] = formatPhone(this_value);
+          break;
         }
-        else {
-          return await makeName(rawValue);
+        case 'date_select':
+        case 'date': {
+          // return makeDate(rawValue, { noTime: true, noYearCorrection: true }).absolute;
+          response[index] = makeDate(this_value, { noTime: true, noYearCorrection: true }).absolute;
+          break;
+        }
+        case 'time': {
+          // return makeDate(rawValue, { noTime: true, noYearCorrection: true }).timeOnly;
+          response[index] = makeDate(this_value, { noTime: true, noYearCorrection: true }).timeOnly;
+          break;
+        }
+        case 'id': {
+          if (reactData.peopleRec[rawValue]) {
+            // return reactData.peopleRec[rawValue].display_name
+            //  || (`${reactData.peopleRec[rawValue]?.name.first} ${reactData.peopleRec[rawValue]?.name.last}`).trim();
+            response[index] = reactData.peopleRec[this_value].display_name
+              || (`${reactData.peopleRec[this_value]?.name.first} ${reactData.peopleRec[this_value]?.name.last}`).trim();
+            break;
+          }
+          else {
+            // return await makeName(rawValue);
+            response[index] = await makeName(this_value);
+            break;
+          }
+        }
+        default: {
+          // return rawValue;
+          response[index] = this_value;
         }
       }
-      default: {
-        return rawValue;
-      }
+    }
+    if (source.length === 1) {
+      return response[0];
+    }
+    else {
+      return response;
     }
   };
 
@@ -1077,11 +1185,16 @@ export default ({ request = {}, onClose }) => {
     return response;
   };
 
-  const handleChangeValue = async ({ newText, newValue, newList, prop, sentenceCase }) => {
+  const handleChangeValue = async ({ newText, newValue, newList, prop, occ_index, sentenceCase }) => {
     if (sentenceCase && newText && (newText.length === 1)) {
       newText = newText.toUpperCase();
     }
-    reactData.fields[prop].value = newValue || newList || newText;
+    if (reactData.fields[prop].prompt?.occurrences && (reactData.fields[prop].prompt.occurrences > 1)) {
+      reactData.fields[prop].value[occ_index] = newValue || newList || newText;
+    }
+    else {
+      reactData.fields[prop].value = newValue || newList || newText;
+    }
     reactData.fields[prop].valueText = await formatValue({
       rawValue: reactData.fields[prop].value,
       type: reactData.fields[prop].type
@@ -2169,417 +2282,433 @@ export default ({ request = {}, onClose }) => {
                       <React.Fragment
                         key={`fieldFrag__${this_field}_${sectionNdx}`}
                       >
-                        {reactData.fields[this_field].prompt.newLine &&
-                          <Typography
-                            key={`section__${sectionObj.section_name}_${reactData.fields[this_field]}-breakRow`}
-                            className={classes.breakRow}
+                        {new Array(reactData.fields[this_field].prompt?.occurrences || 1).fill(0).map((a_zero, occ_index) => (
+                          <React.Fragment
+                            key={`innerFrag__${this_field}_${occ_index}`}
                           >
-                            {''}
-                          </Typography>
-                        }
-                        {(reactData.fields[this_field].type === 'text') &&
-                          <TextField
-                            id={`field__${this_field}`}
-                            key={`field__${this_field}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                              ? reactData.fields[this_field].valueText
-                              : ''}`}
-                            className={classes.inputDisplay}
-                            multiline
-                            variant={reactData.fields[this_field].prompt.rows ? 'outlined' : 'standard'}
-                            disabled={reactData.fields[this_field].options.viewOnly}
-                            style={AVATextStyle({
-                              lineHeight: 1,
-                              width: `${reactData.fields[this_field].prompt.width || 200}px`,
-                              maxWidth: '90%',
-                              size: 0.75,
-                              color: 'black',
-                              margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
-                            })}
-                            autoComplete='off'
-                            defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                              ? reactData.fields[this_field].valueText
-                              : ''
-                            }
-                            onBlur={async (event) => {
-                              await handleChangeValue({
-                                newText: event.target.value,
-                                prop: this_field,
-                                sentenceCase: true
-                              });
-                            }}
-                            helperText={reconcilePrompt({
-                              rawValue: reactData.fields[this_field].prompt.value,
-                              this_field
-                            })}
-                          />
-                        }
-                        {(reactData.fields[this_field].type === 'header') &&
-                          <Typography
-                            style={AVATextStyle(Object.assign(
-                              {},
-                              {
-                                size: 0.75,
-                                margin: { top: 2, bottom: 0.5, right: 3 }
-                              },
-                              reactData.fields[this_field].prompt.style || {}
-                            ))}
-                          >
-                            {reactData.fields[this_field].prompt.value}
-                          </Typography>
-                        }
-                        {(reactData.fields[this_field].type === 'image') &&
-                          <Box
-                            className={classes.imageArea}
-                            component="img"
-                            alt={''}
-                            src={reactData.fields[this_field].valueText}
-                          />
-                        }
-                        {(reactData.fields[this_field].type === 'phone') &&
-                          <TextField
-                            id={`field__${fieldNdx}`}
-                            className={classes.inputDisplay}
-                            autoComplete='off'
-                            disabled={reactData.fields[this_field].options.viewOnly}
-                            key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                              ? reactData.fields[this_field].valueText
-                              : ''}`}
-                            style={AVATextStyle({
-                              lineHeight: 1,
-                              width: `${reactData.fields[this_field].prompt.width || 200}px`,
-                              size: 0.75,
-                              padding: { bottom: 0 },
-                              margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
-                            })}
-                            defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                              ? reactData.fields[this_field].valueText
-                              : ''
-                            }
-                            onBlur={async (event) => {
-                              if (event.target.value) {
-                                let fPhone = formatPhone(event.target.value);
-                                await handleChangeValue({
-                                  newText: fPhone,
-                                  newValue: `+1${fPhone.replace(/\D/g, '')}`,
-                                  prop: this_field,
-                                  sentenceCase: false
-                                });
-                              }
-                            }}
-                            helperText={reconcilePrompt({
-                              rawValue: reactData.fields[this_field].prompt.value,
-                              this_field
-                            })}
-                          />
-                        }
-                        {(reactData.fields[this_field].type === 'date_select') &&
-                          <Box
-                            display='flex'
-                            flexDirection='column'
-                            id={`dateBox__${this_field}`}
-                            key={`datebox__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
-                              ? reactData.fields[this_field].value
-                              : ''}`}
-                            justifyContent='flex-start'
-                            marginTop={1}
-                            marginLeft={0}
-                            alignItems='flex-start'
-                          >
-                            <input
-                              type="date"
-                              id={`field__${fieldNdx}`}
-                              key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
-                                ? reactData.fields[this_field].value
-                                : ''}`}
-                              min={reactData.fields[this_field].prompt.min}
-                              max={reactData.fields[this_field].prompt.max}
-                              value={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                ? makeDate(reactData.fields[this_field].value).input
-                                : ''
-                              }
-                              onChange={async (event) => {
-                                if (event.target.value) {
-                                  let dObj = makeDate(event.target.value, { noTime: true, noYearCorrection: true });
-                                  if (!dObj.error) {
-                                    await handleChangeValue({
-                                      newText: dObj.absolute,
-                                      newValue: dObj.numeric$,
-                                      prop: this_field,
-                                      sentenceCase: false
-                                    });
-                                  }
-                                }
-                              }}
-                            />
-                            {reactData.fields[this_field].prompt.newLine &&
+                            {reactData.fields[this_field].prompt.newLine && (occ_index === 0) &&
                               <Typography
                                 key={`section__${sectionObj.section_name}_${reactData.fields[this_field]}-breakRow`}
                                 className={classes.breakRow}
+                              >
+                                {''}
+                              </Typography>
+                            }
+                            {(reactData.fields[this_field].type === 'text') &&
+                              <TextField
+                                id={`field__${this_field}`}
+                                key={`field__${this_field}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                                  ? reactData.fields[this_field].valueText
+                                  : ''}`}
+                                className={classes.inputDisplay}
+                                multiline
+                                variant={reactData.fields[this_field].prompt.rows ? 'outlined' : 'standard'}
+                                disabled={reactData.fields[this_field].options.viewOnly}
                                 style={AVATextStyle({
                                   lineHeight: 1,
                                   width: `${reactData.fields[this_field].prompt.width || 200}px`,
                                   maxWidth: '90%',
                                   size: 0.75,
-                                  opacity: '60%',
-                                  margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
+                                  color: 'black',
+                                  margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
                                 })}
-                              >
-                                {reconcilePrompt({
+                                autoComplete='off'
+                                defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                                  ? (Array.isArray(reactData.fields[this_field].valueText) ? reactData.fields[this_field].valueText[occ_index] : reactData.fields[this_field].valueText)
+                                  : ''
+                                }
+                                onBlur={async (event) => {
+                                  await handleChangeValue({
+                                    newText: event.target.value,
+                                    prop: this_field,
+                                    occ_index,
+                                    sentenceCase: true
+                                  });
+                                }}
+                                helperText={((occ_index > 0) ? null : reconcilePrompt({
                                   rawValue: reactData.fields[this_field].prompt.value,
                                   this_field
-                                })}
+                                }))}
+                              />
+                            }
+                            {(reactData.fields[this_field].type === 'header') && (occ_index === 0) &&
+                              <Typography
+                                style={AVATextStyle(Object.assign(
+                                  {},
+                                  {
+                                    size: 0.75,
+                                    margin: { top: 2, bottom: 0.5, right: 3 }
+                                  },
+                                  reactData.fields[this_field].prompt.style || {}
+                                ))}
+                              >
+                                {reactData.fields[this_field].prompt.value}
                               </Typography>
                             }
-                          </Box>
-                        }
-                        {((reactData.fields[this_field].type === 'date')
-                          || (reactData.fields[this_field].type === 'time')) &&
-                          <TextField
-                            id={`field__${fieldNdx}`}
-                            className={classes.inputDisplay}
-                            disabled={reactData.fields[this_field].options.viewOnly}
-                            autoComplete='off'
-                            key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
-                              ? reactData.fields[this_field].value
-                              : ''}`}
-                            style={AVATextStyle({
-                              lineHeight: 1,
-                              size: 0.75,
-                              padding: { bottom: 0 },
-                              margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
-                            })}
-                            defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                              ? reactData.fields[this_field].valueText
-                              : ''
+                            {(reactData.fields[this_field].type === 'image') &&
+                              <Box
+                                className={classes.imageArea}
+                                component="img"
+                                alt={''}
+                                src={reactData.fields[this_field].valueText}
+                              />
                             }
-                            onBlur={async (event) => {
-                              if (event.target.value) {
-                                let dObj = makeDate(event.target.value, { noTime: (reactData.fields[this_field].type === 'date'), noYearCorrection: true });
-                                if (!dObj.error) {
-                                  await handleChangeValue({
-                                    newText: dObj.absolute,
-                                    newValue: ((reactData.fields[this_field].type === 'date')
-                                      ? dObj.numeric$
-                                      : dObj.timestamp),
-                                    prop: this_field,
-                                    sentenceCase: false
-                                  });
-                                }
-                              }
-                            }}
-                            helperText={reconcilePrompt({
-                              rawValue: reactData.fields[this_field].prompt.value,
-                              this_field
-                            })}
-                          />
-                        }
-                        {(reactData.fields[this_field].type.startsWith('select')) &&
-                          <Box
-                            display='flex'
-                            mb={0}
-                            flexDirection='row'
-                            justifyContent='flex-start'
-                            alignItems='center'
-                          >
-                            <AVACheckBoxGroup
-                              prop={this_field}
-                              text={reactData.fields[this_field].selectionObj.selectionList}
-                              withPrompt={(reactData.fields[this_field].type === 'select&text')
-                                ? reactData.fields[this_field].prompt.other || 'other'
-                                : null
-                              }
-                            />
-                          </Box>
-                        }
-                        {(reactData.fields[this_field].type === 'html') &&
-                          <Box>
-                            <div
-                              dangerouslySetInnerHTML={{ '__html': reactData.fields[this_field].value }}
-                            />
-                          </Box>
-                        }
-                        {(reactData.fields[this_field].type === 'image') &&
-                          <img
-                            className={classes.imageArea}
-                            alt=''
-                            src={reactData.fields[this_field].value}
-                          />
-                        }
-                        {(reactData.fields[this_field].type === 'url') &&
-                          <a
-                            href={reactData.fields[this_field].value}
-                            style={{ color: 'inherit', textDecoration: 'none' }}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <Typography
-                              style={AVATextStyle(Object.assign({}, {
-                                size: 0.75,
-                                margin: { top: 2, bottom: 0.5, left: 0.5, right: 3 }
-                              }))}
-                            >
-                              <u>{reactData.fields[this_field].prompt.helper || `Tap here for ${reconcilePrompt({
-                                rawValue: reactData.fields[this_field].prompt.value,
-                                this_field
-                              })}`}</u>
-                            </Typography>
-                          </a>
-                        }
-                        {(reactData.fields[this_field].type === 'signature') &&
-                          <Box
-                            display='flex'
-                            flexDirection='column'
-                            id={`sigBox__${this_field}`}
-                            key={`sigBox__${this_field}_${sectionNdx}`}
-                            justifyContent='flex-start'
-                            marginTop={2}
-                            marginBottom={2}
-                            alignItems='flex-start'
-                            width='97%'
-                          >
-                            <SignatureCanvas
-                              ref={signatureRef[reactData.fields[this_field].options.sigRefNumber || 0]}
-                              canvasProps={{
-                                style: {
-                                  backgroundColor: 'beige',
-                                  width: '75%',
-                                  marginLeft: '10px',
-                                  marginRight: '10px',
-                                  marginTop: '2px',
-                                  height: '88px'
-                                }
-                              }}
-                            />
-                            <Typography
-                              id={`sigBoxText__${this_field}`}
-                              key={`sigBoxText__${this_field}_${sectionNdx}`}
-                              style={AVATextStyle({
-                                lineHeight: 1,
-                                width: `${reactData.fields[this_field].prompt.width || 200}px`,
-                                maxWidth: '90%',
-                                size: 0.75,
-                                margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
-                              })}
-                            >
-                              {reconcilePrompt({
-                                rawValue: reactData.fields[this_field].prompt.value,
-                                this_field
-                              })}
-                            </Typography>
-                            <Box display='flex' mt={0} mb={0} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
-                              {signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current &&
-                                <Button
-                                  className={AVAClass.AVAMicroButton}
-                                  style={{ backgroundColor: 'white', color: 'red' }}
-                                  size='small'
-                                  onClick={() => {
-                                    signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current.clear();
-                                    setForceRedisplay(!forceRedisplay);
-                                  }}
-                                >
-                                  {'Clear'}
-                                </Button>
-                              }
-                            </Box>
-                          </Box>
-                        }
-                        {(reactData.fields[this_field].type === 'id') &&
-                          <Box
-                            display='flex'
-                            flexDirection='row'
-                            key={`selectParent-${this_field}_${sectionNdx}`}
-                            id={`selectParent-${this_field}`}
-                            width={`${reactData.fields[this_field].prompt.width || 200}px`}
-                            flexGrow={1}
-                            marginBottom={0}
-                            justifyContent='flex-start'
-                            alignItems='flex-start'
-                          >
-                            <Box
-                              key={`selectBox-${this_field}_${sectionNdx}`}
-                              display='flex' marginLeft={1} flexGrow={1} flexDirection='column'
-                            >
-                              <Select
-                                options={reactData.peopleList[reactData.fields[this_field].choose.ref]}
-                                searchBy={'label'}
-                                dropdownHandle={true}
-                                clearOnSelect={true}
-                                clearOnBlur={true}
-                                key={`selectOptions-${this_field}_${sectionNdx}`}
-                                searchable={true}
-                                create={false}
-                                closeOnClickInput={true}
-                                closeOnSelect={true}
-                                style={{
+                            {(reactData.fields[this_field].type === 'phone') &&
+                              <TextField
+                                id={`field__${fieldNdx}`}
+                                className={classes.inputDisplay}
+                                autoComplete='off'
+                                disabled={reactData.fields[this_field].options.viewOnly}
+                                key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                                  ? reactData.fields[this_field].valueText
+                                  : ''}`}
+                                style={AVATextStyle({
                                   lineHeight: 1,
-                                  fontSize: `${reactData.user_fontSize * (1.05)}rem`,
-                                  marginLeft: '-5px',
-                                  marginBottom: '-4px',
-                                  borderWidth: 0
-                                }}
-                                noDataLabel={`No ${reconcilePrompt({
-                                  rawValue: reactData.fields[this_field].prompt.value,
-                                  this_field
-                                })}s match`}
-                                values={(reactData.fields[this_field]) ?
-                                  (reactData.fields[this_field].valueText
-                                    ? [{ label: reactData.fields[this_field].valueText, value: reactData.fields[this_field].value }]
-                                    : (reactData.fields[this_field].valueList
-                                      ? reactData.fields[this_field].valueList.map(this_value => {
-                                        return {
-                                          label: (reactData.peopleList[reactData.fields[this_field].choose.ref].find(this_person => {
-                                            return (this_person.value === this_value);
-                                          })).label,
-                                          value: this_value
-                                        };
-                                      })
-                                      : []
-                                    )
-                                  ) : []
+                                  width: `${reactData.fields[this_field].prompt.width || 200}px`,
+                                  size: 0.75,
+                                  padding: { bottom: 0 },
+                                  margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
+                                })}
+                                defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                                  ? (Array.isArray(reactData.fields[this_field].valueText) ? reactData.fields[this_field].valueText[occ_index] : reactData.fields[this_field].valueText)
+                                  : ''
                                 }
-                                placeholder={``}
-                                onChange={async (values) => {
-                                  if (values.length > 0) {
+                                onBlur={async (event) => {
+                                  if (event.target.value) {
+                                    let fPhone = formatPhone(event.target.value);
                                     await handleChangeValue({
-                                      newText: values[0].label,
-                                      newValue: values[0].value,
+                                      newText: fPhone,
+                                      newValue: `+1${fPhone.replace(/\D/g, '')}`,
+                                      occ_index,
                                       prop: this_field,
                                       sentenceCase: false
                                     });
                                   }
                                 }}
+                                helperText={((occ_index > 0) ? null : reconcilePrompt({
+                                  rawValue: reactData.fields[this_field].prompt.value,
+                                  this_field
+                                }))}
                               />
-                              <Box display='flex'
+                            }
+                            {(reactData.fields[this_field].type === 'date_select') &&
+                              <Box
+                                display='flex'
+                                flexDirection='column'
+                                id={`dateBox__${this_field}`}
+                                key={`datebox__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
+                                  ? reactData.fields[this_field].value
+                                  : ''}`}
+                                justifyContent='flex-start'
+                                marginTop={1}
+                                marginLeft={0}
+                                alignItems='flex-start'
+                              >
+                                <input
+                                  type="date"
+                                  id={`field__${fieldNdx}`}
+                                  key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
+                                    ? reactData.fields[this_field].value
+                                    : ''}`}
+                                  min={reactData.fields[this_field].prompt.min}
+                                  max={reactData.fields[this_field].prompt.max}
+                                  value={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                                    ? makeDate(reactData.fields[this_field].value).input
+                                    : ''
+                                  }
+                                  onChange={async (event) => {
+                                    if (event.target.value) {
+                                      let dObj = makeDate(event.target.value, { noTime: true, noYearCorrection: true });
+                                      if (!dObj.error) {
+                                        await handleChangeValue({
+                                          newText: dObj.absolute,
+                                          newValue: dObj.numeric$,
+                                          occ_index,
+                                          prop: this_field,
+                                          sentenceCase: false
+                                        });
+                                      }
+                                    }
+                                  }}
+                                />
+                                {reactData.fields[this_field].prompt.newLine && (occ_index === 0) &&
+                                  <Typography
+                                    key={`section__${sectionObj.section_name}_${reactData.fields[this_field]}-breakRow`}
+                                    className={classes.breakRow}
+                                    style={AVATextStyle({
+                                      lineHeight: 1,
+                                      width: `${reactData.fields[this_field].prompt.width || 200}px`,
+                                      maxWidth: '90%',
+                                      size: 0.75,
+                                      opacity: '60%',
+                                      margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
+                                    })}
+                                  >
+                                    {reconcilePrompt({
+                                      rawValue: reactData.fields[this_field].prompt.value,
+                                      this_field
+                                    })}
+                                  </Typography>
+                                }
+                              </Box>
+                            }
+                            {((reactData.fields[this_field].type === 'date')
+                              || (reactData.fields[this_field].type === 'time')) &&
+                              <TextField
+                                id={`field__${fieldNdx}`}
+                                className={classes.inputDisplay}
+                                disabled={reactData.fields[this_field].options.viewOnly}
+                                autoComplete='off'
+                                key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
+                                  ? reactData.fields[this_field].value
+                                  : ''}`}
+                                style={AVATextStyle({
+                                  lineHeight: 1,
+                                  size: 0.75,
+                                  padding: { bottom: 0 },
+                                  margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
+                                })}
+                                defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                                  ? (Array.isArray(reactData.fields[this_field].valueText) ? reactData.fields[this_field].valueText[occ_index] : reactData.fields[this_field].valueText)
+                                  : ''
+                                }
+                                onBlur={async (event) => {
+                                  if (event.target.value) {
+                                    let dObj = makeDate(event.target.value, { noTime: (reactData.fields[this_field].type === 'date'), noYearCorrection: true });
+                                    if (!dObj.error) {
+                                      await handleChangeValue({
+                                        newText: dObj.absolute,
+                                        newValue: ((reactData.fields[this_field].type === 'date')
+                                          ? dObj.numeric$
+                                          : dObj.timestamp),
+                                        prop: this_field,
+                                        occ_index,
+                                        sentenceCase: false
+                                      });
+                                    }
+                                  }
+                                }}
+                                helperText={((occ_index > 0) ? null : reconcilePrompt({
+                                  rawValue: reactData.fields[this_field].prompt.value,
+                                  this_field
+                                }))}
+                              />
+                            }
+                            {(reactData.fields[this_field].type.startsWith('select')) &&
+                              <Box
+                                display='flex'
+                                mb={0}
                                 flexDirection='row'
-                                paddingTop={'4px'}
-                                borderTop={1}
-                                key={`selectPromptBox-${this_field}_${sectionNdx}`}
+                                justifyContent='flex-start'
+                                alignItems='center'
+                              >
+                                <AVACheckBoxGroup
+                                  prop={this_field}
+                                  text={reactData.fields[this_field].selectionObj.selectionList}
+                                  withPrompt={(reactData.fields[this_field].type === 'select&text')
+                                    ? reactData.fields[this_field].prompt.other || 'other'
+                                    : null
+                                  }
+                                />
+                              </Box>
+                            }
+                            {(reactData.fields[this_field].type === 'html') &&
+                              <Box>
+                                <div
+                                  dangerouslySetInnerHTML={{ '__html': reactData.fields[this_field].value }}
+                                />
+                              </Box>
+                            }
+                            {(reactData.fields[this_field].type === 'image') &&
+                              <img
+                                className={classes.imageArea}
+                                alt=''
+                                src={reactData.fields[this_field].value}
+                              />
+                            }
+                            {(reactData.fields[this_field].type === 'url') &&
+                              <a
+                                href={reactData.fields[this_field].value}
+                                style={{ color: 'inherit', textDecoration: 'none' }}
+                                target="_blank"
+                                rel="noopener noreferrer"
                               >
                                 <Typography
-                                  key={`selectPrompt-${this_field}_${sectionNdx}`}
-                                  id={`selectPrompt-${this_field}`}
-                                  style={AVATextStyle({
-                                    lineHeight: 1,
-                                    width: `${reactData.fields[this_field].prompt.width || 200}px`,
-                                    maxWidth: '90%',
+                                  style={AVATextStyle(Object.assign({}, {
                                     size: 0.75,
-                                    opacity: '60%',
-                                    margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
-                                  })}
+                                    margin: { top: 2, bottom: 0.5, left: 0.5, right: 3 }
+                                  }))}
                                 >
-                                  {reconcilePrompt({
+                                  <u>{reactData.fields[this_field].prompt.helper || `Tap here for ${reconcilePrompt({
                                     rawValue: reactData.fields[this_field].prompt.value,
                                     this_field
-                                  })}
+                                  })}`}</u>
                                 </Typography>
+                              </a>
+                            }
+                            {(reactData.fields[this_field].type === 'signature') &&
+                              <Box
+                                display='flex'
+                                flexDirection='column'
+                                id={`sigBox__${this_field}`}
+                                key={`sigBox__${this_field}_${sectionNdx}`}
+                                justifyContent='flex-start'
+                                marginTop={2}
+                                marginBottom={2}
+                                alignItems='flex-start'
+                                width='97%'
+                              >
+                                <SignatureCanvas
+                                  ref={signatureRef[reactData.fields[this_field].options.sigRefNumber || 0]}
+                                  canvasProps={{
+                                    style: {
+                                      backgroundColor: 'beige',
+                                      width: '75%',
+                                      marginLeft: '10px',
+                                      marginRight: '10px',
+                                      marginTop: '2px',
+                                      height: '88px'
+                                    }
+                                  }}
+                                />
+                                {(occ_index === 0) &&
+                                  <Typography
+                                    id={`sigBoxText__${this_field}`}
+                                    key={`sigBoxText__${this_field}_${sectionNdx}`}
+                                    style={AVATextStyle({
+                                      lineHeight: 1,
+                                      width: `${reactData.fields[this_field].prompt.width || 200}px`,
+                                      maxWidth: '90%',
+                                      size: 0.75,
+                                      margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
+                                    })}
+                                  >
+                                    {reconcilePrompt({
+                                      rawValue: reactData.fields[this_field].prompt.value,
+                                      this_field
+                                    })}
+                                  </Typography>
+                                }
+                                <Box display='flex' mt={0} mb={0} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
+                                  {signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current &&
+                                    <Button
+                                      className={AVAClass.AVAMicroButton}
+                                      style={{ backgroundColor: 'white', color: 'red' }}
+                                      size='small'
+                                      onClick={() => {
+                                        signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current.clear();
+                                        setForceRedisplay(!forceRedisplay);
+                                      }}
+                                    >
+                                      {'Clear'}
+                                    </Button>
+                                  }
+                                </Box>
                               </Box>
-                            </Box>
-                          </Box>
-                        }
-                      </React.Fragment>
+                            }
+                            {(reactData.fields[this_field].type === 'id') &&
+                              <Box
+                                display='flex'
+                                flexDirection='row'
+                                key={`selectParent-${this_field}_${sectionNdx}`}
+                                id={`selectParent-${this_field}`}
+                                width={`${reactData.fields[this_field].prompt.width || 200}px`}
+                                flexGrow={1}
+                                marginBottom={0}
+                                justifyContent='flex-start'
+                                alignItems='flex-start'
+                              >
+                                <Box
+                                  key={`selectBox-${this_field}_${sectionNdx}`}
+                                  display='flex' marginLeft={1} flexGrow={1} flexDirection='column'
+                                >
+                                  <Select
+                                    options={reactData.peopleList[reactData.fields[this_field].choose.ref]}
+                                    searchBy={'label'}
+                                    dropdownHandle={true}
+                                    clearOnSelect={true}
+                                    clearOnBlur={true}
+                                    key={`selectOptions-${this_field}_${sectionNdx}`}
+                                    searchable={true}
+                                    create={false}
+                                    closeOnClickInput={true}
+                                    closeOnSelect={true}
+                                    style={{
+                                      lineHeight: 1,
+                                      fontSize: `${reactData.user_fontSize * (1.05)}rem`,
+                                      marginLeft: '-5px',
+                                      marginBottom: '-4px',
+                                      borderWidth: 0
+                                    }}
+                                    noDataLabel={`No ${reconcilePrompt({
+                                      rawValue: reactData.fields[this_field].prompt.value,
+                                      this_field
+                                    })}s match`}
+                                    values={(reactData.fields[this_field]) ?
+                                      (reactData.fields[this_field].valueText
+                                        ? [{ label: reactData.fields[this_field].valueText, value: reactData.fields[this_field].value }]
+                                        : (reactData.fields[this_field].valueList
+                                          ? reactData.fields[this_field].valueList.map(this_value => {
+                                            return {
+                                              label: (reactData.peopleList[reactData.fields[this_field].choose.ref].find(this_person => {
+                                                return (this_person.value === this_value);
+                                              })).label,
+                                              value: this_value
+                                            };
+                                          })
+                                          : []
+                                        )
+                                      ) : []
+                                    }
+                                    placeholder={``}
+                                    onChange={async (values) => {
+                                      if (values.length > 0) {
+                                        await handleChangeValue({
+                                          newText: values[0].label,
+                                          newValue: values[0].value,
+                                          occ_index,
+                                          prop: this_field,
+                                          sentenceCase: false
+                                        });
+                                      }
+                                    }}
+                                  />
+                                  {(occ_index === 0) &&
+                                    <Box display='flex'
+                                      flexDirection='row'
+                                      paddingTop={'4px'}
+                                      borderTop={1}
+                                      key={`selectPromptBox-${this_field}_${sectionNdx}`}
+                                    >
+                                      <Typography
+                                        key={`selectPrompt-${this_field}_${sectionNdx}`}
+                                        id={`selectPrompt-${this_field}`}
+                                        style={AVATextStyle({
+                                          lineHeight: 1,
+                                          width: `${reactData.fields[this_field].prompt.width || 200}px`,
+                                          maxWidth: '90%',
+                                          size: 0.75,
+                                          opacity: '60%',
+                                          margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
+                                        })}
+                                      >
+                                        {reconcilePrompt({
+                                          rawValue: reactData.fields[this_field].prompt.value,
+                                          this_field
+                                        })}
+                                      </Typography>
+                                    </Box>
+                                  }
+                                </Box>
+                              </Box>
+                            }
+                          </React.Fragment>
 
+                        ))}
+                      </React.Fragment>
                     )
-                  ))}
+                  )
+                  )}
                 </React.Fragment>
               )
             ))}
