@@ -22,6 +22,8 @@ import PeopleIcon from '@material-ui/icons/People';
 import SettingsIcon from '@material-ui/icons/Settings';
 import SendIcon from '@material-ui/icons/Send';
 
+import { SET_GROUPS } from '../../contexts/Session/actions';
+
 import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 import MessageForm from './MessageForm';
 
@@ -105,7 +107,7 @@ const useStyles = makeStyles(theme => ({
 
 export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, onSelect, onRefresh }) => {
 
-  const { state } = useSession();
+  const { dispatch, state } = useSession();
 
   const [activity_filter, setActivityFilter] = React.useState('');
   const [lower_activity_filter, setLowerFilter] = React.useState('');
@@ -266,7 +268,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
         state.groups.parent_of[former_parent].splice(state.groups.parent_of[former_parent].indexOf(draggedFrom.group_id), 1);
       }
       for (const new_parent of targetGroup_newFamilyTree) {
-        state.groups.parent_of[new_parent].push(draggedFrom.group_id);
+        if (state.groups.parent_of.hasOwnProperty(new_parent)) {
+          state.groups.parent_of[new_parent].push(draggedFrom.group_id);
+        }
+        else {
+          state.groups.parent_of[new_parent] = [draggedFrom.group_id];
+        }
       }
 
       let foundAt = state.groups.adminHierarchy.findIndex(g => { return g.id === draggedFrom.group_id; });
@@ -278,10 +285,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
           belongs_to: droppedOn.group_id,
           id: draggedFrom.group_id,
           level: groupsManagedObject[draggedFrom.group_id].level,
-          name: draggedFrom.grouObj.groupName,
+          name: draggedFrom.groupObj.group_name,
           selectable: true
         });
       }
+      delete state.groups.publicGroups[draggedFrom.group_id];
+      dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups) });
       if (reactData.selectedPersonRec) {
         let newGroupList = deepCopy(reactData.selectedPersonRec.groups);
         for (let this_group of targetGroup_formerFamilyTree) {
@@ -893,83 +902,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
               }}
             />
           </Box>
-
-          {/*   TOP SECTION PEOPLE WITH IMAGES
-          {reactData.assignmentList && (reactData.assignmentList.length > 0) &&
-            <Paper component={Box} variant='outlined' style={{ scrollbarWidth: 'thin' }} height={'130px'} minHeight={'fit-content'} width='100%' overflow='auto' square>
-              <List component={'nav'} >
-                <Box
-                  key={`candidates`}
-                  mx={1}
-                  display='flex'
-                  justifyContent='flex-start'
-                  alignItems='center'
-                  flexDirection='row'
-                >
-                  {reactData.assignmentList && reactData.assignmentList.map((this_candidate, cX) => (
-                    <Box
-                      key={`candidate-${cX}`}
-                      mx={1}
-                      display='flex'
-                      justifyContent='center'
-                      alignItems='center'
-                      flexDirection='column'
-                      borderRadius={'45px 45px 45px 45px'}
-                      paddingTop={'8px'}
-                      paddingRight={'4px'}
-                      paddingBottom={'16px'}
-                      paddingLeft={'4px'}
-                      draggable={pSession?.adminAccount}
-                      onDragStart={(e) => handleDragStart(e, {
-                        person_id: this_candidate.person_id,
-                        personObj: this_candidate,
-                        listIndex: cX
-                      })}
-                      onClick={async () => {
-                        updateReactData({
-                          selectedGroup_id: false,
-                          selectedGroupRec: false,
-                          seletedGroupMembers: false,
-                          selectedPerson_id: this_candidate.person_id,
-                          selectedPersonRec: await getPerson(this_candidate.person_id),
-                          selectedPersonFirstName: this_candidate.first_name,
-                          selectedPersonLastName: this_candidate.last_name,
-                        }, true);
-                      }}
-                    >
-                      <Avatar className={classes.assignment_avatar}
-                        style={((this_candidate.person_id === reactData.selectedPerson_id) || (reactData.selectedGroup_id && (reactData.selectedGroupMembers.hasOwnProperty(this_candidate.person_id))))
-                          ? {
-                            borderRadius: '20px',
-                            boxShadow: '0 0 20px 5px rgba(255, 145, 0, 0.7)'
-                          }
-                          : {}
-                        }
-                        src={getImage(this_candidate.person_id)}
-                      >
-                        {`${this_candidate.first_name.slice(0, 1)}${this_candidate.last_name.slice(0, 1)}`}
-                      </Avatar>
-                      <React.Fragment>
-                        <Typography
-                          noWrap={true}
-                          className={classes.dragNamesFirst}
-                        >
-                          {this_candidate.first_name}
-                        </Typography>
-                        <Typography
-                          noWrap={true}
-                          className={classes.dragNamesLast}
-                        >
-                          {this_candidate.last_name}
-                        </Typography>
-                      </React.Fragment>
-                    </Box>
-                  ))}
-                </Box>
-              </List>
-            </Paper>
-          }
-          */}
 
           <Box display='flex' flexDirection='row' style={{ flexGrow: 1, height: '100px' }}>
 
