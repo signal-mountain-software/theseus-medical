@@ -251,7 +251,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
       redPencilDisplayed.current = true;
       return 'red';
     }
-  }
+  };
 
   const setCheckCircleColor = (rObj) => {
     if (!rObj) {
@@ -270,14 +270,14 @@ export default ({ currentValues, reactData, updateReactData }) => {
       redCircleDisplayed.current = true;
       return 'red';
     }
-  }
+  };
 
   const setRefTrue = (refToSet) => {
     if (refToSet) {
       refToSet.current = true;
     }
     return null;
-  }
+  };
 
   React.useEffect(() => {
     initialize();
@@ -391,7 +391,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                 style={AVATextStyle({
                                   size: 1.5,
                                   margin: { right: 0.5 },
-                                  color: setPencilColor(reactData.masterFormList[person_id].myFormListObj[this_formID])                                   
+                                  color: setPencilColor(reactData.masterFormList[person_id].myFormListObj[this_formID])
                                 })}
                                 size='small'
                               />

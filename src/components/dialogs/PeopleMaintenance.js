@@ -64,6 +64,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     addFamilyMember: false,
     viewFamilyMember: false,
     user_id: state.user.person_id,
+    focusAt: null,
     formHistoryMode: false,
     isAmendingForm: false,
     recentlyCompletedDocs: [],
@@ -154,6 +155,14 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           component_name: 'Snapshot'
         },
         {
+          section_name: 'Administrative Data',
+          color: initialValues?.color || 'orange',
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('AdministrativeSection')) : false),
+          isAuthorized: reactData.administrative_account,
+          version_id: 0,
+          component_name: 'AdministrativeSection'
+        },
+        {
           section_name: 'Name & Contact info',
           color: initialValues?.color || 'orange',
           isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('ProfileSection')) : false),
@@ -168,14 +177,6 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           isAuthorized: true,
           version_id: 0,
           component_name: 'MessagePreferencesSection'
-        },
-        {
-          section_name: 'Administrative Data',
-          color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('AdministrativeSection')) : false),
-          isAuthorized: reactData.administrative_account,
-          version_id: 0,
-          component_name: 'AdministrativeSection'
         },
         {
           section_name: 'My Family',
@@ -800,37 +801,38 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
               popupMenuOpen: false
             }, true);
           }}
-          keepMounted>
-            <MenuList className={classes.popUpMenu}>
-              {reactData.administrative_account && (reactData.person_id !== state.session?.patient_id) && (
-                <MenuItem onClick={async () => {
-                  updateReactData({
-                    popupMenuOpen: false
-                  }, true);
-                  await switchActiveAccount(
-                    state.session,
-                    (state.session.client_id || state.session.user_homeClient),
-                    {
-                      id: reactData.person_id,
-                      name: `${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`
-                    }
-                  );
-                }}>
-                  <Box
-                    display='flex' flexDirection='row' alignItems={'center'} justifyContent={'center'}
-                    key={'switch2self'}
-                  >
-                    <SwapHorizIcon />
-                    <Typography style={AVATextStyle({ size: 0.8, margin: { left: 0.5 } })} >
-                      {`Switch to ${reactData.current.peopleRec.name.first}`}
-                    </Typography>
-                  </Box>
-                </MenuItem>
-              )}
-              {reactData.administrative_account
-                && reactData.current.peopleRec.person_id
-                && (reactData.person_id !== state.session?.user_id)
-                && (
+          keepMounted
+        >
+          <MenuList className={classes.popUpMenu}>
+            {reactData.administrative_account && (reactData.person_id !== state.session?.patient_id) && (
+              <MenuItem onClick={async () => {
+                updateReactData({
+                  popupMenuOpen: false
+                }, true);
+                await switchActiveAccount(
+                  state.session,
+                  (state.session.client_id || state.session.user_homeClient),
+                  {
+                    id: reactData.person_id,
+                    name: `${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`
+                  }
+                );
+              }}>
+                <Box
+                  display='flex' flexDirection='row' alignItems={'center'} justifyContent={'center'}
+                  key={'switch2self'}
+                >
+                  <SwapHorizIcon />
+                  <Typography style={AVATextStyle({ size: 0.8, margin: { left: 0.5 } })} >
+                    {`Switch to ${reactData.current.peopleRec.name.first}`}
+                  </Typography>
+                </Box>
+              </MenuItem>
+            )}
+            {reactData.administrative_account
+              && reactData.current.peopleRec.person_id
+              && (reactData.person_id !== state.session?.user_id)
+              && (
                 <MenuItem onClick={async () => {
                   updateReactData({
                     popupMenuOpen: false
@@ -871,7 +873,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
               </Box>
             </MenuItem>
           </MenuList>
-          </Menu>
+        </Menu>
       </Box>
 
       <Paper component={Box}
@@ -893,8 +895,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                   marginBottom: (this_section.isOpen ? 0 : '8px'),
                   backgroundColor: this_section.color,
                   textDecoration: 'none',
-                  position: 'sticky',
-                  top: 0,
+                  top: '8px',
                   zIndex: 1,
                   opacity: 1
                 }}
@@ -908,6 +909,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                 onClick={async () => {
                   reactData.sections[sectionNdx].isOpen = !reactData.sections[sectionNdx].isOpen;
                   updateReactData({
+                    focusAt: (reactData.sections[sectionNdx].isOpen ? this_section.component_name : null),
                     sections: reactData.sections
                   }, true);
                 }}
@@ -929,7 +931,10 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                   </Box>
                   <Box
                     display='flex'
-                    border={1}
+                    borderTop={0}
+                    borderLeft={1}
+                    borderRight={1}
+                    borderBottom={1}
                     style={{
                       borderRadius: '0px 0px 30px 30px',
                       backgroundColor: this_section.color,

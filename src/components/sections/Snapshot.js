@@ -8,6 +8,7 @@ import { deepCopy } from '../../util/AVAUtilities';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import SendIcon from '@material-ui/icons/Send';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
+import InfoIcon from '@material-ui/icons/Info';
 
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import MakeMessage from '../forms/MakeMessage';
@@ -92,7 +93,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
         )))
       }
       <Box display='flex' alignItems='center'
-        style={{marginBottom: '16px'}}
+        style={{ marginBottom: '16px' }}
         justifyContent='flex-start' flexDirection='row'>
         <Box
           component="img"
@@ -338,6 +339,57 @@ export default ({ currentValues, reactData, updateReactData }) => {
           ))}
         </Box>
       }
+
+
+
+      {reactData.form_fields && (Object.keys(reactData.form_fields).length > 0) &&
+        <Box
+          display='flex'
+          alignItems={'center'}
+          marginBottom={'-32px'}
+          justifyContent='flex-end' flexDirection='row'
+          key={`adminData_buttons`}
+          style={{}}
+        >
+          <Button
+            key={`adminData_Button`}
+            onClick={async () => {
+              let sectionNdx = reactData.sections.findIndex(s => { return (s.section_name === 'Administrative Data');});
+              reactData.sections[sectionNdx].isOpen = true;
+              updateReactData({
+                focusAt: 'Administrative Data',
+                sections: reactData.sections
+              }, true);
+            }}
+            className={AVAClass.AVAButton}
+            style={{ marginLeft: 0, backgroundColor: 'red', color: 'white' }}
+            size='small'
+            startIcon={<InfoIcon size='small' />}
+          >
+            <Box display='flex' alignItems='center'
+              key={`adminData`}
+              justifyContent='flex-end' flexDirection='column'>
+              <Typography
+                key={`adminData2`}
+                style={AVATextStyle({ size: 0.7, margin: { right: 0.5 } })}
+              >
+                {`Admin Data`}
+              </Typography>
+            </Box>
+          </Button>
+        </Box>
+      }
+
+
+
+
+
+
+
+
+
+
+
       <Box
         display='flex'
         alignItems={'center'}
