@@ -446,6 +446,132 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   let nowTime = new Date().getTime();
 
+  // drag to Favorites
+  const handleDragStart = (ev, id) => {
+    ev.dataTransfer.setData('id', JSON.stringify(id));
+  };
+
+  const handleDragOver = (ev) => {
+    ev.preventDefault();
+  };
+
+  const handleDrop = async (ev, { droppedOn }) => {
+    ev.preventDefault();
+    let draggedFrom = JSON.parse(ev.dataTransfer.getData('id'));
+    let activityRow = reactData.mainMenu[draggedFrom.index];
+    let activityLine = activityRow.raw_data;
+    let personRec = await dbClient
+      .get({
+        Key: { person_id: pPerson },
+        TableName: "People"
+      })
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          updateReactData({
+            alert: {
+              severity: 'error',
+              title: 'No internet',
+              message: `There is no internet connection.  AVA cannot update your Favorites.`
+            }
+          }, true);
+        }
+        cl(`caught error getting People record; error is:`, error);
+      });
+    if (!recordExists(personRec)) {
+      return;
+    }
+    let favoriteList = [];
+    if ('favorite_activities' in personRec.Item) {
+      favoriteList = personRec.Item.favorite_activities;
+    }
+    let draggedAt = favoriteList.findIndex(r => {
+      if (typeof (r) === 'string') {
+        return (r.split('~')[0] === activityRow.activity_code);
+      }
+      else {
+        return (r.activity_code === activityRow.activity_code);
+      }
+    });
+    if (draggedFrom.from_type === 'favorites') {
+      if (droppedOn.to_type === 'favorites') {
+        // re-ordering favorites
+        favoriteList.splice(draggedAt, 1);
+        reactData.mainMenu.splice(draggedFrom.index, 1);
+        let droppedAt = favoriteList.findIndex(r => {
+          if (typeof (r) === 'string') {
+            return (r.split('~')[0] === droppedOn.activity_code);
+          }
+          else {
+            return (r.activity_code === droppedOn.activity_code);
+          }
+        });
+        favoriteList.splice(droppedAt, 0, draggedFrom.rawData);
+        reactData.mainMenu.splice(droppedOn.index, 0, draggedFrom.wholeRow);
+      }
+      else {
+        // remove from favorites
+        if (draggedAt > -1) {
+          favoriteList.splice(draggedAt, 1);
+          reactData.mainMenu.splice(draggedFrom.index, 1);
+        }
+      }
+    }
+    else {
+      // adding something to favorites
+      if (draggedAt === -1) {
+        favoriteList.unshift(activityLine);
+        reactData.mainMenu[draggedFrom.index].is_favorite = true;
+        reactData.mainMenu.unshift({
+          menu_name: 'main',
+          sort_key: `**2-0000`,
+          section_name: (reactData.mainMenu[0].section_name.toLowerCase().includes('favorites')
+            ? reactData.mainMenu[0].section_name
+            : `My Favorites`
+          ),
+          section_color: '#6bb44b',
+          section_icon: 'https://ava-icons.s3.amazonaws.com/icons8-favorite-50.png',
+          row_color: '#6bb44b',
+          activity_code: activityRow.activity_code,
+          activity_name: activityRow.activity_name,
+          activity_class: activityRow.activity_class,
+          row_type: activityRow.row_type,
+          raw_data: activityLine,
+          default_value: activityRow.default_value || null,
+          parent_menu: null,
+          child_menu: activityRow.child_menu,
+          reason: 'Favorite',
+          last_used: activityRow.last_used,
+          is_favorite: true
+        });
+      }
+    }
+    await dbClient
+      .update({
+        Key: { person_id: pPerson },
+        UpdateExpression: 'set favorite_activities = :f',
+        ExpressionAttributeValues: {
+          ':f': favoriteList,
+        },
+        TableName: "People",
+      })
+      .promise()
+      .catch(error => {
+        updateReactData({
+          alert: {
+            severity: 'error',
+            title: 'No internet',
+            message: `AVA couldn't update your Favorites.`
+          }
+        }, true);
+        return;
+      });
+    updateReactData({
+      mainMenu: reactData.mainMenu,
+      loading: false
+    }, true);
+  };
+
   const buildMenu = async (reload = false, beQuiet = null) => {
     let reactUpdObj = {
       sectionOpen: false
@@ -478,9 +604,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       });
     if (recordExists(menuRec)) {
       reactUpdObj.loadedMenuVersion = menuRec.Item.menu_version;
-      reactUpdObj.sectionOpen = false;
+      reactUpdObj.sectionOpen = false; 
       if ((menuRec.Item.AVA_main_menu && (menuRec.Item.AVA_main_menu.length > 0)) && !reload) {
         reactUpdObj.mainMenu = menuRec.Item.AVA_main_menu;
+        reactUpdObj.sectionOpen = Object.assign({}, reactUpdObj.mainMenu[0], { index: 0 }); 
         updateReactData(reactUpdObj, true);
         return menuRec.Item.AVA_main_menu;
       }
@@ -493,6 +620,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     if (wholeMenu.length > 0) {
       await updateAVA(reactData.sectionOpen, wholeMenu);
       reactUpdObj.mainMenu = wholeMenu;
+      if (!reactUpdObj.sectionOpen) {
+        reactUpdObj.sectionOpen = Object.assign({}, reactUpdObj.mainMenu[0], { index: 0 }); 
+      }
       updateReactData(reactUpdObj, true);
       return wholeMenu;
     }
@@ -1217,6 +1347,16 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                                   display='flex' flexDirection='column'
                                   alignItems={'center'} justifyContent={'center'}
                                   key={`master_card_content_${index}`}
+                                  onDragOver={(e) => { if (this_row.is_favorite) { handleDragOver(e); } }}
+                                  onDrop={async (e) => {
+                                    if (this_row.is_favorite) {
+                                      await handleDrop(e, {
+                                        droppedOn: {
+                                          to_type: 'favorites',
+                                        }
+                                      });
+                                    }
+                                  }}
                                 >
                                   <Typography
                                     className={classes.noDisplay}
@@ -1258,6 +1398,18 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                             borderRadius: ('30px 30px 30px 30px'),
                             backgroundColor: hexToRgb(this_row.section_color, 1),
                             textDecoration: 'none'
+                          }}                         
+                          onDragOver={(e) => { if (this_row.is_favorite) { handleDragOver(e); } }}
+                          onDrop={async (e) => {
+                            if (this_row.is_favorite) {
+                              await handleDrop(e, {
+                                droppedOn: {
+                                  to_type: 'favorites',
+                                  activity_code: this_row.activity_code,
+                                  index: lower_index
+                                }
+                              });
+                            }
                           }}
                           onContextMenu={async (e) => {
                             e.preventDefault();
@@ -1316,6 +1468,13 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                         >
                           <CardActionArea
                             key={`vRowRefresh_lower_card_action_${lower_index}`}
+                            draggable={true}
+                            onDragStart={(e) => handleDragStart(e, {
+                              index: lower_index,
+                              from_type: ((this_row.is_favorite) ? 'favorites' : 'menu'),
+                              rawData: this_row.raw_data,
+                              wholeRow: this_row
+                            })}
                           >
                             <CardContent className={classes.cardcontentdetail}
                               key={`vRowRefresh_lower_card_content_${lower_index}`}
