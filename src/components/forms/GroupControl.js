@@ -291,7 +291,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
       }
       delete state.groups.publicGroups[draggedFrom.group_id];
       dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups) });
-      if (reactData.selectedPersonRec) {
+      // does the group you are dragging have members?
+      // if so, you have to update the groups for EVERY member
+ /*     if (reactData.selectedPersonRec) {
         let newGroupList = deepCopy(reactData.selectedPersonRec.groups);
         for (let this_group of targetGroup_formerFamilyTree) {
           if (newGroupList.includes(this_group)) {
@@ -307,6 +309,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
           selectedPersonRec: Object.assign({}, reactData.selectedPersonRec, { groups: newGroupList })
         }, true);
       }
+      */
     }
     else if (draggedFrom.hasOwnProperty('personObj')) {
       if (draggedFrom.hasOwnProperty('personGroup') && (draggedFrom.intent === 'group')) {
@@ -1253,7 +1256,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                 selectedGroupRec: false,
                 seletedGroupMembers: false,
                 selectedPerson_id: selections[0].person_id,
-                selectedPersonRec: await getPerson(selections[0].person_id,),
+                selectedPersonRec: await getPerson(selections[0].person_id, '*all', true),
                 selectedPersonFirstName: selections[0].person_firstName,
                 selectedPersonLastName: selections[0].person_lastName,
               }, true);
