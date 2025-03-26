@@ -1718,7 +1718,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
               onClose={async (selections) => {
                 updateReactData({
                   showQuickSearch: false,
-                  newMessageRecipients: selections,
+                  newMessageRecipients: selections || [],
                   selections: []
                 }, true);
               }}

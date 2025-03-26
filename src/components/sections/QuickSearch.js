@@ -23,6 +23,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   const AVAClass = AVAclasses();
   const { state } = useSession();
   const isMounted = React.useRef(false);
+  const administrative_account = (['admin', 'support', 'master'].includes(state.user.account_class));
 
   React.useEffect(() => {
     async function initialize() {
@@ -42,13 +43,19 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
       if (options.withGroups && !reactData.groupInfo) {
         if (state.hasOwnProperty('groups')) {
           let groupList = [];
+          let groupList_minLevel = 99;
           loadList('__TOP__', state.groups.groupTree['__TOP__'], 0);
           function loadList(this_item, my_children, this_level) {
-            groupList.push({
-              group_id: this_item,
-              group_name: state.groups.groupNames[this_item],
-              level: this_level
-            });
+            if (administrative_account || (state.accessList[state.session.client_id].groups[this_item] >= 2)) {
+              groupList.push({
+                group_id: this_item,
+                group_name: state.groups.groupNames[this_item],
+                level: this_level
+              });
+              if (groupList_minLevel > this_level) {
+                groupList_minLevel = this_level;
+              }
+            }
             if (isEmpty(my_children)) { return; }
             else {
               let next_level = this_level + 1;
@@ -57,7 +64,18 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
               }
             }
           }
-          reactUpd.groupInfo = Object.assign({}, deepCopy(state.groups), { groupList: deepCopy(groupList) });
+          reactUpd.groupInfo = Object.assign({}, deepCopy(state.groups), {
+ //           groupList: deepCopy(groupList) });
+
+            groupList: groupList.map(this_group => {
+              return {
+                group_id: this_group.group_id,
+                group_name: this_group.group_name,
+                level: this_group.level - groupList_minLevel
+              };
+            })
+          });
+        
         }
       }
       if (!reactData.accessList) {
@@ -365,7 +383,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
             </Box>
           </Box>
         }
-        {options.withGroups && reactData.groupInfo &&
+        {options.withGroups && reactData.groupInfo && (reactData.groupInfo.groupList.length > 0) &&
           <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
             <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
               <Typography
@@ -472,7 +490,9 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
           </Box>
         }
 
-        {reactData.accessList && !options.hidePeople &&
+        {reactData.accessList &&
+          !options.hidePeople &&
+          ((options.withSpecialValues ? reactData.special_values : []).concat(reactData.accessList).length > 0) &&
           <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
             <Typography
               style={{ fontWeight: 'bold', paddingTop: '2px', marginTop: '6.5px', marginBottom: '4px', textWrapStyle: 'balance' }}

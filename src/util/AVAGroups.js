@@ -198,6 +198,21 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
                   // example... the staff group may have a view_group = {'local': 'view'} which would allow 
                   //       local users to see (but not proxy to) its members
                   let this_group = await getGroup(g, client_id);
+
+                  if (this_group.view_group && this_group.view_group.hasOwnProperty(myClass)) {
+                    myGroupAccessLevel[g] = accessLevelTable.indexOf(this_group['view_group'][myClass]);
+                  }
+                  else {
+                    myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
+                    if ((myRole === 'member')
+                      && (['local', 'resident', 'staff', 'admin'].includes(myClass))
+                      //  if I am a member of a group and not a guest, vendor, or family
+                      //    ... I may(at least) view other members of my group
+                    ) {
+                      myGroupAccessLevel[g] = Math.max(accessLevelTable.indexOf('view'), myGroupAccessLevel[g]);
+                    }
+                  }
+/*
                   if (!this_group.hasOwnProperty('view_group')) {
                     myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
                   }
@@ -214,6 +229,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
                   ) {
                     myGroupAccessLevel[g] = Math.max(accessLevelTable.indexOf('view'), myGroupAccessLevel[g]);
                   }
+  */
                 }
               }
               if (myGroupAccessLevel[g] > myMaxAccessLevelToThisPerson) {
