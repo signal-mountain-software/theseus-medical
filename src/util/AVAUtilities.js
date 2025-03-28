@@ -501,7 +501,7 @@ export function extract(string, left, right = null, options = {}) {
     }
   }
   if (!options.includeLeft) { f_left += left.length; }
-  if (!options.includeRight) { f_right -= right.length; }
+  if (options.includeRight) { f_right += right.length; }
   return string.slice(f_left, f_right);
 };
 
