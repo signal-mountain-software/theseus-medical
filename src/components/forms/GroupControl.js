@@ -1199,13 +1199,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                         })}
                         onClick={async () => {
                           updateReactData({
-                            selectedGroup_id: false,
-                            selectedGroupRec: false,
-                            seletedGroupMembers: false,
-                            selectedPerson_id: this_person,
-                            selectedPersonRec: await getPerson(this_person),
-                            selectedPersonFirstName: reactData.selectedGroupMembers[this_person].name.first,
-                            selectedPersonLastName: reactData.selectedGroupMembers[this_person].name.last,
+                            viewPeopleMaintenance: this_person
                           }, true);
                         }}
                         draggable={pSession?.adminAccount}
@@ -1291,9 +1285,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
           person_id={reactData.viewPeopleMaintenance}
           initialValues={{ color: 'green' }}
           options={{}}
-          onClose={() => {
+          onClose={async () => {
             updateReactData({
-              viewPeopleMaintenance: false
+              viewPeopleMaintenance: false,
+              selectedGroupMembers: await selectMembers(reactData.selectedGroup_id)
             }, true);
           }}
         />
