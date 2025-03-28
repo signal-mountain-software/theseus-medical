@@ -75,6 +75,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     local_customFields: ((state.session.local_data && (Object.keys(state.session.local_data).length > 0)) ? state.session.local_data : {}),
     user_class: state.user.account_class,
     administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
+    master_account: (state.user.account_class === 'master'),
     OKtoSave: false,
     saveCompleted: false,
     alert: false,

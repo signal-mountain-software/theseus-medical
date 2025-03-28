@@ -273,7 +273,63 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
             />
           </Box>
         }
-        {reactData.administrative_account &&
+        {reactData.administrative_account && !reactData.master_account &&
+          <React.Fragment>
+            <Typography
+              style={AVATextStyle({ margin: { top: 1.5 } })}
+            >
+              {`Account Class`}
+            </Typography>
+            <Box
+              display='flex'
+              flexDirection='row'
+              marginLeft={-0.5}
+              marginTop={-0}
+              flexWrap={'wrap'}
+            >
+              {[{ option: 'support', label: 'Support' },
+              { option: 'admin', label: 'Admin' },
+              { option: 'camper', label: 'Camper' },
+              { option: 'family', label: 'Family/Other' },
+              { option: '', label: 'Standard' }
+              ].map((this_option, tIndex) => (
+                <Box
+                  display='flex'
+                  flexDirection='row'
+                  alignItems={'center'}
+                  key={`MessagePref_option__${tIndex}`}
+                  style={{ marginRight: '24px' }}
+                >
+                  <Checkbox
+                    aria-label={`MessagePref_option__${tIndex}`}
+                    name={`MessagePref_option__${tIndex}`}
+                    key={`MessagePref_option__${tIndex}`}
+                    size='small'
+                    checked={((currentValues.peopleRec.account_class === this_option.option)
+                      || (!this_option.option && !currentValues.peopleRec.account_class))
+                    }
+                    onClick={async () => {
+                      await updateField({
+                        updateList:
+                          [{
+                            tableName: 'peopleRec',
+                            fieldName: 'account_class',
+                            newData: this_option.option
+                          }]
+                      });
+                    }}
+                    disableRipple
+                    inputProps={{ 'aria-labelledby': `message_routing_3` }}
+                  />
+                  <Typography style={AVATextStyle({ size: 0.8, margin: { left: -0.4 } })} >
+                    {`${this_option.label}`}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          </React.Fragment>
+        }
+        {reactData.master_account &&
           <React.Fragment>
             <Typography
               style={AVATextStyle({ margin: { top: 1.5 } })}
