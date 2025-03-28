@@ -2,7 +2,7 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
-import { extract, dbClient, titleCase, listFromArray, cl, uuid, recordExists } from '../../util/AVAUtilities';
+import { extract, dbClient, titleCase, listFromArray, cl, uuid, recordExists, isEmpty } from '../../util/AVAUtilities';
 import { AVATextStyle } from '../../util/AVAStyles';
 import { makeDate } from '../../util/AVADateTime';
 import AVAUploadFile from '../../util/AVAUploadFile';
@@ -213,7 +213,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     newUrgentMessage: false,
     options,
     preferred_recipients: [],
-    replyToList: [{ person_id: pPerson, person_name: 'Me' }],
+    replyToList: [],
     selectedPeople_count: 0,
     selectedPeople_list: [],
     selections: [], // wip selections from quick search
@@ -470,7 +470,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     }
     const reply_to = (reactData.replyToList && (reactData.replyToList.length > 0))
       ? reactData.replyToList.map(r => { return r.person_id; })
-      : [pPerson];
+      : [];
     let recipient_key = [];
     reactData.newMessageRecipients.forEach(r => {
       if (r.person_id) { recipient_key.push(...([r.person_id].flat())); }
@@ -578,7 +578,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         newMessageSubject: '',
         newMessageRecipients: [],
         newUrgentMessage: false,
-        replyToList: [{ person_id: pPerson, person_name: 'Me' }],
+        replyToList: [],
         newMessageText: '',
         newMessageThread: false,
         newMessageVMAlternative: false,
@@ -871,8 +871,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       if ((this_deliveryRec.delete_flag) && this_deliveryRec.deleted_by && (this_deliveryRec.deleted_by.includes(state.session.user_id))) {
         reactData.threads[this_deliveryRec.thread_id].delete_flag = true;
       }
-      if (this_deliveryRec.reply_to) {
-        reactData.threads[this_deliveryRec.thread_id].messages[message_number].reply_to.push(this_deliveryRec.reply_to);
+      if (!isEmpty(this_deliveryRec.reply_to)) {
+        reactData.threads[this_deliveryRec.thread_id].messages[message_number].reply_to = this_deliveryRec.reply_to;
       }
       // re-sort messages in this thread (if necessary)
       if (message_added && (reactData.threads[this_deliveryRec.thread_id].messages.length > 1)) {
@@ -1351,11 +1351,11 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                             }}
                           >
                             {((reactData.replyToList.length > 0) || ((reactData.selections.length > 0) && !reactData.showQuickSearch))
-                              ? `Reply to: ${listFromArray(((reactData.replyToList.length > 0)
+                              ? `Replies cc'd to: ${listFromArray(((reactData.replyToList.length > 0)
                                 ? reactData.replyToList
                                 : reactData.selections).map(r => r.person_name),
                                 { max: { length: 2, words: 'people' } })}`
-                              : 'Reply to: Me'
+                              : `Add Reply To`
                             }
                           </Typography>
                           <Typography
@@ -1416,7 +1416,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                       onClick={() => {
                         updateReactData({
                           newMessageRecipients: [],
-                          replyToList: [{ person_id: pPerson, person_name: 'Me' }],
+                          replyToList: [],
                           newMessageMode: false
                         }, true);
                       }}
@@ -1616,17 +1616,13 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                     onClick={async () => {
                                       let newMessageRecipients = [];
                                       let replyToList = [];
-                                      if (this_message.replyToList && this_message.replyToList.some(p => { return p !== pPerson; })) {
-                                        for (const this_recipient of this_message.replyToList) {
-                                          newMessageRecipients.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
+                                      for (let this_person of this_message.partner_id) {
+                                        newMessageRecipients.push({ person_id: this_person, person_name: await makeName(this_person) });
+                                      }
+                                      if (this_message.reply_to && (this_message.reply_to.length > 0)) {
+                                        for (const this_recipient of this_message.reply_to) {
                                           replyToList.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
                                         }
-                                      }
-                                      else {
-                                        for (let this_person of this_message.partner_id) {
-                                          newMessageRecipients.push({ person_id: this_person, person_name: await makeName(this_person) });
-                                        }
-                                        replyToList = [{ person_id: pPerson, person_name: 'Me' }];
                                       }
                                       updateReactData({
                                         newMessageRecipients,
@@ -1788,7 +1784,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                           newMessageText: '',
                           newUrgentMessage: false,
                           newMessageRecipients: [],
-                          replyToList: [{ person_id: pPerson, person_name: 'Me' }],
+                          replyToList: [],
                           newMessageThread: false,
                         };
                         if (reactData.personFilter) {
