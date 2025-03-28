@@ -666,7 +666,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           delete queryObj.ExclusiveStartKey;
         }
         if (recordExists(inRecs)) {
-            await processDeliveryRecs(inRecs.Items, '', person_id);
+          await processDeliveryRecs(inRecs.Items, '', person_id);
         }
       } while (queryObj.ExclusiveStartKey);
     }
@@ -728,9 +728,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     let totalCount = deliveryRecs.length;
     for (let this_deliveryRec of deliveryRecs) {
       totalProcessed++;
-  //    if (this_deliveryRec.sent_from === this_deliveryRec.deliver_to) {    // a message to myself?  ignore...
-  //      continue;
-  //    }
+      //    if (this_deliveryRec.sent_from === this_deliveryRec.deliver_to) {    // a message to myself?  ignore...
+      //      continue;
+      //    }
       inOut = ((this_deliveryRec.sent_from === my_id) ? 'out' : 'in');
       // threads is {[<thread_id>]: {last_update: <>, delete_flag: <t/f>, messages: []}}, {[<thread_id>]: {}}...]
       // threads[n].messages is [{message_text: <>, last_update: <>, attachments: [], sent_time: <>, author_id: <>, author_name: <>, author_image: <>, inOut: <in/out> ,recipients: []}, {}...]
@@ -738,7 +738,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       // YOU ARE HERE -> threads[n].messages[m].recipients[o].methods is {[method]: {last_update_time: <>, result: <>}}, {[method]: {}}...]
       if (!(this_deliveryRec.thread_id in reactData.threads)) {  // does this thread exist yet?
         reactData.threads[this_deliveryRec.thread_id] = {
-          last_update: 0,
+          last_update: this_deliveryRec.created_time || 0,
           delete_flag: false,
           messages: []
         };
@@ -862,7 +862,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       }
       if (this_deliveryRec.last_update > reactData.threads[this_deliveryRec.thread_id].messages[message_number].last_update) {
         reactData.threads[this_deliveryRec.thread_id].messages[message_number].last_update = this_deliveryRec.last_update;
-        if (this_deliveryRec.last_update > reactData.threads[this_deliveryRec.thread_id].last_update) {
+        if ((this_deliveryRec.last_update > reactData.threads[this_deliveryRec.thread_id].last_update)
+          && (!['open', 'delivered', 'delivery'].includes(this_deliveryRec.delivery_status))
+        ) {
           reactData.threads[this_deliveryRec.thread_id].last_update = this_deliveryRec.last_update;
         }
       }
@@ -1629,7 +1631,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                       updateReactData({
                                         newMessageRecipients,
                                         replyToList,
-                                        newMessageThread: this_message.thread_id,
+                                        newMessageThread: this_message.thread_id || this_message.composite_key.split('~')[0].replace('T:', ''),
                                         newMessageSubject: this_message.subject,
                                         newMessageMode: true
                                       }, true);
