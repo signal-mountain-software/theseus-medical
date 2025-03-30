@@ -17,7 +17,7 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-export default ({ reactData, updateReactData, onClose }) => {
+export default ({ reactData, updateReactData, onClose, options = {} }) => {
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -65,7 +65,7 @@ export default ({ reactData, updateReactData, onClose }) => {
             }
           }
           reactUpd.groupInfo = Object.assign({}, deepCopy(state.groups), {
- //           groupList: deepCopy(groupList) });
+            //           groupList: deepCopy(groupList) });
 
             groupList: groupList.map(this_group => {
               return {
@@ -75,7 +75,7 @@ export default ({ reactData, updateReactData, onClose }) => {
               };
             })
           });
-        
+
         }
       }
       if (!reactData.accessList) {
@@ -205,7 +205,7 @@ export default ({ reactData, updateReactData, onClose }) => {
         style={AVATextStyle({
           size: 1.4,
           bold: true,
-          margin: {left: 0.5, top: 1}
+          margin: { left: 0.5, top: 1 }
         })}
       >
         {options.title || `Quick Search`}
@@ -559,7 +559,7 @@ export default ({ reactData, updateReactData, onClose }) => {
                   <Typography
                     style={(reactData.selections.some(s => { return s.person_id === this_item.person_id; }))
                       ? AVATextStyle({ bold: true, color: 'green' })
-                        : (reactData.selectedPeople_list && reactData.selectedPeople_list.includes(this_item.person_id)
+                      : (reactData.selectedPeople_list && reactData.selectedPeople_list.includes(this_item.person_id)
                         ? AVATextStyle({ bold: true, color: 'orange' })
                         : AVATextStyle())
                     }
@@ -579,7 +579,7 @@ export default ({ reactData, updateReactData, onClose }) => {
           style={{ backgroundColor: (options.buttonColor || 'red'), color: 'white' }}
           size='small'
           onClick={() => {
-            onClose();
+            onClose(reactData.selections);
           }}
         >
           {options.buttonText || 'Exit'}
@@ -588,8 +588,8 @@ export default ({ reactData, updateReactData, onClose }) => {
       {
         reactData.showProfileEdit_id &&
         <PeopleMaintenance
-        person_id={reactData.showProfileEdit_id}
-        options={{ mode: 'view' }}
+          person_id={reactData.showProfileEdit_id}
+          options={{ mode: 'view' }}
           onClose={(updatedPerson) => {
             updateReactData({
               showProfileEdit_id: false
