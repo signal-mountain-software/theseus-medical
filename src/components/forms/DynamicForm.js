@@ -32,6 +32,8 @@ import NumberForm from './NumberForm';
 import Number2Form from './Number2Form';
 import FreeTextForm from './FreeTextForm';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
+import ClientMaintenance from '../dialogs/ClientMaintenance';
+import FormManagement from '../dialogs/FormManagement';
 
 import { createPutFact } from '../../graphql/mutations';
 import { useSnackbar } from 'notistack';
@@ -172,6 +174,27 @@ export default ({
     // resync and re-post
     case 'people_maintenance':
     case 'person_maintenance': {
+      let defaultValueObj = {};
+      if (!defaultValue) { }
+      else {
+        if (Array.isArray(defaultValue)) {
+          defaultValue.forEach(d => {
+            if (typeof d === 'string') {
+              let [dKey, dVal] = d.split('=');
+              defaultValueObj[dKey] = dVal;
+            }
+            else {
+              for (let dKey in d) {
+                defaultValueObj[dKey] = d[dKey];
+              }
+            }
+          });
+        }
+        else {
+          try { defaultValueObj = JSON.parse(defaultValue); }
+          catch { console.log(defaultValue); }
+        }
+      }
       return (
         <PeopleMaintenance
           person_id={session.patient_id}
