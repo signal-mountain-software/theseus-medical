@@ -1,24 +1,24 @@
 import React from 'react';
+import useSession from '../../hooks/useSession';
 
-import { dbClient, recordExists, cl } from '../../util/AVAUtilities';
+import { dbClient, recordExists, cl, deepCopy } from '../../util/AVAUtilities';
 import { AVATextStyle } from '../../util/AVAStyles';
 import { makeDate } from '../../util/AVADateTime';
+import { documentDueDate } from '../../util/AVADocuments';
 
 import { Typography, Box } from '@material-ui/core/';
 
-import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import EditIcon from '@material-ui/icons/Edit';
-import CloudUploadIcon from '@material-ui/icons/CloudUpload';
-import PrintIcon from '@material-ui/icons/Print';
 import AddCircleIcon from '@material-ui/icons/AddCircle';
-import VisibilityIcon from '@material-ui/icons/Visibility';
+import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
+import DynamicFeedIcon from '@material-ui/icons/DynamicFeed';
 
-import AVAUploadFile from '../../util/AVAUploadFile';
 import FormFillB from '../forms/FormFillB';
 
 export default ({ currentValues, reactData, updateReactData }) => {
 
+  const { state } = useSession();
   const isMounted = React.useRef(false);
 
   const checkCircleDisplayed = React.useRef(false);
@@ -282,7 +282,6 @@ export default ({ currentValues, reactData, updateReactData }) => {
   React.useEffect(() => {
     initialize();
     isMounted.current = true;
-    initialize();
     return () => { isMounted.current = false; };
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -308,11 +307,11 @@ export default ({ currentValues, reactData, updateReactData }) => {
       {!reactData.formHistoryMode && reactData.formsInitialized &&
         <Box
           key={`DocSection_masterBox`}
-          flexGrow={2} px={2} pt={2} pb={4} display='flex' flexDirection='column'
+          flexGrow={2} px={2} pt={'24px'} pb={'8px'} display='flex' flexDirection='column'
         >
           {isMounted.current && reactData.formsInitialized && Object.keys(reactData.masterFormList).length === 0 &&
             <Typography
-              style={AVATextStyle({ italic: true, margin: { top: 1, bottom: 0.4 } })}
+              style={AVATextStyle({ margin: { left: 3, top: 1, bottom: 1 } })}
             >
               {`No Forms were found for you.`}
             </Typography>
@@ -610,7 +609,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
       {reactData.formHistoryMode &&
         <Box
           key={`DocHistorySection_masterBox`}
-          flexGrow={2} px={2} pt={2} pb={4} display='flex' flexDirection='column'
+          flexGrow={2} px={2} pt={'24px'} pb={4} display='flex' flexDirection='column'
         >
           <Typography
             key={`name-histry_section`}
@@ -631,7 +630,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                 flexWrap={'nowrap'}
                 key={`radio-col_form${docNdx}`}
                 style={AVATextStyle({ margin: { left: 1, right: 1, top: 0.5 } })}
-                justifyContent='flex-start'
+                justifyContent='space-between'
                 alignItems='center'
               >
                 <Box display='flex' alignItems='flex-start'
@@ -654,16 +653,18 @@ export default ({ currentValues, reactData, updateReactData }) => {
                   <Typography
                     key={`docPerson-${this_doc.document_id}_${docNdx}`}
                     id={`docPerson-${this_doc.document_id}_${docNdx}`}
-                    style={AVATextStyle({ size: 0.8, margin: { right: 0.2 } })}
+                    style={AVATextStyle({ size: 1, margin: { right: 0.2 } })}
                   >
-                    {this_doc.document_title}
+                    {this_doc.title}
                   </Typography>
                   <Typography
-                    key={`docDate-${this_doc.document_id}_${docNdx}`}
-                    id={`docDate-${this_doc.document_id}_${docNdx}`}
-                    style={AVATextStyle({ size: 0.8 })}
+                    key={`duedate-col_form${this_doc.document_id}_${docNdx}`}
+                    style={AVATextStyle({
+                      size: 0.8,
+                      margin: { top: 0, left: 0 },
+                    })}
                   >
-                    {makeDate(this_doc.docDate).dateOnly}
+                    {`Completed ${this_doc.date_completed}`}
                   </Typography>
                 </Box>
                 <Box display='flex' alignItems='center'
@@ -881,4 +882,4 @@ export default ({ currentValues, reactData, updateReactData }) => {
       }
     </React.Fragment>
   );
-};;
+};
