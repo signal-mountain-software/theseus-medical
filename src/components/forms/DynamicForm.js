@@ -169,6 +169,7 @@ export default ({
           </FormGroup>
         </FormControl>
       );
+    // resync and re-post
     case 'people_maintenance':
     case 'person_maintenance': {
       return (
