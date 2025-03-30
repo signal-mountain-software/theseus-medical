@@ -221,6 +221,8 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     promptForMessage: '',
     messageType: null,
     recipient: null,
+    messageRecipientIDs: false,
+    messageRecipientNames: false,
     editEventInfo: false,
     editInfoErrorList: [],
     editOwnerInfo: false,
@@ -849,24 +851,40 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     if (newTime) {
       updateExpression += `${previousEntry ? ', ' : ''}#t = :t`;
       expressionAttributeNames['#t'] = 'time';
-      if (newTime.toLowerCase().includes(' to ')) {
-        let [newFrom, newTo] = newTime.toLowerCase().split(' to ');
-        let timeOut = makeTime(newFrom);
-        expressionAttributeValues[':t'] = {
-          from: timeOut.time,
-          to: makeTime(newTo).time
-        };
-        pOccData.time$ = timeOut.time;
-        pOccData.time24 = timeOut.numeric24;
+      let timeStart;
+      let timeEnd;
+      let delimiters = ['to', '-', 'through', 'thru', 'until'];
+      let foundIt = delimiters.findIndex(d => newTime.toLowerCase().includes(` ${d} `));
+      if (foundIt > -1) {
+        let [newFrom, newTo] = newTime.toLowerCase().split(` ${delimiters[foundIt]} `);
+        timeStart = makeTime(newFrom);
+        timeEnd = makeTime(newTo);
+        pOccData.time.duration = timeEnd.minutesSinceMidnight - timeStart.minutesSinceMidnight;
       }
       else {
-        let timeOut = makeTime(newTime);
-        expressionAttributeValues[':t'] = {
-          from: timeOut.time
-        };
-        pOccData.time$ = timeOut.time;
-        pOccData.time24 = timeOut.numeric24;
+        timeStart = makeTime(newTime);
+        let tempEnd = timeStart.minutesSinceMidnight + (pOccData.time.duration || 0);
+        let tempMM = tempEnd % 60;
+        tempEnd -= tempMM;
+        let tempHH = Math.trunc(tempEnd / 60) % 24;
+        timeEnd = makeTime((tempHH * 100) + tempMM);
       }
+      expressionAttributeValues[':t'] = {
+        allDay: pOccData.time.allDay,
+        duration: pOccData.time.duration,
+        from_minutesSinceMidnight: timeStart.minutesSinceMidnight,
+        from: timeStart.time,
+        to: timeEnd.time
+      };
+      pOccData.time = {
+        allDay: pOccData.time.allDay,
+        duration: pOccData.time.duration,
+        from_minutesSinceMidnight: timeStart.minutesSinceMidnight,
+        from: timeStart.time,
+        to: timeEnd.time
+      };
+      pOccData.time$ = `${timeStart.time} to ${timeEnd.time}`;
+      pOccData.time24 = timeStart.numeric24;
       needsSlotTimeMessage = (eventSlotList && (eventSlotList.length > 0));
     }
 
@@ -927,6 +945,46 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     return (needsSlotUpdates || needsSlotTimeMessage);
   };
 
+  const checkOtherOccurrences = async () => {
+    let this_event = pEventCode;
+    let [this_eventID, this_occurrence] = this_event.split('#');
+    let other_occurrences = [];
+    // does this event have other occurrences?
+
+    let queryObj = {
+      TableName: 'Calendar',
+      KeyConditionExpression: 'client = :c and begins_with(event_key, :eV)',
+      FilterExpression: 'record_type = :t',
+      ExpressionAttributeValues: {
+        ':c': pClient,
+        ':eV': `${this_eventID}#`,
+        ':t': 'occurrence'
+      }
+    };
+    let queryResult = await dbClient
+      .query(queryObj)
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          cl(`Security Violation or no Internet Connection`);
+        }
+        cl(`Error reading ${queryObj.TableName} id ${error}`);
+      });
+    if (recordExists(queryResult)) {
+      for (let this_oRec of queryResult.Items) {
+        if ((this_oRec.occurrence_date !== this_occurrence) && (!this_oRec.occurrence_cancelled)) {
+          other_occurrences.push(this_oRec.occurrence_date);
+        }
+      }
+    }
+    updateReactData({
+      other_occurrences,
+      cancelPending: false,
+      ask_cancelSeries: (other_occurrences.length > 0)
+    }, true);
+    return (other_occurrences.length > 0);
+  };
+
   const handleCancelEvent = async () => {
     let updateExpression = 'set occurrence_cancelled = :true';
     let expressionAttributeValues = { ':true': true };
@@ -949,7 +1007,11 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     // remove all the slots
     if (goodUpdate) {
       if (eventSlotList && (eventSlotList.length > 0)) {
+        let recipientList = [];
         for (const [index, this_item] of eventSlotList.entries()) {
+          if (this_item.slotData?.status?.current?.selected) {
+            recipientList.push(this_item.slotData.owner);
+          }
           await handleAllocateSlot({
             person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
             slot: this_item.slotData.id,
@@ -957,6 +1019,18 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
             index: (index || 0)
           });
         };
+        if (recipientList.length > 0) {
+          let messageText = `${pOccData.description} ${makeDate(pOccData.date).relative} has been cancelled`;
+          let messageObj = {
+            client: state.session.client_id,
+            author: state.session.patient_id,
+            messageText: messageText,
+            thread_id: `cancel_${pEventCode}`,
+            recipientList: eventSlotList.map(),
+            subject: `${pOccData.description} ${makeDate(pOccData.date).relative} has been cancelled`
+          };
+          await sendMessages(messageObj);
+        }
       }
       enqueueSnackbar('Event cancelled!', { variant: 'success' });
     }
@@ -1214,7 +1288,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                         popupMenuOpen: false,
                         messageType: 'group',
                         recipient: (filteredList.map(e => {
-                          return `${e.slotData.display_name}:${e.slotData.id}`;
+                          return `${e.slotData.display_name}%%${e.slotData.id}`;
                         }))
                       }, true);
                     }}
@@ -1540,7 +1614,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                                         updateReactData({
                                           promptForMessage: true,
                                           messageType: '',
-                                          recipient: (`${this_item.slotData.display_name}:` + this_item.slotData.owner)
+                                          recipient: (`${this_item.slotData.display_name}%%${this_item.slotData.owner}`)
                                         }, true);
                                       }}
                                     />
@@ -1767,8 +1841,16 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               "patient_id": state.session.patient_id,
               "patient_display_name": state.session.patient_display_name
             }}
-            pRecipientID={reactData.recipient.split('%%')[1]}
-            pRecipientName={reactData.recipient.split('%%')[0]}
+            pRecipientID={reactData.messageRecipientIDs
+              || (Array.isArray(reactData.recipient)
+                ? reactData.recipient.map(r => { return r.split('%%')[1]; })
+                : [reactData.recipient.split('%%')[1]])
+            }
+            pRecipientName={reactData.messageRecipientNames
+              || (Array.isArray(reactData.recipient)
+                ? reactData.recipient.map(r => { return r.split('%%')[0]; })
+                : [reactData.recipient.split('%%')[0]])
+            }
             onCancel={() => {
               updateReactData({
                 promptForMessage: false
@@ -1799,8 +1881,16 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               "patient_id": state.session.patient_id,
               "patient_display_name": state.session.patient_display_name
             }}
-            pRecipientID={Array.isArray(reactData.recipient) ? reactData.recipient.map(r => { return r.split('%%')[1]; }) : [reactData.recipient.split('%%')[1]]}
-            pRecipientName={Array.isArray(reactData.recipient) ? reactData.recipient.map(r => { return r.split('%%')[0]; }) : [reactData.recipient.split('%%')[0]]}
+            pRecipientID={reactData.messageRecipientIDs
+              || (Array.isArray(reactData.recipient)
+                ? reactData.recipient.map(r => { return r.split('%%')[1]; })
+                : [reactData.recipient.split('%%')[1]])
+            }
+            pRecipientName={reactData.messageRecipientNames
+              || (Array.isArray(reactData.recipient)
+                ? reactData.recipient.map(r => { return r.split('%%')[0]; })
+                : [reactData.recipient.split('%%')[0]])
+            }
             onCancel={() => {
               updateReactData({
                 promptForMessage: false
@@ -1862,8 +1952,11 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                       messageSubject: messageSubject,
                       messageText: messageText,
                       messageType: 'group',
-                      recipient: (filteredList.map(e => {
-                        return `${e.slotData.display_name}:${e.slotData.id}`;
+                      messageRecipientIDs: (filteredList.map(e => {
+                        return e.slotData.id;
+                      })),
+                      messageRecipientNames: (filteredList.map(e => {
+                        return e.slotData.display_name;
                       }))
                     });
                   }
@@ -1986,10 +2079,39 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               reactData.cancelPending = false;
               setReactData(reactData);
               setForceRedisplay(!forceRedisplay);
-            }
-            }
+            }}
+            onConfirm={async () => {
+              let othersExist = await checkOtherOccurrences();
+              if (!othersExist) {
+                await handleCancelEvent();
+                reactData.cancelPending = false;
+                setReactData(reactData);
+                setForceRedisplay(!forceRedisplay);
+                onReset({ event_cancelled: true });
+              }
+            }}
+            allowCancel={true}
+          />
+        }
+        {reactData.ask_cancelSeries &&
+          <AVAConfirm
+            promptText={[`This event has ${reactData.other_occurrences.length} occurences`, `Do you want to cancel them all?`]}
+            cancelText={`No, just cancel this`}
+            confirmText={`Yes, cancel them all`}
+            onCancel={async () => {
+              await handleCancelEvent();
+              reactData.cancelPending = false;
+              setReactData(reactData);
+              setForceRedisplay(!forceRedisplay);
+              onReset({ event_cancelled: true });
+            }}
             onConfirm={async () => {
               await handleCancelEvent();
+              let eventID = pEventCode.split('#')[0];
+              for (let next_event of reactData.other_occurrences) {
+                pEventCode = `${eventID}#${next_event}`;
+                await handleCancelEvent();
+              }
               reactData.cancelPending = false;
               setReactData(reactData);
               setForceRedisplay(!forceRedisplay);

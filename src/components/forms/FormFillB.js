@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, sentenceCase, listFromArray, array_in_array, recordExists, isObject } from '../../util/AVAUtilities';
+import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, sentenceCase, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { formatPhone, getPerson, makeName } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
@@ -9,17 +9,14 @@ import { sendMessages } from '../../util/AVAMessages';
 import { printDocumentB, printEmptyDocument, printDocumentHybrid } from '../../util/AVAMessages';
 import SignatureCanvas from 'react-signature-canvas';
 import Select from "react-dropdown-select";
+import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import PrintIcon from '@material-ui/icons/Print';
-
-import Box from '@material-ui/core/Box';
-import { Dialog, DialogContent } from '@material-ui/core';
-import Typography from '@material-ui/core/Typography';
+import { Dialog, DialogContent, Snackbar, Box, Typography, FormControlLabel, Button, TextField, Checkbox } from '@material-ui/core';
+import { Alert, AlertTitle } from '@material-ui/lab/';
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import Checkbox from '@material-ui/core/Checkbox';
-import { FormControlLabel } from '@material-ui/core';
 
-import TextField from '@material-ui/core/TextField';
-import Button from '@material-ui/core/Button';
+import AVA_AlertSound from '../../ava_alert.mp3';
+import useSound from 'use-sound';
 
 import useSession from '../../hooks/useSession';
 import { useIdleTimer } from 'react-idle-timer';
@@ -138,6 +135,8 @@ export default ({ request = {}, onClose }) => {
     options = Object.assign({}, request);
   }
 
+  const [play] = useSound(AVA_AlertSound, { volume: 1 });
+
   const nowObj = new Date();
 
   const [reactData, setReactData] = React.useState({
@@ -179,8 +178,8 @@ export default ({ request = {}, onClose }) => {
     lastActiveTime: nowObj,
     version: 1,
     idleState: false,
-    //   pertains_to: options.person_id || options.family_id || state.session.patient_id
-    pertains_to: options.person_id || options.family_id
+    pertains_to: options.person_id,
+    clientSampleMode: (!options.person_id || (options.person_id === state.session.client_id))
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -248,10 +247,32 @@ export default ({ request = {}, onClose }) => {
       onClose('timeout', {
         document_id: reactData.document_id,
         document_title: reactData.document_title,
-        document_status: 'work_in_process',
+        document_status: (reactData.clientSampleMode ? 'cancel' : 'work_in_process'),
         pertains_to: reactData.pertains_to,
         recWritten: reactData.recWritten
       });
+    }
+    else if (minutesSinceActive > 3) {
+      updateReactData({
+        alert: {
+          severity: 'info',
+          title: `Are you there?`,
+          message: <div>We haven't heard from you in over {minutesSinceActive} minutes.<br />
+            We'll automatically {reactData.clientSampleMode ? '' : 'save your work and '} close this form in {5 - minutesSinceActive} minutes.<br />
+            To keep this form active, just move your mouse or tap somewhere.</div>
+        }
+      }, true);
+    }
+    else if (minutesSinceActive === 5) {
+      play();
+      updateReactData({
+        alert: {
+          severity: 'warning',
+          title: `Close imminent`,
+          message: <div>Heads up!  We'll automatically {reactData.clientSampleMode ? '' : 'save your work and '} close this form in 1 minute!<br />
+            <strong>To keep this form active, just move your mouse or tap somewhere.</strong></div>
+        }
+      }, true);
     }
     reset();
   };
@@ -463,7 +484,16 @@ export default ({ request = {}, onClose }) => {
     };
     for (let this_section of response.sections) {
       this_section.section_name = await resolveVariables(this_section.section_name);
-      for (let this_field of this_section.fields) {
+      let field_variables = {};
+      let field_key;
+      //     for (let this_field of this_section.fields) {
+      for (let [index, this_field] of this_section.fields.entries()) {
+        if (isObject(this_field)) {
+          field_variables = Object.assign({}, this_field);
+          field_key = this_field.form_field;
+          this_field = this_field.field_name;
+          this_section.fields[index] = this_field;
+        }
         response.fields[this_field] = {};
         // Set default value
         const defaultObj = {};
@@ -471,11 +501,20 @@ export default ({ request = {}, onClose }) => {
           const formFieldRec = await getDb({
             Key: {
               client_id: state.session.client_id,
-              field_name: this_field
+              field_name: field_key || this_field
             },
             TableName: "Form_Fields"
           });
           if (formFieldRec) {
+            if (field_variables.prompt) {
+              formFieldRec.prompt.value = field_variables.prompt;
+            }
+            if (field_variables.default_source && formFieldRec.default.source && formFieldRec.default.source.startsWith('%%')) {
+              formFieldRec.default.source = field_variables.default_source;
+            }
+            if (field_variables.saveAs && formFieldRec.value.saveAs && formFieldRec.value.saveAs.startsWith('%%')) {
+              formFieldRec.value.saveAs = field_variables.saveAs;
+            }
             formRec.fields[this_field] = formFieldRec;
             updateReactData({
               formRec
@@ -569,7 +608,12 @@ export default ({ request = {}, onClose }) => {
           }
         }
         if (!response.fields[this_field].value) {
-          response.fields[this_field].value = null;
+          if (formRec.fields[this_field].prompt?.occurrences && (formRec.fields[this_field].prompt.occurrences > 1)) {
+            response.fields[this_field].value = new Array(formRec.fields[this_field].prompt.occurrences).fill(null);
+          }
+          else {
+            response.fields[this_field].value = null;
+          }
         }
         // if prompt.ignore_if exists, check the value
         if (formRec.fields[this_field]?.prompt?.ignore_if) {
@@ -599,6 +643,7 @@ export default ({ request = {}, onClose }) => {
         // set options
         response.fields[this_field].options = {
           required: !!formRec.fields[this_field].value.required,
+          log_results: formRec.fields[this_field].value.log_results || false,
           viewOnly: (formRec.fields[this_field].value.edit === 'view'),
           hidden: (formRec.fields[this_field].value.edit === 'hidden'),
           ifEmpty: formRec.fields[this_field].options ? formRec.fields[this_field].options.ifEmpty : null,
@@ -636,54 +681,70 @@ export default ({ request = {}, onClose }) => {
         errorMessage:
     */
     let pertains_to_name;
-    if (reactData.pertains_to === reactData.family_id) {
-      const familyRec = await getDb({
-        Key: {
-          client_id: state.session.client_id,
-          composite_key: pertains_to
-        },
-        TableName: "FamilyGroups"
-      });
-      updateReactData({
-        familyRec,
-        formRec
-      }, false);
-      pertains_to_name = reactData.familyRec.family_name || 'My Family';
+    reactData.peopleRec[pertains_to] = await getDb({
+      Key: {
+        person_id: pertains_to
+      },
+      TableName: "People"
+    });
+    if (!reactData.peopleRec[pertains_to]) {
+      reactData.peopleRec[pertains_to] = {};
+    };
+    updateReactData({
+      family_id: reactData.peopleRec[pertains_to].family_id || false,
+      peopleRec: reactData.peopleRec,
+      formRec
+    }, false);
+    if (reactData.clientSampleMode) {
+      pertains_to_name = state.session.client_name;
     }
     else {
-      reactData.peopleRec[pertains_to] = await getDb({
-        Key: {
-          person_id: pertains_to
-        },
-        TableName: "People"
-      });
-      if (!reactData.peopleRec[pertains_to]) {
-        reactData.peopleRec[pertains_to] = {};
-      };
-      updateReactData({
-        family_id: reactData.peopleRec[pertains_to].family_id || false,
-        peopleRec: reactData.peopleRec,
-        formRec
-      }, false);
       pertains_to_name = reactData.peopleRec[pertains_to].display_name;
-      if (!pertains_to_name && (reactData.peopleRec[pertains_to] && reactData.peopleRec[pertains_to].hasOwnProperty('name'))) {
-        pertains_to_name = (`${reactData.peopleRec[pertains_to]?.name.first} ${reactData.peopleRec[pertains_to]?.name.last}`).trim();
-      }
+    }
+    if (!pertains_to_name && (reactData.peopleRec[pertains_to] && reactData.peopleRec[pertains_to].hasOwnProperty('name'))) {
+      pertains_to_name = (`${reactData.peopleRec[pertains_to]?.name.first} ${reactData.peopleRec[pertains_to]?.name.last}`).trim();
     }
     let tempTitle;
     if (pertains_to_name) {
-      tempTitle = `${formRec.form_name} for ${pertains_to_name} - ${makeDate(new Date()).absolute}`;
+      tempTitle = `${formRec.form_name} for ${pertains_to_name}`;
     }
     else {
-      tempTitle = `${formRec.form_name} - ${makeDate(new Date()).absolute}`;
+      tempTitle = `${formRec.form_name}`;
     }
     let response = {
       fields: {},
-      sections: formRec.sections,
+      //     sections: formRec.sections,
+      sections: [],
       document_title: reactData.document_title || tempTitle
     };
+    for (let this_section of formRec.sections) {
+      if (this_section.occurrences && !isNaN(this_section.occurrences)) {
+        for (let section_number = 1; section_number <= this_section.occurrences; section_number++) {       
+          response.sections.push(deepCopy(this_section));
+          this_section.section_name = this_section.section_name.replace(section_number.toString(), `${section_number + 1}`);
+          for (let [field_index, this_field] of this_section.fields.entries()) {
+            this_section.fields[field_index].field_name = this_field.field_name.replace(section_number.toString(), `${section_number + 1}`);
+            this_section.fields[field_index].default_source = this_field.default_source.replace(section_number.toString(), `${section_number + 1}`);
+            this_section.fields[field_index].saveAs = this_field.saveAs.replace(section_number.toString(), `${section_number + 1}`);
+          }
+        }
+      }
+      else {
+        response.sections.push(this_section);
+      }
+    }
     for (let this_section of response.sections) {
-      for (let this_field of this_section.fields) {
+      this_section.section_name = await resolveVariables(this_section.section_name);
+      let field_variables = {};
+      let field_key;
+      //     for (let this_field of this_section.fields) {
+      for (let [index, this_field] of this_section.fields.entries()) {
+        if (isObject(this_field)) {
+          field_variables = Object.assign({}, this_field);
+          field_key = this_field.form_field;
+          this_field = this_field.field_name;
+          this_section.fields[index] = this_field;
+        }
         response.fields[this_field] = {};
         // Set default value
         const defaultObj = {};
@@ -691,11 +752,29 @@ export default ({ request = {}, onClose }) => {
           const formFieldRec = await getDb({
             Key: {
               client_id: state.session.client_id,
-              field_name: this_field
+              field_name: field_key || this_field
             },
             TableName: "Form_Fields"
           });
           if (formFieldRec) {
+            if (field_variables.prompt) {
+              formFieldRec.prompt.value = field_variables.prompt;
+            }
+            if (field_variables.default_source && formFieldRec.default.source && formFieldRec.default.source.startsWith('%%')) {
+              formFieldRec.default.source = field_variables.default_source;
+            }
+            if (field_variables.saveAs && formFieldRec.value.saveAs && formFieldRec.value.saveAs.startsWith('%%')) {
+              formFieldRec.value.saveAs = field_variables.saveAs;
+            }
+            if (field_variables.occurrences) {
+              formFieldRec.prompt.occurrences = field_variables.occurrences;
+            }
+            if (field_variables.newLine) {
+              formFieldRec.prompt.newLine = field_variables.newLine;
+            };
+            if (field_variables.width) {
+              formFieldRec.prompt.width = field_variables.width;
+            }
             formRec.fields[this_field] = formFieldRec;
             updateReactData({
               formRec
@@ -706,10 +785,7 @@ export default ({ request = {}, onClose }) => {
             continue;
           }
         }
-        if (preset_values && preset_values[this_field]) {
-          response.fields[this_field].value = preset_values[this_field];
-        }
-        else if (formRec.fields[this_field].default) {
+        if (formRec.fields[this_field].default) {
           if (formRec.fields[this_field].default.source) {
             let sourceDefaults = [];
             if (Array.isArray(formRec.fields[this_field].default.source)) {
@@ -832,7 +908,22 @@ export default ({ request = {}, onClose }) => {
           }
         }
         if (!response.fields[this_field].value) {
-          response.fields[this_field].value = null;
+          if (formRec.fields[this_field].prompt?.occurrences && (formRec.fields[this_field].prompt.occurrences > 1)) {
+            response.fields[this_field].value = new Array(formRec.fields[this_field].prompt.occurrences).fill(null);
+          }
+          else {
+            response.fields[this_field].value = null;
+          }
+        }
+        // Set type
+        response.fields[this_field].type = formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type || 'text';
+        // Override computed defaults with preset values (if any)
+        if (preset_values && preset_values[this_field]) {
+          response.fields[this_field].og_default = await formatValue({
+            rawValue: response.fields[this_field].value,
+            type: response.fields[this_field].type
+          });
+          response.fields[this_field].value = preset_values[this_field];
         }
         // if prompt.ignore_if exists, check the value
         if (formRec.fields[this_field]?.prompt?.ignore_if) {
@@ -846,8 +937,6 @@ export default ({ request = {}, onClose }) => {
             response.fields[this_field].ignore = true;
           }
         }
-        // Set type
-        response.fields[this_field].type = formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type || 'text';
         // Set default valueText (this may require conversion of value data as in types phone or date or time)
         response.fields[this_field].valueText = await formatValue({
           rawValue: response.fields[this_field].value,
@@ -858,10 +947,24 @@ export default ({ request = {}, onClose }) => {
         // Selection Obj should be set for the special case - type = select or type = select & text
         if (response.fields[this_field].type.startsWith('select')) {
           response.fields[this_field].selectionObj = formRec.fields[this_field]?.value.selection;
+          if ((response.fields[this_field].value) && (Array.isArray(response.fields[this_field].value))
+            && (response.fields[this_field].selectionObj.selectionList && Array.isArray(response.fields[this_field].selectionObj.selectionList))
+          ) {
+            let bonusList = [];
+            for (let this_value of response.fields[this_field].value) {
+              if (!response.fields[this_field].selectionObj.selectionList.includes(this_value)) {
+                bonusList.push(this_value);
+              }
+            }
+            if (bonusList.length > 0) {
+              response.fields[this_field].bonusText = listFromArray(bonusList);
+            }
+          }
         }
         // set options
         response.fields[this_field].options = {
           required: !!formRec.fields[this_field].value.required,
+          log_results: formRec.fields[this_field].value.log_results || false,
           viewOnly: (formRec.fields[this_field].value.edit === 'view'),
           hidden: (formRec.fields[this_field].value.edit === 'hidden'),
           ifEmpty: formRec.fields[this_field].options ? formRec.fields[this_field].options.ifEmpty : null,
@@ -896,6 +999,13 @@ export default ({ request = {}, onClose }) => {
         else {
           response.fields[this_field].saveAs = false;
         }
+        // set logAs
+        if (!isEmpty(formRec.fields[this_field].value.log_results)) {
+          response.fields[this_field].logAs = formRec.fields[this_field].value.log_results.path;
+        }
+        else {
+          response.fields[this_field].logAs = false;
+        }
         // finish initializations
         response.fields[this_field].isError = false;
       }
@@ -911,7 +1021,7 @@ export default ({ request = {}, onClose }) => {
       return null;
     }
     if (key.length === 0) {
-      return object[this_key];
+      return deepCopy(object[this_key]);
     }
     else {
       return resolve({ object: object[this_key], key });
@@ -919,28 +1029,51 @@ export default ({ request = {}, onClose }) => {
   };
 
   const formatValue = async ({ rawValue, type }) => {
-    switch (type) {
-      case 'phone': {
-        return formatPhone(rawValue);
-      }
-      case 'date': {
-        return makeDate(rawValue, { noTime: true, noYearCorrection: true }).absolute;
-      }
-      case 'time': {
-        return makeDate(rawValue, { noTime: true, noYearCorrection: true }).timeOnly;
-      }
-      case 'id': {
-        if (reactData.peopleRec[rawValue]) {
-          return reactData.peopleRec[rawValue].display_name
-            || (`${reactData.peopleRec[rawValue]?.name.first} ${reactData.peopleRec[rawValue]?.name.last}`).trim();
+    let source = makeArray(rawValue);
+    let response = [];
+    for (let [index, this_value] of source.entries()) {
+      switch (type) {
+        case 'phone': {
+          // return formatPhone(rawValue);
+          response[index] = formatPhone(this_value);
+          break;
         }
-        else {
-          return await makeName(rawValue);
+        case 'date_select':
+        case 'date': {
+          // return makeDate(rawValue, { noTime: true, noYearCorrection: true }).absolute;
+          response[index] = makeDate(this_value, { noTime: true, noYearCorrection: true }).absolute;
+          break;
+        }
+        case 'time': {
+          // return makeDate(rawValue, { noTime: true, noYearCorrection: true }).timeOnly;
+          response[index] = makeDate(this_value, { noTime: true, noYearCorrection: true }).timeOnly;
+          break;
+        }
+        case 'id': {
+          if (reactData.peopleRec[rawValue]) {
+            // return reactData.peopleRec[rawValue].display_name
+            //  || (`${reactData.peopleRec[rawValue]?.name.first} ${reactData.peopleRec[rawValue]?.name.last}`).trim();
+            response[index] = reactData.peopleRec[this_value].display_name
+              || (`${reactData.peopleRec[this_value]?.name.first} ${reactData.peopleRec[this_value]?.name.last}`).trim();
+            break;
+          }
+          else {
+            // return await makeName(rawValue);
+            response[index] = await makeName(this_value);
+            break;
+          }
+        }
+        default: {
+          // return rawValue;
+          response[index] = this_value;
         }
       }
-      default: {
-        return rawValue;
-      }
+    }
+    if (source.length === 1) {
+      return response[0];
+    }
+    else {
+      return response;
     }
   };
 
@@ -1044,11 +1177,16 @@ export default ({ request = {}, onClose }) => {
     return response;
   };
 
-  const handleChangeValue = async ({ newText, newValue, newList, prop, sentenceCase }) => {
+  const handleChangeValue = async ({ newText, newValue, newList, prop, occ_index, sentenceCase }) => {
     if (sentenceCase && newText && (newText.length === 1)) {
       newText = newText.toUpperCase();
     }
-    reactData.fields[prop].value = newValue || newList || newText;
+    if (reactData.fields[prop].prompt?.occurrences && (reactData.fields[prop].prompt.occurrences > 1)) {
+      reactData.fields[prop].value[occ_index] = newValue || newList || newText;
+    }
+    else {
+      reactData.fields[prop].value = newValue || newList || newText;
+    }
     reactData.fields[prop].valueText = await formatValue({
       rawValue: reactData.fields[prop].value,
       type: reactData.fields[prop].type
@@ -1128,8 +1266,19 @@ export default ({ request = {}, onClose }) => {
     if (answer) {
       do {
         let variable = answer[0];
-        if ((variable === '%%default%%') || (variable === '%%OG_default%%') || (variable === '%%value%%')) {
-          response = response.replace(variable, (reactData.fields[this_field] ? reactData.fields[this_field].valueText : ''));
+        if (variable === '%%value%%') {
+          let vValue = (reactData.fields[this_field] ? reactData.fields[this_field].valueText : '');
+          if (!vValue) {
+            vValue = `<${titleCase(this_field.toLowerCase().replace(/[^a-z]/, ' '))}>`;
+          }
+          response = response.replace(variable, vValue);
+        }
+        else if ((variable === '%%default%%') || (variable === '%%OG_default%%')) {
+          let vValue = (reactData.fields[this_field] ? (reactData.fields[this_field].og_default || reactData.fields[this_field].valueText) : '');
+          if (!vValue) {
+            vValue = `<${titleCase(this_field.toLowerCase().replace(/[^a-z]/, ' '))}>`;
+          }
+          response = response.replace(variable, vValue);
           if (variable === '%%OG_default%%') {
             rememberAnswer = true;
           }
@@ -1137,12 +1286,20 @@ export default ({ request = {}, onClose }) => {
         else {
           let extracted_field = variable.slice(2, -2);
           if (reactData.fields[extracted_field] && reactData.fields[extracted_field].valueText) {
-            response = response.replace(variable, reactData.fields[extracted_field].valueText);
+            let vValue = reactData.fields[extracted_field].valueText;
+            if (!vValue) {
+              vValue = `<${titleCase(extracted_field.toLowerCase().replace(/[^a-z]/, ' '))}>`;
+            }
+            response = response.replace(variable, vValue);
           }
           else if (extracted_field.includes('//')) {
             let [field_part, regex_part] = extracted_field.split('//');
             if (reactData.fields[field_part]) {
-              response = response.replace(variable, reactData.fields[field_part].value.match(RegExp(regex_part, 'gm'))[0]);
+              let vValue = reactData.fields[field_part].value.match(RegExp(regex_part, 'gm'))[0];
+              if (!vValue) {
+                vValue = `<${titleCase(field_part.toLowerCase().replace(/[^a-z]/, ' '))}>`;
+              }
+              response = response.replace(variable, vValue);
             }
             else {
               response = response.replace(variable, '');
@@ -1158,6 +1315,15 @@ export default ({ request = {}, onClose }) => {
         answer = response.match(/%%.*?%%/);
       }
       while (answer);
+    }
+    if (!response.endsWith(')') && reactData.fields[this_field] && reactData.fields[this_field].prompt.show_log && reactData.fields[this_field].logAs) {
+      let path = reactData.fields[this_field].logAs.split('.');
+      let pathFile = path.shift();
+      let logLine = resolve({
+        object: reactData[pathFile]?.[reactData.pertains_to],
+        key: path
+      });
+      response += ` (${logLine})`;
     }
     if (rememberAnswer) {
       reactData.fields[this_field].prompt.value = response;
@@ -1267,8 +1433,10 @@ export default ({ request = {}, onClose }) => {
   const handleReview = async () => {
     let messageList = ['There are problems with this form'];
     let errorsOnForm = 0;
+    let activeErrors = 0;
     for (const sectionObj of reactData.sections) {
-      if (okToShowSection(sectionObj)) {
+      let suppressSection = dontShowSection(sectionObj);
+      if (suppressSection !== 'data') {
         for (const this_field of sectionObj.fields) {
           if (reactData.fields[this_field].ignore) {
             continue;
@@ -1282,15 +1450,18 @@ export default ({ request = {}, onClose }) => {
           }
           if (reactData.fields[this_field]?.options?.required || reactData.fields[this_field]?.value?.required) {
             if (((reactData.fields[this_field].type === 'signature')
-              && ((signatureRef[reactData.fields[this_field].options.sigRefNumber].current.isEmpty())))
+              && ((signatureRef[reactData.fields[this_field].options.sigRefNumber].current) && (signatureRef[reactData.fields[this_field].options.sigRefNumber].current.isEmpty())))
               || ((reactData.fields[this_field].type !== 'signature')
                 && (isEmpty(reactData.fields[this_field].value)))) {
-              reactData.fields[this_field].errorMessage = `${reconcilePrompt({
-                rawValue: reactData.fields[this_field].prompt.value,
-                this_field
-              })} is required`;
-              reactData.fields[this_field].isError = true;
-              messageList.push(reactData.fields[this_field].errorMessage);
+              if (!suppressSection) {
+                activeErrors++;
+                reactData.fields[this_field].errorMessage = `${reconcilePrompt({
+                  rawValue: reactData.fields[this_field].prompt.value,
+                  this_field
+                })} is required`;
+                reactData.fields[this_field].isError = true;
+                messageList.push(reactData.fields[this_field].errorMessage);
+              }
               errorsOnForm++;
             }
           }
@@ -1303,21 +1474,27 @@ export default ({ request = {}, onClose }) => {
             }
             if (reactData.fields[this_field].selectionObj.min) {
               if (isEmpty(mySelections)) {
-                reactData.fields[this_field].errorMessage = `Please make a selection for ${reconcilePrompt({
-                  rawValue: reactData.fields[this_field].prompt.value,
-                  this_field
-                })}`;
-                reactData.fields[this_field].isError = true;
-                messageList.push(reactData.fields[this_field].errorMessage);
+                if (!suppressSection) {
+                  activeErrors++;
+                  reactData.fields[this_field].errorMessage = `Please make a selection for ${reconcilePrompt({
+                    rawValue: reactData.fields[this_field].prompt.value,
+                    this_field
+                  })}`;
+                  reactData.fields[this_field].isError = true;
+                  messageList.push(reactData.fields[this_field].errorMessage);
+                }
                 errorsOnForm++;
               }
               else if (mySelections.length < reactData.fields[this_field].selectionObj.min) {
-                reactData.fields[this_field].errorMessage = `You must make at least ${reactData.fields[this_field].selectionObj.min} selections for ${reconcilePrompt({
-                  rawValue: reactData.fields[this_field].prompt.value,
-                  this_field
-                })}`;
-                reactData.fields[this_field].isError = true;
-                messageList.push(reactData.fields[this_field].errorMessage);
+                if (!suppressSection) {
+                  activeErrors++;
+                  reactData.fields[this_field].errorMessage = `You must make at least ${reactData.fields[this_field].selectionObj.min} selections for ${reconcilePrompt({
+                    rawValue: reactData.fields[this_field].prompt.value,
+                    this_field
+                  })}`;
+                  reactData.fields[this_field].isError = true;
+                  messageList.push(reactData.fields[this_field].errorMessage);
+                }
                 errorsOnForm++;
               }
             }
@@ -1325,12 +1502,18 @@ export default ({ request = {}, onClose }) => {
         };
       }
     }
-    if (!errorsOnForm) {
-      messageList = ['This form is complete!', 'Tap "Save" below to save it'];
+    if (!activeErrors) {
+      if (errorsOnForm) {
+        messageList = ['Your part of this form looks good!', 'Tap "Submit" below to save it and submit for review'];
+      }
+      else {
+        messageList = ['This form is complete!', 'Tap "Complete" below to save it'];
+      }
     }
     updateReactData({
       messageList,
       errorsOnForm,
+      activeErrors,
       fields: reactData.fields,
       stage: 'confirm'
     }, true);
@@ -1359,7 +1542,7 @@ export default ({ request = {}, onClose }) => {
     }
   };
 
-  const handleSave = async ({ document_id, final }) => {
+  const handleSave = async ({ document_id, final, timeout, pending = false }) => {
     let response = { goodPut: true };
     // always save this in DocumentsInProcess
     {
@@ -1443,154 +1626,174 @@ export default ({ request = {}, onClose }) => {
       }
     }
     // updates to the Database as per instructions in fields[this_field].saveAs
-    {
-      let needsUpdate = {
-        peopleRec: false,
-        sessionRec: false,
-        familyRec: false
-      };
-      for (const this_field in reactData.fields) {
-        if (!reactData.fields[this_field].ignore) {
-          if (reactData.fields[this_field].bonusText) {
-            if (reactData.fields[this_field].value) {
-              let valueArray = makeArray(reactData.fields[this_field].value);
-              valueArray.push(reactData.fields[this_field].bonusText);
-              reactData.fields[this_field].value = valueArray;
-              reactData.fields[this_field].valueText = listFromArray(valueArray);
+    let needsUpdate = {
+      peopleRec: false,
+      sessionRec: false,
+      familyRec: false
+    };
+    let field_values = {};
+    let now = makeDate(new Date());
+    for (const this_field in reactData.fields) {
+      if (reactData.fields[this_field].bonusText) {
+        if (reactData.fields[this_field].value) {
+          let valueArray = makeArray(reactData.fields[this_field].value);
+          valueArray.push(reactData.fields[this_field].bonusText);
+          reactData.fields[this_field].value = valueArray;
+          reactData.fields[this_field].valueText = listFromArray(valueArray);
+        }
+        else {
+          reactData.fields[this_field].value = reactData.fields[this_field].bonusText;
+          reactData.fields[this_field].valueText = reactData.fields[this_field].bonusText;
+        }
+      }
+      if (!reactData.fields[this_field].options?.viewOnly) {
+        field_values[this_field] = reactData.fields[this_field].value;
+      }
+      if (!reactData.fields[this_field].ignore) {
+        if (reactData.fields[this_field].saveAs) {
+          const save_instructions = reactData.fields[this_field].saveAs;
+          const save_file = save_instructions.shift();
+          if (save_file === 'peopleRec') {
+            if (!reactData.peopleRec.hasOwnProperty(reactData.pertains_to)) {
+              reactData.peopleRec[reactData.pertains_to] = await getDb({
+                Key: {
+                  person_id: reactData.pertains_to
+                },
+                TableName: "People"
+              });
+              updateReactData({
+                peopleRec: reactData.peopleRec
+              }, false);
             }
-            else {
-              reactData.fields[this_field].value = reactData.fields[this_field].bonusText;
-              reactData.fields[this_field].valueText = reactData.fields[this_field].bonusText;
+            reactData.peopleRec[reactData.pertains_to] = resolveValue(
+              reactData.peopleRec[reactData.pertains_to],
+              save_instructions,
+              reactData.fields[this_field].value
+            );
+            needsUpdate.peopleRec = true;
+          }
+          else if (save_file === 'sessionRec') {
+            if (!reactData.sessionRec.hasOwnProperty(reactData.pertains_to)) {
+              reactData.sessionRec[reactData.pertains_to] = await getDb({
+                Key: {
+                  person_id: reactData.pertains_to
+                },
+                TableName: "SessionsV2"
+              });
+              updateReactData({
+                sessionRec: reactData.sessionRec
+              }, false);
             }
+            reactData.sessionRec[reactData.pertains_to] = resolveValue(
+              reactData.sessionRec[reactData.pertains_to],
+              save_instructions,
+              reactData.fields[this_field].value
+            );
+            needsUpdate.sessionRec = true;
+          }
+          else if (save_file === 'familyRec') {
+            // we need to get the familyRec; do we have it already?           
+            if (!reactData.familyRec && reactData.family_id) {
+              reactData.familyRec = await getDb({
+                Key: {
+                  client_id: state.session.client_id,
+                  composite_key: reactData.family_id
+                },
+                TableName: "FamilyGroups"
+              });
+              updateReactData({
+                familyRec: reactData.familyRec
+              }, false);
+            }
+            if (reactData.familyRec) {
+              reactData.familyRec = resolveValue(
+                reactData.familyRec,
+                save_instructions,
+                reactData.fields[this_field].value
+              );
+              needsUpdate.familyRec = true;
+            }
+          }
+        }
+        if ((!!reactData.fields[this_field].options?.log_results)
+          && (!reactData.fields[this_field].options.log_results.if_value
+            || reactData.fields[this_field].options.log_results.if_value.some(v => {
+              if (typeof (reactData.fields[this_field].value) === 'string') { return v = reactData.fields[this_field].value; }
+              else { return reactData.fields[this_field].value.includes(v); }
+            }))) {
+          const log_instructions = reactData.fields[this_field].options.log_results.path.split('.');
+          const log_file = log_instructions.shift();
+          if (log_file === 'peopleRec') {
+            if (!reactData.peopleRec.hasOwnProperty(reactData.pertains_to)) {
+              reactData.peopleRec[reactData.pertains_to] = await getDb({
+                Key: {
+                  person_id: reactData.pertains_to
+                },
+                TableName: "People"
+              });
+              updateReactData({
+                peopleRec: reactData.peopleRec
+              }, false);
+            }
+            reactData.peopleRec[reactData.pertains_to] = resolveValue(
+              reactData.peopleRec[reactData.pertains_to],
+              log_instructions,
+              sentenceCase(`Previously ${reactData.fields[this_field].value} ${now.oaDate} by ${state.profile.name.first} ${state.profile.name.last}`)
+            );
+            needsUpdate.peopleRec = true;
+          }
+          else if (log_file === 'sessionRec') {
+            if (!reactData.sessionRec.hasOwnProperty(reactData.pertains_to)) {
+              reactData.sessionRec[reactData.pertains_to] = await getDb({
+                Key: {
+                  person_id: reactData.pertains_to
+                },
+                TableName: "SessionsV2"
+              });
+              updateReactData({
+                sessionRec: reactData.sessionRec
+              }, false);
+            }
+            reactData.sessionRec[reactData.pertains_to] = resolveValue(
+              reactData.sessionRec[reactData.pertains_to],
+              log_instructions,
+              sentenceCase(`Previously ${reactData.fields[this_field].value} ${now.oaDate} by ${state.profile.name.first} ${state.profile.name.last}`)
+            );
+            needsUpdate.sessionRec = true;
+          }
+        }
 
-          }
-          if (reactData.fields[this_field].saveAs) {
-            const save_instructions = reactData.fields[this_field].saveAs;
-            const save_file = save_instructions.shift();
-            if (save_file === 'peopleRec') {
-              if (!reactData.peopleRec.hasOwnProperty(reactData.pertains_to)) {
-                reactData.peopleRec[reactData.pertains_to] = await getDb({
-                  Key: {
-                    person_id: reactData.pertains_to
-                  },
-                  TableName: "People"
-                });
-                updateReactData({
-                  peopleRec: reactData.peopleRec
-                }, false);
-              }
-              reactData.peopleRec[reactData.pertains_to] = resolveValue(
-                reactData.peopleRec[reactData.pertains_to],
-                save_instructions,
-                reactData.fields[this_field].value
-              );
-              needsUpdate.peopleRec = true;
-            }
-            else if (save_file === 'sessionRec') {
-              if (!reactData.sessionRec.hasOwnProperty(reactData.pertains_to)) {
-                reactData.sessionRec[reactData.pertains_to] = await getDb({
-                  Key: {
-                    person_id: reactData.pertains_to
-                  },
-                  TableName: "SessionsV2"
-                });
-                updateReactData({
-                  sessionRec: reactData.sessionRec
-                }, false);
-              }
-              reactData.sessionRec[reactData.pertains_to] = resolveValue(
-                reactData.sessionRec[reactData.pertains_to],
-                save_instructions,
-                reactData.fields[this_field].value
-              );
-              needsUpdate.sessionRec = true;
-            }
-            else if (save_file === 'familyRec') {
-              // we need to get the familyRec; do we have it already?           
-              if (!reactData.familyRec && reactData.family_id) {
-                reactData.familyRec = await getDb({
-                  Key: {
-                    client_id: state.session.client_id,
-                    composite_key: reactData.family_id
-                  },
-                  TableName: "FamilyGroups"
-                });
-                updateReactData({
-                  familyRec: reactData.familyRec
-                }, false);
-              }
-              if (reactData.familyRec) {
-                reactData.familyRec = resolveValue(
-                  reactData.familyRec,
-                  save_instructions,
-                  reactData.fields[this_field].value
-                );
-                needsUpdate.familyRec = true;
-              }
-            }
-          }
-        }
-      }
-      if (needsUpdate.peopleRec || reactData.newPerson) {
-        if (reactData.newFamily) {
-          reactData.peopleRec[reactData.pertains_to].family_id = reactData.family_id;
-        }
-        await dbClient
-          .put({
-            Item: reactData.peopleRec[reactData.pertains_to],
-            TableName: 'People'
-          })
-          .promise()
-          .catch(error => {
-            cl(`Bad put to People. Error is: ${error}`);
-            response = { goodPut: false, putError: `Bad put to People. Error is: ${error}` };
-          });
-      }
-      if (needsUpdate.sessionRec) {
-        await dbClient
-          .put({
-            Item: reactData.sessionRec[reactData.pertains_to],
-            TableName: 'SessionsV2'
-          })
-          .promise()
-          .catch(error => {
-            cl(`Bad put to SessionsV2. Error is: ${error}`);
-            response = { goodPut: false, putError: `Bad put to SessionsV2. Error is: ${error}` };
-          });
-      }
-      if (needsUpdate.familyRec || reactData.newFamily) {
-        await dbClient
-          .put({
-            Item: reactData.familyRec,
-            TableName: 'FamilyGroups'
-          })
-          .promise()
-          .catch(error => {
-            cl(`Bad put to Family. Error is: ${error}`);
-            response = { goodPut: false, putError: `Bad put to Family. Error is: ${error}` };
-          });
-      }
-      if (reactData.newPerson || reactData.newFamily) {
-        let newFamilyGroupRec = {
-          client_id: state.session.client_id,
-          composite_key: `${reactData.family_id}%%${reactData.pertains_to}`,
-          family_id: reactData.family_id,
-          person_id: reactData.pertains_to,
-          record_type: 'person',
-          role: reactData.formRec.options.role || 'member'
-        };
-        await dbClient
-          .put({
-            Item: newFamilyGroupRec,
-            TableName: 'FamilyGroups'
-          })
-          .promise()
-          .catch(error => {
-            cl(`Bad put to Family (person). Error is: ${error}`);
-            response = { goodPut: false, putError: `Bad put to Family. Error is: ${error}` };
-          });
       }
     }
+    if (needsUpdate.peopleRec || reactData.newPerson) {
+      if (reactData.newFamily) {
+        reactData.peopleRec[reactData.pertains_to].family_id = reactData.family_id;
+      }
+      await dbClient
+        .put({
+          Item: reactData.peopleRec[reactData.pertains_to],
+          TableName: 'People'
+        })
+        .promise()
+        .catch(error => {
+          cl(`Bad put to People. Error is: ${error}`);
+          response = { goodPut: false, putError: `Bad put to People. Error is: ${error}` };
+        });
+    }
+    if (needsUpdate.sessionRec) {
+      await dbClient
+        .put({
+          Item: reactData.sessionRec[reactData.pertains_to],
+          TableName: 'SessionsV2'
+        })
+        .promise()
+        .catch(error => {
+          cl(`Bad put to SessionsV2. Error is: ${error}`);
+          response = { goodPut: false, putError: `Bad put to SessionsV2. Error is: ${error}` };
+        });
+    }
+
+    // updates - if any - are done
     // if this is the type of document that needs to generate a final printout, do that now
     if (final && !reactData.formRec?.options?.noFinal) {
       // render signatures (if any) before printing
@@ -1599,7 +1802,7 @@ export default ({ request = {}, onClose }) => {
         if (reactData.fields[this_field].ignore) {
           continue;
         }
-        if (reactData.fields[this_field].type === 'signature') {
+        if ((reactData.fields[this_field].type === 'signature') && (signatureRef[reactData.fields[this_field].options.sigRefNumber].current)) {
           signatures[reactData.fields[this_field].options.sigRefNumber] = signatureRef[reactData.fields[this_field].options.sigRefNumber].current.getTrimmedCanvas().toDataURL('image/png');
         }
         if (reactData.fields[this_field].prompt) {
@@ -1620,109 +1823,59 @@ export default ({ request = {}, onClose }) => {
           title: reactData.document_title
         }]
       });
-      let timestamp = new Date().getTime();
-      let CRec = {
-        client_id: state.session.client_id,
-        document_id,
-        document_title: reactData.document_title,
-        pertains_to: reactData.pertains_to,
-        date_completed: timestamp,
-        formType: reactData.form_id,
-        formType_date: `${reactData.form_id}%%${timestamp}`,
-        save_info: s3Results,
-        file_location: s3Results[0].s3Location
-      };
-      await dbClient
-        .put({
-          Item: CRec,
-          TableName: 'CompletedDocuments'
-        })
-        .promise()
-        .catch(error => {
-          cl(`Bad put to CompletedDocuments. Error is: ${error}`);
-          response = { goodPut: false, putError: `Bad put to CompletedDocuments. Error is: ${error}` };
-        });
-      if (response.goodPut) {
-        // if we dont allow save/continue, then we should remove the WIP document here
-        if (reactData.formRec?.options?.noSaveContinue) {
-          await dbClient
-            .delete({
-              Key: {
-                client_id: state.session.client_id,
-                document_id
-              },
-              TableName: 'DocumentsInProcess'
-            })
-            .promise()
-            .catch(error => {
-              cl(`Bad delete. DocumentsInProcess not removed or did not exist. Error is: ${error}`);
-            });
-        }
-        response.status = 'complete';
-        response.location = CRec.file_location;
-        response.recWritten = CRec;
-        await dbClient
-          .put({
-            Item: {
-              person_id: state.session.user_id,
-              document_id,
-              role: 'completed_by',
-            },
-            TableName: 'DocumentXRef'
-          })
-          .promise()
-          .catch(error => {
-            const messageText = `Bad put to DocumentXRef (completed_by). Error is: ${error}`;
-            cl(messageText);
-            response = { goodPut: false, putError: messageText };
-          });
-        await dbClient
-          .put({
-            Item: {
-              person_id: reactData.pertains_to,
-              document_id,
-              role: 'pertains_to',
-            },
-            TableName: 'DocumentXRef'
-          })
-          .promise()
-          .catch(error => {
-            const messageText = `Bad put to DocumentXRef (pertains_to). Error is: ${error}`;
-            cl(messageText);
-            response = { goodPut: false, putError: messageText };
-          });
-        await dbClient
-          .put({
-            Item: {
-              person_id: '*status',
-              client_id: state.session.client_id,
-              document_id,
-              status: 'complete',
-              formType: reactData.form_id,
-              last_update: new Date().getTime()
-            },
-            TableName: 'DocumentXRef'
-          })
-          .promise()
-          .catch(error => {
-            const messageText = `Bad put to DocumentXRef (status). Error is: ${error}`;
-            cl(messageText);
-            response = { goodPut: false, putError: messageText };
-          });
-      }
+      url = s3Results[0].s3Location;
     }
+
+    // printing is done (or wasn't necessary)
+    // save_type is one of 'final', 'in_process', 'on_timeout', 'printed'
+    let docData = {
+      client_id: state.session.client_id,
+      document_id,
+      title: reactData.document_title,
+      pertains_to: reactData.pertains_to,
+      status: url ? (pending ? 'pending' : 'complete') : 'in_process',   // need to set pending when appropriate
+      form_type: reactData.form_id,
+      client_id_form_type: `${state.session.client_id}%%${reactData.form_id}`,
+      field_values,
+      options: reactData.formRec.options
+    };
+    if (reactData.docRec?.history) {
+      docData.history = reactData.docRec?.history;
+    }
+    const recWritten = await updateDocument({
+      docData,
+      author: state.session.patient_id,
+      isNew: false,
+      pending,
+      save_type: url ? 'printed' : (final ? 'save_final' : (timeout ? 'on_timeout' : 'in_process')),
+      url
+    });
+    response.location = url;
+    response.document_status = docData.status;
+    response.status = docData.status;
+    response.document_id = docData.document_id;
     if (final && reactData.formRec?.options?.messaging) {
       // conditional based on responses should be allowed here
-      // formRec?.options?.messaging should be an object or array of objects; each object has in instruction key
-      //   { instruction: 'send_message',
-      //     attach_form: <boolean>
-      //     send_to: [user, user, ...]  send this form as an attachment to a message sent to user(s)
-      //     message_text: <text>   send this text 
-      //   }, {}, ...]
       // in user lists, user can be a person: person_id, group: group_id, or author: true
       for (let this_instruction of [reactData.formRec?.options?.messaging].flat()) {
-        if (this_instruction.instruction === 'create_form') {
-          await createForm({
+        if (this_instruction.hasOwnProperty('status') && this_instruction.status !== docData.status) {
+          continue;
+        }
+        if (this_instruction.hasOwnProperty('send_message')) {
+          if (this_instruction.send_message.attach) {
+            this_instruction.send_message.url = url;
+          };
+          if (!this_instruction.send_message.subject) {
+            this_instruction.send_message.subject = `Form update - status is ${docData.status}`;
+          }
+          else {
+            this_instruction.send_message.subject = await deepResolve(this_instruction.send_message.subject, reactData.peopleRec[reactData.pertains_to]);
+          }
+          this_instruction.send_message.text = await deepResolve(this_instruction.send_message.text, reactData.peopleRec[reactData.pertains_to]);
+          await sendMessage(this_instruction.send_message);
+        }
+        if (this_instruction.hasOwnProperty('instruction') && (this_instruction.instruction === 'create_form')) {
+          await createForm({        // finishing this form issues an instruction to create another form ("teacher recommendation" use case, for example)
             instructions: this_instruction,
             source_doc: document_id,
             doc_location: response.location
@@ -1737,6 +1890,43 @@ export default ({ request = {}, onClose }) => {
     }, true);
     return response;
   };
+
+
+  async function sendMessage(send_instructions) {
+    let postTime = new Date().getTime();
+    let newMessageThread = `${postTime}.${uuid(6)}`;
+    let message_id = `${postTime}.${uuid(6)}.0~CuredMessage`;
+    const reply_to = [state.session.person_id];
+    let recipient_key = [send_instructions.send_to].flat();
+    let PostOfficeRec = {
+      Item: {
+        thread_id: newMessageThread,
+        message_id,
+        allowReplyAll: false,
+        client_id: state.session.client_id,
+        deliver_time: postTime,
+        from: state.session.patient_id,
+        message_text: send_instructions.text,
+        patient_id: state.session.patient_id,
+        preferred_method: null,
+        recipient_base: 'list',
+        recipient_key,
+        subject: send_instructions.subject || ``,
+        reply_to
+      },
+      TableName: 'PostOffice'
+    };
+    if (send_instructions.attach) {
+      PostOfficeRec.Item.attachments = [send_instructions.url];
+    }
+    await dbClient
+      .put(PostOfficeRec)
+      .promise()
+      .catch(error => {
+        cl(`Error writing to Post Office; error is ${error}`);
+      });
+    return;
+  }
 
   let preset_values = {};
   async function createForm({ instructions, source_doc, doc_location }) {
@@ -1900,7 +2090,7 @@ export default ({ request = {}, onClose }) => {
     }
   }
 
-  async function resolveVariables(s, o) {
+  async function deepResolve(s, o) {
     let a = s.match(/(.*?)%%(.*?)%%(.*)/);
     if (a) {
       do {
@@ -1914,11 +2104,77 @@ export default ({ request = {}, onClose }) => {
             type: reactData.fields[a[2]].type
           });
         }
-        else if (o && o.hasOwnProperty(a[2])) {
-          v = await formatValue({
-            rawValue: o[a[2]].value,
-            type: o[a[2]].type
+        else if (o) {
+          v = resolve({
+            object: o,
+            key: a[2].split('.')
           });
+        }
+        s = `${a[1]}${v}${a[3]}`;
+        a = s.match(/(.*?)%%(.*?)%%(.*)/);
+      } while (a);
+    }
+    return s;
+  }
+
+  
+
+  async function deepResolve(s, o) {
+    let a = s.match(/(.*?)%%(.*?)%%(.*)/);
+    if (a) {
+      do {
+        let v = '';
+        if (preset_values && preset_values.hasOwnProperty(a[2])) {
+          v = preset_values[a[2]];
+        }
+        else if (reactData.fields.hasOwnProperty(a[2])) {
+          v = await formatValue({
+            rawValue: reactData.fields[a[2]].value,
+            type: reactData.fields[a[2]].type
+          });
+        }
+        else if (o) {
+          v = resolve({
+            object: o,
+            key: a[2].split('.')
+          });
+        }
+        s = `${a[1]}${v}${a[3]}`;
+        a = s.match(/(.*?)%%(.*?)%%(.*)/);
+      } while (a);
+    }
+    return s;
+  }
+
+  async function resolveVariables(s, o) {
+    let a = s.match(/(.*?)%%(.*?)%%(.*)/);
+    if (a) {
+      do {
+        let v = '';
+        if (preset_values && preset_values.hasOwnProperty(a[2])) {
+          v = preset_values[a[2]];
+        }
+        else if (reactData.fields.hasOwnProperty(a[2])) {
+          if (!reactData.fields[a[2]].value) {
+            v = `<${reactData.fields[a[2]]?.prompt?.value || titleCase(a[2].toLowerCase().replace(/[^a-z]/, ' '))}>`;
+          }
+          else {
+            v = await formatValue({
+              rawValue: reactData.fields[a[2]].value,
+              type: reactData.fields[a[2]].type
+            });
+          }
+        }
+        else if (o && o.hasOwnProperty(a[2])) {
+          if (!o[a[2]].value) {
+            v = `<${o[a[2]]?.prompt?.value || titleCase(a[2].toLowerCase().replace(/[^a-z]/, ' '))}>`;
+          }
+          else {
+            v = await formatValue({
+              rawValue: o[a[2]].value,
+              type: o[a[2]].type
+            });
+          }
         }
         s = `${a[1]}${v}${a[3]}`;
         a = s.match(/(.*?)%%(.*?)%%(.*)/);
@@ -2107,18 +2363,34 @@ export default ({ request = {}, onClose }) => {
     }
   }
 
-  const okToShowSection = (this_sectionObj) => {
+  const dontShowSection = (this_sectionObj) => {
     if (this_sectionObj.hasOwnProperty('show_if')) {
+      let reason = 'unknown';
       for (const this_test of this_sectionObj.show_if) {
-        const this_value = reactData.fields[this_test.field].value;
-        if (array_in_array(this_test.values, this_value)) {
-          return true;
+        if (this_test.hasOwnProperty('pertainsTo_memberOf')) {
+          if (reactData.peopleRec[reactData.pertains_to].groups.some(g => { return [this_test.memberOf].flat().includes(g); })) {
+            return false;
+          }
+          else { reason = 'pertains_to'; }
+        }
+        else if (this_test.hasOwnProperty('memberOf')) {
+          if (state.patient.groups.some(g => { return [this_test.memberOf].flat().includes(g); })) {
+            return false;
+          }
+          else { reason = 'memberOf'; }
+        }
+        else {
+          const this_value = reactData.fields[this_test.field].value;
+          if (array_in_array(this_test.values, this_value)) {
+            return false;
+          }
+          else { reason = 'data'; }
         }
       }
-      return false;
+      return reason;
     }
     else {
-      return true;
+      return false;
     }
   };
 
@@ -2187,7 +2459,7 @@ export default ({ request = {}, onClose }) => {
           </Box>
           <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
             {reactData.sections.map((sectionObj, sectionNdx) => (
-              (okToShowSection(sectionObj) &&
+              (!dontShowSection(sectionObj) &&
                 <React.Fragment
                   key={`sectionFrag__${sectionObj.section_name}_${sectionNdx}`}
                 >
@@ -2206,353 +2478,163 @@ export default ({ request = {}, onClose }) => {
                     (reactData.fields.hasOwnProperty(this_field) &&
                       (!reactData.fields[this_field].options || !reactData.fields[this_field].options.hidden) &&
                       !reactData.fields[this_field].ignore &&
-                      <Box
-                        key={`parentFrag__${this_field}_${sectionNdx}`}
-                        display='flex'
-                        flexDirection='column'
-                        id={`sigBox__${this_field}`}
-                        justifyContent='flex-start'
-                        marginTop={2}
-                        marginBottom={2}
-                        alignItems='flex-start'
-                        width='97%'
+
+                      <React.Fragment
+                        key={`fieldFrag__${this_field}_${sectionNdx}`}
                       >
-                        <React.Fragment
-                          key={`fieldFrag__${this_field}_${sectionNdx}`}
-                        >
-                          {(reactData.fields[this_field].type === 'text') &&
-                            <TextField
-                              id={`field__${this_field}`}
-                              key={`field__${this_field}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                ? reactData.fields[this_field].valueText
-                                : ''}`}
-                              className={classes.inputDisplay}
-                              multiline
-                              variant={reactData.fields[this_field].prompt.rows ? 'outlined' : 'standard'}
-                              disabled={reactData.fields[this_field].options.viewOnly}
-                              style={AVATextStyle({
-                                lineHeight: 1,
-                                width: `${reactData.fields[this_field].prompt.width || 200}px`,
-                                maxWidth: '90%',
-                                size: 0.75,
-                                color: 'black',
-                                margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
-                              })}
-                              autoComplete='off'
-                              defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                ? reactData.fields[this_field].valueText
-                                : ''
-                              }
-                              onBlur={async (event) => {
-                                await handleChangeValue({
-                                  newText: event.target.value,
-                                  prop: this_field,
-                                  sentenceCase: true
-                                });
-                              }}
-                              helperText={reconcilePrompt({
-                                rawValue: reactData.fields[this_field].prompt.value,
-                                this_field
-                              })}
-                            />
-                          }
-                          {(reactData.fields[this_field].type === 'header') &&
-                            <Typography
-                              style={AVATextStyle(Object.assign(
-                                {},
-                                {
-                                  size: 0.75,
-                                  margin: { top: 2, bottom: 0.5, left: 0.5, right: 3 }
-                                },
-                                reactData.fields[this_field].prompt.style || {}
-                              ))}
-                            >
-                              {reactData.fields[this_field].prompt.value}
-                            </Typography>
-                          }
-                          {(reactData.fields[this_field].type === 'image') &&
-                            <Box
-                              className={classes.imageArea}
-                              component="img"
-                              alt={''}
-                              src={reactData.fields[this_field].valueText}
-                            />
-                          }
-                          {(reactData.fields[this_field].type === 'phone') &&
-                            <TextField
-                              id={`field__${fieldNdx}`}
-                              className={classes.inputDisplay}
-                              autoComplete='off'
-                              disabled={reactData.fields[this_field].options.viewOnly}
-                              key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                ? reactData.fields[this_field].valueText
-                                : ''}`}
-                              style={AVATextStyle({
-                                lineHeight: 1,
-                                width: `${reactData.fields[this_field].prompt.width || 200}px`,
-                                size: 0.75,
-                                padding: { bottom: 0 },
-                                margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
-                              })}
-                              defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                ? reactData.fields[this_field].valueText
-                                : ''
-                              }
-                              onBlur={async (event) => {
-                                if (event.target.value) {
-                                  let fPhone = formatPhone(event.target.value);
-                                  await handleChangeValue({
-                                    newText: fPhone,
-                                    newValue: `+1${fPhone.replace(/\D/g, '')}`,
-                                    prop: this_field,
-                                    sentenceCase: false
-                                  });
-                                }
-                                if (event.relatedTarget) {
-                                  event.relatedTarget.focus({ focusVisible: true });
-                                  if (event.relatedTarget.type !== 'button') {
-                                    event.relatedTarget.click();
-                                  }
-                                }
-                              }}
-                              helperText={reconcilePrompt({
-                                rawValue: reactData.fields[this_field].prompt.value,
-                                this_field
-                              })}
-                            />
-                          }
-                          {((reactData.fields[this_field].type === 'date')
-                            || (reactData.fields[this_field].type === 'time')) &&
-                            <TextField
-                              id={`field__${fieldNdx}`}
-                              className={classes.inputDisplay}
-                              disabled={reactData.fields[this_field].options.viewOnly}
-                              autoComplete='off'
-                              key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
-                                ? reactData.fields[this_field].value
-                                : ''}`}
-                              style={AVATextStyle({
-                                lineHeight: 1,
-                                size: 0.75,
-                                padding: { bottom: 0 },
-                                margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
-                              })}
-                              defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                ? reactData.fields[this_field].valueText
-                                : ''
-                              }
-                              onBlur={async (event) => {
-                                if (event.target.value) {
-                                  let dObj = makeDate(event.target.value, { noTime: (reactData.fields[this_field].type === 'date'), noYearCorrection: true });
-                                  if (!dObj.error) {
-                                    await handleChangeValue({
-                                      newText: dObj.absolute,
-                                      newValue: ((reactData.fields[this_field].type === 'date')
-                                        ? dObj.numeric$
-                                        : dObj.timestamp),
-                                      prop: this_field,
-                                      sentenceCase: false
-                                    });
-                                  }
-                                }
-                                if (event.relatedTarget) {
-                                  event.relatedTarget.focus({ focusVisible: true });
-                                  if (event.relatedTarget.type !== 'button') {
-                                    event.relatedTarget.click();
-                                  }
-                                }
-                              }}
-                              helperText={reconcilePrompt({
-                                rawValue: reactData.fields[this_field].prompt.value,
-                                this_field
-                              })}
-                            />
-                          }
-                          {(reactData.fields[this_field].type.startsWith('select')) &&
-                            <Box
-                              display='flex'
-                              mb={0}
-                              flexDirection='row'
-                              justifyContent='flex-start'
-                              alignItems='center'
-                            >
-                              <AVACheckBoxGroup
-                                prop={this_field}
-                                text={reactData.fields[this_field].selectionObj.selectionList}
-                                withPrompt={(reactData.fields[this_field].type === 'select&text')
-                                  ? reactData.fields[this_field].prompt.other || 'other'
-                                  : null
-                                }
-                              />
-                            </Box>
-                          }
-                          {(reactData.fields[this_field].type === 'html') &&
-                            <Box>
-                              <div
-                                dangerouslySetInnerHTML={{ '__html': reactData.fields[this_field].value }}
-                              />
-                            </Box>
-                          }
-                          {(reactData.fields[this_field].type === 'image') &&
-                            <img
-                              className={classes.imageArea}
-                              alt=''
-                              src={reactData.fields[this_field].value}
-                            />
-                          }
-                          {(reactData.fields[this_field].type === 'url') &&
-                            <a
-                              href={reactData.fields[this_field].value}
-                              style={{ color: 'inherit', textDecoration: 'none' }}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
+                        {new Array(reactData.fields[this_field].prompt?.occurrences || 1).fill(0).map((a_zero, occ_index) => (
+                          <React.Fragment
+                            key={`innerFrag__${this_field}_${occ_index}`}
+                          >
+                            {reactData.fields[this_field].prompt.newLine && (occ_index === 0) &&
                               <Typography
-                                style={AVATextStyle(Object.assign({}, {
-                                  size: 0.75,
-                                  margin: { top: 2, bottom: 0.5, left: 0.5, right: 3 }
-                                }))}
+                                key={`section__${sectionObj.section_name}_${reactData.fields[this_field]}-breakRow`}
+                                className={classes.breakRow}
                               >
-                                <u>{reactData.fields[this_field].prompt.helper || `Tap here for ${reconcilePrompt({
-                                  rawValue: reactData.fields[this_field].prompt.value,
-                                  this_field
-                                })}`}</u>
+                                {''}
                               </Typography>
-                            </a>
-                          }
-                          {(reactData.fields[this_field].type === 'signature') &&
-                            <Box
-                              display='flex'
-                              flexDirection='column'
-                              id={`sigBox__${this_field}`}
-                              key={`sigBox__${this_field}_${sectionNdx}`}
-                              justifyContent='flex-start'
-                              marginTop={2}
-                              marginBottom={2}
-                              alignItems='flex-start'
-                              width='97%'
-                            >
-                              <SignatureCanvas
-                                ref={signatureRef[reactData.fields[this_field].options.sigRefNumber || 0]}
-                                canvasProps={{
-                                  style: {
-                                    backgroundColor: 'beige',
-                                    width: '75%',
-                                    marginLeft: '10px',
-                                    marginRight: '10px',
-                                    marginTop: '2px',
-                                    height: '88px'
-                                  }
-                                }}
-                              />
-                              <Typography
-                                id={`sigBoxText__${this_field}`}
-                                key={`sigBoxText__${this_field}_${sectionNdx}`}
+                            }
+                            {(reactData.fields[this_field].type === 'text') &&
+                              <TextField
+                                id={`field__${this_field}`}
+                                key={`field__${this_field}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                                  ? reactData.fields[this_field].valueText
+                                  : ''}`}
+                                className={classes.inputDisplay}
+                                multiline
+                                variant={reactData.fields[this_field].prompt.rows ? 'outlined' : 'standard'}
+                                disabled={reactData.fields[this_field].options.viewOnly}
                                 style={AVATextStyle({
                                   lineHeight: 1,
                                   width: `${reactData.fields[this_field].prompt.width || 200}px`,
                                   maxWidth: '90%',
                                   size: 0.75,
+                                  color: 'black',
                                   margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
                                 })}
-                              >
-                                {reconcilePrompt({
+                                autoComplete='off'
+                                defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                                  ? (Array.isArray(reactData.fields[this_field].valueText) ? reactData.fields[this_field].valueText[occ_index] : reactData.fields[this_field].valueText)
+                                  : ''
+                                }
+                                onBlur={async (event) => {
+                                  await handleChangeValue({
+                                    newText: event.target.value,
+                                    prop: this_field,
+                                    occ_index,
+                                    sentenceCase: true
+                                  });
+                                }}
+                                helperText={((occ_index > 0) ? null : reconcilePrompt({
                                   rawValue: reactData.fields[this_field].prompt.value,
                                   this_field
-                                })}
-                              </Typography>
-                              <Box display='flex' mt={0} mb={0} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
-                                {signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current &&
-                                  <Button
-                                    className={AVAClass.AVAMicroButton}
-                                    style={{ backgroundColor: 'white', color: 'red' }}
-                                    size='small'
-                                    onClick={() => {
-                                      signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current.clear();
-                                      setForceRedisplay(!forceRedisplay);
-                                    }}
-                                  >
-                                    {'Clear'}
-                                  </Button>
-                                }
-                              </Box>
-                            </Box>
-                          }
-                          {(reactData.fields[this_field].type === 'id') &&
-                            <Box
-                              display='flex'
-                              flexDirection='row'
-                              key={`selectParent-${this_field}_${sectionNdx}`}
-                              id={`selectParent-${this_field}`}
-                              width={`${reactData.fields[this_field].prompt.width || 200}px`}
-                              flexGrow={1}
-                              marginBottom={0}
-                              justifyContent='flex-start'
-                              alignItems='flex-start'
-                            >
-                              <Box
-                                key={`selectBox-${this_field}_${sectionNdx}`}
-                                display='flex' marginLeft={1} flexGrow={1} flexDirection='column'
+                                }))}
+                              />
+                            }
+                            {(reactData.fields[this_field].type === 'header') && (occ_index === 0) &&
+                              <Typography
+                                style={AVATextStyle(Object.assign(
+                                  {},
+                                  {
+                                    size: 0.75,
+                                    margin: { top: 2, bottom: 0.5, right: 3 }
+                                  },
+                                  reactData.fields[this_field].prompt.style || {}
+                                ))}
                               >
-                                <Select
-                                  options={reactData.peopleList[reactData.fields[this_field].choose.ref]}
-                                  searchBy={'label'}
-                                  dropdownHandle={true}
-                                  clearOnSelect={true}
-                                  clearOnBlur={true}
-                                  key={`selectOptions-${this_field}_${sectionNdx}`}
-                                  searchable={true}
-                                  create={false}
-                                  closeOnClickInput={true}
-                                  closeOnSelect={true}
-                                  style={{
-                                    lineHeight: 1,
-                                    fontSize: `${reactData.user_fontSize * (1.05)}rem`,
-                                    marginLeft: '-5px',
-                                    marginBottom: '-4px',
-                                    borderWidth: 0
-                                  }}
-                                  noDataLabel={`No ${reconcilePrompt({
-                                    rawValue: reactData.fields[this_field].prompt.value,
-                                    this_field
-                                  })}s match`}
-                                  values={(reactData.fields[this_field]) ?
-                                    (reactData.fields[this_field].valueText
-                                      ? [{ label: reactData.fields[this_field].valueText, value: reactData.fields[this_field].value }]
-                                      : (reactData.fields[this_field].valueList
-                                        ? reactData.fields[this_field].valueList.map(this_value => {
-                                          return {
-                                            label: (reactData.peopleList[reactData.fields[this_field].choose.ref].find(this_person => {
-                                              return (this_person.value === this_value);
-                                            })).label,
-                                            value: this_value
-                                          };
-                                        })
-                                        : []
-                                      )
-                                    ) : []
+                                {reactData.fields[this_field].prompt.value}
+                              </Typography>
+                            }
+                            {(reactData.fields[this_field].type === 'image') &&
+                              <Box
+                                className={classes.imageArea}
+                                component="img"
+                                alt={''}
+                                src={reactData.fields[this_field].valueText}
+                              />
+                            }
+                            {(reactData.fields[this_field].type === 'phone') &&
+                              <TextField
+                                id={`field__${fieldNdx}`}
+                                className={classes.inputDisplay}
+                                autoComplete='off'
+                                disabled={reactData.fields[this_field].options.viewOnly}
+                                key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                                  ? reactData.fields[this_field].valueText
+                                  : ''}`}
+                                style={AVATextStyle({
+                                  lineHeight: 1,
+                                  width: `${reactData.fields[this_field].prompt.width || 200}px`,
+                                  size: 0.75,
+                                  padding: { bottom: 0 },
+                                  margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
+                                })}
+                                defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                                  ? (Array.isArray(reactData.fields[this_field].valueText) ? reactData.fields[this_field].valueText[occ_index] : reactData.fields[this_field].valueText)
+                                  : ''
+                                }
+                                onBlur={async (event) => {
+                                  if (event.target.value) {
+                                    let fPhone = formatPhone(event.target.value);
+                                    await handleChangeValue({
+                                      newText: fPhone,
+                                      newValue: `+1${fPhone.replace(/\D/g, '')}`,
+                                      occ_index,
+                                      prop: this_field,
+                                      sentenceCase: false
+                                    });
                                   }
-                                  placeholder={``}
-                                  onChange={async (values) => {
-                                    if (values.length > 0) {
-                                      await handleChangeValue({
-                                        newText: values[0].label,
-                                        newValue: values[0].value,
-                                        prop: this_field,
-                                        sentenceCase: false
-                                      });
+                                }}
+                                helperText={((occ_index > 0) ? null : reconcilePrompt({
+                                  rawValue: reactData.fields[this_field].prompt.value,
+                                  this_field
+                                }))}
+                              />
+                            }
+                            {(reactData.fields[this_field].type === 'date_select') &&
+                              <Box
+                                display='flex'
+                                flexDirection='column'
+                                id={`dateBox__${this_field}`}
+                                key={`datebox__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
+                                  ? reactData.fields[this_field].value
+                                  : ''}`}
+                                justifyContent='flex-start'
+                                marginTop={1}
+                                marginLeft={0}
+                                alignItems='flex-start'
+                              >
+                                <input
+                                  type="date"
+                                  id={`field__${fieldNdx}`}
+                                  key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
+                                    ? reactData.fields[this_field].value
+                                    : ''}`}
+                                  min={reactData.fields[this_field].prompt.min}
+                                  max={reactData.fields[this_field].prompt.max}
+                                  value={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                                    ? makeDate(reactData.fields[this_field].value).input
+                                    : ''
+                                  }
+                                  onChange={async (event) => {
+                                    if (event.target.value) {
+                                      let dObj = makeDate(event.target.value, { noTime: true, noYearCorrection: true });
+                                      if (!dObj.error) {
+                                        await handleChangeValue({
+                                          newText: dObj.absolute,
+                                          newValue: dObj.numeric$,
+                                          occ_index,
+                                          prop: this_field,
+                                          sentenceCase: false
+                                        });
+                                      }
                                     }
                                   }}
                                 />
-                                <Box display='flex'
-                                  flexDirection='row'
-                                  paddingTop={'4px'}
-                                  borderTop={1}
-                                  key={`selectPromptBox-${this_field}_${sectionNdx}`}
-                                >
+                                {reactData.fields[this_field].prompt.newLine && (occ_index === 0) &&
                                   <Typography
-                                    key={`selectPrompt-${this_field}_${sectionNdx}`}
-                                    id={`selectPrompt-${this_field}`}
+                                    key={`section__${sectionObj.section_name}_${reactData.fields[this_field]}-breakRow`}
+                                    className={classes.breakRow}
                                     style={AVATextStyle({
                                       lineHeight: 1,
                                       width: `${reactData.fields[this_field].prompt.width || 200}px`,
@@ -2567,14 +2649,266 @@ export default ({ request = {}, onClose }) => {
                                       this_field
                                     })}
                                   </Typography>
+                                }
+                              </Box>
+                            }
+                            {((reactData.fields[this_field].type === 'date')
+                              || (reactData.fields[this_field].type === 'time')) &&
+                              <TextField
+                                id={`field__${fieldNdx}`}
+                                className={classes.inputDisplay}
+                                disabled={reactData.fields[this_field].options.viewOnly}
+                                autoComplete='off'
+                                key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
+                                  ? reactData.fields[this_field].value
+                                  : ''}`}
+                                style={AVATextStyle({
+                                  lineHeight: 1,
+                                  size: 0.75,
+                                  padding: { bottom: 0 },
+                                  margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
+                                })}
+                                defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                                  ? (Array.isArray(reactData.fields[this_field].valueText) ? reactData.fields[this_field].valueText[occ_index] : reactData.fields[this_field].valueText)
+                                  : ''
+                                }
+                                onBlur={async (event) => {
+                                  if (event.target.value) {
+                                    let dObj = makeDate(event.target.value, { noTime: (reactData.fields[this_field].type === 'date'), noYearCorrection: true });
+                                    if (!dObj.error) {
+                                      await handleChangeValue({
+                                        newText: dObj.absolute,
+                                        newValue: ((reactData.fields[this_field].type === 'date')
+                                          ? dObj.numeric$
+                                          : dObj.timestamp),
+                                        prop: this_field,
+                                        occ_index,
+                                        sentenceCase: false
+                                      });
+                                    }
+                                  }
+                                }}
+                                helperText={((occ_index > 0) ? null : reconcilePrompt({
+                                  rawValue: reactData.fields[this_field].prompt.value,
+                                  this_field
+                                }))}
+                              />
+                            }
+                            {(reactData.fields[this_field].type.startsWith('select')) &&
+                              <Box
+                                display='flex'
+                                mb={0}
+                                flexDirection='row'
+                                justifyContent='flex-start'
+                                alignItems='center'
+                              >
+                                <AVACheckBoxGroup
+                                  prop={this_field}
+                                  text={reactData.fields[this_field].selectionObj.selectionList}
+                                  withPrompt={(reactData.fields[this_field].type === 'select&text')
+                                    ? reactData.fields[this_field].prompt.other || 'other'
+                                    : null
+                                  }
+                                />
+                              </Box>
+                            }
+                            {(reactData.fields[this_field].type === 'html') &&
+                              <Box>
+                                <div
+                                  dangerouslySetInnerHTML={{ '__html': reactData.fields[this_field].value }}
+                                />
+                              </Box>
+                            }
+                            {(reactData.fields[this_field].type === 'image') &&
+                              <img
+                                className={classes.imageArea}
+                                alt=''
+                                src={reactData.fields[this_field].value}
+                              />
+                            }
+                            {(reactData.fields[this_field].type === 'url') &&
+                              <a
+                                href={reactData.fields[this_field].value}
+                                style={{ color: 'inherit', textDecoration: 'none' }}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <Typography
+                                  style={AVATextStyle(Object.assign({}, {
+                                    size: 0.75,
+                                    margin: { top: 2, bottom: 0.5, left: 0.5, right: 3 }
+                                  }))}
+                                >
+                                  <u>{reactData.fields[this_field].prompt.helper || `Tap here for ${reconcilePrompt({
+                                    rawValue: reactData.fields[this_field].prompt.value,
+                                    this_field
+                                  })}`}</u>
+                                </Typography>
+                              </a>
+                            }
+                            {(reactData.fields[this_field].type === 'signature') &&
+                              <Box
+                                display='flex'
+                                flexDirection='column'
+                                id={`sigBox__${this_field}`}
+                                key={`sigBox__${this_field}_${sectionNdx}`}
+                                justifyContent='flex-start'
+                                marginTop={2}
+                                marginBottom={2}
+                                alignItems='flex-start'
+                                width='97%'
+                              >
+                                <SignatureCanvas
+                                  ref={signatureRef[reactData.fields[this_field].options.sigRefNumber || 0]}
+                                  canvasProps={{
+                                    style: {
+                                      backgroundColor: 'beige',
+                                      width: '75%',
+                                      marginLeft: '10px',
+                                      marginRight: '10px',
+                                      marginTop: '2px',
+                                      height: '88px'
+                                    }
+                                  }}
+                                />
+                                {(occ_index === 0) &&
+                                  <Typography
+                                    id={`sigBoxText__${this_field}`}
+                                    key={`sigBoxText__${this_field}_${sectionNdx}`}
+                                    style={AVATextStyle({
+                                      lineHeight: 1,
+                                      width: `${reactData.fields[this_field].prompt.width || 200}px`,
+                                      maxWidth: '90%',
+                                      size: 0.75,
+                                      margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
+                                    })}
+                                  >
+                                    {reconcilePrompt({
+                                      rawValue: reactData.fields[this_field].prompt.value,
+                                      this_field
+                                    })}
+                                  </Typography>
+                                }
+                                <Box display='flex' mt={0} mb={0} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
+                                  {signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current &&
+                                    <Button
+                                      className={AVAClass.AVAMicroButton}
+                                      style={{ backgroundColor: 'white', color: 'red' }}
+                                      size='small'
+                                      onClick={() => {
+                                        signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current.clear();
+                                        setForceRedisplay(!forceRedisplay);
+                                      }}
+                                    >
+                                      {'Clear'}
+                                    </Button>
+                                  }
                                 </Box>
                               </Box>
-                            </Box>
-                          }
-                        </React.Fragment>
-                      </Box>
+                            }
+                            {(reactData.fields[this_field].type === 'id') &&
+                              <Box
+                                display='flex'
+                                flexDirection='row'
+                                key={`selectParent-${this_field}_${sectionNdx}`}
+                                id={`selectParent-${this_field}`}
+                                width={`${reactData.fields[this_field].prompt.width || 200}px`}
+                                flexGrow={1}
+                                marginBottom={0}
+                                justifyContent='flex-start'
+                                alignItems='flex-start'
+                              >
+                                <Box
+                                  key={`selectBox-${this_field}_${sectionNdx}`}
+                                  display='flex' marginLeft={1} flexGrow={1} flexDirection='column'
+                                >
+                                  <Select
+                                    options={reactData.peopleList[reactData.fields[this_field].choose.ref]}
+                                    searchBy={'label'}
+                                    dropdownHandle={true}
+                                    clearOnSelect={true}
+                                    clearOnBlur={true}
+                                    key={`selectOptions-${this_field}_${sectionNdx}`}
+                                    searchable={true}
+                                    create={false}
+                                    closeOnClickInput={true}
+                                    closeOnSelect={true}
+                                    style={{
+                                      lineHeight: 1,
+                                      fontSize: `${reactData.user_fontSize * (1.05)}rem`,
+                                      marginLeft: '-5px',
+                                      marginBottom: '-4px',
+                                      borderWidth: 0
+                                    }}
+                                    noDataLabel={`No ${reconcilePrompt({
+                                      rawValue: reactData.fields[this_field].prompt.value,
+                                      this_field
+                                    })}s match`}
+                                    values={(reactData.fields[this_field]) ?
+                                      (reactData.fields[this_field].valueText
+                                        ? [{ label: reactData.fields[this_field].valueText, value: reactData.fields[this_field].value }]
+                                        : (reactData.fields[this_field].valueList
+                                          ? reactData.fields[this_field].valueList.map(this_value => {
+                                            return {
+                                              label: (reactData.peopleList[reactData.fields[this_field].choose.ref].find(this_person => {
+                                                return (this_person.value === this_value);
+                                              })).label,
+                                              value: this_value
+                                            };
+                                          })
+                                          : []
+                                        )
+                                      ) : []
+                                    }
+                                    placeholder={``}
+                                    onChange={async (values) => {
+                                      if (values.length > 0) {
+                                        await handleChangeValue({
+                                          newText: values[0].label,
+                                          newValue: values[0].value,
+                                          occ_index,
+                                          prop: this_field,
+                                          sentenceCase: false
+                                        });
+                                      }
+                                    }}
+                                  />
+                                  {(occ_index === 0) &&
+                                    <Box display='flex'
+                                      flexDirection='row'
+                                      paddingTop={'4px'}
+                                      borderTop={1}
+                                      key={`selectPromptBox-${this_field}_${sectionNdx}`}
+                                    >
+                                      <Typography
+                                        key={`selectPrompt-${this_field}_${sectionNdx}`}
+                                        id={`selectPrompt-${this_field}`}
+                                        style={AVATextStyle({
+                                          lineHeight: 1,
+                                          width: `${reactData.fields[this_field].prompt.width || 200}px`,
+                                          maxWidth: '90%',
+                                          size: 0.75,
+                                          opacity: '60%',
+                                          margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
+                                        })}
+                                      >
+                                        {reconcilePrompt({
+                                          rawValue: reactData.fields[this_field].prompt.value,
+                                          this_field
+                                        })}
+                                      </Typography>
+                                    </Box>
+                                  }
+                                </Box>
+                              </Box>
+                            }
+                          </React.Fragment>
+
+                        ))}
+                      </React.Fragment>
                     )
-                  ))}
+                  )
+                  )}
                 </React.Fragment>
               )
             ))}
@@ -2600,7 +2934,7 @@ export default ({ request = {}, onClose }) => {
               {'Exit'}
             </Button>
             <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-              {!reactData.formRec?.options?.noSaveContinue &&
+              {!reactData.formRec?.options?.noSaveContinue && !reactData.clientSampleMode &&
                 <Button
                   onClick={async () => {
                     const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
@@ -2613,19 +2947,21 @@ export default ({ request = {}, onClose }) => {
                   style={{ backgroundColor: 'lightcyan', color: 'black' }}
                   size='small'
                 >
-                  {'Save/Continue'}
+                  {isMobile() ? 'Save' : 'Save/Continue'}
                 </Button>
               }
-              <Button
-                onClick={async () => {
-                  await handleReview();
-                }}
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'green', color: 'white' }}
-                size='small'
-              >
-                {'Finish'}
-              </Button>
+              {!reactData.clientSampleMode &&
+                <Button
+                  onClick={async () => {
+                    await handleReview();
+                  }}
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'green', color: 'white' }}
+                  size='small'
+                >
+                  {'Finish'}
+                </Button>
+              }
               <PrintIcon
                 classes={{ root: classes.rowButton }}
                 size='medium'
@@ -2635,17 +2971,82 @@ export default ({ request = {}, onClose }) => {
                 }}
                 edge="start"
               />
+              {!reactData.clientSampleMode &&
+                <CloudUploadIcon
+                  classes={{ root: classes.rowButton }}
+                  style={{ marginLeft: '16px' }}
+                  key={`radio-button_upload`}
+                  id={`radio-button_upload`}
+                  size='medium'
+                  onClick={() => {
+                    updateReactData({
+                      stage: 'upload'
+                    }, true);
+                  }}
+                />
+              }
             </Box>
           </Box>
         </React.Fragment>
+      }
+      {(reactData.stage === 'upload') &&
+        <AVAUploadFile
+          options={{
+            buttonText: ['Choose', 'Save & Continue'],
+            title: [reactData.document_title, 'Tap "Choose a File" to select the content to upload'],
+            oneOnly: true
+          }}
+          onCancel={() => {
+            updateReactData({
+              stage: 'fill'
+            }, true);
+          }}
+          onLoad={async (response) => {
+            const docRec = await updateDocument({
+              docData: Object.assign({},
+                reactData.docRec,
+                {
+                  document_id: reactData.document_id,
+                  form_type: reactData.form_id,
+                  pertains_to: reactData.pertains_to,
+                  client_id: state.session.client_id
+                }
+              ),
+              author: state.session.user_id,
+              save_type: 'uploaded',
+              url: response[0].fLoc
+            });
+            if (!docRec) {
+              updateReactData({
+                stage: 'fill'
+              }, true);
+            }
+            else {
+              onClose('docAdded',
+                {
+                  document_id: reactData.document_id,
+                  document_title: reactData.document_title,
+                  document_status: 'uploaded',
+                  location: response[0],
+                  pertains_to: reactData.pertains_to,
+                  recWritten: docRec,
+                  nextAction: (reactData.formRec?.options?.onFinish
+                    ? makeNextAction({ instruction: reactData.formRec?.options?.onFinish })
+                    : null
+                  )
+                }
+              );
+            };
+          }}
+        />
       }
       {(reactData.stage === 'confirm') &&
         <AVAConfirm
           promptText={reactData.messageList}
           cancelText={'Go back'}
-          confirmText={(reactData.errorsOnForm)
+          confirmText={(reactData.activeErrors)
             ? '*none*'
-            : 'Save'
+            : (reactData.errorsOnForm ? 'Submit' : 'Complete')
           }
           onCancel={() => {
             updateReactData({
@@ -2655,7 +3056,8 @@ export default ({ request = {}, onClose }) => {
           onConfirm={async () => {
             let response = await handleSave({
               document_id: reactData.document_id,
-              final: true
+              final: true,
+              pending: !!reactData.errorsOnForm
             });
             if (!response.goodPut) {
               updateReactData({
@@ -2727,6 +3129,60 @@ export default ({ request = {}, onClose }) => {
             }, true);
           }}
         />
+      }
+      {
+        reactData.alert &&
+        <Snackbar
+          open={!!reactData.alert}
+          px={3}
+          key={`alert_wrapper`}
+          autoHideDuration={(reactData.alert.severity === 'success') ? 5000 : ((reactData.alert.severity === 'info') ? 15000 : null)}
+          onClose={() => {
+            updateReactData({
+              alert: false
+            }, true);
+          }}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'center'
+          }}
+        >
+          <Alert
+            severity={reactData.alert.severity || 'info'}
+            key={`alert_box`}
+            style={{ marginX: '8px', borderRadius: '20px', border: 1 }}
+            action={(reactData.alert.action
+              ?
+              <Box
+                display='flex'
+                key={`alert_action`}
+                mx={1}
+                overflow='auto'
+                flexDirection='column'
+              >
+                {([reactData.alert.action].flat()).map((this_action, actionNdx) => (
+                  <Button
+                    key={`alert_button__${actionNdx}`}
+                    className={AVAClass.AVAButton} color="inherit"
+                    onClick={() => this_action.function()}
+                  >
+                    {this_action.text}
+                  </Button>
+                ))}
+              </Box>
+              : null
+            )}
+            variant='filled'
+            onClose={() => {
+              updateReactData({
+                alert: false
+              }, true);
+            }}
+          >
+            {reactData.alert.title && <AlertTitle>{reactData.alert.title}</AlertTitle>}
+            {reactData.alert.message}
+          </Alert>
+        </Snackbar >
       }
     </Dialog>
   );

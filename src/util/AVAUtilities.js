@@ -197,20 +197,31 @@ export function deepCopy(pValue) {
   }
 }
 
-export function listFromArray(inArray, options) {
-  if (!Array.isArray(inArray)) {
-    if (!inArray || (inArray.trim() === '')) { return 'None'; }
-    return inArray;
+export function listFromArray(pArray, options) {
+  if (!Array.isArray(pArray)) {
+    if (!pArray || (pArray.trim() === '')) { return 'None'; }
+    return pArray;
+  }
+  let inArray = pArray;
+  if (options && options.ignoreBlank) {
+    inArray = pArray.filter(e => { return (e.trim() !== ''); });
   }
   let makeList$ = '';
   let link = '';
   let nextToLast = inArray.length - 2;
   let threeOrMore = (inArray.length > 2);
+  if (options && options.max && (inArray.length > options.max.length)) {
+    return `${inArray.length} ${options.max.words || 'selections'}`
+  } 
   inArray.forEach((s, x) => {
-    if (options && options.sentenceCase) { s = sentenceCase(s); }
+    let linkWord = 'and';
+    if (options) {
+      if (options.sentenceCase) { s = sentenceCase(s); }
+      if (options.or) { linkWord = 'or' }
+    }
     makeList$ += link + s;
     if (threeOrMore) { link = ', '; }
-    if (x === nextToLast) (link += (!threeOrMore ? ' ' : '') + `${(options && options.or) ? 'or' : 'and'} `);
+    if (x === nextToLast) (link += (!threeOrMore ? ' ' : '') + `${linkWord} `);
   });
   return makeList$;
 }
@@ -478,7 +489,7 @@ export function extract(string, left, right = null, options = {}) {
     }
   }
   if (!options.includeLeft) { f_left += left.length; }
-  if (!options.includeRight) { f_right -= right.length; }
+  if (options.includeRight) { f_right += right.length; }
   return string.slice(f_left, f_right);
 };
 
@@ -492,15 +503,16 @@ export function array_in_array(a1, a2) {
 
 export function titleCase(pString) {
   if (!pString) { return ''; }
-  let words = pString.split(/\s+/);
+  let words = pString.split(/(\W+)/);
   let returnString = '';
   words.forEach((w, x) => {
     if (x === 0) { returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1)}`; }
     else if ((w.length < 3) || (w === 'and') || (w === 'the')) { returnString += w; }
     else if (w.toLowerCase() === 'ava') { returnString += 'AVA'; }
     else if (w.toLowerCase() === 'bbq') { returnString += 'BBQ'; }
+    else if (w.toLowerCase() === 'ceo') { returnString += 'CEO'; }
     else { returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1)}`; }
-    returnString += ' ';
+//    returnString += ' ';
   });
   return returnString.trim();
 }
@@ -885,7 +897,7 @@ export const isSmallScreen = () => {
   return isMobile() || (window.window.innerWidth < 800);
 };
 
-export async function switchActiveAccount(session, newClient, newPatient) {
+export async function switchActiveAccount(session, newClient, newPatient, options = {}) {
   await dbClient
     .update({
       Key: { session_id: session.user_id },
@@ -900,7 +912,15 @@ export async function switchActiveAccount(session, newClient, newPatient) {
     })
     .promise()
     .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
-  sessionStorage.removeItem('AVASessionData');
+  if (options && options.resetUser) {
+    let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
+    sessionObject.currentProfile.client_id = newClient;
+    sessionObject.currentProfile.person_id = newPatient.id;
+    sessionStorage.setItem('AVASessionData', JSON.stringify(sessionObject));
+  }
+  else {
+    sessionStorage.removeItem('AVASessionData');
+  }
   let jumpTo = window.location.href.replace('refresh', 'theseus');
   window.location.replace(jumpTo);
 };

@@ -1,7 +1,7 @@
 import React from 'react';
 import { sendMessages } from '../../util/AVAMessages';
 import { makeName, getImage } from '../../util/AVAPeople';
-import { makeArray, s3, dbClient } from '../../util/AVAUtilities';
+import { makeArray, s3, dbClient, isEmpty } from '../../util/AVAUtilities';
 import { Dialog, DialogContent, DialogActions } from '@material-ui/core';
 
 import { useSnackbar } from 'notistack';
@@ -220,7 +220,7 @@ export default ({
   };
 
   const noInput = () => {
-    return !(makeArray(promptText).some((n, p) => { return (!!reactData.textInput[p] && !!(reactData.textInput[p].trim())); }));
+    return !(makeArray(promptText).every((n, p) => { return (!isEmpty(reactData.textInput[p])); }));
   };
 
   const handleSave = async () => {

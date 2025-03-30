@@ -1,21 +1,27 @@
 import React from 'react';
 
 import { getPerson, getImage } from '../../util/AVAPeople';
-import { deepCopy, isEmpty, dbClient, cl, recordExists } from '../../util/AVAUtilities';
+import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount } from '../../util/AVAUtilities';
 import { AVAclasses, AVADefaults, AVATextStyle, isDark } from '../../util/AVAStyles';
 
 import useSession from '../../hooks/useSession';
 
 import ProfileSection from '../sections/ProfileSection';
+import AdministrativeSection from '../sections/AdministrativeSection';
+import Snapshot from '../sections/Snapshot';
 import FormSection from '../sections/FormSection';
 import TechInfoSection from '../sections/TechInfoSection';
 import MessagePreferencesSection from '../sections/MessagePreferencesSection';
+import PersonNotes from './PersonNotes';
 import LinkedAccounts from '../sections/LinkedAccounts';
 import PersonalizationSection from '../sections/PersonalizationSection';
 import GroupAssignments from '../sections/GroupAssignments';
 
 import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
+
+import HomeIcon from '@material-ui/icons/Home';
+import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 const useStyles = makeStyles(theme => ({
@@ -29,6 +35,7 @@ const useStyles = makeStyles(theme => ({
   paperPallette: {
     borderRadius: '30px 30px 30px 30px',
     width: '95%',
+    maxWidth: '800px'
   },
   padRight: {
     marginRight: theme.spacing(2),
@@ -48,28 +55,42 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
   const [reactData, setReactData] = React.useState({
     initialized: false,
     popupMenuOpen: false,
-    person_id,
+    person_id: person_id || state.session.patient_id,
     accessList: null,
     isMobile: (window.window.innerWidth < 800),
+    client_name: state.session.client_name,
     linkedPersonFilter: {},
     mode: options.mode || 'edit',
     addFamilyMember: false,
     viewFamilyMember: false,
-    user_id: state.user.user_id,
+    user_id: state.user.person_id,
+    focusAt: null,
     formHistoryMode: false,
     recentlyCompletedDocs: [],
     addAccountList: [],
     familyFormsObj: {},
+    new_messaging_required: !state.session.client_style.allow_old_messaging,
+    mandatory_passwords: state.session.client_style.mandatory_passwords,
+    local_customFields: ((state.session.local_data && (Object.keys(state.session.local_data).length > 0)) ? state.session.local_data : {}),
     user_class: state.user.account_class,
     administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
+    master_account: (state.user.account_class === 'master'),
     OKtoSave: false,
+    saveCompleted: false,
     alert: false,
     myFormListObj: {},
-    myImage: (options.mode === 'add') ? '' : getImage(person_id),
+    formsInitialized: false,
+    myImage: (options.mode === 'add') ? '' : getImage(person_id || state.session.patient_id),
     image_editing: false,
     components: {
+      Snapshot: {
+        component_id: Snapshot,
+      },
       ProfileSection: {
         component_id: ProfileSection,
+      },
+      AdministrativeSection: {
+        component_id: AdministrativeSection,
       },
       MessagePreferencesSection: {
         component_id: MessagePreferencesSection,
@@ -82,6 +103,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       },
       GroupAssignments: {
         component_id: GroupAssignments,
+      },
+      PersonNotes: {
+        component_id: PersonNotes,
       },
       TechInfoSection: {
         component_id: TechInfoSection
@@ -123,9 +147,25 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       let reactUpdObj = {
         initialized: true,
         sections: [{
+          section_name: 'Snapshot',
+          color: initialValues?.color || 'orange',
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('Snapshot')) : false),
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'Snapshot'
+        },
+        {
+          section_name: 'Administrative Data',
+          color: initialValues?.color || 'orange',
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('AdministrativeSection')) : false),
+          isAuthorized: reactData.administrative_account,
+          version_id: 0,
+          component_name: 'AdministrativeSection'
+        },
+        {
           section_name: 'Name & Contact info',
           color: initialValues?.color || 'orange',
-          isOpen: false,
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('ProfileSection')) : false),
           isAuthorized: true,
           version_id: 0,
           component_name: 'ProfileSection'
@@ -133,7 +173,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'Messaging',
           color: initialValues?.color || 'orange',
-          isOpen: false,
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('MessagePreferencesSection')) : false),
           isAuthorized: true,
           version_id: 0,
           component_name: 'MessagePreferencesSection'
@@ -141,7 +181,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'My Family',
           color: initialValues?.color || 'orange',
-          isOpen: false,
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('LinkedAccounts')) : false),
           isAuthorized: true,
           version_id: 0,
           component_name: 'LinkedAccounts'
@@ -149,7 +189,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'Photo & Personalization',
           color: initialValues?.color || 'orange',
-          isOpen: false,
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PersonalizationSection')) : false),
           isAuthorized: true,
           version_id: 0,
           component_name: 'PersonalizationSection'
@@ -157,7 +197,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'Groups',
           color: initialValues?.color || 'orange',
-          isOpen: false,
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('GroupAssignments')) : false),
           isAuthorized: reactData.administrative_account,
           version_id: 0,
           component_name: 'GroupAssignments'
@@ -165,15 +205,23 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         {
           section_name: 'Forms',
           color: initialValues?.color || 'orange',
-          isOpen: false,
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('FormSection')) : false),
           isAuthorized: true,
           version_id: 0,
           component_name: 'FormSection'
         },
         {
+          section_name: 'Notes',
+          color: initialValues?.color || 'orange',
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PersonNotes')) : false),
+          isAuthorized: reactData.administrative_account,
+          version_id: 0,
+          component_name: 'PersonNotes'
+        },
+        {
           section_name: 'Password & Tech Stuff',
           color: initialValues?.color || 'orange',
-          isOpen: false,
+          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('TechInfoSection')) : false),
           isAuthorized: reactData.administrative_account || (state.session.user_id === reactData.person_id),
           version_id: 0,
           component_name: 'TechInfoSection'
@@ -234,7 +282,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                 peopleRec.Item.time_based_rules[i].name += ` (Administrative Rule)`;
               }
               else {
-                peopleRec.Item.time_based_rules[i].name = `${state.session.client_name} Administrative Rule`;
+                peopleRec.Item.time_based_rules[i].name = `${reactData.client_name} Administrative Rule`;
               }
               peopleRec.Item.time_based_rules[i].global_rule = true;
             }
@@ -264,6 +312,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           if (!sessionRec.Item.customizations.font_size) {
             sessionRec.Item.customizations.font_size = 1;
           }
+          if (!sessionRec.Item.forceSetPassword) {
+            sessionRec.Item.forceSetPassword = false;
+          }
           AVADefaults({ fontSize: sessionRec.Item.customizations.font_size });
           reactUpdObj.og.sessionRec = sessionRec.Item;
         }
@@ -272,6 +323,27 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             response_code: 400,
             errorMessage: `AVA doesn't recognize ID ${parm_personRec.person_id} - SessionsV2 not found.`
           };
+        }
+        let formFieldsRec = await dbClient
+          .query({
+            KeyConditionExpression: 'client_id = :c',
+            TableName: 'Form_Fields',
+            ExpressionAttributeValues: {
+              ':c': reactUpdObj.og.peopleRec.client_id
+            }
+          })
+          .promise()
+          .catch(error => { cl({ 'Error reading SessionsV2': error }); });
+        reactUpdObj.form_fields = {};
+        if (recordExists(formFieldsRec)) {
+          for (const this_fieldRec of formFieldsRec.Items) {
+            if (this_fieldRec.showOnProfile && this_fieldRec.value.saveAs) {
+              reactUpdObj.form_fields[this_fieldRec.field_name] = {
+                prompt: this_fieldRec.prompt.value,
+                value: unresolve({ object: reactUpdObj.og, key: this_fieldRec.value.saveAs.split('.') })
+              };
+            }
+          }
         }
       }
       if (!reactData.groupObj && state.groups && reactUpdObj.og.peopleRec.groups) {
@@ -416,6 +488,19 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       />);
   }
 
+  const unresolve = ({ object, key }) => {
+    const this_key = key.shift();
+    if (!object || !object.hasOwnProperty(this_key)) {
+      return null;
+    }
+    if (key.length === 0) {
+      return object[this_key];
+    }
+    else {
+      return unresolve({ object: object[this_key], key });
+    }
+  };
+
   const resolve = (object, key, value) => {
     const this_key = key.shift();
     if (key.length === 0) {
@@ -501,7 +586,47 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         return false;
       };
     }
+    let groupOK = reactData.current.peopleRec.groups.some(g => { return ((g !== 'ALL') && (g !== '__top__')); });
+    if (!groupOK) {
+      reactData.errorList['groups'] = {
+        errorField: 'groups',
+        errorValue: '',
+        isError: true,
+        errorMessage: `You must select at least one Group`
+      };
+      updateReactData({
+        errorList: reactData.errorList,
+      }, true);
+      return false;
+    }
+
     reactData.person_id = reactData.current.peopleRec.person_id;
+
+    // if the peopleRec does not have ANY preferred option for messaging, we will default it here.
+    if (!reactData.current.peopleRec.preferred_methods) {
+      if (reactData.current.peopleRec.preferred_method) {
+        reactData.current.peopleRec.preferred_methods = [reactData.current.peopleRec.preferred_method];
+      }
+      else {
+        if (!isEmpty(reactData.current.peopleRec.contact_info?.cell?.number)) {
+          reactData.current.peopleRec.preferred_methods = ['sms'];
+          reactData.current.peopleRec.preferred_method = 'sms';
+        }
+        else if (!isEmpty(reactData.current.peopleRec.contact_info?.email?.address)) {
+          reactData.current.peopleRec.preferred_methods = ['email'];
+          reactData.current.peopleRec.preferred_method = 'email';
+        }
+        else if (!isEmpty(reactData.current.peopleRec.contact_info?.alt_email?.address)) {
+          reactData.current.peopleRec.preferred_methods = ['alt_email'];
+          reactData.current.peopleRec.preferred_method = 'alt_email';
+        }
+        else if (!isEmpty(reactData.current.peopleRec.contact_info?.landline?.number)) {
+          reactData.current.peopleRec.preferred_methods = ['voice'];
+          reactData.current.peopleRec.preferred_method = 'voice';
+        }
+      }
+    }
+
     if (JSON.stringify(reactData.og.peopleRec) !== JSON.stringify(reactData.current.peopleRec)) {
       // **** NEED TO ADD SPECIAL HANDLING FOR CHANGE OF PRIMARY KEY ***  (likely change to inactive account?)
       await dbClient
@@ -588,10 +713,19 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           handleAbort();
         }
         else {
-          onClose({
-            newID: reactData.current.peopleRec.person_id,
-            newName: (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim()
-          });
+          if (!reactData.current.peopleRec.person_id) {
+            onClose({
+              saveCompleted: false,
+              newID: false
+            });
+          }
+          else {
+            onClose({
+              saveCompleted: reactData.saveCompleted,
+              newID: reactData.current.peopleRec.person_id,
+              newName: (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim()
+            });
+          }
         }
       }}
     >
@@ -661,8 +795,63 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
               popupMenuOpen: false
             }, true);
           }}
-          keepMounted>
+          keepMounted
+        >
           <MenuList className={classes.popUpMenu}>
+            {reactData.administrative_account && (reactData.person_id !== state.session?.patient_id) && (
+              <MenuItem onClick={async () => {
+                updateReactData({
+                  popupMenuOpen: false
+                }, true);
+                await switchActiveAccount(
+                  state.session,
+                  (state.session.client_id || state.session.user_homeClient),
+                  {
+                    id: reactData.person_id,
+                    name: `${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`
+                  }
+                );
+              }}>
+                <Box
+                  display='flex' flexDirection='row' alignItems={'center'} justifyContent={'center'}
+                  key={'switch2self'}
+                >
+                  <SwapHorizIcon />
+                  <Typography style={AVATextStyle({ size: 0.8, margin: { left: 0.5 } })} >
+                    {`Switch to ${reactData.current.peopleRec.name.first}`}
+                  </Typography>
+                </Box>
+              </MenuItem>
+            )}
+            {reactData.administrative_account
+              && reactData.current.peopleRec.person_id
+              && (reactData.person_id !== state.session?.user_id)
+              && (
+                <MenuItem onClick={async () => {
+                  updateReactData({
+                    popupMenuOpen: false
+                  }, true);
+                  await switchActiveAccount(
+                    state.session,
+                    (state.session.client_id || state.session.user_homeClient),
+                    {
+                      id: reactData.person_id,
+                      name: `${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`
+                    },
+                    { resetUser: true }
+                  );
+                }}>
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'} justifyContent={'center'}
+                    key={'switch2self'}
+                  >
+                    <HomeIcon />
+                    <Typography style={AVATextStyle({ size: 0.8, margin: { left: 0.5 } })} >
+                      {`Sign-in as ${reactData.current.peopleRec.name.first || reactData.current.peopleRec.name.last}`}
+                    </Typography>
+                  </Box>
+                </MenuItem>
+              )}
             <MenuItem>
               <Box
                 display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
@@ -685,7 +874,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         key={`section_frame`} variant='outlined' overflow={'auto'}
       >
         {reactData.sections.map((this_section, sectionNdx) => (
-          (this_section.isAuthorized && (reactData.person_id || (this_section.component_name === 'ProfileSection')) &&
+          (this_section.isAuthorized &&
+            (!reactData.options?.sectionToShow || ([reactData.options?.sectionToShow].flat().includes(this_section.component_name))) &&
+            (reactData.person_id || (this_section.component_name === 'ProfileSection')) &&
             <Box
               key={`frag__${sectionNdx}`}
             >
@@ -698,8 +889,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                   marginBottom: (this_section.isOpen ? 0 : '8px'),
                   backgroundColor: this_section.color,
                   textDecoration: 'none',
-                  position: 'sticky',
-                  top: 0,
+                  top: '8px',
                   zIndex: 1,
                   opacity: 1
                 }}
@@ -713,6 +903,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                 onClick={async () => {
                   reactData.sections[sectionNdx].isOpen = !reactData.sections[sectionNdx].isOpen;
                   updateReactData({
+                    focusAt: (reactData.sections[sectionNdx].isOpen ? this_section.component_name : null),
                     sections: reactData.sections
                   }, true);
                 }}
@@ -734,7 +925,10 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                   </Box>
                   <Box
                     display='flex'
-                    border={1}
+                    borderTop={0}
+                    borderLeft={1}
+                    borderRight={1}
+                    borderBottom={1}
                     style={{
                       borderRadius: '0px 0px 30px 30px',
                       backgroundColor: this_section.color,
@@ -778,11 +972,13 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             else {
               if (!reactData.current.peopleRec.person_id) {
                 onClose({
+                  saveCompleted: false,
                   newID: false
                 });
               }
               else {
                 onClose({
+                  saveCompleted: reactData.saveCompleted,
                   newID: reactData.current.peopleRec.person_id,
                   newName: (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim()
                 });
@@ -798,7 +994,11 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
               <Button
                 onClick={async () => {
                   const result = await saveChanges();
+                  if (!!result) {
+                    reactData.saveCompleted = true;
+                  }
                   updateReactData({
+                    saveCompleted: reactData.saveCompleted,
                     OKtoSave: !result
                   }, true);
                 }}

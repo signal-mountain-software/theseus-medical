@@ -13,26 +13,29 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
   const isMounted = React.useRef(false);
 
   const updateGroupList = async (clicked_group) => {
+    if (!currentValues.peopleRec.hasOwnProperty('groups')) {
+      currentValues.peopleRec.groups = [];
+    }
     let foundIt = currentValues.peopleRec.groups.indexOf(clicked_group.id || clicked_group.group_id);
-    if (foundIt < 0) {
+    if (foundIt < 0) { 
       currentValues.peopleRec.groups.push(clicked_group.id || clicked_group.group_id);
       if (clicked_group.belongs_to) {
-        let checkGroup = clicked_group.belongs_to;
+        let parentGroup = clicked_group.belongs_to;
         do {
-          const g = checkGroup;
-          if (!currentValues.peopleRec.groups.includes(checkGroup)) {
-            currentValues.peopleRec.groups.push(checkGroup);
+          if (!currentValues.peopleRec.groups.includes(parentGroup)) {
+            currentValues.peopleRec.groups.push(parentGroup);
           }
+          // eslint-disable-next-line
           let foundParent = reactData.groupObj.adminHierarchy.find(this_group => {
-            return (this_group === g);
+            return (this_group.id === parentGroup);
           });
           if (foundParent) {
-            checkGroup = foundParent.id;
+            parentGroup = foundParent.belongs_to || false;
           }
           else {
-            checkGroup = false;
+            parentGroup = false;
           }
-        } while (checkGroup);
+        } while (parentGroup);
       }
     }
     else {
@@ -143,13 +146,13 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                 <Checkbox
                   size="small"
                   onClick={async () => { await updateGroupList(gObj); }}
-                  checked={currentValues.peopleRec.groups.includes(gObj.id)}
+                  checked={currentValues.peopleRec.groups && currentValues.peopleRec.groups.includes(gObj.id)}
                 />
               }
               <Typography style={AVATextStyle({
                 margin: { left: 0 },
                 padding: { left: 0 },
-                bold: currentValues.peopleRec.groups.includes(gObj.id)
+                bold: (currentValues.peopleRec.groups && currentValues.peopleRec.groups.includes(gObj.id))
               })}
               >
                 {gObj.name}

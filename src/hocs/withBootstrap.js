@@ -1,7 +1,7 @@
 import React from 'react';
 import { dbClient, lambda, makeArray, getCustomizations, deepCopy, uuid } from '../util/AVAUtilities';
 import { accountAccess, getAllGroups, getGroupsBelongTo } from '../util/AVAGroups';
-import { getAllOccurrences } from '../util/AVACalendars';
+import { getAllOccurrences, v2buildCalendar } from '../util/AVACalendars';
 import { sendMessages } from '../util/AVAMessages';
 import { addDays } from '../util/AVADateTime';
 import { useSnackbar } from 'notistack';
@@ -330,7 +330,31 @@ export default Component => props => {
         return 'invalid';
       }
     }
-    if (foundSession.requirePassword && ((pSource === 'entered') || (pSource === 'selection'))) {
+    if (
+      (foundSession.forceSetPassword || (reactData.customizationData.client_style?.mandatory_passwords && !foundSession.last_login))
+      && ((pSource === 'entered') || (pSource === 'selection'))
+    ) {
+      await logAccessAttempt(pUser, '', true, 'Good UserID entered.  Password must be set/reset for this account.');
+      closeSnackbar();
+      enqueueSnackbar(`Please set a new password.`, { variant: 'error', persist: true });
+      let [goodUser, foundPatient] = await getPerson(pUser);
+      if (!goodUser) {
+        let eMessage = `When fetching People account for this password-required Session, ${pUser} is not found`;
+        await logAccessAttempt(pUser, '', false, eMessage);
+        setDoneTrying(true);
+        enqueueSnackbar(`${eMessage}.  This is an unusual situation.  AVA Support has been notified.`, { variant: 'error', persist: true });
+        sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
+        setAVAFollowUpData({ 'NeedUser': true });
+        return 'invalid';
+      }
+      foundPatient.sessionRec = foundSession;
+      setAVAFollowUpData({ 'passwordRequired': true, 'forceSetPassword': true, 'enteredUserID': pUser, 'possibleUserRecs': [foundPatient] });
+      return 'password';
+    }
+    else if (
+      (foundSession.requirePassword || reactData.customizationData.client_style?.mandatory_passwords)
+      && ((pSource === 'entered') || (pSource === 'selection'))
+    ) {
       await logAccessAttempt(pUser, '', true, 'Good UserID entered.  Password is required for this account.');
       closeSnackbar();
       enqueueSnackbar(`This account requires a password.`, { variant: 'error', persist: true });
@@ -415,7 +439,17 @@ export default Component => props => {
 
   function promptForPassword() {
     if (testModeErrorTrap()) { return false; }
-    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID'));
+    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID') && !AVAFollowUpData.forceSetPassword);
+  }
+
+  function promptSetPassword() {
+    if (testModeErrorTrap()) { return false; }
+    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID') && AVAFollowUpData.forceSetPassword);
+  }
+
+  function promptConfirmPassword() {
+    if (testModeErrorTrap()) { return false; }
+    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID') && AVAFollowUpData.confirmSetPassword);
   }
 
   const selectFromMultipleAccounts = () => {
@@ -509,7 +543,6 @@ export default Component => props => {
             <Box
               display='flex' flexDirection='column' justifyContent='flex-start' alignItems='center'
               key={'loadingBox'}
-              ml={2} mr={2} mt={2}
             >
               <Box
                 display='flex' flexDirection='column' justifyContent='center' alignItems='center'
@@ -525,11 +558,8 @@ export default Component => props => {
               >
                 <Box
                   component="img"
-                  mb={2}
                   minWidth={'80%'}
-                  maxWidth={'80%'}
                   minHeight={'80%'}
-                  maxHeight={'80%'}
                   alt=''
                   src={reactData.currentClientLogo}
                 />
@@ -694,6 +724,100 @@ export default Component => props => {
               }
               let eMessage = `AVA could not log you in with "${enteredPass}"`;
               await logAccessAttempt('Text - not a UserID', '', false, eMessage);
+              enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
+              setDoneTrying(true);
+              return;
+            }}
+          />
+        }
+        {promptSetPassword() &&
+          <AVATextInput
+            titleText={reactData.customizationData.client_name}
+            promptText={"New Password"}
+            options={{ 'save_on_enter': true }}
+            buttonText={['Continue', 'Cancel']}
+            onCancel={() => {
+              setMessageList([]);
+              closeSnackbar();
+              enqueueSnackbar(`Please enter your User ID or Name`, { variant: 'info', persist: true });
+              setAVAFollowUpData({ 'NeedUser': true });
+            }}
+            onSave={async (enteredPass) => {
+              setMessageList([]);
+              closeSnackbar();
+              setAVAFollowUpData({
+                passwordRequired: true,
+                proposedPassword: enteredPass,
+                confirmSetPassword: true,
+                enteredUserID: AVAFollowUpData.enteredUserID,
+                possibleUserRecs: AVAFollowUpData.possibleUserRecs
+              });
+              return;
+            }}
+          />
+        }
+        {promptConfirmPassword() &&
+          <AVAConfirm
+            promptText={[
+              reactData.customizationData.client_name,
+              `[style={size:0.7,top:0}]Please confirm that you wish to set ${AVAFollowUpData.proposedPassword} as your new password`,
+            ]}
+            cancelText={`No, that's not right`}
+            confirmText={`Yes - set ${AVAFollowUpData.proposedPassword} as my password`}
+            onCancel={() => {
+              setMessageList([]);
+              closeSnackbar();
+              setAVAFollowUpData({
+                passwordRequired: true,
+                forceSetPassword: true,
+                enteredUserID: AVAFollowUpData.enteredUserID,
+                possibleUserRecs: AVAFollowUpData.possibleUserRecs
+              });
+              return;
+            }}
+            onConfirm={async () => {
+              setMessageList([]);
+              let this_user = AVAFollowUpData.possibleUserRecs[0];
+              // update SessionV2 with this password
+              await updateDb(
+                [                  
+                  {
+                    table: "SessionsV2",
+                    key: {
+                      session_id: AVAFollowUpData.enteredUserID.toLowerCase()
+                    },
+                    data: {
+                      last_login: AVAFollowUpData.proposedPassword,
+                      forceSetPassword: false,
+                      storePassword: true,
+                      password_change_date: new Date().toLocaleString()
+                    }
+                  },
+                  {
+                    table: "People",
+                    key: {
+                      person_id: AVAFollowUpData.enteredUserID.toLowerCase()
+                    },
+                    data: {
+                      newPassword: AVAFollowUpData.proposedPassword,
+                      storePassword: true,
+                      password_change_date: new Date().toLocaleString()
+                    }
+                  },
+                ]
+              );
+              closeSnackbar();
+              enqueueSnackbar(`Your new password has been set to ${AVAFollowUpData.proposedPassword} and you are being signed-in now...`, { variant: 'info' });
+              let result = await tryUser(this_user.person_id, this_user.client_id, 'stored password match', { waiveTFA: true });
+              if (result === 'good') {
+                let eMessage = `Successful Login for ${this_user.person_id}`;
+                enqueueSnackbar(eMessage, { variant: 'info', persist: false });
+                await logAccessAttempt(this_user.person_id, '', true, eMessage);
+                launchAVA(this_user.person_id);
+                return;
+              }
+              let eMessage = `Something went wrong.`;
+              await logAccessAttempt('Text - new password set, but login failed', '', false, eMessage);
               enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
               setDoneTrying(true);
               return;
@@ -1145,8 +1269,8 @@ export default Component => props => {
         let [goodGet, this_person] = await getPerson(altIDs.Items[p].person_id);
         if (goodGet &&
           ((!reactData.urlData.client_id)
-          || (this_person.client_id === reactData.urlData.client_id)
-        )) {
+            || (this_person.client_id === reactData.urlData.client_id)
+          )) {
           foundIDs.push(this_person);
         }
       }
@@ -1455,7 +1579,8 @@ export default Component => props => {
     }
 
     belongsTo = await getGroupsBelongTo(currentSession.client_id, currentSession.patient_id, { sort: true });
-    dispatch({ type: SET_GROUPS, payload: Object.assign({}, { belongsTo }) });
+    let group_structure = await getAllGroups(currentSession.patient_id, currentSession.client_id);
+    dispatch({ type: SET_GROUPS, payload: Object.assign({}, group_structure, { belongsTo }) });
 
     currentSession.adminAccount = false;
     if (currentProfile.account_class) {
@@ -1477,6 +1602,7 @@ export default Component => props => {
     dispatch({ type: SET_PROFILE, payload: currentProfile });
     dispatch({ type: SET_USER, payload: currentProfile });
     dispatch({ type: SET_PATIENT, payload: currentPatient });
+    sessionStorage.setItem('AVASessionData', JSON.stringify({ currentProfile }));
 
     bootState = {
       session: currentSession,
@@ -1502,8 +1628,16 @@ export default Component => props => {
     loadSyncInfo(currentSession, currentPatient);
 
     putValidationCookie();
-    if (currentSession.url_parameters && (currentSession.url_parameters).hasOwnProperty('document')) {
-      putActionCookie(currentSession.url_parameters);
+    if (currentSession.url_parameters) {
+      if (currentSession.url_parameters.hasOwnProperty('document')) {
+        putActionCookie(currentSession.url_parameters);
+      }
+      else if (currentSession.url_parameters.hasOwnProperty('forms')) {
+        removeCookie("AVAaction");
+        setCookie('AVAaction', JSON.stringify({
+          forms: true
+        }), { path: '/' });
+      }
     }
     else if (reactData.urlData.hasOwnProperty('document')) {
       putActionCookie(reactData.urlData);
@@ -1528,12 +1662,12 @@ export default Component => props => {
       .catch(error => {
         console.log(`error in loadSyncInfo AccessList. Message is ${error.message}`);
       });
-    let cPromise = getAllGroups(pSession.patient_id, pSession.client_id)
-      .then(groups => {
-        dispatch({ type: SET_GROUPS, payload: Object.assign({}, { belongsTo }, membersObj, groups) });
-        console.log(`done with loadSyncInfo Groups. Retrieved groups keys as ${Object.keys(groups)}`);
-        groupsObj = groups;
-      });
+    // let cPromise = getAllGroups(pSession.patient_id, pSession.client_id)
+    //  .then(groups => {
+    //    dispatch({ type: SET_GROUPS, payload: Object.assign({}, { belongsTo }, membersObj, groups) });
+    //    console.log(`done with loadSyncInfo Groups. Retrieved groups keys as ${Object.keys(groups)}`);
+    //    groupsObj = groups;
+    //  });
 
     let rightNow = new Date();
     let dPromise = getAllOccurrences(
@@ -1552,7 +1686,23 @@ export default Component => props => {
       .catch(error => {
         console.log(`error in loadSyncInfo Calendar. Message is ${error.message}`);
       });
-    await Promise.allSettled([aPromise, cPromise, dPromise])
+    v2buildCalendar(
+      {
+        client_id: pSession.client_id,
+        this_person: pSession.patient_id,
+        start_date: rightNow,
+        end_date: addDays(rightNow, 35),
+        filter: { group: belongsTo },
+      },
+    ).then(sampleList => {
+      console.log(`done with test calendar load.`);
+      console.log({ sampleList });
+    })
+      .catch(error => {
+        console.log(`error in test load Calendar. Message is ${error.message}`);
+      });
+    // await Promise.allSettled([aPromise, cPromise, dPromise])
+    await Promise.allSettled([aPromise, dPromise])
       .then(results => {
         console.log(`All resolved; results are ${JSON.stringify(results)}`, 'Launching MakeAVAMenu');
         bootState.groups = Object.assign({}, { belongsTo }, membersObj, groupsObj);

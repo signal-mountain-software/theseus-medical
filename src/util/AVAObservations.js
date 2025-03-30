@@ -375,7 +375,7 @@ export async function getBulletinBoard(pClient, pGroup_id) {
           let activity_name, link_address, link_title;
           if (isObject(activity_line)) {
             activity_name = activity_line.activity_code;
-            link_address = activity_line.default.link_address;
+            link_address = activity_line.default?.link_address;
             link_title = activity_line.title;
           }
           else {

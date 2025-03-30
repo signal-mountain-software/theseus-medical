@@ -5,6 +5,9 @@ import { Box, FormGroup, FormControl } from '@material-ui/core';
 
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageForm from '../forms/MessageForm';
+import MessageMonitor from './MessageMonitor';
+import MessageFormLegacy from './MessageFormLegacy';
+import MakeMessage from './MakeMessage';
 import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
 import FamilyMaintenance from './FamilyMaintenance';
@@ -28,7 +31,6 @@ import AVASubscription from '../forms/AVASubscription';
 import NumberForm from './NumberForm';
 import Number2Form from './Number2Form';
 import FreeTextForm from './FreeTextForm';
-import MakeMessage from './MakeMessage';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 
 import { createPutFact } from '../../graphql/mutations';
@@ -172,6 +174,23 @@ export default ({
       return (
         <PeopleMaintenance
           person_id={session.patient_id}
+          options={defaultValueObj.options}
+          onClose={(updatedPerson) => {
+            if (updatedPerson && updatedPerson.saveCompleted) {
+              sessionStorage.removeItem('AVASessionData');
+              window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+            }
+            else {
+              onClose();
+            }
+          }}
+        />
+      );
+    }
+    case 'client_maintenance': {
+      return (
+        <ClientMaintenance
+          client_id={session.client_id}
           onClose={(updatedPerson) => {
             if (updatedPerson) {
               sessionStorage.removeItem('AVASessionData');
@@ -180,6 +199,17 @@ export default ({
             else {
               onClose();
             }
+          }}
+        />
+      );
+    }
+    case 'form_management': {
+      return (
+        <FormManagement
+          client_id={session.client_id}
+          form_id={'billing_summary_1NEWVERSION'}
+          onClose={() => {
+            onClose();
           }}
         />
       );
@@ -346,17 +376,39 @@ export default ({
      );
     */
     case 'message_list':
-      return (
-        <MessageForm
-          pPerson={session.patient_id}
-          pClient={session.client_id}
-          pMessageList={[]}
-          pSession={session}
-          onReset={onSave}
-          defaultValue={defaultValue}
-        />
-      );
-    case 'make_message':
+      if ((session.client_style.allow_old_messaging) && !state.patient.useNewMessaging) {
+        return (
+          <MessageFormLegacy
+            pPerson={session.patient_id}
+            pClient={session.client_id}
+            pMessageList={[]}
+            pSession={session}
+            onReset={(instruction) => {
+              if (instruction !== 'restart') {
+                onSave();
+              }
+              else {
+                sessionStorage.removeItem('AVASessionData');
+                window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+              }
+            }}
+            defaultValue={defaultValue}
+          />
+        );
+      }
+      else {
+        return (
+          <MessageForm
+            pPerson={session.patient_id}
+            pClient={session.client_id}
+            pMessageList={[]}
+            pSession={session}
+            onReset={onSave}
+            defaultValue={defaultValue}
+          />
+        );
+      }
+    case 'message_monitor': {
       let defaultValueObj = {};
       if (!defaultValue) { defaultValueObj = { recipientID: '*select' }; }
       else {
@@ -379,21 +431,80 @@ export default ({
         }
       }
       return (
-        <MakeMessage
-          titleText={defaultValueObj.title}
-          promptText={defaultValueObj.prompt || `What's the Message?`}
-          promptUse={defaultValueObj.promptUse}
-          buttonText={defaultValueObj.button || 'Send'}
-          sender={session}
-          pRecipientID={defaultValueObj.recipientID || '*select'}
-          pRecipientName={defaultValueObj.recipientName || `user ${defaultValueObj.recipientID}`}
-          peopleList={defaultValueObj.peopleList || []}
-          options={defaultValueObj.options}
-          onCancel={onClose}
-          onComplete={onClose}
-          allowCancel={true}
+        <MessageMonitor
+          defaults={defaultValueObj}
+          onCancel={() => {
+            onClose();
+          }}
         />
       );
+    }
+    case 'make_message': {
+      let defaultValueObj = {};
+      if (!defaultValue) { defaultValueObj = { recipientID: '*select' }; }
+      else {
+        if (Array.isArray(defaultValue)) {
+          defaultValue.forEach(d => {
+            if (typeof d === 'string') {
+              let [dKey, dVal] = d.split('=');
+              defaultValueObj[dKey] = dVal;
+            }
+            else {
+              for (let dKey in d) {
+                defaultValueObj[dKey] = d[dKey];
+              }
+            }
+          });
+        }
+        else {
+          try { defaultValueObj = JSON.parse(defaultValue); }
+          catch { console.log(defaultValue); }
+        }
+      }
+      let recipients = [];
+      if ((defaultValueObj.hasOwnProperty('recipientID')) && (Object.keys(defaultValueObj.recipientID).length > 0)) {
+        for (const [i, person_id] of [defaultValueObj.recipientID].flat().entries()) {
+          recipients.push({
+            person_id,
+            person_name: ([defaultValueObj.recipientName].flat()[i] || `user ${person_id}`)
+          });
+        }
+      }
+      if ((session.client_style.allow_old_messaging) && !state.patient.useNewMessaging) {
+        return (
+          <MakeMessage
+            titleText={defaultValueObj.title}
+            promptText={defaultValueObj.prompt || `What's the Message?`}
+            promptUse={defaultValueObj.promptUse}
+            buttonText={defaultValueObj.button || 'Send'}
+            sender={session}
+            pRecipientID={defaultValueObj.recipientID || '*select'}
+            pRecipientName={defaultValueObj.recipientName || `user ${defaultValueObj.recipientID}`}
+            peopleList={defaultValueObj.peopleList || []}
+            options={defaultValueObj.options}
+            onCancel={onClose}
+            onComplete={onClose}
+            allowCancel={true}
+          />
+        );
+      }
+      else {
+        return (
+          <MessageForm
+            pPerson={session.patient_id}
+            pClient={session.client_id}
+            pMessageList={[]}
+            pSession={session}
+            onReset={onClose}
+            options={{
+              newMessage: true,
+              recipients,
+              showPreferredList: (defaultValueObj.options === 'groupOnly' ? false : true),
+              showGroupList: (defaultValueObj.options === 'groupOnly' ? true : false),
+            }}
+          />);
+      }
+    };
     case 'bulletin_board':
       return (
         <BulletinBoard
@@ -403,11 +514,19 @@ export default ({
         />
       );
     case 'submit_report':
+      let requestor = [];
+      if (defaultObject.hasOwnProperty('requestor') && ([defaultObject.requestor].flat().length > 0)) {
+        requestor = [defaultObject.requestor].flat();
+      }
+      if (!requestor.includes(session.user_id)) {
+        requestor.push(session.user_id);
+      }
       return (
         <ReportRequest
           report_id={defaultObject.report_id}
           title={defaultObject.title}
           buttonText={defaultObject.buttonText}
+          requestor={requestor}
           options={defaultObject.options}
           onClose={(response) => {
             onClose(response);
@@ -653,6 +772,7 @@ export default ({
     case 'show_groups':
       return (
         <ShowGroup
+          defaults={defaultObject}
           options={{
             pSession: session,
             pGroup_id: (defaultObject?.groups || defaultValue),
@@ -670,6 +790,38 @@ export default ({
             }
           }}
           onAbort={onClose}
+        />
+      );
+    case 'manage_groups':
+      return (
+        <ShowGroup
+          defaults={defaultObject}
+          options={{
+            pSession: session,
+            pGroup_id: (defaultObject?.groups || defaultValue),
+            pGroup_name: message,
+            peopleList: values,
+            showList: (defaultObject?.mode || 'full'),
+            safeMode: defaultObject.safeMode,
+            groupManagement: true
+          }}
+          onClose={(updatesMade) => {
+            if (updatesMade) {
+              window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+            }
+            else {
+              onSave();
+            }
+          }}
+          onAbort={onClose}
+        />
+      );
+    case 'manage_forms':
+      return (
+        // defaults, focusAt, onCancel, onSelect, onRefresh 
+        <FormManagement
+          defaults={defaultObject}
+          onClose={onClose}
         />
       );
     case 'carousel':

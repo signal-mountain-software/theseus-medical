@@ -5,7 +5,9 @@ import Box from '@material-ui/core/Box';
 import useSession from '../hooks/useSession';
 
 import AVAMenu from '../components/sections/AVAMenu';
+import ConnectMenu from '../components/sections/ConnectMenu';
 import FormFillB from '../components/forms/FormFillB';
+import PeopleMaintenance from '../components/dialogs/PeopleMaintenance';
 
 import { useCookies } from 'react-cookie';
 
@@ -25,7 +27,7 @@ export default () => {
       });
   }
 
-  if (cookies.AVAaction) {    
+  if (cookies.AVAaction) {
     if (cookies.AVAaction.document) {
       return (
         <FormFillB
@@ -45,9 +47,20 @@ export default () => {
                   window.location.replace(jumpTo);
                 }
               }
-            }       
+            }
             let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
             window.location.replace(jumpTo);
+          }}
+        />
+      );
+    }
+    else if (cookies.AVAaction.forms) {
+      return (
+        <PeopleMaintenance
+          person_id={patient.person_id}
+          options={{ sectionToShow: ['FormSection'] }}
+          onClose={() => { 
+            removeCookie("AVAaction");
           }}
         />
       );
@@ -58,7 +71,10 @@ export default () => {
 
   return (
     <Box>
-      <AVAMenu pPerson={patient.person_id} patient={patient} pClient={session.client_id} />
+      {(state.session.client_style && state.session.client_style.ui_tiles)
+        ? <ConnectMenu pPerson={patient.person_id} patient={patient} pClient={session.client_id} />
+        : <AVAMenu pPerson={patient.person_id} patient={patient} pClient={session.client_id} />
+      }
     </Box>
   );
 };

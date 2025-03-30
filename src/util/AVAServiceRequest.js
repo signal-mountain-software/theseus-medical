@@ -1,4 +1,4 @@
-import { clt, cl, recordExists, getCustomizations, dbClient, makeArray, deepCopy, isObject, s3 } from '../util/AVAUtilities';
+import { clt, cl, recordExists, getCustomizations, dbClient, makeArray, deepCopy, isObject, s3, sentenceCase } from '../util/AVAUtilities';
 import { getActivity } from '../util/AVAObservations';
 import { getPerson, makeName } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
@@ -294,15 +294,19 @@ export async function putServiceRequest(body) {
     });
 
   // HANDLE MESSAGING IF NEEDED
+  let messageResult = `No message sent`;
   if (goodWrite && body.messaging) {
-    await handleServiceRequestMessaging(body, serviceRequestRec);
+    messageResult = await handleServiceRequestMessaging(body, serviceRequestRec);
   }
 
   return {
     'request_id': serviceRequestRec.request_id,
     'requestRec': serviceRequestRec,
     'body': body,
-    'message': (goodWrite ? `${body.requestType} request ${serviceRequestRec.request_id} added (${body.author} for ${serviceRequestRec.on_behalf_of})` : 'Request not added')
+    'message': (goodWrite
+      ? sentenceCase(`${body.requestType} request added for ${serviceRequestRec.on_behalf_of} - ${messageResult}`)
+      : 'Request not added'
+    )
   };
 }
 
@@ -358,15 +362,6 @@ export async function handleServiceRequestMessaging(body, serviceRequestRec) {
   let rTime = makeDate(new Date().getTime());
   let rMsg;
   if (Array.isArray(body.messaging)) {   // if messaging is an array, send everything in the array
-    // for (let msgNum = 0; msgNum < body.messaging.length; msgNum++) {
-    //let this_message = body.messaging[msgNum];
-    //if (this_message.format) {   // old style
-    //if (this_message.format.method === 'hold') {
-    //serviceRequestRec.last_status = 'Prepared & Held';
-    //rMsg = `Held for future processing ${rTime.oaDate}`;
-    //}
-    // else {
-    //  Object.assign(body, this_message);
     let preparedMessages = await prepareMessage(body, serviceRequestRec);
     if (preparedMessages.length > 0) {
       preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
@@ -375,21 +370,18 @@ export async function handleServiceRequestMessaging(body, serviceRequestRec) {
       let sendResults = (await sendMessages(preparedMessages)).pop();   // send all the messages in the queue.  THe service request status will reflect the results of the last message (pop)
       if (!sendResults.sent) {
         serviceRequestRec.last_status = 'Failed to send';
-        rMsg = `Failed to send ${rTime.oaDate}`;
+        rMsg = `Attempt to send this request was unsuccessful.`;
       }
       else {
-        // serviceRequestRec.last_status = 'Sent';
-        rMsg = `Sent for processing ${rTime.oaDate}`;
+        rMsg = sendResults.message || `Successfully sent!`;
       }
     }
-    //}
     if (('history' in serviceRequestRec) && Array.isArray(serviceRequestRec.history)) {
-      serviceRequestRec.history.unshift(rMsg);
+      serviceRequestRec.history.unshift(`${rMsg} (${rTime.oaDate})`);
     }
-    else { serviceRequestRec.history = [rMsg]; }
+    else { serviceRequestRec.history = [`${rMsg} (${rTime.oaDate})`]; }
     await updateServiceRequest(serviceRequestRec);
-    // }
-    // }
+    return rMsg;
   }
   else {      // if messaging is an object, send only the key that matches the current status
     // are there instructions for this status?
@@ -412,6 +404,7 @@ export async function handleServiceRequestMessaging(body, serviceRequestRec) {
       let SRDocument = await prepareSRDocuments(this_instruction.document_type, serviceRequestRec);
       await sendSRDocuments(this_instruction.distribution_method, SRDocument, serviceRequestRec);
     }
+    return null;
   }
 
   function handleTest(this_instruction, serviceRequestRec) {

@@ -83,59 +83,129 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
         flexDirection='column'
         justifyContent="center"
       >
-        <Typography
-          style={AVATextStyle({ margin: { top: 1 } })}
-        >
-          {'Require a password to log in?'}
-        </Typography>
-        <Box flexGrow={2} display='flex' alignItems='center'
-          justifyContent='flex-start' marginBottom={1} flexDirection='row'>
-          <Typography
-            style={AVATextStyle({
-              size: 0.8, margin: { right: 0.8 },
-              bold: !currentValues.peopleRec.requirePassword
-            })}
+        {!reactData.mandatory_passwords
+          // Require Password 
+          ? <Box
+            display="flex"
+            pt={2}
+            flexDirection='column'
+            justifyContent="center"
           >
-            {'Simplified Log-in'}
-          </Typography>
-          <Switch
-            checked={currentValues.peopleRec.requirePassword}
-            onClick={async (event) => {
-              const newValue = !currentValues.peopleRec.requirePassword;
-              let updateObj = {
-                updateList: [{
-                  tableName: 'peopleRec',
-                  fieldName: 'requirePassword',
-                  newData: newValue
-                },
-                {
-                  tableName: 'sessionRec',
-                  fieldName: 'requirePassword',
-                  newData: newValue
-                }]
-              };
-              if (newValue && (!currentValues.sessionRec.last_login || (currentValues.sessionRec.last_login.length < 5))) {
-                updateObj.errorObj = {
-                  errorField: 'password',
-                  errorValue: currentValues.sessionRec.last_login,
-                  isError: true,
-                  errorMessage: `Please enter a password that is at least 5 characters in length`
-                };
-              }
-              await updateField(updateObj);
-            }}
-            name="PWDrequired"
-            color="primary"
-          />
-          <Typography
-            style={AVATextStyle({
-              size: 0.8, margin: { left: 0.8 },
-              bold: currentValues.peopleRec.requirePassword
-            })}
+            <Typography
+              style={AVATextStyle({ margin: { top: 1 } })}
+            >
+              {'Require a password to log in?'}
+            </Typography>
+            <Box flexGrow={2} display='flex' alignItems='center'
+              justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+              <Typography
+                style={AVATextStyle({
+                  size: 0.8, margin: { right: 0.8 },
+                  bold: !currentValues.peopleRec.requirePassword
+                })}
+              >
+                {'Simplified Log-in'}
+              </Typography>
+              <Switch
+                checked={currentValues.peopleRec.requirePassword}
+                onClick={async (event) => {
+                  const newValue = !currentValues.peopleRec.requirePassword;
+                  let updateObj = {
+                    updateList: [{
+                      tableName: 'peopleRec',
+                      fieldName: 'requirePassword',
+                      newData: newValue
+                    },
+                    {
+                      tableName: 'sessionRec',
+                      fieldName: 'requirePassword',
+                      newData: newValue
+                    }]
+                  };
+                  if (newValue && (!currentValues.sessionRec.last_login || (currentValues.sessionRec.last_login.length < 5))) {
+                    updateObj.errorObj = {
+                      errorField: 'password',
+                      errorValue: currentValues.sessionRec.last_login,
+                      isError: true,
+                      errorMessage: `Please enter a password that is at least 5 characters in length`
+                    };
+                  }
+                  await updateField(updateObj);
+                }}
+                name="PWDrequired"
+                color="primary"
+              />
+              <Typography
+                style={AVATextStyle({
+                  size: 0.8, margin: { left: 0.8 },
+                  bold: currentValues.peopleRec.requirePassword
+                })}
+              >
+                {'Password Required'}
+              </Typography>
+            </Box>
+          </Box>
+          : <Typography
+            style={AVATextStyle({ margin: { top: 1 } })}
           >
-            {'Password Required'}
+            {`${reactData.client_name} requires passwords for all accounts`}
           </Typography>
-        </Box>
+        }
+        {reactData.administrative_account &&
+          // Force Password change
+          <Box
+            display="flex"
+            pt={2}
+            flexDirection='column'
+            justifyContent="center"
+          >
+            <Typography
+              style={AVATextStyle({ margin: { top: 1 } })}
+            >
+              {'Force Password Change?'}
+            </Typography>
+            <Box flexGrow={2} display='flex' alignItems='center'
+              justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+              <Typography
+                style={AVATextStyle({
+                  size: 0.8, margin: { right: 0.8 },
+                  bold: !currentValues.sessionRec.forceSetPassword
+                })}
+              >
+                {'No'}
+              </Typography>
+              <Switch
+                checked={currentValues.sessionRec.forceSetPassword}
+                onClick={async (event) => {
+                  const newValue = !currentValues.sessionRec.forceSetPassword;
+                  let updateObj = {
+                    updateList: [{
+                      tableName: 'peopleRec',
+                      fieldName: 'forceSetPassword',
+                      newData: newValue
+                    },
+                    {
+                      tableName: 'sessionRec',
+                      fieldName: 'forceSetPassword',
+                      newData: newValue
+                    }]
+                  };
+                  await updateField(updateObj);
+                }}
+                name="ForcePWDchange"
+                color="primary"
+              />
+              <Typography
+                style={AVATextStyle({
+                  size: 0.8, margin: { left: 0.8 },
+                  bold: currentValues.sessionRec.forceSetPassword
+                })}
+              >
+                {'Yes'}
+              </Typography>
+            </Box>
+          </Box>
+        }
         {currentValues.peopleRec.requirePassword &&
           <Box display='flex' alignItems='center'
             justifyContent='flex-start' flexDirection='row'>
@@ -203,7 +273,63 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
             />
           </Box>
         }
-        {reactData.administrative_account &&
+        {reactData.administrative_account && !reactData.master_account &&
+          <React.Fragment>
+            <Typography
+              style={AVATextStyle({ margin: { top: 1.5 } })}
+            >
+              {`Account Class`}
+            </Typography>
+            <Box
+              display='flex'
+              flexDirection='row'
+              marginLeft={-0.5}
+              marginTop={-0}
+              flexWrap={'wrap'}
+            >
+              {[{ option: 'support', label: 'Support' },
+              { option: 'admin', label: 'Admin' },
+              { option: 'camper', label: 'Camper' },
+              { option: 'family', label: 'Family/Other' },
+              { option: '', label: 'Standard' }
+              ].map((this_option, tIndex) => (
+                <Box
+                  display='flex'
+                  flexDirection='row'
+                  alignItems={'center'}
+                  key={`MessagePref_option__${tIndex}`}
+                  style={{ marginRight: '24px' }}
+                >
+                  <Checkbox
+                    aria-label={`MessagePref_option__${tIndex}`}
+                    name={`MessagePref_option__${tIndex}`}
+                    key={`MessagePref_option__${tIndex}`}
+                    size='small'
+                    checked={((currentValues.peopleRec.account_class === this_option.option)
+                      || (!this_option.option && !currentValues.peopleRec.account_class))
+                    }
+                    onClick={async () => {
+                      await updateField({
+                        updateList:
+                          [{
+                            tableName: 'peopleRec',
+                            fieldName: 'account_class',
+                            newData: this_option.option
+                          }]
+                      });
+                    }}
+                    disableRipple
+                    inputProps={{ 'aria-labelledby': `message_routing_3` }}
+                  />
+                  <Typography style={AVATextStyle({ size: 0.8, margin: { left: -0.4 } })} >
+                    {`${this_option.label}`}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          </React.Fragment>
+        }
+        {reactData.master_account &&
           <React.Fragment>
             <Typography
               style={AVATextStyle({ margin: { top: 1.5 } })}
@@ -218,10 +344,10 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
               flexWrap={'wrap'}
             >
               {[{ option: 'master', label: 'Master' },
-                { option: 'support', label: 'Support' },
-                { option: 'admin', label: 'Admin' },
-                { option: 'camper', label: 'Camper' },
-                { option: 'family', label: 'Family/Other' },
+              { option: 'support', label: 'Support' },
+              { option: 'admin', label: 'Admin' },
+              { option: 'camper', label: 'Camper' },
+              { option: 'family', label: 'Family/Other' },
               { option: '', label: 'Standard' }
               ].map((this_option, tIndex) => (
                 <Box

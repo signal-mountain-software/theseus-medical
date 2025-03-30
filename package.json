@@ -1,6 +1,6 @@
 {
   "name": "ava",
-  "version": "24.12.17",
+  "version": "25.03.31",
   "private": true,
   "scripts": {
     "start": "react-scripts --openssl-legacy-provider start",
@@ -36,6 +36,7 @@
     "react-beautiful-dnd": "^13.1.1",
     "react-cookie": "^4.1.1",
     "react-cropper": "^2.1.8",
+    "react-date-picker": "^11.0.0",
     "react-device-detect": "^2.2.2",
     "react-dom": "^16.13.1",
     "react-dropdown-select": "^4.11.2",

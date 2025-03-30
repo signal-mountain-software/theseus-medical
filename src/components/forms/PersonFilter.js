@@ -387,7 +387,7 @@ export default ({
                     </Box>
                     :
                     <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='flex-start'>
-                      <Typography style={AVATextVariableStyle(listEntry.display_name, { bold: true, color: 'blue' })}>
+                      <Typography style={AVATextVariableStyle(listEntry.display_name, { bold: true })}>
                         {listEntry.display_name}
                       </Typography>
                     </Box>

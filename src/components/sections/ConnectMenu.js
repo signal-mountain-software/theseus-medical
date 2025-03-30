@@ -7,6 +7,11 @@ import { getActivity } from '../../util/AVAObservations';
 import { getActivityDetail } from '../../util/AVAActivityLoader';
 import { AVATextStyle, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
 
+import Card from '@material-ui/core/Card';
+import CardActionArea from '@material-ui/core/CardActionArea';
+import CardContent from '@material-ui/core/CardContent';
+import CardMedia from '@material-ui/core/CardMedia';
+
 import { Snackbar } from '@material-ui/core';
 import Alert from '@material-ui/lab/Alert';
 import AlertTitle from '@material-ui/lab/AlertTitle';
@@ -24,12 +29,10 @@ import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import NewFactDialog from '../dialogs/NewFactDialog';
 import MakeAVAMenu from '../../util/MakeAVAMenu';
 
-import List from '@material-ui/core/List';
 import Box from '@material-ui/core/Box';
 import Avatar from '@material-ui/core/Avatar';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
-import IconButton from '@material-ui/core/IconButton';
 import Dialog from '@material-ui/core/Dialog';
 
 import Menu from '@material-ui/core/Menu';
@@ -37,15 +40,12 @@ import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
 
 import EditIcon from '@material-ui/icons/PersonOutlineOutlined';
-import FavoriteIcon from '@material-ui/icons/FavoriteBorder';
-import NotFavorite from '@material-ui/icons/DeleteForever';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import SubscriptionIcon from '@material-ui/icons/CardMembership';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import NewReleasesOutlinedIcon from '@material-ui/icons/NewReleasesOutlined';
-import LinearProgress from '@material-ui/core/LinearProgress';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 import SearchIcon from '@material-ui/icons/Search';
 
@@ -53,6 +53,29 @@ import Tooltip from '@material-ui/core/Tooltip';
 import QuickSearch from './QuickSearch';
 
 const useStyles = makeStyles(theme => ({
+  root: {
+    maxWidth: 100,
+    minWidth: 100,
+    maxHeight: 100,
+    minHeight: 100,
+  },
+  cardcontent: {
+    height: 80,
+    alignContent: 'center',
+
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  cardcontentdetail: {
+    height: 100,
+    alignContent: 'center',
+    padding: 0
+  },
+  media: {
+    height: 20,
+  },
   page: {
     height: 950,
     maxWidth: 1000
@@ -247,7 +270,7 @@ const useStyles = makeStyles(theme => ({
 export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   const classes = useStyles();
-  const subMenuHead = React.useRef(null);
+
   const { state } = useSession();
   const { roles, session } = state;
 
@@ -264,7 +287,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     menuArray: ['main'],
     menuNames: [],
     selected: null,
-    sectionOpen: {},
+    sectionOpen: false,
     current_time: new Date(),
     showPersonSelect: false,
     popupMenuOpen: false,
@@ -303,28 +326,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const oneHour = 60 * oneMinute;
   const msBeforeSleeping = 1 * oneMinute;
 
-  let user_fontSize = AVADefaults({ fontSize: 'get' });
-
-  const avatarStyle = background_color => {
-    if (isDark(background_color)) {
-      return {
-        width: `${(50 * user_fontSize)}px`,
-        height: `${(50 * user_fontSize)}px`,
-        padding: '10px',
-        borderRadius: '30px',
-        backgroundColor: 'cornsilk'
-      };
-    }
-    else {
-      return {
-        width: `${(50 * user_fontSize)}px`,
-        height: `${(50 * user_fontSize)}px`,
-        padding: '10px',
-        borderRadius: '30px',
-        backgroundColor: `${background_color}b2`
-      };
-    }
-  };
+  const subMenuHead = React.useRef(null);
 
   const onIdle = async () => {
     let now = new Date();
@@ -444,9 +446,135 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   let nowTime = new Date().getTime();
 
+  // drag to Favorites
+  const handleDragStart = (ev, id) => {
+    ev.dataTransfer.setData('id', JSON.stringify(id));
+  };
+
+  const handleDragOver = (ev) => {
+    ev.preventDefault();
+  };
+
+  const handleDrop = async (ev, { droppedOn }) => {
+    ev.preventDefault();
+    let draggedFrom = JSON.parse(ev.dataTransfer.getData('id'));
+    let activityRow = reactData.mainMenu[draggedFrom.index];
+    let activityLine = activityRow.raw_data;
+    let personRec = await dbClient
+      .get({
+        Key: { person_id: pPerson },
+        TableName: "People"
+      })
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          updateReactData({
+            alert: {
+              severity: 'error',
+              title: 'No internet',
+              message: `There is no internet connection.  AVA cannot update your Favorites.`
+            }
+          }, true);
+        }
+        cl(`caught error getting People record; error is:`, error);
+      });
+    if (!recordExists(personRec)) {
+      return;
+    }
+    let favoriteList = [];
+    if ('favorite_activities' in personRec.Item) {
+      favoriteList = personRec.Item.favorite_activities;
+    }
+    let draggedAt = favoriteList.findIndex(r => {
+      if (typeof (r) === 'string') {
+        return (r.split('~')[0] === activityRow.activity_code);
+      }
+      else {
+        return (r.activity_code === activityRow.activity_code);
+      }
+    });
+    if (draggedFrom.from_type === 'favorites') {
+      if (droppedOn.to_type === 'favorites') {
+        // re-ordering favorites
+        favoriteList.splice(draggedAt, 1);
+        reactData.mainMenu.splice(draggedFrom.index, 1);
+        let droppedAt = favoriteList.findIndex(r => {
+          if (typeof (r) === 'string') {
+            return (r.split('~')[0] === droppedOn.activity_code);
+          }
+          else {
+            return (r.activity_code === droppedOn.activity_code);
+          }
+        });
+        favoriteList.splice(droppedAt, 0, draggedFrom.rawData);
+        reactData.mainMenu.splice(droppedOn.index, 0, draggedFrom.wholeRow);
+      }
+      else {
+        // remove from favorites
+        if (draggedAt > -1) {
+          favoriteList.splice(draggedAt, 1);
+          reactData.mainMenu.splice(draggedFrom.index, 1);
+        }
+      }
+    }
+    else {
+      // adding something to favorites
+      if (draggedAt === -1) {
+        favoriteList.unshift(activityLine);
+        reactData.mainMenu[draggedFrom.index].is_favorite = true;
+        reactData.mainMenu.unshift({
+          menu_name: 'main',
+          sort_key: `**2-0000`,
+          section_name: (reactData.mainMenu[0].section_name.toLowerCase().includes('favorites')
+            ? reactData.mainMenu[0].section_name
+            : `My Favorites`
+          ),
+          section_color: '#6bb44b',
+          section_icon: 'https://ava-icons.s3.amazonaws.com/icons8-favorite-50.png',
+          row_color: '#6bb44b',
+          activity_code: activityRow.activity_code,
+          activity_name: activityRow.activity_name,
+          activity_class: activityRow.activity_class,
+          row_type: activityRow.row_type,
+          raw_data: activityLine,
+          default_value: activityRow.default_value || null,
+          parent_menu: null,
+          child_menu: activityRow.child_menu,
+          reason: 'Favorite',
+          last_used: activityRow.last_used,
+          is_favorite: true
+        });
+      }
+    }
+    await dbClient
+      .update({
+        Key: { person_id: pPerson },
+        UpdateExpression: 'set favorite_activities = :f',
+        ExpressionAttributeValues: {
+          ':f': favoriteList,
+        },
+        TableName: "People",
+      })
+      .promise()
+      .catch(error => {
+        updateReactData({
+          alert: {
+            severity: 'error',
+            title: 'No internet',
+            message: `AVA couldn't update your Favorites.`
+          }
+        }, true);
+        return;
+      });
+    updateReactData({
+      mainMenu: reactData.mainMenu,
+      loading: false
+    }, true);
+  };
+
   const buildMenu = async (reload = false, beQuiet = null) => {
     let reactUpdObj = {
-      sectionOpen: {}
+      sectionOpen: false
     };
     // AVA_section_open in People record, or (legacy code) current_event in SessionV2 record
     // is used to save what the screen looked like last time the user was in AVA
@@ -476,9 +604,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       });
     if (recordExists(menuRec)) {
       reactUpdObj.loadedMenuVersion = menuRec.Item.menu_version;
-      reactUpdObj.sectionOpen = menuRec.Item.AVA_section_open || {};
+      reactUpdObj.sectionOpen = false; 
       if ((menuRec.Item.AVA_main_menu && (menuRec.Item.AVA_main_menu.length > 0)) && !reload) {
         reactUpdObj.mainMenu = menuRec.Item.AVA_main_menu;
+        reactUpdObj.sectionOpen = Object.assign({}, reactUpdObj.mainMenu[0], { index: 0 }); 
         updateReactData(reactUpdObj, true);
         return menuRec.Item.AVA_main_menu;
       }
@@ -491,6 +620,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     if (wholeMenu.length > 0) {
       await updateAVA(reactData.sectionOpen, wholeMenu);
       reactUpdObj.mainMenu = wholeMenu;
+      if (!reactUpdObj.sectionOpen) {
+        reactUpdObj.sectionOpen = Object.assign({}, reactUpdObj.mainMenu[0], { index: 0 }); 
+      }
       updateReactData(reactUpdObj, true);
       return wholeMenu;
     }
@@ -514,7 +646,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         section_name: 'Get AVA Help',
         sort_key: 'Messages, Comments, and Feedback'
       };
-      reactUpdObj.sectionOpen = { 'Get AVA Help': true };
       reactUpdObj.mainMenu = [helpRow];
       updateReactData(reactUpdObj, true);
     }
@@ -566,131 +697,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       reactUpdObj.mainMenu = interimMenu;
     }
     updateReactData(reactUpdObj, true);
-  };
-
-  const updateFavorites = async (pType, activityRowIndex) => {
-    let activityRow = reactData.mainMenu[activityRowIndex];
-    let activityLine = activityRow.raw_data;
-    let changeMade = false;
-    let personRec = await dbClient
-      .get({
-        Key: { person_id: pPerson },
-        TableName: "People"
-      })
-      .promise()
-      .catch(error => {
-        if (error.code === 'NetworkingError') {
-          updateReactData({
-            alert: {
-              severity: 'error',
-              title: 'No internet',
-              message: `There is no internet connection.  AVA cannot update your Favorites.`
-            }
-          }, true);
-        }
-        cl(`caught error getting People record; error is:`, error);
-      });
-    if (recordExists(personRec)) {
-      // add or remove from the favoriteList as appropriate
-      let favoriteList = [];
-      if ('favorite_activities' in personRec.Item) {
-        favoriteList = personRec.Item.favorite_activities;
-      }
-      let indexAt = favoriteList.findIndex(r => {
-        if (typeof (r) === 'string') {
-          return (r.split('~')[0] === activityRow.activity_code);
-        }
-        else {
-          return (r.activity_code === activityRow.activity_code);
-        }
-      });
-      if ((indexAt === -1) && (pType === 'add')) {
-        favoriteList.unshift(activityLine);
-        changeMade = true;
-      }
-      else if (pType === 'remove') {
-        favoriteList.splice(indexAt, 1);
-        changeMade = true;
-      }
-      // remove from the blockedList if it is in there
-      let favoriteBlocked = [];
-      if ('favorite_blocked' in personRec.Item) {
-        favoriteBlocked = personRec.Item.favorite_blocked;
-      }
-      indexAt = favoriteBlocked.findIndex(r => {
-        if (typeof (r) === 'string') {
-          return (r.split('~')[0] === activityRow.activity_code);
-        }
-        else {
-          return (r.activity_code === activityRow.activity_code);
-        }
-      });
-      if ((indexAt === -1) && (pType === 'remove')) {
-        favoriteBlocked.push(activityLine);
-        changeMade = true;
-      }
-      else if (pType === 'add') {
-        favoriteBlocked.splice(indexAt, 1);
-        changeMade = true;
-      }
-      // rewrite the People record with the new favorite and blocked lists
-      if (changeMade) {
-        await dbClient
-          .update({
-            Key: { person_id: pPerson },
-            UpdateExpression: 'set favorite_activities = :f, favorite_blocked = :b',
-            ExpressionAttributeValues: {
-              ':f': favoriteList,
-              ':b': favoriteBlocked
-            },
-            TableName: "People",
-          })
-          .promise()
-          .catch(error => {
-            updateReactData({
-              alert: {
-                severity: 'error',
-                title: 'No internet',
-                message: `AVA couldn't update your Favorites.`
-              }
-            }, true);
-            return;
-          });
-        if (pType === 'add') {
-          reactData.mainMenu[activityRowIndex].is_favorite = true;
-          reactData.mainMenu.unshift({
-            menu_name: 'main',
-            sort_key: `**2-0000`,
-            section_name: (reactData.mainMenu[0].section_name.includes('favorites')
-              ? reactData.mainMenu[0].section_name
-              : `My Favorites`
-            ),
-            section_color: '#6bb44b',
-            section_icon: 'https://ava-icons.s3.amazonaws.com/icons8-favorite-50.png',
-            row_color: '#6bb44b',
-            activity_code: activityRow.activity_code,
-            activity_name: activityRow.activity_name,
-            activity_class: activityRow.activity_class,
-            row_type: activityRow.row_type,
-            default_value: activityRow.default_value || null,
-            parent_menu: null,
-            child_menu: activityRow.child_menu,
-            reason: 'Favorite',
-            last_used: activityRow.last_used,
-            is_favorite: true
-          });
-        }
-        else {
-          reactData.mainMenu.splice(activityRowIndex, 1);
-        };
-      }
-      window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
-      updateReactData({
-        mainMenu: reactData.mainMenu,
-        loading: false
-      }, true);
-    };
-    return;
   };
 
   const onSaveFact = async (pFact, pFactName, pIndex) => {
@@ -944,10 +950,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     return false;
   };
 
-  function rowIsOpen(pRow) {
-    return (reactData.sectionOpen[pRow.section_name] || (reactData.currentMenu !== 'main'));
-  }
-
   // ******************
 
   return (
@@ -1039,7 +1041,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 }}
                 title={
                   <Typography variant='caption'>
-                    {session?.kiosk_mode ? 'View/Update not available' : `View/Update ${reactData.greetingName}'${reactData.greetingName.slice(-1) === 's' ? '' : 's'} Profile`}
+                    {`Administration Menu`}
                   </Typography>
                 }
                 placement='bottom-start'>
@@ -1050,7 +1052,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               </Tooltip>
               {makeDate(reactData.current_time, { timeZone: state.session.client_timezone }).absolute.split(' at ').map((tLine, tX) => (
                 <Typography
-                  key={`time_line-${tX}`}
+                  key={`time_${tX}`}
                   style={AVATextStyle({ align: 'center', size: 0.8 })}
                   id='scroll-dialog-title'
                 >
@@ -1242,7 +1244,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   }}>
                   <Box
                     display='flex' flexDirection='row' alignItems={'center'}
-                    key={'vRowRefresh'}
+                    key={'restart_menu_option'}
                   >
                     <AutorenewIcon />
                     <Typography className={classes.popUpMenuRow} >{'Restart AVA'}</Typography>
@@ -1255,7 +1257,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     }}>
                     <Box
                       display='flex' flexDirection='row' alignItems={'center'}
-                      key={'vRowRefresh'}
+                      key={'use_beta_menu_option'}
                     >
                       <NewReleasesOutlinedIcon />
                       <Typography className={classes.popUpMenuRow} >{'Use Beta Version'}</Typography>
@@ -1269,7 +1271,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     }}>
                     <Box
                       display='flex' flexDirection='row' alignItems={'center'}
-                      key={'vRowRefresh'}
+                      key={'use_public_menu_option'}
                     >
                       <NewReleasesOutlinedIcon />
                       <Typography className={classes.popUpMenuRow} >{'Use Public Version'}</Typography>
@@ -1279,7 +1281,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 <MenuItem>
                   <Box
                     display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
-                    key={'vRowRefresh'}
+                    key={'menu_footer'}
                   >
                     <Typography className={classes.popUpFooter} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                     <Typography className={classes.popUpFooter} >{makeExpiration()}
@@ -1293,263 +1295,221 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
           {/* AVA Menu */}
           {reactData.mainMenu && reactData.mainMenu.length > 0 &&
-            <Paper component={Box} className={classes.clientBackground} variant='outlined' overflow={'auto'} >
+            <Paper
+              component={Box} className={classes.clientBackground} variant='outlined' overflow={'auto'}
+              style={{ flexGrow: '1' }}
+            >
               <Box
-                display='flex' flexDirection='row'
-                key={'vRowRefresh'}
+                display='flex' flexDirection='column'
+                key={'master_connect_column'}
+                flexWrap={'wrap'}
+                mt={2} mb={2} ml={1} mr={1}
               >
-                <Box flex={2} overflow={'hidden'} >
-                  <List >
-                    {reactData.currentMenu !== 'main' &&
-                      <Paper mt={1.5} className={classes.clientBackground} component={Box} elevation={0} key={'gobacksection'} >
-                        <Box
-                          display='flex'
-                          style={{ borderRadius: '30px 30px 30px 30px', backgroundColor: '#d25958', textDecoration: 'none' }}
-                          borderTop={.5}
-                          borderBottom={.5}
-                          borderLeft={1}
-                          borderRight={1}
-                          ml={2} mr={2}
-                          justifyContent='center'
-                          flexDirection='column'
-                          minHeight={80}
-                          onClick={async () => {
-                            reactData.menuArray.pop();
-                            reactData.menuNames.pop();
-                            updateReactData({
-                              menuArray: reactData.menuArray,
-                              menuNames: reactData.menuNames,
-                              currentMenu: reactData.menuArray[reactData.menuArray.length - 1]
-                            }, true);
-                          }}
-                        >
-                          <Box
-                            display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                            key={'goback row'}
-                            className={classes.sectionHeader}
+                <Box
+                  display='flex' flexDirection='row'
+                  key={'vRowRefresh_cell_boxes'}
+                  flexWrap={'wrap'}
+                  mt={2} mb={2} ml={1} mr={1}
+                >
+                  {reactData.mainMenu.map((this_row, index) => (
+                    ((this_row.menu_name === reactData.currentMenu) &&
+                      <React.Fragment key={`master_cell_fragment_${index}`}>
+                        {currentSection !== this_row.section_name &&
+                          <Card className={classes.root}
+                            key={`master_card_${index}`}
+                            style={{
+                              marginRight: '8px', marginLeft: '8px', marginTop: '16px',
+                              borderRadius: ('30px 30px 30px 30px'),
+                              borderWidth: 4,
+                              boxShadow: (reactData.sectionOpen.index === index) ? ('10px 10px 10px') : null,
+                              borderStyle: (reactData.sectionOpen.index === index) ? 'solid' : null,
+                              borderColor: 'black',
+                              backgroundColor: hexToRgb(this_row.section_color, 1),
+                              textDecoration: 'none'
+                            }}
+                            onClick={async () => {
+                              updateReactData({
+                                sectionOpen: (reactData.sectionOpen && (reactData.sectionOpen.index === index))
+                                  ? false
+                                  : Object.assign({}, this_row, { index })
+                              }, true);
+                            }}
                           >
-                            <Avatar
-                              src={`https://ava-icons.s3.amazonaws.com/back.png`}
-                              sx={{ width: 30, height: 30 }}
-                              alt=""
-                              variant="square"
-                            />
-                            <Box display='flex' ml={2} mr={5} flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
-                              <Box display='flex' flexDirection='column'>
-                                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' overflow='hidden'>
-                                  <Typography style={AVATextStyle({ size: 1.5 })} ref={subMenuHead}>{`Return to ${reactData.menuNames[reactData.menuNames.length - 1]}`}</Typography>
-                                </Box>
-                              </Box>
-                            </Box>
-                          </Box>
-                        </Box>
-                      </Paper>
-                    }
-                    {reactData.mainMenu.map((this_row, index) => (
-                      ((this_row.menu_name === reactData.currentMenu) &&
-                        <React.Fragment
-                          key={this_row.activity_code + 'fragment' + index}
-                        >
-                          {currentSection !== this_row.section_name &&
-                            <Box
-                              display='flex'
-                              ml={2} mr={2} mt={1.5}
-                              key={this_row.activity_code + 'section' + index}
-                              style={{
-                                borderRadius: ((reactData.sectionOpen[this_row.section_name] || (reactData.currentMenu !== 'main')) ? '30px 30px 0px 0px' : '30px 30px 30px 30px'),
-                                backgroundColor: hexToRgb(this_row.section_color, 1),
-                                textDecoration: 'none'
-                              }}
-                              borderTop={1}
-                              borderLeft={1}
-                              borderRight={1}
-                              borderBottom={1}
-                              justifyContent='center'
-                              flexDirection='column'
-                              minHeight={80}
-                              onClick={async () => {
-                                reactData.sectionOpen[this_row.section_name] = !reactData.sectionOpen[this_row.section_name];
-                                await updateAVA(reactData.sectionOpen, reactData.mainMenu);
-                                updateReactData({
-                                  sectionOpen: reactData.sectionOpen
-                                }, true);
-                              }}
-                            >
-                              <Box
-                                display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                                key={this_row.activity_code + 'r' + index}
-                                className={classes.sectionHeader}
-                              >
+                            <CardActionArea>
+                              <CardMedia
+                                className={classes.media}
+                                key={`master_card_media_${index}`}
+                                image={this_row.section_icon}
+                                title="Menu Media"
+                              />
+                              <CardContent className={classes.cardcontent}>
                                 <Box
-                                  borderRadius={'30px'} justifyContent='flex-start' alignItems='center'
+                                  display='flex' flexDirection='column'
+                                  alignItems={'center'} justifyContent={'center'}
+                                  key={`master_card_content_${index}`}
+                                  onDragOver={(e) => { if (this_row.is_favorite) { handleDragOver(e); } }}
+                                  onDrop={async (e) => {
+                                    if (this_row.is_favorite) {
+                                      await handleDrop(e, {
+                                        droppedOn: {
+                                          to_type: 'favorites',
+                                        }
+                                      });
+                                    }
+                                  }}
                                 >
-                                  <Avatar
-                                    src={this_row.section_icon}
-                                    style={avatarStyle(this_row.section_color)}
-                                    alt=""
-                                    variant="square"
-                                  />
-                                </Box>
-                                <Box display='flex' flex={4} justifyContent='center' alignItems='center' overflow='hidden'>
-                                  <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                                  <Typography
+                                    className={classes.noDisplay}
+                                    key={`master_card_content_hidden_${index}`}
+                                    sx={{ display: 'none', visibility: 'hidden' }}
+                                  >
                                     {(currentSection = this_row.section_name)}
                                   </Typography>
-                                  <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center', color: (isDark(this_row.section_color) ? 'cornsilk' : 'black') })} >{this_row.section_name.trim()}</Typography>
-                                </Box>
-                                <Box display='flex' justifyContent='flex-end' alignItems='center'>
-                                  {(reactData.currentMenu !== 'main') ? null : (!reactData.sectionOpen[this_row.section_name] ? 'Show' : 'Hide')}
-                                </Box>
-                              </Box>
-                            </Box>
-                          }
-                          {rowIsOpen(this_row) &&
-                            <React.Fragment>
-                              <Box
-                                key={this_row.activity_code + 'detail' + index}
-                                display='flex'
-                                ml={2} mr={2}
-                                borderTop={.5}
-                                borderBottom={.5}
-                                borderLeft={1}
-                                borderRight={0}
-                                borderColor={'black'}
-                                style={{
-                                  backgroundColor: hexToRgb(this_row.row_color, 0.7),
-                                  textDecoration: 'none',
-                                  color: (isDark(this_row.section_color) ? 'cornsilk' : 'black')
-                                }}
-                                p={2}
-                                justifyContent='center'
-                                flexDirection='column'
-                                minHeight={60}
-                              >
-                                <Box
-                                  display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                                  key={this_row.activity_code + 'detailrow' + index}
-                                  className={classes.listItem}
-                                  onContextMenu={async (e) => {
-                                    e.preventDefault();
-                                    updateReactData({
-                                      alert: {
-                                        severity: 'info',
-                                        title: this_row.activity_name,
-                                        message: <div>
-                                          Activity Code: {this_row.activity_code}<br />
-                                          Row Type: {this_row.row_type}<br />
-                                          Why on Menu: {this_row.reason}</div>
-                                      }
-                                    }, true);
-                                  }}
-                                >
-                                  <Box
-                                    display='flex'
-                                    mr={2}
-                                    flexGrow={1}
-                                    flexDirection='row'
-                                    justifyContent='space-between'
-                                    alignItems='center'
-                                    overflow={'hidden'}
-                                    onClick={async () => {
-                                      await activityLog(pPerson, this_row.activity_code, this_row.activity_name, index);
-                                      reactData.mainMenu[index].last_used = new Date().getTime();
-                                      let reactUpdObj = {
-                                        mainMenu: reactData.mainMenu
-                                      };
-                                      if (this_row.row_type !== 'document') {
-                                        if (this_row.subMenu_data) {
-                                          let subMenu = await MakeAVAMenu(patient, defaultClient, screenQuiet, this_row.subMenu_data);
-                                          delete reactData.mainMenu[index].subMenu_data;
-                                          reactData.mainMenu.push(...subMenu);
-                                          reactUpdObj.mainMenu = reactData.mainMenu;
-                                        }
-                                        if (this_row.child_menu) {
-                                          reactUpdObj.currentMenu = this_row.child_menu;
-                                          reactData.menuArray.push(this_row.child_menu);
-                                          reactUpdObj.menuArray = reactData.menuArray;
-                                          reactData.menuNames.push((reactUpdObj.currentMenu === 'main') ? 'AVA Main Menu' : this_row.section_name);
-                                          reactUpdObj.menuNames = reactData.menuNames;
-                                        }
-                                        else {
-                                          let gad_response = await getActivityDetail(this_row, state);
-                                          reactUpdObj.selected = gad_response.activityRec;
-                                          reactUpdObj.loading = false;
-                                          if (gad_response.loadError) {
-                                            updateReactData({
-                                              alert: {
-                                                severity: 'error',
-                                                title: 'Activity error',
-                                                message: `AVA could not load ${this_row.activity_name}.  This may resolve itself after AVA's data load completes.  Wait just a moment and try again, please.  If the error persists, contact Support (activity_code=${this_row.activity_name})`
-                                              }
-                                            }, true);
-                                          }
-                                          else {
-                                            pause();
-                                            reactUpdObj.showNewFactDialog = index;
-                                          }
-                                        }
-                                      }
-                                      updateReactData(reactUpdObj, true);
-                                    }}
+                                  <Typography
+                                    key={`master_card_content_text_${index}`}
+                                    style={AVATextStyle({ align: 'center', size: 1, bold: true, color: (isDark(this_row.section_color) ? 'cornsilk' : 'black') })}
                                   >
-                                    {this_row.row_type === 'document' ?
-                                      <a href={this_row.default_value + (!this_row.default_value?.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
-                                        <Typography style={AVATextStyle({ size: 1.5 })}>{this_row.activity_name}</Typography>
-                                      </a>
-                                      :
-                                      <Typography style={AVATextStyle({ size: 1.5 })}>{this_row.activity_name}</Typography>
-                                    }
-                                  </Box>
-                                  <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
-                                    {(this_row.is_favorite) ?
-                                      ((['Favorite', 'History'].includes(this_row.reason)) &&
-                                        <IconButton
-                                          aria-label='showActivities'
-                                          size='small'
-                                          onClick={async () => {
-                                            await updateFavorites('remove', index);
-                                            setForceRedisplay(!forceRedisplay);
-                                          }}
-                                        >
-                                          <NotFavorite fontSize="small" />
-                                        </IconButton>)
-                                      :
-                                      <IconButton
-                                        aria-label='showActivities'
-                                        size='small'
-                                        onClick={async () => {
-                                          await updateFavorites('add', index);
-                                          setForceRedisplay(!forceRedisplay);
-                                        }}
-                                      >
-                                        <FavoriteIcon fontSize="small" />
-                                      </IconButton>
-                                    }
-                                  </Box>
+                                    {this_row.section_name.trim()}
+                                  </Typography>
                                 </Box>
+                              </CardContent>
+                            </CardActionArea>
+                          </Card>
+                        }
+                      </React.Fragment>
+                    )
+                  ))}
+                </Box>
+                <Box
+                  display='flex' flexDirection='row'
+                  key={'vRowRefresh_lower_cells'}
+                  flexWrap={'wrap'}
+                  borderTop={reactData.sectionOpen ? 2 : 0}
+                  borderColor={'black'}
+                  mt={2} mb={2} ml={1} mr={1}
+                >
+                  {reactData.mainMenu.map((this_row, lower_index) => (
+                    <React.Fragment key={`lower_card_fragement_${lower_index}`}>
+                      {(reactData.sectionOpen.section_name === this_row.section_name) &&
+                        <Card className={classes.root}
+                          key={`lower_card_${lower_index}`}
+                          style={{
+                            marginRight: '8px', marginLeft: '8px', marginTop: '16px',
+                            borderRadius: ('30px 30px 30px 30px'),
+                            backgroundColor: hexToRgb(this_row.section_color, 1),
+                            textDecoration: 'none'
+                          }}                         
+                          onDragOver={(e) => { if (this_row.is_favorite) { handleDragOver(e); } }}
+                          onDrop={async (e) => {
+                            if (this_row.is_favorite) {
+                              await handleDrop(e, {
+                                droppedOn: {
+                                  to_type: 'favorites',
+                                  activity_code: this_row.activity_code,
+                                  index: lower_index
+                                }
+                              });
+                            }
+                          }}
+                          onContextMenu={async (e) => {
+                            e.preventDefault();
+                            updateReactData({
+                              alert: {
+                                severity: 'info',
+                                title: this_row.activity_name,
+                                message: <div>
+                                  Activity Code: {this_row.activity_code}<br />
+                                  Row Type: {this_row.row_type}<br />
+                                  Why on Menu: {this_row.reason}</div>
+                              }
+                            }, true);
+                          }}
+                          onClick={async () => {
+                            await activityLog(pPerson, this_row.activity_code, this_row.activity_name, reactData.sectionOpen.index);
+                            reactData.mainMenu[reactData.sectionOpen.index].last_used = new Date().getTime();
+                            let reactUpdObj = {
+                              mainMenu: reactData.mainMenu
+                            };
+                            if (this_row.row_type !== 'document') {
+                              if (this_row.subMenu_data) {
+                                let subMenu = await MakeAVAMenu(patient, defaultClient, screenQuiet, this_row.subMenu_data);
+                                delete reactData.mainMenu[reactData.sectionOpen.index].subMenu_data;
+                                reactData.mainMenu.push(...subMenu);
+                                reactUpdObj.mainMenu = reactData.mainMenu;
+                              }
+                              if (this_row.child_menu) {
+                                reactUpdObj.currentMenu = this_row.child_menu;
+                                reactData.menuArray.push(this_row.child_menu);
+                                reactUpdObj.menuArray = reactData.menuArray;
+                                reactData.menuNames.push((reactUpdObj.currentMenu === 'main') ? 'AVA Main Menu' : this_row.section_name);
+                                reactUpdObj.menuNames = reactData.menuNames;
+                              }
+                              else {
+                                let gad_response = await getActivityDetail(this_row, state);
+                                reactUpdObj.selected = gad_response.activityRec;
+                                reactUpdObj.loading = false;
+                                if (gad_response.loadError) {
+                                  updateReactData({
+                                    alert: {
+                                      severity: 'error',
+                                      title: 'Activity error',
+                                      message: `AVA could not load ${this_row.activity_name}.  This may resolve itself after AVA's data load completes.  Wait just a moment and try again, please.  If the error persists, contact Support (activity_code=${this_row.activity_name})`
+                                    }
+                                  }, true);
+                                }
+                                else {
+                                  pause();
+                                  reactUpdObj.showNewFactDialog = reactData.sectionOpen.index;
+                                }
+                              }
+                            }
+                            updateReactData(reactUpdObj, true);
+                          }}
+                        >
+                          <CardActionArea
+                            key={`vRowRefresh_lower_card_action_${lower_index}`}
+                            draggable={true}
+                            onDragStart={(e) => handleDragStart(e, {
+                              index: lower_index,
+                              from_type: ((this_row.is_favorite) ? 'favorites' : 'menu'),
+                              rawData: this_row.raw_data,
+                              wholeRow: this_row
+                            })}
+                          >
+                            <CardContent className={classes.cardcontentdetail}
+                              key={`vRowRefresh_lower_card_content_${lower_index}`}
+                            >
+                              <Box
+                                display='flex' flexDirection='column'
+                                alignItems={'center'} justifyContent={'center'}
+                                key={`vRowRefresh_lower_cell_${lower_index}`}
+                              >
+                                {this_row.row_type === 'document' ?
+                                  <a href={this_row.default_value + (!this_row.default_value?.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
+                                    <Typography
+                                      key={`lower_card_href_${lower_index}`}
+                                      style={AVATextStyle({ align: 'center', size: 1, bold: true, color: (isDark(this_row.section_color) ? 'cornsilk' : 'black') })}
+                                    >
+                                      {this_row.activity_name}
+                                    </Typography>
+                                  </a>
+                                  :
+                                  <Typography
+                                    key={`lower_card_text_${lower_index}`}
+                                    style={AVATextStyle({ align: 'center', size: 1, bold: true, color: (isDark(this_row.section_color) ? 'cornsilk' : 'black') })}
+                                  >
+                                    {this_row.activity_name}
+                                  </Typography>
+                                }
                               </Box>
-                              {((index === (reactData.mainMenu.length - 1))
-                                || (this_row.menu_name !== reactData.mainMenu[index + 1].menu_name)
-                                || (this_row.section_name !== reactData.mainMenu[index + 1].section_name)
-                              ) &&
-                                <Box
-                                  display='flex'
-                                  border={1}
-                                  style={{
-                                    borderRadius: '0px 0px 30px 30px',
-                                    backgroundColor: hexToRgb(this_row.row_color, 1),
-                                    textDecoration: 'none'
-                                  }}
-                                  ml={2} mr={2}
-                                  justifyContent='center'
-                                  flexDirection='column'
-                                  height={30}
-                                />}
-                            </React.Fragment>
-                          }
-                        </React.Fragment>
-                      )
-                    ))}
-                  </List>
+                            </CardContent>
+                          </CardActionArea>
+                        </Card>
+
+                      }
+
+                    </React.Fragment>
+                  ))}
                 </Box>
               </Box>
             </Paper>
@@ -1576,23 +1536,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                       <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >
                         {`AVA version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
                       </Typography>
-                      {reactData.loading.startsWith('Common activities')
-                        ?
-                        <Box
-                          display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-                          flexWrap='wrap' textOverflow='ellipsis' width='100%'
-                          key={'groupActivitiesBox'}
-                          id={'groupActivitiesBox'}
-                        >
-                          <Typography style={AVATextStyle({ size: 0.8 })}>{'Common activities for'}</Typography>
-                          <Typography style={AVATextStyle({ size: 0.8 })}>{reactData.loading.split(' for ')[1]}</Typography>
-                        </Box>
-                        :
-                        <Typography style={AVATextStyle({ size: 0.8 })}>{reactData.loading}</Typography>
-                      }
-                      <LinearProgress variant="determinate" className={classes.progressBar}
-                        style={AVATextStyle({ width: reactData.pWidth, margin: { top: 1 } })}
-                        value={reactData.progress} />
                     </React.Fragment>
                   }
                 </Box>
@@ -1628,8 +1571,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             <React.Fragment>
               {!session.useOldVersion &&
                 <PeopleMaintenance
-                patient={patient}
-                person_id={state.session.patient_id}
+                  patient={patient}
+                  person_id={state.session.patient_id}
                   onClose={(updatedPerson) => {
                     if (updatedPerson.saveCompleted || !reactData.menu_reloaded) {
                       sessionStorage.removeItem('AVASessionData');
@@ -1683,9 +1626,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     }
                   }}
                   onClose={() => {
-                    updateReactData({
-                      showAddAccount: false
-                    }, true);
+                    reset();
+                    sessionStorage.removeItem('AVASessionData');
+                    window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
                   }}
                 />
               }

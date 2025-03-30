@@ -128,11 +128,11 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                 display='flex'
                 flexDirection='row'
                 alignItems={'flex-start'}
-
                 key={`family_${memberNdx}`}
               >
                 {(currentValues.peopleRec.myFamilyMembers[this_member].type === 'Camper') &&
                   <Typography style={AVATextStyle({ margin: { top: 1, left: 1, right: -0.8 }, bold: true })}
+                    key={`family_${memberNdx}__camperID`}
                     onClick={async () => {
                       updateReactData({
                         viewFamilyMember: this_member
@@ -144,6 +144,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                 }
                 <Typography
                   style={AVATextStyle({ margin: { top: 1, left: 1 }, bold: true })}
+                  key={`family_${memberNdx}__name`}
                   onClick={async () => {
                     updateReactData({
                       viewFamilyMember: this_member
@@ -377,7 +378,10 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                       });
                     if (recordExists(proxyRec)) {
                       let newFamilyMembers = proxyRec.Item.myFamilyMembers || {};
-                      newFamilyMembers[currentValues.peopleRec.person_id] = `${currentValues.peopleRec.name.first} ${currentValues.peopleRec.name.last}`;
+                      newFamilyMembers[currentValues.peopleRec.person_id] = {
+                        name: `${currentValues.peopleRec.name.first} ${currentValues.peopleRec.name.last}`,
+                        type: state.groups.person_admin_class || 'other'
+                      };
                       await dbClient
                         .update({
                           Key: { person_id: this_item.person_id },

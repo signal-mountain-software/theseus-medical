@@ -657,7 +657,19 @@ export default ({ options, onReset }) => {
               </Typography>
               {workingMemberList.map((this_item, index) => (
                 ((rowsWritten <= rowLimit) && (okToShow(this_item)) &&
-                  <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
+                  <Paper component={Box} variant='outlined'
+                    onClick={async () => {
+                      this_item.role = await getRole(pGroup, this_item.person_id);
+                      this_item.public_groups = await getPublicGroupList(state.session.client_id, this_item.person_id);
+                      this_item.private_groups = await getPrivateGroupList(state.session.client_id, this_item.person_id);
+                      if (!this_item.account_class) {
+                        this_item.account_class = determineClass(this_item.groups, state.session.group_assignments);
+                      }
+                      setSuperSizeData(this_item);
+                      setshowSuperSize(true);
+                    }}
+                    key={this_item.person_id + 'frag' + index}
+                  >
                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                       {rowsWritten = writtenRows.push(this_item.person_id)}
                     </Typography>

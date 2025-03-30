@@ -2,11 +2,12 @@ import React from 'react';
 import { Box, Typography } from '@material-ui/core/';
 import { formatPhone } from '../../util/AVAPeople';
 import { isEmpty } from '../../util/AVAUtilities';
+import { makeDate } from '../../util/AVADateTime';
 
 import { AVATextStyle } from '../../util/AVAStyles';
 import TextField from '@material-ui/core/TextField';
 
-export default ({ currentValues, ogValues, errorList, setError, updateField }) => {
+export default ({ currentValues, ogValues, errorList, setError, reactData, updateField }) => {
 
   const makeLocation = () => {
     if (currentValues.peopleRec.hasOwnProperty('address')) {
@@ -15,7 +16,7 @@ export default ({ currentValues, ogValues, errorList, setError, updateField }) =
     else {
       return '';
     }
-  }
+  };
 
   return (
     <Box
@@ -69,7 +70,7 @@ export default ({ currentValues, ogValues, errorList, setError, updateField }) =
             }
             // all good
             // do we need to set a user ID?
-            if (ogValues.peopleRec.person_id) {}
+            if (ogValues.peopleRec.person_id) { }
             // update the data
             let updateObj = {
               updateList:
@@ -454,8 +455,9 @@ export default ({ currentValues, ogValues, errorList, setError, updateField }) =
           helperText={errorList.hasOwnProperty('alt_email') ? errorList.alt_email.errorMessage : 'Alternate e-Mail'}
         />
       </Box>
-      <TextField style={{ width: '550px' }}
+      <TextField style={{ width: '550px', maxWidth: '100%' }}
         id='email'
+        multiline
         key={`profileSection__street1__${currentValues.peopleRec.address?.address || 0}`}
         autoComplete='off'
         onBlur={async (event) => {
@@ -478,8 +480,9 @@ export default ({ currentValues, ogValues, errorList, setError, updateField }) =
         defaultValue={currentValues.peopleRec?.address?.address || ''}
         helperText={'Address'}
       />
-      <TextField style={{ width: '550px' }}
+      <TextField style={{ width: '550px', maxWidth: '100%' }}
         id='email'
+        multiline
         key={`profileSection__street2__${currentValues.peopleRec.address?.address2 || 0}`}
         autoComplete='off'
         onBlur={async (event) => {
@@ -517,11 +520,11 @@ export default ({ currentValues, ogValues, errorList, setError, updateField }) =
                   fieldName: 'address.city',
                   newData: event.target.value
                 },
-                  {
-                    tableName: 'peopleRec',
-                    fieldName: 'location',
-                    newData: makeLocation()
-                  }]
+                {
+                  tableName: 'peopleRec',
+                  fieldName: 'location',
+                  newData: makeLocation()
+                }]
             };
             await updateField(updateObj);
           }}
@@ -577,6 +580,125 @@ export default ({ currentValues, ogValues, errorList, setError, updateField }) =
           helperText={'Zip'}
         />
       </Box>
+      <TextField style={{ width: '550px', maxWidth: '100%' }}
+        id='email'
+        multiline
+        key={`profileSection__eContact1__${currentValues.peopleRec.emergency_contact?.contact1 || 0}`}
+        autoComplete='off'
+        onBlur={async (event) => {
+          if (!currentValues.peopleRec.hasOwnProperty('emergency_contact')) {
+            currentValues.peopleRec.emergency_contact = {};
+          }
+          currentValues.peopleRec.emergency_contact.contact1 = event.target.value;
+          let updateObj = {
+            updateList:
+              [{
+                tableName: 'peopleRec',
+                fieldName: 'emergency_contact.contact1',
+                newData: event.target.value
+              }]
+          };
+          await updateField(updateObj);
+        }}
+        defaultValue={currentValues.peopleRec.emergency_contact?.contact1 || ''}
+        helperText={'Emergency Contact 1 - Name & Phone'}
+      />
+      <TextField style={{ width: '550px', maxWidth: '100%' }}
+        id='email'
+        multiline
+        key={`profileSection__eContact2__${currentValues.peopleRec.emergency_contact?.contact2 || 0}`}
+        autoComplete='off'
+        onBlur={async (event) => {
+          if (!currentValues.peopleRec.hasOwnProperty('emergency_contact')) {
+            currentValues.peopleRec.emergency_contact = {};
+          }
+          currentValues.peopleRec.emergency_contact.contact2 = event.target.value;
+          let updateObj = {
+            updateList:
+              [{
+                tableName: 'peopleRec',
+                fieldName: 'emergency_contact.contact2',
+                newData: event.target.value
+              }]
+          };
+          await updateField(updateObj);
+        }}
+        defaultValue={currentValues.peopleRec.emergency_contact?.contact2 || ''}
+        helperText={'Emergency Contact 2 - Name & Phone'}
+      />
+      {(Object.keys(reactData.local_customFields).length > 0) && Object.keys(reactData.local_customFields).map((this_customField, cFNdx) => (
+        <React.Fragment>
+          {(cFNdx === 0) &&
+            <Typography
+              style={AVATextStyle({ italic: true, margin: { top: 3, bottom: 1 } })}
+            >
+              {`Additional important information`}
+            </Typography>
+          }
+          <Box display='flex' alignItems='center'
+            key={`local_box__${cFNdx}`}
+            justifyContent='flex-start' flexDirection='row'>
+            <TextField style={{ width: '400px' }}
+              id='email'
+              key={`local__${cFNdx}`}
+              autoComplete='off'
+              onBlur={async (event) => {
+                let local_result = '';
+                switch (reactData.local_customFields[this_customField].type) {
+                  case 'phone': {
+                    if (event.target.value) {
+                      local_result = formatPhone(`+1${Number(event.target.value.replace(/\D/g, '')).toString()}`);
+                    }
+                    break;
+                  }
+                  case 'number': {
+                    if (event.target.value) {
+                      let numeric_result = Number(event.target.value.replace(/\D/g, ''));
+                      if (isNaN(numeric_result)) {
+                        local_result = event.target.value; 
+                      }
+                      else {
+                        local_result = numeric_result;
+                      }
+                    }
+                    break;
+                  }
+                  case 'fulldate':
+                  case 'date': {
+                    let lDate = makeDate(event.target.value, { noTime: true, noYearCorrection: true });
+                    if (!lDate.error) { local_result = lDate.absolute; }
+                    else {
+                      setError({
+                        errorField: `local_data.${this_customField}`,
+                        errorValue: event.target.value,
+                        isError: true,
+                        errorMessage: `${event.target.value} is not a valid date.`
+                      });
+                      return;
+                    }
+                    break;
+                  }
+                  default: {
+                    local_result = event.target.value.trim();
+                  }
+                }
+                let updateObj = {
+                  updateList:
+                    [{
+                      tableName: 'peopleRec',
+                      fieldName: `local_data.${this_customField}`,
+                      newData: local_result
+                    }]
+                };
+                await updateField(updateObj);
+              }}
+              defaultValue={currentValues.peopleRec?.local_data?.[this_customField] || ''}
+              helperText={reactData.local_customFields[this_customField].prompt}
+            />
+          </Box>
+        </React.Fragment>
+      ))}
+
       <Box display='flex' alignItems='center'
         justifyContent='flex-end' flexDirection='row'>
         <Typography

@@ -1,4 +1,4 @@
-import { cl, clt, recordExists, makeArray, getCustomizations, dbClient, deepCopy } from './AVAUtilities';
+import { cl, clt, recordExists, makeArray, getCustomizations, dbClient, deepCopy, titleCase } from './AVAUtilities';
 import { AVAname, getPerson, getSession } from '../util/AVAPeople';
 import { makeDate } from './AVADateTime';
 
@@ -198,6 +198,21 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
                   // example... the staff group may have a view_group = {'local': 'view'} which would allow 
                   //       local users to see (but not proxy to) its members
                   let this_group = await getGroup(g, client_id);
+
+                  if (this_group.view_group && this_group.view_group.hasOwnProperty(myClass)) {
+                    myGroupAccessLevel[g] = accessLevelTable.indexOf(this_group['view_group'][myClass]);
+                  }
+                  else {
+                    myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
+                    if ((myRole === 'member')
+                      && (['local', 'resident', 'staff', 'admin'].includes(myClass))
+                      //  if I am a member of a group and not a guest, vendor, or family
+                      //    ... I may(at least) view other members of my group
+                    ) {
+                      myGroupAccessLevel[g] = Math.max(accessLevelTable.indexOf('view'), myGroupAccessLevel[g]);
+                    }
+                  }
+/*
                   if (!this_group.hasOwnProperty('view_group')) {
                     myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
                   }
@@ -214,6 +229,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
                   ) {
                     myGroupAccessLevel[g] = Math.max(accessLevelTable.indexOf('view'), myGroupAccessLevel[g]);
                   }
+  */
                 }
               }
               if (myGroupAccessLevel[g] > myMaxAccessLevelToThisPerson) {
@@ -388,6 +404,7 @@ export async function getGroupsResponsibleFor(client_id, person_id, options) {
       my_session_responsibleList = makeArray(my_session.responsible_for);
     }
   }
+  let classList = [];
   everyGroup.Items.forEach(this_group => {
     if ((this_group.hasOwnProperty('admin_list') && this_group.admin_list.includes(person_id))
       || (options && options.account_class && (['master', 'support', 'admin'].includes(options.account_class)))
@@ -396,18 +413,23 @@ export async function getGroupsResponsibleFor(client_id, person_id, options) {
       returnObject[this_group.group_id] = {
         group_name: this_group.name,
         group_id: this_group.group_id,
-        role: 'responsible'
+        role: 'responsible',
+        admin_class: this_group.admin_class
       };
+      if (!classList.includes(this_group.admin_class)) {
+        classList.push(this_group.admin_class);
+      }
     }
     else {
       rejectObject[this_group.group_id] = {
         group_name: this_group.name,
-        group_id: this_group.group_id
+        group_id: this_group.group_id,
+        admin_class: this_group.admin_class
       };
     }
   });
   loadedPerson = person_id;
-  return [returnObject, rejectObject];
+  return [returnObject, rejectObject, classList];
 }
 
 export async function getPeopleResponsibleFor(person_id) {
@@ -442,7 +464,7 @@ export async function getGroupsBelongTo(client_id, person_id, options = {}) {
 
   }
   // You belong to all groups that you are responsible for
-  var [returnObject, rejectObject] = await getGroupsResponsibleFor(client_id, person_id, options);
+  let [returnObject, rejectObject, classList] = await getGroupsResponsibleFor(client_id, person_id, options);
   // Next, get any other Groups that this person belongs to (but aren't responsible for)
   if (!profile || (profile.person_id !== person_id)) {
     profile = await getPerson(person_id);
@@ -455,6 +477,9 @@ export async function getGroupsBelongTo(client_id, person_id, options = {}) {
           group_id: rejectObject[rejectGroup].group_id,
           role: 'member'
         };
+        if (!classList.includes(rejectObject.admin_class)) {
+          classList.push(rejectObject.admin_class);
+        }
       }
     }
   }
@@ -693,7 +718,7 @@ export async function getRole(pGroup, pPerson) {
 
 export function determineClass(gList, group_assignments) {
   let groupFlavor = {};
-  let groupHierarchy = ['inactive', 'admin', 'staff', 'resident', 'student', 'family', 'guest', 'vendor', 'other'];
+  let groupHierarchy = ['inactive', 'admin', 'staff', 'resident', 'student', 'camper', 'family', 'guest', 'vendor', 'other'];
   if (group_assignments) {
     Object.keys(group_assignments).forEach(t => {
       let groups = makeArray(group_assignments[t]);
@@ -879,7 +904,7 @@ export async function getGroupMembers(request = {}) {
     });
   if (recordExists(gPeopleRecs)) {
     gPeopleRecs.Items.forEach(personRec => {
-      if (personRec.groups.some(this_group => {
+      if (personRec.groups && [personRec.groups].flat().some(this_group => {
         return (all_groups || request.groupList.includes(this_group) || request.groupList.includes(personRec.person_id));
       })) {
         let this_response = {
@@ -1209,11 +1234,10 @@ export async function getGroupHierarchy(pClient_id, options) {
   let hierarchy = {};  // keys are '__TOP__' and any group that has children; value is an object whose keys are the clidren of this entry's key
   let customRec = await getCustomizations('client_name', pClient_id);
   let nameObj = { '__TOP__': customRec.customization_value };   // this object delivers the groups name for each nameObj[group_id]
+  let messagingObj = { '__TOP__': [] };
   let parentObj = { '__TOP__': '' };   // this object tells who the parent is for each parentObj[group_id]
-  // pre-first pass - set group_type to admin or parent
- // groupRec.Items.forEach(this_group, gX) { 
-
- //  }
+  let classObj = { '__TOP__': 'other' };
+  let responsibleObj = { '__TOP__': [] };
 
   // first pass - all admin level groups are added to their parent
   for (let g = 0; g < groupRec.Items.length; g++) {
@@ -1225,11 +1249,37 @@ export async function getGroupHierarchy(pClient_id, options) {
       }
       hierarchy[thisGroup.belongs_to][thisGroup.group_id] = {};
       nameObj[thisGroup.group_id] = thisGroup.name;
+      messagingObj[thisGroup.group_id] = [];
+      if (thisGroup.common_activities && (thisGroup.common_activities.length > 0)) {
+        thisGroup.common_activities.forEach(activity => {
+          if (typeof (activity) === 'string') {
+            let matchResult = activity.match(/(.+)~\[default={recipientID:(.+),recipientName:(.+)\}\]~\[title=(.+)\]/);
+            if (matchResult) {
+              let [str, inst, pers, pName, pText] = matchResult;
+              console.log(str);
+              if (inst === 'form.make_message') {
+                messagingObj[thisGroup.group_id].push({
+                  personList: [pers],
+                  personNames: [pName],
+                  objText: pText
+                });
+              }
+            }
+          }
+          else if ((activity.activity_code === 'form.make_message') && (activity.default && activity.default.recipientID)) {
+            messagingObj[thisGroup.group_id].push({
+              personList: [activity.default.recipientID].flat(),
+              personNames: [activity.default.recipientName || new Array([activity.default.recipientID].flat().length)].flat(),
+              objText: activity.title
+            });
+          }
+        });
+      }
       parentObj[thisGroup.group_id] = thisGroup.belongs_to;
+      responsibleObj[thisGroup.group_id] = thisGroup.admin_list;
+      classObj[thisGroup.group_id] = thisGroup.admin_class || 'other';
       let cKey = `${pClient_id}//${thisGroup.group_id}`;
       groupRecs[cKey] = thisGroup;
- //     groupRec.Items.splice(g, 1);
- //     g--;
     }
   }
   // hierarchy now contains every group with children
@@ -1258,17 +1308,84 @@ export async function getGroupHierarchy(pClient_id, options) {
           hierarchy[thisGroup.belongs_to][thisGroup.group_id] = withChildren;
         };
         nameObj[thisGroup.group_id] = thisGroup.name;
+        messagingObj[thisGroup.group_id] = [];
+        if (thisGroup.common_activities && (thisGroup.common_activities.length > 0)) {
+          // eslint-disable-next-line
+          thisGroup.common_activities.forEach(activity => {
+            if (typeof (activity) === 'string') {
+              let matchResult = activity.match(/(.+)~\[default={recipientID:(.+),recipientName:(.+)\}\]~\[title=(.+)\]/);
+              if (matchResult) {
+                let [str, inst, pers, pName, pText] = matchResult;
+                console.log(str);
+                if (inst === 'form.make_message') {
+                  messagingObj[thisGroup.group_id].push({
+                    personList: [pers],
+                    personNames: [pName],
+                    objText: titleCase(pText.toLowerCase().replace('send a message to', '')).trim()
+                  });
+                }
+              }
+            }
+            else if ((activity.activity_code === 'form.make_message') && (activity.default && activity.default.recipientID)) {
+              messagingObj[thisGroup.group_id].push({
+                personList: [activity.default.recipientID].flat(),
+                personNames: [activity.default.recipientName || new Array([activity.default.recipientID].flat().length)].flat(),
+                objText: activity.title
+              });
+            }
+            else if ((activity.activity_code === 'form.make_message') && (activity.default && activity.default.recipientID)) {
+              messagingObj[thisGroup.group_id].push({
+                personList: [activity.default.recipientID].flat(),
+                personNames: [activity.default.recipientName || new Array([activity.default.recipientID].flat().length)].flat(),
+                objText: titleCase(activity.title.toLowerCase().replace('send a message to', '')).trim()
+              });
+            }
+          });
+        }
         parentObj[thisGroup.group_id] = thisGroup.belongs_to;
+        classObj[thisGroup.group_id] = thisGroup.admin_class || 'other';
+        responsibleObj[thisGroup.group_id] = thisGroup.admin_list;
         groupRec.Items.splice(g, 1);
         g--;
       }
     }
   } while ((groupRec.Items.length > 0) && (count < 20));
 
+  // build parent_of object
+  let parent_of = {};
+  for (let top_level in hierarchy) {
+    addChild(top_level, hierarchy[top_level]);
+  }
+  function addChild(parent, target) {
+    for (let my_child in target) {
+      if (!parent_of.hasOwnProperty(parent)) { parent_of[parent] = [my_child]; }
+      else { parent_of[parent].push(my_child); }
+      let grandchildren = addChild(my_child, target[my_child]);
+      if (grandchildren) { parent_of[parent].push(...grandchildren); };
+    }
+    return parent_of[parent];
+  }
+
   // manipulate the output:
-  if (!options) { return hierarchy; }
-  if (options.sort) { return recursiveSort(hierarchy, [], 0); }
-  return hierarchy;
+  if (!options) {
+    return ({
+      preferred_recipients: messagingObj,
+      group_names: nameObj, group_tree: hierarchy, hierarchy, parent_of
+    });
+  }
+  if (options.sort) {
+    return ({
+      group_names: nameObj,
+      preferred_recipients: messagingObj,
+      group_tree: hierarchy,
+      hierarchy: recursiveSort(hierarchy, [], 0),
+      parent_of
+    });
+  }
+  return ({
+    preferred_recipients: messagingObj,
+    group_names: nameObj, group_tree: hierarchy, hierarchy, parent_of
+  });
 
   function recursiveSearch(searchObj) {
     let oKeys = Object.keys(searchObj);
@@ -1302,7 +1419,9 @@ export async function getGroupHierarchy(pClient_id, options) {
         level,
         belongs_to: parentObj[oKeys[g]],
         name: nameObj[oKeys[g]],
-        selectable
+        selectable,
+        admin_class: classObj[oKeys[g]],
+        admin_list: responsibleObj[oKeys[g]]
       });
       if (!selectable) { response = recursiveSort(searchObj[oKeys[g]], response, level + 1); }
     }
@@ -1398,17 +1517,86 @@ export async function getAllGroups(person_id, client_id) {
 
   let responseData = {};
   let profile = await getPerson(person_id);
+  let session = await getSession(person_id);
   if (!client_id) {
-    let session = await getSession(person_id);
     if (session) { client_id = session.client_id; }
     if (!client_id) { return { adminHierarchy: [], publicGroups: {}, privateGroups: {} }; }
   }
-  responseData.adminHierarchy = await getGroupHierarchy(client_id, { sort: true });
-  responseData.adminHierarchy.forEach(a => {
+  let gHResponse = await getGroupHierarchy(client_id, { sort: true });
+  responseData.adminHierarchy = gHResponse.hierarchy;
+  responseData.groupTree = gHResponse.group_tree;
+  responseData.preferred_recipients = gHResponse.preferred_recipients;
+  responseData.groupNames = gHResponse.group_names;
+  responseData.parent_of = gHResponse.parent_of;    // for every group, this lists all its descendants (children,  grandchildren, etc)
+  let gXRef = {};
+  responseData.adminHierarchy.forEach((a, x) => {
+    gXRef[a.id] = a;
     if (a.selectable && profile?.groups?.includes(a.id)) {
       responseData.selectedID = a.id;
     }
   });
+  // belongs_to object list every group you belong to
+  let classHierarchy = ['other', 'vendor', 'vendors', 'guest', 'guests', 'family', 'families', 'camper', 'campers', 'student', 'students', 'resident', 'residents', 'staff', 'admin', 'support', 'master'];
+  let classResult = ['other', 'vendor', 'vendor', 'guest', 'guest', 'family', 'family', 'camper', 'camper', 'student', 'student', 'resident', 'resident', 'staff', 'admin', 'support', 'master'];
+  let classLevel = classHierarchy.findIndex(c => { return c === (profile.admin_class || 'other'); });
+  let belongs_to = {};
+  if (profile.groups) {
+    for (let this_group of profile.groups) {
+      if (gXRef.hasOwnProperty(this_group)) {
+        belongs_to[this_group] = {};   // you belong to every group listed in your people record "groups" key
+        // you also belong to the parent of any group that you belong to
+        // any group that is a parent and has this group in its descendants list is a group you belong to
+        for (let parent_group in responseData.parent_of) {
+          if (responseData.parent_of[parent_group].includes(this_group)) {
+            belongs_to[this_group] = {};
+          }
+        }
+      }
+    }
+    if (session.responsible_for) {
+      for (let this_respFor of session.responsible_for) {
+        let checkGroup = this_respFor.trim();
+        if (belongs_to.hasOwnProperty(checkGroup)) {
+          belongs_to[checkGroup].role = 'responsible';
+        }
+      }
+    }
+    if (session.groups_managed) {
+      for (let this_managed of session.groups_managed) {
+        let checkGroup = this_managed.split('~')[0].trim();
+        if (belongs_to.hasOwnProperty(checkGroup)) {
+          belongs_to[checkGroup].role = 'responsible';
+        }
+      }
+    }
+    for (let this_group in belongs_to) {
+      console.log(this_group);
+      if (gXRef[this_group].admin_list.includes(person_id)) {
+        belongs_to[this_group].role = 'responsible';
+      }
+      if (belongs_to[this_group].role === 'responsible') {   // if I am responsible for a group
+        if (responseData.parent_of.hasOwnProperty(this_group)) {   // ...and that group is a parent
+          for (let child of responseData.parent_of[this_group]) {
+            if (belongs_to.hasOwnProperty(child)) {       // ... and a child of my Group is also in my belongs_to list
+              belongs_to[child].role = 'responsible';    // then I am responsible for that group too
+            }
+          }
+        }
+      }
+    }
+    console.log('check here');
+    for (let this_group in belongs_to) {
+      if (gXRef[this_group].admin_class) {
+        classLevel = Math.max(classLevel, classHierarchy.findIndex(c => { return c === gXRef[this_group].admin_class; }));
+      }
+      belongs_to[this_group].group_name = gXRef[this_group].group_name;
+      if (belongs_to[this_group].role !== 'responsible') {    // if I belong to a group that I am NOT responsible for
+        belongs_to[this_group].role = 'member';    // then I am a member of that group
+      }
+    }
+  }
+
+  responseData.person_admin_class = classResult[classLevel];
   responseData.publicGroups = await getPublicGroupList(client_id, person_id);
   // responseData.privateGroups = await getGroupsBelongTo(client_id, person_id, { sort: true });
   responseData.privateGroups = await getPrivateGroupList(client_id, person_id);

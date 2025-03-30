@@ -31,6 +31,16 @@ export const AVAclasses = makeStyles(theme => ({
         fontWeight: 'bold',
         size: 'small',
     },
+    AVAButton_noBorder: {
+        borderRadius: '16px',
+        variant: 'outlined',
+        border: '0px',
+        textTransform: 'none',
+        textDecoration: 'none',
+        textWrap: 'nowrap',
+        fontWeight: 'bold',
+        size: 'small',
+    },
     AVAMicroButton: {
         marginLeft: theme.spacing(1),
         marginRight: theme.spacing(1),
@@ -252,6 +262,20 @@ export function hexToRgb(hex, opacity = 1) {
         return `rgba(${[(c >> 16) & 255, (c >> 8) & 255, c & 255].join(',')},${opacity})`;
     }
     throw new Error('Bad Hex');
+}
+
+export function make_rgba(r, g, b, o) {
+    // r, g, b, o intensity each from 0 -> 1  (o is opacity)
+    const template = '0123456789abcdeff';
+    let r256 = (r * 256);
+    let r_hex = `${template.charAt(Math.floor(r256 / 16))}${template.charAt((r256 + .0001) % 16)}`
+    let g256 = (g * 256);
+    let g_hex = `${template.charAt(Math.floor(g256 / 16))}${template.charAt((g256 + .0001) % 16)}`
+    let b256 = (b * 256);
+    let b_hex = `${template.charAt(Math.floor(b256 / 16))}${template.charAt((b256 + .0001) % 16)}`
+    let c = `0x${r_hex}${g_hex}${b_hex}`;
+    let response = `rgba(${[(c >> 16) & 255, (c >> 8) & 255, c & 255].join(',')},${o})`;
+    return response;
 }
 
 export function rgbToHsl(r, g, b) {

@@ -48,6 +48,7 @@ export function makeDate(pInput, optionIn = {}) {
             'date': null,
             'timestamp': 0,
             'ymd': '2099.01.01',
+            'input': '2099-01-01',
             'obs': '2099.1.1',
             'numeric': 20990101,
             'numeric$': '20990101',
@@ -65,6 +66,9 @@ export function makeDate(pInput, optionIn = {}) {
     }
     else {
         options = Object.assign({}, optionIn);
+    }
+    if (!options.hasOwnProperty('timeZone')) {
+        options.timeZone = 'America/New_York';
     }
     let originalInput = pInput;
     let targetDateStamp, targetDate;
@@ -122,6 +126,7 @@ export function makeDate(pInput, optionIn = {}) {
                 'date': null,
                 'timestamp': 0,
                 'ymd': '2099.01.01',
+                'input': '2099-01-01',
                 'obs': '2099.1.1',
                 'numeric': 20990101,
                 'numeric$': '20990101',
@@ -149,7 +154,7 @@ export function makeDate(pInput, optionIn = {}) {
             case 'noFuture': {
                 if (targetDate > currentDate) {
                     foundError =
-                        `${targetDate.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric' })} is in the future and not allowed here`;
+                        `${targetDate.toLocaleString([], { timeZone: options.timeZone, month: 'short', day: 'numeric', year: 'numeric' })} is in the future and not allowed here`;
                 }
                 break;
             }
@@ -173,6 +178,7 @@ export function makeDate(pInput, optionIn = {}) {
                 'date': null,
                 'timestamp': 0,
                 'ymd': '2099.01.01',
+                'input': '2099-01-01',
                 'obs': '2099.1.1',
                 'numeric': 20990101,
                 'numeric$': '20990101',
@@ -205,7 +211,7 @@ export function makeDate(pInput, optionIn = {}) {
             if ((currentDate.getTime() - targetDateStamp) > (4 * 24 * hours)) {
                 mWord = 'last ';
             }
-            relDate = `${mWord}${targetDate.toLocaleString([], { weekday: 'long' })}`;
+            relDate = `${mWord}${targetDate.toLocaleString([], { timeZone: options.timeZone, weekday: 'long' })}`;
         }
     }
     else if (targetDateStamp >= (beginningOfCurrentDay + (24 * hours))) {
@@ -217,7 +223,7 @@ export function makeDate(pInput, optionIn = {}) {
             if (targetDate.getDay() <= currentDate.getDay()) {
                 mWord = 'next ';
             }
-            relDate = `${mWord}${targetDate.toLocaleString([], { weekday: 'long' })}`;
+            relDate = `${mWord}${targetDate.toLocaleString([], { timeZone: options.timeZone, weekday: 'long' })}`;
         }
     }
     else {
@@ -228,9 +234,9 @@ export function makeDate(pInput, optionIn = {}) {
         else (relDate = "this evening");
     }
     // Make absolute date
-    absDate = `${targetDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric' })}`;
-    absFull = `${targetDate.toLocaleString([], { weekday: 'long', month: 'long', year: 'numeric', day: 'numeric' })}`;
-    dateOnly = `${targetDate.toLocaleString([], { month: 'short', day: 'numeric' })}`;
+    absDate = `${targetDate.toLocaleString([], { timeZone: options.timeZone, weekday: 'short', month: 'short', day: 'numeric' })}`;
+    absFull = `${targetDate.toLocaleString([], { timeZone: options.timeZone, weekday: 'long', month: 'long', year: 'numeric', day: 'numeric' })}`;
+    dateOnly = `${targetDate.toLocaleString([], { timeZone: options.timeZone, month: 'short', day: 'numeric' })}`;
     if (!relDate) { relDate = absDate; }
     if (targetDate.getFullYear() !== currentDate.getFullYear()) {
         absDate += ` ${targetDate.getFullYear()}`;
@@ -238,7 +244,7 @@ export function makeDate(pInput, optionIn = {}) {
     }
     oaDate = `on ${absDate}`;
     if ((targetDate.getHours() > 0) || (targetDate.getMinutes() > 0)) {
-        let tOfDay = ` at ${targetDate.toLocaleString([], { hour: 'numeric', minute: '2-digit' })}`;
+        let tOfDay = ` at ${targetDate.toLocaleString([], { timeZone: options.timeZone, hour: 'numeric', minute: '2-digit' })}`;
         absDate += tOfDay;
         oaDate += tOfDay;
         relDate += tOfDay;
@@ -293,25 +299,29 @@ export function makeDate(pInput, optionIn = {}) {
     let targetDateYMD = targetDate.getFullYear()
         + '.' + (targetDate.getMonth() + 101).toString().slice(1)
         + '.' + (targetDate.getDate() + 100).toString().slice(1);
+    let targetDateInput = targetDate.getFullYear()
+        + '-' + (targetDate.getMonth() + 101).toString().slice(1)
+        + '-' + (targetDate.getDate() + 100).toString().slice(1);
     let regEx = /\.0/g;
     return {
         'error': false,
         'relative': titleCase(relDate),
         'absolute': titleCase(absDate),
         'absolute_full': titleCase(absFull),
-        'timeOnly': targetDate.toLocaleString([], { hour: 'numeric', minute: '2-digit' }),
+        'timeOnly': targetDate.toLocaleString([], { timeZone: options.timeZone, hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }),
         'dateOnly': dateOnly,
         'oaDate': titleCase(oaDate),
         'date': targetDate,
         'timestamp': targetDateStamp,
         'ymd': targetDateYMD,
+        'input': targetDateInput,
         'obs': targetDateYMD.replace(regEx, '.'),
         'numeric': Number(targetDateYMD.replace(/\./g, '')),
         'numeric$': targetDateYMD.replace(/\./g, ''),
         'dayPart': dayPart,
         'workingHours': workingHours,
         'dayOfWeek': targetDate.getDay(),
-        'dayOfWeek_word': `${targetDate.toLocaleString([], { weekday: 'long' })}`,
+        'dayOfWeek_word': `${targetDate.toLocaleString([], { timeZone: options.timeZone, weekday: 'long' })}`,
         'weekday': (((targetDate.getDay() % 6) === 0) ? 'weekend' : 'weekday'),
         'textOut': pInput
     };
@@ -323,6 +333,57 @@ export function makeDate(pInput, optionIn = {}) {
                 leftOver_text: ''
             };
         }
+        // is this a string as yyyy-mm-dd?
+        let test_me = pString.split('-');
+        if (test_me.length === 3) {
+            pString = `${test_me[1].trim()}/${test_me[2].trim()}/${test_me[0].trim()}`;
+        }
+        // is the text a good date on its own?
+        let parsed = pString.match(/[+-]/);
+        let datePart;
+        let addendPart = 0;
+        let delimiter = '+';
+        if (parsed) {
+            delimiter = parsed[0];
+            [datePart, addendPart] = pString.split(delimiter);
+            if (isNaN(addendPart)) {
+                addendPart = 0;
+            }
+        }
+        else {
+            datePart = pString;
+        }
+        datePart = datePart.replace(/st|th|nd|rd/, '');
+        const today = new Date(new Date().setHours(0, 0, 0, 0));   // midnight at the start of the current day
+        let validateDate = new Date(datePart);
+        if (isDate(validateDate)) {    // if something came in (say "Feb 20" or "2/20") that is a good date, we'll use it
+            // BUT... if there was no year, the default is 2001 (probably not what they want); check for that here
+            let sixtyDaysAgo = addDays(today, -60);
+            let finalAnswer = validateDate;
+            if (validateDate < sixtyDaysAgo) {
+                // this tries to take a date in the past and make it current year
+                // note that we APPEND the year, so if the incoming date string had a year explicity stated, that year will be used
+                let date_asCorrected = new Date(`${datePart} ${today.getFullYear()}`);
+                // in some cases, however, that doesn't work (example: on Dec 15, you enter January 5 - you want the date to be next year)
+                if (!isDate(date_asCorrected) || (date_asCorrected < sixtyDaysAgo)) {
+                    let try_me = new Date(`${datePart} ${today.getFullYear() + 1}`);
+                    if (isDate(try_me)) {
+                        finalAnswer = try_me;
+                    }
+                }
+                else if (isDate(date_asCorrected)) {
+                    finalAnswer = date_asCorrected;
+                }
+                else {
+                    finalAnswer = validateDate;
+                }
+            }
+            return {
+                date: addDays(finalAnswer, ((delimiter === '-') ? -1 : 1) * Number(addendPart)),
+                leftOver_text: ''
+            };
+        }
+        // the text is some odd combination
         let daysToAdd = 0;
         let words, plusMinus, days$;
         let timePart;
@@ -559,7 +620,7 @@ export function makeTime(pTime) {
                 else if (inTime.includes('p')) { ampm = 'pm'; }
                 else if (inTime.slice(0, 1) === '0') {
                     ampm = 'am';
-                    if (inTime.slice(1, 2) === '0') { inTime = `12${inTime.slice(2)}am` }
+                    if (inTime.slice(1, 2) === '0') { inTime = `12${inTime.slice(2)}am`; }
                 }  // support military times starting with zero
                 [hh$, mm$] = inTime.split(':');
                 const hhClean = hh$.replace(/\D+/g, '');
