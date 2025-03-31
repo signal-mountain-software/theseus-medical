@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { makeDate, makeTime } from '../../util/AVADateTime';
+import { addDays, makeDate, makeTime } from '../../util/AVADateTime';
 import { getSlotList, writeSlot, makeSlotName, myAvailability, printOccurrenceSheet } from '../../util/AVACalendars';
 import { getMemberList } from '../../util/AVAGroups';
 import { cl, makeArray, dbClient, isEmpty, deepCopy, titleCase, isMobile, recordExists } from '../../util/AVAUtilities';
@@ -208,6 +208,33 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
   const isEventOwner = pOccData?.owner?.includes(pPatient)
     || ['master', 'support'].includes(state.patient.account_class);
 
+  const checkSignupWindow = () => {
+    let response = {
+      open: true,
+      start: null,
+      end: null
+    };
+    if (pOccData.signup_window?.start) {
+      let windowStart = addDays(pOccData.date, -pOccData.signup_window.start);
+      response.start = makeDate(windowStart).relative;
+      if (windowStart > new Date()) {
+        response.open = false;
+        response.issue = 'start';
+        return response;
+      }
+    }
+    if (pOccData.signup_window?.end) {
+      let windowEnd = addDays(pOccData.date, -pOccData.signup_window.end);
+      response.end = makeDate(windowEnd).relative;
+      if (windowEnd < new Date()) {
+        response.open = false;
+        response.issue = 'end';
+        return response;
+      }
+    }
+    return response;
+  }
+
   const [loading, setLoading] = React.useState(true);
 
   const isWaitListed = (pPatient) => {
@@ -235,6 +262,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     defaultValues: defaultValues || { "noDefaults": true },
     cancelPending: false,
     numberOfOwnedSlots: 0,
+    signup_window: checkSignupWindow(),
     waitList: pOccData.wait_list || [],
     editWaitList: false,
     editForm: false
@@ -1168,6 +1196,14 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
             {reactData.attachedSR &&
               <Typography className={classes.standardIndent} style={AVATextStyle({ margin: { left: 1, right: 1 } })} >
                 {`Assigned to ${reactData.attachedSR.assigned_to_name}`}
+              </Typography>
+            }
+            {(!isEventOwner && !reactData.signup_window.open) &&
+              <Typography className={classes.standardIndent} style={AVATextStyle({ color: 'red', bold: true, margin: { left: 1, right: 1 } })} >
+                {(reactData.signup_window.issue === 'start')
+                  ? `Sign-up begins ${reactData.signup_window.start}`
+                  : `Sign-up ended ${reactData.signup_window.end}`
+                }
               </Typography>
             }
             <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
@@ -2268,6 +2304,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                 }
                 {((!ownerOfSlots && !pViewOnly) || isEventOwner) &&
                   (!['time', 'seats'].includes(pOccData.signup_type)) &&
+                  (isEventOwner || (reactData.signup_window.open)) &&
                   <Button
                     className={AVAClass.AVAButton}
                     style={{ backgroundColor: 'blue', color: 'white', marginBottom: '-12px', marginLeft: '16px', marginRight: '16px' }}

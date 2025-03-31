@@ -30,6 +30,8 @@ export async function addEvent(body) {
         "signup_type"
         "slots"  (24h based time slots)
         "slot_max_seats": slot_max_seats,
+             "signup_end": signup_end,
+        "signup_start": signup_start,
         "slot_interval": slot_interval,
         "slot_visibility":
         "reminder_minutes_Enrolled"
@@ -168,6 +170,10 @@ export async function addEvent(body) {
       sign_up: {
         name_security: (body.calendar_info.slot_visibility && (body.calendar_info.slot_visibility !== 'show_name')),
         type: body.calendar_info.signup_type,
+        window: {
+          start: body.calendar_info.signup_start || null,
+          end: body.calendar_info.signup_end || null
+        }
       },
       slotPattern: setSlots(body.calendar_info),
       slot_object_list: body.calendar_info.slot_object_list

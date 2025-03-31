@@ -1970,6 +1970,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                                   eventInfo.eventData,
                                                   { location: eventInfo.eventData.event_data.location.description },
                                                   { signup_type: eventInfo.eventData.sign_up.type },
+                                                  { signup_window: eventInfo.eventData.sign_up.window || { start: null, end: null }},
                                                   occInfo,
                                                   { date: occInfo.occurrence_date },
                                                   { time$: this_event.time$ },
