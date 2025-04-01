@@ -2412,7 +2412,7 @@ export default ({ request = {}, onClose }) => {
                                     : ''}`}
                                   min={reactData.fields[this_field].prompt.min}
                                   max={reactData.fields[this_field].prompt.max}
-                                  value={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                                  value={(!isEmpty(reactData.fields[this_field]?.valueText))
                                     ? makeDate(reactData.fields[this_field].value).input
                                     : ''
                                   }
