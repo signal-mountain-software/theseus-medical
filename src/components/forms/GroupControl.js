@@ -293,23 +293,23 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
       dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups) });
       // does the group you are dragging have members?
       // if so, you have to update the groups for EVERY member
- /*     if (reactData.selectedPersonRec) {
-        let newGroupList = deepCopy(reactData.selectedPersonRec.groups);
-        for (let this_group of targetGroup_formerFamilyTree) {
-          if (newGroupList.includes(this_group)) {
-            newGroupList.splice(newGroupList.indexOf(this_group), 1);
-          }
-        }
-        for (let this_group of targetGroup_newFamilyTree) {
-          if (!newGroupList.includes(this_group)) {
-            newGroupList.push(this_group);
-          }
-        }
-        updateReactData({
-          selectedPersonRec: Object.assign({}, reactData.selectedPersonRec, { groups: newGroupList })
-        }, true);
-      }
-      */
+      /*     if (reactData.selectedPersonRec) {
+             let newGroupList = deepCopy(reactData.selectedPersonRec.groups);
+             for (let this_group of targetGroup_formerFamilyTree) {
+               if (newGroupList.includes(this_group)) {
+                 newGroupList.splice(newGroupList.indexOf(this_group), 1);
+               }
+             }
+             for (let this_group of targetGroup_newFamilyTree) {
+               if (!newGroupList.includes(this_group)) {
+                 newGroupList.push(this_group);
+               }
+             }
+             updateReactData({
+               selectedPersonRec: Object.assign({}, reactData.selectedPersonRec, { groups: newGroupList })
+             }, true);
+           }
+           */
     }
     else if (draggedFrom.hasOwnProperty('personObj')) {
       if (draggedFrom.hasOwnProperty('personGroup') && (draggedFrom.intent === 'group')) {
@@ -385,7 +385,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
         newClientGroupsObj = {
           id: pSession.client_id,
           groups: newGroupList
-        }
+        };
       }
       if (newClientGroupsObj.hasOwnProperty('id')) {     // expected and standard
         if (newClientGroupsObj.id !== pSession.client_id) {     // but we are in a client other than the typical one (this should be very rare)
@@ -1283,13 +1283,17 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
       {reactData.viewPeopleMaintenance &&
         <PeopleMaintenance
           person_id={reactData.viewPeopleMaintenance}
+          key={`goForPeople_${reactData.viewPeopleMaintenance}`}
           initialValues={{ color: 'green' }}
           options={{}}
           onClose={async () => {
-            updateReactData({
-              viewPeopleMaintenance: false,
-              selectedGroupMembers: await selectMembers(reactData.selectedGroup_id)
-            }, true);
+            let reactUpd = {
+              viewPeopleMaintenance: false
+            };
+            if (reactData.selectedGroup_id) {
+              reactUpd.selectedGroupMembers = await selectMembers(reactData.selectedGroup_id);
+            }
+            updateReactData(reactUpd, true);
           }}
         />
       }

@@ -268,7 +268,18 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             }
           }
           if (!peopleRec.Item.preferred_methods) {
-            peopleRec.Item.preferred_methods = [(peopleRec.Item.preferred_method ? peopleRec.Item.preferred_method.toLowerCase() : 'ava')];
+            if (peopleRec.Item.preferred_method) {
+              if (Array.isArray(peopleRec.Item.preferred_method)) {
+                const x = peopleRec.Item.preferred_method.length - 1;
+                peopleRec.Item.preferred_methods = [peopleRec.Item.preferred_method[x].method.toLowerCase()];
+              }
+              else {
+                peopleRec.Item.preferred_methods = [peopleRec.Item.preferred_method.toLowerCase()];
+              }
+            }
+            else {
+              peopleRec.Item.preferred_methods = 'ava';
+            }
           }
           if (peopleRec.Item.time_based_rules) {
             peopleRec.Item.time_based_rules = peopleRec.Item.time_based_rules.filter(this_rule => {
@@ -320,6 +331,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           reactUpdObj.og.sessionRec = sessionRec.Item;
         }
         else {
+          handleAbort(parm_personRec.person_id);
           return {
             response_code: 400,
             errorMessage: `AVA doesn't recognize ID ${parm_personRec.person_id} - SessionsV2 not found.`
@@ -430,7 +442,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       isMounted.current = false;
       window.removeEventListener('resize', handleResize);
     };
-  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reactData.person_id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   function renderSection(componentName) {
     const SectionToRender = reactData.components[componentName].component_id;
@@ -527,7 +539,25 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     }
   };
 
-  const handleAbort = () => {
+  const handleAbort = (id) => {
+    updateReactData({
+      alert: {
+        severity: 'error',
+        title: 'ID Corrupted',
+        message: `AVA doesn't recognize ID ${id} - SessionsV2 not found.`,
+        action: [          
+          {
+            text: `Exit`,
+            function: () => {
+              onClose(false);
+            }
+          }
+        ]
+      }
+    }, true);
+  };
+
+  const handleExitWarning = () => {
     updateReactData({
       alert: {
         severity: 'warning',
@@ -706,7 +736,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
   }
 
   return (
-    reactData.initialized &&
+    (reactData.initialized || reactData.alert) &&
     <Dialog
       open={(true || refreshTrigger)}
       maxWidth={false}
@@ -718,7 +748,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       }}
       onClose={() => {
         if (reactData.OKtoSave) {
-          handleAbort();
+          handleExitWarning();
         }
         else {
           if (!reactData.current.peopleRec.person_id) {
@@ -737,335 +767,338 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         }
       }}
     >
-      <Box
-        display='flex' flexDirection='row'
-        style={{
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginTop: '32px',
-          marginBottom: '32px',
-          marginLeft: '16px',
-          marginRight: '16px',
-        }}
-        key={'topBox'}
-      >
-        <Box
-          display='flex' flexDirection='row'
-          flexGrow={1}
-          style={{
-            alignItems: 'center',
-          }}
-          key={'personBox'}
-        >
-          <Avatar className={AVAClass.AVAAvatar} src={reactData.myImage} alt={reactData.greetingName} />
-          <Typography
-            key={`personName`}
-            style={AVATextStyle({
-              size: 1.8,
-              bold: true,
-              margin: {
-                left: 1.5
-              }
-            })}>
-            {reactData.current.peopleRec.name ? (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim() : 'Welcome!'}
-          </Typography>
-        </Box>
-        {/* Logo and Pop-up Menu */}
-        <Box
-          display='flex'
-          ml={2}
-          overflow='auto'
-          flexDirection='column'
-        >
-          <Avatar className={AVAClass.AVAAvatar}
-            alt=''
-            src={state.session?.client_logo || process.env.REACT_APP_AVA_LOGO}
-            ml={2}
-            mr={2}
-            aria-controls='hidden-menu'
-            aria-haspopup='true'
-            onClick={(event) => {
-              updateReactData({
-                anchorEl: event.currentTarget,
-                popupMenuOpen: true
-              }, true);
+      {reactData.initialized &&
+        <React.Fragment>
+          <Box
+            display='flex' flexDirection='row'
+            style={{
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginTop: '32px',
+              marginBottom: '32px',
+              marginLeft: '16px',
+              marginRight: '16px',
             }}
-          />
+            key={'topBox'}
+          >
+            <Box
+              display='flex' flexDirection='row'
+              flexGrow={1}
+              style={{
+                alignItems: 'center',
+              }}
+              key={'personBox'}
+            >
+              <Avatar className={AVAClass.AVAAvatar} src={reactData.myImage} alt={reactData.greetingName} />
+              <Typography
+                key={`personName`}
+                style={AVATextStyle({
+                  size: 1.8,
+                  bold: true,
+                  margin: {
+                    left: 1.5
+                  }
+                })}>
+                {reactData.current.peopleRec.name ? (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim() : 'Welcome!'}
+              </Typography>
+            </Box>
+            {/* Logo and Pop-up Menu */}
+            <Box
+              display='flex'
+              ml={2}
+              overflow='auto'
+              flexDirection='column'
+            >
+              <Avatar className={AVAClass.AVAAvatar}
+                alt=''
+                src={state.session?.client_logo || process.env.REACT_APP_AVA_LOGO}
+                ml={2}
+                mr={2}
+                aria-controls='hidden-menu'
+                aria-haspopup='true'
+                onClick={(event) => {
+                  updateReactData({
+                    anchorEl: event.currentTarget,
+                    popupMenuOpen: true
+                  }, true);
+                }}
+              />
 
-        </Box>
-        <Menu
-          id='hidden-menu'
-          anchorEl={reactData.anchorEl}
-          open={reactData.popupMenuOpen}
-          classes={{ paper: classes.clientPopUp }}
-          onClose={() => {
-            updateReactData({
-              popupMenuOpen: false
-            }, true);
-          }}
-          keepMounted
-        >
-          <MenuList className={classes.popUpMenu}>
-            {reactData.administrative_account && (reactData.person_id !== state.session?.patient_id) && (
-              <MenuItem onClick={async () => {
+            </Box>
+            <Menu
+              id='hidden-menu'
+              anchorEl={reactData.anchorEl}
+              open={reactData.popupMenuOpen}
+              classes={{ paper: classes.clientPopUp }}
+              onClose={() => {
                 updateReactData({
                   popupMenuOpen: false
                 }, true);
-                await switchActiveAccount(
-                  state.session,
-                  (state.session.client_id || state.session.user_homeClient),
-                  {
-                    id: reactData.person_id,
-                    name: `${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`
-                  }
-                );
-              }}>
-                <Box
-                  display='flex' flexDirection='row' alignItems={'center'} justifyContent={'center'}
-                  key={'switch2self'}
-                >
-                  <SwapHorizIcon />
-                  <Typography style={AVATextStyle({ size: 0.8, margin: { left: 0.5 } })} >
-                    {`Switch to ${reactData.current.peopleRec.name.first}`}
-                  </Typography>
-                </Box>
-              </MenuItem>
-            )}
-            {reactData.administrative_account
-              && reactData.current.peopleRec.person_id
-              && (reactData.person_id !== state.session?.user_id)
-              && (
-                <MenuItem onClick={async () => {
-                  updateReactData({
-                    popupMenuOpen: false
-                  }, true);
-                  await switchActiveAccount(
-                    state.session,
-                    (state.session.client_id || state.session.user_homeClient),
-                    {
-                      id: reactData.person_id,
-                      name: `${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`
-                    },
-                    { resetUser: true }
-                  );
-                }}>
+              }}
+              keepMounted
+            >
+              <MenuList className={classes.popUpMenu}>
+                {reactData.administrative_account && (reactData.person_id !== state.session?.patient_id) && (
+                  <MenuItem onClick={async () => {
+                    updateReactData({
+                      popupMenuOpen: false
+                    }, true);
+                    await switchActiveAccount(
+                      state.session,
+                      (state.session.client_id || state.session.user_homeClient),
+                      {
+                        id: reactData.person_id,
+                        name: `${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`
+                      }
+                    );
+                  }}>
+                    <Box
+                      display='flex' flexDirection='row' alignItems={'center'} justifyContent={'center'}
+                      key={'switch2self'}
+                    >
+                      <SwapHorizIcon />
+                      <Typography style={AVATextStyle({ size: 0.8, margin: { left: 0.5 } })} >
+                        {`Switch to ${reactData.current.peopleRec.name.first}`}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                )}
+                {reactData.administrative_account
+                  && reactData.current.peopleRec.person_id
+                  && (reactData.person_id !== state.session?.user_id)
+                  && (
+                    <MenuItem onClick={async () => {
+                      updateReactData({
+                        popupMenuOpen: false
+                      }, true);
+                      await switchActiveAccount(
+                        state.session,
+                        (state.session.client_id || state.session.user_homeClient),
+                        {
+                          id: reactData.person_id,
+                          name: `${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`
+                        },
+                        { resetUser: true }
+                      );
+                    }}>
+                      <Box
+                        display='flex' flexDirection='row' alignItems={'center'} justifyContent={'center'}
+                        key={'switch2self'}
+                      >
+                        <HomeIcon />
+                        <Typography style={AVATextStyle({ size: 0.8, margin: { left: 0.5 } })} >
+                          {`Sign-in as ${reactData.current.peopleRec.name.first || reactData.current.peopleRec.name.last}`}
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  )}
+                <MenuItem>
                   <Box
-                    display='flex' flexDirection='row' alignItems={'center'} justifyContent={'center'}
-                    key={'switch2self'}
+                    display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
+                    key={'vRowRefresh'}
+                    style={AVATextStyle({ size: 0.8 })}
                   >
-                    <HomeIcon />
-                    <Typography style={AVATextStyle({ size: 0.8, margin: { left: 0.5 } })} >
-                      {`Sign-in as ${reactData.current.peopleRec.name.first || reactData.current.peopleRec.name.last}`}
+                    <Typography style={AVATextStyle({ size: 0.8 })}>
+                      {`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
+                    </Typography>
+                    <Typography style={AVATextStyle({ size: 0.8 })}>
+                      {`User ${state.session.user_id}${state.session.patient_id !== state.session.user_id ? (' (' + state.session.patient_id + ')') : ''}`}
                     </Typography>
                   </Box>
                 </MenuItem>
-              )}
-            <MenuItem>
-              <Box
-                display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
-                key={'vRowRefresh'}
-                style={AVATextStyle({ size: 0.8 })}
-              >
-                <Typography style={AVATextStyle({ size: 0.8 })}>
-                  {`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
-                </Typography>
-                <Typography style={AVATextStyle({ size: 0.8 })}>
-                  {`User ${state.session.user_id}${state.session.patient_id !== state.session.user_id ? (' (' + state.session.patient_id + ')') : ''}`}
-                </Typography>
-              </Box>
-            </MenuItem>
-          </MenuList>
-        </Menu>
-      </Box>
+              </MenuList>
+            </Menu>
+          </Box>
 
-      <Paper component={Box}
-        key={`section_frame`} variant='outlined' overflow={'auto'}
-      >
-        {reactData.sections.map((this_section, sectionNdx) => (
-          (this_section.isAuthorized &&
-            (!reactData.options?.sectionToShow || ([reactData.options?.sectionToShow].flat().includes(this_section.component_name))) &&
-            (reactData.person_id || (this_section.component_name === 'ProfileSection')) &&
-            <Box
-              key={`frag__${sectionNdx}`}
-            >
-              <Box
-                display='flex'
-                ml={2} mr={2} mt={'8px'}
-                key={`sectionRow__${sectionNdx}`}
-                style={{
-                  borderRadius: (this_section.isOpen ? '30px 30px 0px 0px' : '30px 30px 30px 30px'),
-                  marginBottom: (this_section.isOpen ? 0 : '8px'),
-                  backgroundColor: this_section.color,
-                  textDecoration: 'none',
-                  top: '8px',
-                  zIndex: 1,
-                  opacity: 1
-                }}
-                borderTop={1}
-                borderLeft={1}
-                borderRight={1}
-                borderBottom={!this_section.isOpen ? 1 : 0}
-                justifyContent='center'
-                flexDirection='column'
-                minHeight={80}
-                onClick={async () => {
-                  reactData.sections[sectionNdx].isOpen = !reactData.sections[sectionNdx].isOpen;
-                  updateReactData({
-                    focusAt: (reactData.sections[sectionNdx].isOpen ? this_section.component_name : null),
-                    sections: reactData.sections
-                  }, true);
-                }}
-              >
-                <Typography
-                  style={AVATextStyle({ size: 1.5, bold: true, align: 'center', color: (isDark(this_section.color) ? 'cornsilk' : 'black') })} >
-                  {this_section.section_name.trim()}
-                </Typography>
-              </Box>
-              {this_section.isOpen &&
-                <React.Fragment
-                  key={`${this_section.section_name}__callFrag`}
+          <Paper component={Box}
+            key={`section_frame`} variant='outlined' overflow={'auto'}
+          >
+            {reactData.sections.map((this_section, sectionNdx) => (
+              (this_section.isAuthorized &&
+                (!reactData.options?.sectionToShow || ([reactData.options?.sectionToShow].flat().includes(this_section.component_name))) &&
+                (reactData.person_id || (this_section.component_name === 'ProfileSection')) &&
+                <Box
+                  key={`frag__${sectionNdx}`}
                 >
                   <Box
-                    border={1}
-                    ml={2} mr={2}
-                  >
-                    {renderSection(this_section.component_name)}
-                  </Box>
-                  <Box
                     display='flex'
-                    borderTop={0}
+                    ml={2} mr={2} mt={'8px'}
+                    key={`sectionRow__${sectionNdx}`}
+                    style={{
+                      borderRadius: (this_section.isOpen ? '30px 30px 0px 0px' : '30px 30px 30px 30px'),
+                      marginBottom: (this_section.isOpen ? 0 : '8px'),
+                      backgroundColor: this_section.color,
+                      textDecoration: 'none',
+                      top: '8px',
+                      zIndex: 1,
+                      opacity: 1
+                    }}
+                    borderTop={1}
                     borderLeft={1}
                     borderRight={1}
-                    borderBottom={1}
-                    style={{
-                      borderRadius: '0px 0px 30px 30px',
-                      backgroundColor: this_section.color,
-                      textDecoration: 'none'
-                    }}
-                    ml={2} mr={2} mb={1.5}
-                    onClick={async () => {
-                      if (reactData.options?.sectionToShow !== this_section.component_name) {
-                        reactData.sections[sectionNdx].isOpen = !reactData.sections[sectionNdx].isOpen;
-                        updateReactData({
-                          sections: reactData.sections
-                        }, true);
-                      }
-                    }}
+                    borderBottom={!this_section.isOpen ? 1 : 0}
                     justifyContent='center'
                     flexDirection='column'
-                    minHeight={30}
-                    height={30}
-                  />
-                </React.Fragment>
-              }
-            </Box>
-          )
-        ))}
-      </Paper>
-
-      <Box
-        display='flex'
-        flexDirection='row'
-        alignItems={'center'}
-        marginTop={'16px'}
-        marginBottom={'16px'}
-        justifyContent={'space-around'}
-      >
-        <Button
-          className={AVAClass.AVAButton}
-          style={{ backgroundColor: 'red', color: 'white' }}
-          size='small'
-          onClick={() => {
-            if (reactData.OKtoSave) {
-              handleAbort();
-            }
-            else {
-              if (!reactData.current.peopleRec.person_id) {
-                onClose({
-                  saveCompleted: false,
-                  newID: false
-                });
-              }
-              else {
-                onClose({
-                  saveCompleted: reactData.saveCompleted,
-                  newID: reactData.current.peopleRec.person_id,
-                  newName: (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim()
-                });
-              }
-            }
-          }}
-        >
-          {'Exit'}
-        </Button>
-        {reactData.OKtoSave ?
-          (isEmpty(reactData.errorList) ?
-            <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-              <Button
-                onClick={async () => {
-                  const result = await saveChanges();
-                  if (!!result) {
-                    reactData.saveCompleted = true;
+                    minHeight={80}
+                    onClick={async () => {
+                      reactData.sections[sectionNdx].isOpen = !reactData.sections[sectionNdx].isOpen;
+                      updateReactData({
+                        focusAt: (reactData.sections[sectionNdx].isOpen ? this_section.component_name : null),
+                        sections: reactData.sections
+                      }, true);
+                    }}
+                  >
+                    <Typography
+                      style={AVATextStyle({ size: 1.5, bold: true, align: 'center', color: (isDark(this_section.color) ? 'cornsilk' : 'black') })} >
+                      {this_section.section_name.trim()}
+                    </Typography>
+                  </Box>
+                  {this_section.isOpen &&
+                    <React.Fragment
+                      key={`${this_section.section_name}__callFrag`}
+                    >
+                      <Box
+                        border={1}
+                        ml={2} mr={2}
+                      >
+                        {renderSection(this_section.component_name)}
+                      </Box>
+                      <Box
+                        display='flex'
+                        borderTop={0}
+                        borderLeft={1}
+                        borderRight={1}
+                        borderBottom={1}
+                        style={{
+                          borderRadius: '0px 0px 30px 30px',
+                          backgroundColor: this_section.color,
+                          textDecoration: 'none'
+                        }}
+                        ml={2} mr={2} mb={1.5}
+                        onClick={async () => {
+                          if (reactData.options?.sectionToShow !== this_section.component_name) {
+                            reactData.sections[sectionNdx].isOpen = !reactData.sections[sectionNdx].isOpen;
+                            updateReactData({
+                              sections: reactData.sections
+                            }, true);
+                          }
+                        }}
+                        justifyContent='center'
+                        flexDirection='column'
+                        minHeight={30}
+                        height={30}
+                      />
+                    </React.Fragment>
                   }
-                  updateReactData({
-                    saveCompleted: reactData.saveCompleted,
-                    OKtoSave: !result
-                  }, true);
-                }}
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'lightcyan', color: 'black' }}
-                size='small'
-              >
-                {reactData.isMobile ? 'Save' : 'Save/Continue'}
-              </Button>
-              <Button
-                onClick={async () => {
-                  let result = await saveChanges();
-                  if (result) {
+                </Box>
+              )
+            ))}
+          </Paper>
+
+          <Box
+            display='flex'
+            flexDirection='row'
+            alignItems={'center'}
+            marginTop={'16px'}
+            marginBottom={'16px'}
+            justifyContent={'space-around'}
+          >
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'red', color: 'white' }}
+              size='small'
+              onClick={() => {
+                if (reactData.OKtoSave) {
+                  handleExitWarning();
+                }
+                else {
+                  if (!reactData.current.peopleRec.person_id) {
                     onClose({
+                      saveCompleted: false,
+                      newID: false
+                    });
+                  }
+                  else {
+                    onClose({
+                      saveCompleted: reactData.saveCompleted,
                       newID: reactData.current.peopleRec.person_id,
                       newName: (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim()
                     });
                   }
-                }}
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'green', color: 'white' }}
-                size='small'
-              >
-                {'Save/Finish'}
-              </Button>
-            </Box>
-            :
-            <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-              <Typography style={{ color: 'red', bold: true }}>
-                {(Object.keys(reactData.errorList).length === 1)
-                  ? `${reactData.errorList[Object.keys(reactData.errorList)[0]].errorMessage}`
-                  : `${Object.keys(reactData.errorList).length} issues`
                 }
-              </Typography>
-            </Box>
-          )
-          :
-          (reactData.current.peopleRec?.name?.first &&
-            <Box display='flex' flexDirection='column' justifyContent='flex-end' alignItems='center'>
-              <Typography style={{ size: 1.2, bold: true }}>
-                {`${(reactData.current.peopleRec?.name?.first + "'s").replace("s's", "s'")} Profile`}
-              </Typography>
-              {(reactData.mode === 'view') &&
-                <Typography style={{ size: 1.2, bold: true }}>
-                  {`** View only **`}
-                </Typography>
-              }
-              {(reactData.mode === 'view') &&
-                <Typography style={{ marginTop: 0, size: 1 }}>
-                  {`No Changes allowed`}
-                </Typography>
-              }
-            </Box>
-          )
-        }
-      </Box>
-
+              }}
+            >
+              {'Exit'}
+            </Button>
+            {reactData.OKtoSave ?
+              (isEmpty(reactData.errorList) ?
+                <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
+                  <Button
+                    onClick={async () => {
+                      const result = await saveChanges();
+                      if (!!result) {
+                        reactData.saveCompleted = true;
+                      }
+                      updateReactData({
+                        saveCompleted: reactData.saveCompleted,
+                        OKtoSave: !result
+                      }, true);
+                    }}
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'lightcyan', color: 'black' }}
+                    size='small'
+                  >
+                    {reactData.isMobile ? 'Save' : 'Save/Continue'}
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      let result = await saveChanges();
+                      if (result) {
+                        onClose({
+                          newID: reactData.current.peopleRec.person_id,
+                          newName: (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim()
+                        });
+                      }
+                    }}
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'green', color: 'white' }}
+                    size='small'
+                  >
+                    {'Save/Finish'}
+                  </Button>
+                </Box>
+                :
+                <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
+                  <Typography style={{ color: 'red', bold: true }}>
+                    {(Object.keys(reactData.errorList).length === 1)
+                      ? `${reactData.errorList[Object.keys(reactData.errorList)[0]].errorMessage}`
+                      : `${Object.keys(reactData.errorList).length} issues`
+                    }
+                  </Typography>
+                </Box>
+              )
+              :
+              (reactData.current.peopleRec?.name?.first &&
+                <Box display='flex' flexDirection='column' justifyContent='flex-end' alignItems='center'>
+                  <Typography style={{ size: 1.2, bold: true }}>
+                    {`${(reactData.current.peopleRec?.name?.first + "'s").replace("s's", "s'")} Profile`}
+                  </Typography>
+                  {(reactData.mode === 'view') &&
+                    <Typography style={{ size: 1.2, bold: true }}>
+                      {`** View only **`}
+                    </Typography>
+                  }
+                  {(reactData.mode === 'view') &&
+                    <Typography style={{ marginTop: 0, size: 1 }}>
+                      {`No Changes allowed`}
+                    </Typography>
+                  }
+                </Box>
+              )
+            }
+          </Box>
+        </React.Fragment>
+      }
       {reactData.alert &&
         <Snackbar
           open={!!reactData.alert}
