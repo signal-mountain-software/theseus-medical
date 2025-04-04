@@ -380,7 +380,9 @@ export default ({
                         </Typography>
                       }
                       {listEntry.conflict && listEntry.conflict.map((conflictEntry, c) => (
-                        <Typography style={AVATextVariableStyle(listEntry.conflict, { size: 0.5, color: 'red' })}>
+                        <Typography
+                          key={`conflict_${x}_${c}`}
+                          style={AVATextVariableStyle(listEntry.conflict, { size: 0.5, color: 'red' })}>
                           {conflictEntry}
                         </Typography>
                       ))}
