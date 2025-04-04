@@ -604,10 +604,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       });
     if (recordExists(menuRec)) {
       reactUpdObj.loadedMenuVersion = menuRec.Item.menu_version;
-      reactUpdObj.sectionOpen = false; 
+      reactUpdObj.sectionOpen = false;
       if ((menuRec.Item.AVA_main_menu && (menuRec.Item.AVA_main_menu.length > 0)) && !reload) {
         reactUpdObj.mainMenu = menuRec.Item.AVA_main_menu;
-        reactUpdObj.sectionOpen = Object.assign({}, reactUpdObj.mainMenu[0], { index: 0 }); 
+        reactUpdObj.sectionOpen = Object.assign({}, reactUpdObj.mainMenu[0], { index: 0 });
         updateReactData(reactUpdObj, true);
         return menuRec.Item.AVA_main_menu;
       }
@@ -621,7 +621,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       await updateAVA(reactData.sectionOpen, wholeMenu);
       reactUpdObj.mainMenu = wholeMenu;
       if (!reactUpdObj.sectionOpen) {
-        reactUpdObj.sectionOpen = Object.assign({}, reactUpdObj.mainMenu[0], { index: 0 }); 
+        reactUpdObj.sectionOpen = Object.assign({}, reactUpdObj.mainMenu[0], { index: 0 });
       }
       updateReactData(reactUpdObj, true);
       return wholeMenu;
@@ -1398,7 +1398,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                             borderRadius: ('30px 30px 30px 30px'),
                             backgroundColor: hexToRgb(this_row.section_color, 1),
                             textDecoration: 'none'
-                          }}                         
+                          }}
                           onDragOver={(e) => { if (this_row.is_favorite) { handleDragOver(e); } }}
                           onDrop={async (e) => {
                             if (this_row.is_favorite) {
@@ -1615,6 +1615,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               {!session.useOldVersion &&
                 <PeopleMaintenance
                   person_id={null}
+                  options={{
+                    mode: 'add',
+                    newPerson: true,
+                    sectionToShow: 'ProfileSection'
+                  }}
                   initialValues={{
                     peopleRec: {
                       client_id: state.session.client_id,

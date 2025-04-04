@@ -151,7 +151,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           section_name: 'Snapshot',
           color: initialValues?.color || 'orange',
           isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('Snapshot')) : false),
-          isAuthorized: true,
+          isAuthorized: reactData.administrative_account,
           version_id: 0,
           component_name: 'Snapshot'
         },
@@ -337,26 +337,26 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             errorMessage: `AVA doesn't recognize ID ${parm_personRec.person_id} - SessionsV2 not found.`
           };
         }
-        let formFieldsRec = await dbClient
-          .query({
-            KeyConditionExpression: 'client_id = :c',
-            TableName: 'Form_Fields',
-            ExpressionAttributeValues: {
-              ':c': reactUpdObj.og.peopleRec.client_id
-            }
-          })
-          .promise()
-          .catch(error => { cl({ 'Error reading SessionsV2': error }); });
-        reactUpdObj.form_fields = {};
-        if (recordExists(formFieldsRec)) {
-          for (const this_fieldRec of formFieldsRec.Items) {
-            if (this_fieldRec.showOnProfile && this_fieldRec.value.saveAs) {
-              reactUpdObj.form_fields[this_fieldRec.field_name] = {
-                fieldRec: this_fieldRec,
-                prompt: this_fieldRec.prompt.value,
-                value: unresolve({ object: reactUpdObj.og, key: this_fieldRec.value.saveAs.split('.') })
-              };
-            }
+      }
+      let formFieldsRec = await dbClient
+        .query({
+          KeyConditionExpression: 'client_id = :c',
+          TableName: 'Form_Fields',
+          ExpressionAttributeValues: {
+            ':c': reactUpdObj.og.peopleRec.client_id
+          }
+        })
+        .promise()
+        .catch(error => { cl({ 'Error reading Form_Fields': error }); });
+      reactUpdObj.form_fields = {};
+      if (recordExists(formFieldsRec)) {
+        for (const this_fieldRec of formFieldsRec.Items) {
+          if (this_fieldRec.showOnProfile && this_fieldRec.value.saveAs) {
+            reactUpdObj.form_fields[this_fieldRec.field_name] = {
+              fieldRec: this_fieldRec,
+              prompt: this_fieldRec.prompt.value,
+              value: unresolve({ object: reactUpdObj.og, key: this_fieldRec.value.saveAs.split('.') })
+            };
           }
         }
       }
@@ -437,7 +437,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       }, true);
     }
     isMounted.current = true;
-    initialize();
+    if (!reactData.initialized) {
+      initialize();
+    }
     return () => {
       isMounted.current = false;
       window.removeEventListener('resize', handleResize);
@@ -585,18 +587,28 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
 
   const saveChanges = async () => {
     const person_id_blank = !reactData.current.peopleRec.person_id;
-    if (person_id_blank || (reactData.current.peopleRec.person_id !== reactData.person_id)) {
+    const person_id_changed = reactData.current.peopleRec.person_id !== reactData.person_id;
+    if (person_id_blank || person_id_changed) {
       // check person_id just before saving to assure that it hasn't been claimed between setting and saving
-      const person_id_exists = await getPerson(reactData.current.peopleRec.person_id, 'validate');
+      let person_id_exists = false;
+      if (!person_id_blank) (
+        person_id_exists = await getPerson(reactData.current.peopleRec.person_id, 'validate')
+      );
       if (person_id_exists || person_id_blank) {
         // it's a duplicate OR blank; fix it and abort the save with an alert message
         const { proposedID, newID } = await newUserID(reactData.current.peopleRec.person_id);
         reactData.current.peopleRec.person_id = newID;
         reactData.current.sessionRec.session_id = newID;
         reactData.current.sessionRec.user_id = newID;
+        reactData.current.sessionRec.person_id = newID;
+        reactData.current.sessionRec.patient_id = newID;
+        if (reactData.options) {
+          delete reactData.options.sectionToShow;
+        }
         updateReactData({
           person_id: newID,
           current: reactData.current,
+          options: reactData.options,
           alert: {
             severity: 'warning',
             title: 'Your Account ID',
