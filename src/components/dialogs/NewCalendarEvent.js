@@ -9,7 +9,7 @@ import ClientsSection from '../sections/ClientsSection';
 import EditList from '../forms/EditList';
 import Select from "react-dropdown-select";
 
-import { makeDate, makeTime, addMonths } from '../../util/AVADateTime';
+import { makeDate, makeTime, addMonths, addDays, daysDiff } from '../../util/AVADateTime';
 
 import { useSnackbar } from 'notistack';
 
@@ -214,6 +214,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   const [defaultSlotOwners, setDefaultSlotOwners] = React.useState('none');
   const [slot_max_seats, setSlotMaxSeats] = React.useState(' ');
   const [signup_start, setSignup_start] = React.useState(' ');
+  const [max_guests, setmaxGuests] = React.useState(0);
   const [signup_end, setSignup_end] = React.useState(' ');
   const [slot_interval, setSlotInterval] = React.useState(' ');
   const [eventDateAsDisplayString, setEventDateAsDisplayString] = React.useState((options.setDate ? options.setDate.dateObj.absolute : ' '));
@@ -348,6 +349,9 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
         "reminder_minutes_NotEnrolled": 0
       }
     };
+    if (max_guests > 0) {
+      payload.calendar_info.number_of_guests = max_guests;
+    }
     let response = await addEvent(payload);
     response.slots = [];
     if (!!personalEvent
@@ -1163,27 +1167,44 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                     <Box
                       display="flex"
                       pb={1}
-                      ml={2}
                       flexDirection='row'
                       justifyContent="flex-start"
                     >
                       <TextField
                         id='signup_start'
-                        value={signup_start}
+                        key={`start_${reactData.event_date?.numeric$}_${signup_start}`}
+                        defaultValue={(signup_start && (Number(signup_start) > 0) && (reactData.event_date && !reactData.event_date.error))
+                          ? makeDate(addDays(reactData.event_date.date, -signup_start)).absolute 
+                          : ''}
                         style={{width: '200px', marginRight: '16px'}}
-                        onChange={(event) => {
-                          setSignup_start(event.target.value);
+                        onBlur={(event) => {
+                          if (event.target.value) {
+                            let dObj = makeDate(event.target.value, { noTime: true });
+                            setSignup_start(daysDiff(reactData.event_date.date, dObj.date));
+                          }
+                          else {
+                            setSignup_start(0);
+                          }
                         }}
-                        helperText='# days before the event to open sign-up'
+                        helperText='Begin sign-up on'
                       />
                       <TextField
                         id='signup_end'
-                        value={signup_end}
+                        key={`end_${reactData.event_date?.numeric$}_${signup_end}`}
+                        defaultValue={(signup_end && (Number(signup_end) > 0) && (reactData.event_date && !reactData.event_date.error))
+                          ? makeDate(addDays(reactData.event_date.date, -signup_end)).absolute
+                          : ''}
                         style={{ width: '200px' }}
-                        onChange={(event) => {
-                          setSignup_end(event.target.value);
+                        onBlur={(event) => {
+                          if (event.target.value) {
+                            let dObj = makeDate(event.target.value, { noTime: true });
+                            setSignup_end(daysDiff(reactData.event_date.date, dObj.date));
+                          }
+                          else {
+                            setSignup_end(0);
+                          }
                         }}
-                        helperText='# days before the event to close sign-up'
+                        helperText='End sign-up on'
                       />
                     </Box>
                   </Box>
@@ -1233,6 +1254,30 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                         />
                       </RadioGroup>
                     </FormControl>
+                  </Box>
+                  <Box
+                    display="flex"
+                    pt={2}
+                    pb={1}
+                    flexDirection='column'
+                    justifyContent="center"
+                  >
+                    <Typography className={classes.radioText}>Allow Guests?</Typography>
+                    <TextField
+                      key='max_guests'
+                      value={max_guests}
+                      style={{ width: '200px', marginRight: '16px' }}
+                      onChange={(event) => {
+                        let number = Number(event.target.value);
+                        if (isNaN(number) || (number < 1) || (number > 9)) {
+                          setmaxGuests(0);
+                        }
+                        else {
+                          setmaxGuests(number);
+                        }
+                      }}
+                      helperText='Maximum # of guests per person'
+                    />
                   </Box>
                 </React.Fragment>
               }

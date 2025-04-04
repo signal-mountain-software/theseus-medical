@@ -233,7 +233,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       }
     }
     return response;
-  }
+  };
 
   const [loading, setLoading] = React.useState(true);
 
@@ -699,6 +699,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
         writeRequest.override_description = pOccData.description;
       }
       if (body.notes) { writeRequest.notes = body.notes; }
+      if (body.guests) { writeRequest.guests = body.guests; }
 
 
 
@@ -777,7 +778,8 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
           let updatedSlotData = Object.assign(workingList[pIndex].slotData, {
             name: '',
             owner: '',
-            notes: ''
+            notes: '',
+            guests: new Array(pEvent.number_of_guests)
           });
           workingList[pIndex] = {
             event_key: slotInfo.event_key,
@@ -812,6 +814,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               owner: newPersonID,
               owner_location: newPersonLocation,
               notes: body.notes,
+              guests: body.guests,
               slot_description: workingList[whereToGo].slotData.slot_description,
               slot_sort: workingList[whereToGo].slotData.slot_sort,
               documents: slotInfo.documents || null
@@ -831,6 +834,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               owner: newPersonID,
               owner_location: newPersonLocation,
               notes: body.notes,
+              guests: body.guests,
               documents: slotInfo.documents || null
             }
           });
@@ -1121,6 +1125,25 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     await writeSlot(slotUpdate);
     setEventSlotList(eventSlotList);
     setEditNoteNumber(-1);
+    setForceRedisplay(!forceRedisplay);
+    return eventSlotList;
+  };
+
+  const handleChangeGuests = async (updatedIndex, pGuests) => {
+    eventSlotList[updatedIndex].slotData.guests = pGuests;
+    let slotUpdate = Object.assign(
+      {},
+      eventSlotList[updatedIndex],
+      eventSlotList[updatedIndex].slotData,
+      {
+        event: eventSlotList[updatedIndex].event_key,
+        client: pClient
+      }
+    );
+    slotUpdate.status = 'guests';
+    slotUpdate.no_messaging = true;
+    await writeSlot(slotUpdate);
+    setEventSlotList(eventSlotList);
     setForceRedisplay(!forceRedisplay);
     return eventSlotList;
   };
@@ -1591,7 +1614,6 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                               {pOccData.notes_required}
                             </Typography>
                           }
-
                           {(isEventOwner || isSlotOwner(this_item.slotData)) &&
                             (editNoteNumber === -1) &&
                             <Box display='flex' mr={2} flexDirection='row' justifyContent='flex-start' alignItems='center'>
@@ -1708,12 +1730,38 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                               }
                             </Box>
                           }
+                          {/* Guests are allowed and I am the event or slot owner */}
+                          {(((pOccData.number_of_guests && (pOccData.number_of_guests > 0))
+                            && (isEventOwner || isSlotOwner(this_item.slotData)))) &&
+                            <Box display='flex' mb={3} mr={4} flexDirection='column' justifyContent='center' alignItems='flex-start' flexGrow={1}>
+                              <Typography style={AVATextStyle({ size: 0.8, margin: { top: 1 } })} >
+                                {`${this_item.slotData.display_name.split(' ')[0]}'s Guests`}
+                              </Typography>
+                              {new Array(pOccData.number_of_guests).fill('x').map((this_guest, guest_number) => (
+                                <TextField
+                                  classes={{ root: classes.standard }}
+                                  key={`prompt-guest_${index}-${guest_number}`}
+                                  inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                                  defaultValue={this_item.slotData.guests ? this_item.slotData.guests[guest_number] : ''}
+                                  onBlur={(event) => {
+                                    if (!this_item.slotData.guests) {
+                                      this_item.slotData.guests = new Array(pOccData.number_of_guests);
+                                    }
+                                    if (this_item.slotData.guests[guest_number] !== event.target.value) {
+                                      this_item.slotData.guests[guest_number] = event.target.value;
+                                      handleChangeGuests(index, this_item.slotData.guests);
+                                    }
+                                  }}
+                                  autoComplete='off'
+                                />
+                              ))}
+                            </Box>
+                          }
                         </Box>
                       </Box>
-
                     </Box>
                   }
-                  {!isOwned(this_item.slotData) && (isEventOwner || !pViewOnly) &&
+                  {!isOwned(this_item.slotData) && (isEventOwner || (!pViewOnly && reactData.signup_window.open)) &&
                     (editNoteNumber === -1) &&
                     <Box display='flex' width='100%' pr={2} flexDirection='row' justifyContent='flex-end' alignItems='center'>
                       <Tooltip title={isEventOwner ? `Select someone` : `Add myself`}>

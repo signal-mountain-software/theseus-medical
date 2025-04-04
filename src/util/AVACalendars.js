@@ -167,6 +167,7 @@ export async function addEvent(body) {
         reminder_minutes_Enrolled: body.calendar_info.reminder_minutes_Enrolled,
         reminder_minutes_NotEnrolled: body.calendar_info.reminder_minutes_NotEnrolled
       },
+      number_of_guests: body.calendar_info.number_of_guests,
       sign_up: {
         name_security: (body.calendar_info.slot_visibility && (body.calendar_info.slot_visibility !== 'show_name')),
         type: body.calendar_info.signup_type,
@@ -1317,6 +1318,10 @@ export async function writeSlot(body) {
     slotData: slotDataObj
   };
 
+  if (body.guests) {
+    putCalendar.guests = deepCopy(body.guests);
+  }
+
   // legacy support
   putCalendar.id = event_id;
   putCalendar.list_key = `${body.status === 'released' ? 'available' : body.owner}#${occurrence}`;
@@ -1365,7 +1370,7 @@ export async function writeSlot(body) {
     // get all the slots after this write was completed
     let event_slots = await dbClient
       .query({
-        KeyConditionExpression: 'client_id = :c and begins_with(event_key, :e)',
+        KeyConditionExpression: 'client = :c and begins_with(event_key, :e)',
         TableName: 'Calendar',
         ExpressionAttributeValues: {
           ':c': body.client,
