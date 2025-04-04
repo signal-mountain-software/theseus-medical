@@ -197,7 +197,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
     let selectOpen = pGroupList.includes('*all_open') || pGroupList.includes('*all_public');
     let selectPrivate = pGroupList.includes('*all_closed') || pGroupList.includes('*all_private');
     const selectMine = !pGroupList || (pGroupList.length === 0) || (pGroupList.includes('*user'));
-    let allGroups = await getAllGroups(state.session.person_id, state.session.client_id);
+    let allGroups = await getAllGroups(state.session.person_id || state.session.patient_id, state.session.client_id);
     let gList = allGroups.adminHierarchy;
     let response = {};
     for (let x = 0; x < gList.length; x++) {
@@ -215,7 +215,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
           my_role = foundGroup.role;
         }
         else {
-          my_role = await getRole(g.id, state.session.person_id);
+          my_role = await getRole(g.id, state.session.person_id || state.session.patient_id);
         }
         if (pGroupList.includes('*responsible') && (my_role !== 'responsible')) {
           continue;
