@@ -357,6 +357,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       filterTextLower: null,
       selectDate: null,
       clicked_on_date: false,
+      administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
       popUpOpen: false,
       needRef: false,
       loading: false,
@@ -669,6 +670,17 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     if (reactData.defaultValues.hasOwnProperty('onlyPublished')
       && (!this_event.published)) {
       return false;
+    }
+    if (this_event.type === 'personal') {
+      if ([this_event.owner].flat().includes(reactData.selectedPerson_id)
+        || reactData.administrative_account
+        || this_event.slot_owners.hasOwnProperty(reactData.selectedPerson_id)
+      ) {
+        // no-op
+      }
+      else {
+        return false;
+      }
     }
     if ((reactData.idFilter) && (!this_event.slot_owners.hasOwnProperty(reactData.idFilter))) {
       //    console.log(`failed - ${reactData.idFilter} in ${Object.keys(this_event.slot_owners)}`)
@@ -1956,9 +1968,6 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                               case 'birthday': {
                                                 break;
                                               }
-                                              case 'personal': {
-                                                break;
-                                              }
                                               default: {
                                                 let [eventInfo, occInfo] = await getCalendarEntries({
                                                   person_id: reactData.selectedPerson_id,
@@ -1970,7 +1979,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                                   eventInfo.eventData,
                                                   { location: eventInfo.eventData.event_data.location.description },
                                                   { signup_type: eventInfo.eventData.sign_up.type },
-                                                  { signup_window: eventInfo.eventData.sign_up.window || { start: null, end: null }},
+                                                  { signup_window: eventInfo.eventData.sign_up.window || { start: null, end: null } },
                                                   occInfo,
                                                   { date: occInfo.occurrence_date },
                                                   { time$: this_event.time$ },
@@ -2016,6 +2025,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                                 <React.Fragment>
                                                   {!reactData.defaultValues.onlyRegistered
                                                     && (this_date.dateObj.numeric >= reactData.todayYMD)
+                                                    && (![this_event.owner].flat().includes(reactData.selectedPerson_id))
                                                     &&
                                                     <Typography
                                                       noWrap={true}
