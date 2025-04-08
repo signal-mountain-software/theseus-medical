@@ -728,7 +728,7 @@ export default ({ request = {}, onClose }) => {
     };
     for (let this_section of formRec.sections) {
       if (this_section.occurrences && !isNaN(this_section.occurrences)) {
-        for (let section_number = 1; section_number <= this_section.occurrences; section_number++) {       
+        for (let section_number = 1; section_number <= this_section.occurrences; section_number++) {
           response.sections.push(deepCopy(this_section));
           this_section.section_name = this_section.section_name.replace(section_number.toString(), `${section_number + 1}`);
           for (let [field_index, this_field] of this_section.fields.entries()) {

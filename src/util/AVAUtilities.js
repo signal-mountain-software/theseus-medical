@@ -78,18 +78,6 @@ export function recordExists(recordId) {
   else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
 }
 
-export async function getLocalNWSOffice({ latitude, longitude }) {
-  let nws_info = await restAPI({
-    hostname: 'api.weather.gov',
-    path: `/points/${latitude},${longitude}`,
-    method: 'GET',
-    headers: {
-      "User-Agent": "(AVASeniorConnect.com, rsteele@avaseniorconnect.com)"
-    }
-  }, '');
-  return nws_info;
-}
-
 export async function getLocalWeather(client_weather = {
   "place_name": "AVA HQ",
   "nws_x": 21,
@@ -119,7 +107,7 @@ export async function getLocalWeather(client_weather = {
 export async function getMarqueeMessage(client_id, options = {}) {
   let response = [];
   let urgentMessage;
-  if (options.client_weather && !options.client_weather.suppress_on_marquee) {
+  if (options.client_weather) {
     let weather = await getLocalWeather(options.client_weather);
     if (weather) {
       response.push({

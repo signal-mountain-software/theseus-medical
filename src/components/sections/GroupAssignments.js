@@ -6,7 +6,7 @@ import { deepCopy, isMobile } from '../../util/AVAUtilities';
 import { Typography, Checkbox, Box } from '@material-ui/core';
 import { AVATextStyle } from '../../util/AVAStyles';
 
-export default ({ currentValues, updateField, reactData, setError, updateReactData }) => {
+export default ({ currentValues, updateField, reactData, updateReactData }) => {
 
   const { state } = useSession();
 
@@ -68,24 +68,7 @@ export default ({ currentValues, updateField, reactData, setError, updateReactDa
         } while (checkGroup);
       }
     }
-    let groupOK = currentValues.peopleRec.groups.some(g => { return ((g !== 'ALL') && (g !== '__top__')); });
-    let errorObj;
-    if (!groupOK) {
-      errorObj = {
-        errorField: 'groups',
-        errorValue: '',
-        isError: true,
-        errorMessage: `You must select at least one Group`
-      };
-    }
-    else {
-      errorObj = {
-        errorField: 'groups',
-        isError: false
-      };
-    }
     await updateField({
-      errorObj,
       updateList:
         [{
           tableName: 'peopleRec',

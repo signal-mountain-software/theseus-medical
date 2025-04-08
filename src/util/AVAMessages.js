@@ -2057,7 +2057,7 @@ function pdfHeader(pageN) {
 }
 
 async function pdfHTML(text, options = {}) {
-  // clt({ pdfLine: text, options });
+  clt({ pdfLine: text, options });
   if (options) { pdfStyle(options); }
   if (options.before) { pdfDown(options.before); }
   if (options.yPos && !isNaN(options.yPos)) {
@@ -2165,7 +2165,7 @@ async function pdfHTML(text, options = {}) {
 }
 
 function pdfLine(text, options = {}) {
-  // clt({ pdfLine: text, options });
+  clt({ pdfLine: text, options });
   if (options) { pdfStyle(options); }
   if (options.before) { pdfDown(options.before); }
   if (options.yPos && !isNaN(options.yPos)) {
@@ -2321,7 +2321,7 @@ function pdfLine(text, options = {}) {
 
 
 async function pdfImage(text, options = {}) {
-  // clt({ pdfLine: text, options });
+  clt({ pdfLine: text, options });
   if (options) { pdfStyle(options); }
   if (options.before) { pdfDown(options.before); }
   if (options.yPos && !isNaN(options.yPos)) {

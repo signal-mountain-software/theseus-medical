@@ -547,7 +547,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         severity: 'error',
         title: 'ID Corrupted',
         message: `AVA doesn't recognize ID ${id} - SessionsV2 not found.`,
-        action: [          
+        action: [
           {
             text: `Exit`,
             function: () => {

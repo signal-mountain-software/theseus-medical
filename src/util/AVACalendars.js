@@ -3668,7 +3668,7 @@ export async function publishCalendar(request) {
       results.eventsFound--;
       return false;
     }   // event was soft-deleted
-    if (!request.filters) {    
+    if (!request.filters) {
       console.log('accepted - no filters');
       return true;
     }
@@ -3691,7 +3691,7 @@ export async function publishCalendar(request) {
       return true;
     }
     else if (request.filters.filterTextLower.startsWith('publish') || request.filters.filterTextLower.startsWith('unpub')) {
-      console.log('accepted - only filters left to test are publish (already dealt with) or unpublished (always true)')
+      console.log('accepted - only filters left to test are publish (already dealt with) or unpublished (always true)');
       return true;
     }
     else {
