@@ -66,6 +66,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     user_id: state.user.person_id,
     focusAt: null,
     formHistoryMode: false,
+    isAmendingForm: false,
     recentlyCompletedDocs: [],
     addAccountList: [],
     familyFormsObj: {},
@@ -360,10 +361,11 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         }
       }
       if (!reactData.groupObj && state.groups && reactUpdObj.og.peopleRec.groups) {
-        // check all groups you belong to - there are three states:
+        // check all groups you belong to - we are trying to figure out whether to show the linked account section
+        // there are three states:
         //   show_linkedAccounts is ASSUMED to be on
-        //   a group can explcitly disable this by including the linked_accounts key with isEnabled = false
-        //   ANY group with isEnabled = true will override ALL other isEnabled = false
+        //   a group can explcitly disable this by including the linked_accounts.isEnabled = false
+        //   ANY group with linked_accounts.isEnabled = true will override ALL others despite any other groups having linked_accounts.isEnabled = false
         let isEnabled = false;
         let isDisabled = false;
         let addAccountList = [];
@@ -545,7 +547,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         severity: 'error',
         title: 'ID Corrupted',
         message: `AVA doesn't recognize ID ${id} - SessionsV2 not found.`,
-        action: [          
+        action: [
           {
             text: `Exit`,
             function: () => {
@@ -611,15 +613,20 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             severity: 'warning',
             title: 'Your Account ID',
             message: (person_id_blank
-              ? `We set your Account ID to ${newID}.  Tap OK, then tap Save again.`
-              : `We tried Account ID of ${proposedID}, but that was already taken.  We've assigned ${newID} instead.  Tap OK, then try your Save again (you can update this proposed ID, too, if you'd prefer).`
+              ? `We set your Account ID to ${newID}.  Tap OK, then select Group(s) and make other updates as needed.`
+              : `We tried Account ID of ${proposedID}, but that was already taken.  We've assigned ${newID} instead.`
             ),
             action: [
               {
                 text: `OK`,
                 function: () => {
+                  let groupAt = reactData.sections.findIndex(g => { return g.section_name === 'Groups'; });
+                  if (groupAt > -1) {
+                    reactData.sections[groupAt].isOpen = true;
+                  }
                   updateReactData({
-                    alert: false
+                    alert: false,
+                    sections: reactData.sections
                   }, true);
                 }
               }
