@@ -1292,8 +1292,16 @@ export default ({ request = {}, onClose }) => {
           }
         }
         else {
-          let extracted_field = variable.slice(2, -2);
-          if (reactData.fields[extracted_field] && reactData.fields[extracted_field].valueText) {
+          let extracted_field = variable.slice(2, -2);          
+          let [,...reconcile_key] = extracted_field.split('.')
+          let table_value = resolve({
+            object: reactData.peopleRec[reactData.pertains_to],
+            key: reconcile_key
+          });
+          if (table_value) {
+            response = response.replace(variable, `${[table_value].flat()[0]}`);
+          }
+          else if (reactData.fields[extracted_field] && reactData.fields[extracted_field].valueText) {
             let vValue = reactData.fields[extracted_field].valueText;
             if (!vValue) {
               vValue = `<${titleCase(extracted_field.toLowerCase().replace(/[^a-z]/, ' '))}>`;
