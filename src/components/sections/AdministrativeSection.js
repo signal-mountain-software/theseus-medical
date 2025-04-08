@@ -132,14 +132,17 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                             inputProps={{ 'aria-labelledby': `message_routing_3` }}
                           />
                         }
-                        label={<Typography style={{
-                          fontSize: 0.8,
-                          marginLeft: '-8px',
-                          marginRight: '16px',
-                          '&.MuiInputBaseInput': {
-                            paddingBottom: '0px'
-                          }
-                        }}>{text}</Typography>}
+                        label={
+                          <Typography style={{                            
+                            marginLeft: '-8px',
+                            marginRight: '16px',
+                            '&.MuiInputBaseInput': {
+                              paddingBottom: '0px'
+                            }
+                          }}>
+                            {text}
+                          </Typography>
+                        }
                         labelPlacement='end'
                       />
                     ))}
@@ -251,11 +254,11 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                         reactUpd: {
                           fields: reactData.form_fields
                         }
-                      })
+                      });
                     }
                   }
                 }}
-              />              
+              />
             </Box>
           }
         </React.Fragment>
