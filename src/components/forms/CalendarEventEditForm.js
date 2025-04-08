@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { makeDate, makeTime } from '../../util/AVADateTime';
+import { addDays, makeDate, makeTime } from '../../util/AVADateTime';
 import { getSlotList, writeSlot, makeSlotName, myAvailability, printOccurrenceSheet } from '../../util/AVACalendars';
 import { getMemberList } from '../../util/AVAGroups';
 import { cl, makeArray, dbClient, isEmpty, deepCopy, titleCase, isMobile, recordExists } from '../../util/AVAUtilities';
@@ -208,6 +208,33 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
   const isEventOwner = pOccData?.owner?.includes(pPatient)
     || ['master', 'support'].includes(state.patient.account_class);
 
+  const checkSignupWindow = () => {
+    let response = {
+      open: true,
+      start: null,
+      end: null
+    };
+    if (pOccData.signup_window?.start) {
+      let windowStart = addDays(pOccData.date, -pOccData.signup_window.start);
+      response.start = makeDate(windowStart).relative;
+      if (windowStart > new Date()) {
+        response.open = false;
+        response.issue = 'start';
+        return response;
+      }
+    }
+    if (pOccData.signup_window?.end) {
+      let windowEnd = addDays(pOccData.date, -pOccData.signup_window.end);
+      response.end = makeDate(windowEnd).relative;
+      if (windowEnd < new Date()) {
+        response.open = false;
+        response.issue = 'end';
+        return response;
+      }
+    }
+    return response;
+  };
+
   const [loading, setLoading] = React.useState(true);
 
   const isWaitListed = (pPatient) => {
@@ -235,6 +262,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     defaultValues: defaultValues || { "noDefaults": true },
     cancelPending: false,
     numberOfOwnedSlots: 0,
+    signup_window: checkSignupWindow(),
     waitList: pOccData.wait_list || [],
     editWaitList: false,
     editForm: false
@@ -671,6 +699,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
         writeRequest.override_description = pOccData.description;
       }
       if (body.notes) { writeRequest.notes = body.notes; }
+      if (body.guests) { writeRequest.guests = body.guests; }
 
 
 
@@ -749,7 +778,8 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
           let updatedSlotData = Object.assign(workingList[pIndex].slotData, {
             name: '',
             owner: '',
-            notes: ''
+            notes: '',
+            guests: new Array(pEvent.number_of_guests)
           });
           workingList[pIndex] = {
             event_key: slotInfo.event_key,
@@ -784,6 +814,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               owner: newPersonID,
               owner_location: newPersonLocation,
               notes: body.notes,
+              guests: body.guests,
               slot_description: workingList[whereToGo].slotData.slot_description,
               slot_sort: workingList[whereToGo].slotData.slot_sort,
               documents: slotInfo.documents || null
@@ -803,6 +834,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               owner: newPersonID,
               owner_location: newPersonLocation,
               notes: body.notes,
+              guests: body.guests,
               documents: slotInfo.documents || null
             }
           });
@@ -1097,6 +1129,25 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     return eventSlotList;
   };
 
+  const handleChangeGuests = async (updatedIndex, pGuests) => {
+    eventSlotList[updatedIndex].slotData.guests = pGuests;
+    let slotUpdate = Object.assign(
+      {},
+      eventSlotList[updatedIndex],
+      eventSlotList[updatedIndex].slotData,
+      {
+        event: eventSlotList[updatedIndex].event_key,
+        client: pClient
+      }
+    );
+    slotUpdate.status = 'guests';
+    slotUpdate.no_messaging = true;
+    await writeSlot(slotUpdate);
+    setEventSlotList(eventSlotList);
+    setForceRedisplay(!forceRedisplay);
+    return eventSlotList;
+  };
+
   // ********************
 
   React.useEffect(() => {
@@ -1168,6 +1219,14 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
             {reactData.attachedSR &&
               <Typography className={classes.standardIndent} style={AVATextStyle({ margin: { left: 1, right: 1 } })} >
                 {`Assigned to ${reactData.attachedSR.assigned_to_name}`}
+              </Typography>
+            }
+            {(!isEventOwner && !reactData.signup_window.open) &&
+              <Typography className={classes.standardIndent} style={AVATextStyle({ color: 'red', bold: true, margin: { left: 1, right: 1 } })} >
+                {(reactData.signup_window.issue === 'start')
+                  ? `Sign-up begins ${reactData.signup_window.start}`
+                  : `Sign-up ended ${reactData.signup_window.end}`
+                }
               </Typography>
             }
             <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
@@ -1555,7 +1614,6 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                               {pOccData.notes_required}
                             </Typography>
                           }
-
                           {(isEventOwner || isSlotOwner(this_item.slotData)) &&
                             (editNoteNumber === -1) &&
                             <Box display='flex' mr={2} flexDirection='row' justifyContent='flex-start' alignItems='center'>
@@ -1672,12 +1730,38 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                               }
                             </Box>
                           }
+                          {/* Guests are allowed and I am the event or slot owner */}
+                          {(((pOccData.number_of_guests && (pOccData.number_of_guests > 0))
+                            && (isEventOwner || isSlotOwner(this_item.slotData)))) &&
+                            <Box display='flex' mb={3} mr={4} flexDirection='column' justifyContent='center' alignItems='flex-start' flexGrow={1}>
+                              <Typography style={AVATextStyle({ size: 0.8, margin: { top: 1 } })} >
+                                {`${this_item.slotData.display_name.split(' ')[0]}'s Guests`}
+                              </Typography>
+                              {new Array(pOccData.number_of_guests).fill('x').map((this_guest, guest_number) => (
+                                <TextField
+                                  classes={{ root: classes.standard }}
+                                  key={`prompt-guest_${index}-${guest_number}`}
+                                  inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                                  defaultValue={this_item.slotData.guests ? this_item.slotData.guests[guest_number] : ''}
+                                  onBlur={(event) => {
+                                    if (!this_item.slotData.guests) {
+                                      this_item.slotData.guests = new Array(pOccData.number_of_guests);
+                                    }
+                                    if (this_item.slotData.guests[guest_number] !== event.target.value) {
+                                      this_item.slotData.guests[guest_number] = event.target.value;
+                                      handleChangeGuests(index, this_item.slotData.guests);
+                                    }
+                                  }}
+                                  autoComplete='off'
+                                />
+                              ))}
+                            </Box>
+                          }
                         </Box>
                       </Box>
-
                     </Box>
                   }
-                  {!isOwned(this_item.slotData) && (isEventOwner || !pViewOnly) &&
+                  {!isOwned(this_item.slotData) && (isEventOwner || (!pViewOnly && reactData.signup_window.open)) &&
                     (editNoteNumber === -1) &&
                     <Box display='flex' width='100%' pr={2} flexDirection='row' justifyContent='flex-end' alignItems='center'>
                       <Tooltip title={isEventOwner ? `Select someone` : `Add myself`}>
@@ -2268,6 +2352,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                 }
                 {((!ownerOfSlots && !pViewOnly) || isEventOwner) &&
                   (!['time', 'seats'].includes(pOccData.signup_type)) &&
+                  (isEventOwner || (reactData.signup_window.open)) &&
                   <Button
                     className={AVAClass.AVAButton}
                     style={{ backgroundColor: 'blue', color: 'white', marginBottom: '-12px', marginLeft: '16px', marginRight: '16px' }}

@@ -787,21 +787,24 @@ export default ({ defaults, onCancel }) => {
                           {``}
                         </Typography>
                       </Box>
-                      {(['#', 'Urg', 'Hld', 'Blk', 'Chg', 'Att', 'Rul'].concat(reactData.received_mode ? ['xOG'] : [])).map((this_key, kX) =>
-                        <Typography
-                          key={`g_count-head_${kX}`}
-                          style={AVATextStyle({
-                            overflow: 'visible',
-                            align: 'center',
-                            size: 1,
-                            width: '35px',
-                            margin: { left: 0.2, right: 0.2, top: 0, bottom: 0.8 },
-                          })}
-                        >
-                          {this_key}
-                        </Typography>
-                      )}
-
+                      <Box display='flex' flexDirection='row'
+                        key={`g_countHead`}
+                      >
+                        {(['#', 'Urg', 'Hld', 'Blk', 'Chg', 'Att', 'Rul'].concat(reactData.received_mode ? ['xOG'] : [])).map((this_key, kX) =>
+                          <Typography
+                            key={`g_count-head_${kX}`}
+                            style={AVATextStyle({
+                              overflow: 'visible',
+                              align: 'center',
+                              size: 1,
+                              width: '35px',
+                              margin: { left: 0.2, right: 0.2, top: 0, bottom: 0.8 },
+                            })}
+                          >
+                            {this_key}
+                          </Typography>
+                        )}
+                      </Box>
                     </Box>
                     {reactData.selectedGroupMembers && Object.keys(reactData.selectedGroupMembers).sort((a, b) => {
                       if (!reactData.received_mode) {
@@ -814,8 +817,7 @@ export default ({ defaults, onCancel }) => {
                       <Box display='flex' flexDirection='row' width={'100%'}
                         key={`g_peopleoutbox-${cX}`}
                       >
-                        <Box display='flex' flexDirection='row' flexGrow={1} width={'200px'}
-                          
+                        <Box display='flex' flexDirection='row' flexGrow={1} minWidth={'200px'}
                           key={`g_peopleinnerbox-${cX}`}
                         >
                           <Typography
@@ -837,33 +839,37 @@ export default ({ defaults, onCancel }) => {
                             {`${reactData.selectedGroupMembers[this_person].name.first} ${reactData.selectedGroupMembers[this_person].name.last}`}
                           </Typography>
                         </Box>
-                        {(['count', 'urgent', 'held', 'blocked', 'redirected', 'with_attachment', 'with_rules'].concat(reactData.received_mode ? ['not_og'] : [])).map((this_key, kX) =>
-                          <Typography
-                            key={`g_count-${cX}_${kX}`}
-                            onClick={async () => {
-                              updateReactData({
-                                personMessages: this_person,
-                                personMessages_inOutFilter: ((this_key === 'count') ? (reactData.received_mode ? 'in' : 'out') : false),
-                                personMessages_statusFilter: ((this_key === 'count') ? false : this_key)
-                              }, true);
-                            }}
-                            style={AVATextStyle({
-                              overflow: 'visible',
-                              align: 'center',
-                              size: 1,
-                              width: '35px',
-                              opacity: (((reactData.received_mode && reactData.selectedGroupMembers[this_person].messageData.received[this_key] === 0)
-                                || (!reactData.received_mode && reactData.selectedGroupMembers[this_person].messageData.sent[this_key] === 0)
-                              ) ? '30%' : ''),
-                              margin: { left: 0.2, right: 0.2, top: 0, bottom: 0.8 },
-                            })}
-                          >
-                            {reactData.received_mode
-                              ? `${reactData.selectedGroupMembers[this_person].messageData.received[this_key]}`
-                              : `${reactData.selectedGroupMembers[this_person].messageData.sent[this_key]}`
-                            }
-                          </Typography>
-                        )}
+                        <Box display='flex' flexDirection='row'
+                          key={`g_countBox-${cX}`}
+                        >
+                          {(['count', 'urgent', 'held', 'blocked', 'redirected', 'with_attachment', 'with_rules'].concat(reactData.received_mode ? ['not_og'] : [])).map((this_key, kX) =>
+                            <Typography
+                              key={`g_count-${cX}_${kX}`}
+                              onClick={async () => {
+                                updateReactData({
+                                  personMessages: this_person,
+                                  personMessages_inOutFilter: ((this_key === 'count') ? (reactData.received_mode ? 'in' : 'out') : false),
+                                  personMessages_statusFilter: ((this_key === 'count') ? false : this_key)
+                                }, true);
+                              }}
+                              style={AVATextStyle({
+                                overflow: 'visible',
+                                align: 'center',
+                                size: 1,
+                                width: '35px',
+                                opacity: (((reactData.received_mode && reactData.selectedGroupMembers[this_person].messageData.received[this_key] === 0)
+                                  || (!reactData.received_mode && reactData.selectedGroupMembers[this_person].messageData.sent[this_key] === 0)
+                                ) ? '30%' : ''),
+                                margin: { left: 0.2, right: 0.2, top: 0, bottom: 0.8 },
+                              })}
+                            >
+                              {reactData.received_mode
+                                ? `${reactData.selectedGroupMembers[this_person].messageData.received[this_key]}`
+                                : `${reactData.selectedGroupMembers[this_person].messageData.sent[this_key]}`
+                              }
+                            </Typography>
+                          )}
+                        </Box>
                       </Box>
                     ))}
                   </Box>

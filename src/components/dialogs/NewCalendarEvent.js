@@ -9,7 +9,7 @@ import ClientsSection from '../sections/ClientsSection';
 import EditList from '../forms/EditList';
 import Select from "react-dropdown-select";
 
-import { makeDate, makeTime, addMonths } from '../../util/AVADateTime';
+import { makeDate, makeTime, addMonths, addDays, daysDiff } from '../../util/AVADateTime';
 
 import { useSnackbar } from 'notistack';
 
@@ -213,6 +213,9 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   const [signup_type, setSignUpType] = React.useState('none');
   const [defaultSlotOwners, setDefaultSlotOwners] = React.useState('none');
   const [slot_max_seats, setSlotMaxSeats] = React.useState(' ');
+  const [signup_start, setSignup_start] = React.useState(' ');
+  const [max_guests, setmaxGuests] = React.useState(0);
+  const [signup_end, setSignup_end] = React.useState(' ');
   const [slot_interval, setSlotInterval] = React.useState(' ');
   const [eventDateAsDisplayString, setEventDateAsDisplayString] = React.useState((options.setDate ? options.setDate.dateObj.absolute : ' '));
   const [displayTimes, setIntervalDisplay] = React.useState([]);
@@ -338,12 +341,17 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
         "restrictions": reactData.restrictToGroups,
         "signup_type": signup_type,
         "slot_max_seats": slot_max_seats,
+        "signup_end": signup_end,
+        "signup_start": signup_start,
         "slot_interval": slot_interval,
         "slot_visibility": "show_name",
         "reminder_minutes_Enrolled": 0,
         "reminder_minutes_NotEnrolled": 0
       }
     };
+    if (max_guests > 0) {
+      payload.calendar_info.number_of_guests = max_guests;
+    }
     let response = await addEvent(payload);
     response.slots = [];
     if (!!personalEvent
@@ -424,7 +432,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
 
   const handleChangeEventDate = event => {
     setEventDateAsDisplayString(event.target.value);
-  }
+  };
 
   const handleChangeLastDate = event => {
     setLastAsADate(null);
@@ -471,7 +479,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
       setSignUpType(event.target.value);
       let reactUpdateObj = {
         slotObjList: []
-      }
+      };
       if (event.target.value === 'time') {
         reactUpdateObj.allDay = (reactData.startObj.empty && reactData.endObj.empty);
         reactUpdateObj.timeOK = (reactData.startObj.good && reactData.endObj.good);
@@ -607,7 +615,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
         endObj,
         allDay,
         timeOK: true
-      }, false)
+      }, false);
       if (options.noDisplay) {
         handleUpdate();
       }
@@ -1012,8 +1020,8 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                   defaultValue={(reactData.startObj.empty || reactData.allDay) ? '' : reactData.startObj.time}
                   onChange={(event) => {
                     updateReactData({
-                      startObj: Object.assign(reactData.startObj, {time: event.target.value})
-                    }, true)
+                      startObj: Object.assign(reactData.startObj, { time: event.target.value })
+                    }, true);
                   }}
                   onBlur={(event) => {
                     const startObj = makeTime(event.target.value);
@@ -1023,7 +1031,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                         startObj,
                         allDay: reactData.endObj.empty,
                         timeOK: reactData.endObj.empty
-                      }, true)
+                      }, true);
                     }
                     else if ((startObj.error) || (reactData.endObj.error)) {
                       // bad start or bad end
@@ -1048,7 +1056,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                         endObj,
                         allDay: false,
                         timeOK: !endObj.error
-                      }, true)
+                      }, true);
                     }
                     else {
                       // good start, good end
@@ -1121,7 +1129,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                 <Radio
                   key={`radio-allday`}
                   id={`radio-allday`}
-                  style={{alignSelf: 'center'}}
+                  style={{ alignSelf: 'center' }}
                   checked={reactData.allDay}
                   value={reactData.allDay}
                   onClick={async () => {
@@ -1129,71 +1137,148 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                       updateReactData({
                         allDay: false,
                         timeOK: (reactData.startObj.good && reactData.endObj.good),
-                    }, true)
+                      }, true);
                     }
                     else {
                       updateReactData({
                         allDay: true,
                         timeOK: true,
-                      }, true)
+                      }, true);
                     }
                   }}
                   disableRipple
                   className={classes.radioButton}
                   size='small'
                 />
-                  <Typography className={classes.radioText}>
-                    All Day?
-                  </Typography>
+                <Typography className={classes.radioText}>
+                  All Day?
+                </Typography>
               </Box>
               {!personalEvent && !isAppointment && !options.simpleForm &&
-                <Box
-                  display="flex"
-                  pt={2}
-                  pb={1}
-                  flexDirection='column'
-                  justifyContent="center"
-                >
-                  <Typography className={classes.radioText}>Does this event require sign-up?</Typography>
-                  <FormControl className={classes.formControl} component="fieldset">
-                    <RadioGroup
-                      row
-                      defaultValue={signup_type}
-                      aria-label="SignUp"
-                      name="signup"
-                      value={signup_type}
-                      onChange={handleChangeSignUp}
+                <React.Fragment>
+                  <Box
+                    display="flex"
+                    pt={2}
+                    flexDirection='column'
+                    justifyContent="center"
+                  >
+                    <Typography className={classes.radioText}>Restrict sign-up window?</Typography>
+                    <Box
+                      display="flex"
+                      pb={1}
+                      flexDirection='row'
+                      justifyContent="flex-start"
                     >
-                      <FormControlLabel
-                        className={classes.formControlLbl}
-                        value="none"
-                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                        label={
-                          <Typography className={classes.radioText}>
-                            Open/Unlimited
-                          </Typography>}
+                      <TextField
+                        id='signup_start'
+                        key={`start_${reactData.event_date?.numeric$}_${signup_start}`}
+                        defaultValue={(signup_start && (Number(signup_start) > 0) && (reactData.event_date && !reactData.event_date.error))
+                          ? makeDate(addDays(reactData.event_date.date, -signup_start)).absolute 
+                          : ''}
+                        style={{width: '200px', marginRight: '16px'}}
+                        onBlur={(event) => {
+                          if (event.target.value) {
+                            let dObj = makeDate(event.target.value, { noTime: true });
+                            setSignup_start(daysDiff(reactData.event_date.date, dObj.date));
+                          }
+                          else {
+                            setSignup_start(0);
+                          }
+                        }}
+                        helperText='Begin sign-up on'
                       />
-                      <FormControlLabel
-                        className={classes.formControlLbl}
-                        value="seats"
-                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                        label={
-                          <Typography className={classes.radioText}>
-                            Limited to a maximum number of Participants
-                          </Typography>}
+                      <TextField
+                        id='signup_end'
+                        key={`end_${reactData.event_date?.numeric$}_${signup_end}`}
+                        defaultValue={(signup_end && (Number(signup_end) > 0) && (reactData.event_date && !reactData.event_date.error))
+                          ? makeDate(addDays(reactData.event_date.date, -signup_end)).absolute
+                          : ''}
+                        style={{ width: '200px' }}
+                        onBlur={(event) => {
+                          if (event.target.value) {
+                            let dObj = makeDate(event.target.value, { noTime: true });
+                            setSignup_end(daysDiff(reactData.event_date.date, dObj.date));
+                          }
+                          else {
+                            setSignup_end(0);
+                          }
+                        }}
+                        helperText='End sign-up on'
                       />
-                      <FormControlLabel
-                        className={classes.formControlLbl}
-                        value="time"
-                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                        label={
-                          <Typography className={classes.radioText}>
-                            Schedule appointments at specific intervals
-                          </Typography>}
-                      />
-                    </RadioGroup>
-                  </FormControl>
-                </Box>
+                    </Box>
+                  </Box>
+                  <Box
+                    display="flex"
+                    pt={2}
+                    pb={1}
+                    flexDirection='column'
+                    justifyContent="center"
+                  >
+                    <Typography className={classes.radioText}>Limit participations?</Typography>
+                    <FormControl className={classes.formControl} component="fieldset">
+                      <RadioGroup
+                        row
+                        defaultValue={signup_type}
+                        aria-label="SignUp"
+                        name="signup"
+                        value={signup_type}
+                        onChange={handleChangeSignUp}
+                      >
+                        <FormControlLabel
+                          className={classes.formControlLbl}
+                          value="none"
+                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                          label={
+                            <Typography className={classes.radioText}>
+                              Open/Unlimited
+                            </Typography>}
+                        />
+                        <FormControlLabel
+                          className={classes.formControlLbl}
+                          value="seats"
+                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                          label={
+                            <Typography className={classes.radioText}>
+                              Limited to a maximum number of Participants
+                            </Typography>}
+                        />
+                        <FormControlLabel
+                          className={classes.formControlLbl}
+                          value="time"
+                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                          label={
+                            <Typography className={classes.radioText}>
+                              Schedule appointments at specific intervals
+                            </Typography>}
+                        />
+                      </RadioGroup>
+                    </FormControl>
+                  </Box>
+                  <Box
+                    display="flex"
+                    pt={2}
+                    pb={1}
+                    flexDirection='column'
+                    justifyContent="center"
+                  >
+                    <Typography className={classes.radioText}>Allow Guests?</Typography>
+                    <TextField
+                      key='max_guests'
+                      value={max_guests}
+                      style={{ width: '200px', marginRight: '16px' }}
+                      onChange={(event) => {
+                        let number = Number(event.target.value);
+                        if (isNaN(number) || (number < 1) || (number > 9)) {
+                          setmaxGuests(0);
+                        }
+                        else {
+                          setmaxGuests(number);
+                        }
+                      }}
+                      helperText='Maximum # of guests per person'
+                    />
+                  </Box>
+                </React.Fragment>
               }
               {(signup_type === 'seats') &&
                 <div>

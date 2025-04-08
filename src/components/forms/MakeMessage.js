@@ -220,7 +220,9 @@ export default ({
   };
 
   const noInput = () => {
-    return !(makeArray(promptText).every((n, p) => { return (!isEmpty(reactData.textInput[p])); }));
+    return !(makeArray(promptText).every((n, p) => {
+      return (!isEmpty(reactData.textInput[p]) || (promptUse[p] === 'voicemail'));
+    }));
   };
 
   const handleSave = async () => {

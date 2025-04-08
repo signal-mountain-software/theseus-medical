@@ -627,7 +627,9 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
         helperText={'Emergency Contact 2 - Name & Phone'}
       />
       {(Object.keys(reactData.local_customFields).length > 0) && Object.keys(reactData.local_customFields).map((this_customField, cFNdx) => (
-        <React.Fragment>
+        <React.Fragment
+          key={`frag_important_info_header__${cFNdx}`}
+        >
           {(cFNdx === 0) &&
             <Typography
               style={AVATextStyle({ italic: true, margin: { top: 3, bottom: 1 } })}
