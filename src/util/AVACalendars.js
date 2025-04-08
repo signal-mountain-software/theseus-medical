@@ -2,9 +2,9 @@ import { clt, cl, deepCopy, recordExists, getCustomizations, makeArray, makeStri
 import { makeName, getPerson, formatPhone } from './AVAPeople';
 import { addDays, daysDiff, makeDate, makeTime, addMonths } from './AVADateTime';
 import { sendMessages, resolveMessageVariables } from './AVAMessages';
-
+import { createDocument } from './AVADocuments';
 import { jsPDF } from "jspdf";
-import { getGroupsBelongTo } from './AVAGroups';
+import { getGroupsBelongTo, isMemberOf } from './AVAGroups';
 
 let eventCache = {};
 
@@ -1340,9 +1340,33 @@ export async function writeSlot(body) {
   // assign a form?
   let ownerRec;
   let documents_assigned;
+  // when you create an event, you may use a template (see Calendars table, key=<client>, record_type='template')
+  // the template might include a forms key, which will become default_forms by the time it gets here
+  // this is an array, each entry describing the forms that should be associated with people involved in this event.
+  // each form carries a pertains_to list and an assign_groups list; both are lists of group_ids
+  // 
+  // first - 
+  //   make a list of all the parties to the event; this is the event_owner and all slot_owners
+  //   while doing that, assemble a list of documents already created by form_type and pertains_to
+  //
+  // next - for each form in the default_forms array:
+  //    go back through the parties
+  //    if a party is a member of any group in the pertains_to list, 
+  //        check to see if they already have a document in the list we assembled above
+  //        if not, we need to create one...  check the access type for this form.
+  //            if access type is 'complete', then create a document with the form_type that pertains_to this party
+  //            if access type is 'view', then find the most recent completed document of this form_type that pertains_to this party
+  //    
+  // now - we have an updated list of documents by form_type and pertains_to
+  //    for each form in the default_forms array,
+  //        for every party
+  //        if this party is a member of any group in the assign_groups list for this form
+  //            assure that all documents in the list of documents that match this form type...
+  //              are included in the documents list for the assigned_to person's slot
+  //              and that the document itself has this person listed in its assigned_to list
+  //        
+  //  
   if (body.default_forms) {
-    let documentsAssignedToThisPerson = {};
-    let formList = makeArray(body.default_forms);
     // get all the slots after this write was completed
     let event_slots = await dbClient
       .query({
@@ -1515,54 +1539,29 @@ export async function writeSlot(body) {
     for (const this_doc in docsToUpdate) {
       const docRec = await dbClient
         .get({
-          Key: {
-            client: body.client,
-            event_key: `${event_id}#${occurrence}#${this_person}`
-          },
-          TableName: "Calendar"
+          Key: { document_id: this_doc },
+          TableName: 'DocumentMaster'
         })
         .promise()
         .catch(error => {
-          cl({ 'Error reading Calendar': error });
+          cl(`Bad get from DocumentMaster while building document list in form assignment. Error is: ${error}`);
         });
-      if (!recordExists(slotRec)) {
-        cl(`Slot rec not found for ${event_id}#${occurrence}#${this_person}`);
-      }
-      else {
-        let docRef = [];
-        if (slotRec.Item.documents && (slotRec.Item.documents.length > 0)) {
-          docRef.push(...slotRec.Item.documents);
-        }
-        let needsUpdate = false;
-        if (documentsAssignedToThisPerson[this_person].length > 0) {
-          documentsAssignedToThisPerson[this_person].forEach(d => {
-            if (d) {
-              docRef.push(d);
-              needsUpdate = true;
+      if (recordExists(docRec)) {
+        await dbClient
+          .update({
+            Key: { document_id: this_doc },
+            TableName: 'DocumentMaster',
+            UpdateExpression: 'set assigned_to = :a',
+            ExpressionAttributeValues: {
+              ':a': [docRec.Item.assigned_to || []].flat().push(...docsToUpdate[this_doc])
             }
+          })
+          .promise()
+          .catch(error => {
+            cl(`caught error updating Calendar; error is: `, error);
           });
-        }
-        // remove duplicates from docRef
-        let uniqueDocRef = docRef.filter(function (item, pos, self) {
-          return self.indexOf(item) === pos;
-        });
-        if (needsUpdate) {
-          await dbClient
-            .update({
-              Key: {
-                client: body.client,
-                event_key: `${event_key}`
-              },
-              UpdateExpression: 'set documents = :d',
-              ExpressionAttributeValues: { ':d': uniqueDocRef },
-              TableName: "Calendar"
-            })
-            .promise()
-            .catch(error => { cl(`caught error updating Documents; error is: `, error); });
-          documents_assigned = uniqueDocRef;
-        }
       }
-    };
+    }
   }
   // customize the title and/or location?
   let newDescription;
@@ -3669,7 +3668,7 @@ export async function publishCalendar(request) {
       results.eventsFound--;
       return false;
     }   // event was soft-deleted
-    if (!request.filters) {    
+    if (!request.filters) {
       console.log('accepted - no filters');
       return true;
     }
@@ -3692,7 +3691,7 @@ export async function publishCalendar(request) {
       return true;
     }
     else if (request.filters.filterTextLower.startsWith('publish') || request.filters.filterTextLower.startsWith('unpub')) {
-      console.log('accepted - only filters left to test are publish (already dealt with) or unpublished (always true)')
+      console.log('accepted - only filters left to test are publish (already dealt with) or unpublished (always true)');
       return true;
     }
     else {
