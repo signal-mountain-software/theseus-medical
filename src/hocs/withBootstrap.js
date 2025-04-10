@@ -1628,6 +1628,7 @@ export default Component => props => {
     loadSyncInfo(currentSession, currentPatient);
 
     putValidationCookie();
+    let URLmsg = false;
     if (currentSession.url_parameters) {
       if (currentSession.url_parameters.hasOwnProperty('document')) {
         putActionCookie(currentSession.url_parameters);
@@ -1638,9 +1639,27 @@ export default Component => props => {
           forms: true
         }), { path: '/' });
       }
+      else if (currentSession.url_parameters.hasOwnProperty('message')) {
+        URLmsg = Object.assign({}, currentSession.url_parameters);       
+      }
     }
     else if (reactData.urlData.hasOwnProperty('document')) {
       putActionCookie(reactData.urlData);
+    }
+    else if (reactData.urlData.hasOwnProperty('message')) {
+      URLmsg = Object.assign({}, reactData.urlData);       
+    }
+    if (URLmsg) {
+      removeCookie("AVAaction");
+      setCookie('AVAaction', JSON.stringify({
+        message: true,
+        sender: (URLmsg.sender || null),
+        client_id: (URLmsg.client || URLmsg.client_id || null),
+        recipient: (URLmsg.recipient || null),
+        name: (URLmsg.name || null),
+        thread_id: (URLmsg.thread || URLmsg.thread_id || null),
+        subject: (URLmsg.subject || null),
+      }), { path: '/' });
     }
     setAVAReady(true);
     localAVAReady = true;
