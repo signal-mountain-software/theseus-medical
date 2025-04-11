@@ -839,6 +839,44 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     return response;
   }
 
+  function checkConflict(dragged_id, { droppedOn_event, eventIndex, dateIndex }) {
+    let isAvailable = true;
+    let conflictingEvent;
+    let eventStart24 = droppedOn_event.time?.from ? makeTime(droppedOn_event.time.from.trim()).numeric24 : 0;
+    let eventEnd24 = droppedOn_event.time?.to ? makeTime(droppedOn_event.time.to.trim()).numeric24 : 2359;
+    if (!isEmpty(reactData.conflictInfo)
+      && reactData.conflictInfo.hasOwnProperty(dragged_id)
+      && reactData.conflictInfo[dragged_id].hasOwnProperty(droppedOn_event.occurrence_date)
+    ) {
+      reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].some(this_time => {
+        if (this_time.time < eventStart24) {
+          // event hasn't started - hold onto current availability and (if not available) the event that causes the potential conflict,
+          isAvailable = this_time.open;
+          conflictingEvent = !this_time.open ? this_time.event_title : null;
+        }
+        else if (this_time.time >= eventEnd24) {
+          // the event started and ended before this possible conflict came up;  
+          // your availability for the event will depend on what your availabilty was immediately BEFORE the event - which was stored in the earlier step(s)
+          return true;   // break the loop and use the current value of isAvailable
+        }
+        else {
+          // implied (this_time.time < eventEnd24)
+          // this entry is changing your availability DURING the event;  
+          // if this conflict marker marks you as unavailable OR you were unavailable from before the event, there is a conflict
+          if (!this_time.open) {
+            isAvailable = false;
+            conflictingEvent = this_time.event_title;
+          }
+          if (!isAvailable) {
+            return true;
+          }
+        }
+        return false;     // return false to the .some function to keep it running
+      });
+    }
+    return ({ isAvailable, conflictingEvent, dragged_id, calledWith: { droppedOn_event, eventIndex, dateIndex, eventStart24, eventEnd24 } });
+  }
+
   async function eventSignup(dragged_id, { droppedOn_event, eventIndex, dateIndex }) {
     console.log(`dropped ${dragged_id} onto ${droppedOn_event.description}`);
     if (ownerOfSlots(droppedOn_event, dragged_id)) {
@@ -2295,10 +2333,10 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                     slotObj[this_slot.slot_owner] = this_slot.slot_owner;
                   });
                   newEvent.occRecords.occArray.forEach(newOccDate => {
-                    let foundIt = reactData.myCalendar.findIndex(this_date => {
+                    let index_of_thisDate_in_myCalendar = reactData.myCalendar.findIndex(this_date => {
                       return (this_date.dateObj.numeric === newOccDate);
                     });
-                    if (foundIt > -1) {
+                    if (index_of_thisDate_in_myCalendar > -1) {
                       let newEntry = {
                         "event_id": newEvent.event_id,
                         "owner": [state.session.user_id],
@@ -2315,7 +2353,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         "client": newEvent.client,
                         "record_type": "occurrence"
                       };
-                      let eventIndex = reactData.myCalendar[foundIt].eventList.push(newEntry) - 1;
+                      let eventIndex = reactData.myCalendar[index_of_thisDate_in_myCalendar].eventList.push(newEntry) - 1;
                       newEvent.slots.forEach(this_slot => {
                         let dragged_id = this_slot.slot_owner;
                         if (!reactData.conflictInfo.hasOwnProperty(dragged_id)) {
@@ -2354,8 +2392,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         }
                         reactData.conflictInfo[dragged_id][newOccDate].push(
                           {
-                            time: start_time.numeric24, open: false, event_id: reactData.myCalendar[foundIt].eventList[eventIndex].event_key,
-                            event_title: reactData.myCalendar[foundIt].eventList[eventIndex].description
+                            time: start_time.numeric24, open: false, event_id: reactData.myCalendar[index_of_thisDate_in_myCalendar].eventList[eventIndex].event_key,
+                            event_title: reactData.myCalendar[index_of_thisDate_in_myCalendar].eventList[eventIndex].description
                           },
                           { time: end_time.numeric24, open: true }
                         );
@@ -2368,7 +2406,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                           }
                         });
                       });
-                      reactData.myCalendar[foundIt].eventList.sort((a, b) => {
+                      reactData.myCalendar[index_of_thisDate_in_myCalendar].eventList.sort((a, b) => {
                         if (a.customizations && a.customizations.show_as_unavailable) {
                           return 1;
                         }
@@ -2423,12 +2461,14 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                   addTemplateEvent: false,
                   isAppointment: false
                 };
+                let signupStatus = [];
                 if (newEvent) {
                   for (let o = 0; o < newEvent.occRecords.occArray.length; o++) {
                     let newOccDate = newEvent.occRecords.occArray[o];
-                    let foundIt = reactData.myCalendar.findIndex(this_date => {
+                    let index_of_thisDate_in_myCalendar = reactData.myCalendar.findIndex(this_date => {
                       return (this_date.dateObj.numeric === newOccDate);
                     });
+                    const thisDate_exists_in_myCalendar = (index_of_thisDate_in_myCalendar > -1);
                     let slotObj = {};
                     newEvent.slots.forEach(this_slot => {
                       slotObj[this_slot.slot_owner] = this_slot.slot_owner;
@@ -2450,8 +2490,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                       "record_type": "occurrence"
                     });
                     let eventIndex = -1;
-                    if (foundIt > -1) {
-                      eventIndex = reactData.myCalendar[foundIt].eventList.push(newEntry) - 1;
+                    if (thisDate_exists_in_myCalendar) {
+                      eventIndex = reactData.myCalendar[index_of_thisDate_in_myCalendar].eventList.push(newEntry) - 1;
                       for (let s = 0; s < newEvent.slots.length; s++) {
                         let this_slot = newEvent.slots[s];
                         let dragged_id = this_slot.slot_owner;
@@ -2493,8 +2533,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                           {
                             time: start_time.numeric24,
                             open: false,
-                            event_id: reactData.myCalendar[foundIt].eventList[eventIndex].event_id,
-                            event_title: reactData.myCalendar[foundIt].eventList[eventIndex].description
+                            event_id: reactData.myCalendar[index_of_thisDate_in_myCalendar].eventList[eventIndex].event_id,
+                            event_title: reactData.myCalendar[index_of_thisDate_in_myCalendar].eventList[eventIndex].description
                           },
                           { time: end_time.numeric24, open: true }
                         );
@@ -2509,14 +2549,16 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                       };
                     }
                     if (reactData.selectedPersonRec) {
-                      await eventSignup(reactData.selectedPersonRec.person_id, {
-                        droppedOn_event: newEntry,
-                        eventIndex,
-                        dateIndex: foundIt
-                      });
+                      signupStatus.push(
+                        checkConflict(reactData.selectedPersonRec.person_id, {
+                          droppedOn_event: newEntry,
+                          eventIndex,
+                          dateIndex: index_of_thisDate_in_myCalendar
+                        })
+                      );
                     }
-                    if (foundIt > -1) {
-                      reactData.myCalendar[foundIt].eventList.sort((a, b) => {
+                    if (thisDate_exists_in_myCalendar) {
+                      reactData.myCalendar[index_of_thisDate_in_myCalendar].eventList.sort((a, b) => {
                         if (a.customizations && a.customizations.show_as_unavailable) {
                           return 1;
                         }
@@ -2535,6 +2577,122 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                       });
                     }
                   };
+                  if (signupStatus.length > 0) {
+                    let goodRecs = 0;
+                    let badRecs = 0;
+                    for (let this_occ of signupStatus) {
+                      if (!this_occ.isAvailable) {
+                        badRecs++;
+                      }
+                      else {
+                        goodRecs++;
+                      }
+                    }
+                    if (goodRecs === signupStatus.length) {
+                      for (let this_occ of signupStatus) { 
+                        await proceedWithSignUp(this_occ.dragged_id, this_occ.calledWith);
+                      }
+                    }
+                    else {
+                      let warn_message = `There are scheduling conflicts with `;
+                      if (badRecs === signupStatus.length) { 
+                        if (signupStatus.length === 2) {
+                          warn_message += `both of the `
+                        }
+                        else {
+                          warn_message += `all ${signupStatus.length} of the `
+                        }
+                        warn_message += `dates you're scheduling.  What would you like to do?`;
+                        updateReactData({
+                          alert: {
+                            severity: 'warning',
+                            title: 'Conflict warning!',
+                            message: warn_message,
+                            action: [
+                              {
+                                text: `Go ahead and assign them all`,
+                                function: (async () => {
+                                  for (let this_occ of signupStatus) {
+                                    await proceedWithSignUp(this_occ.dragged_id, this_occ.calledWith);
+                                  }
+                                  updateReactData({
+                                    alert: false
+                                  }, true);
+                                  onClose({
+                                    action: 'reset',
+                                  });
+                                  return;
+                                })
+                              },
+                              {
+                                text: `Don't assign any`,
+                                function: () => {
+                                  updateReactData({
+                                    alert: false
+                                  }, true);
+                                  return;
+                                }
+                              }
+                            ]
+                          }
+                        }, true);
+                      }
+                      else {
+                        warn_message += `${badRecs} of the ${signupStatus.length} `;
+                        warn_message += `dates you're scheduling.  What would you like to do?`;
+                        updateReactData({
+                          alert: {
+                            severity: 'warning',
+                            title: 'Conflict warning!',
+                            message: warn_message,
+                            action: [
+                              {
+                                text: `Go ahead and assign them all`,
+                                function: (async () => {
+                                  for (let this_occ of signupStatus) {
+                                    await proceedWithSignUp(this_occ.dragged_id, this_occ.calledWith);
+                                  }
+                                  updateReactData({
+                                    alert: false
+                                  }, true);
+                                  onClose({
+                                    action: 'reset',
+                                  });
+                                  return;
+                                })
+                              },
+                              {
+                                text: `Assign only those without a conflict`,
+                                function: (async () => {
+                                  for (let this_occ of signupStatus) {
+                                    if (this_occ.isAvailable) {
+                                      await proceedWithSignUp(this_occ.dragged_id, this_occ.calledWith);
+                                    }
+                                  }
+                                  updateReactData({
+                                    alert: false
+                                  }, true);
+                                  onClose({
+                                    action: 'reset',
+                                  });
+                                  return;
+                                })
+                              },
+                              {
+                                text: `Don't assign any`,
+                                function: () => {
+                                  updateReactData({
+                                    alert: false
+                                  }, true);
+                                  return;
+                                }
+                              }
+                            ]
+                          }
+                        }, true);
+                      }
+                    }
+                  }
                   reactUpdObj.myCalendar = reactData.myCalendar;
                   localStorage.setItem(`calendarChanged`, true);
                   if (reactData.selectedPersonRec) {

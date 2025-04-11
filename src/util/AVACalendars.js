@@ -2687,12 +2687,16 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
         if (minutes_booked < 1200) {
           conflicts[occurrenceRec.slotData.owner].summaries[this_Sunday.numeric$].minutes += minutes_booked;
         }
+        let titleOut = `${found_events[occurrenceRec.event_id].description} ${this_date.relative}`;
+        if (!found_events[occurrenceRec.event_id].time.allDay) {
+          titleOut += ` from ${found_events[occurrenceRec.event_id].time.from} to ${found_events[occurrenceRec.event_id].time.to}`
+        }
         conflicts[occurrenceRec.slotData.owner][occurrenceRec.occurrence_date].push(
           {
             time: start_time.numeric24,
             open: false,
             event_id: occurrenceRec.event_id,
-            event_title: found_events[occurrenceRec.event_id].description
+            event_title: titleOut
           },
           {
             time: end_time.numeric24,
@@ -3089,12 +3093,16 @@ export async function v2buildCalendar(body, screenStatus = () => { }) {
     if (minutes_booked < 1200) {
       conflicts[this_oRec.slotData.owner].summaries[this_Sunday.numeric$].minutes += minutes_booked;
     }
+    let titleOut = `${this_occurrence.description} ${current_occurence_asDate.relative}`;
+    if (!this_occurrence.time.allDay) {
+      titleOut += ` from ${this_occurrence.time.from} to ${this_occurrence.time.to}`;
+    }
     conflicts[this_oRec.slotData.owner][current_occurrenceDate].push(
       {
         time: start_time.numeric24,
         open: false,
         event_id: current_event,
-        event_title: this_occurrence.description
+        event_title: titleOut
       },
       {
         time: end_time.numeric24,
