@@ -1657,6 +1657,7 @@ export default Component => props => {
         client_id: (URLmsg.client || URLmsg.client_id || null),
         recipient: (URLmsg.recipient || null),
         name: (URLmsg.name || null),
+        text: (URLmsg.text || null),
         thread_id: (URLmsg.thread || URLmsg.thread_id || null),
         subject: (URLmsg.subject || null),
       }), { path: '/' });

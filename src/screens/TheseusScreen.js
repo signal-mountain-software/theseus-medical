@@ -67,6 +67,21 @@ export default () => {
       );
     }
     else if (cookies.AVAaction.message) {
+      let messageOptions = {
+        newMessage: true,
+      };
+      if (cookies.AVAaction.recipient) {
+        messageOptions.recipients = [{ person_id: cookies.AVAaction.recipient, person_name: cookies.AVAaction.name }];
+      }
+      if (cookies.AVAaction.thread_id) {
+        messageOptions.newMessageThread = cookies.AVAaction.thread_id;
+      }
+      if (cookies.AVAaction.text) {
+        messageOptions.messageText = cookies.AVAaction.text;
+      }
+      if (cookies.AVAaction.subject) {
+        messageOptions.subject = cookies.AVAaction.subject;
+      }
       return (
         <MessageForm
           pPerson={cookies.AVAaction.sender}
@@ -76,12 +91,7 @@ export default () => {
             removeCookie("AVAaction");
             window.close();
           }}
-          options={{
-            newMessage: true,
-            newMessageThread: cookies.AVAaction.thread_id,
-            subject: cookies.AVAaction.subject,
-            recipients: [{ person_id: cookies.AVAaction.recipient, person_name: cookies.AVAaction.name }]
-          }}
+          options={messageOptions}
         />
       );
     }

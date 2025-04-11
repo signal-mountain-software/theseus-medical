@@ -1242,9 +1242,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               }
                             </Typography>
                             <Typography
-                              style={Object.assign({}, { display: 'flex', textWrap: 'nowrap', alignSelf: 'flex-end' }, AVATextStyle({ margin: { left: 1 }, size: 0.8 }))}
+                              style={Object.assign({}, { display: 'flex', textWrap: 'nowrap', alignSelf: 'center' }, AVATextStyle({ margin: { left: 1 }, size: 0.8 }))}
                             >
-                              {(!(reactData.newMessageRecipients.length === 0) && (!reactData.selections || reactData.showReplyToSearch))
+                              {((reactData.newMessageRecipients.length === 0) && isEmpty(reactData.selections))
                                 ? '(Tap here to select Recipients)'
                                 : `(Tap here to add/change Recipients)`
                               }
