@@ -7,6 +7,7 @@ import useSession from '../hooks/useSession';
 import AVAMenu from '../components/sections/AVAMenu';
 import ConnectMenu from '../components/sections/ConnectMenu';
 import FormFillB from '../components/forms/FormFillB';
+import MessageForm from '../components/forms/MessageForm';
 import PeopleMaintenance from '../components/dialogs/PeopleMaintenance';
 
 import { useCookies } from 'react-cookie';
@@ -59,9 +60,38 @@ export default () => {
         <PeopleMaintenance
           person_id={patient.person_id}
           options={{ sectionToShow: ['FormSection'] }}
-          onClose={() => { 
+          onClose={() => {
             removeCookie("AVAaction");
           }}
+        />
+      );
+    }
+    else if (cookies.AVAaction.message) {
+      let messageOptions = {
+        newMessage: true,
+      };
+      if (cookies.AVAaction.recipient) {
+        messageOptions.recipients = [{ person_id: cookies.AVAaction.recipient, person_name: cookies.AVAaction.name }];
+      }
+      if (cookies.AVAaction.thread_id) {
+        messageOptions.newMessageThread = cookies.AVAaction.thread_id;
+      }
+      if (cookies.AVAaction.text) {
+        messageOptions.messageText = cookies.AVAaction.text;
+      }
+      if (cookies.AVAaction.subject) {
+        messageOptions.subject = cookies.AVAaction.subject;
+      }
+      return (
+        <MessageForm
+          pPerson={cookies.AVAaction.sender}
+          pClient={cookies.AVAaction.client_id}
+          pMessageList={[]}
+          onReset={() => {
+            removeCookie("AVAaction");
+            window.close();
+          }}
+          options={messageOptions}
         />
       );
     }

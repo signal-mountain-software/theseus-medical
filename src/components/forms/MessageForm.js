@@ -207,7 +207,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     newMessageRecipients: ((options && options.newMessage && options.recipients) ? options.recipients : []),
     newMessageSubject: ((options && options.newMessage && options.subject) ? options.subject : ''),
     newMessageText: ((options && options.newMessage && options.messageText) ? options.messageText : ''),
-    newMessageThread: false,
+    newMessageThread: ((options && options.newMessage && options.newMessageThread) ? options.newMessageThread : false),
     newMessageVMAlternative: false,
     newMessageVMAltText: '',
     newUrgentMessage: false,
@@ -263,6 +263,16 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
 
   const [rowLimit, setRowLimit] = React.useState(20);
   const scrollValue = 20;
+
+  const autoFocus = React.useRef(null);
+  React.useEffect(() => {
+    if (autoFocus && autoFocus.current) {
+      autoFocus.current.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }
+  }, []);
 
   function makeReadableTime(pJavaDate) {
     let dDate = new Date(Number(pJavaDate));
@@ -720,6 +730,12 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           await processDeliveryRecs(outRecs.Items, '', person_id);
         }
       } while (queryObj.ExclusiveStartKey);
+    }
+    if (autoFocus && autoFocus.current) {
+      autoFocus.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
     }
   }
 
@@ -1226,9 +1242,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               }
                             </Typography>
                             <Typography
-                              style={Object.assign({}, { display: 'flex', textWrap: 'nowrap', alignSelf: 'flex-end' }, AVATextStyle({ margin: { left: 1 }, size: 0.8 }))}
+                              style={Object.assign({}, { display: 'flex', textWrap: 'nowrap', alignSelf: 'center' }, AVATextStyle({ margin: { left: 1 }, size: 0.8 }))}
                             >
-                              {(!(reactData.newMessageRecipients.length === 0) && (!reactData.selections || reactData.showReplyToSearch))
+                              {((reactData.newMessageRecipients.length === 0) && isEmpty(reactData.selections))
                                 ? '(Tap here to select Recipients)'
                                 : `(Tap here to add/change Recipients)`
                               }
@@ -1438,7 +1454,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                         e.preventDefault();
                       }}
                     >
-                      <Box display='flex' flexDirection='column'>
+                      <Box display='flex' flexDirection='column'
+                        ref={((this_thread === reactData.newMessageThread) && (message_index === 0)) ? autoFocus : null}                      
+                      >
                         <Box
                           display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
                           key={`${thread_index}_r_${message_index}`}

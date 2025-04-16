@@ -632,7 +632,13 @@ export function makeTime(pTime) {
                 else if ((ampm === 'pm') && (hh < 12)) { hh += 12; }
             }
         }
-        else { hh = pTime; }
+        else {
+            hh = pTime;
+            if (pTime > 1159) {
+                ampm = 'pm';
+            }
+            else { ampm = 'am'; }
+        }
         if (hh >= 100) {
             if (!mm$) { mm = hh % 100; }
             hh = Math.floor(hh / 100);
