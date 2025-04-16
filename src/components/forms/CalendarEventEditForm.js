@@ -214,7 +214,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       start: null,
       end: null
     };
-    if (pOccData.signup_window?.start) {
+    if (!isEmpty(pOccData.signup_window?.start)) {
       let windowStart = addDays(pOccData.date, -pOccData.signup_window.start);
       response.start = makeDate(windowStart).relative;
       if (windowStart > new Date()) {
@@ -223,7 +223,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
         return response;
       }
     }
-    if (pOccData.signup_window?.end) {
+    if (!isEmpty(pOccData.signup_window?.end)) {
       let windowEnd = addDays(pOccData.date, -pOccData.signup_window.end);
       response.end = makeDate(windowEnd).relative;
       if (windowEnd < new Date()) {
