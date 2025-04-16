@@ -1255,6 +1255,7 @@ export async function writeSlot(body) {
   */
   let [event_id, occ_id] = makeString(body.event, 1).split('#');
   let occurrence = body.occurrence_date || occ_id;
+  let occDateOut = makeDate(occurrence, { noTime: true });
   if (!body.slot && body.id) { body.slot = body.id; }
   let event_key;
   if (occ_id) {
@@ -1390,7 +1391,10 @@ export async function writeSlot(body) {
     if (recordExists(event_slots)) {
       for (let this_slot of event_slots.Items) {
         if (this_slot.slotData.status.current === 'selected') {
-          event_parties[this_slot.slot_owner] = this_slot.event_key;
+          event_parties[this_slot.slot_owner] = {
+            event_key: this_slot.event_key,
+            party_name: this_slot.slotData.display_name || this_slot.slotData.name
+          };
           if (this_slot.documents) {
             eventDocList.push(...this_slot.documents);
           }
@@ -1419,100 +1423,121 @@ export async function writeSlot(body) {
         });
       }
     }
+    let slotsToUpdate = {};
     let formList = makeArray(body.default_forms);
     for (let this_formObj of formList) {    // for each form in the default_forms array:
+      // first, determine if this form pertains to ANYONE that is currently assigned to a slot
+      let pertainsToList = [];
       for (let this_person in event_parties) {     // go back through the parties
         // if a party is a member of any group in the pertains_to list
         // eslint-disable-next-line
-        const doesPertain = this_formObj.pertains_to.some(async (this_group) => {
-          return await isMemberOf(body.client, this_person, this_group);
-        });
-        if (doesPertain) {
-          // check to see if they already have a document in the list we assembled above
-          let doesExist = event_documents.hasOwnProperty(this_formObj.form_id);
-          if (!doesExist) {
-            event_documents[this_formObj.form_id] = [];
-          }
-          else {
-            doesExist = event_documents[this_formObj.form_id].some(this_doc => {
-              return (this_doc.pertains_to === this_person);
-            });
-          }
-          if (!doesExist) {
-            // if not, we need to create one...  check the access type for this form.
-            if (this_formObj.access === 'complete') {
-              // if access type is 'complete', then create a document with the form_type that pertains_to this party
-              let newDocumentID = await createDocument({
-                docData: {
-                  client_id: body.client,
-                  form_type: this_formObj.form_id,
-                  pertains_to: this_person,
-                },
-                author: `Added for Calendar entry ${event_key}`
-              });
-              event_documents[this_formObj.form_id].push({
-                pertains_to: this_person,
-                document_id: newDocumentID
-              });
-            }
-            else if (this_formObj.access === 'view') {
-              // if access type is 'view', then find the most recent completed document of this form_type that pertains_to this party
-              let queryRec = await dbClient
-                .query({
-                  KeyConditionExpression: 'client_id_form_type = :cf and pertains_to = :p',
-                  TableName: 'DocumentMaster',
-                  IndexName: 'client_form_person-index',
-                  FilterExpression: `status = :c`,
-                  ExpressionAttributeValues: {
-                    ':cf': `${body.client}%%${this_formObj.form_id}`,
-                    ':p': this_person,
-                    ':c': 'complete'
-                  }
-                })
-                .promise()
-                .catch(error => {
-                  if (error.code === 'NetworkingError') {
-                    cl(`Security Violation or no Internet Connection`);
-                  }
-                  cl(`Error querying DocumentMaster while look for ${this_formObj.form_id} in form assignment.  error is ${error}`);
-                });
-              if (recordExists(queryRec)) {
-                let sortedDocs = queryRec.Items.sort((a, b) => {
-                  return (a.history[0].last_update > b.history[0].last_update) ? 1 : -1;
-                });
-                event_documents[this_formObj.form_id].push({
-                  pertains_to: this_person,
-                  document_id: sortedDocs[0].document_id
-                });
-              }
-            }
+        for (let this_group of this_formObj.pertains_to) {
+          let doesPertain = await isMemberOf(body.client, this_person, this_group);
+          if (doesPertain) {
+            pertainsToList.push(this_person);
+            break;
           }
         }
       }
-    }
-    // now - we have an current and updated list of documents by form_type and pertains_to
-    let slotsToUpdate = {};
-    let docsToUpdate = {};
-    for (let this_formObj of formList) {    // for each form in the default_forms array:
-      for (let this_person in event_parties) {     // go back through the parties
-        // if this party is a member of any group in the assign_groups list for this form
-        // eslint-disable-next-line
-        const shouldAssign = this_formObj.assign_groups.some(async (this_group) => {
-          return await isMemberOf(body.client, this_person, this_group);
-        });
-        if (shouldAssign) {
-          // every doc in the event_documents with this type should be added to this person's slot
-          if (!slotsToUpdate.hasOwnProperty(event_parties[this_person])) {
-            slotsToUpdate[event_parties[this_person]] = [];
-          }
-          let docs_to_add = event_documents[this_formObj.form_id].map(d => { return d.document_id; });
-          slotsToUpdate[event_parties[this_person]].push(...docs_to_add);
-          docs_to_add.forEach(d => {
-            if (!docsToUpdate.hasOwnProperty(d)) {
-              docsToUpdate[d] = [];
+      if (pertainsToList.length > 0) {    // it pertains to one or people on the event
+        for (let this_person in event_parties) {     // go back through the parties
+          let shouldAssign = false;
+          for (let this_group of this_formObj.assign_groups) {
+            shouldAssign = await isMemberOf(body.client, this_person, this_group);
+            if (shouldAssign) {
+              break;
             }
-            docsToUpdate[d].push(this_person);
-          });
+          }
+          if (shouldAssign) {
+            let slot_key = `${event_id}#${occurrence}#${this_person}`;
+            if (!slotsToUpdate.hasOwnProperty(slot_key)) {
+              slotsToUpdate[slot_key] = [];
+            }
+            // check to see if they already have a document in the list we assembled above
+            let doesExist = event_documents.hasOwnProperty(this_formObj.form_id);
+            if (!doesExist) {
+              event_documents[this_formObj.form_id] = [];
+            }
+            else {
+              let existingReference = event_documents[this_formObj.form_id].find(this_doc => {
+                return (this_doc.pertains_to === this_person);
+              });
+              if (existingReference) {
+                slotsToUpdate[slot_key].push(existingReference.document_id);
+                doesExist = true;
+              }
+              else {
+                doesExist = false;
+              }
+            }
+            if (!doesExist) {
+              // if not, we need to create one...  check the access type for this form.
+              for (let this_pertainsTo of pertainsToList) {
+                if (this_formObj.access === 'complete') {
+                  // if access type is 'complete', then create a document with the form_type that pertains_to this party
+                  let docTitle = this_formObj.titleWords;
+                  if (event_parties[this_pertainsTo].party_name) {
+                    docTitle += ` for ${event_parties[this_pertainsTo].party_name}`
+                  };
+                  if (!occDateOut.error) {
+                    docTitle += ` - ${occDateOut.dateOnly}`
+                  }
+                  let newDocumentID = await createDocument({
+                    docData: {
+                      client_id: body.client,
+                      form_type: this_formObj.form_id,
+                      pertains_to: this_pertainsTo,
+                      event_id,
+                      occurrence,
+                      assigned_to: [this_person],
+                      title: docTitle
+                    },
+                    author: `Added for Calendar entry ${event_key}`
+                  });
+                  event_documents[this_formObj.form_id].push({
+                    pertains_to: this_pertainsTo,
+                    document_id: newDocumentID
+                  });
+                  slotsToUpdate[slot_key].push(newDocumentID);
+                }
+                else if (this_formObj.access === 'view') {
+                  // if access type is 'view', then find the most recent completed document of this form_type that pertains_to this party
+                  let queryRec = await dbClient
+                    .query({
+                      KeyConditionExpression: 'client_id_form_type = :cf and pertains_to = :p',
+                      TableName: 'DocumentMaster',
+                      IndexName: 'client_form_person-index',
+                      FilterExpression: `#s = :c`,
+                      ExpressionAttributeNames: {
+                        '#s': 'status'
+                      },
+                      ExpressionAttributeValues: {
+                        ':cf': `${body.client}%%${this_formObj.form_id}`,
+                        ':p': this_pertainsTo,
+                        ':c': 'complete'
+                      }
+                    })
+                    .promise()
+                    .catch(error => {
+                      if (error.code === 'NetworkingError') {
+                        cl(`Security Violation or no Internet Connection`);
+                      }
+                      cl(`Error querying DocumentMaster while look for ${this_formObj.form_id} in form assignment.  error is ${error}`);
+                    });
+                  if (recordExists(queryRec)) {
+                    let sortedDocs = queryRec.Items.sort((a, b) => {
+                      return (a.history[0].last_update > b.history[0].last_update) ? 1 : -1;
+                    });
+                    event_documents[this_formObj.form_id].push({
+                      pertains_to: this_pertainsTo,
+                      document_id: sortedDocs[0].document_id
+                    });
+                    slotsToUpdate[slot_key].push(sortedDocs[0].document_id);
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -1534,33 +1559,6 @@ export async function writeSlot(body) {
         .catch(error => {
           cl(`caught error updating Calendar; error is: `, error);
         });
-    }
-    // this sets people by document
-    for (const this_doc in docsToUpdate) {
-      const docRec = await dbClient
-        .get({
-          Key: { document_id: this_doc },
-          TableName: 'DocumentMaster'
-        })
-        .promise()
-        .catch(error => {
-          cl(`Bad get from DocumentMaster while building document list in form assignment. Error is: ${error}`);
-        });
-      if (recordExists(docRec)) {
-        await dbClient
-          .update({
-            Key: { document_id: this_doc },
-            TableName: 'DocumentMaster',
-            UpdateExpression: 'set assigned_to = :a',
-            ExpressionAttributeValues: {
-              ':a': [docRec.Item.assigned_to || []].flat().push(...docsToUpdate[this_doc])
-            }
-          })
-          .promise()
-          .catch(error => {
-            cl(`caught error updating Calendar; error is: `, error);
-          });
-      }
     }
   }
   // customize the title and/or location?

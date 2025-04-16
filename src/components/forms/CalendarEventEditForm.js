@@ -390,68 +390,21 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
   };
 
   async function getDoc(this_doc) {
-    let queryObj = {
-      KeyConditionExpression: 'client_id = :c and document_id = :dID',
-      ScanIndexForward: false,
-      Limit: 1,
-      ExpressionAttributeValues: {
-        ':c': state.session.client_id,
-        ':dID': this_doc
-      }
-    };
-    queryObj.TableName = 'CompletedDocuments';
-    let queryResult = await dbClient
-      .query(queryObj)
+    const docRec = await dbClient
+      .get({
+        Key: { document_id: this_doc },
+        TableName: 'DocumentMaster'
+      })
       .promise()
       .catch(error => {
-        if (error.code === 'NetworkingError') {
-          cl(`Security Violation or no Internet Connection`);
-        }
-        cl(`Error reading ${queryObj.TableName} id ${error}`);
+        cl(`Bad get from DocumentMaster while building document list in form assignment. Error is: ${error}`);
       });
-    if (recordExists(queryResult)) {
-      return queryResult.Items[0];
+    if (recordExists(docRec)) {
+      return docRec.Item;
     }
-    queryObj.TableName = 'DocumentsInProcess';
-    queryResult = await dbClient
-      .query(queryObj)
-      .promise()
-      .catch(error => {
-        if (error.code === 'NetworkingError') {
-          cl(`Security Violation or no Internet Connection`);
-        }
-        cl(`Error reading ${queryObj.TableName} id ${error}`);
-      });
-    if (recordExists(queryResult)) {
-      return queryResult.Items[0];
+    else {
+      return null;
     }
-    queryObj.TableName = 'DocumentsAssigned';
-    queryResult = await dbClient
-      .query(queryObj)
-      .promise()
-      .catch(error => {
-        if (error.code === 'NetworkingError') {
-          cl(`Security Violation or no Internet Connection`);
-        }
-        cl(`Error reading ${queryObj.TableName} id ${error}`);
-      });
-    if (recordExists(queryResult)) {
-      return queryResult.Items[0];
-    }
-    queryObj.TableName = 'Documents';
-    queryResult = await dbClient
-      .query(queryObj)
-      .promise()
-      .catch(error => {
-        if (error.code === 'NetworkingError') {
-          cl(`Security Violation or no Internet Connection`);
-        }
-        cl(`Error reading ${queryObj.TableName} id ${error}`);
-      });
-    if (recordExists(queryResult)) {
-      return queryResult.Items[0];
-    }
-    return null;
   }
 
   const handlePrint = async (pEvent, pType) => {

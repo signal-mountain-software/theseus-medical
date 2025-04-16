@@ -34,7 +34,7 @@ export async function createDocument({ docData, author }) {
     }
     const today = makeDate('today');
     let docRec = {
-        document_id: `${docData.pertains_to}%%${docData.form_type}%%${today.timestamp}`,
+        document_id: `${docData.pertains_to}%%${docData.form_type}%%${docData.event_id}#${docData.occurrence}`,
         client_id_form_type: `${docData.client_id}%%${docData.form_type}`,
         history: [
             {
@@ -44,6 +44,7 @@ export async function createDocument({ docData, author }) {
             }
         ],
         status: 'not_started',
+        assigned_to: [docData.assigned_to].flat()
     };
     const formData = await documentDueDate(docData.client_id, docData.form_type);
     if (!docData.due_date && formData.due_date) {
