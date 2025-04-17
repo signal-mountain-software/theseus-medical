@@ -179,7 +179,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   const AVAClass = AVAclasses();
 
   const placeholderImage =
-    'https://theseus-medical-storage.s3.amazonaws.com/public/patients/tboone.jpg';
+    'https://theseus-medical-storage.s3.amazonaws.com/public/patients/ademo.jpg';
 
 
   const [reactData, setReactData] = React.useState({

@@ -570,7 +570,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
   }
 
   const placeholderImage =
-    'https://theseus-medical-storage.s3.amazonaws.com/public/patients/tboone.jpg';
+    'https://theseus-medical-storage.s3.amazonaws.com/public/patients/ademo.jpg';
 
   const onImageError = (e) => {
     e.target.src = placeholderImage;
