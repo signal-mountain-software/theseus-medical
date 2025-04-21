@@ -714,16 +714,6 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
           }
         }
       }
-
-
-
-
-
-
-
-
-
-
       let slotInfo = await writeSlot(writeRequest);
       whereToGo = -1;
       if (pRelease) {
@@ -732,7 +722,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
             name: '',
             owner: '',
             notes: '',
-            guests: new Array(pEvent.number_of_guests)
+            guests: (pEvent?.number_of_guests ? new Array(pEvent.number_of_guests) : [])
           });
           workingList[pIndex] = {
             event_key: slotInfo.event_key,
