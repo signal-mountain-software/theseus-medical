@@ -71,7 +71,7 @@ export default () => {
         newMessage: true,
       };
       if (cookies.AVAaction.recipient) {
-        messageOptions.recipients = [{ person_id: cookies.AVAaction.recipient, person_name: cookies.AVAaction.name }];
+        messageOptions.recipients = [{ person_id: cookies.AVAaction.recipient, person_name: cookies.AVAaction.recipient_name }];
       }
       if (cookies.AVAaction.thread_id) {
         messageOptions.newMessageThread = cookies.AVAaction.thread_id;

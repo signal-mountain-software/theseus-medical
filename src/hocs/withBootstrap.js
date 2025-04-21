@@ -169,8 +169,8 @@ export default Component => props => {
         }
         // No security session OR already logged in, but with an unknown user.  Do we know who this is?
         // Does the URL contain a User ID and/or client?
-        let urlData = getParamsFromURL();
-        if (urlData) {
+        let urlData = await getParamsFromURL();
+        if (urlData) {         
           updateReactData({
             urlData: Object.assign({}, urlData, {
               client_id: urlData.client || urlData.client_id,
@@ -280,7 +280,7 @@ export default Component => props => {
       setAVAFollowUpData({ 'NeedUser': true });
       return 'invalid';
     }
-    let tempURLOBj = getParamsFromURL();
+    let tempURLOBj = await getParamsFromURL();
     if (tempURLOBj && tempURLOBj.tfa && !options.waiveTFA) {
       await logAccessAttempt(pUser, '', true, 'Two-factor authentication required.');
       closeSnackbar();
@@ -1129,13 +1129,16 @@ export default Component => props => {
     else { return null; }
   }
 
-  function getParamsFromURL() {
+  async function getParamsFromURL() {
     let returnObject = {};
     allParams.forEach((value, key) => {
       console.log(key, value);
       returnObject[key] = value;
     });
     if (Object.keys(returnObject).length > 0) {
+      if (returnObject.message) {
+        returnObject = await extractMessageData(returnObject);
+      }
       return returnObject;
     }
     else { return null; }
@@ -1621,7 +1624,7 @@ export default Component => props => {
     // sessionStorage.setItem('AVASessionData', JSON.stringify({ currentSession, currentProfile, currentPatient, sessionInfo }));
     bakeCookie(currentSession.session_id, currentSession.client_id, currentPatient.person_id);
 
-    currentSession.url_parameters = getParamsFromURL();
+    currentSession.url_parameters = await getParamsFromURL();
     updateSession(currentSession.session_id, currentSession, currentPatient, currentProfile, currentSession.last_login, currentSession.url_parameters, 'AVA Launch', sessionInfo);
 
     // synchronous load other data
@@ -1652,11 +1655,11 @@ export default Component => props => {
     if (URLmsg) {
       removeCookie("AVAaction");
       setCookie('AVAaction', JSON.stringify({
-        message: true,
+        message: URLmsg.message,
         sender: (URLmsg.sender || null),
         client_id: (URLmsg.client || URLmsg.client_id || null),
         recipient: (URLmsg.recipient || null),
-        name: (URLmsg.name || null),
+        recipient_name: (URLmsg.recipient_name || null),
         text: (URLmsg.text || null),
         thread_id: (URLmsg.thread || URLmsg.thread_id || null),
         subject: (URLmsg.subject || null),
@@ -1773,4 +1776,23 @@ export default Component => props => {
     if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
     else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
   }
+
+  async function extractMessageData(urlData) { 
+    let urlMessageRec = await dbClient
+      .get({
+        Key: { message_key: urlData.message },
+        TableName: "MessageReplyTrigger"
+      })
+      .promise()
+      .catch(async (error) => {
+        if (error.code === 'NetworkingError') {
+          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+        }
+        console.log({ 'Bad get on MessageReplyTrigger - caught error is': error });
+      });
+    if (recordExists(urlMessageRec)) { 
+      Object.assign(urlData, urlMessageRec.Item);
+    }
+    return urlData;
+  };
 };
