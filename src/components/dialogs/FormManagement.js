@@ -909,47 +909,28 @@ export default ({ defaults, onClose }) => {
                               margin: { top: 0, bottom: 0.8 }
                             })}
                           >
-                            {(reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status === 'completed')
-                              ?
-                              <CheckCircleIcon
-                                key={`radio-button_form${gX}off`}
-                                id={`radio-button_form${gX}off`}
-                                style={AVATextStyle({
-                                  color: 'green',
-                                  size: 1.5,
-                                  margin: { right: 0.5 },
-                                })}
-                                onClick={() => {
-                                  let nowJ = new Date().getTime();
-                                  window.open(`${reactData.masterFormList[this_form].memberList[reactData.selectedPerson_id].completedDocs[0].location}?qt=${nowJ.toString()}`
-                                    , reactData.masterFormList[this_form].memberList[reactData.selectedPerson_id].completedDocs[0].location);
-                                }}
-                                size='small'
-                              />
-                              :
-                              <EditIcon
-                                key={`radio-button_form${gX}edit`}
-                                id={`radio-button_form${gX}edit`}
-                                onClick={() => {
-                                  updateReactData({
-                                    isEditing: {
-                                      calledFrom: 'people',
-                                      person_id: reactData.selectedPerson_id,
-                                      form_id: this_form,
-                                      document_id: (reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.document_id || 'new')
-                                    }
-                                  }, true);
-                                }}
-                                style={AVATextStyle({
-                                  size: 1.5,
-                                  margin: { right: 0.5 },
-                                  color: ((reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status === 'not started')
-                                    ? 'red'
-                                    : 'orange')
-                                })}
-                                size='small'
-                              />
-                            }
+                            <EditIcon
+                              key={`radio-button_form${gX}edit`}
+                              id={`radio-button_form${gX}edit`}
+                              onClick={() => {
+                                updateReactData({
+                                  isEditing: {
+                                    calledFrom: 'people',
+                                    person_id: reactData.selectedPerson_id,
+                                    form_id: this_form,
+                                    document_id: ((reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status === 'completed') ? 'new' : (reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.document_id || 'new'))
+                                  }
+                                }, true);
+                              }}
+                              style={AVATextStyle({
+                                size: 1.5,
+                                margin: { right: 0.5 },
+                                color: (((reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status === 'not started') || (reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status === 'completed'))
+                                  ? 'red'
+                                  : 'orange')
+                              })}
+                              size='small'
+                            />
                             <Typography
                               key={`g_text_end_group-${gX}`}
                               draggable={true}
@@ -991,6 +972,24 @@ export default ({ defaults, onClose }) => {
                             >
                               {`${reactData.masterFormList[this_form].form_name}`}
                             </Typography>
+                            {(reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status === 'completed')
+                              &&
+                              <CheckCircleIcon
+                                key={`radio-button_form${gX}off`}
+                                id={`radio-button_form${gX}off`}
+                                style={AVATextStyle({
+                                  color: 'green',
+                                  size: 1,
+                                  margin: { left: 0.5, right: 0.5 },
+                                })}
+                                onClick={() => {
+                                  let nowJ = new Date().getTime();
+                                  window.open(`${reactData.masterFormList[this_form].memberList[reactData.selectedPerson_id].completedDocs[0].location}?qt=${nowJ.toString()}`
+                                    , reactData.masterFormList[this_form].memberList[reactData.selectedPerson_id].completedDocs[0].location);
+                                }}
+                                size='small'
+                              />
+                            }
                           </Box>
                         )
                       ))}
@@ -1090,47 +1089,28 @@ export default ({ defaults, onClose }) => {
 
                           style={{ marginBottom: '6px' }}
                         >
-                          {(reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'completed')
-                            ?
-                            <CheckCircleIcon
-                              key={`radio-button_person${cX}off`}
-                              id={`radio-button_person${cX}off`}
-                              style={AVATextStyle({
-                                color: 'green',
-                                size: 1.5,
-                                margin: { right: 0.5 },
-                              })}
-                              onClick={() => {
-                                let nowJ = new Date().getTime();
-                                window.open(`${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].completedDocs[0].location}?qt=${nowJ.toString()}`
-                                  , reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].completedDocs[0].location);
-                              }}
-                              size='small'
-                            />
-                            :
-                            <EditIcon
-                              key={`radio-button_person${cX}edit`}
-                              id={`radio-button_person${cX}edit`}
-                              onClick={() => {
-                                updateReactData({
-                                  isEditing: {
-                                    calledFrom: 'forms',
-                                    person_id: this_person,
-                                    form_id: reactData.selectedForm_id,
-                                    document_id: (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'new')
-                                  }
-                                }, true);
-                              }}
-                              style={AVATextStyle({
-                                size: 1.5,
-                                margin: { right: 0.5 },
-                                color: ((reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'not started')
-                                  ? 'red'
-                                  : 'orange')
-                              })}
-                              size='small'
-                            />
-                          }
+                          <EditIcon
+                            key={`radio-button_person${cX}edit`}
+                            id={`radio-button_person${cX}edit`}
+                            onClick={() => {
+                              updateReactData({
+                                isEditing: {
+                                  calledFrom: 'forms',
+                                  person_id: this_person,
+                                  form_id: reactData.selectedForm_id,
+                                  document_id: ((reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'completed') ? 'new' : (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'new'))
+                                }
+                              }, true);
+                            }}
+                            style={AVATextStyle({
+                              size: 1.5,
+                              margin: { right: 0.5 },
+                              color: (((reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'not started') || (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'completed'))
+                                ? 'red'
+                                : 'orange')
+                            })}
+                            size='small'
+                          />
                           <Typography
                             key={`g_textpeople-${cX}`}
                             style={AVATextStyle({
@@ -1172,6 +1152,24 @@ export default ({ defaults, onClose }) => {
                           >
                             {`${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`}
                           </Typography>
+                          {(reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'completed')
+                            &&
+                            <CheckCircleIcon
+                              key={`radio-button_person${cX}off`}
+                              id={`radio-button_person${cX}off`}
+                              style={AVATextStyle({
+                                color: 'green',
+                                size: 1,
+                                margin: { left: 0.5, right: 0.5 },
+                              })}
+                              onClick={() => {
+                                let nowJ = new Date().getTime();
+                                window.open(`${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].completedDocs[0].location}?qt=${nowJ.toString()}`
+                                  , reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].completedDocs[0].location);
+                              }}
+                              size='small'
+                            />
+                          }
                         </Box>
                       )
                     ))}
