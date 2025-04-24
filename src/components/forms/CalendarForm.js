@@ -2557,6 +2557,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         })
                       );
                     }
+                    /*
                     if (thisDate_exists_in_myCalendar) {
                       reactData.myCalendar[index_of_thisDate_in_myCalendar].eventList.sort((a, b) => {
                         if (a.customizations && a.customizations.show_as_unavailable) {
@@ -2576,6 +2577,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         }
                       });
                     }
+                    */
                   };
                   if (signupStatus.length > 0) {
                     let goodRecs = 0;
@@ -2691,6 +2693,32 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                           }
                         }, true);
                       }
+                    }
+                  }
+                  for (let o = 0; o < newEvent.occRecords.occArray.length; o++) {
+                    let newOccDate = newEvent.occRecords.occArray[o];
+                    let index_of_thisDate_in_myCalendar = reactData.myCalendar.findIndex(this_date => {
+                      return (this_date.dateObj.numeric === newOccDate);
+                    });
+                    const thisDate_exists_in_myCalendar = (index_of_thisDate_in_myCalendar > -1);
+                    if (thisDate_exists_in_myCalendar) {
+                      reactData.myCalendar[index_of_thisDate_in_myCalendar].eventList.sort((a, b) => {
+                        if (a.customizations && a.customizations.show_as_unavailable) {
+                          return 1;
+                        }
+                        else if (b.customizations && b.customizations.show_as_unavailable) {
+                          return -1;
+                        }
+                        else if (a.sort24 > b.sort24) {
+                          return 1;
+                        }
+                        else if (a.sort24 < b.sort24) {
+                          return -1;
+                        }
+                        else {
+                          return (a.description > b.description ? 1 : -1);
+                        }
+                      });
                     }
                   }
                   reactUpdObj.myCalendar = reactData.myCalendar;
