@@ -400,6 +400,26 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
         cl(`Bad get from DocumentMaster while building document list in form assignment. Error is: ${error}`);
       });
     if (recordExists(docRec)) {
+      if (!docRec.Item.title && !docRec.Item.document_title) {
+        const formRec = await dbClient
+          .get({
+            Key: {
+              client_id: pClient,
+              form_id: docRec.Item.form_type
+            },
+            TableName: 'Forms'
+          })
+          .promise()
+          .catch(error => {
+            cl(`Bad get from Forms while building document list in form assignment. Error is: ${error}`);
+          });
+        if (recordExists(formRec)) {
+          docRec.Item.title = formRec.Item.form_name;
+        }
+        else {
+          docRec.Item.title = docRec.Item.form_type;
+        }
+      }
       return docRec.Item;
     }
     else {
@@ -423,6 +443,46 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     let firstAvailableChoice;
     if (!['time', 'seats'].includes(pOccData.signup_type)) { firstAvailableChoice = pPatient; }
     let slotInfo = await getSlotList({ "client": pClient, "event": pEvent });
+    for (let this_owner in slotInfo.slotObj) {
+      let docRecs = [];
+      let docStatus = 'complete';
+      if (slotInfo.slotObj[this_owner].documents && (slotInfo.slotObj[this_owner].documents.length > 0)) {
+        for (let this_doc of slotInfo.slotObj[this_owner].documents) {
+          let dR = await getDoc(this_doc);
+          if (!isEmpty(dR)) {
+            if (!dR.title && !dR.document_title) {
+              const formRec = await dbClient
+                .get({
+                  Key: {
+                    client_id: pClient,
+                    form_id: dR.form_type
+                  },
+                  TableName: 'Forms'
+                })
+                .promise()
+                .catch(error => {
+                  cl(`Bad get from Forms while building document list in form assignment. Error is: ${error}`);
+                });
+              if (recordExists(formRec)) {
+                dR.title = formRec.Item.form_name;
+              }
+              else {
+                dR.title = formRec.Item.form_type;
+              }
+            }
+            if (dR.status === 'not_started') {
+              docStatus = 'not_started';
+            }
+            else if ((dR.status !== 'complete') && (docStatus !== 'not_started')) {
+              docStatus = dR.status;
+            }
+            docRecs.push(dR);
+          }
+        }
+      }
+      slotInfo.slotObj[this_owner].docRecs = docRecs;
+      slotInfo.slotObj[this_owner].docStatus = docStatus;
+    }
     let slotList = Object.keys(slotInfo.slotObj).sort().map(o => {
       let first = "";
       let last = "";
@@ -1563,7 +1623,10 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                               {(isEventOwner || isSlotOwner(this_item.slotData)) &&
                                 (this_item.slotData.documents) &&
                                 (this_item.slotData.documents.length > 0) &&
-                                <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
+                                <Box display='flex' mr={2}
+                                    color={this_item.slotData.docStatus === 'not_started' ? 'red' : (this_item.slotData.docStatus === 'complete' ? 'green' : 'orange')}
+                                  flexDirection='row' justifyContent='center' alignItems='center'
+                                >
                                   <Tooltip title={`View documents`} >
                                     <AssignmentTurnedInIcon
                                       onClick={async () => {
