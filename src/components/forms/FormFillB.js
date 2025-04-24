@@ -2742,7 +2742,7 @@ export default ({ request = {}, onClose }) => {
               {'Exit'}
             </Button>
             <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-              {!reactData.formRec?.options?.noSaveContinue && !reactData.clientSampleMode &&
+              {!reactData.formRec?.options?.noSaveContinue && !reactData.clientSampleMode && !reactData.formRec.upload_only &&
                 <Button
                   onClick={async () => {
                     const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
@@ -2758,7 +2758,7 @@ export default ({ request = {}, onClose }) => {
                   {isMobile() ? 'Save' : 'Save/Continue'}
                 </Button>
               }
-              {!reactData.clientSampleMode &&
+              {!reactData.clientSampleMode && !reactData.formRec.upload_only &&
                 <Button
                   onClick={async () => {
                     await handleReview();
@@ -2770,15 +2770,17 @@ export default ({ request = {}, onClose }) => {
                   {'Finish'}
                 </Button>
               }
-              <PrintIcon
-                classes={{ root: classes.rowButton }}
-                size='medium'
-                aria-label="penciladd_icon"
-                onClick={async () => {
-                  await printWIP({ document_id: reactData.document_id });
-                }}
-                edge="start"
-              />
+              {!reactData.formRec.upload_only &&
+                <PrintIcon
+                  classes={{ root: classes.rowButton }}
+                  size='medium'
+                  aria-label="penciladd_icon"
+                  onClick={async () => {
+                    await printWIP({ document_id: reactData.document_id });
+                  }}
+                  edge="start"
+                />
+              }
               {!reactData.clientSampleMode &&
                 <CloudUploadIcon
                   classes={{ root: classes.rowButton }}
@@ -2809,7 +2811,8 @@ export default ({ request = {}, onClose }) => {
               stage: 'fill'
             }, true);
           }}
-          onLoad={async (response) => {
+        onLoad={async (response) => {
+          let docTitle = await resolveVariables(reactData.formRec.title);
             const docRec = await updateDocument({
               docData: Object.assign({},
                 reactData.docRec,
@@ -2817,7 +2820,8 @@ export default ({ request = {}, onClose }) => {
                   document_id: reactData.document_id,
                   form_type: reactData.form_id,
                   pertains_to: reactData.pertains_to,
-                  client_id: state.session.client_id
+                  client_id: state.session.client_id,
+                  title: docTitle
                 }
               ),
               author: state.session.user_id,
