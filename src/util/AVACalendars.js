@@ -1487,6 +1487,7 @@ export async function writeSlot(body) {
                       client_id: body.client,
                       form_type: this_formObj.form_id,
                       pertains_to: this_pertainsTo,
+                      event_key,
                       event_id,
                       occurrence,
                       assigned_to: [this_person],

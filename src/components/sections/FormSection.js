@@ -174,26 +174,31 @@ export default ({ currentValues, reactData, updateReactData }) => {
             }
             if (this_doc.status === 'complete') {
               const completed_count = myFormListObj[this_doc.form_type].completedDocs.length;
+              // does this have an occerrence date?
+              let occDate;
+              if (this_doc.occurrence) {
+                occDate = this_doc.occurrence;
+              }
+              else { 
+                let splitter = this_doc.document_id.split('#');
+                let candidate = Number(splitter[splitter.length - 1]);
+                if (!isNaN(candidate)) {
+                  occDate = candidate;
+                }
+                else {
+                  occDate = 0;
+                }
+              }
               const cObj = {
                 document_id: this_doc.document_id,
                 location: this_doc.history[0].url,
                 last_update: this_doc.history[0].last_update,
                 date_completed: makeDate(this_doc.history[0].last_update).relative,
                 title: this_doc.title,
-                amendments: this_doc.amendments
+                amendments: this_doc.amendments,
+                occDate: occDate
               };
-              if ((completed_count === 0) || (this_doc.history[0].last_update > myFormListObj[this_doc.form_type].completedDocs[0].last_update)) {
-                myFormListObj[this_doc.form_type].completedDocs.unshift(cObj);
-              }
-              else if (this_doc.history[0].last_update < myFormListObj[this_doc.form_type].completedDocs[completed_count - 1].last_update) {
-                myFormListObj[this_doc.form_type].completedDocs.push(cObj);
-              }
-              else {
-                const foundAt = myFormListObj[this_doc.form_type].completedDocs.findIndex(d => {
-                  return (d.last_update < this_doc.history[0].last_update);
-                });
-                myFormListObj[this_doc.form_type].completedDocs.splice(foundAt, 0, cObj);
-              }
+              myFormListObj[this_doc.form_type].completedDocs.push(cObj);
             }
             else if ((this_doc.status === 'in_process') || (this_doc.status === 'pending')) {
               if ((myFormListObj[this_doc.form_type].wipDocs.length > 0) && (myFormListObj[this_doc.form_type].wipDocs[0].last_update < this_doc.history[0].last_update)) {
@@ -224,6 +229,11 @@ export default ({ currentValues, reactData, updateReactData }) => {
               });
             }
           }
+        }
+        for (let this_type in myFormListObj) {
+          myFormListObj[this_type].completedDocs.sort((a, b) => {
+            return ((a.occDate > b.occDate) ? -1 : 1)
+          })
         }
         masterFormList[myPersonRec.Item.person_id] = {
           person_id: myPersonRec.Item.person_id,
