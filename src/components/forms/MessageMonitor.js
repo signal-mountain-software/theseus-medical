@@ -793,6 +793,13 @@ export default ({ defaults, onCancel }) => {
                         {(['#', 'Urg', 'Hld', 'Blk', 'Chg', 'Att', 'Rul'].concat(reactData.received_mode ? ['xOG'] : [])).map((this_key, kX) =>
                           <Typography
                             key={`g_count-head_${kX}`}
+                            onClick={async () => {
+                              if (this_key === 'Hld') {
+                                updateReactData({
+                                  heldMessages: true
+                                }, true);
+                              }
+                            }}
                             style={AVATextStyle({
                               overflow: 'visible',
                               align: 'center',
@@ -984,6 +991,19 @@ export default ({ defaults, onCancel }) => {
             start_time: reactData.timeWindowStart,
             inOut_filter: reactData.personMessages_inOutFilter,
             statusFilter: reactData.personMessages_statusFilter
+          }}
+        />
+      }
+      {reactData.heldMessages &&
+        <MessageForm
+          pPerson={'*allHeld'}
+          pClient={state.session.client_id}
+          pMessageList={[]}
+          pSession={state.session}
+          onReset={() => {
+            updateReactData({
+              heldMessages: false,
+            }, true);
           }}
         />
       }

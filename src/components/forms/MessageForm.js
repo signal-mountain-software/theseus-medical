@@ -268,10 +268,10 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   React.useEffect(() => {
     if (autoFocus && autoFocus.current) {
       autoFocus.current.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
-        });
-      }
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }
   }, []);
 
   function makeReadableTime(pJavaDate) {
@@ -467,6 +467,91 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     timeout: msBeforeSleeping,
     throttle: 500
   });
+
+  async function releaseMessage(this_messageRec) {
+    let goodHandle = true;
+    let goodThread = true;
+    let this_actionRec = this_messageRec.actionRec;
+    let poTableName = (this_actionRec.content.testMode ? 'TestPostOffice' : 'PostOffice');
+    let po_og = await dbClient
+      .get({
+        Key: { 'message_id': this_actionRec.content.message_id },
+        TableName: poTableName
+      })
+      .promise()
+      .catch(error => {
+        cl(`Error reading ${poTableName}`, error);
+        goodHandle = false;
+      });
+    if (goodHandle && recordExists(po_og)) {
+      // make new message_id
+      cl(`Got message from ${poTableName} with key ${this_actionRec.content.message_id}`);
+      cl(`Composite_key is ${this_actionRec.content.composite_key}`);
+      if (this_actionRec.content.composite_key) {
+        // if this exists, we are re-trying a SINGLE recipient from a held message attempt
+        // if this doesn't exist we are re-trying the ENTIRE message and all of its initial recipients
+        cl(`Trying TheseusMessages with thread ${po_og.Item.thread_id} and composite ${this_actionRec.content.composite_key}`);
+        let theseusMessage_og = await dbClient
+          .get({
+            Key: {
+              thread_id: po_og.Item.thread_id,
+              composite_key: this_actionRec.content.composite_key
+            },
+            TableName: 'TheseusMessages'
+          })
+          .promise()
+          .catch(error => {
+            cl(`Error reading TheseusMessages`, error);
+          });
+        if (recordExists(theseusMessage_og)) {
+          cl(`Found original thread`);
+          console.log(theseusMessage_og);
+          // we are retrying a single message from a thread; send to the specific recipient
+          po_og.Item.recipient_base = 'list';
+          po_og.Item.recipient_key = [theseusMessage_og.Item.deliver_to];
+        }
+        else {
+          cl(`Thread not found - this will be sent as a new thread`);
+        }
+      }
+      po_og.Item.message_id += `.${new Date().getTime()}`;
+      po_og.Item.byPass_rules = true;
+      cl({ [poTableName]: po_og.Item });
+      await dbClient
+        .put({
+          Item: po_og.Item,
+          TableName: poTableName
+        })
+        .promise()
+        .catch(error => {
+          cl(`Error writing ${poTableName}`, error);
+          goodHandle = false;
+        });
+      if (goodHandle) {
+        cl(`Good write to ${poTableName} with message_id ${po_og.Item.message_id} `);
+        // remove the message action
+        cl(`Deleting ${this_actionRec.client_id}/${this_actionRec.after} from MessageActions`);
+        await dbClient
+          .delete({
+            Key: {
+              client_id: this_actionRec.client_id,
+              after: this_actionRec.after
+            },
+            TableName: 'MessageActions'
+          })
+          .promise()
+          .catch(error => {
+            cl(`Error deleting ${poTableName}`, error);
+            goodHandle = false;
+          });
+      }
+    }
+    else {
+      cl(`Failed to get key ${this_actionRec.content.message_id} from ${poTableName}`);
+      goodHandle = false;
+    }
+    return;
+  }
 
   async function sendMessage() {
     let postTime = new Date().getTime();
@@ -739,6 +824,78 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     }
   }
 
+
+  async function heldMessages() {
+    // Get all messages currently in hold
+    let actionRecs;
+    let queryObj = {
+      KeyConditionExpression: 'client_id = :c',
+      ExpressionAttributeValues: {
+        ':c': pClient
+      },
+      TableName: "MessageActions"
+    };
+    do {
+      actionRecs = await dbClient
+        .query(queryObj)
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            updateReactData({
+              alert: {
+                severity: 'error',
+                title: 'No Internet',
+                message: `There is no internet connection`,
+              }
+            }, true);
+          }
+          else {
+            updateReactData({
+              alert: {
+                severity: 'error',
+                title: 'Database problem',
+                message: `Error reading inbound Messages: ${error}`,
+              }
+            }, true);
+          }
+        });
+      if (actionRecs && actionRecs.LastEvaluatedKey) {
+        queryObj.ExclusiveStartKey = actionRecs.LastEvaluatedKey;
+      }
+      else {
+        delete queryObj.ExclusiveStartKey;
+      }
+      if (recordExists(actionRecs)) {
+        let mailRecs = [];
+        for (let this_heldMessage of actionRecs.Items) {
+          let mailRec = await dbClient
+            .query({
+              KeyConditionExpression: 'composite_key = :k',
+              ExpressionAttributeValues: {
+                ':k': this_heldMessage.content.composite_key
+              },
+              TableName: "TheseusMessages",
+              IndexName: 'composite_key-index'
+            })
+            .promise()
+            .catch(error => {
+              cl(`Error reading TheseusMessages for composite key ${this_heldMessage.content.composite_key}.  Error is ${error}`);
+            });
+          if (recordExists(mailRec)) {
+            mailRecs.push(Object.assign({}, mailRec.Items[0], { actionRec: this_heldMessage }));
+          }
+        }
+        await processDeliveryRecs(mailRecs, 'held', '*any');
+      }
+    } while (queryObj.ExclusiveStartKey);
+    if (autoFocus && autoFocus.current) {
+      autoFocus.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }
+  }
+
   async function processDeliveryRecs(deliveryRecs, inOut, my_id) {
     let totalProcessed = 0;
     let totalCount = deliveryRecs.length;
@@ -747,7 +904,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       //    if (this_deliveryRec.sent_from === this_deliveryRec.deliver_to) {    // a message to myself?  ignore...
       //      continue;
       //    }
-      inOut = ((this_deliveryRec.sent_from === my_id) ? 'out' : 'in');
+      if (inOut !== 'held') {
+        inOut = ((this_deliveryRec.sent_from === my_id) ? 'out' : 'in');
+      }
       // threads is {[<thread_id>]: {last_update: <>, delete_flag: <t/f>, messages: []}}, {[<thread_id>]: {}}...]
       // threads[n].messages is [{message_text: <>, last_update: <>, attachments: [], sent_time: <>, author_id: <>, author_name: <>, author_image: <>, inOut: <in/out> ,recipients: []}, {}...]
       // threads[n].messages[m].recipients is [{recipient_id: <>, recipient_name: <>, wasHeld: <t/f>, methods: {}}, {}...] 
@@ -797,7 +956,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           attachments: this_deliveryRec.content.current.attachments,
           composite_key: this_deliveryRec.composite_key,
           inOut,
-          my_id,
+          my_id: ((my_id === '*any') ? this_deliveryRec.author.author_id : my_id),
           sent_time: this_deliveryRec.created_time,
           author_id: this_deliveryRec.author.author_id,
           author_name: this_deliveryRec.author.author_name,
@@ -808,6 +967,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           status_with_attachment: Boolean(this_deliveryRec.content.current.attachments && (this_deliveryRec.content.current.attachments.length > 0)),
           partner_id: [],
           recipients: [],
+          actionRec: this_deliveryRec.actionRec || false,
           other_recipients: []   // these are IDs of people who - on an inbound message to me - also received the same message
         });
         message_added = true;
@@ -822,17 +982,6 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       if (recipient_number === -1) {
         if (inOut === 'in') {
           reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.push(this_deliveryRec.author.author_id);
-          // if it is INBOUND to me, I won't have any information about other recipients (people, other than me, that also received this message)
-          // to get that information, we need to look at other inbound messages on the same thread.
-          // we want other messages that have the same author and text and thread.  We'll get a list of recipient_ids and load them in the partner_id area
-          /*
-          reactData.threads[this_deliveryRec.thread_id].messages[message_number].other_recipients = await getRecipientList({
-            my_id,
-            thread_id: this_deliveryRec.thread_id,
-            author_id: this_deliveryRec.author.author_id,
-            message_text: reactData.threads[this_deliveryRec.thread_id].messages[message_number].message_text
-          });
-          */
         }
         else {
           reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.push(this_deliveryRec.deliver_to);
@@ -1004,6 +1153,15 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         response += `${reactData.threads[this_thread].messages[message_index].recipients.length} people`;
       }
     }
+    else if (reactData.threads[this_thread].messages[message_index].inOut === 'held') {
+      response = `${reactData.threads[this_thread].messages[message_index].author_name} -> `;
+      if (reactData.threads[this_thread].messages[message_index].recipients.length < 4) {
+        response += listFromArray(reactData.threads[this_thread].messages[message_index].recipients.map(r => { return r.recipient_name; }));
+      }
+      else {
+        response += `${reactData.threads[this_thread].messages[message_index].recipients.length} people`;
+      }
+    }
     else {
       response = `${reactData.threads[this_thread].messages[message_index].author_name} -> `;
       if (reactData.threads[this_thread].messages[message_index].other_recipients.length < 3) {
@@ -1032,12 +1190,17 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     }
     let this_start = Math.max((nowTime - (2 * oneDay)), loop_until);
     let this_end = nowTime + oneDay;
-    do {
-      await allMessages({ person_id: pPerson, start_time: this_start, end_time: this_end });
-      this_end = this_start;
-      this_start -= (7 * oneDay);
-    } while (this_start > loop_until);
-    await allMessages({ person_id: pPerson, start_time: loop_until, end_time: this_end });
+    if (pPerson === '*allHeld') {
+      await heldMessages();
+    }
+    else {
+      do {
+        await allMessages({ person_id: pPerson, start_time: this_start, end_time: this_end });
+        this_end = this_start;
+        this_start -= (7 * oneDay);
+      } while (this_start > loop_until);
+      await allMessages({ person_id: pPerson, start_time: loop_until, end_time: this_end });
+    }
     start();  // idle timer
     updateReactData({
       lastReloadTime: new Date(),
@@ -1455,7 +1618,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                       }}
                     >
                       <Box display='flex' flexDirection='column'
-                        ref={((this_thread === reactData.newMessageThread) && (message_index === 0)) ? autoFocus : null}                      
+                        ref={((this_thread === reactData.newMessageThread) && (message_index === 0)) ? autoFocus : null}
                       >
                         <Box
                           display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
@@ -1634,12 +1797,17 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                     onClick={async () => {
                                       let newMessageRecipients = [];
                                       let replyToList = [];
-                                      for (let this_person of this_message.partner_id) {
-                                        newMessageRecipients.push({ person_id: this_person, person_name: await makeName(this_person) });
+                                      if (this_message.inOut === 'held') {
+                                        newMessageRecipients.push({ person_id: this_message.author_id, person_name: this_message.author_name });
                                       }
-                                      if (this_message.reply_to && (this_message.reply_to.length > 0)) {
-                                        for (const this_recipient of this_message.reply_to) {
-                                          replyToList.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
+                                      else {
+                                        for (let this_person of this_message.partner_id) {
+                                          newMessageRecipients.push({ person_id: this_person, person_name: await makeName(this_person) });
+                                        }
+                                        if (this_message.reply_to && (this_message.reply_to.length > 0)) {
+                                          for (const this_recipient of this_message.reply_to) {
+                                            replyToList.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
+                                          }
                                         }
                                       }
                                       updateReactData({
@@ -1662,6 +1830,14 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                       }, true);
                                     }}
                                   />
+                                  {(pPerson === '*allHeld') &&
+                                    <SendIcon
+                                      onClick={async () => {
+                                        await releaseMessage(this_message);
+                                        await initialize();
+                                      }}
+                                    />
+                                  }
                                 </React.Fragment>
                               }
                             </Box>
