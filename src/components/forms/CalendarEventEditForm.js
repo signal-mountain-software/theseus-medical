@@ -23,6 +23,11 @@ import TimerOffIcon from '@material-ui/icons/TimerOff';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 
+import FormControlLabel from '@material-ui/core/FormControlLabel';
+import FormControl from '@material-ui/core/FormControl';
+import Checkbox from '@material-ui/core/Checkbox';
+import FormGroup from '@material-ui/core/FormGroup';
+
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
@@ -76,6 +81,18 @@ const useStyles = makeStyles(theme => ({
     width: '60%',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
+  },
+  formControlDays: {
+    margin: 0,
+    marginLeft: '-8px',
+    marginRight: '2px',
+    paddingTop: 0,
+    height: 1,
+    fontSize: theme.typography.fontSize * 0.8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: '10px',
+    marginBottom: '25px',
   },
   title: {
     marginTop: theme.spacing(2),
@@ -1624,7 +1641,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                                 (this_item.slotData.documents) &&
                                 (this_item.slotData.documents.length > 0) &&
                                 <Box display='flex' mr={2}
-                                    color={this_item.slotData.docStatus === 'not_started' ? 'red' : (this_item.slotData.docStatus === 'complete' ? 'green' : 'orange')}
+                                  color={this_item.slotData.docStatus === 'not_started' ? 'red' : (this_item.slotData.docStatus === 'complete' ? 'green' : 'orange')}
                                   flexDirection='row' justifyContent='center' alignItems='center'
                                 >
                                   <Tooltip title={`View documents`} >
@@ -1739,28 +1756,41 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                           {/* Guests are allowed and I am the event or slot owner */}
                           {(((pOccData.number_of_guests && (pOccData.number_of_guests > 0))
                             && (isEventOwner || isSlotOwner(this_item.slotData)))) &&
-                            <Box display='flex' mb={3} mr={4} flexDirection='column' justifyContent='center' alignItems='flex-start' flexGrow={1}>
-                              <Typography style={AVATextStyle({ size: 0.8, margin: { top: 1 } })} >
-                                {`${this_item.slotData.display_name.split(' ')[0]}'s Guests`}
+                            <Box display={'flex'} flexDirection={'column'}>
+                              <Typography style={AVATextStyle({ size: 0.8, margin: { top: 0.5, bottom: 0.5 } })} >
+                                {`How many guests?`}
                               </Typography>
-                              {new Array(pOccData.number_of_guests).fill('x').map((this_guest, guest_number) => (
-                                <TextField
-                                  classes={{ root: classes.standard }}
-                                  key={`prompt-guest_${index}-${guest_number}`}
-                                  inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                                  defaultValue={this_item.slotData.guests ? this_item.slotData.guests[guest_number] : ''}
-                                  onBlur={(event) => {
-                                    if (!this_item.slotData.guests) {
-                                      this_item.slotData.guests = new Array(pOccData.number_of_guests);
-                                    }
-                                    if (this_item.slotData.guests[guest_number] !== event.target.value) {
-                                      this_item.slotData.guests[guest_number] = event.target.value;
-                                      handleChangeGuests(index, this_item.slotData.guests);
-                                    }
-                                  }}
-                                  autoComplete='off'
-                                />
-                              ))}
+                              <Box display={'flex'} flexDirection={'row'} flexWrap={'wrap'} >
+                                <FormControl className={classes.formControl} component="fieldset">
+                                  <FormGroup row aria-label={`message_routedays_method`} name="method">
+                                    {new Array(pOccData.number_of_guests + 1).fill('x').map((this_entry, gIndex) => (
+                                      <FormControlLabel
+                                        className={classes.formControlDays}
+                                        control={
+                                          <Checkbox
+                                            className={classes.centerCenter}
+                                            key={`guest_check_${gIndex}`}
+                                            value={this_item.slotData.guests || 0}
+                                            checked={(this_item.slotData.guests || 0) === gIndex}
+                                            name={`guest_check_${gIndex}`}
+                                            onClick={() => {
+                                              this_item.slotData.guests = gIndex;
+                                              handleChangeGuests(index, this_item.slotData.guests);
+                                            }}
+                                            disableRipple
+                                            inputProps={{ 'aria-labelledby': `message_routing_0` }}
+                                          />
+                                        }
+                                        label={
+                                          <Typography style={AVATextStyle({ size: 0.8, margin: { top: -0.5 } })} >
+                                            {gIndex}
+                                          </Typography>}
+                                        labelPlacement='bottom'
+                                      />
+                                    ))}
+                                  </FormGroup>
+                                </FormControl>
+                              </Box>
                             </Box>
                           }
                         </Box>
