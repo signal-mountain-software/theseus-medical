@@ -849,7 +849,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       && reactData.conflictInfo[dragged_id].hasOwnProperty(droppedOn_event.occurrence_date)
     ) {
       reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].some(this_time => {
-        if (this_time.time < eventStart24) {
+        if (this_time.time <= eventStart24) {
           // event hasn't started - hold onto current availability and (if not available) the event that causes the potential conflict,
           isAvailable = this_time.open;
           conflictingEvent = !this_time.open ? this_time.event_title : null;
@@ -900,7 +900,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
         let isAvailable = true;
         let conflictingEvent;
         reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].some(this_time => {
-          if (this_time.time < eventStart24) {
+          if (this_time.time <= eventStart24) {
             // event hasn't started - hold onto current availability and (if not available) the event that causes the potential conflict,
             isAvailable = this_time.open;
             conflictingEvent = !this_time.open ? this_time.event_title : null;
