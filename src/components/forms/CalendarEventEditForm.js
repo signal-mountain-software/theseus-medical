@@ -1766,6 +1766,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                                     {new Array(pOccData.number_of_guests + 1).fill('x').map((this_entry, gIndex) => (
                                       <FormControlLabel
                                         className={classes.formControlDays}
+                                        key={`guest_label_${gIndex}`}
                                         control={
                                           <Checkbox
                                             className={classes.centerCenter}
