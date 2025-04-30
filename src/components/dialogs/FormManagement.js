@@ -454,7 +454,7 @@ export default ({ defaults, onClose }) => {
           if (workingOn !== this_doc.pertains_to) {
             if (docList.length > 0) {
               docList.sort((a, b) => { return ((a.occDate > b.occDate) ? -1 : 1); });
-              for (let i = 0; ((i < 14) && (i < docList.length)); i++) {
+              for (let i = 0; ((i < 40) && (i < docList.length)); i++) {
                 await buildMasters(docList[i]);
               }
             }
