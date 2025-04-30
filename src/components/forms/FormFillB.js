@@ -187,7 +187,7 @@ export default ({ request = {}, onClose }) => {
     version: 1,
     idleState: false,
     pertains_to: options.person_id,
-    clientSampleMode: (!options.person_id || (options.person_id === state.session.client_id))
+    clientSampleMode: (!options.document_id && (options.person_id === state.session.client_id))
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);

@@ -341,12 +341,26 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
           alert: {
             severity: 'error',
             title: 'Error',
-            message: `Something's not right... we couldn't find ${droppedOn.personObj.first_name} in the database.  Contact Support for more assistance`
+            message: `Something's not right... we couldn't find ${draggedFrom.personObj.name?.first || 'this person'} in the database.  Contact Support for more assistance`
           }
         }, true);
         return;
       }
       // good peopleRec
+      // are you trying to drag this person to an inactive group?   if so, give an error and send them to PeopleMaintenance
+      if (state.session.group_assignments?.inactive && state.session.group_assignments.inactive.includes(droppedOn.group_id)) {
+        updateReactData({
+          alert: {
+            severity: 'error',
+            title: 'Dropped on Inactive Group',
+            message: `You dragged ${peopleRec.Item.name?.first || 'someone'} to a group of Inactive accounts.  
+              For safety, we don't allow that here.
+              If you mean to make this account inactive, please tap on ${(peopleRec.Item.name?.first + "'s") || 'their'} name then tap on Groups.  
+              You can select this group from that list.`
+          }
+        }, true);
+        return;
+      }
       // we are adding the dropped on groups and all its parents to the groupList for this person. Get that list
       let addGroupList = [droppedOn.group_id];
       let this_group = myParent(droppedOn.group_id);

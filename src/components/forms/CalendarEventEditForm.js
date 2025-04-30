@@ -1,5 +1,4 @@
 import React from 'react';
-import { useSnackbar } from 'notistack';
 import { addDays, makeDate, makeTime } from '../../util/AVADateTime';
 import { getSlotList, writeSlot, makeSlotName, myAvailability, printOccurrenceSheet } from '../../util/AVACalendars';
 import { getMemberList } from '../../util/AVAGroups';
@@ -9,6 +8,9 @@ import { sendMessages } from '../../util/AVAMessages';
 import { putServiceRequest } from '../../util/AVAServiceRequest';
 import MakeMessage from './MakeMessage';
 import FormFillB from './FormFillB';
+
+import { Alert, AlertTitle } from '@material-ui/lab/';
+import { Snackbar } from '@material-ui/core';
 
 import { useGeolocated } from "react-geolocated";
 import { SearchPlaceIndexForPositionCommand, LocationClient } from '@aws-sdk/client-location';
@@ -22,6 +24,11 @@ import TimerOffIcon from '@material-ui/icons/TimerOff';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
+
+import FormControlLabel from '@material-ui/core/FormControlLabel';
+import FormControl from '@material-ui/core/FormControl';
+import Checkbox from '@material-ui/core/Checkbox';
+import FormGroup from '@material-ui/core/FormGroup';
 
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
@@ -76,6 +83,18 @@ const useStyles = makeStyles(theme => ({
     width: '60%',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
+  },
+  formControlDays: {
+    margin: 0,
+    marginLeft: '-8px',
+    marginRight: '2px',
+    paddingTop: 0,
+    height: 1,
+    fontSize: theme.typography.fontSize * 0.8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: '10px',
+    marginBottom: '25px',
   },
   title: {
     marginTop: theme.spacing(2),
@@ -202,8 +221,6 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
 
   const [editNoteNumber, setEditNoteNumber] = React.useState(-1);
   const [newNote, setNewNote] = React.useState('');
-
-  const { enqueueSnackbar } = useSnackbar();
 
   const isEventOwner = pOccData?.owner?.includes(pPatient)
     || ['master', 'support'].includes(state.patient.account_class);
@@ -400,6 +417,26 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
         cl(`Bad get from DocumentMaster while building document list in form assignment. Error is: ${error}`);
       });
     if (recordExists(docRec)) {
+      if (!docRec.Item.title && !docRec.Item.document_title) {
+        const formRec = await dbClient
+          .get({
+            Key: {
+              client_id: pClient,
+              form_id: docRec.Item.form_type
+            },
+            TableName: 'Forms'
+          })
+          .promise()
+          .catch(error => {
+            cl(`Bad get from Forms while building document list in form assignment. Error is: ${error}`);
+          });
+        if (recordExists(formRec)) {
+          docRec.Item.title = formRec.Item.form_name;
+        }
+        else {
+          docRec.Item.title = docRec.Item.form_type;
+        }
+      }
       return docRec.Item;
     }
     else {
@@ -423,6 +460,46 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     let firstAvailableChoice;
     if (!['time', 'seats'].includes(pOccData.signup_type)) { firstAvailableChoice = pPatient; }
     let slotInfo = await getSlotList({ "client": pClient, "event": pEvent });
+    for (let this_owner in slotInfo.slotObj) {
+      let docRecs = [];
+      let docStatus = 'complete';
+      if (slotInfo.slotObj[this_owner].documents && (slotInfo.slotObj[this_owner].documents.length > 0)) {
+        for (let this_doc of slotInfo.slotObj[this_owner].documents) {
+          let dR = await getDoc(this_doc);
+          if (!isEmpty(dR)) {
+            if (!dR.title && !dR.document_title) {
+              const formRec = await dbClient
+                .get({
+                  Key: {
+                    client_id: pClient,
+                    form_id: dR.form_type
+                  },
+                  TableName: 'Forms'
+                })
+                .promise()
+                .catch(error => {
+                  cl(`Bad get from Forms while building document list in form assignment. Error is: ${error}`);
+                });
+              if (recordExists(formRec)) {
+                dR.title = formRec.Item.form_name;
+              }
+              else {
+                dR.title = formRec.Item.form_type;
+              }
+            }
+            if (dR.status === 'not_started') {
+              docStatus = 'not_started';
+            }
+            else if ((dR.status !== 'complete') && (docStatus !== 'not_started')) {
+              docStatus = dR.status;
+            }
+            docRecs.push(dR);
+          }
+        }
+      }
+      slotInfo.slotObj[this_owner].docRecs = docRecs;
+      slotInfo.slotObj[this_owner].docStatus = docStatus;
+    }
     let slotList = Object.keys(slotInfo.slotObj).sort().map(o => {
       let first = "";
       let last = "";
@@ -910,12 +987,21 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
           });
       }
     }
-
     if (goodUpdate) {
-      enqueueSnackbar('Event info updated!', { variant: 'success' });
+      updateReactData({
+        alert: {
+          severity: 'success',
+          message: `Event info updated!`,
+        }
+      }, true);
     }
     else {
-      enqueueSnackbar('AVA could not update the Event info', { variant: 'error', persist: true });
+      updateReactData({
+        alert: {
+          severity: 'error',
+          message: `AVA could not update the Event info`,
+        }
+      }, true);
     }
     return (needsSlotUpdates || needsSlotTimeMessage);
   };
@@ -952,11 +1038,6 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
         }
       }
     }
-    updateReactData({
-      other_occurrences,
-      cancelPending: false,
-      ask_cancelSeries: (other_occurrences.length > 0)
-    }, true);
     return (other_occurrences.length > 0);
   };
 
@@ -1007,10 +1088,14 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
           await sendMessages(messageObj);
         }
       }
-      enqueueSnackbar('Event cancelled!', { variant: 'success' });
     }
     else {
-      enqueueSnackbar('AVA could not cancel the Event', { variant: 'error', persist: true });
+      updateReactData({
+        alert: {
+          severity: 'error',
+          message: `AVA could not cancel the Event`,
+        }
+      }, true);
     }
     return goodUpdate;
   };
@@ -1042,13 +1127,6 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
         cl(`caught error updating Calendar; error is: `, error);
         goodUpdate = false;
       });
-    if (!goodUpdate) {
-      enqueueSnackbar('AVA could not update the Event owners', { variant: 'error', persist: true });
-    }
-    else {
-      pOccData.owner = Object.keys(newOwners);
-      enqueueSnackbar('Event owners updated', { variant: 'success' });
-    }
     return goodUpdate;
   };
 
@@ -1140,7 +1218,12 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
             flexGrow={1}
             onContextMenu={async (e) => {
               e.preventDefault();
-              enqueueSnackbar(`AVA event=${pEventCode}`, { variant: 'info', persist: true });
+              updateReactData({
+                alert: {
+                  severity: 'notification',
+                  message: `AVA event = ${pEventCode}`,
+                }
+              }, true);
             }}
           >
             {loading &&
@@ -1322,11 +1405,65 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                   </Box>
                 </MenuItem>
                 <MenuItem
-                  onClick={() => {
-                    updateReactData({
-                      popupMenuOpen: false,
-                      cancelPending: true,
-                    }, true);
+                  onClick={async () => {
+                    let othersExist = await checkOtherOccurrences();
+                    if (!othersExist) {
+                      updateReactData({
+                        popupMenuOpen: false,
+                        cancelPending: true,
+                      }, true);
+                    }
+                    else {
+                      updateReactData({
+                        popupMenuOpen: false,
+                        alert: {
+                          severity: 'warning',
+                          title: `This event has multiple occurences`,
+                          message: <div>
+                            How would you like to proceed?<br />
+                            You may: <br />
+                            Cancel <strong>only this event</strong> and leave the others alone<br />
+                            Cancel <strong>all occurrences</strong>, or<br />
+                            <strong>Don't cancel anything</strong> and go back</div>,
+                          action: [
+                            {
+                              text: `Only this one`,
+                              function: (async () => {
+                                await handleCancelEvent();
+                                reactData.cancelPending = false;
+                                setReactData(reactData);
+                                setForceRedisplay(!forceRedisplay);
+                                onReset({ event_cancelled: true });
+                              })
+                            },
+                            {
+                              text: `All of them`,
+                              function: (async () => {
+                                await handleCancelEvent();
+                                let eventID = pEventCode.split('#')[0];
+                                for (let next_event of reactData.other_occurrences) {
+                                  pEventCode = `${eventID}#${next_event}`;
+                                  await handleCancelEvent();
+                                }                                
+                                reactData.cancelPending = false;
+                                setReactData(reactData);
+                                setForceRedisplay(!forceRedisplay);
+                                onReset({ event_cancelled: true });
+                              })
+                            },
+                            {
+                              text: `Go Back`,
+                              function: () => {
+                                updateReactData({
+                                  ask_cancelSeries: false,
+                                  alert: false
+                                }, true);
+                              }
+                            }
+                          ]
+                        }
+                      }, true)
+                    }
                   }}
                 >
                   <Box
@@ -1563,7 +1700,10 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                               {(isEventOwner || isSlotOwner(this_item.slotData)) &&
                                 (this_item.slotData.documents) &&
                                 (this_item.slotData.documents.length > 0) &&
-                                <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
+                                <Box display='flex' mr={2}
+                                  color={this_item.slotData.docStatus === 'not_started' ? 'red' : (this_item.slotData.docStatus === 'complete' ? 'green' : 'orange')}
+                                  flexDirection='row' justifyContent='center' alignItems='center'
+                                >
                                   <Tooltip title={`View documents`} >
                                     <AssignmentTurnedInIcon
                                       onClick={async () => {
@@ -1676,28 +1816,42 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                           {/* Guests are allowed and I am the event or slot owner */}
                           {(((pOccData.number_of_guests && (pOccData.number_of_guests > 0))
                             && (isEventOwner || isSlotOwner(this_item.slotData)))) &&
-                            <Box display='flex' mb={3} mr={4} flexDirection='column' justifyContent='center' alignItems='flex-start' flexGrow={1}>
-                              <Typography style={AVATextStyle({ size: 0.8, margin: { top: 1 } })} >
-                                {`${this_item.slotData.display_name.split(' ')[0]}'s Guests`}
+                            <Box display={'flex'} flexDirection={'column'}>
+                              <Typography style={AVATextStyle({ size: 0.8, margin: { top: 0.5, bottom: 0.5 } })} >
+                                {`How many guests?`}
                               </Typography>
-                              {new Array(pOccData.number_of_guests).fill('x').map((this_guest, guest_number) => (
-                                <TextField
-                                  classes={{ root: classes.standard }}
-                                  key={`prompt-guest_${index}-${guest_number}`}
-                                  inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                                  defaultValue={this_item.slotData.guests ? this_item.slotData.guests[guest_number] : ''}
-                                  onBlur={(event) => {
-                                    if (!this_item.slotData.guests) {
-                                      this_item.slotData.guests = new Array(pOccData.number_of_guests);
-                                    }
-                                    if (this_item.slotData.guests[guest_number] !== event.target.value) {
-                                      this_item.slotData.guests[guest_number] = event.target.value;
-                                      handleChangeGuests(index, this_item.slotData.guests);
-                                    }
-                                  }}
-                                  autoComplete='off'
-                                />
-                              ))}
+                              <Box display={'flex'} flexDirection={'row'} flexWrap={'wrap'} >
+                                <FormControl className={classes.formControl} component="fieldset">
+                                  <FormGroup row aria-label={`message_routedays_method`} name="method">
+                                    {new Array(pOccData.number_of_guests + 1).fill('x').map((this_entry, gIndex) => (
+                                      <FormControlLabel
+                                        className={classes.formControlDays}
+                                        key={`guest_label_${gIndex}`}
+                                        control={
+                                          <Checkbox
+                                            className={classes.centerCenter}
+                                            key={`guest_check_${gIndex}`}
+                                            value={this_item.slotData.guests || 0}
+                                            checked={(this_item.slotData.guests || 0) === gIndex}
+                                            name={`guest_check_${gIndex}`}
+                                            onClick={() => {
+                                              this_item.slotData.guests = gIndex;
+                                              handleChangeGuests(index, this_item.slotData.guests);
+                                            }}
+                                            disableRipple
+                                            inputProps={{ 'aria-labelledby': `message_routing_0` }}
+                                          />
+                                        }
+                                        label={
+                                          <Typography style={AVATextStyle({ size: 0.8, margin: { top: -0.5 } })} >
+                                            {gIndex}
+                                          </Typography>}
+                                        labelPlacement='bottom'
+                                      />
+                                    ))}
+                                  </FormGroup>
+                                </FormControl>
+                              </Box>
                             </Box>
                           }
                         </Box>
@@ -2108,37 +2262,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               setForceRedisplay(!forceRedisplay);
             }}
             onConfirm={async () => {
-              let othersExist = await checkOtherOccurrences();
-              if (!othersExist) {
-                await handleCancelEvent();
-                reactData.cancelPending = false;
-                setReactData(reactData);
-                setForceRedisplay(!forceRedisplay);
-                onReset({ event_cancelled: true });
-              }
-            }}
-            allowCancel={true}
-          />
-        }
-        {reactData.ask_cancelSeries &&
-          <AVAConfirm
-            promptText={[`This event has ${reactData.other_occurrences.length} occurences`, `Do you want to cancel them all?`]}
-            cancelText={`No, just cancel this`}
-            confirmText={`Yes, cancel them all`}
-            onCancel={async () => {
               await handleCancelEvent();
-              reactData.cancelPending = false;
-              setReactData(reactData);
-              setForceRedisplay(!forceRedisplay);
-              onReset({ event_cancelled: true });
-            }}
-            onConfirm={async () => {
-              await handleCancelEvent();
-              let eventID = pEventCode.split('#')[0];
-              for (let next_event of reactData.other_occurrences) {
-                pEventCode = `${eventID}#${next_event}`;
-                await handleCancelEvent();
-              }
               reactData.cancelPending = false;
               setReactData(reactData);
               setForceRedisplay(!forceRedisplay);
@@ -2330,6 +2454,72 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
           </DialogActions>
         }
       </React.Fragment>
+      {reactData.alert &&
+        <Snackbar
+          style={{ zIndex: 2000 }}
+          open={!!reactData.alert}
+          px={3}
+          key={`alert_wrapper`}
+          autoHideDuration={(reactData.alert.severity === 'success') ? 15000 : ((reactData.alert.severity === 'info') ? 15000 : null)}
+          onClose={() => {
+            updateReactData({
+              alert: false
+            }, true);
+          }}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'center'
+          }}
+        >
+          <Alert
+            severity={reactData.alert.severity || 'info'}
+            key={`alert_box`}
+            icon={false}
+            style={{
+              flexDirection: 'column', borderRadius: '20px', border: 1, justifyContent: 'center', alignItems: 'center',
+              marginLeft: '8px', marginRight: '8px', paddingLeft: '0px'
+            }}
+            action={(reactData.alert.action
+              ?
+              <Box
+                display='flex'
+                key={`alert_action`}
+                overflow='auto'
+                flexDirection='row'
+              >
+                {([reactData.alert.action].flat()).map((this_action, actionNdx) => (
+                  <Button
+                    key={`alert_button__${actionNdx}`}
+                    className={AVAClass.AVAButton} color="inherit"
+                    onClick={() => this_action.function()}
+                  >
+                    {this_action.text}
+                  </Button>
+                ))}
+              </Box>
+              : null
+            )}
+            variant='filled'
+            onClose={() => {
+              updateReactData({
+                alert: false
+              }, true);
+            }}
+          >
+            <Box
+              display='flex'
+              key={`alert_message`}
+              overflow='auto'
+              alignItems={'center'}
+              justifyContent={'center'}
+              flexDirection='column'
+            >
+              {reactData.alert.title && <AlertTitle>{reactData.alert.title}</AlertTitle>}
+              {reactData.alert.message}
+            </Box>
+          </Alert>
+        </Snackbar >
+      }
     </Dialog >
   );
 };
