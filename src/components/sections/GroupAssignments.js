@@ -13,59 +13,84 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
   const isMounted = React.useRef(false);
 
   const updateGroupList = async (clicked_group) => {
+    let reactUpdObj = null;
     if (!currentValues.peopleRec.hasOwnProperty('groups')) {
       currentValues.peopleRec.groups = [];
     }
+    // is the clicked-on group already in the list of groups for this person?
     let foundIt = currentValues.peopleRec.groups.indexOf(clicked_group.id || clicked_group.group_id);
-    if (foundIt < 0) { 
-      currentValues.peopleRec.groups.push(clicked_group.id || clicked_group.group_id);
-      if (clicked_group.belongs_to) {
-        let parentGroup = clicked_group.belongs_to;
-        do {
-          if (!currentValues.peopleRec.groups.includes(parentGroup)) {
-            currentValues.peopleRec.groups.push(parentGroup);
-          }
-          // eslint-disable-next-line
-          let foundParent = reactData.groupObj.adminHierarchy.find(this_group => {
-            return (this_group.id === parentGroup);
-          });
-          if (foundParent) {
-            parentGroup = foundParent.belongs_to || false;
-          }
-          else {
-            parentGroup = false;
-          }
-        } while (parentGroup);
+    if (foundIt < 0) {       
+      if (reactData.inactive_groups.includes(clicked_group.id || clicked_group.group_id)) {
+        // you clicked to add this person to a group that was labelled as "inactive"
+        // just in case this was a mistake, save the group list prior to the click,
+        // then add this group and remove all others
+        reactUpdObj = { remembered_groupList: deepCopy(currentValues.peopleRec.groups) };
+        currentValues.peopleRec.groups = [(clicked_group.id || clicked_group.group_id)];
+      }
+      else {
+        // the clicked on group was NOT in the list already.  Add it and add parents up the chain.
+        currentValues.peopleRec.groups.push(clicked_group.id || clicked_group.group_id);
+        if (clicked_group.belongs_to) {
+          let parentGroup = clicked_group.belongs_to;
+          do {
+            if (!currentValues.peopleRec.groups.includes(parentGroup)) {
+              currentValues.peopleRec.groups.push(parentGroup);
+            }
+            // eslint-disable-next-line
+            let foundParent = reactData.groupObj.adminHierarchy.find(this_group => {
+              return (this_group.id === parentGroup);
+            });
+            if (foundParent) {
+              parentGroup = foundParent.belongs_to || false;
+            }
+            else {
+              parentGroup = false;
+            }
+          } while (parentGroup);
+        }
       }
     }
     else {
-      // remove AND remove from parent if no other children of that parent
-      currentValues.peopleRec.groups.splice(foundIt, 1);
-      if (clicked_group.belongs_to) {
-        let checkGroup = clicked_group.belongs_to;
-        do {
-          const g = checkGroup;
-          let parentAt = currentValues.peopleRec.groups.indexOf(checkGroup);
-          if (parentAt > -1) {
-            // get a list of other groups that belong to the checkgroup (parent)
-            let sibling_exists = reactData.groupObj.adminHierarchy.some(test_group => {
-              return ((test_group.belongs_to === g)
-                && (currentValues.peopleRec.groups.includes(test_group.id)));
-            });
-            if (!sibling_exists) {
-              currentValues.peopleRec.groups.splice(parentAt, 1);
+      if (reactData.inactive_groups.includes(clicked_group.id || clicked_group.group_id)) {
+        // you clicked to remove this person from a group that was labelled as "inactive"
+        // if you had just added them to an inactive group (and are now changing your mind), we saved the prior state; restore it
+        // 
+        if (reactData.remembered_groupList) {
+          currentValues.peopleRec.groups = deepCopy(reactData.remembered_groupList);
+        }
+        else {
+          currentValues.peopleRec.groups = [];
+        }
+      }
+      else {
+        // the clicked on group WAS in the list already.  Remove AND remove from parent if no other children of that parent
+        currentValues.peopleRec.groups.splice(foundIt, 1);
+        if (clicked_group.belongs_to) {
+          let checkGroup = clicked_group.belongs_to;
+          do {
+            const g = checkGroup;
+            let parentAt = currentValues.peopleRec.groups.indexOf(checkGroup);
+            if (parentAt > -1) {
+              // get a list of other groups that belong to the checkgroup (parent)
+              let sibling_exists = reactData.groupObj.adminHierarchy.some(test_group => {
+                return ((test_group.belongs_to === g)
+                  && (currentValues.peopleRec.groups.includes(test_group.id)));
+              });
+              if (!sibling_exists) {
+                currentValues.peopleRec.groups.splice(parentAt, 1);
+              }
             }
-          }
-          let foundParent = reactData.groupObj.adminHierarchy.find(this_group => {
-            return (this_group === g);
-          });
-          if (foundParent) {
-            checkGroup = foundParent.id;
-          }
-          else {
-            checkGroup = false;
-          }
-        } while (checkGroup);
+            let foundParent = reactData.groupObj.adminHierarchy.find(this_group => {
+              return (this_group === g);
+            });
+            if (foundParent) {
+              checkGroup = foundParent.id;
+            }
+            else {
+              checkGroup = false;
+            }
+          } while (checkGroup);
+        }
       }
     }
     await updateField({
@@ -84,7 +109,8 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
           tableName: 'peopleRec',
           fieldName: 'clients.id',
           newData: currentValues.peopleRec.client_id
-        }]
+          }],
+      reactUpd: reactUpdObj
     });
   };
 
