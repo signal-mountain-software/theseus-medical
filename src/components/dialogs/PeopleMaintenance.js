@@ -205,7 +205,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           component_name: 'GroupAssignments'
         },
         {
-          section_name: 'Forms',
+          section_name: 'Forms & Documents',
           color: initialValues?.color || 'orange',
           isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('FormSection')) : false),
           isAuthorized: true,
