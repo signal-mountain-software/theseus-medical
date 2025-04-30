@@ -54,12 +54,11 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
       if (reactData.inactive_groups.includes(clicked_group.id || clicked_group.group_id)) {
         // you clicked to remove this person from a group that was labelled as "inactive"
         // if you had just added them to an inactive group (and are now changing your mind), we saved the prior state; restore it
-        // 
         if (reactData.remembered_groupList) {
           currentValues.peopleRec.groups = deepCopy(reactData.remembered_groupList);
         }
         else {
-          currentValues.peopleRec.groups = [];
+          currentValues.peopleRec.groups.splice(foundIt, 1);
         }
       }
       else {
