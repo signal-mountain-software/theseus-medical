@@ -703,6 +703,12 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       && (!this_event.published)) {
       return true;
     }
+    else if (['red', 'green'].includes(reactData.filterTextLower) && (setTextColor(this_event).color === reactData.filterTextLower)) {
+      return true;
+    }
+    else if ((reactData.filterTextLower === 'full') && !allSlotsFull(this_event)) {
+      return false;
+    }
     else {
       return ((`${this_event.description} ${this_event.location}`).toLowerCase().includes(reactData.filterTextLower));
     }
