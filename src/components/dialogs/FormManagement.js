@@ -219,18 +219,45 @@ export default ({ defaults, onClose }) => {
 
   function OKtoShow(this_person, this_form, display_data) {
     if (!reactData.lower_activity_filter) { return true; }
-    if (reactData.filterComplete) {
-      return (reactData.masterPeopleList[this_person]?.[this_form]?.status.startsWith('complete'));
+    if (reactData.masterFormList?.[this_form]?.memberList?.[this_person].dated_docs) {
+      if (reactData.masterFormList?.[this_form]?.memberList?.[this_person].dated_status) {
+        if (reactData.filterComplete) {
+          return (reactData.masterFormList?.[this_form]?.memberList?.[this_person].dated_status.complete || false);
+        }
+        else if (reactData.filterInProcess) {
+          return (reactData.masterFormList?.[this_form]?.memberList?.[this_person].dated_status.in_process || false);
+        }
+        else if (reactData.filterPending) {
+          return (reactData.masterFormList?.[this_form]?.memberList?.[this_person].dated_status.pending || false);
+        }
+        else if (reactData.filterNotStarted) {
+          return (reactData.masterFormList?.[this_form]?.memberList?.[this_person].dated_status.not_started || false);
+        }
+      }
+      // if there is no dated_status for a dated_doc, assume that it is "not started"
+      else if (reactData.filterNotStarted) {
+        return true;
+      }
+      else {
+        if ((reactData.filterComplete) || (reactData.filterInProcess) || (reactData.filterPending)) {
+          return false;
+        }
+      }
     }
-    else if (reactData.filterInProcess) {
-      return (reactData.masterPeopleList[this_person]?.[this_form]?.status === 'in_process');
-    }
-    else if (reactData.filterPending) {
-      return (reactData.masterPeopleList[this_person]?.[this_form]?.status === 'pending');
-    }
-    else if (reactData.filterNotStarted) {
-      return (!reactData.masterPeopleList[this_person].hasOwnProperty(this_form)
-        || (reactData.masterPeopleList[this_person]?.[this_form]?.status === 'not started'));
+    else if (reactData.masterPeopleList[this_person]?.[this_form]?.status) {
+      if (reactData.filterComplete) {
+        return (reactData.masterPeopleList[this_person]?.[this_form]?.status.startsWith('complete'));
+      }
+      else if (reactData.filterInProcess) {
+        return (reactData.masterPeopleList[this_person]?.[this_form]?.status === 'in_process');
+      }
+      else if (reactData.filterPending) {
+        return (reactData.masterPeopleList[this_person]?.[this_form]?.status === 'pending');
+      }
+      else if (reactData.filterNotStarted) {
+        return (!reactData.masterPeopleList[this_person].hasOwnProperty(this_form)
+          || (reactData.masterPeopleList[this_person]?.[this_form]?.status === 'not started'));
+      }
     }
     return (display_data.toLowerCase().includes(reactData.lower_activity_filter));
   };
@@ -254,6 +281,7 @@ export default ({ defaults, onClose }) => {
           person_last: reactData.selectedPersonRec.name.last,
           wipDocs: [],
           dated_docs: false,
+          dated_status: {},
           assignedDocs: [],
           completedDocs: [],
         };
@@ -308,6 +336,7 @@ export default ({ defaults, onClose }) => {
           wipDocs: [],
           assignedDocs: [],
           dated_docs: false,
+          dated_status: {},
           completedDocs: [],
         };
       }
@@ -340,6 +369,27 @@ export default ({ defaults, onClose }) => {
       });
       reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].dated_docs = true;
       reactData.masterFormList[this_doc.form_type].dated_docs = true;
+      if (!reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].dated_status) {
+        reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].dated_status = {};
+      }
+      switch (this_doc.status) {
+        case 'complete':
+        case 'completed': {
+          reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].dated_status.complete = true;
+          break;
+        }
+        case 'in_process': {
+          reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].dated_status.in_process = true;
+          break;
+        }
+        case 'pending': {
+          reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].dated_status.pending = true;
+          break;
+        }
+        default: {
+          reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].dated_status.not_started = true;
+        }
+      }
     }
     if (this_doc.status.startsWith('complete')) {
       const completed_count = reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.length;
@@ -457,6 +507,12 @@ export default ({ defaults, onClose }) => {
               for (let i = 0; ((i < 40) && (i < docList.length)); i++) {
                 await buildMasters(docList[i]);
               }
+            };
+            if (reactData.masterFormList[this_form].dated_docs) {
+              updateReactData({
+                masterPeopleList: reactData.masterPeopleList,
+                masterFormList: reactData.masterFormList
+              }, true);
             }
             docList = [];
             workingOn = this_doc.pertains_to;
@@ -547,6 +603,7 @@ export default ({ defaults, onClose }) => {
           groupList: [],  // all the groups that require this form
           options: formRec.options || {},
           dueDate: date_assigned,
+          dated_docs: formRec.options?.dated_docs || false
         };
       }
     }
@@ -798,7 +855,6 @@ export default ({ defaults, onClose }) => {
                             reason: 'createForm'
                           })}
                           onClick={async () => {
-                            await formPeople(this_formID);
                             updateReactData({
                               selectedForm_id: this_formID,
                               selectedFormRec: reactData.masterFormList[this_formID],
@@ -812,7 +868,8 @@ export default ({ defaults, onClose }) => {
                               filterComplete: false,
                               filterNotStarted: false,
                               filterInProcess: false
-                            }, true);
+                            }, false);
+                            await formPeople(this_formID);
                           }}
                           style={AVATextStyle({
                             size: 1.2,
@@ -1175,9 +1232,9 @@ export default ({ defaults, onClose }) => {
                                 size='small'
                               />
                             }
-                            {(!reactData.masterFormList[reactData.selectedForm_id].dated_docs || 
+                            {(!reactData.masterFormList[reactData.selectedForm_id].dated_docs ||
                               (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status.startsWith('complete')
-                              && !reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.dated_docs) ||
+                                && !reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.dated_docs) ||
                               (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.assignedDocs.length > 0)
                             ) ?
                               <Typography
