@@ -577,26 +577,31 @@ export default ({ defaults, onClose }) => {
               docList = [];
               workingOn = this_doc.pertains_to;
             }
-            let occDate = 0;
-            if (this_doc.occurrence) {
-              occDate = Number(this_doc.occurrence);
-            }
-            else {
-              let splitter = this_doc.document_id.split(/%|#/);
-              for (const [sX, this_part] of Object.entries(splitter)) {
-                //           for (let this_part of splitter) {
-                let candidate = Number(this_part);
-                if (candidate && !isNaN(candidate) && (candidate > 0)) {
-                  occDate = candidate;
-                  if (!this_doc.event_key) {
-                    this_doc.event_id = (splitter[sX - 1] || splitter[sX - 2]);
+            if (reactData.masterFormList[this_form].dated_docs) {
+              let occDate = 0;
+              if (this_doc.occurrence) {
+                occDate = Number(this_doc.occurrence);
+              }
+              else {
+                let splitter = this_doc.document_id.split(/%|#/);
+                for (const [sX, this_part] of Object.entries(splitter)) {
+                  //           for (let this_part of splitter) {
+                  let candidate = Number(this_part);
+                  if (candidate && !isNaN(candidate) && (candidate > 0)) {
+                    occDate = candidate;
+                    if (!this_doc.event_key) {
+                      this_doc.event_id = (splitter[sX - 1] || splitter[sX - 2]);
+                    }
+                    break;
                   }
-                  break;
                 }
               }
+              if ((occDate <= today_ymd) && (occDate >= oldest_date)) {
+                this_doc.occDate = occDate;
+                docList.push(this_doc);
+              }
             }
-            if ((occDate <= today_ymd) && (occDate >= oldest_date)) {
-              this_doc.occDate = occDate;
+            else {
               docList.push(this_doc);
             }
           }
@@ -1090,28 +1095,63 @@ export default ({ defaults, onClose }) => {
                               margin: { top: 0, bottom: 0.8 }
                             })}
                           >
-                            <EditIcon
-                              key={`radio-button_form${gX}edit`}
-                              id={`radio-button_form${gX}edit`}
-                              onClick={() => {
-                                updateReactData({
-                                  isEditing: {
-                                    calledFrom: 'people',
-                                    person_id: reactData.selectedPerson_id,
-                                    form_id: this_form,
-                                    document_id: ((reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status.startsWith('complete')) ? 'new' : (reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.document_id || 'new'))
-                                  }
-                                }, true);
-                              }}
-                              style={AVATextStyle({
-                                size: 1.5,
-                                margin: { right: 0.5 },
-                                color: (((reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status === 'not started') || (reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status.startsWith('complete')))
-                                  ? 'red'
-                                  : 'orange')
-                              })}
-                              size='small'
-                            />
+                            {(reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status === 'pending')
+                              ?
+                              <React.Fragment>
+                                <CheckCircleIcon
+                                  key={`radio-button_form${gX}edit`}
+                                  id={`radio-button_form${gX}edit`}
+                                  onClick={() => {
+                                    updateReactData({
+                                      isEditing: {
+                                        calledFrom: 'people',
+                                        person_id: reactData.selectedPerson_id,
+                                        form_id: this_form,
+                                        document_id: (reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.document_id || 'new')
+                                      }
+                                    }, true);
+                                  }}
+                                  style={AVATextStyle({
+                                    size: 1.5,
+                                    margin: { right: 0.5 },
+                                    color: 'orange'
+                                  })}
+                                  size='small'
+                                />
+                              </React.Fragment>
+                              :
+                              <React.Fragment>
+                                <EditIcon
+                                  key={`radio-button_form${gX}edit`}
+                                  id={`radio-button_form${gX}edit`}
+                                  onClick={() => {
+                                    updateReactData({
+                                      isEditing: {
+                                        calledFrom: 'people',
+                                        person_id: reactData.selectedPerson_id,
+                                        form_id: this_form,
+                                        document_id: ((reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status.startsWith('complete')) ? 'new' : (reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.document_id || 'new'))
+                                      }
+                                    }, true);
+                                  }}
+                                  style={AVATextStyle({
+                                    size: 1.5,
+                                    margin: { right: 0.5 },
+                                    color: ((!reactData.masterPeopleList.hasOwnProperty(reactData.selectedPerson_id))
+                                      ? 'red'
+                                      : (!reactData.masterPeopleList[reactData.selectedPerson_id].hasOwnProperty(this_form)
+                                        ? 'red'
+                                        : ((reactData.masterPeopleList[reactData.selectedPerson_id][this_form].status.startsWith('complete'))
+                                          ? 'green'
+                                          : ((reactData.masterPeopleList[reactData.selectedPerson_id][this_form].status === 'not started')
+                                            ? 'red'
+                                            : 'orange')
+                                        )))
+                                  })}
+                                  size='small'
+                                />
+                              </React.Fragment>
+                            }
                             <Typography
                               key={`g_text_end_group-${gX}`}
                               draggable={true}
@@ -1275,6 +1315,32 @@ export default ({ defaults, onClose }) => {
                             }}
                           >
                             {!reactData.masterFormList[reactData.selectedForm_id].dated_docs &&
+                              (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'pending')
+                              &&
+                              <CheckCircleIcon
+                                key={`radio-button_person${cX}edit`}
+                                id={`radio-button_person${cX}edit`}
+                                onClick={() => {
+                                  updateReactData({
+                                    isEditing: {
+                                      calledFrom: 'forms',
+                                      person_id: this_person,
+                                      form_id: reactData.selectedForm_id,
+                                      document_id: ((reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status.startsWith('complete')) ? 'new' : (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'new'))
+                                    }
+                                  }, true);
+                                }}
+                                style={AVATextStyle({
+                                  size: 1.5,
+                                  margin: { right: 0.5 },
+                                  color: 'orange'
+                                })}
+                                size='small'
+                              />
+                            }
+                            {!reactData.masterFormList[reactData.selectedForm_id].dated_docs &&
+                              (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status !== 'pending')
+                              &&
                               <EditIcon
                                 key={`radio-button_person${cX}edit`}
                                 id={`radio-button_person${cX}edit`}
