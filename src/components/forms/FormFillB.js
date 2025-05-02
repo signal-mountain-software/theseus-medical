@@ -1292,8 +1292,8 @@ export default ({ request = {}, onClose }) => {
           }
         }
         else {
-          let extracted_field = variable.slice(2, -2);          
-          let [,...reconcile_key] = extracted_field.split('.')
+          let extracted_field = variable.slice(2, -2);
+          let [, ...reconcile_key] = extracted_field.split('.');
           let table_value = resolve({
             object: reactData.peopleRec[reactData.pertains_to],
             key: reconcile_key
@@ -2811,8 +2811,8 @@ export default ({ request = {}, onClose }) => {
               stage: 'fill'
             }, true);
           }}
-        onLoad={async (response) => {
-          let docTitle = await resolveVariables(reactData.formRec.title);
+          onLoad={async (response) => {
+            let docTitle = await resolveVariables(reactData.formRec.title);
             const docRec = await updateDocument({
               docData: Object.assign({},
                 reactData.docRec,
