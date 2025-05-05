@@ -3,7 +3,7 @@ import React from 'react';
 import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, sentenceCase, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { formatPhone, getPerson, makeName } from '../../util/AVAPeople';
-import { makeDate } from '../../util/AVADateTime';
+import { makeDate, makeTime } from '../../util/AVADateTime';
 import AVAConfirm from './AVAConfirm';
 import AVAUploadFile from '../../util/AVAUploadFile';
 
@@ -1054,7 +1054,7 @@ export default ({ request = {}, onClose }) => {
         }
         case 'time': {
           // return makeDate(rawValue, { noTime: true, noYearCorrection: true }).timeOnly;
-          response[index] = makeDate(this_value, { noTime: true, noYearCorrection: true }).timeOnly;
+          response[index] = makeTime(this_value).time;
           break;
         }
         case 'id': {
@@ -1292,8 +1292,8 @@ export default ({ request = {}, onClose }) => {
           }
         }
         else {
-          let extracted_field = variable.slice(2, -2);          
-          let [,...reconcile_key] = extracted_field.split('.')
+          let extracted_field = variable.slice(2, -2);
+          let [, ...reconcile_key] = extracted_field.split('.');
           let table_value = resolve({
             object: reactData.peopleRec[reactData.pertains_to],
             key: reconcile_key
@@ -2482,17 +2482,31 @@ export default ({ request = {}, onClose }) => {
                                 }
                                 onBlur={async (event) => {
                                   if (event.target.value) {
-                                    let dObj = makeDate(event.target.value, { noTime: (reactData.fields[this_field].type === 'date'), noYearCorrection: true });
-                                    if (!dObj.error) {
-                                      await handleChangeValue({
-                                        newText: dObj.absolute,
-                                        newValue: ((reactData.fields[this_field].type === 'date')
-                                          ? dObj.numeric$
-                                          : dObj.timestamp),
-                                        prop: this_field,
-                                        occ_index,
-                                        sentenceCase: false
-                                      });
+                                    if (reactData.fields[this_field].type === 'time') {
+                                      let dObj = makeTime(event.target.value);
+                                      if (!dObj.error) {
+                                        await handleChangeValue({
+                                          newText: dObj.time,
+                                          newValue: dObj.time,
+                                          prop: this_field,
+                                          occ_index,
+                                          sentenceCase: false
+                                        });
+                                      }
+                                    }
+                                    else {
+                                      let dObj = makeDate(event.target.value, { noTime: (reactData.fields[this_field].type === 'date'), noYearCorrection: true });
+                                      if (!dObj.error) {
+                                        await handleChangeValue({
+                                          newText: dObj.absolute,
+                                          newValue: ((reactData.fields[this_field].type === 'date')
+                                            ? dObj.numeric$
+                                            : dObj.timestamp),
+                                          prop: this_field,
+                                          occ_index,
+                                          sentenceCase: false
+                                        });
+                                      }
                                     }
                                   }
                                 }}
@@ -2811,8 +2825,8 @@ export default ({ request = {}, onClose }) => {
               stage: 'fill'
             }, true);
           }}
-        onLoad={async (response) => {
-          let docTitle = await resolveVariables(reactData.formRec.title);
+          onLoad={async (response) => {
+            let docTitle = await resolveVariables(reactData.formRec.title);
             const docRec = await updateDocument({
               docData: Object.assign({},
                 reactData.docRec,

@@ -2976,11 +2976,11 @@ export async function v2buildCalendar(body, screenStatus = () => { }) {
       // start new occurrence - will create this_occurrence
       this_occurrence = false;
       if (this_oRec.occurrence_cancelled) {
-        cl(`${this_oRec.event_key} cancelled... skipping`);
+  //      cl(`${this_oRec.event_key} cancelled... skipping`);
         continue;
       }
       if (this_oRec.record_type !== 'occurrence') {
-        cl(`${this_oRec.event_key} not occurrence when occurrence expected... skipping`);
+  //      cl(`${this_oRec.event_key} not occurrence when occurrence expected... skipping`);
         continue;
       }
       current_occurrenceDate = this_oRec.occurrence_date;

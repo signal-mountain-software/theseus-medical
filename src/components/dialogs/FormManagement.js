@@ -7,9 +7,10 @@ import { dbClient, recordExists, cl, titleCase } from '../../util/AVAUtilities';
 import QuickSearch from '../sections/QuickSearch';
 import { getPerson, getImage, makeName } from '../../util/AVAPeople';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
-import { addDays, makeDate } from '../../util/AVADateTime';
+import { addDays, makeDate, makeTime } from '../../util/AVADateTime';
 import FormFillB from '../forms/FormFillB';
 import { createDocument } from '../../util/AVADocuments';
+import AVAUploadFile from '../../util/AVAUploadFile';
 
 import { Snackbar, Paper, Box, Dialog, DialogActions, Button, Typography } from '@material-ui/core';
 import Select from "react-dropdown-select";
@@ -22,7 +23,7 @@ import CloseIcon from '@material-ui/icons/ExitToApp';
 import PeopleIcon from '@material-ui/icons/People';
 import SettingsIcon from '@material-ui/icons/Settings';
 import SendIcon from '@material-ui/icons/Send';
-
+import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import EditIcon from '@material-ui/icons/Edit';
 import VisibilityIcon from '@material-ui/icons/Visibility';
@@ -147,6 +148,7 @@ export default ({ defaults, onClose }) => {
     event_being_edited: false,
     isDarkMode: useMediaQuery('(prefers-color-scheme: dark)'),
     isEditing: false,
+    isUploading: false,
     loading: false,
     masterFormList: {},
     masterPeopleList: {},
@@ -155,7 +157,7 @@ export default ({ defaults, onClose }) => {
     popUpOpen: false,
     progressMessage: 'Building Group List',
     pWidth: 60,
-    rowLimit: 50,
+    rowLimit: 21,
     selectDate: null,
     selectedPerson_id: null,
     selectedPersonRec: false,
@@ -219,21 +221,66 @@ export default ({ defaults, onClose }) => {
 
   function OKtoShow(this_person, this_form, display_data) {
     if (!reactData.lower_activity_filter) { return true; }
-    if (reactData.filterComplete) {
-      return (reactData.masterPeopleList[this_person]?.[this_form]?.status.startsWith('complete'));
+    if (reactData.masterFormList?.[this_form]?.memberList?.[this_person].dated_docs) {
+      if (reactData.masterFormList?.[this_form]?.memberList?.[this_person].dated_status) {
+        if (reactData.filterComplete) {
+          return (reactData.masterFormList?.[this_form]?.memberList?.[this_person].dated_status.complete || false);
+        }
+        else if (reactData.filterInProcess) {
+          return (reactData.masterFormList?.[this_form]?.memberList?.[this_person].dated_status.in_process || false);
+        }
+        else if (reactData.filterPending) {
+          return (reactData.masterFormList?.[this_form]?.memberList?.[this_person].dated_status.pending || false);
+        }
+        else if (reactData.filterNotStarted) {
+          return (reactData.masterFormList?.[this_form]?.memberList?.[this_person].dated_status.not_started || false);
+        }
+      }
+      // if there is no dated_status for a dated_doc, assume that it is "not started"
+      else if (reactData.filterNotStarted) {
+        return true;
+      }
+      else {
+        if ((reactData.filterComplete) || (reactData.filterInProcess) || (reactData.filterPending)) {
+          return false;
+        }
+      }
     }
-    else if (reactData.filterInProcess) {
-      return (reactData.masterPeopleList[this_person]?.[this_form]?.status === 'in_process');
-    }
-    else if (reactData.filterPending) {
-      return (reactData.masterPeopleList[this_person]?.[this_form]?.status === 'pending');
-    }
-    else if (reactData.filterNotStarted) {
-      return (!reactData.masterPeopleList[this_person].hasOwnProperty(this_form)
-        || (reactData.masterPeopleList[this_person]?.[this_form]?.status === 'not started'));
+    else if (reactData.masterPeopleList[this_person]?.[this_form]?.status) {
+      if (reactData.filterComplete) {
+        return (reactData.masterPeopleList[this_person]?.[this_form]?.status.startsWith('complete'));
+      }
+      else if (reactData.filterInProcess) {
+        return (reactData.masterPeopleList[this_person]?.[this_form]?.status === 'in_process');
+      }
+      else if (reactData.filterPending) {
+        return (reactData.masterPeopleList[this_person]?.[this_form]?.status === 'pending');
+      }
+      else if (reactData.filterNotStarted) {
+        return (!reactData.masterPeopleList[this_person].hasOwnProperty(this_form)
+          || (reactData.masterPeopleList[this_person]?.[this_form]?.status === 'not started'));
+      }
     }
     return (display_data.toLowerCase().includes(reactData.lower_activity_filter));
   };
+
+
+  function OKtoShowDatedDoc(checkStatus) {
+    if (reactData.filterComplete) {
+      return (checkStatus && checkStatus.startsWith('complete'));
+    }
+    else if (reactData.filterInProcess) {
+      return (checkStatus && (checkStatus === 'in_process'));
+    }
+    else if (reactData.filterPending) {
+      return (checkStatus && (checkStatus === 'pending'));
+    }
+    else if (reactData.filterNotStarted) {
+      return (!checkStatus || (checkStatus === 'not_started'));
+    }
+    else { return true; }
+  };
+
 
   async function personForms(this_person) {
     reactData.masterPeopleList[this_person] = {};
@@ -254,6 +301,7 @@ export default ({ defaults, onClose }) => {
           person_last: reactData.selectedPersonRec.name.last,
           wipDocs: [],
           dated_docs: false,
+          dated_status: {},
           assignedDocs: [],
           completedDocs: [],
         };
@@ -308,6 +356,7 @@ export default ({ defaults, onClose }) => {
           wipDocs: [],
           assignedDocs: [],
           dated_docs: false,
+          dated_status: {},
           completedDocs: [],
         };
       }
@@ -325,21 +374,77 @@ export default ({ defaults, onClose }) => {
       let splitter = this_doc.document_id.split('#');
       this_doc.history[0].last_update = splitter[splitter.length - 1];
     }
-    let eventDate = makeDate(this_doc.event_key ? this_doc.event_key.split('#')[1] : null);
-    if ((!eventDate.error)) {
-      reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].assignedDocs.push({
-        document_id: this_doc.document_id,
-        last_update: this_doc.history[0].last_update,
-        due_date: this_doc.due_date || reactData.masterFormList[this_doc.form_type].dueDate,
-        title: this_doc.title,
-        event_date: eventDate.error ? null : eventDate.numeric,
-        event_displayDate: eventDate.error ? null : eventDate.dateOnly,
-        event_key: this_doc.event_key,
-        location: this_doc.history[0].url,
-        status: this_doc.status
-      });
-      reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].dated_docs = true;
-      reactData.masterFormList[this_doc.form_type].dated_docs = true;
+    if (reactData.masterFormList[this_doc.form_type].dated_docs) {
+      // get the event
+      if (!this_doc.event_id) {
+        if (!this_doc.event_key) {
+          return;
+        }
+        this_doc.event_id = this_doc.event_key.split(/#|%/)[0];
+      }
+      let eventRec = await dbClient
+        .get({
+          Key: {
+            client: state.session.client_id,
+            event_key: this_doc.event_id
+          },
+          TableName: "Calendar"
+        })
+        .promise()
+        .catch(error => {
+          cl(`in isUploading, bad get to DocumentMaster with ${reactData.isUploading.document_id || '(null)'}. Error is: ${error}`);
+        });
+      if (!recordExists(eventRec)) {
+        return;
+      }
+      let eventTime = '';
+      if (eventRec.Item.eventData.event_data.time.allDay) {
+        // no op
+      }
+      else {
+        let timeObj = makeTime(eventRec.Item.eventData.event_data.time.from);
+        if (!timeObj.error) {
+          eventTime = ` - ${timeObj.time}`;
+        }
+      }
+      let eventDate = makeDate(this_doc.event_key ? this_doc.event_key.split('#')[1] : null);
+      if (!eventDate.error) {
+        reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].assignedDocs.push({
+          document_id: this_doc.document_id,
+          last_update: this_doc.history[0].last_update,
+          due_date: this_doc.due_date || reactData.masterFormList[this_doc.form_type].dueDate,
+          title: this_doc.title,
+          event_date: eventDate.numeric,
+          event_displayDate: eventDate.dateOnly,
+          event_time: eventTime,
+          event_key: this_doc.event_key,
+          location: this_doc.history[0].url,
+          status: this_doc.status
+        });
+        reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].dated_docs = true;
+        reactData.masterFormList[this_doc.form_type].dated_docs = true;
+        if (!reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].dated_status) {
+          reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].dated_status = {};
+        }
+        switch (this_doc.status) {
+          case 'complete':
+          case 'completed': {
+            reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].dated_status.complete = true;
+            break;
+          }
+          case 'in_process': {
+            reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].dated_status.in_process = true;
+            break;
+          }
+          case 'pending': {
+            reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].dated_status.pending = true;
+            break;
+          }
+          default: {
+            reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].dated_status.not_started = true;
+          }
+        }
+      }
     }
     if (this_doc.status.startsWith('complete')) {
       const completed_count = reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.length;
@@ -402,93 +507,115 @@ export default ({ defaults, onClose }) => {
     if (!reactData.masterFormList[this_form].hasOwnProperty('groupList')) {
       return;
     }
-    reactData.masterFormList[this_form].memberList = {};
-    reactData.masterPeopleList = {};
-    for (let this_group of reactData.masterFormList[this_form].groupList) {
-      let response = await getMemberList(this_group, state.session.client_id, { "exclude": false });
-      for (let this_member of response.peopleList) {
-        reactData.masterFormList[this_form].memberList[this_member.person_id] = {
-          person_id: this_member.person_id,
-          person_name: `${this_member.name.first} ${this_member.name.last}`,
-          person_first: this_member.name.first,
-          person_last: this_member.name.last,
-          wipDocs: [],
-          dated_docs: false,
-          assignedDocs: [],
-          completedDocs: [],
-        };
-        reactData.masterPeopleList[this_member.person_id] = {
-          [this_form]: {
-            status: 'not started',
-            last_update: 0
-          }
-        };
+    if (!reactData.masterFormList[this_form].build_complete) {
+      let this_date = makeDate(new Date());
+      let today_ymd = this_date.numeric;
+      let oldest_date = makeDate(addDays(this_date.date, -(reactData.rowLimit || 7))).numeric;
+      reactData.masterFormList[this_form].memberList = {};
+      reactData.masterPeopleList = {};
+      for (let this_group of reactData.masterFormList[this_form].groupList) {
+        let response = await getMemberList(this_group, state.session.client_id, { "exclude": false });
+        for (let this_member of response.peopleList) {
+          reactData.masterFormList[this_form].memberList[this_member.person_id] = {
+            person_id: this_member.person_id,
+            person_name: `${this_member.name.first} ${this_member.name.last}`,
+            person_first: this_member.name.first,
+            person_last: this_member.name.last,
+            wipDocs: [],
+            dated_docs: false,
+            assignedDocs: [],
+            completedDocs: [],
+          };
+          reactData.masterPeopleList[this_member.person_id] = {
+            [this_form]: {
+              status: 'not started',
+              last_update: 0
+            }
+          };
+        }
       }
-    }
-
-    // get all Documents for this form type
-    let today_ymd = makeDate(new Date()).numeric;
-    let loopCount = 0;
-    let queryObj = {
-      KeyConditionExpression: 'client_id_form_type = :p',
-      IndexName: 'client_form_person-index',
-      TableName: 'DocumentMaster',
-      ExpressionAttributeValues: {
-        ':p': `${state.session.client_id}%%${this_form}`
-      }
-    };
-    do {
-      let allDocs = await dbClient
-        .query(queryObj)
-        .promise()
-        .catch(error => {
-          if (error.code === 'NetworkingError') {
-            cl(`Security Violation or no Internet Connection`);
-          }
-          cl(`Error reading CompletedDocuments; error is ${error}`);
-        });
-      let workingOn = null;
+      // get all Documents for this form type
       let docList = [];
-      if (recordExists(allDocs)) {
-        for (const this_doc of allDocs.Items) {
-          if (workingOn !== this_doc.pertains_to) {
-            if (docList.length > 0) {
-              docList.sort((a, b) => { return ((a.occDate > b.occDate) ? -1 : 1); });
-              for (let i = 0; ((i < 14) && (i < docList.length)); i++) {
-                await buildMasters(docList[i]);
+      let workingOn = null;
+      let loopCount = 0;
+      let queryObj = {
+        KeyConditionExpression: 'client_id_form_type = :p',
+        IndexName: 'client_form_person-index',
+        TableName: 'DocumentMaster',
+        ExpressionAttributeValues: {
+          ':p': `${state.session.client_id}%%${this_form}`
+        }
+      };
+      do {
+        let allDocs = await dbClient
+          .query(queryObj)
+          .promise()
+          .catch(error => {
+            if (error.code === 'NetworkingError') {
+              cl(`Security Violation or no Internet Connection`);
+            }
+            cl(`Error reading CompletedDocuments; error is ${error}`);
+          });
+        if (recordExists(allDocs)) {
+          for (const this_doc of allDocs.Items) {
+            if (this_doc.client_id !== state.session.client_id) {
+              continue;
+            }
+            if (workingOn !== this_doc.pertains_to) {
+              if (docList.length > 0) {
+                docList.sort((a, b) => { return ((a.occDate > b.occDate) ? -1 : 1); });
+                for (let this_doc of docList) {
+                  await buildMasters(this_doc);
+                }
+              };
+              if (reactData.masterFormList[this_form].dated_docs) {
+                updateReactData({
+                  masterPeopleList: reactData.masterPeopleList,
+                  masterFormList: reactData.masterFormList
+                }, true);
+              }
+              docList = [];
+              workingOn = this_doc.pertains_to;
+            }
+            if (reactData.masterFormList[this_form].dated_docs) {
+              let occDate = 0;
+              if (this_doc.occurrence) {
+                occDate = Number(this_doc.occurrence);
+              }
+              else {
+                let splitter = this_doc.document_id.split(/%|#/);
+                for (const [sX, this_part] of Object.entries(splitter)) {
+                  //           for (let this_part of splitter) {
+                  let candidate = Number(this_part);
+                  if (candidate && !isNaN(candidate) && (candidate > 0)) {
+                    occDate = candidate;
+                    if (!this_doc.event_key) {
+                      this_doc.event_id = (splitter[sX - 1] || splitter[sX - 2]);
+                    }
+                    break;
+                  }
+                }
+              }
+              if ((occDate <= today_ymd) && (occDate >= oldest_date)) {
+                this_doc.occDate = occDate;
+                docList.push(this_doc);
               }
             }
-            docList = [];
-            workingOn = this_doc.pertains_to;
+            else {
+              docList.push(this_doc);
+            }
           }
-          let occDate;
-          if (this_doc.occurrence) {
-            occDate = this_doc.occurrence;
+          if (allDocs.LastEvaluatedKey) {
+            queryObj.ExclusiveStartKey = allDocs.LastEvaluatedKey;
           }
           else {
-            let splitter = this_doc.document_id.split('#');
-            let candidate = Number(splitter[splitter.length - 1]);
-            if (!isNaN(candidate)) {
-              occDate = candidate;
-            }
-            else {
-              occDate = 0;
-            }
-          }
-          if (occDate <= today_ymd) {
-            this_doc.occDate = occDate;
-            docList.push(this_doc);
+            delete queryObj.ExclusiveStartKey;
           }
         }
-        if (allDocs.LastEvaluatedKey) {
-          queryObj.ExclusiveStartKey = allDocs.LastEvaluatedKey;
-        }
-        else {
-          delete queryObj.ExclusiveStartKey;
-        }
-      }
-      loopCount++;
-    } while (queryObj.ExclusiveStartKey && (loopCount < 10));
+        loopCount++;
+      } while (queryObj.ExclusiveStartKey && (loopCount < 10));
+    }
+    reactData.masterFormList[this_form].build_complete = true;
     updateReactData({
       masterPeopleList: reactData.masterPeopleList,
       masterFormList: reactData.masterFormList
@@ -547,6 +674,7 @@ export default ({ defaults, onClose }) => {
           groupList: [],  // all the groups that require this form
           options: formRec.options || {},
           dueDate: date_assigned,
+          dated_docs: formRec.options?.dated_docs || false
         };
       }
     }
@@ -798,7 +926,6 @@ export default ({ defaults, onClose }) => {
                             reason: 'createForm'
                           })}
                           onClick={async () => {
-                            await formPeople(this_formID);
                             updateReactData({
                               selectedForm_id: this_formID,
                               selectedFormRec: reactData.masterFormList[this_formID],
@@ -812,7 +939,8 @@ export default ({ defaults, onClose }) => {
                               filterComplete: false,
                               filterNotStarted: false,
                               filterInProcess: false
-                            }, true);
+                            }, false);
+                            await formPeople(this_formID);
                           }}
                           style={AVATextStyle({
                             size: 1.2,
@@ -967,28 +1095,63 @@ export default ({ defaults, onClose }) => {
                               margin: { top: 0, bottom: 0.8 }
                             })}
                           >
-                            <EditIcon
-                              key={`radio-button_form${gX}edit`}
-                              id={`radio-button_form${gX}edit`}
-                              onClick={() => {
-                                updateReactData({
-                                  isEditing: {
-                                    calledFrom: 'people',
-                                    person_id: reactData.selectedPerson_id,
-                                    form_id: this_form,
-                                    document_id: ((reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status.startsWith('complete')) ? 'new' : (reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.document_id || 'new'))
-                                  }
-                                }, true);
-                              }}
-                              style={AVATextStyle({
-                                size: 1.5,
-                                margin: { right: 0.5 },
-                                color: (((reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status === 'not started') || (reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status.startsWith('complete')))
-                                  ? 'red'
-                                  : 'orange')
-                              })}
-                              size='small'
-                            />
+                            {(reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status === 'pending')
+                              ?
+                              <React.Fragment>
+                                <CheckCircleIcon
+                                  key={`radio-button_form${gX}edit`}
+                                  id={`radio-button_form${gX}edit`}
+                                  onClick={() => {
+                                    updateReactData({
+                                      isEditing: {
+                                        calledFrom: 'people',
+                                        person_id: reactData.selectedPerson_id,
+                                        form_id: this_form,
+                                        document_id: (reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.document_id || 'new')
+                                      }
+                                    }, true);
+                                  }}
+                                  style={AVATextStyle({
+                                    size: 1.5,
+                                    margin: { right: 0.5 },
+                                    color: 'orange'
+                                  })}
+                                  size='small'
+                                />
+                              </React.Fragment>
+                              :
+                              <React.Fragment>
+                                <EditIcon
+                                  key={`radio-button_form${gX}edit`}
+                                  id={`radio-button_form${gX}edit`}
+                                  onClick={() => {
+                                    updateReactData({
+                                      isEditing: {
+                                        calledFrom: 'people',
+                                        person_id: reactData.selectedPerson_id,
+                                        form_id: this_form,
+                                        document_id: ((reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status.startsWith('complete')) ? 'new' : (reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.document_id || 'new'))
+                                      }
+                                    }, true);
+                                  }}
+                                  style={AVATextStyle({
+                                    size: 1.5,
+                                    margin: { right: 0.5 },
+                                    color: ((!reactData.masterPeopleList.hasOwnProperty(reactData.selectedPerson_id))
+                                      ? 'red'
+                                      : (!reactData.masterPeopleList[reactData.selectedPerson_id].hasOwnProperty(this_form)
+                                        ? 'red'
+                                        : ((reactData.masterPeopleList[reactData.selectedPerson_id][this_form].status.startsWith('complete'))
+                                          ? 'green'
+                                          : ((reactData.masterPeopleList[reactData.selectedPerson_id][this_form].status === 'not started')
+                                            ? 'red'
+                                            : 'orange')
+                                        )))
+                                  })}
+                                  size='small'
+                                />
+                              </React.Fragment>
+                            }
                             <Typography
                               key={`g_text_end_group-${gX}`}
                               draggable={true}
@@ -1152,6 +1315,32 @@ export default ({ defaults, onClose }) => {
                             }}
                           >
                             {!reactData.masterFormList[reactData.selectedForm_id].dated_docs &&
+                              (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'pending')
+                              &&
+                              <CheckCircleIcon
+                                key={`radio-button_person${cX}edit`}
+                                id={`radio-button_person${cX}edit`}
+                                onClick={() => {
+                                  updateReactData({
+                                    isEditing: {
+                                      calledFrom: 'forms',
+                                      person_id: this_person,
+                                      form_id: reactData.selectedForm_id,
+                                      document_id: ((reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status.startsWith('complete')) ? 'new' : (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'new'))
+                                    }
+                                  }, true);
+                                }}
+                                style={AVATextStyle({
+                                  size: 1.5,
+                                  margin: { right: 0.5 },
+                                  color: 'orange'
+                                })}
+                                size='small'
+                              />
+                            }
+                            {!reactData.masterFormList[reactData.selectedForm_id].dated_docs &&
+                              (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status !== 'pending')
+                              &&
                               <EditIcon
                                 key={`radio-button_person${cX}edit`}
                                 id={`radio-button_person${cX}edit`}
@@ -1175,9 +1364,9 @@ export default ({ defaults, onClose }) => {
                                 size='small'
                               />
                             }
-                            {(!reactData.masterFormList[reactData.selectedForm_id].dated_docs || 
+                            {(!reactData.masterFormList[reactData.selectedForm_id].dated_docs ||
                               (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status.startsWith('complete')
-                              && !reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.dated_docs) ||
+                                && !reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.dated_docs) ||
                               (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.assignedDocs.length > 0)
                             ) ?
                               <Typography
@@ -1268,45 +1457,70 @@ export default ({ defaults, onClose }) => {
                             reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.assignedDocs.sort((a, b) => {
                               return (a.event_date < b.event_date) ? 1 : -1;
                             }).map((this_assignedDoc, aX) => (
+                              OKtoShowDatedDoc(this_assignedDoc.status) &&
                               <Box display='flex' flexDirection='row'
                                 key={`formdoc_row_list_${cX}_${aX}`}
                                 justifyContent='flex-start'
                                 alignItems='center'
-                                style={{ marginLeft: '60px' }}
-                                onClick={async () => {
-                                  if (!this_assignedDoc.status.startsWith('complete')) {
-                                    updateReactData({
-                                      isEditing: {
-                                        calledFrom: 'forms',
-                                        person_id: this_person,
-                                        form_id: reactData.selectedForm_id,
-                                        document_id: this_assignedDoc.document_id
-                                      }
-                                    }, true);
-                                  }
-                                  else {
-                                    let nowJ = new Date().getTime();
-                                    window.open(`${this_assignedDoc.location}?qt=${nowJ.toString()}`
-                                      , this_assignedDoc.location);
-                                  }
+                                style={{ marginLeft: '30px' }}
+                                onContextMenu={async (e) => {
+                                  e.preventDefault();
+                                  updateReactData({
+                                    alert: {
+                                      severity: 'info',
+                                      title: `${this_assignedDoc.title}`,
+                                      message: <div>
+                                        Person ID: <strong>{this_person}</strong><br />
+                                        Form Type: <strong>{reactData.selectedForm_id}</strong><br />
+                                        Status: {this_assignedDoc.status}<br />
+                                        Doc ID: {this_assignedDoc.document_id}<br />
+                                      </div>
+                                    }
+                                  }, true);
                                 }}
                               >
                                 {!(this_assignedDoc.status.startsWith('complete'))
                                   ?
-                                  <EditIcon
-                                    key={`radio-button_person${cX}_${aX}edit`}
-                                    id={`radio-button_person${cX}_${aX}edit`}
-                                    style={AVATextStyle({
-                                      size: 1,
-                                      margin: { right: 0.5 },
-                                      color: ((this_assignedDoc.status.startsWith('complete'))
-                                        ? 'green'
-                                        : (this_assignedDoc.status === 'not_started')
-                                          ? 'red'
-                                          : 'orange')
-                                    })}
-                                    size='small'
-                                  />
+                                  <React.Fragment>
+                                    <EditIcon
+                                      key={`radio-button_person${cX}_${aX}edit`}
+                                      id={`radio-button_person${cX}_${aX}edit`}
+                                      style={AVATextStyle({
+                                        size: 1,
+                                        margin: { right: 0.5 },
+                                        color: ((this_assignedDoc.status === 'not_started') ? 'red' : 'orange')
+                                      })}
+                                      size='small'
+                                      onClick={async () => {
+                                        updateReactData({
+                                          isEditing: {
+                                            calledFrom: 'forms',
+                                            person_id: this_person,
+                                            form_id: reactData.selectedForm_id,
+                                            document_id: this_assignedDoc.document_id
+                                          }
+                                        }, true);
+                                      }}
+                                    />
+                                    <CloudUploadIcon
+                                      key={`radio-button_upload${cX}_${aX}`}
+                                      style={AVATextStyle({
+                                        size: 1,
+                                        margin: { right: 0.5 },
+                                        color: ((this_assignedDoc.status === 'not_started') ? 'red' : 'orange')
+                                      })}
+                                      size='small'
+                                      onClick={async () => {
+                                        updateReactData({
+                                          isUploading: Object.assign({}, this_assignedDoc, {
+                                            calledFrom: 'forms',
+                                            person_id: this_person,
+                                            form_id: reactData.selectedForm_id,
+                                          })
+                                        }, true);
+                                      }}
+                                    />
+                                  </React.Fragment>
                                   :
                                   <CheckCircleIcon
                                     key={`radio-button_person${cX}off`}
@@ -1317,6 +1531,11 @@ export default ({ defaults, onClose }) => {
                                       margin: { right: 0.5 },
                                     })}
                                     size='small'
+                                    onClick={async () => {
+                                      let nowJ = new Date().getTime();
+                                      window.open(`${this_assignedDoc.location}?qt=${nowJ.toString()}`
+                                        , this_assignedDoc.location);
+                                    }}
                                   />
                                 }
                                 <Typography
@@ -1331,7 +1550,7 @@ export default ({ defaults, onClose }) => {
                                         : 'orange')
                                   })}
                                 >
-                                  {this_assignedDoc.event_displayDate}
+                                  {`${this_assignedDoc.event_displayDate}${this_assignedDoc.event_time}`}
                                 </Typography>
                               </Box>
                             ))
@@ -1382,6 +1601,54 @@ export default ({ defaults, onClose }) => {
 
         </React.Fragment >
       }
+      {reactData.isUploading &&
+        <AVAUploadFile
+          options={{
+            buttonText: ['Choose', 'Save & Continue'],
+            title: [reactData.document_title, 'Tap "Choose a File" to select the content to upload'],
+            oneOnly: true
+          }}
+          onCancel={() => {
+            updateReactData({
+              isUploading: false
+            }, true);
+          }}
+          onLoad={async (response) => {
+            let docRecObj = await dbClient
+              .get({
+                Key: {
+                  document_id: reactData.isUploading.document_id
+                },
+                TableName: "DocumentMaster"
+              })
+              .promise()
+              .catch(error => {
+                cl(`in isUploading, bad get to DocumentMaster with ${reactData.isUploading.document_id || '(null)'}. Error is: ${error}`);
+              });
+            if (recordExists(docRecObj)) {
+              docRecObj.Item.history.unshift({
+                last_update: new Date().getTime(),
+                status: 'uploaded',
+                update_by: state.session.user_id,
+                url: response[0].fLoc
+              });
+              docRecObj.Item.status = 'complete';
+              await dbClient
+                .put({
+                  Item: docRecObj.Item,
+                  TableName: 'DocumentMaster'
+                })
+                .promise()
+                .catch(error => {
+                  cl(`Bad put to DocumentMaster. Error is: ${error}`);
+                });
+            }
+            updateReactData({
+              isUploading: false
+            }, true);
+          }}
+        />
+      }
       {reactData.isEditing &&
         <FormFillB
           key={`doc_update_ffB`}
@@ -1398,64 +1665,69 @@ export default ({ defaults, onClose }) => {
               person_id: reactData.isEditing.person_id,
             }}
           onClose={async (ignore_me, statusObj) => {
-            if (statusObj.document_status === 'work_in_process') {
-              reactData.masterPeopleList[reactData.isEditing.person_id][reactData.isEditing.form_id].status = 'in_process';
-              if (!reactData.masterFormList[reactData.isEditing.form_id].memberList.hasOwnProperty(reactData.isEditing.person_id)) {
-                reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id] = {
-                  person_id: reactData.isEditing.person_id,
-                  person_name: reactData.isEditing.person_id,
-                  person_first: reactData.isEditing.person_id,
-                  person_last: reactData.isEditing.person_id,
-                  wipDocs: [],
-                  dated_docs: false,
-                  assignedDocs: [],
-                  completedDocs: [],
-                };
+            if (statusObj.document_status === 'aborted') {
+              // no op
+            }
+            else {
+              if (statusObj.document_status === 'work_in_process') {
+                reactData.masterPeopleList[reactData.isEditing.person_id][reactData.isEditing.form_id].status = 'in_process';
+                if (!reactData.masterFormList[reactData.isEditing.form_id].memberList.hasOwnProperty(reactData.isEditing.person_id)) {
+                  reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id] = {
+                    person_id: reactData.isEditing.person_id,
+                    person_name: reactData.isEditing.person_id,
+                    person_first: reactData.isEditing.person_id,
+                    person_last: reactData.isEditing.person_id,
+                    wipDocs: [],
+                    dated_docs: false,
+                    assignedDocs: [],
+                    completedDocs: [],
+                  };
+                }
+                if (reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].wipDocs.length === 0) {
+                  reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].wipDocs.unshift({
+                    document_id: statusObj.document_id,
+                    last_update: new Date().getTime(),
+                    doc_status: 'in_process',
+                    due_date: reactData.masterFormList[reactData.isEditing.form_id].dueDate,
+                    title: statusObj.document_title
+                  });
+                }
+                else {
+                  reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].wipDocs[0].document_id = statusObj.document_id;
+                }
               }
-              if (reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].wipDocs.length === 0) {
-                reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].wipDocs.unshift({
+              else if (statusObj.document_status.startsWith('complete')) {
+                reactData.masterPeopleList[reactData.isEditing.person_id][reactData.isEditing.form_id].status = 'completed';
+                if (!reactData.masterFormList[reactData.isEditing.form_id].memberList.hasOwnProperty(reactData.isEditing.person_id)) {
+                  reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id] = {
+                    person_id: reactData.isEditing.person_id,
+                    person_name: reactData.isEditing.person_id,
+                    person_first: reactData.isEditing.person_id,
+                    person_last: reactData.isEditing.person_id,
+                    wipDocs: [],
+                    dated_docs: false,
+                    assignedDocs: [],
+                    completedDocs: [],
+                  };
+                }
+                reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].completedDocs.unshift({
                   document_id: statusObj.document_id,
+                  location: statusObj.location,
                   last_update: new Date().getTime(),
-                  doc_status: 'in_process',
-                  due_date: reactData.masterFormList[reactData.isEditing.form_id].dueDate,
+                  date_completed: makeDate(new Date().getTime()).relative,
                   title: statusObj.document_title
                 });
               }
+              updateReactData({
+                masterPeopleList: reactData.masterPeopleList,
+                masterFormList: reactData.masterFormList,
+              }, false);
+              if (reactData.isEditing.calledFrom === 'people') {
+                await personForms(reactData.isEditing.person_id);
+              }
               else {
-                reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].wipDocs[0].document_id = statusObj.document_id;
+                await formPeople(reactData.isEditing.form_id);
               }
-            }
-            else if (statusObj.document_status.startsWith('complete')) {
-              reactData.masterPeopleList[reactData.isEditing.person_id][reactData.isEditing.form_id].status = 'completed';
-              if (!reactData.masterFormList[reactData.isEditing.form_id].memberList.hasOwnProperty(reactData.isEditing.person_id)) {
-                reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id] = {
-                  person_id: reactData.isEditing.person_id,
-                  person_name: reactData.isEditing.person_id,
-                  person_first: reactData.isEditing.person_id,
-                  person_last: reactData.isEditing.person_id,
-                  wipDocs: [],
-                  dated_docs: false,
-                  assignedDocs: [],
-                  completedDocs: [],
-                };
-              }
-              reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].completedDocs.unshift({
-                document_id: statusObj.document_id,
-                location: statusObj.location,
-                last_update: new Date().getTime(),
-                date_completed: makeDate(new Date().getTime()).relative,
-                title: statusObj.document_title
-              });
-            }
-            updateReactData({
-              masterPeopleList: reactData.masterPeopleList,
-              masterFormList: reactData.masterFormList,
-            }, false);
-            if (reactData.isEditing.calledFrom === 'people') {
-              await personForms(reactData.isEditing.person_id);
-            }
-            else {
-              await formPeople(reactData.isEditing.form_id);
             }
             updateReactData({
               isEditing: false
