@@ -954,7 +954,7 @@ export default ({ request = {}, onClose }) => {
         // set prompt
         response.fields[this_field].prompt = formRec.fields[this_field]?.prompt || { value: sentenceCase(this_field) };
         // Selection Obj should be set for the special case - type = select or type = select & text
-        if (response.fields[this_field].type.startsWith('select')) {
+        if (response.fields[this_field].type.startsWith('select') || response.fields[this_field].type.startsWith('drop')) {
           response.fields[this_field].selectionObj = formRec.fields[this_field]?.value.selection;
           if ((response.fields[this_field].value) && (Array.isArray(response.fields[this_field].value))
             && (response.fields[this_field].selectionObj.selectionList && Array.isArray(response.fields[this_field].selectionObj.selectionList))
@@ -1185,7 +1185,7 @@ export default ({ request = {}, onClose }) => {
     return response;
   };
 
-  const handleChangeValue = async ({ newText, newValue, newList, prop, occ_index, sentenceCase }) => {
+  const handleChangeValue = async ({ newText, newValue, newList, prop, occ_index, sentenceCase, reactUpdObj }) => {
     if (sentenceCase && newText && (newText.length === 1)) {
       newText = newText.toUpperCase();
     }
@@ -1215,10 +1215,10 @@ export default ({ request = {}, onClose }) => {
         });
       }
     }
-    updateReactData({
+    updateReactData(Object.assign({}, (reactUpdObj || {}), {
       formUpdates: reactData.formUpdates++,
       fields: reactData.fields
-    }, true);
+    }), true);
   };
 
   const handleMakeSelection = async (props) => {
@@ -1348,6 +1348,81 @@ export default ({ request = {}, onClose }) => {
   };
 
   // **************************
+
+  const AVADropDown = (props) => {
+    // props should contain
+    //   prop
+    //   prompt
+    //   text - an array of options, each can independently go true or false
+    let optionList = props.text.sort().map(this_option => {
+      return ({
+        value: this_option,
+        label: this_option
+      });
+    });
+    return (
+      <Box
+        key={'topBox'} flexGrow={1}
+        display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
+      >
+        <Typography className={classes.formControlTitle}>
+          {reconcilePrompt({
+            rawValue: reactData.fields[props.prop].prompt.value,
+            this_field: props.prop
+          })}
+        </Typography>
+        <React.Fragment>
+          <Box
+            key={`selectBox_filterdrop`}
+            display='flex' flexGrow={1} flexDirection='column'
+            pt={1} pb={1} marginLeft={'8px'} width={'60%'}
+          >
+            <React.Fragment>
+              <Select
+                options={optionList}
+                searchBy={'label'}
+                style={{
+                  fontSize: '0.8rem',
+                  marginLeft: -5,
+                  marginBottom: -4,
+                  marginTop: 1,
+                  borderWidth: 3
+                }}
+                dropdownHandle={true}
+                variant={'standard'}
+                dropdownPosition={'auto'}
+                value={reactData.fields[props.prop]?.value ? (reactData.fields[props.prop]?.value[0] || '') : ''}
+                clearable={true}
+                clearOnSelect={false}
+                placeholder={reactData.fields[props.prop]?.value ? (reactData.fields[props.prop]?.value[0] || '') : ''}
+                clearOnBlur={false}
+                key={`selectBox_selectdrop`}
+                searchable={true}
+                multi={(reactData.fields[props.prop]?.selectionObj?.max > 1) || false}
+                closeOnClickInput={(reactData.fields[props.prop]?.selectionObj?.max > 1) || false}
+                closeOnSelect={(reactData.fields[props.prop]?.selectionObj?.max > 1) || false}
+                create={true}
+                keepSelectedInList={true}
+                noDataLabel={''}
+                onInputChange={async (values) => {
+                  await handleMakeSelection({
+                    clickText: values[0].label,
+                    prop: props.prop
+                  });
+                }}
+                onChange={async (values) => {
+                  await handleMakeSelection({
+                    clickText: values[0].label,
+                    prop: props.prop
+                  });
+                }}
+              />
+            </React.Fragment>
+          </Box>
+        </React.Fragment>
+      </Box>
+    );
+  };
 
   const AVACheckBoxGroup = (props) => {
     // props should contain
@@ -1481,7 +1556,7 @@ export default ({ request = {}, onClose }) => {
               errorsOnForm++;
             }
           }
-          else if (reactData.fields[this_field].type.startsWith('select')) {
+          else if (reactData.fields[this_field].type.startsWith('select') || reactData.fields[this_field].type.startsWith('drop')) {
             let mySelections = [];
             if (reactData.fields[this_field].value) {
               mySelections = ([reactData.fields[this_field].value].flat()).filter(v => {
@@ -2361,6 +2436,93 @@ export default ({ request = {}, onClose }) => {
                                 src={reactData.fields[this_field].valueText}
                               />
                             }
+                            {(reactData.fields[this_field].type === 'upload') &&
+                              <Box
+                                display='flex'
+                                mb={0}
+                                flexDirection='column'
+                                justifyContent='center'
+                                alignItems='flex-start'
+                                style={{
+                                  paddingTop: '16px',
+                                }}
+                              >
+                                <Box
+                                  display='flex'
+                                  mb={0}
+                                  flexDirection='row'
+                                  justifyContent='flex-start'
+                                  alignItems='center'
+                                >
+                                  <Typography
+                                    style={{
+                                      margin: 0,
+                                      marginLeft: 0,
+                                      marginRight: '2px',
+                                      paddingBottom: 0,
+                                      fontSize: 0.8,
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      marginTop: 0,
+                                      marginBottom: 0,
+                                    }}
+                                  >
+                                    {reconcilePrompt({
+                                      rawValue: reactData.fields[this_field].prompt.value,
+                                      this_field
+                                    })}
+                                  </Typography>
+                                  <CloudUploadIcon
+                                    classes={{ root: classes.rowButton }}
+                                    style={{ marginLeft: '16px' }}
+                                    key={`radio-button_upload`}
+                                    id={`radio-button_upload`}
+                                    size='medium'
+                                    onClick={() => {
+                                      updateReactData({
+                                        stage: 'uploadField',
+                                        field_title: reconcilePrompt({
+                                          rawValue: reactData.fields[this_field].prompt.value,
+                                          this_field
+                                        }),
+                                        upload_data: {
+                                          prop: this_field,
+                                          occ_index,
+                                        }
+                                      }, true);
+                                    }}
+                                  />
+                                </Box>
+                                <Box
+                                  display='flex'
+                                  mb={0}
+                                  flexDirection='row'
+                                  justifyContent='center'
+                                  alignItems='center'
+                                  border={2}
+                                  borderRadius={'20px'}
+                                  style={{
+                                    minWidth: '160px',
+                                    maxWidth: '160px',
+                                    minHeight: '160px',
+                                    maxHeight: '160px',
+                                  }}
+                                >
+                                  <Box
+                                    borderRadius={'20px'}
+                                    style={{
+                                      minWidth: '150px',
+                                      maxWidth: '150px',
+                                      minHeight: '150px',
+                                      maxHeight: '150px',
+                                    }}
+                                    component="img"
+                                    alt={''}
+                                    src={reactData.fields[this_field].valueText}
+                                  />
+                                </Box>
+                              </Box>
+                            }
                             {(reactData.fields[this_field].type === 'phone') &&
                               <TextField
                                 id={`field__${fieldNdx}`}
@@ -2531,6 +2693,20 @@ export default ({ request = {}, onClose }) => {
                                     ? reactData.fields[this_field].prompt.other || 'other'
                                     : null
                                   }
+                                />
+                              </Box>
+                            }
+                            {(reactData.fields[this_field].type.startsWith('drop')) &&
+                              <Box
+                                display='flex'
+                                mb={0}
+                                flexDirection='row'
+                                justifyContent='flex-start'
+                                alignItems='center'
+                              >
+                                <AVADropDown
+                                  prop={this_field}
+                                  text={reactData.fields[this_field].selectionObj.selectionList}
                                 />
                               </Box>
                             }
@@ -2811,9 +2987,10 @@ export default ({ request = {}, onClose }) => {
               }
             </Box>
           </Box>
-        </React.Fragment>
-      }
-      {(reactData.stage === 'upload') &&
+        </React.Fragment >
+      };
+      {
+        (reactData.stage === 'upload') &&
         <AVAUploadFile
           options={{
             buttonText: ['Choose', 'Save & Continue'],
@@ -2866,7 +3043,33 @@ export default ({ request = {}, onClose }) => {
           }}
         />
       }
-      {(reactData.stage === 'confirm') &&
+      {
+        (reactData.stage === 'uploadField') &&
+        <AVAUploadFile
+          options={{
+            buttonText: ['Choose', 'Save & Continue'],
+            title: [reactData.field_title, 'Tap "Choose a File" to select the content to upload'],
+            oneOnly: true
+          }}
+          onCancel={() => {
+            updateReactData({
+              stage: 'fill'
+            }, true);
+          }}
+          onLoad={async (response) => {
+            await handleChangeValue({
+              newValue: response[0].fLoc,
+              prop: reactData.upload_data.prop,
+              occ_index: reactData.upload_data.occ_index,
+              reactUpdObj: {
+                stage: 'fill'
+              }
+            });
+          }}
+        />
+      }
+      {
+        (reactData.stage === 'confirm') &&
         <AVAConfirm
           promptText={reactData.messageList}
           cancelText={'Go back'}
@@ -2910,7 +3113,8 @@ export default ({ request = {}, onClose }) => {
           }}
         />
       }
-      {(reactData.stage === 'exit') &&
+      {
+        (reactData.stage === 'exit') &&
         <AVAConfirm
           promptText={[`${valuesChanged() ? 'Warning! You have unsaved changes!  ' : ''}Are you sure you want to exit?`]}
           cancelText={`No, keep going`}
@@ -2944,7 +3148,8 @@ export default ({ request = {}, onClose }) => {
           allowCancel={true}
         />
       }
-      {(reactData.stage === 'error') &&
+      {
+        (reactData.stage === 'error') &&
         <AVAConfirm
           promptText={['Error', 'Something went wrong', ...reactData.errorMessage]}
           cancelText={'Try again'}
@@ -3010,7 +3215,7 @@ export default ({ request = {}, onClose }) => {
           </Alert>
         </Snackbar >
       }
-    </Dialog>
+    </Dialog >
   );
 
 };
