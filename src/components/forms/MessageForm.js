@@ -2029,6 +2029,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
               autoHideDuration={(reactData.alert.severity === 'success') ? 5000 : ((reactData.alert.severity === 'info') ? 15000 : null)}
               onClose={() => {
                 updateReactData({
+                  warning: false,
                   alert: false
                 }, true);
               }}
@@ -2065,6 +2066,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                 variant='filled'
                 onClose={() => {
                   updateReactData({
+                    warning: false,
                     alert: false
                   }, true);
                 }}
