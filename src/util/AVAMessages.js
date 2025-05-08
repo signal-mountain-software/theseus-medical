@@ -735,10 +735,22 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
       if (docData.fields.hasOwnProperty(this_field) && !(docData.fields.ignore) && !(docData.fields.hidden)) {
         let printType = (docData.fields[this_field].value.type === 'view') ? docData.fields[this_field].prompt.type : docData.fields[this_field].value.type;
         switch (printType) {
+          case 'upload':
           case 'image': {
-            pdfLine('', { image: docValues[this_field].valueText, style: 'normal', size: 'medium', align: 'left', after: 1 });
+            let imageWidth = await getImageWidth(docValues[this_field].valueText)
+              .then(width => {
+                console.log(`The width of the image is: ${width} pixels`);
+              })
+              .catch(error => {
+                console.error(error);
+              });
+            pdfLine(docData.fields[this_field].prompt.ref, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+            pdfLine('', { image: docValues[this_field].valueText, image_width: (page.width / 5), style: 'normal', size: 'medium', align: 'left', after: 1 });
             break;
           }
+          case 'drop_down':
+          case 'dropdown':
+          case 'dropDown':
           case 'select&text':
           case 'select': {
             if (!docData.fields[this_field].prompt.noPrint) {
@@ -880,10 +892,22 @@ export async function printDocumentB({ documentList, options = {} }) {
           if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore) && !(fields[this_field].hidden)) {
             let printType = fields[this_field].type;
             switch (printType) {
+              case 'upload':
               case 'image': {
-                pdfLine('', { image: fields[this_field].valueText, style: 'normal', size: 'medium', align: 'left', after: 1 });
+                let imageWidth = await getImageWidth(fields[this_field].valueText)
+                  .then(width => {
+                    console.log(`The width of the image is: ${width} pixels`);
+                  })
+                  .catch(error => {
+                    console.error(error);
+                  });
+                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+                pdfLine('', { image: fields[this_field].valueText, image_width: (page.width / 5), style: 'normal', size: 'medium', align: 'left', after: 1 });
                 break;
               }
+              case 'drop_down':
+              case 'dropdown':
+              case 'dropDown':
               case 'select&text':
               case 'select': {
                 if (!fields[this_field].prompt.noPrint) {
@@ -1017,10 +1041,22 @@ export async function printEmptyDocument({ documentList, options = {} }) {
         if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore) && !(fields[this_field].hidden)) {
           let printType = fields[this_field].type;
           switch (printType) {
+            case 'upload':
             case 'image': {
-              pdfLine('', { image: fields[this_field].valueText, style: 'normal', size: 'medium', align: 'left', after: 1 });
+              let imageWidth = await getImageWidth(fields[this_field].valueText)
+                .then(width => {
+                  console.log(`The width of the image is: ${width} pixels`);
+                })
+                .catch(error => {
+                  console.error(error);
+                });
+              pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+              pdfLine('', { image: fields[this_field].valueText, image_width: (page.width / 5), style: 'normal', size: 'medium', align: 'left', after: 1 });
               break;
             }
+            case 'drop_down':
+            case 'dropdown':
+            case 'dropDown':
             case 'select&text':
             case 'select': {
               if (!fields[this_field].prompt.noPrint) {
@@ -1143,10 +1179,22 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
           if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore) && !(fields[this_field].hidden)) {
             let printType = fields[this_field].type;
             switch (printType) {
+              case 'upload':
               case 'image': {
-                pdfLine('', { image: fields[this_field].valueText, style: 'normal', size: 'medium', align: 'left', after: 1 });
+                let imageWidth = await getImageWidth(fields[this_field].valueText)
+                  .then(width => {
+                    console.log(`The width of the image is: ${width} pixels`);
+                  })
+                  .catch(error => {
+                    console.error(error);
+                  });
+                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+                pdfLine('', { image: fields[this_field].valueText, image_width: (page.width / 5), style: 'normal', size: 'medium', align: 'left', after: 1 });
                 break;
               }
+              case 'drop_down':
+              case 'dropdown':
+              case 'dropDown':
               case 'select&text':
               case 'select': {
                 if (!fields[this_field].prompt.noPrint) {
@@ -1519,6 +1567,7 @@ export async function buildDocument(body) {
             ignoreNextLine = !testSucceeded;
             break;
           }
+          case 'upload':
           case 'image': {
             let outImage = await resolveMessageVariables(instruction_key, callBody);
             pdfLine(' ', { image: outImage });
@@ -2192,7 +2241,11 @@ function pdfLine(text, options = {}) {
   }
   if (options.image) {
     var imageWidth, imageHeight;
-    if (options.image.includes('base64')) {
+    if (options.image_width) {
+      imageWidth = options.image_width;
+      imageHeight = options.image_width;
+    }
+    else if (options.image.includes('base64')) {
       var img = new Image();
       img.src = options.image;
       img.onload = function () {
@@ -2612,6 +2665,22 @@ export async function sendMessages(body) {
     }
   }
   return results;
+}
+
+function getImageWidth(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+
+    img.onload = () => {
+      resolve(img.width);
+    };
+
+    img.onerror = () => {
+      reject(new Error(`Failed to load image from URL: ${url}`));
+    };
+
+    img.src = url;
+  });
 }
 
 export async function messageHistory(body) {
