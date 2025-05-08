@@ -737,13 +737,6 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
         switch (printType) {
           case 'upload':
           case 'image': {
-            let imageWidth = await getImageWidth(docValues[this_field].valueText)
-              .then(width => {
-                console.log(`The width of the image is: ${width} pixels`);
-              })
-              .catch(error => {
-                console.error(error);
-              });
             pdfLine(docData.fields[this_field].prompt.ref, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
             pdfLine('', { image: docValues[this_field].valueText, image_width: (page.width / 5), style: 'normal', size: 'medium', align: 'left', after: 1 });
             break;
@@ -894,13 +887,6 @@ export async function printDocumentB({ documentList, options = {} }) {
             switch (printType) {
               case 'upload':
               case 'image': {
-                let imageWidth = await getImageWidth(fields[this_field].valueText)
-                  .then(width => {
-                    console.log(`The width of the image is: ${width} pixels`);
-                  })
-                  .catch(error => {
-                    console.error(error);
-                  });
                 pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
                 pdfLine('', { image: fields[this_field].valueText, image_width: (page.width / 5), style: 'normal', size: 'medium', align: 'left', after: 1 });
                 break;
@@ -1043,13 +1029,6 @@ export async function printEmptyDocument({ documentList, options = {} }) {
           switch (printType) {
             case 'upload':
             case 'image': {
-              let imageWidth = await getImageWidth(fields[this_field].valueText)
-                .then(width => {
-                  console.log(`The width of the image is: ${width} pixels`);
-                })
-                .catch(error => {
-                  console.error(error);
-                });
               pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
               pdfLine('', { image: fields[this_field].valueText, image_width: (page.width / 5), style: 'normal', size: 'medium', align: 'left', after: 1 });
               break;
@@ -1181,13 +1160,6 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
             switch (printType) {
               case 'upload':
               case 'image': {
-                let imageWidth = await getImageWidth(fields[this_field].valueText)
-                  .then(width => {
-                    console.log(`The width of the image is: ${width} pixels`);
-                  })
-                  .catch(error => {
-                    console.error(error);
-                  });
                 pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
                 pdfLine('', { image: fields[this_field].valueText, image_width: (page.width / 5), style: 'normal', size: 'medium', align: 'left', after: 1 });
                 break;
@@ -2666,7 +2638,7 @@ export async function sendMessages(body) {
   }
   return results;
 }
-
+/*
 function getImageWidth(url) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -2682,6 +2654,7 @@ function getImageWidth(url) {
     img.src = url;
   });
 }
+*/
 
 export async function messageHistory(body) {
   // body should include thread_id

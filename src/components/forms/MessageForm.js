@@ -470,7 +470,6 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
 
   async function releaseMessage(this_messageRec) {
     let goodHandle = true;
-    let goodThread = true;
     let this_actionRec = this_messageRec.actionRec;
     let poTableName = (this_actionRec.content.testMode ? 'TestPostOffice' : 'PostOffice');
     let po_og = await dbClient
