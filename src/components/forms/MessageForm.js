@@ -1,6 +1,8 @@
 import React from 'react';
 import useSession from '../../hooks/useSession';
 
+import { Editor } from '@tinymce/tinymce-react';
+
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { extract, dbClient, titleCase, listFromArray, cl, uuid, recordExists, isEmpty } from '../../util/AVAUtilities';
 import { AVATextStyle } from '../../util/AVAStyles';
@@ -323,6 +325,33 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       return `Select`;
     }
   }
+
+  const editorRef = React.useRef(null);
+  const [dirty, setDirty] = React.useState(false);
+  React.useEffect(() => setDirty(false), []);
+  const HTMLsave = () => {
+    if (editorRef.current) {
+      const HTMLcontent = editorRef.current.getContent();
+      setDirty(false);
+      editorRef.current.setDirty(false);
+      let reactUpdObj = {
+        newMessageText: HTMLcontent
+      };
+      if (HTMLcontent.length > 500) {
+        reactUpdObj.warning = true;
+        reactUpdObj.alert = {
+          severity: 'warning',
+          title: 'Message length',
+          message: <div>Your message is {HTMLcontent.length.toLocaleString('en-US')} characters long.<br />
+            Some text messaging networks limit message size to 500 characters.<br />
+            You may send the message as is.  If you choose to do that, we will break the message into {Math.floor(HTMLcontent.length / 500) + 1} parts and send each part as a separate message for text message recipients.
+            (All other recipients will receive the message as entered.)</div>,
+        };
+      }
+      updateReactData(reactUpdObj, true);
+      console.log(HTMLcontent);
+    }
+  };
 
   const handleChangeMessageFilter = event => {
     if (event.target.value.length === 0) {
@@ -1342,7 +1371,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
             </Box >
           </Box>
           {reactData.newMessageMode &&
-            <Paper component={Box} className={classes.newMessagePage} variant='outlined' overflow='auto' square>
+            <Paper component={Box} className={classes.newMessagePage} overflow='auto' square>
               <Box key={'newMessage_frag'}
                 marginLeft={'16px'}
                 marginRight={'16px'}
@@ -1442,31 +1471,74 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                           </a>
                         ))}
                       </Box>
-                      <TextField
-                        id='MessageText_new'
-                        multiline
-                        autoComplete='off'
-                        style={AVATextStyle({ size: 1.2, bold: true, margin: { right: 1.5 } })}
-                        onBlur={async (event) => {
-                          let reactUpdObj = {
-                            newMessageText: event.target.value
-                          };
-                          if (event.target.value.length > 500) {
-                            reactUpdObj.warning = true;
-                            reactUpdObj.alert = {
-                              severity: 'warning',
-                              title: 'Message length',
-                              message: <div>Your message is {event.target.value.length.toLocaleString('en-US')} characters long.<br />
-                                Some text messaging networks limit message size to 500 characters.<br />
-                                You may send the message as is.  If you choose to do that, we will break the message into {Math.floor(event.target.value.length / 500) + 1} parts and send each part as a separate message for text message recipients.
-                                (All other recipients will receive the message as entered.)</div>,
+                      {!reactData.html_message &&
+                        <TextField
+                          id='MessageText_new'
+                          multiline
+                          autoComplete='off'
+                          style={AVATextStyle({ size: 1.2, bold: true, margin: { right: 1.5 } })}
+                          onBlur={async (event) => {
+                            let reactUpdObj = {
+                              newMessageText: event.target.value
                             };
-                          }
-                          updateReactData(reactUpdObj, true);
-                        }}
-                        defaultValue={reactData.newMessageText}
-                        helperText={'Message Text'}
-                      />
+                            if (event.target.value.length > 500) {
+                              reactUpdObj.warning = true;
+                              reactUpdObj.alert = {
+                                severity: 'warning',
+                                title: 'Message length',
+                                message: <div>Your message is {event.target.value.length.toLocaleString('en-US')} characters long.<br />
+                                  Some text messaging networks limit message size to 500 characters.<br />
+                                  You may send the message as is.  If you choose to do that, we will break the message into {Math.floor(event.target.value.length / 500) + 1} parts and send each part as a separate message for text message recipients.
+                                  (All other recipients will receive the message as entered.)</div>,
+                              };
+                            }
+                            updateReactData(reactUpdObj, true);
+                          }}
+                          defaultValue={reactData.newMessageText}
+                          helperText={'Message Text'}
+                        />
+                      }
+                      {reactData.html_message &&
+                        <Box display='flex'
+                          key={'html_box'}
+                          flexDirection='column'
+                          padding='16px'
+                          marginLeft='-18px'
+                        >
+                          <Typography
+                            style={AVATextStyle({ size: 0.82, opacity: 0.6, margin: {left: 0.1, bottom: 0.3} })}
+                          >
+                            {'Formatted Message Text'}
+                          </Typography>
+                          <Editor
+                            apiKey='jz5usjjdkhrx34z6bm32xhv8pxep9u7iptvmqnsz8goday9n'
+                            onInit={(evt, editor) => editorRef.current = editor}
+                            onDirty={() => setDirty(true)}
+                            onBlur={() => {
+                              HTMLsave();
+                            }}
+                            initialValue={reactData.newMessageText}
+                            init={{
+                              branding: false,
+                              statusbar: false,
+                              height: 300,
+                              plugins: [
+                                // Core editing features
+                                'anchor', 'autolink', 'charmap', 'codesample', 'emoticons', 'image', 'inlinecss', 'link', 'lists', 'media', 'searchreplace', 'table', 'visualblocks', 'wordcount',
+                                // Your account includes a free trial of TinyMCE premium features
+                                // Try the most popular premium features until May 26, 2025:
+                                'checklist', 'mediaembed', 'casechange', 'formatpainter', 'pageembed', 'a11ychecker', 'tinymcespellchecker', 'permanentpen', 'powerpaste', 'advtable', 'advcode', 'editimage', 'advtemplate', 'mentions', 'tableofcontents', 'footnotes', 'mergetags', 'autocorrect', 'typography', 'inlinecss', 'markdown', 'importword', 'exportword', 'exportpdf'
+                              ],
+                              toolbar: 'undo redo | blocks fontfamily fontsize | bold italic underline forecolor backcolor | link table mergetags | spellcheckdialog | align lineheight | checklist numlist bullist indent outdent | emoticons charmap | removeformat',
+                              line_height_formats: '0.8 1 1.2 1.4 1.6 2',
+                              mergetags_list: [
+                                { value: 'first_name', title: 'Recipient First Name' },
+                                { value: 'full_name', title: 'Recipient Full Name' }
+                              ],
+                            }}
+                          />
+                        </Box>
+                      }
                       {reactData.newMessageVMAlternative &&
                         <TextField
                           id='MessageText_altVM'
@@ -1587,6 +1659,16 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               {(reactData.newMessageVMAlternative) ? 'Remove VM Alt message' : 'Add VM Alt message'}
                             </Typography>
                           }
+                          <Typography
+                            style={AVATextStyle({ size: 1 })}
+                            onClick={() => {
+                              updateReactData({
+                                html_message: !reactData.html_message
+                              }, true);
+                            }}
+                          >
+                            {(reactData.html_message) ? 'Use Plain Text' : 'Use Rich Text Editor'}
+                          </Typography>
                         </Box>
                       </Box>
                     </Box>
@@ -1605,7 +1687,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
             </Paper>
           }
           {(Object.keys(reactData.threads).length > 0) &&
-            <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
+            <Paper component={Box} className={classes.page} overflow='auto' square>
               {reactData.sorted_threads.map((this_thread, thread_index) => (
                 reactData.threads[this_thread].messages.map((this_message, message_index) => (
                   (okToShow(this_thread, message_index) &&
@@ -1705,11 +1787,35 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                       </Typography>
                                     </Box>
                                   </Box>
-                                  <Typography key={`prefLine-text`}
-                                    style={Object.assign({}, AVATextStyle({ size: ((message_index === 0) ? 1 : 0.9) }), { overflowWrap: 'anywhere', overflowY: 'auto' })}
-                                  >
-                                    {this_message.message_text}
-                                  </Typography>
+                                  
+                                  
+                                  
+                                  {!this_message.message_text.startsWith('<') &&
+                                    <Typography key={`prefLine-text`}
+                                      style={Object.assign({}, AVATextStyle({ size: ((message_index === 0) ? 1 : 0.9) }), { overflowWrap: 'anywhere', overflowY: 'auto' })}
+                                    >
+                                      {this_message.message_text}
+                                    </Typography>
+                                  }
+                                  {this_message.message_text.startsWith('<') &&
+                                    <Box                                     
+                                      borderRadius={'30px'}
+                                      padding={'8px'}
+                                      marginTop='16px'
+                                      marginBottom='16px'
+                                      marginRight='16px'
+                                      border={2}
+                                      borderColor={reactData.newUrgentMessage ? 'red' : 'black'}
+                                    >
+                                      <div
+                                        dangerouslySetInnerHTML={{ '__html': this_message.message_text }}
+                                      />
+                                    </Box>
+                                  }
+
+
+
+
                                 </Box>
                               </Box>
                               {reactData.expanded_composite_key === this_message.composite_key &&
