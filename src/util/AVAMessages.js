@@ -1426,6 +1426,32 @@ export async function factForm(serviceRequestRec) {
   };
 }
 
+export async function html_to_pdf(body) {
+  let doc = new jsPDF({
+    orientation: "portrait",
+    unit: "px",
+    format: ((body.pageWidth) ? [body.pageWidth, (body.pageHeight || 9999)] : [1020, 1320])
+  });
+  let finalHTML = body.htmlText.replace(/<p/gi, '<p style="font-size:10px; width: 1000px; margin: 60px"');
+  await doc.html(finalHTML, {
+    callback: function (doc) {
+      doc.save();
+    },
+    autoPaging: 'text'
+  });
+  let pdfInfo = {
+    s3Key: `AVA_${body.messageKey.replace('~', '_')}.pdf`,
+    s3Bucket: (body.S3_bucket || 'theseus-medical-storage')
+  };
+  let pdfResp = await savePDF(doc, pdfInfo, { local: false, S3: true });
+  if (pdfResp.responseData.s3Resp) {
+    return pdfResp.responseData.s3Resp.Location;
+  }
+  else {
+    return null;
+  } 
+}
+
 export async function buildDocument(body) {
   // instructions for the document lines are in body.format.source
   let printInstructions = deepCopy(body.format.source);

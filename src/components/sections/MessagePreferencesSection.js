@@ -83,19 +83,6 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
     }
   ];
 
-  const defaultHandle = () => {
-    let source_address = currentValues.peopleRec.name.first.split(' ')[0];
-    source_address += currentValues.peopleRec.name.last.split(' ').reduce(
-      (tempName, currentValue, currentIndex) =>
-        (currentValue ? (tempName + '_' + currentValue.charAt(0).toUpperCase() + currentValue.slice(1)) : tempName)
-    );
-    source_address += '-' + reactData.client_name.split(' ').reduce(
-      (tempName, currentValue, currentIndex) =>
-        tempName + ((currentIndex === 0) ? '' : '_') + currentValue.charAt(0).toUpperCase() + currentValue.slice(1)
-    );
-    return source_address;
-  };
-
   const proxyOptions = () => {
     let response = [{
       option: 'hold',
@@ -186,28 +173,6 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
           </Box>
         ))}
       </Box>
-      <Typography
-        style={AVATextStyle({ italic: true, margin: { top: 2, bottom: 0.4 } })}
-      >
-        {`When someone receives a message from me via e-Mail, use this as my e-Mail name`}
-      </Typography>
-      <TextField
-        multiline
-        style={isMobile ? AVATextStyle({ width: '60%', margin: { left: 0.5 } }) : AVATextStyle({ margin: { left: 1 } })}
-        key={`email_handle`}
-        defaultValue={currentValues.peopleRec.email_sourceAddress || defaultHandle()}
-        helperText='e-Mail name'
-        onBlur={async (event) => {
-          await updateField({
-            updateList:
-              [{
-                tableName: 'peopleRec',
-                fieldName: 'email_sourceAddress',
-                newData: event.target.value
-              }]
-          });
-        }}
-      />
       <Typography
         style={AVATextStyle({ italic: true, margin: { top: 2, bottom: 0.4 } })}
       >

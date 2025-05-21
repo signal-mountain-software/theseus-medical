@@ -2,6 +2,7 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 
 import { Editor } from '@tinymce/tinymce-react';
+import { html_to_pdf } from '../../util/AVAMessages';
 
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { extract, dbClient, titleCase, listFromArray, cl, uuid, recordExists, isEmpty } from '../../util/AVAUtilities';
@@ -328,6 +329,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
 
   const editorRef = React.useRef(null);
   const [dirty, setDirty] = React.useState(false);
+  console.log(dirty);
   React.useEffect(() => setDirty(false), []);
   const HTMLsave = () => {
     if (editorRef.current) {
@@ -626,6 +628,28 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       },
       TableName: 'PostOffice'
     };
+    if (reactData.newMessageText.startsWith('<p')) {
+      PostOfficeRec.Item.html_message_text = reactData.newMessageText;
+      let plain_text = reactData.newMessageText;
+      plain_text = plain_text.replace(/<style([\s\S]*?)<\/style>/gi, '');
+      plain_text = plain_text.replace(/<script([\s\S]*?)<\/script>/gi, '');
+      plain_text = plain_text.replace(/<strong>/ig, '');
+      plain_text = plain_text.replace(/<\/strong>/ig, '');
+      plain_text = plain_text.replace(/<\/div>/ig, '\n');
+      plain_text = plain_text.replace(/<\/li>/ig, '\n');
+      plain_text = plain_text.replace(/<li>/ig, '  *  ');
+      plain_text = plain_text.replace(/<\/ul>/ig, '\n');
+      plain_text = plain_text.replace(/<\/p>/ig, '\n');
+      plain_text = plain_text.replace(/<br\s*[/]?>/gi, "\n");
+      plain_text = plain_text.replace(/<[^>]+>/ig, '');
+      plain_text = plain_text.replace('%%', '');
+      PostOfficeRec.Item.message_text = plain_text;
+      PostOfficeRec.Item.s3MessageHTMLdoc = await html_to_pdf({
+        client_id: pClient,
+        htmlText: reactData.newMessageText,
+        messageKey: message_id
+      });
+    }
     if (reactData.newMessageVMAlternative && reactData.newMessageVMAltText && (reactData.newMessageVMAltText.length > 0)) {
       PostOfficeRec.Item.voice_mail = reactData.newMessageVMAltText;
     }
@@ -648,6 +672,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         messages: [
           {
             message_text: PostOfficeRec.Item.message_text,
+            html_message_text: PostOfficeRec.Item.html_message_text || PostOfficeRec.Item.message_text,
             subject: PostOfficeRec.Item.subject,
             last_update: nowTime,
             attachments: PostOfficeRec.Item.attachments,
@@ -946,16 +971,31 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           messages: []
         };
       }
+      if (!state.patient.hasOwnProperty('preferred_language')) {
+        state.patient.preferred_language = 'en';
+      }
+      if (this_deliveryRec.content.current.hasOwnProperty(state.patient.preferred_language || 'en')) {
+        this_deliveryRec.message_text = this_deliveryRec.content.current[state.patient.preferred_language || 'en'];
+      }
+      else if (this_deliveryRec.content.current.hasOwnProperty('original')) {
+        this_deliveryRec.message_text = this_deliveryRec.content.current.original;
+      }
+      else if (this_deliveryRec.content.current.hasOwnProperty('EN-US')) {
+        this_deliveryRec.message_text = this_deliveryRec.content.current['EN-US'];
+      }
+      else {
+        this_deliveryRec.message_text = '(Message content unavailable)';
+      }
       let message_number = -1;
       let message_added = false;
       if (reactData.threads[this_deliveryRec.thread_id].messages.length > 0) {
         message_number = reactData.threads[this_deliveryRec.thread_id].messages.findIndex(this_message => {
-          return ((this_message.author_id === this_deliveryRec.author.author_id) && (this_message.message_text === this_deliveryRec.content.current['EN-US'].text));
+          return ((this_message.author_id === this_deliveryRec.author.author_id) && (this_message.message_text === this_deliveryRec.message_text.text));
         });
       };
       if (message_number === -1) {
         // convert inline link to an attachment by extracting all text after (and including http:)
-        let hLink = extract(this_deliveryRec.content.current['EN-US'].text, 'http', ' ', {
+        let hLink = extract(this_deliveryRec.message_text.text, 'http', ' ', {
           fuzzyRight: true,  // allow end-of-string as a right delimeter 
           includeLeft: true,  // return the left delimeter
         });
@@ -966,7 +1006,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           else {
             this_deliveryRec.content.current.attachments.push(hLink);
           }
-          this_deliveryRec.content.current['EN-US'].text = this_deliveryRec.content.current['EN-US'].text.replace(hLink, 'the attachment');
+          this_deliveryRec.message_text.text = this_deliveryRec.message_text.text.replace(hLink, 'the attachment');
         }
         if (this_deliveryRec.author.author_name === 'AVA notifications') {
           let sRec = await getPerson(this_deliveryRec.author.author_id);
@@ -978,7 +1018,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           reactData.imageTable[this_deliveryRec.author.author_id] = await getImage(this_deliveryRec.author.author_id);
         }
         reactData.threads[this_deliveryRec.thread_id].messages.push({
-          message_text: this_deliveryRec.content.current['EN-US'].text,
+          message_text: this_deliveryRec.message_text.text,
+          html_message_text: this_deliveryRec.message_text.html || this_deliveryRec.message_text.text,
           subject: this_deliveryRec.subject_line,
           last_update: 0,
           attachments: this_deliveryRec.content.current.attachments,
@@ -1506,7 +1547,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                           marginLeft='-18px'
                         >
                           <Typography
-                            style={AVATextStyle({ size: 0.82, opacity: 0.6, margin: {left: 0.1, bottom: 0.3} })}
+                            style={AVATextStyle({ size: 0.82, opacity: 0.6, margin: { left: 0.1, bottom: 0.3 } })}
                           >
                             {'Formatted Message Text'}
                           </Typography>
@@ -1769,7 +1810,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                       {(this_thread !== last_displayed_thread) &&
                                         <React.Fragment>
                                           <Typography
-                                            style={AVATextStyle({ size: 1, bold: true })}
+                                            style={AVATextStyle({ size: 1, bold: true, margin: { top: 1 } })}
                                           >
                                             {makeSubject(this_thread, message_index)}
                                           </Typography>
@@ -1787,18 +1828,18 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                       </Typography>
                                     </Box>
                                   </Box>
-                                  
-                                  
-                                  
-                                  {!this_message.message_text.startsWith('<') &&
+
+
+
+                                  {(!this_message.html_message_text || !this_message.html_message_text.startsWith('<')) &&
                                     <Typography key={`prefLine-text`}
                                       style={Object.assign({}, AVATextStyle({ size: ((message_index === 0) ? 1 : 0.9) }), { overflowWrap: 'anywhere', overflowY: 'auto' })}
                                     >
                                       {this_message.message_text}
                                     </Typography>
                                   }
-                                  {this_message.message_text.startsWith('<') &&
-                                    <Box                                     
+                                  {(this_message.html_message_text && this_message.html_message_text.startsWith('<')) &&
+                                    <Box
                                       borderRadius={'30px'}
                                       padding={'8px'}
                                       marginTop='16px'
@@ -1808,7 +1849,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                       borderColor={reactData.newUrgentMessage ? 'red' : 'black'}
                                     >
                                       <div
-                                        dangerouslySetInnerHTML={{ '__html': this_message.message_text }}
+                                        dangerouslySetInnerHTML={{ '__html': this_message.html_message_text }}
                                       />
                                     </Box>
                                   }
