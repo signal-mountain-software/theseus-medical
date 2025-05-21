@@ -21,6 +21,8 @@ import DeleteIcon from '@material-ui/icons/Delete';
 import PeopleIcon from '@material-ui/icons/People';
 import SettingsIcon from '@material-ui/icons/Settings';
 import SendIcon from '@material-ui/icons/Send';
+import ExpandMoreIcon from '@material-ui/icons/Visibility';
+import ExpandLessIcon from '@material-ui/icons/VisibilityOff';
 
 import { SET_GROUPS } from '../../contexts/Session/actions';
 
@@ -139,9 +141,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     groupName: '',
     groupRec: {},
     groupRole: '',
-    groupsManagedObject: [],
+    groupsManagedObject: Object.keys(groupsManagedObject),
     groupMemberList: [],
     isDarkMode: useMediaQuery('(prefers-color-scheme: dark)'),
+    levelVisible: [],
     loading: false,
     needRef: false,
     newGroups: {},
@@ -188,6 +191,15 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     return response;
   }
   const [minimumGroupLevel,] = React.useState(calcMinimumGroupLevel() - 1);
+
+  function hasChildren(this_index) {
+    try {
+      return (groupsManagedObject[reactData.groupsManagedObject[this_index + 1]].level > groupsManagedObject[reactData.groupsManagedObject[this_index]].level);
+    }
+    catch {
+      return false;
+    }
+  }
 
   const handleDragStart = (ev, id) => {
     ev.dataTransfer.setData('id', JSON.stringify(id));
@@ -780,7 +792,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     setLowerFilter(event.target.value.toLowerCase());
   };
 
-  function OKtoShow(inObj) {
+  function OKtoShow(inObj, inNdx) {
+    if ((inObj.level > 2) && (!reactData.levelVisible[inNdx])) { return false; }
     if (!lower_activity_filter) { return true; }
     if (inObj.hasOwnProperty('group_name')) {
       if (inObj.group_name.toLowerCase().includes(lower_activity_filter)) {
@@ -956,9 +969,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                   alignItems='flex-start'
                 >
                   {Object.keys(groupsManagedObject).map((listEntry, listIndex) => (
-                    (OKtoShow(groupsManagedObject[listEntry]) &&
+                    (OKtoShow(groupsManagedObject[listEntry], listIndex) &&
                       <React.Fragment key={`frag_${listIndex}`}>
                         <Box
+                          display='flex' flexDirection='row'
+                          justifyContent='flex-start'
+                          alignItems='center'
                           key={`activity-list_${listIndex}_${((listIndex === focusAt) ? 'selected' : '')}`}
                           draggable={pSession?.adminAccount}
                           onDragStart={(e) => handleDragStart(e, {
@@ -977,17 +993,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                             });
                             onRefresh();
                           }}
-                          onClick={async () => {
-                            updateReactData({
-                              selectedGroup_id: listEntry,
-                              selectedGroupRec: groupsManagedObject[listEntry],
-                              selectedGroupMembers: await selectMembers(listEntry),
-                              selectedPerson_id: false,
-                              selectedPersonRec: false,
-                              selectedPersonFirstName: false,
-                              selectedPersonLastName: false,
-                            }, true);
-                          }}
                           onContextMenu={async (e) => {
                             e.preventDefault();
                             updateReactData({
@@ -1002,6 +1007,17 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                         >
                           <Typography
                             key={`g_text_${listIndex}_${(listIndex === focusAt) ? 'selected' : ''}`}
+                            onClick={async () => {
+                              updateReactData({
+                                selectedGroup_id: listEntry,
+                                selectedGroupRec: groupsManagedObject[listEntry],
+                                selectedGroupMembers: await selectMembers(listEntry),
+                                selectedPerson_id: false,
+                                selectedPersonRec: false,
+                                selectedPersonFirstName: false,
+                                selectedPersonLastName: false,
+                              }, true);
+                            }}
                             style={AVATextStyle({
                               size: 1.2,
                               color: (
@@ -1018,10 +1034,40 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                                   : null
                               ),
                               weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry)) || (reactData.selectedGroup_id === listEntry)) ? 'bold' : null),
-                              margin: { left: (groupsManagedObject[listEntry].level ? ((groupsManagedObject[listEntry].level - minimumGroupLevel) - 1) * 1.5 : 0), top: 0, bottom: 0.8 },
+                              margin: { left: (groupsManagedObject[listEntry].level ? ((groupsManagedObject[listEntry].level - minimumGroupLevel) - 1) * 1.5 : 0), top: 0.35, bottom: 0.65, right: 0.8 },
                             })}>
                             {groupsManagedObject[listEntry].group_name}
                           </Typography>
+                          {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && !reactData.levelVisible[listIndex + 1] &&
+                            <ExpandMoreIcon
+                              style={{ size: 8, fontSize: '1rem' }}
+                              onClick={async () => {
+                                let keyList = Object.keys(groupsManagedObject);
+                                for (let i = listIndex + 1; groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level; i++) {
+                                  if (groupsManagedObject[keyList[i]].level === (groupsManagedObject[listEntry].level + 1)) {
+                                    reactData.levelVisible[i] = true;
+                                  }
+                                }
+                                updateReactData({
+                                  levelVisible: reactData.levelVisible
+                                }, true);
+                              }}
+                            />
+                          }
+                          {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && reactData.levelVisible[listIndex + 1] &&
+                            <ExpandLessIcon
+                              style={{ size: 8, fontSize: '1rem' }}
+                              onClick={async () => {
+                                let keyList = Object.keys(groupsManagedObject);
+                                for (let i = listIndex + 1; groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level; i++) {
+                                  reactData.levelVisible[i] = false;
+                                }
+                                updateReactData({
+                                  levelVisible: reactData.levelVisible
+                                }, true);
+                              }}
+                            />
+                          }
                         </Box>
                       </React.Fragment>
                     )
@@ -1119,7 +1165,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                   </Box >
                 </Box>
                 <Paper component={Box} width='100%' elevation={0} overflow='auto' square
-                  style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
+                  style={{ scrollbarWidth: 'thin', flexGrow: 1, display: 'flex' }}
                 >
                   <Box display='flex' flexDirection='column'
                     justifyContent='flex-start'
@@ -1190,7 +1236,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                   {`${reactData.selectedGroupRec.group_name} Members`}
                 </Typography>
                 <Paper component={Box} width='100%' elevation={0} overflow='auto' square
-                  style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
+                  style={{ scrollbarWidth: 'thin', flexGrow: 1, display: 'flex' }}
                 >
                   <Box display='flex' flexDirection='column'
                     justifyContent='flex-start'
