@@ -1932,6 +1932,8 @@ export async function printOccurrenceSheet(body) {
   let totalLines = 0;
   let detail_indent = (page.width / 10) + page.margin.left;
   // let nameRow_indent = detail_indent - 10;
+  let signup_total = 0;
+  let guest_total = 0;
 
   let slotList = Object.keys(oData.slots).sort();
 
@@ -1939,8 +1941,9 @@ export async function printOccurrenceSheet(body) {
     let sID = slotList[s];
     let outName;
     let occupiedSlot = false;
-    if (oData.slots[sID].owner && (oData.slots[sID].owner !== 'available') && (oData.slots[sID].owner !== '')) {
+    if (oData.slots[sID].owner && (oData.slots[sID].owner !== 'available') && (oData.slots[sID].owner !== '') && (oData.slots[sID].status !== 'released')) {
       occupiedSlot = true;
+      signup_total++;
       if (!oData.slots[sID].display_name) { outName = oData.slots[sID].owner; }
       else {
         let oParts = oData.slots[sID].display_name.split(',');
@@ -1948,8 +1951,20 @@ export async function printOccurrenceSheet(body) {
         else { outName = (`${oParts[1].trim()} ${oParts[0].trim()}`).trim(); }
       }
     };
+    if ((oData.slots[sID].guests) && (Number(oData.slots[sID].guests) > 0)) {
+      outName += ` (${oData.slots[sID].guests} Guest${(Number(oData.slots[sID].guests) > 1) ? 's' : ''})`;
+      guest_total += Number(oData.slots[sID].guests);
+    }
     if (body.request_type === 'sign-up') {
-      pdfLine(((oData.type === 'time') ? formatTime(sID) : sID), page.font.size.large, 'normal', 0, 1.5, 0, { align: 'left' });
+      if (oData.type === 'time') {
+        pdfLine(formatTime(sID), page.font.size.large, 'normal', 0, 1.5, 0, { align: 'left', noNewLine: true });
+      }
+      else if ((oData.type === 'seats') && (oData.slots[sID].name !== oData.slots[sID].display_name)) {
+        pdfLine(oData.slots[sID].name, page.font.size.large, 'normal', 0, 1.5, 0, { align: 'left', noNewLine: true });
+      }
+      else {
+        pdfLine(`${s + 1}`, page.font.size.large, 'normal', 0, 1.5, 0, { align: 'left', noNewLine: true });
+      }
       if (occupiedSlot) {
         pdfLine(outName, page.font.size.large, 'bold', 0, 0, 0, { xPos: detail_indent + 10, noNewLine: true });
       }
@@ -1962,8 +1977,8 @@ export async function printOccurrenceSheet(body) {
       if (oData.type === 'time') {
         pdfLine(`${formatTime(sID)}`, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
       }
-      else if (oData.type === 'seats') {
-        pdfLine(`${sID}`, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
+      else if ((oData.type === 'seats') && (oData.slots[sID].name !== oData.slots[sID].display_name)) {
+        pdfLine(`${oData.slots[sID].name}`, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
       }
       if (oData.slots[sID].owner && body.request_type === 'full') {
         let pRec = await getPerson(oData.slots[sID].owner);
@@ -1994,6 +2009,11 @@ export async function printOccurrenceSheet(body) {
 
   if (totalLines === 0) {
     pdfLine(`No data found for ${page.info.title}`, page.font.size.medium, 'normal', detail_indent, 3);
+  }
+
+  pdfLine(`Total signed-up = ${signup_total}`, page.font.size.medium, 'normal', 0, 3, 0, { noBreak: true });
+  if (guest_total > 0) {
+    pdfLine(`Guest Total = ${guest_total}`, page.font.size.medium, 'normal', 0, 0, 0, { noBreak: true });
   }
 
   // Wrap up

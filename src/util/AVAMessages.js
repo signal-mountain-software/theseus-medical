@@ -737,13 +737,6 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
         switch (printType) {
           case 'upload':
           case 'image': {
-            let imageWidth = await getImageWidth(docValues[this_field].valueText)
-              .then(width => {
-                console.log(`The width of the image is: ${width} pixels`);
-              })
-              .catch(error => {
-                console.error(error);
-              });
             pdfLine(docData.fields[this_field].prompt.ref, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
             pdfLine('', { image: docValues[this_field].valueText, image_width: (page.width / 5), style: 'normal', size: 'medium', align: 'left', after: 1 });
             break;
@@ -894,13 +887,6 @@ export async function printDocumentB({ documentList, options = {} }) {
             switch (printType) {
               case 'upload':
               case 'image': {
-                let imageWidth = await getImageWidth(fields[this_field].valueText)
-                  .then(width => {
-                    console.log(`The width of the image is: ${width} pixels`);
-                  })
-                  .catch(error => {
-                    console.error(error);
-                  });
                 pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
                 pdfLine('', { image: fields[this_field].valueText, image_width: (page.width / 5), style: 'normal', size: 'medium', align: 'left', after: 1 });
                 break;
@@ -1043,13 +1029,6 @@ export async function printEmptyDocument({ documentList, options = {} }) {
           switch (printType) {
             case 'upload':
             case 'image': {
-              let imageWidth = await getImageWidth(fields[this_field].valueText)
-                .then(width => {
-                  console.log(`The width of the image is: ${width} pixels`);
-                })
-                .catch(error => {
-                  console.error(error);
-                });
               pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
               pdfLine('', { image: fields[this_field].valueText, image_width: (page.width / 5), style: 'normal', size: 'medium', align: 'left', after: 1 });
               break;
@@ -1181,13 +1160,6 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
             switch (printType) {
               case 'upload':
               case 'image': {
-                let imageWidth = await getImageWidth(fields[this_field].valueText)
-                  .then(width => {
-                    console.log(`The width of the image is: ${width} pixels`);
-                  })
-                  .catch(error => {
-                    console.error(error);
-                  });
                 pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
                 pdfLine('', { image: fields[this_field].valueText, image_width: (page.width / 5), style: 'normal', size: 'medium', align: 'left', after: 1 });
                 break;
@@ -1452,6 +1424,32 @@ export async function factForm(serviceRequestRec) {
     plainText: rawMessage,
     pdf: doc
   };
+}
+
+export async function html_to_pdf(body) {
+  let doc = new jsPDF({
+    orientation: "portrait",
+    unit: "px",
+    format: ((body.pageWidth) ? [body.pageWidth, (body.pageHeight || 9999)] : [1020, 1320])
+  });
+  let finalHTML = body.htmlText.replace(/<p/gi, '<p style="font-size:10px; width: 1000px; margin: 60px"');
+  await doc.html(finalHTML, {
+    callback: function (doc) {
+      doc.save();
+    },
+    autoPaging: 'text'
+  });
+  let pdfInfo = {
+    s3Key: `AVA_${body.messageKey.replace('~', '_')}.pdf`,
+    s3Bucket: (body.S3_bucket || 'theseus-medical-storage')
+  };
+  let pdfResp = await savePDF(doc, pdfInfo, { local: false, S3: true });
+  if (pdfResp.responseData.s3Resp) {
+    return pdfResp.responseData.s3Resp.Location;
+  }
+  else {
+    return null;
+  } 
 }
 
 export async function buildDocument(body) {
@@ -2666,7 +2664,7 @@ export async function sendMessages(body) {
   }
   return results;
 }
-
+/*
 function getImageWidth(url) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -2682,6 +2680,7 @@ function getImageWidth(url) {
     img.src = url;
   });
 }
+*/
 
 export async function messageHistory(body) {
   // body should include thread_id

@@ -173,7 +173,6 @@ export default ({ currentValues, reactData, updateReactData }) => {
               };
             }
             if (this_doc.status === 'complete') {
-              const completed_count = myFormListObj[this_doc.form_type].completedDocs.length;
               // does this have an occerrence date?
               let occDate;
               if (this_doc.occurrence) {

@@ -1,8 +1,8 @@
 import React from 'react';
 import Box from '@material-ui/core/Box';
-import { Slider, Typography, Button, Switch } from '@material-ui/core';
+import { Slider, Typography, Button, Switch, TextField } from '@material-ui/core';
 import { AVATextStyle, AVAclasses, AVADefaults } from '../../util/AVAStyles';
-import { s3, cloudfront } from '../../util/AVAUtilities';
+import { s3, cloudfront, isMobile } from '../../util/AVAUtilities';
 import Select from 'react-dropdown-select';
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
@@ -102,6 +102,18 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
   };
   console.log(myAnswer);
 
+  const defaultHandle = () => {
+    let source_address = currentValues.peopleRec.name.first.split(' ')[0];
+    source_address += currentValues.peopleRec.name.last.split(' ').reduce(
+      (tempName, currentValue, currentIndex) =>
+        (currentValue ? (tempName + '_' + currentValue.charAt(0).toUpperCase() + currentValue.slice(1)) : tempName)
+    );
+    source_address += '-' + reactData.client_name.split(' ').reduce(
+      (tempName, currentValue, currentIndex) =>
+        tempName + ((currentIndex === 0) ? '' : '_') + currentValue.charAt(0).toUpperCase() + currentValue.slice(1)
+    );
+    return source_address;
+  };
 
   let upload;
   async function handleSaveFile({
@@ -422,6 +434,50 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
             </Box>
           </React.Fragment>
         </Box>
+        <Typography
+          style={AVATextStyle({ italic: true, margin: { top: 2, bottom: 0.4 } })}
+        >
+          {`When someone receives a message from me via e-Mail, use this as my e-Mail name`}
+        </Typography>
+        <TextField
+          multiline
+          style={isMobile ? AVATextStyle({ width: '60%', margin: { left: 0.5 } }) : AVATextStyle({ margin: { left: 1 } })}
+          key={`email_handle`}
+          defaultValue={currentValues.peopleRec.email_sourceAddress || defaultHandle()}
+          helperText='e-Mail name'
+          onBlur={async (event) => {
+            await updateField({
+              updateList:
+                [{
+                  tableName: 'peopleRec',
+                  fieldName: 'email_sourceAddress',
+                  newData: event.target.value
+                }]
+            });
+          }}
+        />
+        <Typography
+          style={AVATextStyle({ italic: true, margin: { top: 2, bottom: 0.4 } })}
+        >
+          {`If requested, use this information to identify me in messages I send`}
+        </Typography>
+        <TextField
+          multiline
+          style={isMobile ? AVATextStyle({ width: '60%', margin: { left: 0.5 } }) : AVATextStyle({ margin: { left: 1 } })}
+          key={`message_tag`}
+          defaultValue={currentValues.peopleRec.message_tag || ''}
+          helperText='Message Tag'
+          onBlur={async (event) => {
+            await updateField({
+              updateList:
+                [{
+                  tableName: 'peopleRec',
+                  fieldName: 'message_tag',
+                  newData: event.target.value
+                }]
+            });
+          }}
+        />
       </React.Fragment>
 
 
