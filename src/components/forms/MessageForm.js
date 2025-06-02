@@ -3,9 +3,10 @@ import useSession from '../../hooks/useSession';
 
 import { Editor } from '@tinymce/tinymce-react';
 import { html_to_pdf } from '../../util/AVAMessages';
+import Select from "react-dropdown-select";
 
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
-import { extract, dbClient, titleCase, listFromArray, cl, uuid, recordExists, isEmpty } from '../../util/AVAUtilities';
+import { extract, dbClient, titleCase, listFromArray, cl, uuid, recordExists, isEmpty, array_in_array } from '../../util/AVAUtilities';
 import { AVATextStyle } from '../../util/AVAStyles';
 import { makeDate } from '../../util/AVADateTime';
 import AVAUploadFile from '../../util/AVAUploadFile';
@@ -43,6 +44,11 @@ import AVAConfirm from './AVAConfirm';
 import { AVAclasses } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
+  clientPopUp: {
+    borderRadius: '30px 30px 30px 30px',
+    padding: '16px',
+    height: '450px'
+  },
   newMessagePage: {
     paddingTop: '8px',
     paddingBottom: '8px',
@@ -498,6 +504,88 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     timeout: msBeforeSleeping,
     throttle: 500
   });
+
+  async function getTemplateList() {
+    let workingList = [];
+    let queryObj = {
+      KeyConditionExpression: 'client_id = :c',
+      ExpressionAttributeValues: {
+        ':c': pClient
+      },
+      TableName: "MessageTemplates"
+    };
+    let templateRecs;
+    do {
+      templateRecs = await dbClient
+        .query(queryObj)
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            updateReactData({
+              alert: {
+                severity: 'error',
+                title: 'No Internet',
+                message: `There is no internet connection`,
+              }
+            }, true);
+          }
+          else {
+            updateReactData({
+              alert: {
+                severity: 'error',
+                title: 'Database problem',
+                message: `Error reading Templates: ${error}`,
+              }
+            }, true);
+          }
+        });
+      if (templateRecs && templateRecs.LastEvaluatedKey) {
+        queryObj.ExclusiveStartKey = templateRecs.LastEvaluatedKey;
+      }
+      else {
+        delete queryObj.ExclusiveStartKey;
+      }
+      if (recordExists(templateRecs)) {
+        for (let this_template of templateRecs.Items) {
+          if (this_template.template_mayUse_groupList.includes('*all') ||
+            reactData.administrative_account ||
+            array_in_array(this_template.template_mayUse_groupList, state.user.groups)) {
+            workingList.push({
+              value: this_template.template_id,
+              label: this_template.template_name
+            });
+          }
+        }
+      }
+    } while (queryObj.ExclusiveStartKey);
+    return workingList;
+  }
+
+  async function getTemplateText(template_id) {
+    let templateRec = await dbClient
+      .get({
+        Key: {
+          'client_id': pClient,
+          template_id
+        },
+        TableName: 'MessageTemplates'
+      })
+      .promise()
+      .catch(error => {
+        cl(`Error reading MessageTemplates`, error);
+      });
+    if (recordExists(templateRec)) {
+      return templateRec.Item;
+    }
+    else {
+      return {
+        client_id: pClient,
+        template_id,
+        template_body: '',
+        template_type: 'text'
+      };
+    }
+  }
 
   async function releaseMessage(this_messageRec) {
     let goodHandle = true;
@@ -1517,7 +1605,10 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                           id='MessageText_new'
                           multiline
                           autoComplete='off'
-                          style={AVATextStyle({ size: 1.2, bold: true, margin: { right: 1.5 } })}
+                        style={AVATextStyle({ size: 1.2, bold: true, margin: { right: 1.5 } })}                        
+                        onClick={() => {
+                          alert('Mouse enter')
+                        }}
                           onBlur={async (event) => {
                             let reactUpdObj = {
                               newMessageText: event.target.value
@@ -1565,10 +1656,12 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               height: 300,
                               plugins: [
                                 // Core editing features
-                                'anchor', 'autolink', 'charmap', 'codesample', 'emoticons', 'image', 'inlinecss', 'link', 'lists', 'media', 'searchreplace', 'table', 'visualblocks', 'wordcount',
+                                // the inlinecss is part of the paid program.  Removing to see what the effect is...
+                                // 'anchor', 'autolink', 'charmap', 'codesample', 'emoticons', 'image', 'inlinecss', 'link', 'lists', 'media', 'searchreplace', 'table', 'visualblocks', 'wordcount',
+                                'anchor', 'autolink', 'charmap', 'codesample', 'emoticons', 'image', 'link', 'lists', 'media', 'searchreplace', 'table', 'visualblocks', 'wordcount',
                                 // Your account includes a free trial of TinyMCE premium features
                                 // Try the most popular premium features until May 26, 2025:
-                                'checklist', 'mediaembed', 'casechange', 'formatpainter', 'pageembed', 'a11ychecker', 'tinymcespellchecker', 'permanentpen', 'powerpaste', 'advtable', 'advcode', 'editimage', 'advtemplate', 'mentions', 'tableofcontents', 'footnotes', 'mergetags', 'autocorrect', 'typography', 'inlinecss', 'markdown', 'importword', 'exportword', 'exportpdf'
+                                // 'checklist', 'mediaembed', 'casechange', 'formatpainter', 'pageembed', 'a11ychecker', 'tinymcespellchecker', 'permanentpen', 'powerpaste', 'advtable', 'advcode', 'editimage', 'advtemplate', 'mentions', 'tableofcontents', 'footnotes', 'mergetags', 'autocorrect', 'typography', 'inlinecss', 'markdown', 'importword', 'exportword', 'exportpdf'
                               ],
                               toolbar: 'undo redo | blocks fontfamily fontsize | bold italic underline forecolor backcolor | link table mergetags | spellcheckdialog | align lineheight | checklist numlist bullist indent outdent | emoticons charmap | removeformat',
                               line_height_formats: '0.8 1 1.2 1.4 1.6 2',
@@ -1710,6 +1803,19 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                           >
                             {(reactData.html_message) ? 'Use Plain Text' : 'Use Rich Text Editor'}
                           </Typography>
+                          {(!reactData.newMessageText || (reactData.newMessageText.length === 0)) &&
+                            <Typography
+                              style={AVATextStyle({ size: 1 })}
+                              onClick={async () => {
+                                updateReactData({
+                                  showSelectTemplate: true,
+                                  templateList: await getTemplateList()
+                                }, true);
+                              }}
+                            >
+                              {'Use a Template'}
+                            </Typography>
+                          }
                         </Box>
                       </Box>
                     </Box>
@@ -2038,6 +2144,77 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                 }, true);
               }}
             />
+          }
+          {reactData.showSelectTemplate &&
+            <React.Fragment>
+              <Dialog open={true || reactData.accessList}
+                p={2}
+                height={250}
+                classes={{ paper: classes.clientPopUp }}
+                fullWidth
+                variant={'elevation'}
+                elevation={2}
+                onClose={() => {
+                  updateReactData({
+                    showSelectTemplate: false
+                  }, true);
+                }}
+              >
+                <DialogContentText
+                  id='scroll-dialog-title'
+                  style={AVATextStyle({
+                    size: 1.4,
+                    bold: true,
+                    margin: { left: 0.5, top: 1 }
+                  })}
+                >
+                  {'Select a Template'}
+                </DialogContentText>
+                <Select
+                  options={reactData.templateList}
+                  searchBy={'label'}
+                  style={{
+                    fontSize: '0.8rem',
+                    marginLeft: -5,
+                    marginBottom: -4,
+                    marginTop: 1,
+                    borderWidth: 3
+                  }}
+                  dropdownHandle={true}
+                  variant={'standard'}
+                  dropdownPosition={'auto'}
+                  value={reactData.availableTemplates}
+                  clearable={true}
+                  clearOnSelect={false}
+                  placeholder={'Select a Template from this list'}
+                  clearOnBlur={false}
+                  key={`selectBox_selectdrop`}
+                  searchable={true}
+                  multi={false}
+                  closeOnClickInput={true}
+                  closeOnSelect={true}
+                  create={false}
+                  keepSelectedInList={true}
+                  noDataLabel={''}
+                  onInputChange={async (values) => {
+                    let templateObj = await getTemplateText(values[0].value);
+                    updateReactData({
+                      newMessageText: templateObj.template_body,
+                      showSelectTemplate: false,
+                      html_message: (templateObj.template_type === 'html')
+                    }, true);
+                  }}
+                  onChange={async (values) => {
+                    let templateObj = await getTemplateText(values[0].value);
+                    updateReactData({
+                      newMessageText: templateObj.template_body,
+                      showSelectTemplate: false,
+                      html_message: (templateObj.template_type === 'html')
+                    }, true);
+                  }}
+                />
+              </Dialog>
+            </React.Fragment>
           }
           {reactData.showQuickSearch &&
             <QuickSearch
