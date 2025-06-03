@@ -797,49 +797,57 @@ export async function getMemberList(pGroups, pClient_id, options = {}) {
       qParm.ExpressionAttributeValues[':n'] = grp;
 
     }
-    let gPeopleRecs = await dbClient
-      .query(qParm)
-      .promise()
-      .catch(error => {
-        cl({ 'Bad scan on People in getMemberList - caught error is': error });
-      });
-    if (recordExists(gPeopleRecs)) {
-      for (let p = 0; p < gPeopleRecs.Items.length; p++) {
-        let i = deepCopy(gPeopleRecs.Items[p]);
-        if (!foundIDs.includes(i.person_id)) {
-          foundIDs.push(i.person_id);
-          if (!checkExclude || (i.directory_option !== 'exclude')) {
-            if (!i.name) { i.name = { last: `Unknown ${i.person_id}` }; }
-            if (!i.messaging) { i.messaging = { ava_only: `AVA` }; }
-            i.display_name = AVAname(i);
-            if (options.nameOnly) {
-              returnArray.push({
-                person_id: i.person_id,
-                name: i.name,
-                display_name: i.display_name
-              });
-            }
-            else {
-              if (options && options.withSession) {
-                i.session = await getSession(i.person_id);
+    do {
+      let gPeopleRecs = await dbClient
+        .query(qParm)
+        .promise()
+        .catch(error => {
+          cl({ 'Bad scan on People in getMemberList - caught error is': error });
+        });
+      if (gPeopleRecs && gPeopleRecs.LastEvaluatedKey) {
+        qParm.ExclusiveStartKey = gPeopleRecs.LastEvaluatedKey;
+      }
+      else {
+        delete qParm.ExclusiveStartKey;
+        }
+      if (recordExists(gPeopleRecs)) {
+        for (let p = 0; p < gPeopleRecs.Items.length; p++) {
+          let i = deepCopy(gPeopleRecs.Items[p]);
+          if (!foundIDs.includes(i.person_id)) {
+            foundIDs.push(i.person_id);
+            if (!checkExclude || (i.directory_option !== 'exclude')) {
+              if (!i.name) { i.name = { last: `Unknown ${i.person_id}` }; }
+              if (!i.messaging) { i.messaging = { ava_only: `AVA` }; }
+              i.display_name = AVAname(i);
+              if (options.nameOnly) {
+                returnArray.push({
+                  person_id: i.person_id,
+                  name: i.name,
+                  display_name: i.display_name
+                });
               }
-              // if you belong to a group that has a parent, you belong to the parent
-              if (i.groups) {
-                for (let g = 0; g < i.groups.length; g++) {
-                  if (!foundGroups.hasOwnProperty(i.groups[g])) {
-                    foundGroups[i.groups[g]] = await getGroup(i.groups[g], client);
-                  }
-                  if ((foundGroups[i.groups[g]]?.belongs_to) && (!i.groups.includes(foundGroups[i.groups[g]].belongs_to))) {
-                    i.groups.push(foundGroups[i.groups[g]].belongs_to);
+              else {
+                if (options && options.withSession) {
+                  i.session = await getSession(i.person_id);
+                }
+                // if you belong to a group that has a parent, you belong to the parent
+                if (i.groups) {
+                  for (let g = 0; g < i.groups.length; g++) {
+                    if (!foundGroups.hasOwnProperty(i.groups[g])) {
+                      foundGroups[i.groups[g]] = await getGroup(i.groups[g], client);
+                    }
+                    if ((foundGroups[i.groups[g]]?.belongs_to) && (!i.groups.includes(foundGroups[i.groups[g]].belongs_to))) {
+                      i.groups.push(foundGroups[i.groups[g]].belongs_to);
+                    }
                   }
                 }
+                returnArray.push(i);
               }
-              returnArray.push(i);
             }
           }
-        }
-      };
-    }
+        };
+      }
+    } while (qParm.ExclusiveStartKey);
   };
   if (sortResults) {
     returnArray.sort((a, b) => {
