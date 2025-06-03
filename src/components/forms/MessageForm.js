@@ -345,17 +345,17 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       let reactUpdObj = {
         newMessageText: HTMLcontent
       };
-      if (HTMLcontent.length > 500) {
-        reactUpdObj.warning = true;
-        reactUpdObj.alert = {
-          severity: 'warning',
-          title: 'Message length',
-          message: <div>Your message is {HTMLcontent.length.toLocaleString('en-US')} characters long.<br />
-            Some text messaging networks limit message size to 500 characters.<br />
-            You may send the message as is.  If you choose to do that, we will break the message into {Math.floor(HTMLcontent.length / 500) + 1} parts and send each part as a separate message for text message recipients.
-            (All other recipients will receive the message as entered.)</div>,
-        };
-      }
+ //     if (HTMLcontent.length > 500) {
+ //       reactUpdObj.warning = true;
+ //       reactUpdObj.alert = {
+ //         severity: 'warning',
+ //         title: 'Message length',
+ //         message: <div>Your message is {HTMLcontent.length.toLocaleString('en-US')} characters long.<br />
+ //           Some text messaging networks limit message size to 500 characters.<br />
+ //           You may send the message as is.  If you choose to do that, we will break the message into {Math.floor(HTMLcontent.length / 500) + 1} parts and send each part as a separate message for text message recipients.
+ //           (All other recipients will receive the message as entered.)</div>,
+ //       };
+ //     }
       updateReactData(reactUpdObj, true);
       console.log(HTMLcontent);
     }
@@ -1605,25 +1605,22 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                           id='MessageText_new'
                           multiline
                           autoComplete='off'
-                        style={AVATextStyle({ size: 1.2, bold: true, margin: { right: 1.5 } })}                        
-                        onClick={() => {
-                          alert('Mouse enter')
-                        }}
+                          style={AVATextStyle({ size: 1.2, bold: true, margin: { right: 1.5 } })}
                           onBlur={async (event) => {
                             let reactUpdObj = {
                               newMessageText: event.target.value
                             };
-                            if (event.target.value.length > 500) {
-                              reactUpdObj.warning = true;
-                              reactUpdObj.alert = {
-                                severity: 'warning',
-                                title: 'Message length',
-                                message: <div>Your message is {event.target.value.length.toLocaleString('en-US')} characters long.<br />
-                                  Some text messaging networks limit message size to 500 characters.<br />
-                                  You may send the message as is.  If you choose to do that, we will break the message into {Math.floor(event.target.value.length / 500) + 1} parts and send each part as a separate message for text message recipients.
-                                  (All other recipients will receive the message as entered.)</div>,
-                              };
-                            }
+                            //                          if (event.target.value.length > 500) {
+                            //                            reactUpdObj.warning = true;
+                            //                            reactUpdObj.alert = {
+                            //                              severity: 'warning',
+                            //                              title: 'Message length',
+                            //                              message: <div>Your message is {event.target.value.length.toLocaleString('en-US')} characters long.<br />
+                            //                                Some text messaging networks limit message size to 500 characters.<br />
+                            //                                You may send the message as is.  If you choose to do that, we will break the message into {Math.floor(event.target.value.length / 500) + 1} parts and send each part as a separate message for text message recipients.
+                            //                                (All other recipients will receive the message as entered.)</div>,
+                            //                            };
+                            //                          }
                             updateReactData(reactUpdObj, true);
                           }}
                           defaultValue={reactData.newMessageText}
@@ -1706,9 +1703,29 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               : { marginTop: '24px', backgroundColor: 'white', color: 'green' }
                             }
                             size='small'
-                            disabled={(reactData.newMessageText.length === 0) || (reactData.newMessageRecipients.length === 0)}
+                            //                       disabled={(reactData.newMessageText.length === 0) || (reactData.newMessageRecipients.length === 0)}
                             onClick={async () => {
-                              if (!reactData.warning) {
+                              if (reactData.newMessageText.length === 0) {
+                                updateReactData({
+                                  warning: true,
+                                  alert: {
+                                    severity: 'warning',
+                                    title: `Need Message Text`,
+                                    message: `There isn't anything to send!`,
+                                  }
+                                }, true);
+                              }
+                              else if (reactData.newMessageRecipients.length === 0) {
+                                updateReactData({
+                                  warning: true,
+                                  alert: {
+                                    severity: 'warning',
+                                    title: `Need Recipient(s)`,
+                                    message: `You didn't choose anyone to send this to!`,
+                                  }
+                                }, true);
+                              }
+                              else if (!reactData.warning) {
                                 await sendMessage();
                                 await initialize();
                               }
@@ -1803,19 +1820,17 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                           >
                             {(reactData.html_message) ? 'Use Plain Text' : 'Use Rich Text Editor'}
                           </Typography>
-                          {(!reactData.newMessageText || (reactData.newMessageText.length === 0)) &&
-                            <Typography
-                              style={AVATextStyle({ size: 1 })}
-                              onClick={async () => {
-                                updateReactData({
-                                  showSelectTemplate: true,
-                                  templateList: await getTemplateList()
-                                }, true);
-                              }}
-                            >
-                              {'Use a Template'}
-                            </Typography>
-                          }
+                          <Typography
+                            style={AVATextStyle({ size: 1 })}
+                            onClick={async () => {
+                              updateReactData({
+                                showSelectTemplate: true,
+                                templateList: await getTemplateList()
+                              }, true);
+                            }}
+                          >
+                            {'Use a Template'}
+                          </Typography>
                         </Box>
                       </Box>
                     </Box>
