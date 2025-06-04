@@ -1366,14 +1366,14 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                   <MenuItem
                     onClick={() => {
                       let filteredList = eventSlotList.filter(e => {
-                        return (e.slotData.status !== 'released');
+                        return (e.slotData.status === 'selected');
                       });
                       updateReactData({
                         promptForMessage: true,
                         popupMenuOpen: false,
                         messageType: 'group',
                         recipient: (filteredList.map(e => {
-                          return `${e.slotData.display_name}%%${e.slotData.id}`;
+                          return `${e.slotData.display_name}%%${e.slotData.owner}`;
                         }))
                       }, true);
                     }}
