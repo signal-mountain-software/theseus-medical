@@ -540,13 +540,15 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                         });
                       }
                       let { selectedPeople_count, selectedPeople_list } = countSelections();
-                      updateReactData({
-                        selectedPeople_count,
-                        selectedPeople_list,
-                        selections: reactData.selections
-                      }, true);
                       if (options.pickOne) {
                         onClose(reactData.selections);
+                      }
+                      else {
+                        updateReactData({
+                          selectedPeople_count,
+                          selectedPeople_list,
+                          selections: reactData.selections
+                        }, true);
                       }
                     }
                     else {
