@@ -7,7 +7,7 @@ import Select from 'react-dropdown-select';
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
 
-export default ({ currentValues, reactData, updateReactData, updateField }) => {
+export default ({ currentValues, reactData, errorList, setError, updateReactData, updateField }) => {
 
   const AVAClass = AVAclasses();
   const hiddenFileInput = React.useRef(null);
@@ -104,6 +104,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
   const defaultHandle = () => {
     let source_address = currentValues.peopleRec.name.first.split(' ')[0];
+    source_address += '_';
     source_address += currentValues.peopleRec.name.last.split(' ').reduce(
       (tempName, currentValue, currentIndex) =>
         (currentValue ? (tempName + '_' + currentValue.charAt(0).toUpperCase() + currentValue.slice(1)) : tempName)
@@ -443,17 +444,45 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
           multiline
           style={isMobile ? AVATextStyle({ width: '60%', margin: { left: 0.5 } }) : AVATextStyle({ margin: { left: 1 } })}
           key={`email_handle`}
+          error={errorList.hasOwnProperty(`email_sourceAddress`)}
           defaultValue={currentValues.peopleRec.email_sourceAddress || defaultHandle()}
           helperText='e-Mail name'
           onBlur={async (event) => {
-            await updateField({
-              updateList:
-                [{
-                  tableName: 'peopleRec',
-                  fieldName: 'email_sourceAddress',
-                  newData: event.target.value
-                }]
-            });
+            if (event.target.value !== (currentValues.peopleRec.email_sourceAddress || defaultHandle())) {
+              const validateEmail = (email) => {
+                let eRegEx = /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|.(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+                let response = eRegEx.test(email)
+                return response;
+              };
+              event.target.value = event.target.value.replace(' ', '.');
+              if (!validateEmail(`${event.target.value}@ava.io`)) {
+                setError({
+                  errorField: 'email_sourceAddress',
+                  errorValue: event.target.value,
+                  isError: true,
+                  errorMessage: `${event.target.value} isn't a useable in an e-Mail address.`
+                });
+                return;
+              }
+              else if (!event.target.value || !event.target.value.trim()) {
+                // empty; revert to default
+                event.target.value = defaultHandle();
+              }
+              else {
+                await updateField({
+                  updateList:
+                    [{
+                      tableName: 'peopleRec',
+                      fieldName: 'email_sourceAddress',
+                      newData: event.target.value
+                    }],
+                  errorObj: {
+                    errorField: 'email_sourceAddress',
+                    isError: false
+                  }
+                });
+              }
+            }
           }}
         />
         <Typography

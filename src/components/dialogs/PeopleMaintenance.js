@@ -262,6 +262,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           else if (!peopleRec.Item.contact_info.landline) {
             peopleRec.Item.contact_info.landline = { number: peopleRec.Item.messaging?.voice };
           }
+          if (!peopleRec.Item.inbound_customizations) {
+            peopleRec.Item.inbound_customizations = {};
+          }
           if (!peopleRec.Item.address) {
             peopleRec.Item.address = {};
             if (peopleRec.Item.location) {
@@ -1043,7 +1046,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             >
               {'Exit'}
             </Button>
-            {reactData.OKtoSave ?
+            {(reactData.OKtoSave || (!isEmpty(reactData.errorList))) ?
               (isEmpty(reactData.errorList) ?
                 <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
                   <Button
