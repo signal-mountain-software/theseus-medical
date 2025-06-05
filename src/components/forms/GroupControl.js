@@ -1043,7 +1043,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                               style={{ size: 8, fontSize: '1rem' }}
                               onClick={async () => {
                                 let keyList = Object.keys(groupsManagedObject);
-                                for (let i = listIndex + 1; groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level; i++) {
+                                let kLL = keyList.length;
+                                for (let i = listIndex + 1; ((i < kLL) && (groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level)); i++) {
                                   if (groupsManagedObject[keyList[i]].level === (groupsManagedObject[listEntry].level + 1)) {
                                     reactData.levelVisible[i] = true;
                                   }
@@ -1059,7 +1060,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                               style={{ size: 8, fontSize: '1rem' }}
                               onClick={async () => {
                                 let keyList = Object.keys(groupsManagedObject);
-                                for (let i = listIndex + 1; groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level; i++) {
+                                let kLL = keyList.length;
+                                for (let i = listIndex + 1; ((i < kLL) && (groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level)); i++) {
                                   reactData.levelVisible[i] = false;
                                 }
                                 updateReactData({
