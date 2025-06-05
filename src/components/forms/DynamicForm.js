@@ -400,6 +400,27 @@ export default ({
      );
     */
     case 'message_list':
+      let defaultValueObj = {};
+      if (!defaultValue) { defaultValueObj = { }; }
+      else {
+        if (Array.isArray(defaultValue)) {
+          defaultValue.forEach(d => {
+            if (typeof d === 'string') {
+              let [dKey, dVal] = d.split('=');
+              defaultValueObj[dKey] = dVal;
+            }
+            else {
+              for (let dKey in d) {
+                defaultValueObj[dKey] = d[dKey];
+              }
+            }
+          });
+        }
+        else {
+          try { defaultValueObj = JSON.parse(defaultValue); }
+          catch { console.log(defaultValue); }
+        }
+      }
       if ((session.client_style.allow_old_messaging) && !state.patient.useNewMessaging) {
         return (
           <MessageFormLegacy
@@ -427,6 +448,7 @@ export default ({
             pClient={session.client_id}
             pMessageList={[]}
             pSession={session}
+            options={defaultValueObj.options}
             onReset={onSave}
             defaultValue={defaultValue}
           />

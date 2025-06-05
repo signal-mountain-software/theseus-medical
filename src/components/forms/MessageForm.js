@@ -7,6 +7,7 @@ import Select from "react-dropdown-select";
 
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { extract, dbClient, titleCase, listFromArray, cl, uuid, recordExists, isEmpty, array_in_array } from '../../util/AVAUtilities';
+import { getMemberList } from '../../util/AVAGroups';
 import { AVATextStyle } from '../../util/AVAStyles';
 import { makeDate } from '../../util/AVADateTime';
 import AVAUploadFile from '../../util/AVAUploadFile';
@@ -194,6 +195,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   const [reactData, setReactData] = React.useState({
     administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
     alert: false,
+    allowChangeSender: ((options && options.allowChangeSender) ? options.allowChangeSender : false),
     alternateSenderName: false,
     attachments_to_send: ((options && options.newMessage && options.attachmentList) ? options.attachmentList : []),
     confirmMessage: false,
@@ -234,6 +236,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     showIndividualList: false,
     showPreferredList: ((options && options.hasOwnProperty('showPreferredList') && !options.showPreferredList) ? false : true),
     showQuickSearch: (options && options.newMessage && (!options.recipients || (options.recipients.length === 0))) || false,
+    showVMAlt: ((options && options.hasOwnProperty('hideVMAlt') && options.hideVMAlt) ? true : false),
     singleFilterDigit: false,
     start_time: (options && options.hasOwnProperty('start_time')) ? makeDate(options.start_time).timestamp : false,
     statusFilter: (options && options.statusFilter) || false,
@@ -974,7 +977,17 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     }
   }
 
-
+  async function getSenderNames(senderList) { 
+    let inputList = [senderList].flat();
+    if (inputList.includes('*all')) {
+      return reactData.accessList;
+    }
+    else {
+      let memberObj = await getMemberList(inputList, pClient, options = {});
+      return memberObj.peopleList;
+    }
+  }
+  
   async function heldMessages() {
     // Get all messages currently in hold
     let actionRecs;
@@ -1769,10 +1782,10 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               : `Add Reply To`
                             }
                           </Typography>
-                          {reactData.administrative_account &&
+                          {reactData.administrative_account && reactData.allowChangeSender &&
                             <Typography
                               style={AVATextStyle({ size: 1 })}
-                              onClick={() => {
+                              onClick={async () => {
                                 let selections = [];
                                 if (reactData.newMessageSendFrom) {
                                   selections = [{
@@ -1783,7 +1796,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                 updateReactData({
                                   selections,
                                   selectedPeople_list: [],
-                                  showSelectSender: true
+                                  showSelectSender: true,
+                                  changeSenderNames: await getSenderNames(reactData.allowChangeSender)
                                 }, true);
                               }}
                             >
@@ -1829,7 +1843,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               {(reactData.newUrgentMessage) ? 'Mark as not urgent' : 'Mark as urgent'}
                             </Typography>
                           }
-                          {reactData.administrative_account &&
+                          {reactData.administrative_account && reactData.showVMAlt &&
                             <Typography
                               style={AVATextStyle({ size: 1 })}
                               onClick={() => {
@@ -2317,7 +2331,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           }
           {reactData.showSelectSender &&
             <QuickSearch
-              reactData={reactData}
+              reactData={Object.assign({}, reactData, { accessList: reactData.changeSenderNames })}
               updateReactData={(reactUpdObj) => {
                 updateReactData(reactUpdObj);
               }}
