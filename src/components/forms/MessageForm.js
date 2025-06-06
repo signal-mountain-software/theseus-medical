@@ -2333,7 +2333,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
             <QuickSearch
               reactData={Object.assign({}, reactData, { accessList: reactData.changeSenderNames })}
               updateReactData={(reactUpdObj) => {
-                updateReactData(reactUpdObj);
+                updateReactData(reactUpdObj, true);
               }}
               options={{
                 pickAndGo: true,
