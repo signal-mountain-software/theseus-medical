@@ -557,11 +557,15 @@ export default ({ defaults, onClose }) => {
             cl(`Error reading CompletedDocuments; error is ${error}`);
           });
         if (recordExists(allDocs)) {
+          allDocs.Items.push({
+            client_id: state.session.client_id,
+            last_record: true
+           })
           for (const this_doc of allDocs.Items) {
             if (this_doc.client_id !== state.session.client_id) {
               continue;
             }
-            if (workingOn !== this_doc.pertains_to) {
+            if ((workingOn !== this_doc.pertains_to) || this_doc.last_record) {
               if (docList.length > 0) {
                 docList.sort((a, b) => { return ((a.occDate > b.occDate) ? -1 : 1); });
                 for (let this_doc of docList) {
@@ -1030,7 +1034,7 @@ export default ({ defaults, onClose }) => {
                   </Box >
                 </Box>
                 <Paper component={Box} width='100%' elevation={0} overflow='auto' square
-                  style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
+                  style={{ scrollbarWidth: 'thin', flexGrow: 1, display: 'flex' }}
                   onDragOver={(e) => handleDragOver(e)}
                   onDrop={async (e) => {
                     e.preventDefault();
@@ -1277,7 +1281,7 @@ export default ({ defaults, onClose }) => {
                   </Typography>
                 </Box>
                 <Paper component={Box} width='100%' elevation={0} overflow='auto' square
-                  style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
+                  style={{ scrollbarWidth: 'thin', flexGrow: 1, display: 'flex' }}
                 >
                   <Box display='flex' flexDirection='column'
                     key={`person_column`}
