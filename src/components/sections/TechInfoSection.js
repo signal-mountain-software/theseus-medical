@@ -273,6 +273,102 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
             />
           </Box>
         }
+        {reactData.administrative_account &&
+          <Box
+            display="flex"
+            pt={2}
+            flexDirection='column'
+            justifyContent="center"
+          >
+            <Typography
+              style={AVATextStyle({ margin: { top: 1 } })}
+            >
+              {'Include Client ID on message replies'}
+            </Typography>
+            <Box flexGrow={2} display='flex' alignItems='center'
+              justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+              <Typography
+                style={AVATextStyle({
+                  size: 0.8, margin: { right: 0.8 },
+                  bold: !currentValues.peopleRec.inbound_customizations.include_sender_client
+                })}
+              >
+                {'No'}
+              </Typography>
+              <Switch
+                checked={currentValues.peopleRec.inbound_customizations.include_sender_client}
+                onClick={async (event) => {
+                  const newValue = !currentValues.peopleRec.inbound_customizations.include_sender_client;
+                  let updateObj = {
+                    updateList: [{
+                      tableName: 'peopleRec',
+                      fieldName: 'inbound_customizations.include_sender_client',
+                      newData: newValue
+                    }]
+                  };
+                  await updateField(updateObj);
+                }}
+                name="IncludeClient"
+                color="primary"
+              />
+              <Typography
+                style={AVATextStyle({
+                  size: 0.8, margin: { left: 0.8 },
+                  bold: currentValues.peopleRec.inbound_customizations.include_sender_client
+                })}
+              >
+                {'Yes'}
+              </Typography>
+            </Box>
+          </Box>
+        }
+        <Box
+          display="flex"
+          pt={2}
+          flexDirection='column'
+          justifyContent="center"
+        >
+          <Typography
+            style={AVATextStyle({ margin: { top: 1 } })}
+          >
+            {`Include Sender's Tag info on message replies`}
+          </Typography>
+          <Box flexGrow={2} display='flex' alignItems='center'
+            justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+            <Typography
+              style={AVATextStyle({
+                size: 0.8, margin: { right: 0.8 },
+                bold: !currentValues.peopleRec.inbound_customizations.include_sender_tag
+              })}
+            >
+              {'No'}
+            </Typography>
+            <Switch
+              checked={currentValues.peopleRec.inbound_customizations.include_sender_tag}
+              onClick={async (event) => {
+                const newValue = !currentValues.peopleRec.inbound_customizations.include_sender_tag;
+                let updateObj = {
+                  updateList: [{
+                    tableName: 'peopleRec',
+                    fieldName: 'inbound_customizations.include_sender_tag',
+                    newData: newValue
+                  }]
+                };
+                await updateField(updateObj);
+              }}
+              name="IncludeTag"
+              color="primary"
+            />
+            <Typography
+              style={AVATextStyle({
+                size: 0.8, margin: { left: 0.8 },
+                bold: currentValues.peopleRec.inbound_customizations.include_sender_tag
+              })}
+            >
+              {'Yes'}
+            </Typography>
+          </Box>
+        </Box>
         {reactData.administrative_account && !reactData.master_account &&
           <React.Fragment>
             <Typography

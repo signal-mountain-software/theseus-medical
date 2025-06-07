@@ -7,6 +7,7 @@ import Select from "react-dropdown-select";
 
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { extract, dbClient, titleCase, listFromArray, cl, uuid, recordExists, isEmpty, array_in_array } from '../../util/AVAUtilities';
+import { getMemberList } from '../../util/AVAGroups';
 import { AVATextStyle } from '../../util/AVAStyles';
 import { makeDate } from '../../util/AVADateTime';
 import AVAUploadFile from '../../util/AVAUploadFile';
@@ -194,6 +195,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   const [reactData, setReactData] = React.useState({
     administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
     alert: false,
+    allowChangeSender: ((options && options.allowChangeSender) ? options.allowChangeSender : false),
+    alternateSenderName: false,
     attachments_to_send: ((options && options.newMessage && options.attachmentList) ? options.attachmentList : []),
     confirmMessage: false,
     confirmessage_index: false,
@@ -213,6 +216,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     myImage: null,
     myName: null,
     newMessageMode: (options && options.newMessage) || false,
+    newMessageSendFrom: ((options && options.newMessage && options.sendFrom) ? options.sendFrom : pPerson),
     newMessageRecipients: ((options && options.newMessage && options.recipients) ? options.recipients : []),
     newMessageSubject: ((options && options.newMessage && options.subject) ? options.subject : ''),
     newMessageText: ((options && options.newMessage && options.messageText) ? options.messageText : ''),
@@ -225,12 +229,14 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     replyToList: [],
     selectedPeople_count: 0,
     selectedPeople_list: [],
+    showSelectSender: false,
     selections: [], // wip selections from quick search
     showDeleted: (options && options.showDeleted) || false,
     showGroupList: (options && options.showGroupList ? true : false),
     showIndividualList: false,
     showPreferredList: ((options && options.hasOwnProperty('showPreferredList') && !options.showPreferredList) ? false : true),
     showQuickSearch: (options && options.newMessage && (!options.recipients || (options.recipients.length === 0))) || false,
+    showVMAlt: ((options && options.hasOwnProperty('hideVMAlt') && options.hideVMAlt) ? true : false),
     singleFilterDigit: false,
     start_time: (options && options.hasOwnProperty('start_time')) ? makeDate(options.start_time).timestamp : false,
     statusFilter: (options && options.statusFilter) || false,
@@ -335,7 +341,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
 
   const editorRef = React.useRef(null);
   const [dirty, setDirty] = React.useState(false);
-  console.log(dirty);
+  if (dirty) {
+    reactData.dirty = true;
+  };
   React.useEffect(() => setDirty(false), []);
   const HTMLsave = () => {
     if (editorRef.current) {
@@ -345,17 +353,17 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       let reactUpdObj = {
         newMessageText: HTMLcontent
       };
-      if (HTMLcontent.length > 500) {
-        reactUpdObj.warning = true;
-        reactUpdObj.alert = {
-          severity: 'warning',
-          title: 'Message length',
-          message: <div>Your message is {HTMLcontent.length.toLocaleString('en-US')} characters long.<br />
-            Some text messaging networks limit message size to 500 characters.<br />
-            You may send the message as is.  If you choose to do that, we will break the message into {Math.floor(HTMLcontent.length / 500) + 1} parts and send each part as a separate message for text message recipients.
-            (All other recipients will receive the message as entered.)</div>,
-        };
-      }
+      //     if (HTMLcontent.length > 500) {
+      //       reactUpdObj.warning = true;
+      //       reactUpdObj.alert = {
+      //         severity: 'warning',
+      //         title: 'Message length',
+      //         message: <div>Your message is {HTMLcontent.length.toLocaleString('en-US')} characters long.<br />
+      //           Some text messaging networks limit message size to 500 characters.<br />
+      //           You may send the message as is.  If you choose to do that, we will break the message into {Math.floor(HTMLcontent.length / 500) + 1} parts and send each part as a separate message for text message recipients.
+      //           (All other recipients will receive the message as entered.)</div>,
+      //       };
+      //     }
       updateReactData(reactUpdObj, true);
       console.log(HTMLcontent);
     }
@@ -693,7 +701,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       }
     });
     reply_to.forEach(r => {    // this makes sure that everyone on the reply_to list is copied on the original message
-      if ((r !== pPerson) && !recipient_key.includes(r)) {
+      if ((r !== reactData.newMessageSendFrom) && !recipient_key.includes(r)) {
         recipient_key.push(r);
       }
     });
@@ -705,17 +713,21 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         attachments: reactData.attachments_to_send,
         client_id: pClient,
         deliver_time: postTime,
-        from: pPerson,
+        from: reactData.newMessageSendFrom,
         message_text: reactData.newMessageText,
-        patient_id: pPerson,
+        patient_id: reactData.newMessageSendFrom,
         preferred_method: (reactData.newUrgentMessage ? 'urgent' : null),
         recipient_base: 'list',
         recipient_key,
-        subject: reactData.newMessageSubject || `Message from ${await makeName(pPerson)}`,
+        subject: reactData.newMessageSubject || `Message from ${await makeName(reactData.newMessageSendFrom)}`,
         reply_to
       },
       TableName: 'PostOffice'
     };
+    if (reactData.newMessageSendFrom !== pPerson) {
+      PostOfficeRec.Item.sender_spoofedByAccount = pPerson;
+      PostOfficeRec.Item.sender_spoofedByUser = state.session.user_id;
+    }
     if (reactData.newMessageText.startsWith('<p')) {
       PostOfficeRec.Item.html_message_text = reactData.newMessageText;
       let plain_text = reactData.newMessageText;
@@ -965,7 +977,17 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     }
   }
 
-
+  async function getSenderNames(senderList) { 
+    let inputList = [senderList].flat();
+    if (inputList.includes('*all')) {
+      return reactData.accessList;
+    }
+    else {
+      let memberObj = await getMemberList(inputList, pClient, options = {});
+      return memberObj.peopleList;
+    }
+  }
+  
   async function heldMessages() {
     // Get all messages currently in hold
     let actionRecs;
@@ -1332,10 +1354,11 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   }
 
   async function initialize() {
-    // my Image
+    // housekeeping
     updateReactData({
       myImage: await getImage(pPerson),
-      myName: await makeName(pPerson)
+      myName: await makeName(pPerson),
+      templateList: await getTemplateList()
     }, true);
     let nowTime = new Date().getTime();
     let loop_until;
@@ -1507,7 +1530,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                 borderRadius={'30px'}
                 padding={'16px'}
                 border={2}
-                borderColor={reactData.newUrgentMessage ? 'red' : 'black'}
+                borderColor={(reactData.newUrgentMessage || reactData.alternateSenderName) ? 'red' : 'black'}
               >
                 <Box display='flex' flexDirection='column'>
                   <Box display='flex'
@@ -1551,14 +1574,14 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               key={`showNames__${(reactData.newMessageRecipients?.length || 0) + (reactData.selections?.length || 0)}`}
                             >
                               {((reactData.newMessageRecipients.length > 4) || ((reactData.selections.length > 4) && !reactData.showReplyToSearch))
-                                ? (`Me -> ${reactData.selectedPeople_count || reactData.selections.length} recipients`)
+                                ? (`${reactData.alternateSenderName || 'Me'} -> ${reactData.selectedPeople_count || reactData.selections.length} recipients`)
                                 : ((reactData.newMessageRecipients.length > 0) || ((reactData.selections.length > 0) && !reactData.showReplyToSearch))
-                                  ? `Me -> ${listFromArray(((reactData.newMessageRecipients.length > 0)
+                                  ? `${reactData.alternateSenderName || 'Me'} -> ${listFromArray(((reactData.newMessageRecipients.length > 0)
                                     ? reactData.newMessageRecipients
                                     : reactData.selections)
                                     .map(r => (r.person_name || r.group_name || reactData.preferred_recipients?.[r.rIndex]?.objText)),
                                     { max: { length: 4, words: 'recipients' } })}`
-                                  : 'Me ->'
+                                  : `${reactData.alternateSenderName || 'Me'} ->`
                               }
                             </Typography>
                             <Typography
@@ -1605,25 +1628,22 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                           id='MessageText_new'
                           multiline
                           autoComplete='off'
-                        style={AVATextStyle({ size: 1.2, bold: true, margin: { right: 1.5 } })}                        
-                        onClick={() => {
-                          alert('Mouse enter')
-                        }}
+                          style={AVATextStyle({ size: 1.2, bold: true, margin: { right: 1.5 } })}
                           onBlur={async (event) => {
                             let reactUpdObj = {
                               newMessageText: event.target.value
                             };
-                            if (event.target.value.length > 500) {
-                              reactUpdObj.warning = true;
-                              reactUpdObj.alert = {
-                                severity: 'warning',
-                                title: 'Message length',
-                                message: <div>Your message is {event.target.value.length.toLocaleString('en-US')} characters long.<br />
-                                  Some text messaging networks limit message size to 500 characters.<br />
-                                  You may send the message as is.  If you choose to do that, we will break the message into {Math.floor(event.target.value.length / 500) + 1} parts and send each part as a separate message for text message recipients.
-                                  (All other recipients will receive the message as entered.)</div>,
-                              };
-                            }
+                            //                          if (event.target.value.length > 500) {
+                            //                            reactUpdObj.warning = true;
+                            //                            reactUpdObj.alert = {
+                            //                              severity: 'warning',
+                            //                              title: 'Message length',
+                            //                              message: <div>Your message is {event.target.value.length.toLocaleString('en-US')} characters long.<br />
+                            //                                Some text messaging networks limit message size to 500 characters.<br />
+                            //                                You may send the message as is.  If you choose to do that, we will break the message into {Math.floor(event.target.value.length / 500) + 1} parts and send each part as a separate message for text message recipients.
+                            //                                (All other recipients will receive the message as entered.)</div>,
+                            //                            };
+                            //                          }
                             updateReactData(reactUpdObj, true);
                           }}
                           defaultValue={reactData.newMessageText}
@@ -1706,9 +1726,29 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               : { marginTop: '24px', backgroundColor: 'white', color: 'green' }
                             }
                             size='small'
-                            disabled={(reactData.newMessageText.length === 0) || (reactData.newMessageRecipients.length === 0)}
+                            //                       disabled={(reactData.newMessageText.length === 0) || (reactData.newMessageRecipients.length === 0)}
                             onClick={async () => {
-                              if (!reactData.warning) {
+                              if (reactData.newMessageText.length === 0) {
+                                updateReactData({
+                                  warning: true,
+                                  alert: {
+                                    severity: 'warning',
+                                    title: `Need Message Text`,
+                                    message: `There isn't anything to send!`,
+                                  }
+                                }, true);
+                              }
+                              else if (reactData.newMessageRecipients.length === 0) {
+                                updateReactData({
+                                  warning: true,
+                                  alert: {
+                                    severity: 'warning',
+                                    title: `Need Recipient(s)`,
+                                    message: `You didn't choose anyone to send this to!`,
+                                  }
+                                }, true);
+                              }
+                              else if (!reactData.warning) {
                                 await sendMessage();
                                 await initialize();
                               }
@@ -1742,6 +1782,28 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               : `Add Reply To`
                             }
                           </Typography>
+                          {reactData.administrative_account && reactData.allowChangeSender &&
+                            <Typography
+                              style={AVATextStyle({ size: 1 })}
+                              onClick={async () => {
+                                let selections = [];
+                                if (reactData.newMessageSendFrom) {
+                                  selections = [{
+                                    person_id: reactData.newMessageSendFrom,
+                                    person_name: reactData.alternateSenderName
+                                  }];
+                                }
+                                updateReactData({
+                                  selections,
+                                  selectedPeople_list: [],
+                                  showSelectSender: true,
+                                  changeSenderNames: await getSenderNames(reactData.allowChangeSender)
+                                }, true);
+                              }}
+                            >
+                              {'Change Sender'}
+                            </Typography>
+                          }
                           <Typography
                             style={AVATextStyle({ size: 1 })}
                             onClick={() => {
@@ -1781,7 +1843,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               {(reactData.newUrgentMessage) ? 'Mark as not urgent' : 'Mark as urgent'}
                             </Typography>
                           }
-                          {reactData.administrative_account &&
+                          {reactData.administrative_account && reactData.showVMAlt &&
                             <Typography
                               style={AVATextStyle({ size: 1 })}
                               onClick={() => {
@@ -1803,13 +1865,14 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                           >
                             {(reactData.html_message) ? 'Use Plain Text' : 'Use Rich Text Editor'}
                           </Typography>
-                          {(!reactData.newMessageText || (reactData.newMessageText.length === 0)) &&
+                          {reactData.templateList && (reactData.templateList.length > 0) &&
+                            reactData.administrative_account &&
                             <Typography
                               style={AVATextStyle({ size: 1 })}
                               onClick={async () => {
                                 updateReactData({
                                   showSelectTemplate: true,
-                                  templateList: await getTemplateList()
+                                  //                           templateList: await getTemplateList()
                                 }, true);
                               }}
                             >
@@ -2260,9 +2323,41 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
               onClose={async (selections) => {
                 updateReactData({
                   showReplyToSearch: false,
-                  replyToList: selections,
+                  replyToList: selections || [],
                   selections: []
                 }, true);
+              }}
+            />
+          }
+          {reactData.showSelectSender &&
+            <QuickSearch
+              reactData={Object.assign({}, reactData, { accessList: reactData.changeSenderNames })}
+              updateReactData={(reactUpdObj) => {
+                updateReactData(reactUpdObj, true);
+              }}
+              options={{
+                pickAndGo: true,
+                pickOne: true,
+                keepSelections: true,
+                buttonColor: (reactData.selections.length === 0) ? 'red' : 'green',
+                buttonText: ((reactData.selections.length > 0) && (reactData.selections[0].person_name))
+                  ? `Keep ${reactData.selections[0].person_name}`
+                  : 'Exit',
+                showAll: true,
+                title: 'Who should be shown as the Sender of this message?'
+              }}
+              onClose={async (selections) => {
+                let reactUpdObj = {
+                  showSelectSender: false,
+                  selections: [],
+                  newMessageSendFrom: pPerson,
+                  alternateSenderName: false
+                };
+                if (selections && (selections.length > 0) && (selections[0].person_id !== pPerson)) {
+                  reactUpdObj.newMessageSendFrom = selections[0].person_id;
+                  reactUpdObj.alternateSenderName = selections[0].person_name;
+                }
+                updateReactData(reactUpdObj, true);
               }}
             />
           }

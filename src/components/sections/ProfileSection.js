@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Typography } from '@material-ui/core/';
 import { formatPhone } from '../../util/AVAPeople';
-import { isEmpty } from '../../util/AVAUtilities';
+import { isEmpty, titleCase } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 
 import { AVATextStyle } from '../../util/AVAStyles';
@@ -684,6 +684,9 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                     local_result = event.target.value.trim();
                   }
                 }
+                if (Array.isArray(currentValues.peopleRec?.local_data?.[this_customField])) {
+                  local_result = [local_result];
+                }
                 let updateObj = {
                   updateList:
                     [{
@@ -694,8 +697,10 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                 };
                 await updateField(updateObj);
               }}
-              defaultValue={currentValues.peopleRec?.local_data?.[this_customField] || ''}
-              helperText={reactData.local_customFields[this_customField].prompt}
+              defaultValue={Array.isArray(currentValues.peopleRec?.local_data?.[this_customField])
+                ? currentValues.peopleRec?.local_data?.[this_customField][0]
+                : (currentValues.peopleRec?.local_data?.[this_customField] || '')}
+              helperText={titleCase(this_customField.replace(/[^a-z^A-Z^0-9]/g, " "))}
             />
           </Box>
         </React.Fragment>
