@@ -557,10 +557,12 @@ export default ({ defaults, onClose }) => {
             cl(`Error reading CompletedDocuments; error is ${error}`);
           });
         if (recordExists(allDocs)) {
-          allDocs.Items.push({
-            client_id: state.session.client_id,
-            last_record: true
-           })
+          if (!allDocs.LastEvaluatedKey) {
+            allDocs.Items.push({
+              client_id: state.session.client_id,
+              last_record: true
+            });
+          }
           for (const this_doc of allDocs.Items) {
             if (this_doc.client_id !== state.session.client_id) {
               continue;
@@ -572,6 +574,9 @@ export default ({ defaults, onClose }) => {
                   await buildMasters(this_doc);
                 }
               };
+              if (this_doc.last_record) {
+                continue;
+              }
               if (reactData.masterFormList[this_form].dated_docs) {
                 updateReactData({
                   masterPeopleList: reactData.masterPeopleList,
