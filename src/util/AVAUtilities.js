@@ -106,14 +106,16 @@ export async function getLocalWeather(client_weather = {
 
 export async function getMarqueeMessage(client_id, options = {}) {
   let response = [];
+  let weatherMessage = [];
   let urgentMessage;
+  let suppressWeather = false;
   if (options.client_weather) {
     let weather = await getLocalWeather(options.client_weather);
     if (weather) {
-      response.push({
+      weatherMessage = [{
         style: null,
         message: weather
-      });
+      }];
     }
   }
   let now = new Date().getTime();
@@ -157,7 +159,10 @@ export async function getMarqueeMessage(client_id, options = {}) {
         priorityMessage: sRec.priorityMessage
       });
       if ((sRec.criticalMessage) || (sRec.priorityMessage)) {
-        urgentMessage = sRec.message;
+        suppressWeather = true;
+        if (sRec.criticalMessage) { 
+          urgentMessage = sRec.message;
+        }
       }
     });
   }
@@ -165,6 +170,9 @@ export async function getMarqueeMessage(client_id, options = {}) {
     sessionStorage.setItem('marquee_message', JSON.stringify([urgentMessage]));
   }
   else {
+    if (!suppressWeather) {
+      response.unshift(weatherMessage);
+    }
     sessionStorage.setItem('marquee_message', JSON.stringify(response));
   }
   return response;
