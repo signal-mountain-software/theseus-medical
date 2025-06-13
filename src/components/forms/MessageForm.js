@@ -279,6 +279,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   const [rowLimit, setRowLimit] = React.useState(20);
   const scrollValue = 20;
 
+ /*
   const autoFocus = React.useRef(null);
   React.useEffect(() => {
     if (autoFocus && autoFocus.current) {
@@ -288,7 +289,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       });
     }
   }, []);
-
+*/
+  
   function makeReadableTime(pJavaDate) {
     let dDate = new Date(Number(pJavaDate));
     return dDate.toLocaleDateString('en-US', {
@@ -787,7 +789,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
             allowReplyAll: PostOfficeRec.Item.allowReplyAll,
             status_urgent: reactData.newUrgentMessage,
             status_with_attachment: Boolean(reactData.attachments_to_send && (reactData.attachments_to_send.length > 0)),
-            partner_id: PostOfficeRec.recipient_key,
+            partner_id: PostOfficeRec.Item.recipient_key,
             recipients: reactData.newMessageRecipients.map((r, x) => {
               return {
                 recipient_id: r.person_id || r.group_id || reactData.preferred_recipients[r.rIndex].personList[0],
@@ -969,12 +971,13 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         }
       } while (queryObj.ExclusiveStartKey);
     }
-    if (autoFocus && autoFocus.current) {
+  /*  if (autoFocus && autoFocus.current) {
       autoFocus.current.scrollIntoView({
         behavior: 'smooth',
         block: 'start',
       });
     }
+    */
   }
 
   async function getSenderNames(senderList) { 
@@ -1051,12 +1054,13 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         await processDeliveryRecs(mailRecs, 'held', '*any');
       }
     } while (queryObj.ExclusiveStartKey);
-    if (autoFocus && autoFocus.current) {
+   /*  if (autoFocus && autoFocus.current) {
       autoFocus.current.scrollIntoView({
         behavior: 'smooth',
         block: 'start',
       });
     }
+    */
   }
 
   async function processDeliveryRecs(deliveryRecs, inOut, my_id) {
@@ -1664,6 +1668,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                           </Typography>
                           <Editor
                             apiKey='jz5usjjdkhrx34z6bm32xhv8pxep9u7iptvmqnsz8goday9n'
+                            key={'tinyMCE_editing_area'}
+                            id={'tinyMCE_editing_area'}
                             onInit={(evt, editor) => editorRef.current = editor}
                             onDirty={() => setDirty(true)}
                             onBlur={() => {
@@ -1674,14 +1680,15 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               branding: false,
                               statusbar: false,
                               height: 300,
+                              selector: 'textarea',
                               plugins: [
                                 // Core editing features
                                 // the inlinecss is part of the paid program.  Removing to see what the effect is...
-                                // 'anchor', 'autolink', 'charmap', 'codesample', 'emoticons', 'image', 'inlinecss', 'link', 'lists', 'media', 'searchreplace', 'table', 'visualblocks', 'wordcount',
-                                'anchor', 'autolink', 'charmap', 'codesample', 'emoticons', 'image', 'link', 'lists', 'media', 'searchreplace', 'table', 'visualblocks', 'wordcount',
+                               'anchor', 'autolink', 'charmap', 'codesample', 'emoticons', 'image', 'inlinecss', 'link', 'lists', 'media', 'searchreplace', 'table', 'visualblocks', 'wordcount',
+                                // 'anchor', 'autolink', 'charmap', 'codesample', 'emoticons', 'image', 'link', 'lists', 'media', 'searchreplace', 'table', 'visualblocks', 'wordcount',
                                 // Your account includes a free trial of TinyMCE premium features
                                 // Try the most popular premium features until May 26, 2025:
-                                // 'checklist', 'mediaembed', 'casechange', 'formatpainter', 'pageembed', 'a11ychecker', 'tinymcespellchecker', 'permanentpen', 'powerpaste', 'advtable', 'advcode', 'editimage', 'advtemplate', 'mentions', 'tableofcontents', 'footnotes', 'mergetags', 'autocorrect', 'typography', 'inlinecss', 'markdown', 'importword', 'exportword', 'exportpdf'
+                                'checklist', 'mediaembed', 'casechange', 'formatpainter', 'pageembed',  'permanentpen', 'advtable', 'advcode', 'editimage', 'advtemplate', 'mentions', 'tableofcontents', 'footnotes', 'mergetags', 'inlinecss', 'markdown'
                               ],
                               toolbar: 'undo redo | blocks fontfamily fontsize | bold italic underline forecolor backcolor | link table mergetags | spellcheckdialog | align lineheight | checklist numlist bullist indent outdent | emoticons charmap | removeformat',
                               line_height_formats: '0.8 1 1.2 1.4 1.6 2',
@@ -1909,7 +1916,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                       }}
                     >
                       <Box display='flex' flexDirection='column'
-                        ref={((this_thread === reactData.newMessageThread) && (message_index === 0)) ? autoFocus : null}
+   //                     ref={((this_thread === reactData.newMessageThread) && (message_index === 0)) ? autoFocus : null}
                       >
                         <Box
                           display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
