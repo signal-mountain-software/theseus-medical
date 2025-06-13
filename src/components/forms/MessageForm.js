@@ -291,6 +291,18 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   }, []);
 */
   
+  React.useEffect(() => {
+    const onPopState = (e) => {
+      console.log("Back navigation triggered");
+      onReset()
+    };
+    window.history.pushState(null, 'useEffect', window.location.pathname);
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+    };
+  }, [onReset])
+  
   function makeReadableTime(pJavaDate) {
     let dDate = new Date(Number(pJavaDate));
     return dDate.toLocaleDateString('en-US', {

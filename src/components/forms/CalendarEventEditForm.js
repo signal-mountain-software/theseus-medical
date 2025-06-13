@@ -1696,13 +1696,16 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                           }
                           {(isEventOwner || isSlotOwner(this_item.slotData)) &&
                             (editNoteNumber === -1) &&
-                            <Box display='flex' mr={2} flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                              <Box display='flex' mr={2} flexDirection='row' justifyContent='flex-start' alignItems='center'
+                                key={`docTopBox_${index}_${this_item.slotData.docStatus}`}                              
+                              >
                               {(isEventOwner || isSlotOwner(this_item.slotData)) &&
                                 (this_item.slotData.documents) &&
                                 (this_item.slotData.documents.length > 0) &&
                                 <Box display='flex' mr={2}
                                   color={this_item.slotData.docStatus === 'not_started' ? 'red' : (this_item.slotData.docStatus === 'complete' ? 'green' : 'orange')}
-                                  flexDirection='row' justifyContent='center' alignItems='center'
+                                    flexDirection='row' justifyContent='center' alignItems='center'
+                                    key={`docMidBox_${index}_${this_item.slotData.docStatus}`}  
                                 >
                                   <Tooltip title={`View documents`} >
                                     <AssignmentTurnedInIcon
@@ -1719,6 +1722,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                                             updateReactData({
                                               selectForm: true,
                                               selectedDoc_id: docRecs,
+                                              selectedSlotIndex: index
                                             }, true);
                                             return;
                                           }
@@ -1727,7 +1731,8 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                                               editForm: true,
                                               selectedDoc_id: docRecs[0].document_id,
                                               selectedPerson_id: docRecs[0].person_id,
-                                              selectedDocMode: determineMode(docRecs[0])
+                                              selectedDocMode: determineMode(docRecs[0]),
+                                              selectedSlotIndex: index
                                             }, true);
                                           }
                                         }
@@ -1738,7 +1743,8 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                                               editForm: true,
                                               selectedDoc_id: this_item.slotData.documents[0],
                                               selectedPerson_id: docRec.person_id,
-                                              selectedDocMode: determineMode(docRec)
+                                              selectedDocMode: determineMode(docRec),
+                                              selectedSlotIndex: index
                                             }, true);
                                           }
                                         }
@@ -1909,10 +1915,16 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               person_id: reactData.selectedPerson_id,
               mode: reactData.selectedDocMode,
             }}
-            onClose={() => {
+          onClose={(response) => {
+            console.log(response);
+            if ((response === 'docAdded') && (reactData.selectedSlotIndex || (reactData.selectedSlotIndex === 0))) {
+              eventSlotList[reactData.selectedSlotIndex].docStatus = 'complete';
+            }
               updateReactData({
-                editForm: false
+                editForm: false,
+                selectedSlotIndex: false
               }, true);
+            onReset({ no_change: true });
             }}
           />
         }

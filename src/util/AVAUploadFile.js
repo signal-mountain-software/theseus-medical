@@ -321,8 +321,8 @@ export default ({ onCancel, onLoad, options = {} }) => {
               bold: (ndx === 0)
             })}
             className={classes.AVATitle}
-            id={'scroll-dialog-title'}
-            key={'scroll-dialog-title'}
+            id={`scroll-dialog-title_${ndx}`}
+            key={`scroll-dialog-title_${ndx}`}
           >
             {this_title}
           </Typography>
