@@ -409,6 +409,16 @@ export default ({ defaults, onClose }) => {
       }
       let eventDate = makeDate(this_doc.event_key ? this_doc.event_key.split('#')[1] : null);
       if (!eventDate.error) {
+        if (!reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to]) {
+          reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to] = {
+            assignedDocs: []
+          };
+        }
+        else if (!reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].assignedDocs) {
+          reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to] = {
+            assignedDocs: []
+          };
+        }
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].assignedDocs.push({
           document_id: this_doc.document_id,
           last_update: this_doc.history[0].last_update,
@@ -447,7 +457,7 @@ export default ({ defaults, onClose }) => {
       }
     }
     if (this_doc.status.startsWith('complete')) {
-      const completed_count = reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.length;
+      const completed_count = reactData.masterFormList?.[this_doc.form_type]?.memberList?.[this_doc.pertains_to]?.completedDocs?.length || 0;
       const cObj = {
         document_id: this_doc.document_id,
         location: this_doc.history[0].url,
@@ -456,7 +466,26 @@ export default ({ defaults, onClose }) => {
         title: this_doc.title,
         amendments: this_doc.amendments
       };
-      if ((completed_count === 0) || (this_doc.history[0].last_update > reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs[0].last_update)) {
+      if (completed_count === 0) {
+        if (!reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to]) {
+          reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to] = {
+            completedDocs: [cObj]
+          };
+        }
+        else {
+          reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs = [cObj];
+        }
+        if (!reactData.masterPeopleList[this_doc.pertains_to]) {
+          reactData.masterPeopleList[this_doc.pertains_to] = {};
+        }
+        if (!reactData.masterPeopleList[this_doc.pertains_to].hasOwnProperty(this_doc.form_type) || (this_doc.history[0].last_update > reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type].last_update)) {
+          reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type] = {
+            status: 'completed',
+            last_update: this_doc.history[0].last_update
+          };
+        }
+      }
+      else if ((this_doc.history[0].last_update > reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs[0].last_update)) {
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.unshift(cObj);
         if (!reactData.masterPeopleList[this_doc.pertains_to].hasOwnProperty(this_doc.form_type) || (this_doc.history[0].last_update > reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type].last_update)) {
           reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type] = {
@@ -504,7 +533,7 @@ export default ({ defaults, onClose }) => {
   }
 
   async function formPeople(this_form) {    // gathers all the people tha should (or do) have this form
-    if (!reactData.masterFormList[this_form].hasOwnProperty('groupList')) {
+    if (!reactData.masterFormList[this_form] || !reactData.masterFormList[this_form].hasOwnProperty('groupList')) {
       return;
     }
     if (!reactData.masterFormList[this_form].build_complete) {
@@ -534,6 +563,7 @@ export default ({ defaults, onClose }) => {
           };
         }
       }
+      /******************
       // get all Documents for this form type
       let docList = [];
       let workingOn = null;
@@ -623,6 +653,7 @@ export default ({ defaults, onClose }) => {
         }
         loopCount++;
       } while (queryObj.ExclusiveStartKey && (loopCount < 10));
+      *************** */
     }
     reactData.masterFormList[this_form].build_complete = true;
     updateReactData({
@@ -1092,10 +1123,7 @@ export default ({ defaults, onClose }) => {
                                   title: `${reactData.masterFormList[this_form].form_name}`,
                                   message: <div>
                                     Person ID: <strong>{reactData.selectedPerson_id}</strong><br />
-                                    Form Type: <strong>{this_form}</strong><br />
-                                    Status: {reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status}<br />
-                                    WIP Doc ID: {(reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.document_id || 'n/a')}<br />
-                                    Completed Doc ID: {(reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.completedDocs[0]?.document_id || 'n/a')}</div>
+                                    Form Type: <strong>{this_form}</strong><br /></div>
                                 }
                               }, true);
                             }}
@@ -1315,255 +1343,43 @@ export default ({ defaults, onClose }) => {
                                   title: `${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`,
                                   message: <div>
                                     Person ID: <strong>{this_person}</strong><br />
-                                    Form Type: <strong>{reactData.selectedForm_id}</strong><br />
-                                    Status: {reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status}<br />
-                                    WIP Doc ID: {(reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'n/a')}<br />
-                                    Completed Doc ID: {(reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.document_id || 'n/a')}</div>
+                                    Form Type: <strong>{reactData.selectedForm_id}</strong><br /></div>
                                 }
                               }, true);
                             }}
                           >
-                            {!reactData.masterFormList[reactData.selectedForm_id].dated_docs &&
-                              (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'pending')
-                              &&
-                              <CheckCircleIcon
-                                key={`radio-button_person${cX}edit`}
-                                id={`radio-button_person${cX}edit`}
-                                onClick={() => {
-                                  updateReactData({
-                                    isEditing: {
-                                      calledFrom: 'forms',
-                                      person_id: this_person,
-                                      form_id: reactData.selectedForm_id,
-                                      document_id: ((reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status.startsWith('complete')) ? 'new' : (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'new'))
-                                    }
-                                  }, true);
-                                }}
-                                style={AVATextStyle({
-                                  size: 1.5,
-                                  margin: { right: 0.5 },
-                                  color: 'orange'
-                                })}
-                                size='small'
-                              />
-                            }
-                            {!reactData.masterFormList[reactData.selectedForm_id].dated_docs &&
-                              (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status !== 'pending')
-                              &&
-                              <EditIcon
-                                key={`radio-button_person${cX}edit`}
-                                id={`radio-button_person${cX}edit`}
-                                onClick={() => {
-                                  updateReactData({
-                                    isEditing: {
-                                      calledFrom: 'forms',
-                                      person_id: this_person,
-                                      form_id: reactData.selectedForm_id,
-                                      document_id: ((reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status.startsWith('complete')) ? 'new' : (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'new'))
-                                    }
-                                  }, true);
-                                }}
-                                style={AVATextStyle({
-                                  size: 1.5,
-                                  margin: { right: 0.5 },
-                                  color: (((reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'not started') || (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'completed'))
-                                    ? 'red'
-                                    : 'orange')
-                                })}
-                                size='small'
-                              />
-                            }
-                            {(!reactData.masterFormList[reactData.selectedForm_id].dated_docs ||
-                              (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status.startsWith('complete')
-                                && !reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.dated_docs) ||
-                              (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.assignedDocs.length > 0)
-                            ) ?
-                              <Typography
-                                key={`g_textpeople-${cX}`}
-                                style={AVATextStyle({
-                                  overflow: 'visible',
-                                  size: 1.2,
-                                  margin: { top: 0 },
-                                  color: (reactData.masterFormList[reactData.selectedForm_id].dated_docs
-                                    ? 'black'
-                                    : (
-                                      ((!reactData.masterPeopleList.hasOwnProperty(this_person))
-                                        ? 'red'
-                                        : (!reactData.masterPeopleList[this_person].hasOwnProperty(reactData.selectedForm_id)
-                                          ? 'red'
-                                          : ((reactData.masterPeopleList[this_person][reactData.selectedForm_id].status.startsWith('complete'))
-                                            ? 'green'
-                                            : ((reactData.masterPeopleList[this_person][reactData.selectedForm_id].status === 'not started')
-                                              ? 'red'
-                                              : 'orange')
-                                          )))
-                                    ))
-                                })}
-                                draggable={true}
-                                onDragStart={(e) => handleDragStart(e, {
-                                  person_id: this_person,
-                                  person_name: `${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`,
-                                  reason: 'form'
-                                })}
-                                onClick={async () => {
-                                  updateReactData({
-                                    selectedForm_id: false,
-                                    selectedFormRec: false,
-                                    selectedFormMembers: false,
-                                    selectedPerson_id: this_person,
-                                    selectedPersonRec: await getPerson(this_person),
-                                    activity_filter: '',
-                                    lower_activity_filter: '',
-                                    filterComplete: false,
-                                    filterNotStarted: false,
-                                    filterInProcess: false
-                                  }, true);
-                                  await personForms(this_person);
-                                }}
-                              >
-                                {`${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`}
-                              </Typography>
-                              :
-                              <Typography
-                                key={`g_textpeople-${cX}`}
-                                style={AVATextStyle({
-                                  overflow: 'visible',
-                                  size: 1.2,
-                                  margin: { top: 0 },
-                                  color: 'lightgray'
-                                })}
-                                draggable={true}
-                                onDragStart={(e) => handleDragStart(e, {
-                                  person_id: this_person,
-                                  person_name: `${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`,
-                                  reason: 'form'
-                                })}
-                              >
-                                {`${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`}
-                              </Typography>
-                            }
-                            {(reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status.startsWith('complete'))
-                              && !reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.dated_docs
-                              &&
-                              <CheckCircleIcon
-                                key={`radio-button_person${cX}off`}
-                                id={`radio-button_person${cX}off`}
-                                style={AVATextStyle({
-                                  color: 'green',
-                                  size: 1,
-                                  margin: { left: 0.5, right: 0.5 },
-                                })}
-                                onClick={() => {
-                                  let nowJ = new Date().getTime();
-                                  window.open(`${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].completedDocs[0].location}?qt=${nowJ.toString()}`
-                                    , reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].completedDocs[0].location);
-                                }}
-                                size='small'
-                              />
-                            }
+                            <Typography
+                              key={`g_textpeople-${cX}`}
+                              style={AVATextStyle({
+                                overflow: 'visible',
+                                size: 1.2,
+                                margin: { top: 0 },
+                              })}
+                              draggable={true}
+                              onDragStart={(e) => handleDragStart(e, {
+                                person_id: this_person,
+                                person_name: `${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`,
+                                reason: 'form'
+                              })}
+                              onClick={async () => {
+                                updateReactData({
+                                  selectedForm_id: false,
+                                  selectedFormRec: false,
+                                  selectedFormMembers: false,
+                                  selectedPerson_id: this_person,
+                                  selectedPersonRec: await getPerson(this_person),
+                                  activity_filter: '',
+                                  lower_activity_filter: '',
+                                  filterComplete: false,
+                                  filterNotStarted: false,
+                                  filterInProcess: false
+                                }, true);
+                                await personForms(this_person);
+                              }}
+                            >
+                              {`${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`}
+                            </Typography>
                           </Box>
-                          {reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.dated_docs &&
-                            reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.assignedDocs.sort((a, b) => {
-                              return (a.event_date < b.event_date) ? 1 : -1;
-                            }).map((this_assignedDoc, aX) => (
-                              OKtoShowDatedDoc(this_assignedDoc.status) &&
-                              <Box display='flex' flexDirection='row'
-                                key={`formdoc_row_list_${cX}_${aX}`}
-                                justifyContent='flex-start'
-                                alignItems='center'
-                                style={{ marginLeft: '30px' }}
-                                onContextMenu={async (e) => {
-                                  e.preventDefault();
-                                  updateReactData({
-                                    alert: {
-                                      severity: 'info',
-                                      title: `${this_assignedDoc.title}`,
-                                      message: <div>
-                                        Person ID: <strong>{this_person}</strong><br />
-                                        Form Type: <strong>{reactData.selectedForm_id}</strong><br />
-                                        Status: {this_assignedDoc.status}<br />
-                                        Doc ID: {this_assignedDoc.document_id}<br />
-                                      </div>
-                                    }
-                                  }, true);
-                                }}
-                              >
-                                {!(this_assignedDoc.status.startsWith('complete'))
-                                  ?
-                                  <React.Fragment>
-                                    <EditIcon
-                                      key={`radio-button_person${cX}_${aX}edit`}
-                                      id={`radio-button_person${cX}_${aX}edit`}
-                                      style={AVATextStyle({
-                                        size: 1,
-                                        margin: { right: 0.5 },
-                                        color: ((this_assignedDoc.status === 'not_started') ? 'red' : 'orange')
-                                      })}
-                                      size='small'
-                                      onClick={async () => {
-                                        updateReactData({
-                                          isEditing: {
-                                            calledFrom: 'forms',
-                                            person_id: this_person,
-                                            form_id: reactData.selectedForm_id,
-                                            document_id: this_assignedDoc.document_id
-                                          }
-                                        }, true);
-                                      }}
-                                    />
-                                    <CloudUploadIcon
-                                      key={`radio-button_upload${cX}_${aX}`}
-                                      style={AVATextStyle({
-                                        size: 1,
-                                        margin: { right: 0.5 },
-                                        color: ((this_assignedDoc.status === 'not_started') ? 'red' : 'orange')
-                                      })}
-                                      size='small'
-                                      onClick={async () => {
-                                        updateReactData({
-                                          isUploading: Object.assign({}, this_assignedDoc, {
-                                            calledFrom: 'forms',
-                                            person_id: this_person,
-                                            form_id: reactData.selectedForm_id,
-                                          })
-                                        }, true);
-                                      }}
-                                    />
-                                  </React.Fragment>
-                                  :
-                                  <CheckCircleIcon
-                                    key={`radio-button_person${cX}off`}
-                                    id={`radio-button_person${cX}off`}
-                                    style={AVATextStyle({
-                                      color: 'green',
-                                      size: 1,
-                                      margin: { right: 0.5 },
-                                    })}
-                                    size='small'
-                                    onClick={async () => {
-                                      let nowJ = new Date().getTime();
-                                      window.open(`${this_assignedDoc.location}?qt=${nowJ.toString()}`
-                                        , this_assignedDoc.location);
-                                    }}
-                                  />
-                                }
-                                <Typography
-                                  key={`g_docdate-${cX}_${aX}`}
-                                  style={AVATextStyle({
-                                    overflow: 'visible',
-                                    size: 1,
-                                    color: ((this_assignedDoc.status.startsWith('complete'))
-                                      ? 'green'
-                                      : (this_assignedDoc.status === 'not_started')
-                                        ? 'red'
-                                        : 'orange')
-                                  })}
-                                >
-                                  {`${this_assignedDoc.event_displayDate}${this_assignedDoc.event_time}`}
-                                </Typography>
-                              </Box>
-                            ))
-                          }
                         </Box>
                       )
                     ))}
@@ -1675,7 +1491,9 @@ export default ({ defaults, onClose }) => {
             }}
           onClose={async (ignore_me, statusObj) => {
             if (statusObj.document_status === 'aborted') {
-              // no op
+              updateReactData({
+                isEditing: false
+              }, true);
             }
             else {
               if (statusObj.document_status === 'work_in_process') {
@@ -1705,7 +1523,7 @@ export default ({ defaults, onClose }) => {
                   reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].wipDocs[0].document_id = statusObj.document_id;
                 }
               }
-              else if (statusObj.document_status.startsWith('complete')) {
+              else if (statusObj.document_status.startsWith('complete') || (statusObj.document_status === 'uploaded')) {
                 reactData.masterPeopleList[reactData.isEditing.person_id][reactData.isEditing.form_id].status = 'completed';
                 if (!reactData.masterFormList[reactData.isEditing.form_id].memberList.hasOwnProperty(reactData.isEditing.person_id)) {
                   reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id] = {
@@ -1730,7 +1548,8 @@ export default ({ defaults, onClose }) => {
               updateReactData({
                 masterPeopleList: reactData.masterPeopleList,
                 masterFormList: reactData.masterFormList,
-              }, false);
+                isEditing: false
+              }, true);
               if (reactData.isEditing.calledFrom === 'people') {
                 await personForms(reactData.isEditing.person_id);
               }
@@ -1738,9 +1557,6 @@ export default ({ defaults, onClose }) => {
                 await formPeople(reactData.isEditing.form_id);
               }
             }
-            updateReactData({
-              isEditing: false
-            }, true);
           }}
         />
       }
@@ -1751,7 +1567,7 @@ export default ({ defaults, onClose }) => {
           updateReactData={updateReactData}
           options={{
             pickOne: true,
-            showAll: true
+            showAll: false
           }}
           onClose={async (selections) => {
             if (selections && (selections.length > 0)) {
