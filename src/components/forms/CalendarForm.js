@@ -2291,7 +2291,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                     action: 'reset',
                   });
                 }
-                else {
+                else if (!updatedData.no_change) {
                   let calRef = reactData.myCalendar[reactData.event_being_edited.date_index].eventList[reactData.event_being_edited.event_index];
                   calRef.description = updatedData.description;
                   calRef.slot_owners = updatedData.summaryInfo.slot_owners;

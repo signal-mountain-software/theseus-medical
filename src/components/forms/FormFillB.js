@@ -2161,12 +2161,11 @@ export default ({ request = {}, onClose }) => {
         });
       if (recordExists(docRec)) {
         if (docRec.Item.status === 'complete') {
-          window.open(
-            docRec.Item.history[0].url,
-            docRec.Item.status,
-            `name=${docRec.Item.status}, left=${20}, top=${20}`
-          );
+          let nowJ = new Date().getTime();
+          window.open(`${docRec.Item.history[0].url}?qt=${nowJ.toString()}`
+            , docRec.Item.history[0].url);
           handleAbort();
+          return;
         }
         else {
           const { fields, sections, document_title } = await initializeDoc({
@@ -2181,7 +2180,7 @@ export default ({ request = {}, onClose }) => {
             fields,
             sections,
             docRec: docRec.Item,
-            formRec: { options: docRec.Item.options },
+            formRec: Object.assign({}, reactData.formRec, { options: docRec.Item.options }),
             stage: 'fill'
           }, true);
           return;
@@ -2317,6 +2316,8 @@ export default ({ request = {}, onClose }) => {
     if (reactData.stage === 'initialize') {
       goLoad();
     }
+    return (() => {
+    })
   }, [reactData.form_id, reactData.document_id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // **************************
@@ -2988,7 +2989,7 @@ export default ({ request = {}, onClose }) => {
             </Box>
           </Box>
         </React.Fragment >
-      };
+      }
       {
         (reactData.stage === 'upload') &&
         <AVAUploadFile
@@ -3003,7 +3004,7 @@ export default ({ request = {}, onClose }) => {
             }, true);
           }}
           onLoad={async (response) => {
-            let docTitle = await resolveVariables(reactData.formRec.title);
+            let docTitle = reactData.document_title;
             const docRec = await updateDocument({
               docData: Object.assign({},
                 reactData.docRec,
