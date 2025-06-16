@@ -3,10 +3,12 @@ import useSession from '../../hooks/useSession';
 import { useSnackbar } from 'notistack';
 
 import { dbClient, cl, makeArray, recordExists, getDb, array_in_array, listFromArray, switchActiveAccount } from '../../util/AVAUtilities';
-import { makeDate } from '../../util/AVADateTime';
+import { makeDate, addDays, makeTime } from '../../util/AVADateTime';
 import AVATextInput from '../forms/AVATextInput';
 import { getPerson } from '../../util/AVAPeople';
+import { getMemberList } from '../../util/AVAGroups';
 import FormFillB from '../forms/FormFillB';
+import AVAUploadFile from '../../util/AVAUploadFile';
 
 import { Typography } from '@material-ui/core';
 
@@ -162,7 +164,7 @@ export default ({ request, onClose }) => {
     options: options || {},
     deletePending: false,
     nameObj: {},
-    recentlyExpandedForm: null,
+    selectedForm: false,
     textInput: {},
     setFilter: false,
     documentStatusOptions: [
@@ -194,8 +196,39 @@ export default ({ request, onClose }) => {
   const formRowRef = React.useRef(null);
 
   async function setFormList() {
+    // get all Groups (we'll check on groups for each form momentarily)
+    let groupForms = {};
+    let allGroups = await dbClient
+      .query({
+        KeyConditionExpression: 'client_id = :c',
+        TableName: 'Groups',
+        ExpressionAttributeValues: {
+          ':c': state.session.client_id,
+        }
+      })
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          cl(`Security Violation or no Internet Connection`);
+        }
+        cl(`Error reading Groups; error is ${error}`);
+      });
+    if (recordExists(allGroups)) {
+      for (let groupRec of allGroups.Items) {
+        if (groupRec.forms) {
+          for (let this_form of groupRec.forms) {
+            if (!groupForms.hasOwnProperty(this_form)) {
+              groupForms[this_form] = [groupRec.group_id];
+            }
+            else {
+              groupForms[this_form].push(groupRec.group_id);
+            }
+          }
+        }
+      }
+    }
     // get all Form Types
-    let formList = [];
+    let response = [];
     let formResult = await dbClient
       .query({
         TableName: 'Forms',
@@ -212,26 +245,129 @@ export default ({ request, onClose }) => {
     if (recordExists(formResult)) {
       formResult.Items.forEach(this_form => {
         if (this_form.active || reactData.options.viewInactive) {
-          formList.push(Object.assign({}, (this_form), {
-            isExpanded: false
+          response.push(Object.assign({}, this_form, {
+            groupList: groupForms.hasOwnProperty(this_form.form_id) ? groupForms[this_form.form_id] : []
           }));
         }
       });
-      if (formList.length === 1) {
-        formList[0].isExpanded = true;
+      response.sort((a, b) => {
+        if (a.sequence === b.sequence) {
+          return ((a.form_name < b.form_name) ? 1 : -1);
+        }
+        else {
+          return (((a.sequence || 10) < (b.sequence || 10)) ? 1 : -1);
+        }
+      });
+    }
+    let returnObj = {};
+    for (let this_form of response) {
+      returnObj[this_form.form_id] = {
+        form_id: this_form.form_id,
+        form_name: this_form.form_name,
+        groupList: this_form.groupList,
+        active: this_form.active
+      };
+    };
+    return returnObj;
+  }
+
+  async function personDocs(person_id, form_id) {
+    let this_date = makeDate(new Date());
+    let today_ymd = this_date.numeric;
+    let oldest_date = makeDate(addDays(this_date.date, -60)).numeric;
+    let docList = [];
+    let loopCount = 0;
+    let queryObj = {
+      KeyConditionExpression: 'client_id_form_type = :f and pertains_to = :p',
+      IndexName: 'client_form_person-index',
+      TableName: 'DocumentMaster',
+      ExpressionAttributeValues: {
+        ':f': `${state.session.client_id}%%${form_id}`,
+        ':p': person_id
       }
-      else {
-        formList.sort((a, b) => {
-          if (a.sequence === b.sequence) {
-            return ((a.form_name < b.form_name) ? 1 : -1);
+    };
+    do {
+      let allDocs = await dbClient
+        .query(queryObj)
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            cl(`Security Violation or no Internet Connection`);
+          }
+          cl(`Error reading CompletedDocuments; error is ${error}`);
+        });
+      if (recordExists(allDocs)) {
+        for (const this_doc of allDocs.Items) {
+          let occDate = 0;
+          if (this_doc.occurrence) {
+            occDate = Number(this_doc.occurrence);
           }
           else {
-            return (((a.sequence || 10) < (b.sequence || 10)) ? 1 : -1);
+            let splitter = this_doc.document_id.split(/%|#/);
+            for (const [sX, this_part] of Object.entries(splitter)) {
+              //           for (let this_part of splitter) {
+              let candidate = Number(this_part);
+              if (candidate && !isNaN(candidate) && (candidate > 0)) {
+                occDate = candidate;
+                if (!this_doc.event_key) {
+                  this_doc.event_id = (splitter[sX - 1] || splitter[sX - 2]);
+                }
+                break;
+              }
+            }
           }
-        });
+          if ((occDate <= today_ymd) && (occDate >= oldest_date)) {
+            this_doc.occDate = occDate;
+            if (!this_doc.event_id) {
+              if (!this_doc.event_key) {
+                return;
+              }
+              this_doc.event_id = this_doc.event_key.split(/#|%/)[0];
+            }
+            let eventRec = await dbClient
+              .get({
+                Key: {
+                  client: state.session.client_id,
+                  event_key: this_doc.event_id
+                },
+                TableName: "Calendar"
+              })
+              .promise()
+              .catch(error => {
+                cl(`in isUploading, bad get to DocumentMaster with ${reactData.isUploading.document_id || '(null)'}. Error is: ${error}`);
+              });
+            if (!recordExists(eventRec)) {
+              this_doc.eventDate = makeDate(this_doc.occDate).dateOnly;
+            }
+            else {
+              let eventTime = '';
+              if (eventRec.Item.eventData.event_data.time.allDay) {
+                // no op
+              }
+              else {
+                let timeObj = makeTime(eventRec.Item.eventData.event_data.time.from);
+                if (!timeObj.error) {
+                  eventTime = ` - ${timeObj.time}`;
+                }
+              }
+              let eventDate = makeDate(this_doc.event_key ? this_doc.event_key.split('#')[1] : null);
+              this_doc.eventDate = `${eventDate.error ? makeDate(this_doc.occDate).dateOnly : eventDate.dateOnly}${eventTime}`;
+            }
+            this_doc.file_location = (this_doc.history && Array.isArray(this_doc.history)) ? this_doc.history[0].url : null;
+            docList.push(this_doc);
+          }
+        }
+        if (allDocs.LastEvaluatedKey) {
+          queryObj.ExclusiveStartKey = allDocs.LastEvaluatedKey;
+        }
+        else {
+          delete queryObj.ExclusiveStartKey;
+        }
       }
-    }
-    return { formList };
+      loopCount++;
+    } while (queryObj.ExclusiveStartKey && (loopCount < 10));
+    docList.sort((a, b) => { return ((a.occDate > b.occDate) ? -1 : 1); });
+    return docList;
   }
 
   async function printAll({ document_list }) {
@@ -258,142 +394,41 @@ export default ({ request, onClose }) => {
     });
   }
 
-  async function setDocObj({ formTypes, options }) {
-    // get Documents for a form type
-    // list will look in DocumentXRef 
-    /*
-    {
-      person_id: '*status',
-      client_id: state.session.client_id,
-      document_id,
-      status: 'work_in_process',
-      formType: reactData.form_id,
-      last_update: new Date().getTime()
-    },
-    */
-    let formList = [];
-    if (formTypes) {
-      formList = formTypes.map(this_form => {
-        return this_form.form_id;
-      });
+  async function formPeople(this_form) {    // gathers all the people tha should (or do) have this form
+    let response = {};
+    let unSorted_response = [];
+    for (let this_group of reactData.formList[this_form].groupList) {
+      let memberList = await getMemberList(this_group, state.session.client_id, { "exclude": false });
+      for (let this_member of memberList.peopleList) {
+        unSorted_response.push({
+          person_id: this_member.person_id,
+          person_name: `${this_member.name.first} ${this_member.name.last}`,
+          person_first: this_member.name.first,
+          person_last: this_member.name.last,
+          wipDocs: [],
+          dated_docs: false,
+          assignedDocs: [],
+          completedDocs: [],
+        });
+      }
     }
-    let docResult = await dbClient
-      .query({
-        TableName: 'DocumentXRef',
-        IndexName: 'client-person-index',
-        KeyConditionExpression: 'client_id = :c and person_id = :p',
-        ExpressionAttributeValues: { ':p': '*status', ':c': state.session.client_id },
-        //       FilterExpression: 'client_id = :c'
-      })
-      .promise()
-      .catch(error => {
-        if (error.code === 'NetworkingError') {
-          cl(`Security Violation or no Internet Connection`);
-        }
-        cl(`Error reading DocumentXRef status records ${error}`);
-      });
-    if (recordExists(docResult)) {
-      var loadTrigger = 0;
-      for (const this_docXRef of docResult.Items) {
-        if (!this_docXRef.formType) { continue; }
-        if (this_docXRef.status !== 'deleted') {
-          let this_docRec = await getDocRec({
-            document_id: this_docXRef.document_id,
-            doc_status: this_docXRef.status
-          });
-          if (!this_docRec) { continue; }
-          if ((formList.length > 0) && !formList.includes(this_docXRef.formType)) { continue; }
-          if (!reactData.docObj.hasOwnProperty(this_docXRef.formType)) {
-            reactData.docObj[this_docXRef.formType] = [];
-          }
-          // determine pertains_to and pertains_to_name;
-          // we will insert a new pertains_to in the formType array in alphabetical sequence by name
-          // does pertains_to exist already?
-          // while we're looking, keep track of the index of the first name that comes AFTER my name
-          this_docRec.pertains_to_name = await getName(this_docRec.pertains_to);
-          let insert_before = -1;
-          let myPersonObj_index = reactData.docObj[this_docXRef.formType].findIndex((this_personObj, ndx) => {
-            if (this_personObj.pertains_to === this_docRec.pertains_to) {
-              return true;
-            }
-            else if (insert_before > -1) {
-              return false;
-            }
-            else if (this_personObj.pertains_to_name > this_docRec.pertains_to_name) {
-              insert_before = ndx;
-              return false;
-            }
-            return false;
-          });
-          if (myPersonObj_index === -1) { // this person not in the list already; insert it at insert_before location
-            if (insert_before === -1) {
-              myPersonObj_index = reactData.docObj[this_docXRef.formType].push({
-                pertains_to: this_docRec.pertains_to,
-                pertains_to_name: this_docRec.pertains_to_name,
-                docList: [],
-                isExpanded: false
-              }) - 1;
-            }
-            else {
-              reactData.docObj[this_docXRef.formType].splice(insert_before, 0, {
-                pertains_to: this_docRec.pertains_to,
-                pertains_to_name: this_docRec.pertains_to_name,
-                docList: [],
-                isExpanded: false
-              });
-              myPersonObj_index = insert_before;
-            }
-          }
-
-          {
-            // docList will be ordered by Date
-            // we will attempt to extract a date from the document_id; if none is found, use last_update
-            const temp = this_docRec.document_id.split('#');
-            let attemptedDate;
-            do {
-              attemptedDate = makeDate(temp.pop());
-            }
-            while ((temp.length > 0) && (attemptedDate.error));
-            if (!attemptedDate.error) {
-              this_docRec.docDate = attemptedDate.numeric;
-            }
-            else {
-              this_docRec.docDate = makeDate(this_docXRef.last_update).numeric;
-            }
-            const recToPush = Object.assign({}, this_docRec, this_docXRef);
-            const put_before = reactData.docObj[this_docXRef.formType][myPersonObj_index].docList.findIndex(this_doc => {
-              return (this_doc.docDate < recToPush.docDate);
-            });
-            if (put_before < 0) {
-              reactData.docObj[this_docXRef.formType][myPersonObj_index].docList.push(recToPush);
-            }
-            else {
-              reactData.docObj[this_docXRef.formType][myPersonObj_index].docList.splice(put_before, 0, recToPush);
-            }
-            if (loadTrigger === 10) {
-              updateReactData({
-                docObj: reactData.docObj
-              }, true);
-              loadTrigger = 0;
-            }
-            else {
-              loadTrigger++;
-            }
-          }
-        }
-      };
+    unSorted_response.sort((a, b) => {
+      if (a.person_last < b.person_last) { return -1; }
+      else if (a.person_last > b.person_last) { return 1; }
+      else if (a.person_first < b.person_first) { return -1; }
+      else if (a.person_first > b.person_first) { return 1; }
+      else { return 1; }
+    });
+    for (let this_member of unSorted_response) {
+      response[this_member.person_id] = this_member;
     }
-
-    return {
-      docObj: reactData.docObj,
-      nameObj: reactData.nameObj
-    };
-  }
+    return response;
+  };
 
   const getName = async (person_id) => {
     if (!reactData.nameObj.hasOwnProperty[person_id]) {
       let personRec = await getPerson(person_id);
-      if (!personRec) { 
+      if (!personRec) {
         reactData.nameObj[person_id] = `Person ID ${person_id}`;
       }
       else if (!personRec.name) {
@@ -416,15 +451,12 @@ export default ({ request, onClose }) => {
         block: 'start',
       });
     }
-  }, [reactData.recentlyExpandedForm, formRowRef]);
+  }, [reactData.selectedForm, formRowRef]);
 
   const okToShowForm = (this_form) => {
     if (!reactData.filtered_results) { return true; }
-    if (!reactData.filter.formType || (reactData.filter.formType.includes(this_form.form_id))) {
-      // there is a filter, but it isn't formType; we need to figure out if ANY documents will display for this formType
-      return reactData.docObj[this_form.form_id].some((this_personObj, person_index) => {
-        return okToShowPerson(this_form.form_id, this_personObj.pertains_to, person_index);
-      });
+    if (reactData.filter.formType && (!reactData.filter.formType.includes(this_form))) {
+      return false;
     }
     return true;
   };
@@ -434,16 +466,13 @@ export default ({ request, onClose }) => {
     if (reactData.filter.person && (this_person !== reactData.filter.person.id)) {
       return false;
     }
-    if (!reactData.filter.person) {
-      // there is a filter, but it isn't on this Person; we need to figure out if ANY documents will display for this person
-      return reactData.docObj[form_id][person_index].docList.some(this_doc => {
-        return okToShowDoc(this_doc);
-      });
-    }
     return true;
   };
 
   const okToShowDoc = (this_doc) => {
+    if (reactData.options.onlyComplete && !this_doc.file_location) {
+      return false;
+    }
     if (!reactData.filtered_results) { return true; }
     /* 
       title_words: false,
@@ -496,20 +525,10 @@ export default ({ request, onClose }) => {
 
   React.useEffect(() => {
     async function initialize() {
-      let { formList } = await setFormList();
-      let docObj = {};
-      formList.forEach(this_form => {
-        docObj[this_form.form_id] = [];
-      });
       updateReactData({
-        formList,
-        docObj,
+        formList: await setFormList(),
+        docObj: {},
         initialized: true
-      }, true);
-      var response = await setDocObj({ formTypes: formList });
-      updateReactData({
-        docObj: response.docObj,
-        nameObj: response.nameObj
       }, true);
     }
     if (!reactData.initialized) {
@@ -576,7 +595,7 @@ export default ({ request, onClose }) => {
                 {rowsWritten = 0}
                 {completed_and_displayed = []}
               </Typography>
-              {reactData.formList.map((this_form, formNdx) => (
+              {Object.keys(reactData.formList).map((this_form, formNdx) => (
                 (okToShowForm(this_form) &&
                   <React.Fragment key={`form_list-${formNdx}`}>
                     { /* Form Name */}
@@ -589,19 +608,19 @@ export default ({ request, onClose }) => {
                       marginTop={(rowsWritten > 0) ? 2 : 4}
                       justifyContent='space-between'
                       alignItems='center'
-                      ref={(this_form.form_id === reactData.recentlyExpandedForm) ? formRowRef : null}
+                      ref={(this_form === reactData.selectedForm) ? formRowRef : null}
                     >
                       <Box
-                        key={`formNameBox_${this_form.form_id}`}
+                        key={`formNameBox_${this_form}`}
                         display='flex' flexDirection='row'
                         flexGrow={1}
                         alignItems={'center'} justifyContent={'flex-start'}
                         onClick={async () => {
-                          reactData.formList[formNdx].isExpanded = !reactData.formList[formNdx].isExpanded;
                           updateReactData({
                             formList: reactData.formList,
-                            docObj: reactData.docObj,
-                            recentlyExpandedForm: this_form.form_id
+                            peopleList: await formPeople(this_form),
+                            docObj: [],
+                            selectedForm: this_form
                           }, true);
                         }}
                       >
@@ -610,14 +629,14 @@ export default ({ request, onClose }) => {
                           id={`form_list-box-${formNdx}-title`}
                           style={AVATextStyle({ size: 1.3, bold: true, margin: { bottom: 0.8, top: 0 } })}
                         >
-                          {this_form.form_name}
+                          {reactData.formList[this_form].form_name}
                         </Typography>
                         <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                           {rowsWritten++}
                         </Typography>
                       </Box>
                       <Box
-                        key={`selectBox_${this_form.form_id}`}
+                        key={`selectFormBox_${this_form}`}
                         display='flex' alignSelf='center' flexDirection='row'
                         alignItems={'center'} justifyContent={'center'}
                       >
@@ -631,9 +650,9 @@ export default ({ request, onClose }) => {
                               pendingInstructions: {
                                 action: 'upload',
                                 selectedPerson: (reactData.filter.person ? `${reactData.filter.person.id}%%${reactData.filter.person.name}` : null),
-                                formType: this_form.form_id,
-                                formName: this_form.form_name,
-                                formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
+                                formType: this_form,
+                                formName: reactData.formList[this_form].form_name,
+                                formRec: reactData.formList[this_form]
                               }
                             }, true);
                           }}
@@ -650,10 +669,10 @@ export default ({ request, onClose }) => {
                                 addDocForm: true,
                                 pendingInstructions: {
                                   action: 'addNew',
-                                  formType: this_form.form_id,
+                                  formType: this_form,
                                   selectedPerson: null,
-                                  formName: this_form.form_name,
-                                  formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
+                                  formName: reactData.formList[this_form].form_name,
+                                  formRec: reactData.formList.find(l => { return (l.form_id === this_form); })
                                 }
                               }, true);
                             }
@@ -662,9 +681,9 @@ export default ({ request, onClose }) => {
                                 addDocPrompt: true,
                                 pendingInstructions: {
                                   action: 'addNew',
-                                  formType: this_form.form_id,
-                                  formName: this_form.form_name,
-                                  formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
+                                  formType: this_form,
+                                  formName: reactData.formList[this_form].form_name,
+                                  formRec: reactData.formList.find(l => { return (l.form_id === this_form); })
                                 }
                               }, true);
                             }
@@ -680,8 +699,8 @@ export default ({ request, onClose }) => {
                               printEmptyForm: true,
                               pendingInstructions: {
                                 action: 'printEmpty',
-                                formType: this_form.form_id,
-                                formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
+                                formType: this_form,
+                                formRec: reactData.formList.find(l => { return (l.form_id === this_form); })
                               }
                             }, true);
                           }}
@@ -689,12 +708,12 @@ export default ({ request, onClose }) => {
                         />
                       </Box>
                     </Box>
-                    {(this_form.isExpanded || reactData.filtered_results) &&
+                    {(this_form === reactData.selectedForm) &&
                       <Box
                         display='flex'
                         flexDirection='row'
-                        key={`Group-title-box-${this_form.form_id}`}
-                        id={`Group-title-box-${this_form.form_id}`}
+                        key={`Group-title-box-${this_form}`}
+                        id={`Group-title-box-${this_form}`}
                         minWidth={'95%'}
                         flexGrow={1}
                         marginBottom={5}
@@ -702,14 +721,14 @@ export default ({ request, onClose }) => {
                         alignItems='flex-start'
                       >
                         <Box
-                          key={`selectBox_${this_form.form_id}`}
+                          key={`selectedFormBox_${this_form}`}
                           display='flex' flexGrow={1} flexDirection='column'
                         >
                           { /* Array of People - ordered by Name */}
-                          {reactData.docObj[this_form.form_id].map((this_personObj, personNdx) => (
-                            (okToShowPerson(this_form.form_id, this_personObj.pertains_to, personNdx) &&
+                          {Object.keys(reactData.peopleList).map((this_personID, personNdx) => (
+                            (okToShowPerson(this_form, this_personID, personNdx) &&
                               <Box
-                                key={`selectBox_${this_personObj.pertains_to}`}
+                                key={`personListBox_${this_personID}`}
                                 display='flex' flexGrow={1} flexDirection='column'
                                 marginLeft={2}
                               >
@@ -723,42 +742,46 @@ export default ({ request, onClose }) => {
                                       key={`person_row_box-${personNdx}`}
                                     >
                                       <Box
-                                        key={`personNameBox-${this_personObj.pertains_to}_${personNdx}`}
-                                        id={`personNameBox-${this_personObj.pertains_to}_${personNdx}`}
+                                        key={`personNameBox-${this_personID}_${personNdx}`}
+                                        id={`personNameBox-${this_personID}_${personNdx}`}
                                         display='flex' flexDirection='row'
                                         flexGrow={1}
                                         alignItems={'center'} justifyContent={'flex-start'}
                                         onContextMenu={async (e) => {
                                           e.preventDefault();
                                           enqueueSnackbar(<div>
-                                            1. Form ID {this_form.form_id}<br />
-                                            2. Pertains to {this_personObj.pertains_to}</div>,
+                                            1. Form ID {this_form}<br />
+                                            2. Pertains to {this_personID}</div>,
                                             { variant: 'info', persist: true });
                                         }}
                                         onClick={async () => {
-                                          reactData.docObj[this_form.form_id][personNdx].isExpanded = !reactData.docObj[this_form.form_id][personNdx].isExpanded;
                                           updateReactData({
-                                            docObj: reactData.docObj,
+                                            selectedPerson: this_personID,
+                                            docObj: await personDocs(this_personID, reactData.selectedForm),
                                           }, true);
                                         }}
                                       >
                                         <Typography
-                                          key={`docPerson-${this_personObj.pertains_to}_${personNdx}`}
-                                          id={`docPerson-${this_personObj.pertains_to}_${personNdx}`}
-                                          style={AVATextStyle({ size: 1.2, margin: { bottom: 0.8, top: 0 } })}
+                                          key={`docPerson-${this_personID}_${personNdx}`}
+                                          id={`docPerson-${this_personID}_${personNdx}`}
+                                          style={AVATextStyle({
+                                            color: (reactData.selectedPerson && (reactData.selectedPerson !== this_personID)) ? 'lightgray' : null,
+                                            size: 1.2,
+                                            margin: { bottom: 0.8, top: 0 }
+                                          })}
                                         >
-                                          {this_personObj.pertains_to_name}
+                                          {`${reactData.peopleList[this_personID].person_last}, ${reactData.peopleList[this_personID].person_first}`}
                                         </Typography>
                                       </Box>
                                     </Box>
                                   </Box>
                                 </Box>
-                                {(this_personObj.isExpanded || reactData.filtered_results) &&
+                                {(reactData.selectedPerson === this_personID) &&
                                   <Box
                                     display='flex'
                                     flexDirection='row'
-                                    key={`Group-title-box-${this_form.form_id}`}
-                                    id={`Group-title-box-${this_form.form_id}`}
+                                    key={`Group-title-box-${this_form}`}
+                                    id={`Group-title-box-${this_form}`}
                                     minWidth={'95%'}
                                     flexGrow={1}
                                     marginBottom={5}
@@ -766,11 +789,20 @@ export default ({ request, onClose }) => {
                                     alignItems='flex-start'
                                   >
                                     <Box
-                                      key={`selectBox_${this_form.form_id}`}
+                                      key={`selectedPersonBox_${this_form}`}
                                       display='flex' flexGrow={1} flexDirection='column'
                                     >
                                       { /* Existing documents for this form/person */}
-                                      {reactData.docObj[this_form.form_id][personNdx].docList.map((this_doc, docNdx) => (
+                                      {(reactData.docObj.length === 0) &&
+                                        <Typography
+                                          key={`docEmpty-${reactData.selectedPerson}`}
+                                          id={`docEmpty-${reactData.selectedPerson}`}
+                                          style={AVATextStyle({ color: 'red', size: 1.2, margin: { left: 1, bottom: 0.8, top: 0 } })}
+                                        >
+                                          {'No documents'}
+                                        </Typography>
+                                      }
+                                      {(reactData.docObj.length > 0) && reactData.docObj.map((this_doc, docNdx) => (
                                         (okToShowDoc(this_doc) &&
                                           <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
                                             key={`row_box_grandparent-${docNdx}`}
@@ -820,9 +852,9 @@ export default ({ request, onClose }) => {
                                                             selectedPerson: this_doc.pertains_to,
                                                             selectedPerson_index: personNdx,
                                                             action: 'amendment',
-                                                            parentFormType: this_form.form_id,
+                                                            parentFormType: this_form,
                                                             docIndex: docNdx,
-                                                            formType: this_form.amedment_form_id || 'amendment_1',
+                                                            formType: reactData.formList[this_form].amendment_form_id || 'amendment_1',
                                                             formData: {
                                                               document_id: this_doc.document_id,
                                                               doc_reference: `${this_doc.document_title} for ${this_doc.pertains_to_name}; completed on ${makeDate(this_doc.last_update).absolute}`
@@ -842,9 +874,9 @@ export default ({ request, onClose }) => {
                                                           editDoc: true,
                                                           pendingInstructions: {
                                                             action: 'edit',
-                                                            formType: this_form.form_id,
-                                                            formName: this_form.form_name,
-                                                            formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); }),
+                                                            formType: this_form,
+                                                            formName: reactData.formList[this_form].form_name,
+                                                            formRec: reactData.formList.find(l => { return (l.form_id === this_form); }),
                                                             document_id: this_doc.document_id,
                                                             document_title: this_doc.title || this_doc.document_title,
                                                             person_id: this_doc.pertains_to,
@@ -870,7 +902,7 @@ export default ({ request, onClose }) => {
                                                           })
                                                           .promise()
                                                           .catch(error => { cl(`caught error updating Documents; error is: `, error); });
-                                                        reactData.docObj[this_form.form_id][personNdx].docList.splice(docNdx, 1);
+                                                        reactData.docObj.splice(docNdx, 1);
                                                         updateReactData({
                                                           docObj: reactData.docObj
                                                         }, true);
@@ -878,23 +910,20 @@ export default ({ request, onClose }) => {
                                                     />
                                                     <CloudUploadIcon
                                                       classes={{ root: classes.rowButton }}
-                                                      size='medium'
+                                                      key={`upload-${this_doc.document_id}_${docNdx}`}
+                                                      id={`upload-${this_doc.document_id}_${docNdx}`}
+                                                      size='small'
                                                       aria-label="attach_icon"
-                                                      onClick={() => {
+                                                      onClick={async () => {
                                                         updateReactData({
-                                                          uploadDoc: true,
-                                                          pendingInstructions: {
-                                                            action: 'upload',
-                                                            document_id: this_doc.document_id,
-                                                            doc_index: docNdx,
-                                                            selectedPerson: this_doc.pertains_to,
-                                                            formType: this_form.form_id,
-                                                            formName: this_form.form_name,
-                                                            formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); })
-                                                          }
+                                                          isUploading: Object.assign({}, this_doc, {
+                                                            calledFrom: 'forms',
+                                                            person_id: reactData.selectedPerson,
+                                                            form_id: reactData.selectedForm,
+                                                            docNdx
+                                                          })
                                                         }, true);
                                                       }}
-                                                      edge="start"
                                                     />
                                                   </React.Fragment>
                                                 }
@@ -907,7 +936,7 @@ export default ({ request, onClose }) => {
                                                   onContextMenu={async (e) => {
                                                     e.preventDefault();
                                                     enqueueSnackbar(<div>
-                                                      1. Form ID {this_form.form_id}<br />
+                                                      1. Form ID {this_form}<br />
                                                       2. Doc ID {this_doc.document_id}<br />
                                                       3. Pertains to {this_doc.pertains_to}</div>,
                                                       { variant: 'info', persist: true });
@@ -922,9 +951,9 @@ export default ({ request, onClose }) => {
                                                         editDoc: true,
                                                         pendingInstructions: {
                                                           action: 'edit',
-                                                          formType: this_form.form_id,
-                                                          formName: this_form.form_name,
-                                                          formRec: reactData.formList.find(l => { return (l.form_id === this_form.form_id); }),
+                                                          formType: this_form,
+                                                          formName: reactData.formList[this_form].form_name,
+                                                          formRec: reactData.formList[this_form],
                                                           document_id: this_doc.document_id,
                                                           document_title: this_doc.title || this_doc.document_title,
                                                           person_id: this_doc.pertains_to,
@@ -936,18 +965,11 @@ export default ({ request, onClose }) => {
                                                   }}
                                                 >
                                                   <Typography
-                                                    key={`docPerson-${this_doc.document_id}_${docNdx}`}
-                                                    id={`docPerson-${this_doc.document_id}_${docNdx}`}
-                                                    style={AVATextStyle({ color: (!this_doc.file_location ? 'red' : null), size: 0.8, margin: { bottom: 0.8, top: 0 } })}
-                                                  >
-                                                    {this_doc.pertains_to_name}
-                                                  </Typography>
-                                                  <Typography
                                                     key={`docDate-${this_doc.document_id}_${docNdx}`}
                                                     id={`docDate-${this_doc.document_id}_${docNdx}`}
-                                                    style={AVATextStyle({ color: (!this_doc.file_location ? 'red' : null), size: 0.8, margin: { left: 1, bottom: 0.8, top: 0 } })}
+                                                    style={AVATextStyle({ color: (!this_doc.file_location ? 'red' : null), size: 1.2, margin: { left: 1, bottom: 0.8, top: 0 } })}
                                                   >
-                                                    {makeDate(this_doc.docDate).dateOnly}
+                                                    {this_doc.eventDate}
                                                   </Typography>
                                                 </Box>
                                               </Box>
@@ -1036,7 +1058,7 @@ export default ({ request, onClose }) => {
                       value: `${a.person_id}%%${label}`
                     };
                   }),
-                  reactData.filter.time_frame.selectValue 
+                  reactData.filter.time_frame.selectValue
                     ? reactData.filterTimeFrames.concat([reactData.filter.time_frame.selectValue])
                     : reactData.filterTimeFrames
                 ]}
@@ -1092,7 +1114,7 @@ export default ({ request, onClose }) => {
                         fromDate = makeDate(response[3], { noFuture: true });
                         toDate = makeDate('today', { noFuture: true });
                       }
-                      else {                      
+                      else {
                         response[3] = response[3].replace(/(since|from|after)/g, '');
                         let result = response[3].split(/(thru|through|-|to)/g);
                         fromDate = makeDate(result[0].trim(), { noFuture: true });
@@ -1100,7 +1122,7 @@ export default ({ request, onClose }) => {
                       }
                       reactUpdObj.filter.time_frame = {
                         fromDate,
-                        toDate, 
+                        toDate,
                         selectValue: { value: response[3], label: response[3] }
                       };
                       reactUpdObj.filtered_results = true;
@@ -1263,6 +1285,57 @@ export default ({ request, onClose }) => {
                 }}
               />
             }
+            {reactData.isUploading &&
+              <AVAUploadFile
+                options={{
+                  buttonText: ['Choose', 'Save & Continue'],
+                  title: [reactData.document_title, 'Tap "Choose a File" to select the content to upload'],
+                  oneOnly: true
+                }}
+                onCancel={() => {
+                  updateReactData({
+                    isUploading: false
+                  }, true);
+                }}
+                onLoad={async (response) => {
+                  let docRecObj = await dbClient
+                    .get({
+                      Key: {
+                        document_id: reactData.isUploading.document_id
+                      },
+                      TableName: "DocumentMaster"
+                    })
+                    .promise()
+                    .catch(error => {
+                      cl(`in isUploading, bad get to DocumentMaster with ${reactData.isUploading.document_id || '(null)'}. Error is: ${error}`);
+                    });
+                  if (recordExists(docRecObj)) {
+                    docRecObj.Item.history.unshift({
+                      last_update: new Date().getTime(),
+                      status: 'uploaded',
+                      update_by: state.session.user_id,
+                      url: response[0].fLoc
+                    });
+                    docRecObj.Item.status = 'complete';
+                    await dbClient
+                      .put({
+                        Item: docRecObj.Item,
+                        TableName: 'DocumentMaster'
+                      })
+                      .promise()
+                      .catch(error => {
+                        cl(`Bad put to DocumentMaster. Error is: ${error}`);
+                      });
+                  }
+                  reactData.docObj[reactData.isUploading.docNdx].file_location = response[0].fLoc;
+                  reactData.docObj[reactData.isUploading.docNdx].history = docRecObj.Item.history;
+                  updateReactData({
+                    isUploading: false,
+                    docObj: reactData.docObj
+                  }, true);
+                }}
+              />
+            }
             {reactData.addDocPrompt &&
               <AVATextInput
                 titleText={`About this Document`}
@@ -1312,7 +1385,7 @@ export default ({ request, onClose }) => {
                     // if there is no person_index in pending instructions, we didn't know who this belonged to before
                     // it was being added.  Perhaps now we do.  That would likely be in statusObj.pertains_to
                     if (!reactData.pendingInstructions.hasOwnProperty('selectedPerson_index')) {
-                      let foundIt = reactData.docObj[reactData.pendingInstructions.formType].findIndex(this_personObj => {
+                      let foundIt = reactData.docObj.findIndex(this_personObj => {
                         return (this_personObj.pertains_to === statusObj.pertains_to);
                       });
                       if (foundIt > -1) {
