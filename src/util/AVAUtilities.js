@@ -106,16 +106,16 @@ export async function getLocalWeather(client_weather = {
 
 export async function getMarqueeMessage(client_id, options = {}) {
   let response = [];
-  let weatherMessage = [];
+  let weatherMessage = false;
   let urgentMessage;
   let suppressWeather = false;
   if (options.client_weather) {
     let weather = await getLocalWeather(options.client_weather);
     if (weather) {
-      weatherMessage = [{
+      weatherMessage = {
         style: null,
         message: weather
-      }];
+      };
     }
   }
   let now = new Date().getTime();
@@ -170,7 +170,7 @@ export async function getMarqueeMessage(client_id, options = {}) {
     sessionStorage.setItem('marquee_message', JSON.stringify([urgentMessage]));
   }
   else {
-    if (!suppressWeather) {
+    if (!suppressWeather && weatherMessage) {
       response.unshift(weatherMessage);
     }
     sessionStorage.setItem('marquee_message', JSON.stringify(response));
