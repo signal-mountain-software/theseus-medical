@@ -23,7 +23,6 @@ import CloseIcon from '@material-ui/icons/ExitToApp';
 import PeopleIcon from '@material-ui/icons/People';
 import SettingsIcon from '@material-ui/icons/Settings';
 import SendIcon from '@material-ui/icons/Send';
-import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import EditIcon from '@material-ui/icons/Edit';
 import VisibilityIcon from '@material-ui/icons/Visibility';
@@ -263,24 +262,6 @@ export default ({ defaults, onClose }) => {
     }
     return (display_data.toLowerCase().includes(reactData.lower_activity_filter));
   };
-
-
-  function OKtoShowDatedDoc(checkStatus) {
-    if (reactData.filterComplete) {
-      return (checkStatus && checkStatus.startsWith('complete'));
-    }
-    else if (reactData.filterInProcess) {
-      return (checkStatus && (checkStatus === 'in_process'));
-    }
-    else if (reactData.filterPending) {
-      return (checkStatus && (checkStatus === 'pending'));
-    }
-    else if (reactData.filterNotStarted) {
-      return (!checkStatus || (checkStatus === 'not_started'));
-    }
-    else { return true; }
-  };
-
 
   async function personForms(this_person) {
     reactData.masterPeopleList[this_person] = {};
@@ -537,9 +518,6 @@ export default ({ defaults, onClose }) => {
       return;
     }
     if (!reactData.masterFormList[this_form].build_complete) {
-      let this_date = makeDate(new Date());
-      let today_ymd = this_date.numeric;
-      let oldest_date = makeDate(addDays(this_date.date, -(reactData.rowLimit || 7))).numeric;
       reactData.masterFormList[this_form].memberList = {};
       reactData.masterPeopleList = {};
       for (let this_group of reactData.masterFormList[this_form].groupList) {
