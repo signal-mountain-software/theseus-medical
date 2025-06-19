@@ -19,7 +19,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
     }
     // is the clicked-on group already in the list of groups for this person?
     let foundIt = currentValues.peopleRec.groups.indexOf(clicked_group.id || clicked_group.group_id);
-    if (foundIt < 0) {       
+    if (foundIt < 0) {
       if (reactData.inactive_groups.includes(clicked_group.id || clicked_group.group_id)) {
         // you clicked to add this person to a group that was labelled as "inactive"
         // just in case this was a mistake, save the group list prior to the click,
@@ -108,8 +108,12 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
           tableName: 'peopleRec',
           fieldName: 'clients.id',
           newData: currentValues.peopleRec.client_id
-          }],
-      reactUpd: reactUpdObj
+        }],
+      reactUpd: reactUpdObj,
+      errorObj: {
+        errorField: 'groups',
+        isError: false
+      }
     });
   };
 

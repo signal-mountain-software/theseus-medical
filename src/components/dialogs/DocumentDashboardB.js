@@ -161,10 +161,14 @@ export default ({ request, onClose }) => {
     formList: [],
     initialized: false,
     docObj: {},
+    rangeObj: {},
     options: options || {},
     deletePending: false,
+    version: 0,
     nameObj: {},
     selectedForm: false,
+    selectedPerson: false,
+    loadingPerson: false,
     textInput: {},
     setFilter: false,
     documentStatusOptions: [
@@ -274,7 +278,13 @@ export default ({ request, onClose }) => {
   async function personDocs(person_id, form_id) {
     let this_date = makeDate(new Date());
     let today_ymd = this_date.numeric;
-    let oldest_date = makeDate(addDays(this_date.date, -60)).numeric;
+    let prior_month = (makeDate(addDays(this_date.date, -32)).date).setDate(1);
+    let date_ranges = [{
+      header: 'Recent',
+      from: makeDate(prior_month).numeric,
+      to: today_ymd,
+      open: false
+    }];
     let docList = [];
     let loopCount = 0;
     let queryObj = {
@@ -296,6 +306,7 @@ export default ({ request, onClose }) => {
           }
           cl(`Error reading CompletedDocuments; error is ${error}`);
         });
+      let count = 0;
       if (recordExists(allDocs)) {
         for (const this_doc of allDocs.Items) {
           let occDate = 0;
@@ -316,46 +327,86 @@ export default ({ request, onClose }) => {
               }
             }
           }
-          if ((occDate <= today_ymd) && (occDate >= oldest_date)) {
-            this_doc.occDate = occDate;
-            if (!this_doc.event_id) {
-              if (!this_doc.event_key) {
-                return;
-              }
-              this_doc.event_id = this_doc.event_key.split(/#|%/)[0];
+          if (count === 10) {
+            docList.sort((a, b) => { return ((a.occDate > b.occDate) ? -1 : 1); });
+            let rangeObj = {};
+            for (let this_range of date_ranges) {
+              rangeObj[this_range.header] = this_range.open;
             }
-            let eventRec = await dbClient
-              .get({
-                Key: {
-                  client: state.session.client_id,
-                  event_key: this_doc.event_id
-                },
-                TableName: "Calendar"
-              })
-              .promise()
-              .catch(error => {
-                cl(`in isUploading, bad get to DocumentMaster with ${reactData.isUploading.document_id || '(null)'}. Error is: ${error}`);
-              });
-            if (!recordExists(eventRec)) {
-              this_doc.eventDate = makeDate(this_doc.occDate).dateOnly;
+            count = 0;
+            updateReactData({
+              selectedPerson: person_id,
+              docObj: docList,
+              rangeObj: Object.assign({}, rangeObj, reactData.rangeObj),
+              loadingPerson: true
+            }, true);
+          }
+          count++;
+          let rangeHeaderIndex = date_ranges.findIndex((this_range) => {
+            return ((occDate >= this_range.from) && (occDate <= this_range.to));
+          });
+          if (rangeHeaderIndex > -1) {
+            this_doc.header = date_ranges[rangeHeaderIndex].header;
+          }
+          else {
+            let goodOccDate = makeDate(occDate);
+            if (goodOccDate.error) {
+              continue;
+            }
+            let occDateFirst = makeDate((goodOccDate.date).setDate(1));
+            let occDateStart = occDateFirst.numeric;
+            let occDateEnd = occDateStart + 50;
+            let occDateHeader = occDateFirst.date.toLocaleString([], { month: 'long', year: 'numeric' });
+            date_ranges.push({
+              header: occDateHeader,
+              from: occDateStart,
+              to: occDateEnd,
+              open: false
+            });
+            this_doc.header = occDateHeader;
+          }
+          this_doc.file_location = (this_doc.history && Array.isArray(this_doc.history)) ? this_doc.history[0].url : null;
+          if (options.onlyComplete && !this_doc.file_location) {
+            continue;
+          }
+          this_doc.occDate = occDate;
+          if (!this_doc.event_id) {
+            if (!this_doc.event_key) {
+              return;
+            }
+            this_doc.event_id = this_doc.event_key.split(/#|%/)[0];
+          }
+          let eventRec = await dbClient
+            .get({
+              Key: {
+                client: state.session.client_id,
+                event_key: this_doc.event_id
+              },
+              TableName: "Calendar"
+            })
+            .promise()
+            .catch(error => {
+              cl(`in isUploading, bad get to DocumentMaster with ${reactData.isUploading.document_id || '(null)'}. Error is: ${error}`);
+            });
+          if (!recordExists(eventRec)) {
+            this_doc.eventDate = makeDate(this_doc.occDate).dateOnly;
+          }
+          else {
+            let eventTime = '';
+            if (eventRec.Item.eventData.event_data.time.allDay) {
+              // no op
             }
             else {
-              let eventTime = '';
-              if (eventRec.Item.eventData.event_data.time.allDay) {
-                // no op
+              let timeObj = makeTime(eventRec.Item.eventData.event_data.time.from);
+              if (!timeObj.error) {
+                eventTime = ` - ${timeObj.time}`;
               }
-              else {
-                let timeObj = makeTime(eventRec.Item.eventData.event_data.time.from);
-                if (!timeObj.error) {
-                  eventTime = ` - ${timeObj.time}`;
-                }
-              }
-              let eventDate = makeDate(this_doc.event_key ? this_doc.event_key.split('#')[1] : null);
-              this_doc.eventDate = `${eventDate.error ? makeDate(this_doc.occDate).dateOnly : eventDate.dateOnly}${eventTime}`;
             }
-            this_doc.file_location = (this_doc.history && Array.isArray(this_doc.history)) ? this_doc.history[0].url : null;
-            docList.push(this_doc);
+            let eventDate = makeDate(this_doc.event_key ? this_doc.event_key.split('#')[1] : null);
+            this_doc.eventDate = `${eventDate.error ? makeDate(this_doc.occDate).dateOnly : eventDate.dateOnly}${eventTime}`;
           }
+          docList.push(this_doc);
+
         }
         if (allDocs.LastEvaluatedKey) {
           queryObj.ExclusiveStartKey = allDocs.LastEvaluatedKey;
@@ -367,7 +418,11 @@ export default ({ request, onClose }) => {
       loopCount++;
     } while (queryObj.ExclusiveStartKey && (loopCount < 10));
     docList.sort((a, b) => { return ((a.occDate > b.occDate) ? -1 : 1); });
-    return docList;
+    let rangeObj = {};
+    for (let this_range of date_ranges) {
+      rangeObj[this_range.header] = this_range.open;
+    }
+    return { docList, rangeObj };
   }
 
   async function printAll({ document_list }) {
@@ -641,6 +696,7 @@ export default ({ request, onClose }) => {
                         alignItems={'center'} justifyContent={'center'}
                       >
                         <CloudUploadIcon
+                          key={`upload_${this_form}`}
                           classes={{ root: classes.rowButton }}
                           size='medium'
                           aria-label="attach_icon"
@@ -660,6 +716,7 @@ export default ({ request, onClose }) => {
                         />
                         <EditIcon
                           classes={{ root: classes.rowButton }}
+                          key={`edit_${this_form}`}
                           size='medium'
                           aria-label="penciladd_icon"
                           onClick={() => {
@@ -692,6 +749,7 @@ export default ({ request, onClose }) => {
                         />
                         <PrintIcon
                           classes={{ root: classes.rowButton }}
+                          key={`print_${this_form}`}
                           size='medium'
                           aria-label="penciladd_icon"
                           onClick={() => {
@@ -733,16 +791,16 @@ export default ({ request, onClose }) => {
                                 marginLeft={2}
                               >
                                 <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
-                                  key={`person_row_box_grandparent-${personNdx}`}
+                                  key={`person_row_box_grandparent-${personNdx}_${this_personID}`}
                                 >
                                   <Box display='flex' flexDirection='column' mb={'8px'} width='100%' textOverflow='ellipsis'
-                                    key={`person_row_box_parent-${personNdx}`}
+                                    key={`person_row_box_parent-${personNdx}_${this_personID}`}
                                   >
                                     <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
-                                      key={`person_row_box-${personNdx}`}
+                                      key={`person_row_box-${personNdx}_${this_personID}`}
                                     >
                                       <Box
-                                        key={`personNameBox-${this_personID}_${personNdx}`}
+                                        key={`personNameBox-${this_personID}_${personNdx}-${((reactData.selectedPerson === this_personID) && reactData.loadingPerson) ? ' - Loading' : ''}`}
                                         id={`personNameBox-${this_personID}_${personNdx}`}
                                         display='flex' flexDirection='row'
                                         flexGrow={1}
@@ -755,14 +813,25 @@ export default ({ request, onClose }) => {
                                             { variant: 'info', persist: true });
                                         }}
                                         onClick={async () => {
-                                          updateReactData({
-                                            selectedPerson: this_personID,
-                                            docObj: await personDocs(this_personID, reactData.selectedForm),
-                                          }, true);
+                                          if (reactData.selectedPerson && (reactData.selectedPerson === this_personID)) {
+                                            updateReactData({
+                                              selectedPerson: false,
+                                              loadingPerson: false
+                                            }, true);
+                                          }
+                                          else {
+                                            let response = await personDocs(this_personID, reactData.selectedForm);
+                                            updateReactData({
+                                              selectedPerson: this_personID,
+                                              docObj: response.docList,
+                                              rangeObj: response.rangeObj,
+                                              loadingPerson: false
+                                            }, true);
+                                          }
                                         }}
                                       >
                                         <Typography
-                                          key={`docPerson-${this_personID}_${personNdx}`}
+                                          key={`docPerson-${this_personID}_${personNdx}-${((reactData.selectedPerson === this_personID) && reactData.loadingPerson) ? ' - Loading' : ''}`}
                                           id={`docPerson-${this_personID}_${personNdx}`}
                                           style={AVATextStyle({
                                             color: (reactData.selectedPerson && (reactData.selectedPerson !== this_personID)) ? 'lightgray' : null,
@@ -770,7 +839,7 @@ export default ({ request, onClose }) => {
                                             margin: { bottom: 0.8, top: 0 }
                                           })}
                                         >
-                                          {`${reactData.peopleList[this_personID].person_last}, ${reactData.peopleList[this_personID].person_first}`}
+                                          {`${reactData.peopleList[this_personID].person_last}, ${reactData.peopleList[this_personID].person_first}${((reactData.selectedPerson === this_personID) && reactData.loadingPerson) ? ' - Loading doc #' + reactData.docObj.length : ''}`}
                                         </Typography>
                                       </Box>
                                     </Box>
@@ -780,7 +849,7 @@ export default ({ request, onClose }) => {
                                   <Box
                                     display='flex'
                                     flexDirection='row'
-                                    key={`Group-title-box-${this_form}`}
+                                    key={`Group-title-box-${this_form}_${this_personID}`}
                                     id={`Group-title-box-${this_form}`}
                                     minWidth={'95%'}
                                     flexGrow={1}
@@ -789,7 +858,7 @@ export default ({ request, onClose }) => {
                                     alignItems='flex-start'
                                   >
                                     <Box
-                                      key={`selectedPersonBox_${this_form}`}
+                                      key={`selectedPersonBox_${this_form}_${this_personID}`}
                                       display='flex' flexGrow={1} flexDirection='column'
                                     >
                                       { /* Existing documents for this form/person */}
@@ -803,80 +872,191 @@ export default ({ request, onClose }) => {
                                         </Typography>
                                       }
                                       {(reactData.docObj.length > 0) && reactData.docObj.map((this_doc, docNdx) => (
-                                        (okToShowDoc(this_doc) &&
-                                          <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
-                                            key={`row_box_grandparent-${docNdx}`}
-                                          >
-                                            {(this_doc.status === 'complete') && (reactData.filtered_results) &&
-                                              <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                                                {completed_and_displayed.push(this_doc.file_location || this_doc.location)}
-                                              </Typography>
-                                            }
-                                            <Box display='flex' flexDirection='column' mb={'8px'} width='100%' textOverflow='ellipsis'
-                                              key={`row_box_parent-${docNdx}`}
+                                        <React.Fragment>
+                                          {(docNdx === 0) &&
+                                            <Typography
+                                              key={`recentDocs_${this_personID}`}
+                                              id={`recentDocs_${this_personID}`}
+                                              style={AVATextStyle({ size: 1.2, margin: { left: 1, bottom: 0.8, top: 0 } })}
+                                              onClick={() => {
+                                                reactData.rangeObj['Recent'] = !reactData.rangeObj['Recent']
+                                                updateReactData({
+                                                  rangeObj: reactData.rangeObj
+                                                }, true)
+                                              }}
                                             >
-                                              <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
-                                                marginLeft={2}
-                                                key={`row_box-${docNdx}`}
+                                              {'Recent'}
+                                            </Typography>
+                                          }
+                                          {(docNdx > 0)
+                                            && (reactData.docObj[docNdx - 1].header !== this_doc.header)
+                                            && (this_doc.header !== 'Recent')
+                                            &&
+                                            <Typography
+                                              key={`docHeader_${this_doc.header}_${this_personID}`}
+                                              id={`docHeader_${this_doc.header}_${this_personID}`}
+                                              style={AVATextStyle({ size: 1.2, margin: { left: 1, bottom: 0.8, top: 0 } })}
+                                              onClick={() => {
+                                                reactData.rangeObj[this_doc.header] = !reactData.rangeObj[this_doc.header];
+                                                updateReactData({
+                                                  rangeObj: reactData.rangeObj
+                                                }, true);
+                                              }}
+                                            >
+                                              {this_doc.header}
+                                            </Typography>
+                                          }
+                                          {(okToShowDoc(this_doc) && reactData.rangeObj[this_doc.header] &&
+                                            <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
+                                              key={`row_box_grandparent-${docNdx}`}
+                                            >                                              
+                                              <Box display='flex' flexDirection='column' mb={'8px'} width='100%' textOverflow='ellipsis'
+                                                key={`row_box_parent-${docNdx}`}
                                               >
-                                                {this_doc.file_location &&
-                                                  <React.Fragment>
-                                                    <CheckCircleIcon
-                                                      classes={{ root: classes.rowButton }}
-                                                      onClick={() => {
+                                                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
+                                                  marginLeft={4}
+                                                  key={`row_box-${docNdx}`}
+                                                >
+                                                  {this_doc.file_location &&
+                                                    <React.Fragment>
+                                                      <CheckCircleIcon
+                                                        key={`checkCircle-${docNdx}`}
+                                                        classes={{ root: classes.rowButton }}
+                                                        onClick={() => {
+                                                          let nowJ = new Date().getTime();
+                                                          window.open(`${this_doc.file_location}?qt=${nowJ.toString()}`, this_doc.document_title);
+                                                        }}
+                                                      />
+                                                      <PrintIcon
+                                                        key={`printIcon-${docNdx}`}
+                                                        classes={{ root: classes.rowButton }}
+                                                        onClick={() => {
+                                                          printAll({
+                                                            document_list: ([this_doc.file_location || this_doc.location]).concat(
+                                                              this_doc.amendments
+                                                                ? this_doc.amendments.map(this_amendment => {
+                                                                  return this_amendment.file_location;
+                                                                })
+                                                                : null
+                                                            )
+                                                          });
+                                                        }}
+                                                      />
+                                                      <AddCircleIcon
+                                                        key={`addCircle-${docNdx}`}
+                                                        classes={{ root: classes.rowButton }}
+                                                        onClick={() => {
+                                                          updateReactData({
+                                                            addDocPrompt: false,
+                                                            addDocForm: true,
+                                                            pendingInstructions: {
+                                                              selectedPerson: this_doc.pertains_to,
+                                                              selectedPerson_index: personNdx,
+                                                              action: 'amendment',
+                                                              parentFormType: this_form,
+                                                              docIndex: docNdx,
+                                                              formType: reactData.formList[this_form].amendment_form_id || 'amendment_1',
+                                                              formData: {
+                                                                document_id: this_doc.document_id,
+                                                                doc_reference: `${this_doc.document_title} for ${this_doc.pertains_to_name}; completed on ${makeDate(this_doc.last_update).absolute}`
+                                                              }
+                                                            }
+                                                          }, true);
+                                                        }}
+                                                      />
+                                                    </React.Fragment>
+                                                  }
+                                                  {!this_doc.file_location &&
+                                                    <React.Fragment>
+                                                      <RadioButtonUncheckedIcon
+                                                        key={`RadioUnchecked-${docNdx}`}
+                                                        classes={{ root: classes.rowButton }}
+                                                        onClick={() => {
+                                                          updateReactData({
+                                                            editDoc: true,
+                                                            pendingInstructions: {
+                                                              action: 'edit',
+                                                              formType: this_form,
+                                                              formName: reactData.formList[this_form].form_name,
+                                                              formRec: reactData.formList.find(l => { return (l.form_id === this_form); }),
+                                                              document_id: this_doc.document_id,
+                                                              document_title: this_doc.title || this_doc.document_title,
+                                                              person_id: this_doc.pertains_to,
+                                                              person_index: personNdx,
+                                                              docIndex: docNdx
+                                                            }
+                                                          }, true);
+                                                        }}
+                                                      />
+                                                      <DeleteIcon
+                                                        key={`Delete-${docNdx}`}
+                                                        classes={{ root: classes.rowButton }}
+                                                        onClick={async () => {
+                                                          await dbClient
+                                                            .update({
+                                                              Key: {
+                                                                person_id: '*status',
+                                                                document_id: this_doc.document_id
+                                                              },
+                                                              UpdateExpression: 'set #s = :d',
+                                                              ExpressionAttributeValues: { ':d': 'deleted' },
+                                                              ExpressionAttributeNames: { '#s': 'status' },
+                                                              TableName: 'DocumentXRef'
+                                                            })
+                                                            .promise()
+                                                            .catch(error => { cl(`caught error updating Documents; error is: `, error); });
+                                                          reactData.docObj.splice(docNdx, 1);
+                                                          updateReactData({
+                                                            docObj: reactData.docObj
+                                                          }, true);
+                                                        }}
+                                                      />
+                                                      <CloudUploadIcon
+                                                        classes={{ root: classes.rowButton }}
+                                                        key={`upload-${this_doc.document_id}_${docNdx}`}
+                                                        id={`upload-${this_doc.document_id}_${docNdx}`}
+                                                        size='small'
+                                                        aria-label="attach_icon"
+                                                        onClick={async () => {
+                                                          updateReactData({
+                                                            isUploading: Object.assign({}, this_doc, {
+                                                              calledFrom: 'forms',
+                                                              person_id: reactData.selectedPerson,
+                                                              form_id: reactData.selectedForm,
+                                                              docNdx
+                                                            })
+                                                          }, true);
+                                                        }}
+                                                      />
+                                                    </React.Fragment>
+                                                  }
+                                                  <Box
+                                                    key={`docNameBox-${this_doc.document_id}_${docNdx}`}
+                                                    id={`docNameBox-${this_doc.document_id}_${docNdx}`}
+                                                    display='flex' flexDirection='row'
+                                                    flexGrow={1}
+                                                    alignItems={'center'} justifyContent={'flex-start'}
+                                                    onContextMenu={async (e) => {
+                                                      e.preventDefault();
+                                                      enqueueSnackbar(<div>
+                                                        1. Form ID {this_form}<br />
+                                                        2. Doc ID {this_doc.document_id}<br />
+                                                        3. Pertains to {this_doc.pertains_to}</div>,
+                                                        { variant: 'info', persist: true });
+                                                    }}
+                                                    onClick={async () => {
+                                                      if (this_doc.file_location) {
                                                         let nowJ = new Date().getTime();
                                                         window.open(`${this_doc.file_location}?qt=${nowJ.toString()}`, this_doc.document_title);
-                                                      }}
-                                                    />
-                                                    <PrintIcon
-                                                      classes={{ root: classes.rowButton }}
-                                                      onClick={() => {
-                                                        printAll({
-                                                          document_list: ([this_doc.file_location || this_doc.location]).concat(
-                                                            this_doc.amendments
-                                                              ? this_doc.amendments.map(this_amendment => {
-                                                                return this_amendment.file_location;
-                                                              })
-                                                              : null
-                                                          )
-                                                        });
-                                                      }}
-                                                    />
-                                                    <AddCircleIcon
-                                                      classes={{ root: classes.rowButton }}
-                                                      onClick={() => {
-                                                        updateReactData({
-                                                          addDocPrompt: false,
-                                                          addDocForm: true,
-                                                          pendingInstructions: {
-                                                            selectedPerson: this_doc.pertains_to,
-                                                            selectedPerson_index: personNdx,
-                                                            action: 'amendment',
-                                                            parentFormType: this_form,
-                                                            docIndex: docNdx,
-                                                            formType: reactData.formList[this_form].amendment_form_id || 'amendment_1',
-                                                            formData: {
-                                                              document_id: this_doc.document_id,
-                                                              doc_reference: `${this_doc.document_title} for ${this_doc.pertains_to_name}; completed on ${makeDate(this_doc.last_update).absolute}`
-                                                            }
-                                                          }
-                                                        }, true);
-                                                      }}
-                                                    />
-                                                  </React.Fragment>
-                                                }
-                                                {!this_doc.file_location &&
-                                                  <React.Fragment>
-                                                    <RadioButtonUncheckedIcon
-                                                      classes={{ root: classes.rowButton }}
-                                                      onClick={() => {
+                                                      }
+                                                      else {
                                                         updateReactData({
                                                           editDoc: true,
                                                           pendingInstructions: {
                                                             action: 'edit',
                                                             formType: this_form,
                                                             formName: reactData.formList[this_form].form_name,
-                                                            formRec: reactData.formList.find(l => { return (l.form_id === this_form); }),
+                                                            formRec: reactData.formList[this_form],
                                                             document_id: this_doc.document_id,
                                                             document_title: this_doc.title || this_doc.document_title,
                                                             person_id: this_doc.pertains_to,
@@ -884,111 +1064,35 @@ export default ({ request, onClose }) => {
                                                             docIndex: docNdx
                                                           }
                                                         }, true);
-                                                      }}
-                                                    />
-                                                    <DeleteIcon
-                                                      classes={{ root: classes.rowButton }}
-                                                      onClick={async () => {
-                                                        await dbClient
-                                                          .update({
-                                                            Key: {
-                                                              person_id: '*status',
-                                                              document_id: this_doc.document_id
-                                                            },
-                                                            UpdateExpression: 'set #s = :d',
-                                                            ExpressionAttributeValues: { ':d': 'deleted' },
-                                                            ExpressionAttributeNames: { '#s': 'status' },
-                                                            TableName: 'DocumentXRef'
-                                                          })
-                                                          .promise()
-                                                          .catch(error => { cl(`caught error updating Documents; error is: `, error); });
-                                                        reactData.docObj.splice(docNdx, 1);
-                                                        updateReactData({
-                                                          docObj: reactData.docObj
-                                                        }, true);
-                                                      }}
-                                                    />
-                                                    <CloudUploadIcon
-                                                      classes={{ root: classes.rowButton }}
-                                                      key={`upload-${this_doc.document_id}_${docNdx}`}
-                                                      id={`upload-${this_doc.document_id}_${docNdx}`}
-                                                      size='small'
-                                                      aria-label="attach_icon"
-                                                      onClick={async () => {
-                                                        updateReactData({
-                                                          isUploading: Object.assign({}, this_doc, {
-                                                            calledFrom: 'forms',
-                                                            person_id: reactData.selectedPerson,
-                                                            form_id: reactData.selectedForm,
-                                                            docNdx
-                                                          })
-                                                        }, true);
-                                                      }}
-                                                    />
-                                                  </React.Fragment>
-                                                }
-                                                <Box
-                                                  key={`docNameBox-${this_doc.document_id}_${docNdx}`}
-                                                  id={`docNameBox-${this_doc.document_id}_${docNdx}`}
-                                                  display='flex' flexDirection='row'
-                                                  flexGrow={1}
-                                                  alignItems={'center'} justifyContent={'flex-start'}
-                                                  onContextMenu={async (e) => {
-                                                    e.preventDefault();
-                                                    enqueueSnackbar(<div>
-                                                      1. Form ID {this_form}<br />
-                                                      2. Doc ID {this_doc.document_id}<br />
-                                                      3. Pertains to {this_doc.pertains_to}</div>,
-                                                      { variant: 'info', persist: true });
-                                                  }}
-                                                  onClick={async () => {
-                                                    if (this_doc.file_location) {
-                                                      let nowJ = new Date().getTime();
-                                                      window.open(`${this_doc.file_location}?qt=${nowJ.toString()}`, this_doc.document_title);
-                                                    }
-                                                    else {
-                                                      updateReactData({
-                                                        editDoc: true,
-                                                        pendingInstructions: {
-                                                          action: 'edit',
-                                                          formType: this_form,
-                                                          formName: reactData.formList[this_form].form_name,
-                                                          formRec: reactData.formList[this_form],
-                                                          document_id: this_doc.document_id,
-                                                          document_title: this_doc.title || this_doc.document_title,
-                                                          person_id: this_doc.pertains_to,
-                                                          person_index: personNdx,
-                                                          docIndex: docNdx
-                                                        }
-                                                      }, true);
-                                                    }
-                                                  }}
-                                                >
-                                                  <Typography
-                                                    key={`docDate-${this_doc.document_id}_${docNdx}`}
-                                                    id={`docDate-${this_doc.document_id}_${docNdx}`}
-                                                    style={AVATextStyle({ color: (!this_doc.file_location ? 'red' : null), size: 1.2, margin: { left: 1, bottom: 0.8, top: 0 } })}
+                                                      }
+                                                    }}
                                                   >
-                                                    {this_doc.eventDate}
-                                                  </Typography>
+                                                    <Typography
+                                                      key={`docDate-${this_doc.document_id}_${docNdx}`}
+                                                      id={`docDate-${this_doc.document_id}_${docNdx}`}
+                                                      style={AVATextStyle({ color: (!this_doc.file_location ? 'red' : null), size: 1.2, margin: { left: 1, bottom: 0.8, top: 0 } })}
+                                                    >
+                                                      {this_doc.eventDate}
+                                                    </Typography>
+                                                  </Box>
                                                 </Box>
+                                                {this_doc.amendments && this_doc.amendments.map((this_amendment, amendment_number) => (
+                                                  <Typography
+                                                    key={`docAmend-${this_doc.document_id}_${amendment_number}`}
+                                                    id={`docAmend-${this_doc.document_id}_${amendment_number}`}
+                                                    style={AVATextStyle({ size: 0.8, margin: { left: 2, bottom: 0.8, top: 0 } })}
+                                                    onClick={() => {
+                                                      let nowJ = new Date().getTime();
+                                                      window.open(`${this_amendment.file_location}?qt=${nowJ.toString()}`, this_amendment.document_title);
+                                                    }}
+                                                  >
+                                                    {`Amendment ${this_doc.amendments.length - amendment_number} - ${makeDate(this_amendment.last_update).absolute}`}
+                                                  </Typography>
+                                                ))}
                                               </Box>
-                                              {this_doc.amendments && this_doc.amendments.map((this_amendment, amendment_number) => (
-                                                <Typography
-                                                  key={`docAmend-${this_doc.document_id}_${amendment_number}`}
-                                                  id={`docAmend-${this_doc.document_id}_${amendment_number}`}
-                                                  style={AVATextStyle({ size: 0.8, margin: { left: 2, bottom: 0.8, top: 0 } })}
-                                                  onClick={() => {
-                                                    let nowJ = new Date().getTime();
-                                                    window.open(`${this_amendment.file_location}?qt=${nowJ.toString()}`, this_amendment.document_title);
-                                                  }}
-                                                >
-                                                  {`Amendment ${this_doc.amendments.length - amendment_number} - ${makeDate(this_amendment.last_update).absolute}`}
-                                                </Typography>
-                                              ))}
                                             </Box>
-                                          </Box>
-                                        )
+                                          )}
+                                        </React.Fragment>
                                       ))
                                       }
                                     </Box>
@@ -998,33 +1102,12 @@ export default ({ request, onClose }) => {
                             )
                           ))
                           }
-
                         </Box>
                       </Box>
                     }
                   </React.Fragment>
                 )
               ))}
-              {(rowsWritten === 0) &&
-                <Box
-                  display='flex'
-                  marginTop={3}
-                  flexDirection='row'
-                  justifyContent='center'
-                  alignItems='center'
-                >
-                  <Typography
-                    key={`nothing_found`}
-                    id={`nothing_found`}
-                    style={AVATextStyle({ size: 1.2, bold: true, margin: { left: 1, bottom: 0.8, top: 0 } })}
-                  >
-                    {reactData.filtered_results
-                      ? `No Documents match that search`
-                      : `Nothing found`
-                    }
-                  </Typography>
-                </ Box>
-              }
             </Box>
             {reactData.setFilter &&
               <AVATextInput
@@ -1529,9 +1612,12 @@ export default ({ request, onClose }) => {
             }
           </Box >
         </DialogContent>
-
-        <DialogActions style={{ justifyContent: 'center' }}>
+        <DialogActions
+          key={'actions'}
+          style={{ justifyContent: 'center' }}
+        >
           <Button
+            key={`exit_button_${reactData.version}`}
             className={AVAClass.AVAButton}
             style={{ backgroundColor: 'red', color: 'white' }}
             size='small'
@@ -1542,6 +1628,7 @@ export default ({ request, onClose }) => {
             {'Exit'}
           </Button>
           <Button
+            key={`filter_button_${reactData.version}`}
             className={AVAClass.AVAButton}
             style={{ backgroundColor: 'gray', color: 'black' }}
             size='small'
@@ -1554,21 +1641,7 @@ export default ({ request, onClose }) => {
           >
             {'Filter'}
           </Button>
-          {(completed_and_displayed.length > 0) &&
-            <Button
-              className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'blue', color: 'white', paddingRight: (reactData.isMobile ? '4px' : '') }}
-              size='small'
-              onClick={async () => {
-                await printAll({ document_list: completed_and_displayed });
-              }}
-              startIcon={<PrintIcon size="small" />}
-            >
-              {`Print ${completed_and_displayed.length}`}
-            </Button>
-          }
         </DialogActions>
-
       </Dialog>
     )
   );

@@ -640,7 +640,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         return false;
       };
     }
-    let groupOK = reactData.current.peopleRec.groups.some(g => { return ((g !== 'ALL') && (g !== '__top__')); });
+    let groupOK = reactData.current.peopleRec.groups.some(g => { return ((g.toLowerCase() !== 'all') && (g.toLowerCase() !== '__top__')); });
     if (!groupOK) {
       reactData.errorList['groups'] = {
         errorField: 'groups',
