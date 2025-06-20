@@ -2,7 +2,7 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 import { useSnackbar } from 'notistack';
 
-import { dbClient, cl, makeArray, recordExists, getDb, array_in_array, listFromArray, switchActiveAccount } from '../../util/AVAUtilities';
+import { dbClient, cl, makeArray, recordExists, array_in_array, listFromArray, switchActiveAccount } from '../../util/AVAUtilities';
 import { makeDate, addDays, makeTime } from '../../util/AVADateTime';
 import AVATextInput from '../forms/AVATextInput';
 import { getPerson } from '../../util/AVAPeople';
@@ -143,7 +143,6 @@ export default ({ request, onClose }) => {
   }
 
   var rowsWritten;
-  var completed_and_displayed = [];
 
   const formType_filter = makeArray(options.formTypes);
 
@@ -555,27 +554,6 @@ export default ({ request, onClose }) => {
     return true;
   };
 
-  const getDocRec = async ({ document_id, doc_status }) => {
-    let docFile;
-    if (doc_status === 'complete') {
-      docFile = 'CompletedDocuments';
-    }
-    else if (doc_status === 'work_in_process') {
-      docFile = 'DocumentsInProcess';
-    }
-    else if (doc_status === 'assigned') {
-      docFile = 'DocumentsAssigned';
-    }
-    var this_doc = await getDb({
-      Key: {
-        client_id: state.session.client_id,
-        document_id: document_id
-      },
-      TableName: docFile
-    });
-    return this_doc;
-  };
-
   // **************************
 
   React.useEffect(() => {
@@ -648,7 +626,6 @@ export default ({ request, onClose }) => {
             >
               <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                 {rowsWritten = 0}
-                {completed_and_displayed = []}
               </Typography>
               {Object.keys(reactData.formList).map((this_form, formNdx) => (
                 (okToShowForm(this_form) &&
