@@ -710,7 +710,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     reactData.newMessageRecipients.forEach(r => {
       if (r.person_id) { recipient_key.push(...([r.person_id].flat())); }
       else if (r.group_id) { recipient_key.push(`GRP:${r.group_id}`); }
-      else if (r.rIndex) {
+      else if (r.hasOwnProperty('rIndex') && (r.rIndex > -1)) {
         recipient_key.push(...reactData.preferred_recipients[r.rIndex].personList);
       }
     });
