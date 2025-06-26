@@ -454,6 +454,40 @@ export default ({
           />
         );
       }
+    case 'new_message_list': {
+      let defaultValueObj = {};
+      if (!defaultValue) { defaultValueObj = {}; }
+      else {
+        if (Array.isArray(defaultValue)) {
+          defaultValue.forEach(d => {
+            if (typeof d === 'string') {
+              let [dKey, dVal] = d.split('=');
+              defaultValueObj[dKey] = dVal;
+            }
+            else {
+              for (let dKey in d) {
+                defaultValueObj[dKey] = d[dKey];
+              }
+            }
+          });
+        }
+        else {
+          try { defaultValueObj = JSON.parse(defaultValue); }
+          catch { console.log(defaultValue); }
+        }
+      }
+      return (
+        <MessageForm
+          pPerson={session.patient_id}
+          pClient={session.client_id}
+          pMessageList={[]}
+          pSession={session}
+          options={defaultValueObj.options}
+          onReset={onSave}
+          defaultValue={defaultValue}
+        />
+      );
+    };
     case 'message_monitor': {
       let defaultValueObj = {};
       if (!defaultValue) { defaultValueObj = { recipientID: '*select' }; }
