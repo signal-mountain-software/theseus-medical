@@ -34,6 +34,7 @@ import FreeTextForm from './FreeTextForm';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import ClientMaintenance from '../dialogs/ClientMaintenance';
 import FormManagement from '../dialogs/FormManagement';
+import EntityManager from './EntityManager';
 
 import { createPutFact } from '../../graphql/mutations';
 import { useSnackbar } from 'notistack';
@@ -902,6 +903,14 @@ export default ({
         <FormManagement
           defaults={defaultObject}
           onClose={onClose}
+        />
+      );
+    case 'manage_entities':
+      return (
+        // defaults, focusAt, onCancel, onSelect, onRefresh 
+        <EntityManager
+          defaults={defaultObject}
+          onCancel={onClose}
         />
       );
     case 'carousel':
