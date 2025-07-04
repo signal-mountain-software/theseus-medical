@@ -492,6 +492,9 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             }
           }
           // convert inline link to an attachment by extracting all text after (and including http:)
+          if (!m.content.current.hasOwnProperty(language)) {
+            language = Object.keys(m.content.current)[0];
+          }
           let hLink = extract(m.content.current[language].text, 'http', ' ', {
             fuzzyRight: true,  // allow end-of-string as a right delimeter 
             includeLeft: true,  // return the left delimeter

@@ -102,11 +102,13 @@ export default ({ onCancel, onLoad, options = {} }) => {
   let upload;
   async function handleSaveFile(pTarget) {
     let pType = pTarget.type;
+    let now_time = new Date().getTime();
+    let newKey = pTarget.name.replace('.', `_${now_time}.`)
     upload = s3.upload({
       partSize: 10 * 1024 * 1024,
       queueSize: 4,
       Bucket: 'theseus-medical-storage',
-      Key: pTarget.name,
+      Key: newKey,
       Body: pTarget,
       ACL: 'public-read-write',
       ContentType: pType
