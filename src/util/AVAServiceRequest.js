@@ -216,12 +216,13 @@ export async function putServiceRequest(body) {
   let currentTime = makeDate(new Date());
   let now = currentTime.timestamp;
   if (!body.requestDate) { body.requestDate = now; };
-  body.requestID = `${body.proxy_user || body.author}~${body.requestDate}`;
+  body.author = body.author || body.requestor || body.proxy_user;
+  body.requestID = `${body.author}~${body.requestDate}`;
   if (!body.local_key) {
     let sDate = now.toString();
     body.local_key = sDate.slice(2, 6) + '-' + sDate.slice(6, 13);
   }
-  if (!body.onBehalfOf) { body.onBehalfOf = await getPerson(body.author, 'name'); }
+  body.onBehalfOf = body.onBehalfOf || body.on_behalf_of || await getPerson(body.author, 'name');
   let historyArray = [];
   if (body.history) {
     if (Array.isArray(body.history)) { historyArray.push(...(body.history)); }
@@ -229,12 +230,12 @@ export async function putServiceRequest(body) {
   }
   else { historyArray.push(`Request submitted ${currentTime.oaDate}`); }
   let serviceRequestRec = {
-    "client_id": body.client,
-    "request_id": body.requestID,
-    "requestor": body.author,
-    "on_behalf_of": body.onBehalfOf,
-    "request_type": body.requestType,
-    "request_date": body.requestDate,
+    "client_id": body.client || body.client_id,
+    "request_id": body.request_id || body.requestID,
+    "requestor": body.author || body.requestor,
+    "on_behalf_of": body.onBehalfOf || body.author || 'n/a',
+    "request_type": body.requestType || body.request_type,
+    "request_date": body.requestDate || body.request_date,
     "activity_key": body.activity_key,
     "original_request": body.request || body.original_request,
     "current_request": body.request || body.original_request,
@@ -243,9 +244,9 @@ export async function putServiceRequest(body) {
     "assigned_to": body.assigned_to || body.assign_to || 'unassigned',
     "foreign_key": body.foreign_key || '',
     "last_update": body.update_time || now,
-    "type_date": `${body.requestType}~${body.update_time || now}`,
+    "type_date": `${body.requestType || body.request_type}~${body.update_time || now}`,
     "last_status": body.requestStatus || body.last_status || 'submitted',
-    "last_note": body.notes || null
+    "last_note": body.notes || historyArray[0] || null
   };
   if (body.attachments && (body.attachments.length > 0)) {
     serviceRequestRec.attachments = body.attachments.map(a => { return a.Location; });
