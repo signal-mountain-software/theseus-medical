@@ -1453,7 +1453,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         response = true;
       }
       else if (reactData.threads[this_thread].messages[this_messageIndex].recipients.some(r => {
-        return r.recipient_name.inculdes(reactData.messageFilterLower);
+        return r.recipient_name.includes(reactData.messageFilterLower);
       })) {
         response = true;
       }
