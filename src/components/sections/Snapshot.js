@@ -119,6 +119,13 @@ export default ({ currentValues, reactData, updateReactData }) => {
           >
             {makeLocation()}
           </Typography>
+          {currentValues.peopleRec.checkout_message &&
+            <Typography
+              style={AVATextStyle({ bold: true, size: 1 })}
+            >
+              {currentValues.peopleRec.checkout_message}
+            </Typography>
+          }
           {(Object.keys(reactData.local_customFields).length > 0) && Object.keys(reactData.local_customFields).map((this_customField, cFNdx) => (
             (currentValues.peopleRec?.local_data?.[this_customField] &&
               <Box
