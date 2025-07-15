@@ -492,7 +492,7 @@ export default ({ onSave, onClose }) => {
                     setReactData(reactData);
                     setForceRedisplay(!forceRedisplay);
                   }
-                  if (enteredID && (enteredID === 'exit')) {
+                  if (enteredID && (enteredID.toLowerCase() === 'exit')) {
                     onClose();
                   }
                   else {
