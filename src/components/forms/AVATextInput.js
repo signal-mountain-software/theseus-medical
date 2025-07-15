@@ -70,6 +70,7 @@ const useStyles = makeStyles(theme => ({
     marginBottom: 4,
     paddingLeft: 16,
     paddingRight: 16,
+    color: 'black',
     backgroundColor: 'white',
   }
 }));
@@ -571,7 +572,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                       multiline
                       autoFocus={(ndx === reactData.focusOn) ? true : null}
                       inputProps={{ style: { color: 'black', fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                      FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                      FormHelperTextProps={{ style: { color: 'black', fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                       error={!!(errorText && errorText[ndx])}
                       value={textInput[ndx] || ''}
                       onChange={(event) => {

@@ -563,7 +563,7 @@ export default ({ onSave, onClose }) => {
                 >
                   {reactData.candidates.map((candidate, cIndex) => (
                     <Box display='flex'
-                      style={{ marginBottom: '2em', marginLeft: '1em', backgroundColor: 'white' }}
+                      style={{ color: 'black', marginBottom: '2em', marginLeft: '1em', backgroundColor: 'white' }}
                       flexDirection='row' key={`ambiguous-${cIndex}`} justifyContent='flex-start' alignItems='center'
                       paddingX={2}
                       flexGrow={1}
