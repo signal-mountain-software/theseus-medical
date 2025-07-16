@@ -1207,7 +1207,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   function setBackgroundColor(this_date) {
     let this_background = reactData.calendar_fill;
     if (this_date.date_words === 'Today') {
-      this_background = 'white';
+      this_background = (isDarkMode ? 'darkgoldenrod' : 'white');
     }
     else if (this_date.dateObj.weekday === 'weekend') {
       this_background = (isDarkMode ? 'darkgoldenrod' : 'lightyellow');
