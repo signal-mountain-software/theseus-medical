@@ -799,7 +799,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       let [first, last] = newPersonName.split(/\s(.*)/);
       let newPersonLocation = null;
       let this_person = await getPerson(newPersonID, '*all');
-      if (this_person) {
+      if (this_person.client_id) {
         if (this_person.location) {
           newPersonLocation = this_person.location.trim();
         }
@@ -1134,7 +1134,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
         }
       }
     }
-    return (other_occurrences.length > 0);
+    return other_occurrences;
   };
 
   const handleCancelEvent = async () => {
@@ -1161,15 +1161,15 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       if (eventSlotList && (eventSlotList.length > 0)) {
         let recipientList = [];
         for (const [index, this_item] of eventSlotList.entries()) {
-          if (this_item.slotData?.status?.current?.selected) {
+          if ((this_item.slotData.status === 'selected') || this_item.slotData?.status?.current?.selected) {
             recipientList.push(this_item.slotData.owner);
+            await handleAllocateSlot({
+              person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
+              slot: this_item.slotData.id,
+              release: true,
+              index: (index || 0)
+            });
           }
-          await handleAllocateSlot({
-            person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
-            slot: this_item.slotData.id,
-            release: true,
-            index: (index || 0)
-          });
         };
         if (recipientList.length > 0) {
           let messageText = `${pOccData.description} ${makeDate(pOccData.date).relative} has been cancelled`;
@@ -1592,7 +1592,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                 <MenuItem
                   onClick={async () => {
                     let othersExist = await checkOtherOccurrences();
-                    if (!othersExist) {
+                    if (!othersExist || (othersExist.length < 1)) {
                       updateReactData({
                         popupMenuOpen: false,
                         cancelPending: true,
@@ -1600,6 +1600,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                     }
                     else {
                       updateReactData({
+                        other_occurrences: othersExist,
                         popupMenuOpen: false,
                         alert: {
                           severity: 'warning',
@@ -1608,7 +1609,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                             How would you like to proceed?<br />
                             You may: <br />
                             Cancel <strong>only this event</strong> and leave the others alone<br />
-                            Cancel <strong>all occurrences</strong>, or<br />
+                            Cancel <strong>this and all future</strong> occurrences, or<br />
                             <strong>Don't cancel anything</strong> and go back</div>,
                           action: [
                             {
@@ -1626,9 +1627,12 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                               function: (async () => {
                                 await handleCancelEvent();
                                 let eventID = pEventCode.split('#')[0];
+                                let todayYMD = makeDate(new Date()).numeric;
                                 for (let next_event of reactData.other_occurrences) {
-                                  pEventCode = `${eventID}#${next_event}`;
-                                  await handleCancelEvent();
+                                  if (next_event >= todayYMD) {
+                                    pEventCode = `${eventID}#${next_event}`;
+                                    await handleCancelEvent();
+                                  }
                                 }
                                 reactData.cancelPending = false;
                                 setReactData(reactData);
