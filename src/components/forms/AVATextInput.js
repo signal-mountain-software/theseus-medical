@@ -499,7 +499,8 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                                 marginLeft: -5,
                                 marginBottom: -4,
                                 marginTop: 1,
-                                borderWidth: 0
+                                borderWidth: 0,
+                                color: 'black'
                               }}
                               dropdownHandle={true}
                               dropdownPosition={'auto'}
