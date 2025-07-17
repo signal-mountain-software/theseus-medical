@@ -19,6 +19,7 @@ import { isPhoneNumber } from '../../util/AVAUtilities';
 import { formatPhone } from '../../util/AVAPeople';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 const useStyles = makeStyles(theme => ({
   AVAClientBackground: {
@@ -73,6 +74,8 @@ export default ({ onSave, onClose }) => {
       if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
     }
   };
+
+  const isDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
 
   // Initialization
 
@@ -279,7 +282,7 @@ export default ({ onSave, onClose }) => {
         }
       }
     };
-    return {obo, errorText, responses}
+    return { obo, errorText, responses };
   }
 
   async function putCheckout(reqRec, options) {
@@ -563,7 +566,7 @@ export default ({ onSave, onClose }) => {
                 >
                   {reactData.candidates.map((candidate, cIndex) => (
                     <Box display='flex'
-                      style={{ color: 'black', marginBottom: '2em', marginLeft: '1em', backgroundColor: 'white' }}
+                      style={{ color: 'black', marginBottom: '2em', marginLeft: '1em', backgroundColor: (isDarkMode ? 'gray' : 'white'), borderColor: (isDarkMode ? 'white' : 'black') }}
                       flexDirection='row' key={`ambiguous-${cIndex}`} justifyContent='flex-start' alignItems='center'
                       paddingX={2}
                       flexGrow={1}
@@ -834,9 +837,9 @@ export default ({ onSave, onClose }) => {
                   setReactData(reactData);
                   setForceRedisplay(!forceRedisplay);
                 }}
-                  onSave={async (responses) => {
-                    let { obo, errorText } = await checkGuestInput(responses);                    
-                    reactData.errorText = errorText;  
+                onSave={async (responses) => {
+                  let { obo, errorText } = await checkGuestInput(responses);
+                  reactData.errorText = errorText;
                   if (reactData.errorText.length === 0) {
                     // Everything is good - go ahead and check them in
                     let now = makeDate(new Date());
@@ -1056,7 +1059,7 @@ export default ({ onSave, onClose }) => {
                             textInput[state.session.guest_checkout_prompts[x - 3].value] = r;
                           }
                         }
-                      })                      
+                      });
                     };
                   }
                   my_request.history.unshift(hNote);
