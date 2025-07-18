@@ -47,6 +47,10 @@ import DeleteIcon from '@material-ui/icons/Delete';
 import EditIcon from '@material-ui/icons/Edit';
 import SaveIcon from '@material-ui/icons/Save';
 import IconButton from '@material-ui/core/IconButton';
+import AllOut from '@material-ui/icons/PlaylistAddCheck';
+import MarkedOut from '@material-ui/icons/CheckCircle';
+import AllIn from '@material-ui/icons/PeopleOutline';
+import MarkedIn from '@material-ui/icons/AccountCircle';
 import RadioButtonCheckedIcon from '@material-ui/icons/RadioButtonChecked';
 import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
 
@@ -222,8 +226,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
   const [editNoteNumber, setEditNoteNumber] = React.useState(-1);
   const [newNote, setNewNote] = React.useState('');
 
-  const isEventOwner = pOccData?.owner?.includes(pPatient)
-    || ['master', 'support'].includes(state.patient.account_class);
+  const isEventOwner = pOccData?.owner?.includes(pPatient) || state.session.adminAccount;
 
   const checkSignupWindow = () => {
     let response = {
@@ -642,6 +645,99 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       isLongitude,
     )}`;
 
+
+  async function checkoutAll(options) {
+    // options (inOut: <in(default)/out>, markedOnly: <true/false(default)>)
+    let now = new Date();
+    let nowTime = now.getTime();
+    let note;
+    let count = 0;
+    if (options.inOut === 'out') {
+      note = `Checked out to ${pOccData.description} by ${state.session.patient_display_name} ${makeDate(now).oaDate}`;
+    }
+    else {
+      note = `Checked in from ${pOccData.description} by ${state.session.patient_display_name} ${makeDate(now).oaDate}`;
+    }
+    for (let this_slot of eventSlotList) {
+      if ((this_slot.slotData.status === 'selected')
+        && (!options.markedOnly || this_slot.marked)) {
+        // get ServiceRequests record for this person
+        let updatedRequestRec;
+        let requestRec = await dbClient
+          .get({
+            Key: {
+              client_id: state.session.client_id,
+              request_id: `${this_slot.slotData.owner}_checkout`
+            },
+            TableName: 'ServiceRequests'
+          })
+          .promise()
+          .catch(error => {
+            console.log({ [`in checkoutAll, Error reading key=${this_slot.slotData.owner}_checkout in ${state.session.client_id}`]: error });
+          });
+        if (!recordExists(requestRec)) {
+          updatedRequestRec = {
+            "client_id": state.session.client_id,
+            "request_id": `${this_slot.slotData.owner}_checkout`,
+            "foreign_key": 'resident',
+            "history": [],
+            "local_key": `${this_slot.slotData.owner}_checkout`,
+            "on_behalf_of": this_slot.display_name,
+            "original_request": {},
+            "requestor": this_slot.slotData.owner,
+            "request_date": nowTime,
+            "request_type": 'checkout',
+            "visiting": ""
+          };
+        }
+        else {
+          updatedRequestRec = requestRec.Item;
+        }
+        updatedRequestRec.last_status = options.inOut || 'in';
+        updatedRequestRec.last_update = nowTime;
+        updatedRequestRec.history.unshift(note);
+        await dbClient
+          .put({
+            Item: updatedRequestRec,
+            TableName: 'ServiceRequests'
+          })
+          .promise()
+          .catch(error => {
+            cl(`Error writing ServiceRequests`, error);
+          });
+        // update People record
+        await dbClient
+          .update({
+            Key: { person_id: this_slot.slotData.owner },
+            UpdateExpression: 'set #s = :s, #h = :h',
+            ExpressionAttributeValues: {
+              ':s': options.inOut || 'in',
+              ':h': updatedRequestRec.history.slice(0, 10)
+            },
+            ExpressionAttributeNames: {
+              '#s': 'checkout_status',
+              '#h': 'checkout_recent_history'
+            },
+            TableName: "People",
+          })
+          .promise()
+          // eslint-disable-next-line
+          .catch(error => {
+            count--;
+            cl(`caught error updating People; error is: `, error);
+          });
+        count++;
+      }
+    }
+    updateReactData({
+      alert: {
+        title: 'Complete!',
+        severity: 'success',
+        message: `${count} ${(count === 1) ? 'person' : 'people'} checked ${options.inOut || 'in'}`,
+      }
+    }, true);
+  }
+
   const handleUpdateWaitList = async (waitList) => {
     let qQ = {
       Key: {
@@ -703,7 +799,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       let [first, last] = newPersonName.split(/\s(.*)/);
       let newPersonLocation = null;
       let this_person = await getPerson(newPersonID, '*all');
-      if (this_person) {
+      if (this_person.client_id) {
         if (this_person.location) {
           newPersonLocation = this_person.location.trim();
         }
@@ -1038,7 +1134,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
         }
       }
     }
-    return (other_occurrences.length > 0);
+    return other_occurrences;
   };
 
   const handleCancelEvent = async () => {
@@ -1065,15 +1161,15 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       if (eventSlotList && (eventSlotList.length > 0)) {
         let recipientList = [];
         for (const [index, this_item] of eventSlotList.entries()) {
-          if (this_item.slotData?.status?.current?.selected) {
+          if ((this_item.slotData.status === 'selected') || this_item.slotData?.status?.current?.selected) {
             recipientList.push(this_item.slotData.owner);
+            await handleAllocateSlot({
+              person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
+              slot: this_item.slotData.id,
+              release: true,
+              index: (index || 0)
+            });
           }
-          await handleAllocateSlot({
-            person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
-            slot: this_item.slotData.id,
-            release: true,
-            index: (index || 0)
-          });
         };
         if (recipientList.length > 0) {
           let messageText = `${pOccData.description} ${makeDate(pOccData.date).relative} has been cancelled`;
@@ -1362,6 +1458,95 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                     <Typography className={classes.popUpMenuRow} > {'Sign-up sheet'}</Typography>
                   </Box>
                 </MenuItem>
+                <MenuItem
+                  onClick={async () => {
+
+
+
+
+                    await checkoutAll({ inOut: 'out', markedOnly: false });
+
+
+
+                    updateReactData({
+                      popupMenuOpen: false,
+                    }, true);
+                  }}
+                >
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'vRowHome'}
+                  >
+                    <AllOut />
+                    <Typography className={classes.popUpMenuRow} > {'Check-out all'}</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem
+                  onClick={async () => {
+
+
+
+                    await checkoutAll({ inOut: 'out', markedOnly: true });
+
+
+
+                    updateReactData({
+                      popupMenuOpen: false,
+                    }, true);
+                  }}
+                >
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'vRowHome'}
+                  >
+                    <MarkedOut />
+                    <Typography className={classes.popUpMenuRow} > {'Check-out marked'}</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem
+                  onClick={async () => {
+
+
+
+                    await checkoutAll({ inOut: 'in', markedOnly: false });
+
+
+
+                    updateReactData({
+                      popupMenuOpen: false,
+                    }, true);
+                  }}
+                >
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'vRowHome'}
+                  >
+                    <AllIn />
+                    <Typography className={classes.popUpMenuRow} > {'Check-in all'}</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem
+                  onClick={async () => {
+
+
+
+                    await checkoutAll({ inOut: 'in', markedOnly: true });
+
+
+
+                    updateReactData({
+                      popupMenuOpen: false,
+                    }, true);
+                  }}
+                >
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'vRowHome'}
+                  >
+                    <MarkedIn />
+                    <Typography className={classes.popUpMenuRow} > {'Check-in marked'}</Typography>
+                  </Box>
+                </MenuItem>
                 {(reactData.numberOfOwnedSlots > 0) &&
                   <MenuItem
                     onClick={() => {
@@ -1407,7 +1592,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                 <MenuItem
                   onClick={async () => {
                     let othersExist = await checkOtherOccurrences();
-                    if (!othersExist) {
+                    if (!othersExist || (othersExist.length < 1)) {
                       updateReactData({
                         popupMenuOpen: false,
                         cancelPending: true,
@@ -1415,6 +1600,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                     }
                     else {
                       updateReactData({
+                        other_occurrences: othersExist,
                         popupMenuOpen: false,
                         alert: {
                           severity: 'warning',
@@ -1423,7 +1609,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                             How would you like to proceed?<br />
                             You may: <br />
                             Cancel <strong>only this event</strong> and leave the others alone<br />
-                            Cancel <strong>all occurrences</strong>, or<br />
+                            Cancel <strong>this and all future</strong> occurrences, or<br />
                             <strong>Don't cancel anything</strong> and go back</div>,
                           action: [
                             {
@@ -1441,10 +1627,13 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                               function: (async () => {
                                 await handleCancelEvent();
                                 let eventID = pEventCode.split('#')[0];
+                                let todayYMD = makeDate(new Date()).numeric;
                                 for (let next_event of reactData.other_occurrences) {
-                                  pEventCode = `${eventID}#${next_event}`;
-                                  await handleCancelEvent();
-                                }                                
+                                  if (next_event >= todayYMD) {
+                                    pEventCode = `${eventID}#${next_event}`;
+                                    await handleCancelEvent();
+                                  }
+                                }
                                 reactData.cancelPending = false;
                                 setReactData(reactData);
                                 setForceRedisplay(!forceRedisplay);
@@ -1462,7 +1651,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                             }
                           ]
                         }
-                      }, true)
+                      }, true);
                     }
                   }}
                 >
@@ -1696,16 +1885,16 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                           }
                           {(isEventOwner || isSlotOwner(this_item.slotData)) &&
                             (editNoteNumber === -1) &&
-                              <Box display='flex' mr={2} flexDirection='row' justifyContent='flex-start' alignItems='center'
-                                key={`docTopBox_${index}_${this_item.slotData.docStatus}`}                              
-                              >
+                            <Box display='flex' mr={2} flexDirection='row' justifyContent='flex-start' alignItems='center'
+                              key={`docTopBox_${index}_${this_item.slotData.docStatus}`}
+                            >
                               {(isEventOwner || isSlotOwner(this_item.slotData)) &&
                                 (this_item.slotData.documents) &&
                                 (this_item.slotData.documents.length > 0) &&
                                 <Box display='flex' mr={2}
                                   color={this_item.slotData.docStatus === 'not_started' ? 'red' : (this_item.slotData.docStatus === 'complete' ? 'green' : 'orange')}
-                                    flexDirection='row' justifyContent='center' alignItems='center'
-                                    key={`docMidBox_${index}_${this_item.slotData.docStatus}`}  
+                                  flexDirection='row' justifyContent='center' alignItems='center'
+                                  key={`docMidBox_${index}_${this_item.slotData.docStatus}`}
                                 >
                                   <Tooltip title={`View documents`} >
                                     <AssignmentTurnedInIcon
@@ -1915,16 +2104,16 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               person_id: reactData.selectedPerson_id,
               mode: reactData.selectedDocMode,
             }}
-          onClose={(response) => {
-            console.log(response);
-            if ((response === 'docAdded') && (reactData.selectedSlotIndex || (reactData.selectedSlotIndex === 0))) {
-              eventSlotList[reactData.selectedSlotIndex].docStatus = 'complete';
-            }
+            onClose={(response) => {
+              console.log(response);
+              if ((response === 'docAdded') && (reactData.selectedSlotIndex || (reactData.selectedSlotIndex === 0))) {
+                eventSlotList[reactData.selectedSlotIndex].docStatus = 'complete';
+              }
               updateReactData({
                 editForm: false,
                 selectedSlotIndex: false
               }, true);
-            onReset({ no_change: true });
+              onReset({ no_change: true });
             }}
           />
         }
@@ -2468,13 +2657,13 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       </React.Fragment>
       {reactData.alert &&
         <Snackbar
-          style={{ zIndex: 2000 }}
           open={!!reactData.alert}
           px={3}
           key={`alert_wrapper`}
-          autoHideDuration={(reactData.alert.severity === 'success') ? 15000 : ((reactData.alert.severity === 'info') ? 15000 : null)}
+          autoHideDuration={(reactData.alert.severity === 'success') ? 5000 : ((reactData.alert.severity === 'info') ? 15000 : null)}
           onClose={() => {
             updateReactData({
+              warning: false,
               alert: false
             }, true);
           }}
@@ -2486,18 +2675,15 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
           <Alert
             severity={reactData.alert.severity || 'info'}
             key={`alert_box`}
-            icon={false}
-            style={{
-              flexDirection: 'column', borderRadius: '20px', border: 1, justifyContent: 'center', alignItems: 'center',
-              marginLeft: '8px', marginRight: '8px', paddingLeft: '0px'
-            }}
+            style={{ marginX: '8px', borderRadius: '20px', border: 1 }}
             action={(reactData.alert.action
               ?
               <Box
                 display='flex'
                 key={`alert_action`}
+                mx={1}
                 overflow='auto'
-                flexDirection='row'
+                flexDirection='column'
               >
                 {([reactData.alert.action].flat()).map((this_action, actionNdx) => (
                   <Button
@@ -2514,21 +2700,13 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
             variant='filled'
             onClose={() => {
               updateReactData({
+                warning: false,
                 alert: false
               }, true);
             }}
           >
-            <Box
-              display='flex'
-              key={`alert_message`}
-              overflow='auto'
-              alignItems={'center'}
-              justifyContent={'center'}
-              flexDirection='column'
-            >
-              {reactData.alert.title && <AlertTitle>{reactData.alert.title}</AlertTitle>}
-              {reactData.alert.message}
-            </Box>
+            {reactData.alert.title && <AlertTitle>{reactData.alert.title}</AlertTitle>}
+            {reactData.alert.message}
           </Alert>
         </Snackbar >
       }

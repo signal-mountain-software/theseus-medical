@@ -724,7 +724,8 @@ export function determineClass(gList, group_assignments) {
       let groups = makeArray(group_assignments[t]);
       let foundAt = groupHierarchy.indexOf(t);
       if (foundAt < 0) { foundAt = groupHierarchy.length - 1; }
-      groups.forEach(g => {
+      groups.forEach(gCamel => {
+        let g = gCamel.toLowerCase();
         if (!groupFlavor.hasOwnProperty(g)) { groupFlavor[g] = foundAt; }
         else { groupFlavor[g] = Math.min(foundAt, groupFlavor[g]); }
       });
@@ -732,13 +733,12 @@ export function determineClass(gList, group_assignments) {
   }
   let member_of = groupHierarchy.length - 1;
   if (gList) {
-    let gL = gList.length;
-    for (let x = 0; x < gL; x++) {
-      let g = gList[x];
+    gList.forEach(gCamel => {
+      let g = gCamel.toLowerCase();
       if (groupFlavor.hasOwnProperty(g)) {
         member_of = Math.min(member_of, groupFlavor[g]);
       }
-    }
+    })
   }
   return groupHierarchy[member_of];
 }

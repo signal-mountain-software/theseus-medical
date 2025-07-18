@@ -3,6 +3,7 @@ import React from 'react';
 import { getPerson, getImage } from '../../util/AVAPeople';
 import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount } from '../../util/AVAUtilities';
 import { AVAclasses, AVADefaults, AVATextStyle, isDark } from '../../util/AVAStyles';
+import { determineClass } from '../../util/AVAGroups';
 
 import useSession from '../../hooks/useSession';
 
@@ -13,6 +14,7 @@ import FormSection from '../sections/FormSection';
 import TechInfoSection from '../sections/TechInfoSection';
 import MessagePreferencesSection from '../sections/MessagePreferencesSection';
 import PersonNotes from './PersonNotes';
+import CheckoutHistory from './CheckoutHistory';
 import LinkedAccounts from '../sections/LinkedAccounts';
 import PersonalizationSection from '../sections/PersonalizationSection';
 import GroupAssignments from '../sections/GroupAssignments';
@@ -109,6 +111,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       PersonNotes: {
         component_id: PersonNotes,
       },
+      CheckoutHistory: {
+        component_id: CheckoutHistory
+      },
       TechInfoSection: {
         component_id: TechInfoSection
       },
@@ -148,87 +153,6 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     async function initialize() {
       let reactUpdObj = {
         initialized: true,
-        sections: [{
-          section_name: 'Snapshot',
-          color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('Snapshot')) : false),
-          isAuthorized: reactData.administrative_account,
-          version_id: 0,
-          component_name: 'Snapshot'
-        },
-        {
-          section_name: 'Administrative Data',
-          color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('AdministrativeSection')) : false),
-          isAuthorized: reactData.administrative_account,
-          version_id: 0,
-          component_name: 'AdministrativeSection'
-        },
-        {
-          section_name: 'Name & Contact info',
-          color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('ProfileSection')) : false),
-          isAuthorized: true,
-          version_id: 0,
-          component_name: 'ProfileSection'
-        },
-        {
-          section_name: 'Messaging',
-          color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('MessagePreferencesSection')) : false),
-          isAuthorized: true,
-          version_id: 0,
-          component_name: 'MessagePreferencesSection'
-        },
-        {
-          section_name: 'My Family',
-          color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('LinkedAccounts')) : false),
-          isAuthorized: true,
-          version_id: 0,
-          component_name: 'LinkedAccounts'
-        },
-        {
-          section_name: 'Photo & Personalization',
-          color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PersonalizationSection')) : false),
-          isAuthorized: true,
-          version_id: 0,
-          component_name: 'PersonalizationSection'
-        },
-        {
-          section_name: 'Groups',
-          color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('GroupAssignments')) : false),
-          isAuthorized: reactData.administrative_account,
-          version_id: 0,
-          component_name: 'GroupAssignments'
-        },
-        {
-          section_name: 'Forms & Documents',
-          color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('FormSection')) : false),
-          isAuthorized: true,
-          version_id: 0,
-          component_name: 'FormSection'
-        },
-        {
-          section_name: 'Notes',
-          color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PersonNotes')) : false),
-          isAuthorized: reactData.administrative_account,
-          version_id: 0,
-          component_name: 'PersonNotes'
-        },
-        {
-          section_name: 'Password & Tech Stuff',
-          color: initialValues?.color || 'orange',
-          isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('TechInfoSection')) : false),
-          isAuthorized: reactData.administrative_account || (state.session.user_id === reactData.person_id),
-          version_id: 0,
-          component_name: 'TechInfoSection'
-        }
-        ]
       };
       // incoming personRec should tell us who we are editing here
       let parm_personRec = Object.assign({}, { person_id: person_id }, (patient || {}), (personRec || {}));
@@ -264,6 +188,30 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           }
           if (!peopleRec.Item.inbound_customizations) {
             peopleRec.Item.inbound_customizations = {};
+          }
+          if (!peopleRec.Item.account_class) {
+            peopleRec.Item.account_class = determineClass(peopleRec.Item.groups, state.session.group_assignments)
+          }
+          if (peopleRec.Item.checkout_status) {
+            if (['admin', 'staff', 'resident', 'student', 'camper'].includes(peopleRec.Item.account_class)) {
+              if (peopleRec.Item.checkout_status === 'out') {
+                peopleRec.Item.checkout_message = peopleRec.Item.checkout_recent_history[0];
+              }
+              else {
+                peopleRec.Item.checkout_message = false;
+              }
+            }
+            else {
+              if (peopleRec.Item.checkout_status === 'in') {
+                peopleRec.Item.checkout_message = peopleRec.Item.checkout_recent_history[0];
+              }
+              else {
+                peopleRec.Item.checkout_message = false;
+              }
+            }
+          }
+          else {
+            peopleRec.Item.checkout_message = false;
           }
           if (!peopleRec.Item.address) {
             peopleRec.Item.address = {};
@@ -364,6 +312,97 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           }
         }
       }
+      reactUpdObj.sections = [{
+        section_name: 'Snapshot',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('Snapshot')) : false),
+        isAuthorized: reactData.administrative_account,
+        version_id: 0,
+        component_name: 'Snapshot'
+      },
+      {
+        section_name: 'Administrative Data',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('AdministrativeSection')) : false),
+        isAuthorized: reactData.administrative_account,
+        version_id: 0,
+        component_name: 'AdministrativeSection'
+      },
+      {
+        section_name: 'Name & Contact info',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('ProfileSection')) : false),
+        isAuthorized: true,
+        version_id: 0,
+        component_name: 'ProfileSection'
+      },
+      {
+        section_name: 'Messaging',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('MessagePreferencesSection')) : false),
+        isAuthorized: true,
+        version_id: 0,
+        component_name: 'MessagePreferencesSection'
+      },
+      {
+        section_name: 'My Family',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('LinkedAccounts')) : false),
+        isAuthorized: true,
+        version_id: 0,
+        component_name: 'LinkedAccounts'
+      },
+      {
+        section_name: 'Photo & Personalization',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PersonalizationSection')) : false),
+        isAuthorized: true,
+        version_id: 0,
+        component_name: 'PersonalizationSection'
+      },
+      {
+        section_name: 'Groups',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('GroupAssignments')) : false),
+        isAuthorized: reactData.administrative_account,
+        version_id: 0,
+        component_name: 'GroupAssignments'
+      },
+      {
+        section_name: 'Forms & Documents',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('FormSection')) : false),
+        isAuthorized: true,
+        version_id: 0,
+        component_name: 'FormSection'
+      },
+      {
+        section_name: 'Notes',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PersonNotes')) : false),
+        isAuthorized: reactData.administrative_account,
+        version_id: 0,
+        component_name: 'PersonNotes'
+      },
+      {
+        section_name: 'Check-in/Check-out',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('CheckoutHistory')) : false),
+        isAuthorized: reactUpdObj.og.peopleRec.checkout_recent_history
+          && (reactUpdObj.og.peopleRec.checkout_recent_history.length > 0),
+        version_id: 0,
+        component_name: 'CheckoutHistory'
+      },
+      {
+        section_name: 'Password & Tech Stuff',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('TechInfoSection')) : false),
+        isAuthorized: reactData.administrative_account || (state.session.user_id === reactData.person_id),
+        version_id: 0,
+        component_name: 'TechInfoSection'
+      }
+      ];
+
       if (!reactData.groupObj && state.groups && reactUpdObj.og.peopleRec.groups) {
         // check all groups you belong to - we are trying to figure out whether to show the linked account section
         // there are three states:

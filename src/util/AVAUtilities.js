@@ -554,6 +554,10 @@ export function parseNumeric(pIn) {
   });
 };
 
+export function isPhoneNumber(pIn) {
+  return !isNaN(Number(pIn.toString().replace(/[()-\s.]/g, "")));
+}
+
 export async function getIcon(pIcon) {
   const imageBucket = 'ava-icons';
   const imageURI = `${pIcon}.png`;

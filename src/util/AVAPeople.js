@@ -610,7 +610,7 @@ export async function addVendor(body) {
     };
     await dbClient
         .put({
-            Item: putPerson,
+            Item: Object.assign({}, body, putPerson),
             TableName: "People",
         })
         .promise()
@@ -646,6 +646,10 @@ export function makeSearchData(iArray) {
             if (p && (typeof (p) === 'string')) {
                 let iC = p.replace(/\D/g, '');
                 search_words.push(iC);
+                search_words.push(iC.slice(-4));
+                if (iC.length > 10) {
+                    search_words.push(iC.slice(1));
+                }
                 search_words.push(iC.slice(-4));
             }
         });

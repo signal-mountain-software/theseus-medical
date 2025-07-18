@@ -14,6 +14,7 @@ import LinearProgress from '@material-ui/core/LinearProgress';
 import Select from "react-dropdown-select";
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
@@ -70,7 +71,7 @@ const useStyles = makeStyles(theme => ({
     marginBottom: 4,
     paddingLeft: 16,
     paddingRight: 16,
-    backgroundColor: 'white',
+ //   color: 'black',
   }
 }));
 
@@ -130,6 +131,8 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
   const handleFileUpload = event => {
     hiddenFileInput.current.click();
   };
+
+   const isDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
 
   const handleChangeTextInput = (inputValue, ndx, options = {}) => {
     if (!reactData.saving) {
@@ -447,6 +450,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                     <Box display='flex'
                       flexDirection='row'
                       className={classes.promptBackground}
+                      style={{ backgroundColor: (isDarkMode ? 'gray' : 'white'), borderColor: (!!(errorText && errorText[ndx]) ? 'red' : (isDarkMode ? 'white' : 'black')) }}
                       mt={0.5}
                       mb={0.5}
                       paddingLeft={2}
@@ -495,7 +499,8 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                                 marginLeft: -5,
                                 marginBottom: -4,
                                 marginTop: 1,
-                                borderWidth: 0
+                                borderWidth: 0,
+                                color: 'black'
                               }}
                               dropdownHandle={true}
                               dropdownPosition={'auto'}
@@ -551,6 +556,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                   <Box display='flex'
                     flexDirection='column'
                     className={classes.promptBackground}
+                    style={{ backgroundColor: (isDarkMode ? 'gray' : 'white'), borderColor: (!!(errorText && errorText[ndx]) ? 'red' : (isDarkMode ? 'white' : 'black')) }}
                     mt={0.5}
                     mb={0.5}
                     paddingLeft={2}
@@ -559,8 +565,9 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                     justifyContent={'center'}
                     minHeight={`${user_fontSize * 2}rem`}
                     // border={textInput[ndx] ? 1 : 0}
-                    border={!!(errorText && errorText[ndx]) ? 4 : (textInput[ndx] ? 1 : 'none')}
-                    borderColor={!!(errorText && errorText[ndx]) ? 'red' : 'black'}
+                    // border={!!(errorText && errorText[ndx]) ? 4 : (textInput[ndx] ? 1 : 'none')}
+                    border={!!(errorText && errorText[ndx]) ? 4 : 1}
+                    // borderColor={!!(errorText && errorText[ndx]) ? 'red' : 'black'}
                     borderRadius={'16px'}
                     key={'fullRow' + ndx}
                   >
@@ -570,8 +577,8 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                       key={`prompt-${ndx}`}
                       multiline
                       autoFocus={(ndx === reactData.focusOn) ? true : null}
-                      inputProps={{ style: { color: 'black', fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                      FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                      inputProps={{ style: { disableUnderline: false, color: 'black', fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                      FormHelperTextProps={{ style: { color: 'black', fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                       error={!!(errorText && errorText[ndx])}
                       value={textInput[ndx] || ''}
                       onChange={(event) => {

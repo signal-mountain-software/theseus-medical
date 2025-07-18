@@ -1,11 +1,8 @@
 import React from 'react';
 import AVATextInput from './AVATextInput';
 
-import Dialog from '@material-ui/core/Dialog';
-import Box from '@material-ui/core/Box';
-import Button from '@material-ui/core/Button';
-import Paper from '@material-ui/core/Paper';
-import Typography from '@material-ui/core/Typography';
+import { Snackbar, Dialog, Box, Button, Paper, Typography } from '@material-ui/core';
+import { Alert, AlertTitle } from '@material-ui/lab/';
 
 import { isEmpty, titleCase, dbClient, cl } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
@@ -14,12 +11,15 @@ import { getServiceRequests, putServiceRequest, updateServiceRequest } from '../
 import { getPerson, getImage, getPersonByWords, addGuest, addVendor, makeName } from '../../util/AVAPeople';
 import { AVAclasses, AVADefaults, AVATextStyle, AVATextVariableStyle } from '../../util/AVAStyles';
 
-import { useSnackbar } from 'notistack';
+// import { useSnackbar } from 'notistack';
 
 import useSession from '../../hooks/useSession';
 import AVAConfirm from './AVAConfirm';
+import { isPhoneNumber } from '../../util/AVAUtilities';
+import { formatPhone } from '../../util/AVAPeople';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 const useStyles = makeStyles(theme => ({
   AVAClientBackground: {
@@ -36,9 +36,10 @@ const useStyles = makeStyles(theme => ({
 
 export default ({ onSave, onClose }) => {
 
+  const isMounted = React.useRef(false);
   const classes = useStyles();
   const AVAClass = AVAclasses();
-  const { enqueueSnackbar } = useSnackbar();
+  // const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
 
   const [forceRedisplay, setForceRedisplay] = React.useState();
@@ -50,6 +51,7 @@ export default ({ onSave, onClose }) => {
       residentName: ((state.patient && state.patient.name) ? `${state.patient.name.first} ${state.patient.name.last}` : ''),
       residentLocation: ((state.patient && state.patient.location) ? `${state.patient.location.trim().split(/\s+/)[0]}` : ''),
       errorText: [],
+      enteredDestination: false,
       guest_mode: false,
       guest_vendor: false,
       resident_mode: false,
@@ -58,9 +60,22 @@ export default ({ onSave, onClose }) => {
       adminIndex: -1,
       outList: [],
       adminView: false,
-      initialized: false
+      initialized: false,
+      alert: false
     }
   );
+
+  const updateReactData = (newData, force = false) => {
+    if (isMounted.current) {
+      setReactData((prevValues) => (Object.assign(
+        prevValues,
+        newData
+      )));
+      if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+    }
+  };
+
+  const isDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
 
   // Initialization
 
@@ -71,12 +86,27 @@ export default ({ onSave, onClose }) => {
       setReactData(reactData);
       setForceRedisplay(!forceRedisplay);
     }
+    isMounted.current = true;
     initialize();
+    return () => {
+      isMounted.current = false;
+    };
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
 
 
   // Functions
+
+  const enqueueSnackbar = (message, options) => {
+    updateReactData({
+      alert: {
+        severity: options.variant || 'info',
+        title: options.title || 'Check-in / Check-out',
+        message,
+        action: []
+      }
+    }, true);
+  };
 
   async function validateUser(IDString, client_id, nonRes) {
     if (!IDString) { return { result: 'invalid', error_field: 0, reason: 'The ID field is empty' }; }
@@ -207,6 +237,54 @@ export default ({ onSave, onClose }) => {
     return [checkedOutList, checkedInGuests, checkedInVendors];
   }
 
+  async function checkGuestInput(responses) {
+    let errorText = [];
+    let obo;
+    if (!state.session.guest_checkout_prompts) {
+      state.session.guest_checkout_prompts = [{
+        prompt: "Who are you visiting today?",
+        checkName: true,
+        required: false,
+        checkSensitivity: 'warning',
+        value: 'Visiting'
+      }];
+    }
+    let nameIndex = -1;
+    for (let [x, this_prompt] of state.session.guest_checkout_prompts.entries()) {
+      if (this_prompt.required && !responses[x]) {
+        errorText[x] = `Please don't leave this blank!`;
+      }
+      else if (this_prompt.checkName) {
+        nameIndex = x;
+        obo = titleCase(responses[x]);
+        responses[x] = obo;
+        if ((state.session.guest_checkout_prompts[nameIndex].checkSensitivity === 'error')
+          || !reactData.previouslyEnteredDestination
+          || (responses[x].toLowerCase() !== reactData.previouslyEnteredDestination.toLowerCase())
+        ) {
+          let residentRec = await getPersonByWords(state.session.client_id, responses[x].trim().split(/\s+/));
+          switch (residentRec.length) {
+            case 0: {
+              errorText[x] = `We don't find anyone to match "${responses[x]}".  Please confirm this is correct.`;
+              reactData.previouslyEnteredDestination = responses[x];
+              break;
+            }
+            case 1: {
+              obo = (`${residentRec[0].name.first.trim()} ${residentRec[0].name.last.trim()}${residentRec[0].location ? ' (' + residentRec[0].location + ')' : ''}`).trim();
+              responses[x] = obo;
+              break;
+            }
+            default: {
+              errorText[x] = `There are ${residentRec.length} matches for "${responses[x]}".  Please be more specific if you can, and confirm the name.`;
+              break;
+            }
+          }
+        }
+      }
+    };
+    return { obo, errorText, responses };
+  }
+
   async function putCheckout(reqRec, options) {
     await updateServiceRequest(reqRec);
     let requestor = reactData.personRec.person_id;
@@ -275,6 +353,7 @@ export default ({ onSave, onClose }) => {
       errorText: [],
       guest_mode: false,
       resident_mode: false,
+      enteredDestination: false,
       staff_mode: false,
       add_guest_mode: false,
       adminOverride: false,
@@ -282,16 +361,49 @@ export default ({ onSave, onClose }) => {
       outList: [],
       adminView: false,
       initialized: true,
-      marquee_message
+      marquee_message,
+      alert: reactData.alert
     });
     setForceRedisplay(!forceRedisplay);
   }
+
+  const resolveValue = (object, key, value) => {
+    const this_key = key.shift();
+    let solution;
+    if (key.length === 0) {
+      solution = value;
+    }
+    else if (isEmpty(object) || !object.hasOwnProperty(this_key)) {
+      solution = resolveValue({}, key, value);
+    }
+    else {
+      solution = resolveValue(object[this_key], key, value);
+    }
+    object[this_key] = solution;
+    return object;
+  };
+
+  const fetchValue = (object, key) => {
+    const this_key = key.shift();
+    let solution;
+    if (key.length === 0) {
+      solution = object[this_key];
+    }
+    else if (isEmpty(object) || !object.hasOwnProperty(this_key)) {
+      solution = null;
+    }
+    else {
+      solution = fetchValue(object[this_key], key);
+    }
+    return solution;
+  };
 
   function determineMode(personRec) {
     reactData.resident_mode = false;
     reactData.guest_mode = false;
     reactData.staff_mode = false;
     reactData.other_mode = false;
+    reactData.isVendor = false;
     let mode;
     switch (personRec.account_class) {
       case 'staff':
@@ -300,7 +412,7 @@ export default ({ onSave, onClose }) => {
         mode = 'resident';
         break;
       }
-      case 'student': 
+      case 'student':
       case 'resident': {
         reactData.resident_mode = true;
         mode = 'resident';
@@ -309,6 +421,7 @@ export default ({ onSave, onClose }) => {
       case 'vendor': {
         reactData.guest_mode = true;
         mode = 'vendor';
+        reactData.isVendor = true;
         break;
       }
       case 'other': {
@@ -344,6 +457,8 @@ export default ({ onSave, onClose }) => {
       >
         <Box
           component="img"
+          width={'100vw'}
+          height={'100vh'}
           m={2}
           alt=''
           src={AVADefaults({ client_style: 'get' })
@@ -380,7 +495,7 @@ export default ({ onSave, onClose }) => {
                     setReactData(reactData);
                     setForceRedisplay(!forceRedisplay);
                   }
-                  if (enteredID && (enteredID === 'exit')) {
+                  if (enteredID && (enteredID.toLowerCase() === 'exit')) {
                     onClose();
                   }
                   else {
@@ -404,6 +519,7 @@ export default ({ onSave, onClose }) => {
                       reactData.enteredID = enteredID;
                       if ((validation.result === 'match') && (validation.personRec.person_id === state.patient.person_id)) {  // Found myself
                         reactData.validated_user = true;
+                        reactData.previouslyEnteredDestination = false;
                         reactData.personRec = validation.personRec;
                         let mode = determineMode(validation.personRec);
                         reactData.currentStatus = await getCurrentStatus(state.session.client_id, validation.personRec.person_id, mode);
@@ -450,7 +566,7 @@ export default ({ onSave, onClose }) => {
                 >
                   {reactData.candidates.map((candidate, cIndex) => (
                     <Box display='flex'
-                      style={{ marginBottom: '2em', marginLeft: '1em', backgroundColor: 'white' }}
+                      style={{ color: 'black', marginBottom: '2em', marginLeft: '1em', backgroundColor: (isDarkMode ? 'gray' : 'white'), borderColor: (isDarkMode ? 'white' : 'black') }}
                       flexDirection='row' key={`ambiguous-${cIndex}`} justifyContent='flex-start' alignItems='center'
                       paddingX={2}
                       flexGrow={1}
@@ -461,6 +577,7 @@ export default ({ onSave, onClose }) => {
                       borderRadius={'16px'}
                       onClick={async () => {
                         reactData.validated_user = true;
+                        reactData.previouslyEnteredDestination = false;
                         reactData.personRec = candidate;
                         let mode = determineMode(candidate);
                         reactData.currentStatus = await getCurrentStatus(state.session.client_id, candidate.person_id, mode);
@@ -608,7 +725,7 @@ export default ({ onSave, onClose }) => {
             &&
             (['in', 'none'].includes(reactData.currentStatus.last_status) ?
               <AVAConfirm
-                promptText={[`Have a great day ${reactData.personRec.name.first}!`, `[italic]${reactData.currentStatus.reqRec.history[0]}`]}
+                promptText={[`Have a great day ${reactData.personRec.name.first}!`, 'Staff check-out'].concat(reactData.currentStatus.reqRec.history[0] ? [`[italic]${reactData.currentStatus.reqRec.history[0]}`] : [])}
                 cancelText={`Cancel`}
                 confirmText={`Check-out`}
                 onCancel={() => {
@@ -636,7 +753,7 @@ export default ({ onSave, onClose }) => {
               <AVAConfirm
                 promptText={[`Welcome back, ${reactData.personRec.name.first}!`]}
                 cancelText={`Cancel`}
-                confirmText={`Check-in`}
+                confirmText={`Staff Check-in`}
                 options={{
                   bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
                 }}
@@ -669,7 +786,10 @@ export default ({ onSave, onClose }) => {
             &&
             (['in', 'none'].includes(reactData.currentStatus.last_status) ?
               <AVAConfirm
-                promptText={[`Thanks for visiting ${state.session.client_name}, ${reactData.personRec.name.first}!`, `[italic]${reactData.currentStatus.reqRec.history[0]}`]}
+                promptText={[
+                  `Thanks for visiting ${state.session.client_name}, ${reactData.personRec.name.first}!`,
+                  (reactData.currentStatus.reqRec.history[0] ? `[italic]${reactData.currentStatus.reqRec.history[0]}` : null)
+                ]}
                 cancelText={`Cancel`}
                 confirmText={`Check-out`}
                 options={{
@@ -695,9 +815,20 @@ export default ({ onSave, onClose }) => {
               />
               :
               <AVATextInput
-                titleText={`Welcome back, ${reactData.personRec.name.first}!`}
-                promptText={["Who are you visiting today?"]}
-                valueText={[reactData?.currentStatus?.reqRec?.on_behalf_of || '']}
+                titleText={[`Welcome back, ${reactData.personRec.name.first}!`, (reactData.isVendor ? 'Vendor Check-in' : 'Guest Check-in')]}
+                promptText={state.session.guest_checkout_prompts
+                  ? state.session.guest_checkout_prompts.map(this_prompt => { return this_prompt.prompt; })
+                  : ["Who are you visiting today?"]}
+                valueText={state.session.guest_checkout_prompts
+                  ? state.session.guest_checkout_prompts.map(this_prompt => {
+                    return (this_prompt.saveAs ? fetchValue(reactData.personRec, this_prompt.saveAs.split('.')) : null);
+                  })
+                  : [reactData?.currentStatus?.reqRec?.on_behalf_of || '']
+                }
+                selectionList={(state.session.guest_checkout_prompts
+                  ? state.session.guest_checkout_prompts.map(this_prompt => { return this_prompt.selections; })
+                  : [])
+                }
                 buttonText={['Confirm', (reactData.kiosk_mode ? 'Start over' : 'Back')]}
                 errorText={reactData.errorText}
                 onCancel={() => {
@@ -706,44 +837,50 @@ export default ({ onSave, onClose }) => {
                   setReactData(reactData);
                   setForceRedisplay(!forceRedisplay);
                 }}
-                onSave={async ([destination]) => {
-                  reactData.errorText = [];
-                  let hWho;
-                  if (destination !== reactData.currentStatus.reqRec.on_behalf_of) {
-                    let residentRec = await getPersonByWords(state.session.client_id, destination.trim().split(/\s+/));
-                    switch (residentRec.length) {
-                      case 0: {
-                        reactData.errorText[0] = `We don't find anyone to match "${destination}".`;
-                        break;
-                      }
-                      case 1: {
-                        hWho = ` Visiting ${residentRec[0].name.first} ${residentRec[0].name.last}`;
-                        if (residentRec[0].location) {
-                          hWho += ` at ${residentRec[0].location}`;
-                        }
-                        reactData.currentStatus.reqRec.visiting = residentRec[0].person_id;
-                        reactData.currentStatus.reqRec.on_behalf_of = `${residentRec[0].name.first} ${residentRec[0].name.last}`;
-                        break;
-                      }
-                      default: {
-                        reactData.errorText[0] = `There are ${residentRec.length} matches for "${destination}".  Can you be more specific?`;
-                        break;
-                      }
-                    }
-                  }
-                  else {
-                    hWho = ` Visiting ${reactData.currentStatus.reqRec.on_behalf_of}`;
-                    reactData.currentStatus.reqRec.visiting = reactData.currentStatus.reqRec.person_id;
-                  }
+                onSave={async (responses) => {
+                  let { obo, errorText } = await checkGuestInput(responses);
+                  reactData.errorText = errorText;
                   if (reactData.errorText.length === 0) {
+                    // Everything is good - go ahead and check them in
                     let now = makeDate(new Date());
-                    reactData.currentStatus.reqRec.last_status = 'in';
-                    reactData.currentStatus.reqRec.last_update = now.timestamp;
+                    let my_request = {
+                      last_status: 'in',
+                      last_update: now.timestamp,
+                      client_id: state.session.client_id,
+                      request_id: `${reactData.personRec.person_id}_checkout`,
+                      requestor: reactData.personRec.person_id,
+                      on_behalf_of: obo,
+                      request_type: 'checkout',
+                      request_date: now.timestamp,
+                      original_request: (reactData.isVendor ? { "vendor_company": [reactData.personRec.location] } : {}),
+                      local_key: `${reactData.personRec.person_id}_checkout`,
+                      foreign_key: (reactData.isVendor ? 'vendor' : 'guest'),
+                      history: ((reactData.currentStatus?.reqRec?.history && reactData.currentStatus.reqRec.history.length > 0)
+                        ? reactData.currentStatus.reqRec.history
+                        : []
+                      )
+                    };
+
                     let hNote = `Checked in on ${now.absolute}`;
-                    hNote += hWho;
-                    reactData.currentStatus.reqRec.history.unshift(hNote);
-                    await putCheckout(reactData.currentStatus.reqRec);
-                    enqueueSnackbar(`Got it!  Thank you!`, { variant: 'success', persist: false });
+                    let textInput = {
+                      Action: hNote
+                    };
+                    if (responses && (responses.length > 0)) {
+                      responses.forEach((r, x) => {
+                        if (r && state.session.guest_checkout_prompts[x]) {
+                          hNote += `${(x === 0) ? ' -' : ';'} ${state.session.guest_checkout_prompts[x].value}: ${r}.`;
+                          textInput[state.session.guest_checkout_prompts[x].value] = r;
+                        }
+                      });
+                    }
+                    my_request.history.unshift(hNote);
+                    if (!isEmpty(textInput)) {
+                      my_request.current_request = { textInput };
+                    }
+                    await putCheckout(my_request);
+                    enqueueSnackbar(`Got it!  You have successfully checked in to see ${obo}.  Thank you!`, { variant: 'success', persist: false });
+                    reactData.validated_user = false;
+                    reactData.add_guest_mode = false;
                     if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
                     else { reset(); }
                   }
@@ -791,9 +928,24 @@ export default ({ onSave, onClose }) => {
             reactData.add_guest_mode
             &&
             <AVATextInput
-              titleText={[makeGreeting(titleCase(reactData.enteredID.split(/\s/)[0])), 'We need to create an new account for you']}
-              promptText={["Please enter your full name", "(Vendors only) What Company do you represent?", "What is your phone number", "Who are you visiting today?"]}
-              valueText={[titleCase(reactData.enteredID), '', '']}
+              titleText={[makeGreeting(), 'We need to create an new account for you']}
+              promptText={["Please enter your full name",
+                "(Vendors only) What Company do you represent?",
+                "What is your phone number"].concat(
+                  (state.session.guest_checkout_prompts
+                    ? state.session.guest_checkout_prompts.map(this_prompt => { return this_prompt.prompt; })
+                    : ["Who are you visiting today?"])
+                )}
+              valueText={[
+                isPhoneNumber(reactData.enteredID) ? '' : titleCase(reactData.enteredID),
+                '',
+                isPhoneNumber(reactData.enteredID) ? formatPhone(reactData.enteredID) : '',
+              ]}
+              selectionList={[null, null, null].concat(
+                (state.session.guest_checkout_prompts
+                  ? state.session.guest_checkout_prompts.map(this_prompt => { return this_prompt.selections; })
+                  : [])
+              )}
               buttonText={[((reactData.add_try_number === 1) ? 'Save my info' : 'Confirm'), (reactData.kiosk_mode ? 'Start over' : 'Back')]}
               onCancel={() => {
                 reactData.validated_user = false;
@@ -802,8 +954,19 @@ export default ({ onSave, onClose }) => {
                 setForceRedisplay(!forceRedisplay);
               }}
               errorText={reactData.errorText}
-              onSave={async ([guestName, vendorCompany, contactNumber, destination]) => {
-                reactData.errorText = [];
+              onSave={async (returnValues) => {
+                let guestName = returnValues[0];
+                let vendorCompany = returnValues[1];
+                let contactNumber = returnValues[2];
+                let { obo, errorText, responses } = await checkGuestInput(returnValues.slice(3));
+                returnValues = returnValues.slice(0, 3).concat(responses);
+                if (errorText.length > 0) {
+                  reactData.errorText = [null, null, null].concat(errorText);
+                }
+                else {
+                  reactData.errorText = [];
+                }
+                // Validating the new account's name
                 if (reactData.enteredID.toLowerCase() !== guestName.toLowerCase()) {
                   let validation = await validateUser(guestName, state.session.client_id);
                   reactData.enteredID = guestName;
@@ -825,45 +988,13 @@ export default ({ onSave, onClose }) => {
                   gLast = gNames.pop();
                   gFirst = gNames.join(' ');
                 }
-                let dNames = (destination ? titleCase(destination.trim()).split(/\s+/) : []);
-                let dLast, dFirst;
-                //     if (dNames.length < 2) {
-                //       reactData.errorText[3] = `Please enter the full name of the person you are visiting`;
-                //     }
-                //     else {
-                dLast = dNames.pop();
-                dFirst = dNames.join(' ');
-                //      }
                 let gPhone = Number(contactNumber.replace(/\D/g, ''));
                 if (gPhone < 1000000000) {
                   reactData.errorText[1] = `Please enter your area code and phone number`;
                 }
-                let residentRec = {};
+                // No errors?  Add the account
+                let addedPerson = {};
                 if (reactData.errorText.length === 0) {
-                  residentRec = await getPersonByWords(state.session.client_id, destination.trim().split(/\s+/));
-                  switch (residentRec.length) {
-                    case 0: {
-                      if (reactData.add_try_number === 1) {
-                        reactData.errorText[3] = `We don't find anyone to match "${destination}".  Please confirm this is correct.`;
-                      }
-                      else {
-                        residentRec = [{ name: { first: (dFirst || ''), last: (dLast || destination) } }];
-                      }
-                      break;
-                    }
-                    case 1: {
-                      break;
-                    }
-                    default: {
-                      if (reactData.add_try_number === 1) {
-                        reactData.errorText[3] = `There are ${residentRec.length} matches for "${destination}".  Please be more specific if you can, and confirm the name.`;
-                      }
-                      break;
-                    }
-                  }
-                }
-                if (reactData.errorText.length === 0) {
-                  let addedPerson = {};
                   let newPersonRec = {
                     name: {
                       first: gFirst,
@@ -871,6 +1002,13 @@ export default ({ onSave, onClose }) => {
                     },
                     sms: `+1${gPhone}`,
                     client_id: state.session.client_id
+                  };
+                  if (state.session.guest_checkout_prompts) {
+                    state.session.guest_checkout_prompts.forEach((this_prompt, x) => {
+                      if (this_prompt.saveAs) {
+                        resolveValue(newPersonRec, this_prompt.saveAs.split('.'), returnValues[x + 3]);
+                      };
+                    });
                   };
                   if (vendorCompany) {
                     newPersonRec.location = `Vendor - ${vendorCompany}`;
@@ -881,39 +1019,66 @@ export default ({ onSave, onClose }) => {
                     addedPerson = await addGuest(newPersonRec);
                   }
                   if (addedPerson.result !== 'success') {
-                    reactData.errorText[0] = `Something went wrong.  Please see the Receptionist.  Error: ${addedPerson.message}`;
+                    reactData.errorText[0] = `Something went wrong and we couldn't create your account.  Please see the Receptionist.  Error: ${addedPerson.message}`;
                   }
-                  else {
-                    let now = makeDate(new Date());
-                    let hNote = `Checked in on ${now.absolute}`;
-                    hNote += ` Visiting ${residentRec[0].name.first} ${residentRec[0].name.last}${residentRec[0].location ? ' at ' + residentRec[0].location : ''}`;
-                    await putServiceRequest(
-                      {
-                        client_id: state.session.client_id,
-                        request_id: `${addedPerson.personRec.person_id}_checkout`,
-                        requestor: addedPerson.personRec.person_id,
-                        on_behalf_of: `${residentRec[0].name.first} ${residentRec[0].name.last}`,
-                        request_type: 'checkout',
-                        request_date: now.timestamp,
-                        original_request: (vendorCompany ? { "vendor_company": [vendorCompany] } : {}),
-                        history: [hNote],
-                        local_key: `${addedPerson.personRec.person_id}_checkout`,
-                        foreign_key: (vendorCompany ? 'vendor' : 'guest'),
-                        last_update: now.timestamp,
-                        last_status: 'in'
-                      }
-                    );
-                    enqueueSnackbar(`You're all set, ${gFirst}!  Have a great visit!`, { variant: 'success', persist: false });
-                    reactData.validated_user = false;
-                    reactData.add_guest_mode = false;
-                    reset();
+                }
+
+                if (reactData.errorText.length === 0) {
+                  // Everything is good - go ahead and check them in
+                  reactData.personRec = addedPerson.personRec;
+                  let now = makeDate(new Date());
+                  let my_request = {
+                    last_status: 'in',
+                    last_update: now.timestamp,
+                    client_id: state.session.client_id,
+                    request_id: `${addedPerson.personRec.person_id}_checkout`,
+                    requestor: addedPerson.personRec.person_id,
+                    on_behalf_of: obo,
+                    request_type: 'checkout',
+                    request_date: now.timestamp,
+                    original_request: (vendorCompany ? { "vendor_company": [addedPerson.personRec.location] } : {}),
+                    local_key: `${addedPerson.personRec.person_id}_checkout`,
+                    foreign_key: (vendorCompany ? 'vendor' : 'guest'),
+                    history: []
+                  };
+
+                  let hNote = `Checked in on ${now.absolute}`;
+                  let textInput = {
+                    Action: hNote
+                  };
+                  if (returnValues.length > 3) {
+                    if (!state.session.guest_checkout_prompts) {
+                      hNote += ` - Visiting: ${returnValues[3]}`;
+                      textInput['Visiting'] = returnValues[3];
+                    }
+                    else {
+                      returnValues.forEach((r, x) => {
+                        if (x > 2) {
+                          if (r && state.session.guest_checkout_prompts[x - 3]) {
+                            hNote += `${(x === 3) ? ' -' : ';'} ${state.session.guest_checkout_prompts[x - 3].value}: ${r}.`;
+                            textInput[state.session.guest_checkout_prompts[x - 3].value] = r;
+                          }
+                        }
+                      });
+                    };
                   }
+                  my_request.history.unshift(hNote);
+                  if (!isEmpty(textInput)) {
+                    my_request.current_request = { textInput };
+                  }
+                  await putCheckout(my_request);
+                  enqueueSnackbar(`Got it!  You have successfully checked in to see ${obo}.  Thank you!`, { variant: 'success', persist: false });
+                  reactData.validated_user = false;
+                  reactData.add_guest_mode = false;
+                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  else { reset(); }
                 }
                 else {
-                  reactData.add_try_number++;
+                  setReactData(reactData);
+                  setForceRedisplay(!forceRedisplay);
                 }
-                setReactData(reactData);
-                setForceRedisplay(!forceRedisplay);
+
+
               }} /* end of onSave */
               allowCancel={true}
               options={{
@@ -946,11 +1111,13 @@ export default ({ onSave, onClose }) => {
                   style={{
                     paddingTop: '16px',
                     backgroundColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
-                    }}
-                    elevation={0}
+                  }}
+                  elevation={0}
                   overflow='auto' square>
                   <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
-                    <Typography variant='h6' id='dialog-title'>{'Residents currently checked-out'}</Typography>
+                    <Box display='flex' style={{ marginBottom: '1.5em' }} flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
+                      <Typography variant='h6' id='dialog-title'>{'Residents currently checked-out'}</Typography>
+                    </Box>
                     {(reactData.outList.length === 0) &&
                       <Box style={{ paddingTop: '-8px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='center'>
                         <Typography><i>No residents currently checked out</i></Typography>
@@ -1041,7 +1208,7 @@ export default ({ onSave, onClose }) => {
                         alignItems='center'
                         onClick={async () => {
                           reactData.adminOverride = true;
-                          reactData.vendor_mode = true;
+                          reactData.isVendor = true;
                           reactData.adminIndex = inNdx;
                           setReactData(reactData);
                           setForceRedisplay(!forceRedisplay);
@@ -1109,7 +1276,7 @@ export default ({ onSave, onClose }) => {
                     allowCancel={true}
                   />
                 }
-                {reactData.vendor_mode &&
+                {reactData.isVendor &&
                   <AVAConfirm
                     promptText={`Confirm override check-out for ${reactData.vendorList[reactData.adminIndex].name}`}
                     cancelText={`Cancel`}
@@ -1119,7 +1286,7 @@ export default ({ onSave, onClose }) => {
                     }}
                     onCancel={() => {
                       reactData.adminOverride = false;
-                      reactData.vendor_mode = false;
+                      reactData.isVendor = false;
                       setReactData(reactData);
                       setForceRedisplay(!forceRedisplay);
                     }}
@@ -1134,7 +1301,7 @@ export default ({ onSave, onClose }) => {
                       await putCheckout(reqRec, { proxy: true });
                       enqueueSnackbar(`Check-out is complete!`, { variant: 'success', persist: false });
                       reactData.adminOverride = false;
-                      reactData.vendor_mode = false;
+                      reactData.isVendor = false;
                       reactData.vendorList.splice(reactData.adminIndex, 1);
                       setReactData(reactData);
                       setForceRedisplay(!forceRedisplay);
@@ -1180,6 +1347,60 @@ export default ({ onSave, onClose }) => {
             )
           }
         </React.Fragment>
+      }
+      {/* *** ALERTS - SNACKBAR *** */
+        reactData.alert &&
+        <Snackbar
+          open={!!reactData.alert}
+          px={3}
+          key={`alert_wrapper`}
+          autoHideDuration={(reactData.alert.severity === 'success') ? 5000 : ((reactData.alert.severity === 'info') ? 15000 : null)}
+          onClose={() => {
+            updateReactData({
+              alert: false
+            }, true);
+          }}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'center'
+          }}
+        >
+          <Alert
+            severity={reactData.alert.severity || 'info'}
+            key={`alert_box`}
+            style={{ marginX: '8px', borderRadius: '20px', border: 1, backgroundColor: 'white' }}
+            action={(reactData.alert.action
+              ?
+              <Box
+                display='flex'
+                key={`alert_action`}
+                mx={1}
+                overflow='auto'
+                flexDirection='column'
+              >
+                {([reactData.alert.action].flat()).map((this_action, actionNdx) => (
+                  <Button
+                    key={`alert_button__${actionNdx}`}
+                    className={AVAClass.AVAButton} color="inherit"
+                    onClick={() => this_action.function()}
+                  >
+                    {this_action.text}
+                  </Button>
+                ))}
+              </Box>
+              : null
+            )}
+            variant='outlined'
+            onClose={() => {
+              updateReactData({
+                alert: false
+              }, true);
+            }}
+          >
+            {reactData.alert.title && <AlertTitle>{reactData.alert.title}</AlertTitle>}
+            {reactData.alert.message}
+          </Alert>
+        </Snackbar >
       }
     </Dialog>
   );
