@@ -12,6 +12,7 @@ import { printDocumentB, printEmptyDocument, printDocumentHybrid } from '../../u
 import SignatureCanvas from 'react-signature-canvas';
 import Select from "react-dropdown-select";
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
+import EditIcon from '@material-ui/icons/Edit';
 import PrintIcon from '@material-ui/icons/Print';
 import { Dialog, DialogContent, Snackbar, Box, Typography, FormControlLabel, Button, TextField, Checkbox } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -189,6 +190,36 @@ export default ({ request = {}, onClose }) => {
     pertains_to: options.person_id,
     clientSampleMode: (!options.document_id && (options.person_id === state.session.client_id))
   });
+
+  function uploadIcon(this_field, occ_index) {
+    const IconToRender = (makeArray(reactData.fields[this_field].valueText).length > 1) ? EditIcon : CloudUploadIcon;
+    return (
+      <IconToRender
+        classes={{ root: classes.rowButton }}
+        style={{ marginLeft: '16px', marginBottom: '4px' }}
+        key={`radio-button_upload`}
+        id={`radio-button_upload`}
+        size='medium'
+        onClick={() => {
+          updateReactData({
+            stage: 'uploadField',
+            field_title: reconcilePrompt({
+              rawValue: reactData.fields[this_field].prompt.value,
+              this_field
+            }),
+            oneOnly: (reactData.fields[this_field].prompt.hasOwnProperty('oneOnly')
+              ? reactData.fields[this_field].prompt.oneOnly
+              : true
+            ),
+            upload_data: {
+              prop: this_field,
+              occ_index,
+            }
+          }, true);
+        }}
+      />
+    );
+  };
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const updateReactData = (newData, force = false) => {
@@ -2317,7 +2348,7 @@ export default ({ request = {}, onClose }) => {
       goLoad();
     }
     return (() => {
-    })
+    });
   }, [reactData.form_id, reactData.document_id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // **************************
@@ -2473,26 +2504,7 @@ export default ({ request = {}, onClose }) => {
                                       this_field
                                     })}
                                   </Typography>
-                                  <CloudUploadIcon
-                                    classes={{ root: classes.rowButton }}
-                                    style={{ marginLeft: '16px' }}
-                                    key={`radio-button_upload`}
-                                    id={`radio-button_upload`}
-                                    size='medium'
-                                    onClick={() => {
-                                      updateReactData({
-                                        stage: 'uploadField',
-                                        field_title: reconcilePrompt({
-                                          rawValue: reactData.fields[this_field].prompt.value,
-                                          this_field
-                                        }),
-                                        upload_data: {
-                                          prop: this_field,
-                                          occ_index,
-                                        }
-                                      }, true);
-                                    }}
-                                  />
+                                  {uploadIcon(this_field, occ_index)}
                                 </Box>
                                 <Box
                                   display='flex'
@@ -2500,27 +2512,28 @@ export default ({ request = {}, onClose }) => {
                                   flexDirection='row'
                                   justifyContent='center'
                                   alignItems='center'
-                                  border={2}
-                                  borderRadius={'20px'}
-                                  style={{
-                                    minWidth: '160px',
-                                    maxWidth: '160px',
-                                    minHeight: '160px',
-                                    maxHeight: '160px',
-                                  }}
+                                  padding={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
                                 >
-                                  <Box
-                                    borderRadius={'20px'}
-                                    style={{
-                                      minWidth: '150px',
-                                      maxWidth: '150px',
-                                      minHeight: '150px',
-                                      maxHeight: '150px',
-                                    }}
-                                    component="img"
-                                    alt={''}
-                                    src={reactData.fields[this_field].valueText}
-                                  />
+                                  {makeArray(reactData.fields[this_field].valueText).map((this_image, imageNdx) => (
+                                    <Box
+                                      borderRadius={'20px'}
+                                      border={1}
+                                      marginRight={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
+                                      key={`image_${sectionNdx}_${fieldNdx}_${imageNdx}`}
+                                      onClick={() => {
+                                        window.open(this_image, `${this_image.split('.').pop()} File`);
+                                      }}
+                                      style={{
+                                        minWidth: '150px',
+                                        maxWidth: '150px',
+                                        minHeight: '150px',
+                                        maxHeight: '150px',
+                                      }}
+                                      component="img"
+                                      alt={`\nNo image available.  \nThis is a ${this_image.split('.').pop()} file.  \nTap to view`}
+                                      src={this_image}
+                                    />
+                                  ))}
                                 </Box>
                               </Box>
                             }
@@ -3050,7 +3063,14 @@ export default ({ request = {}, onClose }) => {
           options={{
             buttonText: ['Choose', 'Save & Continue'],
             title: [reactData.field_title, 'Tap "Choose a File" to select the content to upload'],
-            oneOnly: true
+            oneOnly: reactData.hasOwnProperty('oneOnly') ? reactData.oneOnly : true,
+            prevSelected: ((makeArray(reactData.fields[reactData.upload_data.prop].valueText).length > 0)
+              ? makeArray(reactData.fields[reactData.upload_data.prop].valueText).map(fLoc => {
+                let [fName, fType] = fLoc.split('/').pop().split('.');
+                return { fName, fLoc, fType, Key: fName, Location: fLoc };
+              })
+              : null
+            )
           }}
           onCancel={() => {
             updateReactData({
@@ -3059,7 +3079,10 @@ export default ({ request = {}, onClose }) => {
           }}
           onLoad={async (response) => {
             await handleChangeValue({
-              newValue: response[0].fLoc,
+              newValue: ((reactData.hasOwnProperty('oneOnly') && !reactData.oneOnly && (response.length > 1))
+                ? response.map(r => { return r.fLoc; })
+                : response[0].fLoc
+              ),
               prop: reactData.upload_data.prop,
               occ_index: reactData.upload_data.occ_index,
               reactUpdObj: {

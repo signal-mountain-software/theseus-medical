@@ -1,13 +1,11 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { s3, elastictranscoder, makeArray } from '../util/AVAUtilities';
+import { s3, elastictranscoder, makeArray, deepCopy } from '../util/AVAUtilities';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 import Typography from '@material-ui/core/Typography';
 import LinearProgress from '@material-ui/core/LinearProgress';
-
-import TextField from '@material-ui/core/TextField';
 
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
@@ -18,11 +16,13 @@ import Button from '@material-ui/core/Button';
 import Box from '@material-ui/core/Box';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import { AVAclasses, AVATextStyle, AVADefaults } from '../util/AVAStyles';
+import { AVAclasses, AVATextStyle } from '../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   radius_rounded: {
     borderRadius: '30px',
+    width: '95%',
+    maxWidth: '95%',
     marginX: 2,
     marginTop: 3
   },
@@ -46,20 +46,28 @@ export default ({ onCancel, onLoad, options = {} }) => {
 
   const AVAClass = AVAclasses();
   const classes = useStyles();
-  let user_fontSize = AVADefaults({ fontSize: 'get' });
 
   // if options.buttonText, use buttontext as follows:
   //  [0] - use as default (not shown when no file has been selected yet)
   //  [1] - (optional) use when exactly one file has already been selected
   //  [2] - (optional) use when more than one file has been selected
   const [reactData, setReactData] = React.useState({
-    uploadList: [],
-    buttonText: (options.buttonText ? makeArray(options.buttonText)[0] : 'Continue'),
+    uploadList: ((options.prevSelected && (options.prevSelected.length > 0)) ? options.prevSelected : []),
+    buttonText: (options.buttonText
+      ? ((options.prevSelected && (options.prevSelected.length > 0) && Array.isArray(options.buttonText) && options.buttonText[1])
+        ? options.buttonText[1]
+        : makeArray(options.buttonText)[0]
+      )
+      : 'Continue'
+    ),
     saving: false,
     focusOn: 0,
     loadProgress: [],
     title: [options.title || 'Upload a File'].flat(),
-    attachmentList: (options.allowAttach && options.attachmentList ? options.attachmentList : []),
+    attachmentList: ((options.allowAttach && options.attachmentList)
+      ? options.attachmentList
+      : ((options.prevSelected && (options.prevSelected.length > 0)) ? deepCopy(options.prevSelected) : [])
+    ),
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
@@ -77,12 +85,6 @@ export default ({ onCancel, onLoad, options = {} }) => {
       newData
     )));
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
-  };
-
-  const handleChangeTextInput = (event, index) => {
-    reactData.uploadList[index].fName = event.target.value;
-    setReactData(reactData);
-    setForceRedisplay(!forceRedisplay);
   };
 
   function loadingInProgress(index = 'all') {
@@ -103,7 +105,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
   async function handleSaveFile(pTarget) {
     let pType = pTarget.type;
     let now_time = new Date().getTime();
-    let newKey = pTarget.name.replace('.', `_${now_time}.`)
+    let newKey = pTarget.name.replace('.', `_${now_time}.`);
     upload = s3.upload({
       partSize: 10 * 1024 * 1024,
       queueSize: 4,
@@ -307,6 +309,21 @@ export default ({ onCancel, onLoad, options = {} }) => {
     }
   */
 
+  function cleanForDisplay(inString) {
+    if (!inString) {
+      return '';
+    }
+    else {
+      let response = inString.replaceAll('%20', ' ');
+      let body = response.split('.');
+      if (body.length > 1) {
+        body.pop();
+        response = body.join('.');
+      }
+      return response.replace(/_\d*$/gm, "");
+    }
+  }
+
   const handleSave = () => {
     onLoad(reactData.uploadList);
   };
@@ -330,7 +347,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
           </Typography>
         ))}
       </Box>
-      <Paper component={Box} style={{ maxWidth: 1000 }} overflow='auto' square>
+      <Paper component={Box} style={{ maxWidth: 1000 }} elevation={0} overflow='auto' square>
         <Box
           display='flex'
           grow={1}
@@ -341,57 +358,13 @@ export default ({ onCancel, onLoad, options = {} }) => {
           justifyContent='center'
           alignItems='flex-start'
         >
-          {(reactData.uploadList.length > 0) && false &&
-            <Paper component={Box} style={{ paddingTop: '16px', paddingBottom: '16px', width: '100%' }} overflow='auto' square>
-              {reactData.uploadList.map((fObj, cIndex) => (
-                <Box display='flex'
-                  flexDirection='column'
-                  my={1}
-                  paddingLeft={2}
-                  paddingRight={2}
-                  mx={1}
-                  justifyContent={'center'}
-                  minHeight={`${user_fontSize * 2}rem`}
-                  border={1}
-                  borderRadius={'16px'}
-                  key={`ambiguous-${cIndex}`}
-                >
-                  <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='space-between' alignItems='center'>
-                    <Box width='90%' flexGrow={1} >
-                      <TextField
-                        style={{ width: '95%' }}
-                        id={`fNameID`}
-                        key={`fNameKey`}
-                        multiline
-                        inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                        FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                        value={fObj.fName}
-                        helperText={fObj.fType}
-                        onChange={(event) => {
-                          handleChangeTextInput(event, cIndex);
-                        }}
-                        autoComplete='off'
-                      />
-                    </Box>
-                    <DeleteIcon
-                      edge={'end'}
-                      onClick={() => {
-                        reactData.uploadList.splice(cIndex, 1);
-                        setReactData(reactData);
-                        setForceRedisplay(!forceRedisplay);
-                      }}
-                    />
-                  </Box>
-                </Box>
-              ))}
-            </Paper>
-          }
           {(reactData.attachmentList && reactData.attachmentList.length > 0) &&
             <Box display='flex' flexDirection='column' justifyContent='flex-start'
               alignItems='flex-start' key={'qrOpt_attachmentlist'}
               sx={{
                 pl: 1.5,
                 mt: 1,
+                width: '95%',
                 bgcolor: reactData.bgColor_option,
               }}
 
@@ -399,11 +372,11 @@ export default ({ onCancel, onLoad, options = {} }) => {
               <Typography className={classes.radioHead}>
                 {`File${(reactData.attachmentList.length > 1) ? 's' : ''}:`}
               </Typography>
-              {reactData.attachmentList.map((a, x) => (
+              {reactData.attachmentList.map((this_attachment, x) => (
                 <Box display='flex' mb={2} flexDirection='row' justifyContent='flex-start'
-                  alignItems='center' key={`qrOpt_attachmentLine-${x}`}
+                  alignItems='center' key={`qrOpt_attachmentLine-${x}`} width={'100%'} 
                 >
-                  <Box display='flex' flexDirection='column' justifyContent='center'
+                  <Box display='flex' flexDirection='column' width={'100%'} justifyContent='center'
                     alignItems='flex-start' key={`qrOpt_attachmentBox-${x}`}
                   >
                     <Box display='flex' flexDirection='row' justifyContent='flex-start'
@@ -414,6 +387,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
                         size="small"
                         onClick={() => {
                           reactData.attachmentList.splice(x, 1);
+                          reactData.uploadList.splice(x, 1);
                           reactData.forceRedisplay = !reactData.forceRedisplay;
                           if (loadingInProgress(x)) {
                             reactData.loadProgress[x].loading = 'abort';
@@ -429,17 +403,18 @@ export default ({ onCancel, onLoad, options = {} }) => {
                           margin: { left: 0.3, right: 1 }
                         })}
                       >
-                        {`${a.Key} - ${loadingInProgress(x) ? ((Math.floor((reactData.loadProgress[x].progress) * 100) / 100).toString() + '%') : 'Done!'}`}
+                        {`${cleanForDisplay(this_attachment.Key)}${loadingInProgress(x) ? ' - ' + ((Math.floor((reactData.loadProgress[x].progress) * 100) / 100).toString() + '%') : ''}`}
                       </Typography>
-                      {!loadingInProgress(x) && <Box
-                        component="img"
-                        mb={2}
-                        ml={2}
-                        minWidth={50}
-                        maxWidth={50}
-                        alt=''
-                        src={a.Location}
-                      />}
+                      {!loadingInProgress(x) &&
+                        <Box
+                          component="img"
+                          mb={2}
+                          ml={2}
+                          minWidth={50}
+                          maxWidth={50}
+                          alt=''
+                          src={this_attachment.Location}
+                        />}
                     </Box>
                     {loadingInProgress(x) &&
                       <React.Fragment>
@@ -447,7 +422,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
                           variant="determinate"
                           key={`qrOpt_progress-${x}`}
                           className={classes.progressBar}
-                          style={{ width: reactData.loadProgress[x].total }}
+                          style={{ width: '95%' }}
                           value={reactData.loadProgress[x].progress}
                         />
                       </React.Fragment>
@@ -487,9 +462,12 @@ export default ({ onCancel, onLoad, options = {} }) => {
                       type="file"
                       style={{ display: 'none' }}
                       ref={hiddenFileInput}
+                      multiple={!options.oneOnly}
                       onChange={async (target) => {
-                        let s3Data = await handleSaveFile(target.target.files[0]);
-                        console.log(s3Data);
+                        for (let this_file of target.target.files) {
+                          let s3Data = await handleSaveFile(this_file);
+                          console.log(s3Data);
+                        }
                       }}
                     />
                   </React.Fragment>

@@ -248,14 +248,14 @@ export default ({ currentValues, reactData, updateReactData }) => {
   }
 
   const setPencilColor = (rObj) => {
-    if (!rObj || (rObj.completedDocs.length > 0)) {
-      pencilDisplayed.current = true;
-      return null;
-    }
-    else if (rObj.wipDocs.length > 0) {
+    if (rObj && rObj.wipDocs.length > 0) {
       orangePencilDisplayed.current = true;
       return 'orange';
     }
+    else if (!rObj || (rObj.completedDocs.length > 0)) {
+      pencilDisplayed.current = true;
+      return null;
+    }    
     else {
       redPencilDisplayed.current = true;
       return 'red';
@@ -445,7 +445,6 @@ export default ({ currentValues, reactData, updateReactData }) => {
                             {reactData.masterFormList[person_id].myFormListObj[this_formID].form_name}
                           </Typography>
                           {(reactData.masterFormList[person_id].myFormListObj[this_formID].dueDate || (reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.length > 0)) &&
-                            (reactData.masterFormList[person_id].myFormListObj[this_formID].completedDocs.length === 0) &&
                             <Typography
                               key={`duedate-col_form${form_index}t1`}
                               style={AVATextStyle({
@@ -481,7 +480,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                   margin: { top: 0, left: 0 },
                                 })}
                               >
-                                {`Completed ${makeDate(reactData.masterFormList[person_id].myFormListObj[this_formID].completedDocs[0].last_update).relative}`}
+                                {`${((reactData.masterFormList[person_id].myFormListObj[this_formID].dueDate || (reactData.masterFormList[person_id].myFormListObj[this_formID].wipDocs.length > 0)) ? 'Previously c' : 'C')}ompleted ${makeDate(reactData.masterFormList[person_id].myFormListObj[this_formID].completedDocs[0].last_update).relative}`}
                               </Typography>
                             </React.Fragment>
                           }
