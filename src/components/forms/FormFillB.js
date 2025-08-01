@@ -12,6 +12,7 @@ import { printDocumentB, printEmptyDocument, printDocumentHybrid } from '../../u
 import SignatureCanvas from 'react-signature-canvas';
 import Select from "react-dropdown-select";
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
+import EditIcon from '@material-ui/icons/Edit';
 import PrintIcon from '@material-ui/icons/Print';
 import { Dialog, DialogContent, Snackbar, Box, Typography, FormControlLabel, Button, TextField, Checkbox } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -189,6 +190,36 @@ export default ({ request = {}, onClose }) => {
     pertains_to: options.person_id,
     clientSampleMode: (!options.document_id && (options.person_id === state.session.client_id))
   });
+
+  function uploadIcon(this_field, occ_index) {
+    const IconToRender = (makeArray(reactData.fields[this_field].valueText).length > 1) ? EditIcon : CloudUploadIcon;
+    return (
+      <IconToRender
+        classes={{ root: classes.rowButton }}
+        style={{ marginLeft: '16px', marginBottom: '4px' }}
+        key={`radio-button_upload`}
+        id={`radio-button_upload`}
+        size='medium'
+        onClick={() => {
+          updateReactData({
+            stage: 'uploadField',
+            field_title: reconcilePrompt({
+              rawValue: reactData.fields[this_field].prompt.value,
+              this_field
+            }),
+            oneOnly: (reactData.fields[this_field].prompt.hasOwnProperty('oneOnly')
+              ? reactData.fields[this_field].prompt.oneOnly
+              : true
+            ),
+            upload_data: {
+              prop: this_field,
+              occ_index,
+            }
+          }, true);
+        }}
+      />
+    );
+  };
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const updateReactData = (newData, force = false) => {
@@ -729,12 +760,16 @@ export default ({ request = {}, onClose }) => {
     for (let this_section of formRec.sections) {
       if (this_section.occurrences && !isNaN(this_section.occurrences)) {
         for (let section_number = 1; section_number <= this_section.occurrences; section_number++) {
-          response.sections.push(deepCopy(this_section));
-          this_section.section_name = this_section.section_name.replace(section_number.toString(), `${section_number + 1}`);
+          let sectionIndex = response.sections.push(deepCopy(this_section)) - 1;
+          response.sections[sectionIndex].section_name = this_section.section_name.replace('1', section_number);
           for (let [field_index, this_field] of this_section.fields.entries()) {
-            this_section.fields[field_index].field_name = this_field.field_name.replace(section_number.toString(), `${section_number + 1}`);
-            this_section.fields[field_index].default_source = this_field.default_source.replace(section_number.toString(), `${section_number + 1}`);
-            this_section.fields[field_index].saveAs = this_field.saveAs.replace(section_number.toString(), `${section_number + 1}`);
+            response.sections[sectionIndex].fields[field_index].field_name = this_field.field_name.replace('1', section_number);
+            response.sections[sectionIndex].fields[field_index].default_source = this_field.default_source
+              ? (this_field.default_source.replace('1', section_number))
+              : null;
+            response.sections[sectionIndex].fields[field_index].saveAs = this_field.saveAs
+              ? (this_field.saveAs.replace('1', section_number))
+              : null;
           }
         }
       }
@@ -757,7 +792,7 @@ export default ({ request = {}, onClose }) => {
         response.fields[this_field] = {};
         // Set default value
         const defaultObj = {};
-        if (!formRec.fields.hasOwnProperty(this_field)) {
+        if (!formRec.fields.hasOwnProperty(field_key || this_field)) {
           const formFieldRec = await getDb({
             Key: {
               client_id: state.session.client_id,
@@ -794,14 +829,14 @@ export default ({ request = {}, onClose }) => {
             continue;
           }
         }
-        if (formRec.fields[this_field].default) {
-          if (formRec.fields[this_field].default.source) {
+        if (formRec.fields[field_key || this_field].default) {
+          if (formRec.fields[field_key || this_field].default.source) {
             let sourceDefaults = [];
-            if (Array.isArray(formRec.fields[this_field].default.source)) {
-              sourceDefaults = formRec.fields[this_field].default.source;
+            if (Array.isArray(formRec.fields[field_key || this_field].default.source)) {
+              sourceDefaults = formRec.fields[field_key || this_field].default.source;
             }
             else {
-              sourceDefaults = [formRec.fields[this_field].default.source];
+              sourceDefaults = [formRec.fields[field_key || this_field].default.source];
             }
             for (const this_default of sourceDefaults) {
               // if defaultObj has a source, the source is going to tell you where to find the default data
@@ -880,8 +915,8 @@ export default ({ request = {}, onClose }) => {
               }
             }
           }
-          if (!response.fields[this_field].value && formRec.fields[this_field].default.value) {
-            defaultObj.value_path = makeArray(formRec.fields[this_field].default.value, '.');
+          if (!response.fields[this_field].value && formRec.fields[field_key || this_field].default.value) {
+            defaultObj.value_path = makeArray(formRec.fields[field_key || this_field].default.value, '.');
             if (defaultObj.value_path[0].toLowerCase() === 'date') {
               response.fields[this_field].value = makeDate(defaultObj.value_path[1], { notime: true })[defaultObj.value_path[2]];
             }
@@ -903,7 +938,7 @@ export default ({ request = {}, onClose }) => {
             }
             else if (defaultObj.value_path[0].toLowerCase() === 'makenewaccount') {
               response.fields[this_field].value = response.value = await makeNewUser({
-                tableDefaults: formRec.fields[this_field]?.default?.tables,
+                tableDefaults: formRec.fields[field_key || this_field]?.default?.tables,
               });
             }
             else if (defaultObj.value_path.length === 1) {
@@ -911,21 +946,21 @@ export default ({ request = {}, onClose }) => {
             }
           }
         }
-        else if (formRec.fields[this_field]?.prompt && formRec.fields[this_field]?.prompt?.value) {
-          if (['image', 'html'].includes(formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type)) {
-            response.fields[this_field].value = formRec.fields[this_field]?.prompt?.value;
+        else if (formRec.fields[field_key || this_field]?.prompt && formRec.fields[field_key || this_field]?.prompt?.value) {
+          if (['image', 'html'].includes(formRec.fields[field_key || this_field]?.value.type || formRec.fields[field_key || this_field]?.default?.type)) {
+            response.fields[this_field].value = formRec.fields[field_key || this_field]?.prompt?.value;
           }
         }
         if (!response.fields[this_field].value) {
-          if (formRec.fields[this_field].prompt?.occurrences && (formRec.fields[this_field].prompt.occurrences > 1)) {
-            response.fields[this_field].value = new Array(formRec.fields[this_field].prompt.occurrences).fill(null);
+          if (formRec.fields[field_key || this_field].prompt?.occurrences && (formRec.fields[field_key || this_field].prompt.occurrences > 1)) {
+            response.fields[this_field].value = new Array(formRec.fields[field_key || this_field].prompt.occurrences).fill(null);
           }
           else {
             response.fields[this_field].value = null;
           }
         }
         // Set type
-        response.fields[this_field].type = formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type || 'text';
+        response.fields[this_field].type = formRec.fields[field_key || this_field]?.value.type || formRec.fields[field_key || this_field]?.default?.type || 'text';
         // Override computed defaults with preset values (if any)
         if (preset_values && preset_values[this_field]) {
           response.fields[this_field].og_default = await formatValue({
@@ -935,8 +970,8 @@ export default ({ request = {}, onClose }) => {
           response.fields[this_field].value = preset_values[this_field];
         }
         // if prompt.ignore_if exists, check the value
-        if (formRec.fields[this_field]?.prompt?.ignore_if) {
-          const ignoreList = makeArray(formRec.fields[this_field]?.prompt?.ignore_if);
+        if (formRec.fields[field_key || this_field]?.prompt?.ignore_if) {
+          const ignoreList = makeArray(formRec.fields[field_key || this_field]?.prompt?.ignore_if);
           if (!response.fields[this_field].value) {
             if (ignoreList.includes('%%no_data%%')) {
               response.fields[this_field].ignore = true;
@@ -952,10 +987,10 @@ export default ({ request = {}, onClose }) => {
           type: response.fields[this_field].type
         });
         // set prompt
-        response.fields[this_field].prompt = formRec.fields[this_field]?.prompt || { value: sentenceCase(this_field) };
+        response.fields[this_field].prompt = formRec.fields[field_key || this_field]?.prompt || { value: sentenceCase(this_field) };
         // Selection Obj should be set for the special case - type = select or type = select & text
         if (response.fields[this_field].type.startsWith('select') || response.fields[this_field].type.startsWith('drop')) {
-          response.fields[this_field].selectionObj = formRec.fields[this_field]?.value.selection;
+          response.fields[this_field].selectionObj = formRec.fields[field_key || this_field]?.value.selection;
           if ((response.fields[this_field].value) && (Array.isArray(response.fields[this_field].value))
             && (response.fields[this_field].selectionObj.selectionList && Array.isArray(response.fields[this_field].selectionObj.selectionList))
           ) {
@@ -972,21 +1007,21 @@ export default ({ request = {}, onClose }) => {
         }
         // set options
         response.fields[this_field].options = {
-          required: !!formRec.fields[this_field].value.required,
-          log_results: formRec.fields[this_field].value.log_results || false,
-          viewOnly: (formRec.fields[this_field].value.edit === 'view'),
-          hidden: (formRec.fields[this_field].value.edit === 'hidden'),
-          ifEmpty: formRec.fields[this_field].options ? formRec.fields[this_field].options.ifEmpty : null,
-          resetFields: (formRec.fields[this_field].value.resetFields
-            || (formRec.fields[this_field].options ? formRec.fields[this_field].options.resetFields : null))
+          required: !!formRec.fields[field_key || this_field].value.required,
+          log_results: formRec.fields[field_key || this_field].value.log_results || false,
+          viewOnly: (formRec.fields[field_key || this_field].value.edit === 'view'),
+          hidden: (formRec.fields[field_key || this_field].value.edit === 'hidden'),
+          ifEmpty: formRec.fields[field_key || this_field].options ? formRec.fields[field_key || this_field].options.ifEmpty : null,
+          resetFields: (formRec.fields[field_key || this_field].value.resetFields
+            || (formRec.fields[field_key || this_field].options ? formRec.fields[field_key || this_field].options.resetFields : null))
 
         };
         if (response.fields[this_field].type === 'signature') {
-          response.fields[this_field].options.sigRefNumber = formRec.fields[this_field].sigRefNumber;
+          response.fields[this_field].options.sigRefNumber = formRec.fields[field_key || this_field].sigRefNumber;
         }
         // set saveAs
-        if (!isEmpty(formRec.fields[this_field].value.saveAs)) {
-          let wip_saveAs = makeArray(formRec.fields[this_field].value.saveAs, ".");
+        if (!isEmpty(formRec.fields[field_key || this_field].value.saveAs)) {
+          let wip_saveAs = makeArray(formRec.fields[field_key || this_field].value.saveAs, ".");
           const wip_file = wip_saveAs[0].slice(0, 6).toLowerCase();
           let found_index = ['person', 'people', 'sessio', 'family'].findIndex(this_word => {
             return (wip_file === this_word);
@@ -1009,8 +1044,8 @@ export default ({ request = {}, onClose }) => {
           response.fields[this_field].saveAs = false;
         }
         // set logAs
-        if (!isEmpty(formRec.fields[this_field].value.log_results)) {
-          response.fields[this_field].logAs = formRec.fields[this_field].value.log_results.path;
+        if (!isEmpty(formRec.fields[field_key || this_field].value.log_results)) {
+          response.fields[this_field].logAs = formRec.fields[field_key || this_field].value.log_results.path;
         }
         else {
           response.fields[this_field].logAs = false;
@@ -2317,7 +2352,7 @@ export default ({ request = {}, onClose }) => {
       goLoad();
     }
     return (() => {
-    })
+    });
   }, [reactData.form_id, reactData.document_id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // **************************
@@ -2473,26 +2508,7 @@ export default ({ request = {}, onClose }) => {
                                       this_field
                                     })}
                                   </Typography>
-                                  <CloudUploadIcon
-                                    classes={{ root: classes.rowButton }}
-                                    style={{ marginLeft: '16px' }}
-                                    key={`radio-button_upload`}
-                                    id={`radio-button_upload`}
-                                    size='medium'
-                                    onClick={() => {
-                                      updateReactData({
-                                        stage: 'uploadField',
-                                        field_title: reconcilePrompt({
-                                          rawValue: reactData.fields[this_field].prompt.value,
-                                          this_field
-                                        }),
-                                        upload_data: {
-                                          prop: this_field,
-                                          occ_index,
-                                        }
-                                      }, true);
-                                    }}
-                                  />
+                                  {uploadIcon(this_field, occ_index)}
                                 </Box>
                                 <Box
                                   display='flex'
@@ -2500,27 +2516,28 @@ export default ({ request = {}, onClose }) => {
                                   flexDirection='row'
                                   justifyContent='center'
                                   alignItems='center'
-                                  border={2}
-                                  borderRadius={'20px'}
-                                  style={{
-                                    minWidth: '160px',
-                                    maxWidth: '160px',
-                                    minHeight: '160px',
-                                    maxHeight: '160px',
-                                  }}
+                                  padding={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
                                 >
-                                  <Box
-                                    borderRadius={'20px'}
-                                    style={{
-                                      minWidth: '150px',
-                                      maxWidth: '150px',
-                                      minHeight: '150px',
-                                      maxHeight: '150px',
-                                    }}
-                                    component="img"
-                                    alt={''}
-                                    src={reactData.fields[this_field].valueText}
-                                  />
+                                  {makeArray(reactData.fields[this_field].valueText).map((this_image, imageNdx) => (
+                                    <Box
+                                      borderRadius={'20px'}
+                                      border={1}
+                                      marginRight={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
+                                      key={`image_${sectionNdx}_${fieldNdx}_${imageNdx}`}
+                                      onClick={() => {
+                                        window.open(this_image, `${this_image.split('.').pop()} File`);
+                                      }}
+                                      style={{
+                                        minWidth: '150px',
+                                        maxWidth: '150px',
+                                        minHeight: '150px',
+                                        maxHeight: '150px',
+                                      }}
+                                      component="img"
+                                      alt={`\nNo image available.  \nThis is a ${this_image.split('.').pop()} file.  \nTap to view`}
+                                      src={this_image}
+                                    />
+                                  ))}
                                 </Box>
                               </Box>
                             }
@@ -2682,7 +2699,7 @@ export default ({ request = {}, onClose }) => {
                             {(reactData.fields[this_field].type.startsWith('select')) &&
                               <Box
                                 display='flex'
-                                mb={0}
+                                mb={1}
                                 flexDirection='row'
                                 justifyContent='flex-start'
                                 alignItems='center'
@@ -3050,7 +3067,14 @@ export default ({ request = {}, onClose }) => {
           options={{
             buttonText: ['Choose', 'Save & Continue'],
             title: [reactData.field_title, 'Tap "Choose a File" to select the content to upload'],
-            oneOnly: true
+            oneOnly: reactData.hasOwnProperty('oneOnly') ? reactData.oneOnly : true,
+            prevSelected: ((makeArray(reactData.fields[reactData.upload_data.prop].valueText).length > 0)
+              ? makeArray(reactData.fields[reactData.upload_data.prop].valueText).map(fLoc => {
+                let [fName, fType] = fLoc.split('/').pop().split('.');
+                return { fName, fLoc, fType, Key: fName, Location: fLoc };
+              })
+              : null
+            )
           }}
           onCancel={() => {
             updateReactData({
@@ -3059,7 +3083,10 @@ export default ({ request = {}, onClose }) => {
           }}
           onLoad={async (response) => {
             await handleChangeValue({
-              newValue: response[0].fLoc,
+              newValue: ((reactData.hasOwnProperty('oneOnly') && !reactData.oneOnly && (response.length > 1))
+                ? response.map(r => { return r.fLoc; })
+                : response[0].fLoc
+              ),
               prop: reactData.upload_data.prop,
               occ_index: reactData.upload_data.occ_index,
               reactUpdObj: {

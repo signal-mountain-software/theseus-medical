@@ -2260,27 +2260,36 @@ function pdfLine(text, options = {}) {
       switch (pdfCurrent.align) {
         case 'center': {
           xOffset = page.centerPoint - (imageWidth / 2);
-          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+          for (let this_image of makeArray(options.image)) {
+            console.log(this_image);
+            doc.addImage(this_image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+          }
           pdfCurrent.xPos = page.centerPoint + (imageWidth / 2);
           break;
         }
         case 'right': {
           xOffset = page.width - page.margin.right - imageWidth;
-          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+          for (let this_image of makeArray(options.image)) {
+            doc.addImage(this_image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+          }
           pdfCurrent.xPos = page.width - page.margin.right;
           break;
         }
         default: {
           xOffset = pdfCurrent.xPos + pdfCurrent.indent;
           //    let imageProps = doc.getImageProperties(options.image);
-          doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
-          pdfCurrent.yPos += imageHeight;
-          pdfDown(1);
+          for (let this_image of makeArray(options.image)) {
+            doc.addImage(this_image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+            pdfCurrent.yPos += imageHeight;
+            pdfDown(1);
+          }
         }
       }
     }
     catch {
-      doc.html(`<img src="${options.image}" />`);
+      for (let this_image of makeArray(options.image)) {
+        doc.html(`<img src="${this_image}" />`);
+      }
       switch (pdfCurrent.align) {
         case 'center': {
           pdfCurrent.xPos = page.centerPoint + (imageWidth / 2);
