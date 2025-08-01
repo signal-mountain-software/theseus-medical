@@ -2699,7 +2699,7 @@ export default ({ request = {}, onClose }) => {
                             {(reactData.fields[this_field].type.startsWith('select')) &&
                               <Box
                                 display='flex'
-                                mb={0}
+                                mb={1}
                                 flexDirection='row'
                                 justifyContent='flex-start'
                                 alignItems='center'
