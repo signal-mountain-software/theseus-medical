@@ -435,7 +435,11 @@ export default ({ onCancel, onLoad, options = {} }) => {
         </Box>
         <DialogActions className={AVAClass.AVABox} style={{ justifyContent: 'center' }}>
           <Box display='flex' flexDirection='column' minWidth='100%'>
-            <Box display='flex' flexDirection='row' marginTop={2} paddingBottom={1} justifyContent='space-between' alignItems='center'>
+            <Box display='flex' flexDirection='row'
+              margin={2} paddingBottom={1}
+              justifyContent='center' alignItems='center'
+              flexWrap={'wrap'}
+            >
               <Button
                 className={AVAClass.AVAButton}
                 style={{ backgroundColor: 'red', color: 'white' }}
@@ -446,7 +450,9 @@ export default ({ onCancel, onLoad, options = {} }) => {
               >
                 {`${loadingInProgress('all') ? 'Stop/' : ''}Exit`}
               </Button>
-              <Box display='flex' flexDirection='row'>
+              <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'
+                flexWrap={'wrap'}
+              >
                 {(!options.oneOnly || (reactData.uploadList.length === 0)) &&
                   <React.Fragment>
                     <Button
