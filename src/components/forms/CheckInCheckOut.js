@@ -311,7 +311,7 @@ export default ({ onSave, onClose }) => {
       requestor: requestor,
       activity_key: "",
       onBehalfOf: `${reactData.personRec.name.first} ${reactData.personRec.name.last}`,
-      foreign_key: reqRec.foreign_key || reactData.personRec.person_id,  // if person checking into another person
+      foreign_key: reactData.personRec.person_id,  // if person checking into another person
       local_key: `${reactData.personRec.person_id}_checkout`,
       history: reqRec.history[0],
       last_status: reqRec.last_status,
