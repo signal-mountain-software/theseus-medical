@@ -286,6 +286,8 @@ export default ({ onSave, onClose }) => {
   }
 
   async function putCheckout(reqRec, options) {
+    // there is one ServiceRequest per person, AND one additional ServieRequest per check-in/out event
+    // this updates the person's ServiceRequest record which holds a history of all his or her requests
     await updateServiceRequest(reqRec);
     let requestor = reactData.personRec.person_id;
     if (['vendor', 'guest'].includes(reqRec.foreign_key)) {
@@ -300,6 +302,7 @@ export default ({ onSave, onClose }) => {
         }
       };
     }
+    // this puts the "event" ServiceRequest record which holds infor about this specific event
     await putServiceRequest({
       client: state.session.client_id,
       author: requestor,
@@ -316,7 +319,8 @@ export default ({ onSave, onClose }) => {
         selections: [`Checked ${reqRec.last_status}`],
         textInput: reqRec.current_request.textInput,
       },
-      messaging: {}
+      messaging: {},
+      noLog: true     // a log was written when the update happened, so no log is needed here
     });
     let last10checkout = [reqRec.history[0]];
     if (reactData.personRec.hasOwnProperty('checkout_recent_history')) {
