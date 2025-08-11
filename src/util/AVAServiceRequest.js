@@ -211,6 +211,7 @@ export async function putServiceRequest(body) {
               requestStatus: <optional - if missing defaults to 'submitted'>,
               notes: <optional text>
               activity_key
+              noLog: true/false (opt - default false)
       };
   */
   let currentTime = makeDate(new Date());
@@ -272,28 +273,29 @@ export async function putServiceRequest(body) {
     });
 
   // WRITE REQUEST LOG
-  let requestLogRec = {
-    "client_id": serviceRequestRec.client_id,
-    "log_time": serviceRequestRec.last_update,
-    "activity": serviceRequestRec.history[0],
-    "assigned_to": serviceRequestRec.assigned_to,
-    "last_status": serviceRequestRec.last_status,
-    "request_id": serviceRequestRec.request_id,
-    "person": await makeName(serviceRequestRec.requestor),
-    "requestor": serviceRequestRec.requestor,
-    "request_type": serviceRequestRec.request_type
-  };
-  await dbClient
-    .put({
-      Item: requestLogRec,
-      TableName: "ServiceRequestLog"
-    })
-    .promise()
-    .catch(error => {
-      clt({ 'Bad put to ServiceRequestLog - caught error is': error });
-      goodWrite = false;
-    });
-
+  if (!body.noLog) {
+    let requestLogRec = {
+      "client_id": serviceRequestRec.client_id,
+      "log_time": serviceRequestRec.last_update,
+      "activity": serviceRequestRec.history[0],
+      "assigned_to": serviceRequestRec.assigned_to,
+      "last_status": serviceRequestRec.last_status,
+      "request_id": serviceRequestRec.request_id,
+      "person": await makeName(serviceRequestRec.requestor),
+      "requestor": serviceRequestRec.requestor,
+      "request_type": serviceRequestRec.request_type
+    };
+    await dbClient
+      .put({
+        Item: requestLogRec,
+        TableName: "ServiceRequestLog"
+      })
+      .promise()
+      .catch(error => {
+        clt({ 'Bad put to ServiceRequestLog - caught error is': error });
+        goodWrite = false;
+      });
+  }
   // HANDLE MESSAGING IF NEEDED
   let messageResult = `No message sent`;
   if (goodWrite && body.messaging) {
