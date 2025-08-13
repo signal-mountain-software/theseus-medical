@@ -5,7 +5,7 @@ import FormControlLabel from '@material-ui/core/FormControlLabel';
 import { Box, Checkbox, IconButton, TextField, Button } from '@material-ui/core';
 
 import { formatPhone } from '../../util/AVAPeople';
-import { isEmpty, isMobile } from '../../util/AVAUtilities';
+import { isEmpty, isMobile, makeArray } from '../../util/AVAUtilities';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import { makeTime } from '../../util/AVADateTime';
 
@@ -139,11 +139,26 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
                 if (!currentValues.peopleRec.preferred_methods) {
                   currentValues.peopleRec.preferred_methods = [];
                 }
+                else if (!Array.isArray(currentValues.peopleRec.preferred_methods)) {
+                  currentValues.peopleRec.preferred_methods = [currentValues.peopleRec.preferred_methods];
+                }
                 let optionAt = currentValues.peopleRec.preferred_methods.findIndex(this_method => {
                   return (this_method === this_option.option);
                 });
                 if (optionAt === -1) {
-                  currentValues.peopleRec.preferred_methods.push(this_option.option);
+
+                  // wasn't there before; you must have clicked it ON
+                  // if this is an exclusive option OR the previous option was an exclusive option, use this option only
+                  if ((this_option.exclusive) || (messageOptions.some(check_option => {
+                    return (check_option.exclusive && currentValues.peopleRec.preferred_methods.includes(check_option.option));
+                  }
+                  ))) {
+                    currentValues.peopleRec.preferred_methods = [this_option.option];
+                  }
+                  else {
+                    // otherwise, add this option to the list
+                    currentValues.peopleRec.preferred_methods.push(this_option.option);
+                  }
                 }
                 else {
                   currentValues.peopleRec.preferred_methods.splice(optionAt, 1);
