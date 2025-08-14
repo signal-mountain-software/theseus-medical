@@ -13,6 +13,8 @@ let page = {};
 let pdfCurrent = {};
 let doc;
 
+let attachments = [];
+
 // Functions
 
 export async function getMessages(body) {
@@ -1663,6 +1665,11 @@ export async function savePDF(doc, pdfInfo, options = {}) {
         responseStatus = 401;
         responseData.message = err.message;
       });
+    window.open(s3Resp.Location);
+    for (let this_attachment of attachments) {
+      window.open(this_attachment);
+    };
+    attachments = [];
     if (goodS3) {
       if (options.onSave === 'print') {
         window.open(s3Resp.Location);
@@ -1674,6 +1681,10 @@ export async function savePDF(doc, pdfInfo, options = {}) {
   }
   if (options.local) {
     doc.save(pdfInfo.s3Key);
+    for (let this_attachment of attachments) {
+      doc.save(this_attachment);
+    }
+
     responseStatus++;
     responseData.message.push(`Locally saved as ${pdfInfo.s3Key}`);
     responseData.saveName = pdfInfo.s3Key;
@@ -2279,7 +2290,18 @@ function pdfLine(text, options = {}) {
           xOffset = pdfCurrent.xPos + pdfCurrent.indent;
           //    let imageProps = doc.getImageProperties(options.image);
           for (let this_image of makeArray(options.image)) {
-            doc.addImage(this_image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+            let [pdir, imageURI] = this_image.split(/\/(?!.*\/)/);   
+            console.log(pdir, imageURI);
+            let imageBucket = 'theseus-medical-storage';
+            let gotObject =
+              s3.getSignedUrl('getObject', {
+                Bucket: imageBucket,
+                Key: imageURI,
+                Expires: 3600
+              });
+            let pParts = imageURI.split('.');  
+            attachments.push(gotObject);
+            doc.addImage(gotObject, pParts.pop(), xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
             pdfCurrent.yPos += imageHeight;
             pdfDown(1);
           }

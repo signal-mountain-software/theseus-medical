@@ -2195,7 +2195,7 @@ export default ({ request = {}, onClose }) => {
           cl(`in FormFillB -> initialize, bad get to DocumentMaster with ${reactData.document_id || '(null)'}. Error is: ${error}`);
         });
       if (recordExists(docRec)) {
-        if (docRec.Item.status === 'complete') {
+        if ((docRec.Item.status === 'complete') && (!options.open_complete)) {
           let nowJ = new Date().getTime();
           window.open(`${docRec.Item.history[0].url}?qt=${nowJ.toString()}`
             , docRec.Item.history[0].url);
