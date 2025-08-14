@@ -1162,7 +1162,7 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
             switch (printType) {
               case 'upload':
               case 'image': {
-                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', before: 1, after: 0 });
                 pdfLine('', { image: fields[this_field].valueText, image_width: (page.width / 5), style: 'normal', size: 'medium', align: 'left', after: 1 });
                 break;
               }
@@ -1665,10 +1665,10 @@ export async function savePDF(doc, pdfInfo, options = {}) {
         responseStatus = 401;
         responseData.message = err.message;
       });
-    window.open(s3Resp.Location);
-    for (let this_attachment of attachments) {
-      window.open(this_attachment);
-    };
+   // window.open(s3Resp.Location);
+   // for (let this_attachment of attachments) {
+   //   window.open(this_attachment);
+   // };
     attachments = [];
     if (goodS3) {
       if (options.onSave === 'print') {
@@ -2301,8 +2301,17 @@ function pdfLine(text, options = {}) {
               });
             let pParts = imageURI.split('.');  
             attachments.push(gotObject);
-            doc.addImage(gotObject, pParts.pop(), xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
-            pdfCurrent.yPos += imageHeight;
+            try {
+              let jsConfirm = doc.addImage(gotObject, pParts.pop(), xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+              pdfCurrent.yPos += imageHeight;
+            }
+            catch {
+              pdfDown(1);
+              doc.text('Attachment image not available.', xOffset, pdfCurrent.yPos);
+            }
+            pdfDown(2);
+            let lWidth = doc.textWithLink('Click here to see the attachment.', xOffset, pdfCurrent.yPos, { url: this_image });
+            doc.line(xOffset, pdfCurrent.yPos + 2, xOffset + lWidth, pdfCurrent.yPos + 2);
             pdfDown(1);
           }
         }
