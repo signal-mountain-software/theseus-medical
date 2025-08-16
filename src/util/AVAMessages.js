@@ -13,6 +13,8 @@ let page = {};
 let pdfCurrent = {};
 let doc;
 
+let attachments = [];
+
 // Functions
 
 export async function getMessages(body) {
@@ -1160,7 +1162,7 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
             switch (printType) {
               case 'upload':
               case 'image': {
-                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', before: 1, after: 0 });
                 pdfLine('', { image: fields[this_field].valueText, image_width: (page.width / 5), style: 'normal', size: 'medium', align: 'left', after: 1 });
                 break;
               }
@@ -1663,6 +1665,11 @@ export async function savePDF(doc, pdfInfo, options = {}) {
         responseStatus = 401;
         responseData.message = err.message;
       });
+   // window.open(s3Resp.Location);
+   // for (let this_attachment of attachments) {
+   //   window.open(this_attachment);
+   // };
+    attachments = [];
     if (goodS3) {
       if (options.onSave === 'print') {
         window.open(s3Resp.Location);
@@ -1674,6 +1681,10 @@ export async function savePDF(doc, pdfInfo, options = {}) {
   }
   if (options.local) {
     doc.save(pdfInfo.s3Key);
+    for (let this_attachment of attachments) {
+      doc.save(this_attachment);
+    }
+
     responseStatus++;
     responseData.message.push(`Locally saved as ${pdfInfo.s3Key}`);
     responseData.saveName = pdfInfo.s3Key;
@@ -2279,8 +2290,28 @@ function pdfLine(text, options = {}) {
           xOffset = pdfCurrent.xPos + pdfCurrent.indent;
           //    let imageProps = doc.getImageProperties(options.image);
           for (let this_image of makeArray(options.image)) {
-            doc.addImage(this_image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
-            pdfCurrent.yPos += imageHeight;
+            let [pdir, imageURI] = this_image.split(/\/(?!.*\/)/);   
+            console.log(pdir, imageURI);
+            let imageBucket = 'theseus-medical-storage';
+            let gotObject =
+              s3.getSignedUrl('getObject', {
+                Bucket: imageBucket,
+                Key: imageURI,
+                Expires: 3600
+              });
+            let pParts = imageURI.split('.');  
+            attachments.push(gotObject);
+            try {
+              let jsConfirm = doc.addImage(gotObject, pParts.pop(), xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+              pdfCurrent.yPos += imageHeight;
+            }
+            catch {
+              pdfDown(1);
+              doc.text('Attachment image not available.', xOffset, pdfCurrent.yPos);
+            }
+            pdfDown(2);
+            let lWidth = doc.textWithLink('Click here to see the attachment.', xOffset, pdfCurrent.yPos, { url: this_image });
+            doc.line(xOffset, pdfCurrent.yPos + 2, xOffset + lWidth, pdfCurrent.yPos + 2);
             pdfDown(1);
           }
         }

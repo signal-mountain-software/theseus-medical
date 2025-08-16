@@ -1353,7 +1353,7 @@ export default ({ defaults, onClose }) => {
                               <EditIcon
                                 key={`radio-button_person${cX}edit`}
                                 id={`radio-button_person${cX}edit`}
-                                onClick={() => {
+                                onContextMenu={() => {
                                   updateReactData({
                                     isEditing: {
                                       calledFrom: 'forms',
@@ -1362,6 +1362,21 @@ export default ({ defaults, onClose }) => {
                                       document_id: ((reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status.startsWith('complete')) ? 'new' : (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'new'))
                                     }
                                   }, true);
+                                }}
+
+                                onClick={() => {
+                                  updateReactData({
+                                    isEditing: {
+                                      calledFrom: 'forms',
+                                      open_complete: !reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id,
+                                      person_id: this_person,
+                                      form_id: reactData.selectedForm_id,
+                                      document_id: (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id
+                                        || (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.document_id
+                                          || 'new'))
+                                    }
+                                  }, true);
+                                  console.log(reactData.isEditing);
                                 }}
                                 style={AVATextStyle({
                                   size: 1.5,
@@ -1672,6 +1687,7 @@ export default ({ defaults, onClose }) => {
               form_id: reactData.isEditing.form_id,
               document_id: reactData.isEditing.document_id,
               person_id: reactData.isEditing.person_id,
+              open_complete: reactData.isEditing.open_complete
             }}
           onClose={async (ignore_me, statusObj) => {
             if (statusObj.document_status === 'aborted') {
