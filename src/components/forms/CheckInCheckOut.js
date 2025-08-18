@@ -252,7 +252,7 @@ export default ({ onSave, onClose }) => {
     let nameIndex = -1;
     for (let [x, this_prompt] of state.session.guest_checkout_prompts.entries()) {
       if (this_prompt.required && !responses[x]) {
-        errorText[x] = `Please don't leave this blank!`;
+        errorText[x] = `${this_prompt.prompt} - Please don't leave this blank!`;
       }
       else if (this_prompt.checkName) {
         nameIndex = x;
@@ -994,7 +994,7 @@ export default ({ onSave, onClose }) => {
                 }
                 let gPhone = Number(contactNumber.replace(/\D/g, ''));
                 if (gPhone < 1000000000) {
-                  reactData.errorText[1] = `Please enter your area code and phone number`;
+                  reactData.errorText[2] = `Please enter your area code and phone number`;
                 }
                 // No errors?  Add the account
                 let addedPerson = {};
