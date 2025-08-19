@@ -942,7 +942,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           ':p': person_id,
           ':s': start_time.toString(),
           ':e': end_time.toString(),
-          ':t': 'delivery',
+          //      ':t': 'delivery',
+          ':t': 'message',
         },
         TableName: "TheseusMessages",
         IndexName: 'sent_from-index',
@@ -1116,7 +1117,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       let message_added = false;
       if (reactData.threads[this_deliveryRec.thread_id].messages.length > 0) {
         message_number = reactData.threads[this_deliveryRec.thread_id].messages.findIndex(this_message => {
-          return ((this_message.author_id === this_deliveryRec.author.author_id) && (this_message.message_text === this_deliveryRec.message_text.text));
+          return ((this_message.author_id === this_deliveryRec.author.author_id) && (this_message.message_text.slice(0, 20) === this_deliveryRec.message_text.text.slice(0, 20)));
         });
       };
       if (message_number === -1) {
@@ -1168,6 +1169,50 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         message_added = true;
         message_number = reactData.threads[this_deliveryRec.thread_id].messages.length - 1;
       }
+
+
+      if ((this_deliveryRec.record_type === 'message') && (inOut === 'out')) {
+        for (let this_recipient_key in this_deliveryRec.recipient_list) {
+          let this_recipient = this_deliveryRec.recipient_list[this_recipient_key];
+          if (!reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.includes(this_recipient.id)) {
+            reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.push(this_recipient.id);
+            let recipient_number = reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.push({
+              recipient_id: this_recipient.id,
+              recipient_name: (`${this_recipient.name.first} ${this_recipient.name.last}`).trim(),
+              wasHeld: false,
+              status_held: false,
+              status_blocked: false,
+              status_redirected: false,
+              status_with_rules: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.rule_used),
+              status_not_og: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.not_original_recipient),
+              heldUntil: 0,
+              methods: {}
+            }) - 1;
+            let this_method = standardizeMethod(this_recipient.method);
+            if (this_method === 'held') {
+              reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].wasHeld = true;
+              reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_held = true;
+              reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].heldUntil = this_deliveryRec.recipient_list.holdUntil;
+              if (this_deliveryRec.recipient_list.hold_reason === 'blocked') {
+                reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_blocked = true;
+              }
+              if (this_deliveryRec.recipient_list.hold_reason === 'replaced') {
+                reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_redirected = true;
+              }
+            }
+          }
+        }
+      }
+
+
+
+
+
+
+
+
+
+
       let recipient_number = -1;
       if (reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.length > 0) {
         recipient_number = reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.findIndex(this_recipient => {
@@ -1181,19 +1226,20 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         else {
           reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.push(this_deliveryRec.deliver_to);
         }
-        recipient_number = reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.push({
-          recipient_id: this_deliveryRec.deliver_to,
-          recipient_name: (`${this_deliveryRec.recipient_list.name.first} ${this_deliveryRec.recipient_list.name.last}`).trim(),
-          wasHeld: false,
-          status_held: false,
-          status_blocked: false,
-          status_redirected: false,
-          status_with_rules: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.rule_used),
-          status_not_og: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.not_original_recipient),
-          heldUntil: 0,
-          methods: {}
-        }) - 1;
+   //     recipient_number = reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.push({
+   //       recipient_id: this_deliveryRec.deliver_to,
+   //       recipient_name: (`${this_deliveryRec.recipient_list.name.first} ${this_deliveryRec.recipient_list.name.last}`).trim(),
+   //       wasHeld: false,
+   //       status_held: false,
+   //       status_blocked: false,
+   //       status_redirected: false,
+   //       status_with_rules: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.rule_used),
+   //       status_not_og: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.not_original_recipient),
+   //       heldUntil: 0,
+   //       methods: {}
+   //     }) - 1;
       }
+      /*
       let this_method = standardizeMethod(this_deliveryRec.deliver_method);
       if (this_method === 'held') {
         reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].wasHeld = true;
@@ -1234,6 +1280,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       if (!isEmpty(this_deliveryRec.reply_to)) {
         reactData.threads[this_deliveryRec.thread_id].messages[message_number].reply_to = this_deliveryRec.reply_to;
       }
+      */
       // re-sort messages in this thread (if necessary)
       if (message_added && (reactData.threads[this_deliveryRec.thread_id].messages.length > 1)) {
         reactData.threads[this_deliveryRec.thread_id].messages.sort((a, b) => {
@@ -1257,7 +1304,6 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         return ((reactData.threads[a].last_update > reactData.threads[b].last_update) ? -1 : 1);
       });
       updateReactData({
-        statusMessage: `Processing inbound - ${totalProcessed} of ${totalCount}`,
         threads: reactData.threads,
         sorted_threads
       }, true);
