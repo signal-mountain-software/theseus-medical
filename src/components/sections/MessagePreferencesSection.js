@@ -5,7 +5,7 @@ import FormControlLabel from '@material-ui/core/FormControlLabel';
 import { Box, Checkbox, IconButton, TextField, Button } from '@material-ui/core';
 
 import { formatPhone } from '../../util/AVAPeople';
-import { isEmpty, isMobile, makeArray } from '../../util/AVAUtilities';
+import { isEmpty, isMobile } from '../../util/AVAUtilities';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import { makeTime } from '../../util/AVADateTime';
 
