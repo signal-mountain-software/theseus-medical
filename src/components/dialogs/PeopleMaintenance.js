@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { getPerson, getImage } from '../../util/AVAPeople';
-import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount } from '../../util/AVAUtilities';
+import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount, titleCase } from '../../util/AVAUtilities';
 import { AVAclasses, AVADefaults, AVATextStyle, isDark } from '../../util/AVAStyles';
 import { determineClass } from '../../util/AVAGroups';
 
@@ -718,6 +718,12 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           reactData.current.peopleRec.preferred_method = 'voice';
         }
       }
+    }
+
+    reactData.current.peopleRec.search_data = `${titleCase(reactData.current.peopleRec.name.first)} ${titleCase(reactData.current.peopleRec.name.last)} `;
+    reactData.current.peopleRec.search_data += `${reactData.current.peopleRec.name.first.toLowerCase()} ${reactData.current.peopleRec.name.last.toLowerCase()} `;
+    if (reactData.current.peopleRec.messaging.hasOwnProperty('sms')) {
+      reactData.current.peopleRec.search_data += reactData.current.peopleRec.messaging.sms.slice(-10);
     }
 
     if (JSON.stringify(reactData.og.peopleRec) !== JSON.stringify(reactData.current.peopleRec)) {

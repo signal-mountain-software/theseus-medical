@@ -1671,7 +1671,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             <React.Fragment>
               {!session.useOldVersion &&
                 <PeopleMaintenance
-                  person_id={null}
+                person_id={null}
+                options={{
+                  mode: 'add',
+                  newPerson: true,
+                  sectionToShow: 'ProfileSection'
+                }}
                   initialValues={{
                     peopleRec: {
                       client_id: state.session.client_id,

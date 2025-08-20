@@ -2303,6 +2303,7 @@ function pdfLine(text, options = {}) {
             attachments.push(gotObject);
             try {
               let jsConfirm = doc.addImage(gotObject, pParts.pop(), xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
+              console.log(jsConfirm);
               pdfCurrent.yPos += imageHeight;
             }
             catch {
