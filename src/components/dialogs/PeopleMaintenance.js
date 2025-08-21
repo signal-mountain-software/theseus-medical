@@ -65,6 +65,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     mode: options.mode || 'edit',
     addFamilyMember: false,
     viewFamilyMember: false,
+    myFamilyData: [],
+    showQuickSearch: false,
     user_id: state.user.person_id,
     focusAt: null,
     formHistoryMode: false,
@@ -125,12 +127,14 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     og: {
       peopleRec: false,
       sessionRec: false,
+      familyRecs: false,
       peopleAccountRecs: false,     // array of objects
       peopleGroups: false,
     },
     current: {
       peopleRec: {},
       sessionRec: {},
+      familyRecs: [{}],
       peopleAccountRecs: [{}],
       peopleGroups: [{}],
     },
@@ -147,6 +151,11 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       )));
       if (force) { setRefreshTrigger(refreshTrigger => !refreshTrigger); }
     }
+  };
+
+  const onExit = (returnObj) => {
+    AVADefaults({ fontSize: state.user?.customizations?.font_size || 1 });
+    onClose(returnObj);
   };
 
   React.useEffect(() => {
@@ -190,7 +199,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             peopleRec.Item.inbound_customizations = {};
           }
           if (!peopleRec.Item.account_class) {
-            peopleRec.Item.account_class = determineClass(peopleRec.Item.groups, state.session.group_assignments)
+            peopleRec.Item.account_class = determineClass(peopleRec.Item.groups, state.session.group_assignments);
           }
           if (peopleRec.Item.checkout_status) {
             if (['admin', 'staff', 'resident', 'student', 'camper'].includes(peopleRec.Item.account_class)) {
@@ -212,6 +221,39 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           }
           else {
             peopleRec.Item.checkout_message = false;
+          }
+          reactUpdObj.og.familyRecs = [];
+          reactUpdObj.myFamilyData = [];
+          if (peopleRec.Item.family_groups && (peopleRec.Item.family_groups.length > 0)) {
+            for (let i = 0; i < peopleRec.Item.family_groups.length; i++) {
+              let familyRec = await dbClient
+                .query({
+                  KeyConditionExpression: 'family_id = :f',
+                  TableName: "FamilyGroups",
+                  IndexName: 'family_id-index',
+                  ExpressionAttributeValues: {
+                    ':f': peopleRec.Item.family_groups[i]
+                  }
+                })
+                .promise()
+                .catch(error => { cl({ 'Error reading FamilyGroups': error }); });
+              if (recordExists(familyRec)) {
+                reactUpdObj.og.familyRecs[i] = familyRec.Items[0];
+                if (familyRec.Items[0].primary_contact.id === parm_personRec.person_id) {
+                  reactUpdObj.myFamilyData[i] = deepCopy(familyRec.Items[0].primary_contact);
+                  reactUpdObj.myFamilyData[i].primary = true;
+                }
+                else {
+                  for (let o = 0; o < familyRec.Items[0].other_members.length; o++) {
+                    if (familyRec.Items[0].other_members[o].id === parm_personRec.person_id) {
+                      reactUpdObj.myFamilyData[i] = deepCopy(familyRec.Items[0].other_members[o]);
+                      reactUpdObj.myFamilyData[i].primary = false;
+                      reactUpdObj.myFamilyData[i].other_index = o;
+                    }
+                  }
+                }
+              }
+            }
           }
           if (!peopleRec.Item.address) {
             peopleRec.Item.address = {};
@@ -469,7 +511,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       }
       reactUpdObj.current = {
         peopleRec: deepCopy(reactUpdObj.og.peopleRec),
-        sessionRec: deepCopy(reactUpdObj.og.sessionRec)
+        sessionRec: deepCopy(reactUpdObj.og.sessionRec),
+        familyRecs: deepCopy(reactUpdObj.og.familyRecs)
       };
       updateReactData(reactUpdObj, true);
       window.addEventListener('resize', handleResize);
@@ -594,7 +637,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           {
             text: `Exit`,
             function: () => {
-              onClose(false);
+              onExit(false);
             }
           }
         ]
@@ -620,7 +663,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           {
             text: `Exit`,
             function: () => {
-              onClose(false);
+              onExit(false);
             }
           }
         ]
@@ -720,10 +763,25 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       }
     }
 
-    reactData.current.peopleRec.search_data = `${titleCase(reactData.current.peopleRec.name.first)} ${titleCase(reactData.current.peopleRec.name.last)} `;
-    reactData.current.peopleRec.search_data += `${reactData.current.peopleRec.name.first.toLowerCase()} ${reactData.current.peopleRec.name.last.toLowerCase()} `;
-    if (reactData.current.peopleRec.messaging.hasOwnProperty('sms')) {
-      reactData.current.peopleRec.search_data += reactData.current.peopleRec.messaging.sms.slice(-10);
+    let search_words = [
+      titleCase(reactData.current.peopleRec.name.first),
+      titleCase(reactData.current.peopleRec.name.last),
+      reactData.current.peopleRec.name.first.toLowerCase(),
+      reactData.current.peopleRec.name.last.toLowerCase(),
+      reactData.current.peopleRec.contact_info?.cell?.number
+        ? reactData.current.peopleRec.contact_info.cell.number.slice(-10)
+        : (reactData.current.peopleRec.messaging?.sms ? reactData.current.peopleRec.messaging.sms.slice(-10) : ' ')
+    ];
+
+    if (!reactData.current.peopleRec.search_data) {
+      reactData.current.peopleRec.search_data = search_words.join(' ');
+    }
+    else {
+      for (let this_word of search_words) {
+        if (!reactData.current.peopleRec.search_data.includes(this_word)) {
+          reactData.current.peopleRec.search_data += ' ' + this_word;
+        }
+      }
     }
 
     if (JSON.stringify(reactData.og.peopleRec) !== JSON.stringify(reactData.current.peopleRec)) {
@@ -749,6 +807,61 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         .catch(error => {
           console.log(`caught error putting to People; error is:`, error);
         });
+    }
+    if (reactData.current.familyRecs) {
+      for (let i = 0; i < reactData.current.familyRecs.length; i++) {
+        if (!reactData.og.familyRecs || !reactData.og.familyRecs[i]
+          || (JSON.stringify(reactData.og.familyRecs[i]) !== JSON.stringify(reactData.current.familyRecs[i]))) {
+          // **** NEED TO ADD SPECIAL HANDLING FOR CHANGE OF PRIMARY KEY ***  (likely change to inactive account?)
+          await dbClient
+            .put({
+              TableName: 'FamilyGroups',
+              Item: reactData.current.familyRecs[i]
+            })
+            .promise()
+            .catch(error => {
+              console.log(`caught error putting to FamilyGroups; error is:`, error);
+            });
+          let memberList = [reactData.current.familyRecs[i].primary_contact].concat(reactData.current.familyRecs[i].other_members || []);
+          if (memberList.length > 0) {
+            for (let this_member of memberList) {
+              let memberPersonRec = await getPerson(this_member.id);
+              if (!memberPersonRec
+                || (memberPersonRec.family_groups && memberPersonRec.family_groups.includes(reactData.current.familyRecs[i].family_id))) {
+                continue;
+              }
+              else {
+                let updatedFamilyGroups = [];
+                if (!memberPersonRec.family_groups || (memberPersonRec.family_groups.length === 0)) {
+                  updatedFamilyGroups = [reactData.current.familyRecs[i].family_id];
+                }
+                else {
+                  updatedFamilyGroups = memberPersonRec.family_groups;
+                  updatedFamilyGroups.push(reactData.current.familyRecs[i].family_id);
+                }
+                await dbClient
+                  .update({
+                    Key: {
+                      person_id: this_member.id,
+                    },
+                    UpdateExpression: 'set #f = :f',
+                    ExpressionAttributeValues: {
+                      ':f': updatedFamilyGroups
+                    },
+                    ExpressionAttributeNames: {
+                      '#f': 'family_groups'
+                    },
+                    TableName: "People",
+                  })
+                  .promise()
+                  .catch(error => {
+                    cl(`caught error updating People; error is: `, error);
+                  });
+              }
+            }
+          }
+        }
+      }
     }
     return reactData.current.peopleRec.person_id;
   };
@@ -813,13 +926,13 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         }
         else {
           if (!reactData.current.peopleRec.person_id) {
-            onClose({
+            onExit({
               saveCompleted: false,
               newID: false
             });
           }
           else {
-            onClose({
+            onExit({
               saveCompleted: reactData.saveCompleted,
               newID: reactData.current.peopleRec.person_id,
               newName: (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim()
@@ -1074,13 +1187,13 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                 }
                 else {
                   if (!reactData.current.peopleRec.person_id) {
-                    onClose({
+                    onExit({
                       saveCompleted: false,
                       newID: false
                     });
                   }
                   else {
-                    onClose({
+                    onExit({
                       saveCompleted: reactData.saveCompleted,
                       newID: reactData.current.peopleRec.person_id,
                       newName: (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim()
@@ -1115,7 +1228,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                     onClick={async () => {
                       let result = await saveChanges();
                       if (result) {
-                        onClose({
+                        onExit({
                           newID: reactData.current.peopleRec.person_id,
                           newName: (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim()
                         });
