@@ -346,7 +346,8 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                   id: newID,
                   name: newName,
                   nickname: newName.split(' ')[0],
-                  relationship: 'view'
+                  relationship: '',
+                  role: 'view'
                 });
               };
               updateObj.reactUpd = {
