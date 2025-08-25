@@ -4,7 +4,7 @@ import useSession from '../../hooks/useSession';
 
 import { Box, Typography, Button } from '@material-ui/core/';
 import { formatPhone } from '../../util/AVAPeople';
-import { deepCopy } from '../../util/AVAUtilities';
+import { deepCopy, titleCase } from '../../util/AVAUtilities';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import SendIcon from '@material-ui/icons/Send';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
@@ -137,7 +137,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                   key={`local_prompt__${cFNdx}`}
                   style={AVATextStyle({ size: 0.8 })}
                 >
-                  {`${reactData.local_customFields[this_customField].prompt}: `}
+                  {`${reactData.local_customFields[this_customField].prompt || titleCase(this_customField.replace(/[^a-z^A-Z^0-9]/g, " "))}:`}
                 </Typography>
                 <Typography
                   key={`local_prompt__${cFNdx}`}
@@ -147,6 +147,32 @@ export default ({ currentValues, reactData, updateReactData }) => {
                 </Typography>
               </Box>
             )
+          ))}
+          {(Object.keys(reactData.form_fields).length > 0) && Object.keys(reactData.form_fields).map((this_formField, cFNdx) => (
+            <React.Fragment
+              key={`fraglocal_box__${cFNdx}`}
+            >
+              {reactData.form_fields[this_formField].snapshot && reactData.form_fields[this_formField].value &&
+                <Box
+                  key={`local_box__${cFNdx}`}
+                  display='flex' flexDirection='row'
+                  style={{ marginTop: ((cFNdx === 0) ? '12px' : '4px') }}
+                >
+                  <Typography
+                    key={`local_prompt__${cFNdx}`}
+                    style={AVATextStyle({ size: 0.8 })}
+                  >
+                    {reactData.form_fields[this_formField].fieldRec.prompt.value}
+                  </Typography>
+                  <Typography
+                    key={`local_prompt__${cFNdx}`}
+                    style={AVATextStyle({ size: 0.8, margin: { left: 0.5 }, bold: true })}
+                  >
+                    {reactData.form_fields[this_formField].value}
+                  </Typography>
+                </Box>
+              }
+            </React.Fragment>
           ))}
 
         </Box>
@@ -361,7 +387,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
           <Button
             key={`adminData_Button`}
             onClick={async () => {
-              let sectionNdx = reactData.sections.findIndex(s => { return (s.section_name === 'Administrative Data');});
+              let sectionNdx = reactData.sections.findIndex(s => { return (s.section_name === 'Administrative Data'); });
               reactData.sections[sectionNdx].isOpen = true;
               updateReactData({
                 focusAt: 'Administrative Data',

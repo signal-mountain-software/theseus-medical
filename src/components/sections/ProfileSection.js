@@ -642,11 +642,13 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
             justifyContent='flex-start' flexDirection='row'>
             <TextField style={{ width: '400px' }}
               id='email'
-              key={`local__${cFNdx}`}
+              key={`local__${cFNdx}-${Array.isArray(currentValues.peopleRec?.local_data?.[this_customField])
+                ? currentValues.peopleRec?.local_data?.[this_customField][0]
+                : (currentValues.peopleRec?.local_data?.[this_customField] || '')}`}
               autoComplete='off'
               onBlur={async (event) => {
                 let local_result = '';
-                switch (reactData.local_customFields[this_customField].type) {
+                switch (reactData.local_customFields[this_customField].type || reactData.local_customFields[this_customField]) {
                   case 'phone': {
                     if (event.target.value) {
                       local_result = formatPhone(`+1${Number(event.target.value.replace(/\D/g, '')).toString()}`);
