@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { deepCopy } from '../../util/AVAUtilities';
+import { deepCopy, isSmallScreen } from '../../util/AVAUtilities';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import QuickSearch from '../sections/QuickSearch';
@@ -165,11 +165,11 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
               <Box
                 display='flex'
                 flexDirection='row'
-                alignItems={'flex-end'}
+                alignItems={'center'}
                 key={`family_primary`}
-                style={AVATextStyle({ margin: { bottom: 1 } })}
+                style={AVATextStyle({ margin: { top: 1, bottom: 1 } })}
               >
-                <Typography style={AVATextStyle({ margin: { top: 1, left: 1 } })}
+                <Typography style={AVATextStyle({ margin: { left: 1 } })}
                   key={`family_${fNdx}__primary`}
                   onClick={async () => {
                     if (this_familyRec.primary_contact.id !== currentValues.peopleRec.person_id) {
@@ -184,7 +184,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                 <Typography style={AVATextStyle({ color: 'red', bold: true, margin: { left: 1, right: 1 }, size: 0.8 })}
                   key={`fprimary`}
                 >
-                  {`Primary Contact`}
+                  {`Primary`}
                 </Typography>
                 {(reactData.administrative_account) &&
                   <React.Fragment>
@@ -228,7 +228,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                     <Box
                       display='flex'
                       flexDirection='row'
-                      alignItems={'flex-end'}
+                      alignItems={'center'}
                       key={`family_${memberNdx}`}
                       style={AVATextStyle({ margin: { bottom: 1 } })}
                     >
@@ -414,7 +414,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                   style={{ marginLeft: '8px', marginTop: '24px', backgroundColor: 'white', color: 'black' }}
                   size='small'
                 >
-                  {`Create a new account for the ${currentValues.familyRecs[fNdx].family_name}`}
+                  {isSmallScreen() ? `Create new` : `Create a new account for the ${currentValues.familyRecs[fNdx].family_name}`}
                 </Button>
               }
               {(reactData.administrative_account) &&
@@ -430,7 +430,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                   style={{ marginLeft: '8px', marginTop: '16px', backgroundColor: 'white', color: 'black' }}
                   size='small'
                 >
-                  {`Find an existing account to add to ${currentValues.familyRecs[fNdx].family_name}`}
+                  {isSmallScreen() ? `Add existing` : `Find an existing account to add to ${currentValues.familyRecs[fNdx].family_name}`}
                 </Button>
               }
             </React.Fragment>

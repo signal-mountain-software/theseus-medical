@@ -23,6 +23,7 @@ import SettingsIcon from '@material-ui/icons/Settings';
 import SendIcon from '@material-ui/icons/Send';
 import ExpandMoreIcon from '@material-ui/icons/Visibility';
 import ExpandLessIcon from '@material-ui/icons/VisibilityOff';
+import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 
 import { SET_GROUPS } from '../../contexts/Session/actions';
 
@@ -117,7 +118,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
 
   const [reactData, setReactData] = React.useState({
     alert: false,
-    window_width: 1,
+    window_width: window.window.innerWidth,
     administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
 
     // from defaults
@@ -174,10 +175,13 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     if (force) { setRefreshTrigger(refreshTrigger => !refreshTrigger); }
   };
 
+  const isSmallScreen = () => {
+    return (reactData.window_width < 800);
+  };
 
   function handleResize() {
     updateReactData({
-      window_width: Math.min(((window.window.innerWidth - 220) / 1400), 1),
+      window_width: window.window.innerWidth,
     }, true);
   }
 
@@ -933,185 +937,187 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
             />
           </Box>
 
-          <Box display='flex' flexDirection='row' style={{ flexGrow: 1, height: '100px' }}>
+          <Box display='flex' flexDirection={isSmallScreen() ? 'column' : 'row'} style={{ flexGrow: 1, height: '100px' }}>
 
             {/* LEFT SIDE */}
-            <Box display='flex' style={{ width: '44.5%' }}
-              flexDirection='column'
-              justifyContent='flex-start'
-              alignItems='flex-start'
-              marginLeft={'32px'}
-            >
-              <Typography
-                key={`g_client_name_header`}
-                onDragOver={(e) => handleDragOver(e)}
-                onDrop={async (e) => {
-                  await handleDrop(e, {
-                    droppedOn: {
-                      levelZero: true
-                    }
-                  });
-                  onRefresh();
-                }}
-                style={AVATextStyle({
-                  size: 1.5,
-                  bold: true,
-                  overflow: 'visible',
-                  margin: { top: 1, bottom: 1 },
-                })}>
-                {`${state.session.client_name} Groups`}
-              </Typography>
-              <Paper component={Box} elevation={0} overflow='auto' square
-                style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
+            {(!isSmallScreen() || (!reactData.selectedPersonRec && !reactData.selectedGroupRec)) &&
+              <Box display='flex' style={{ width: isSmallScreen() ? '95%' : '44.5%', overflow: 'auto' }}
+                flexDirection='column'
+                justifyContent='flex-start'
+                alignItems='flex-start'
+                marginLeft={'32px'}
               >
-                <Box display='flex' flexDirection='column'
-                  justifyContent='flex-start'
-                  alignItems='flex-start'
+                <Typography
+                  key={`g_client_name_header`}
+                  onDragOver={(e) => handleDragOver(e)}
+                  onDrop={async (e) => {
+                    await handleDrop(e, {
+                      droppedOn: {
+                        levelZero: true
+                      }
+                    });
+                    onRefresh();
+                  }}
+                  style={AVATextStyle({
+                    size: 1.5,
+                    bold: true,
+                    overflow: 'visible',
+                    margin: { top: 1, bottom: 1 },
+                  })}>
+                  {`${state.session.client_name} Groups`}
+                </Typography>
+                <Paper component={Box} elevation={0} overflow='auto' square
+                  style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
                 >
-                  {Object.keys(groupsManagedObject).map((listEntry, listIndex) => (
-                    (OKtoShow(groupsManagedObject[listEntry], listIndex) &&
-                      <React.Fragment key={`frag_${listIndex}`}>
-                        <Box
-                          display='flex' flexDirection='row'
-                          justifyContent='flex-start'
-                          alignItems='center'
-                          key={`activity-list_${listIndex}_${((listIndex === focusAt) ? 'selected' : '')}`}
-                          draggable={pSession?.adminAccount}
-                          onDragStart={(e) => handleDragStart(e, {
-                            group_id: listEntry,
-                            groupObj: groupsManagedObject[listEntry],
-                            listIndex
-                          })}
-                          onDragOver={(e) => handleDragOver(e)}
-                          onDrop={async (e) => {
-                            await handleDrop(e, {
-                              droppedOn: {
-                                group_id: listEntry,
-                                groupObj: groupsManagedObject[listEntry],
-                                listIndex
-                              }
-                            });
-                            onRefresh();
-                          }}
-                          onContextMenu={async (e) => {
-                            e.preventDefault();
-                            updateReactData({
-                              alert: {
-                                severity: 'info',
-                                title: groupsManagedObject[listEntry].group_name,
-                                message: <div>
-                                  Group ID: <strong>{listEntry}</strong></div>
-                              }
-                            }, true);
-                          }}
-                        >
-                          <Typography
-                            key={`g_text_${listIndex}_${(listIndex === focusAt) ? 'selected' : ''}`}
-                            onClick={async () => {
+                  <Box display='flex' flexDirection='column'
+                    justifyContent='flex-start'
+                    alignItems='flex-start'
+                  >
+                    {Object.keys(groupsManagedObject).map((listEntry, listIndex) => (
+                      (OKtoShow(groupsManagedObject[listEntry], listIndex) &&
+                        <React.Fragment key={`frag_${listIndex}`}>
+                          <Box
+                            display='flex' flexDirection='row'
+                            justifyContent='flex-start'
+                            alignItems='center'
+                            key={`activity-list_${listIndex}_${((listIndex === focusAt) ? 'selected' : '')}`}
+                            draggable={pSession?.adminAccount}
+                            onDragStart={(e) => handleDragStart(e, {
+                              group_id: listEntry,
+                              groupObj: groupsManagedObject[listEntry],
+                              listIndex
+                            })}
+                            onDragOver={(e) => handleDragOver(e)}
+                            onDrop={async (e) => {
+                              await handleDrop(e, {
+                                droppedOn: {
+                                  group_id: listEntry,
+                                  groupObj: groupsManagedObject[listEntry],
+                                  listIndex
+                                }
+                              });
+                              onRefresh();
+                            }}
+                            onContextMenu={async (e) => {
+                              e.preventDefault();
                               updateReactData({
-                                selectedGroup_id: listEntry,
-                                selectedGroupRec: groupsManagedObject[listEntry],
-                                selectedGroupMembers: await selectMembers(listEntry),
-                                selectedPerson_id: false,
-                                selectedPersonRec: false,
-                                selectedPersonFirstName: false,
-                                selectedPersonLastName: false,
+                                alert: {
+                                  severity: 'info',
+                                  title: groupsManagedObject[listEntry].group_name,
+                                  message: <div>
+                                    Group ID: <strong>{listEntry}</strong></div>
+                                }
                               }, true);
                             }}
-                            style={AVATextStyle({
-                              size: 1.2,
-                              color: (
-                                (
+                          >
+                            <Typography
+                              key={`g_text_${listIndex}_${(listIndex === focusAt) ? 'selected' : ''}`}
+                              onClick={async () => {
+                                updateReactData({
+                                  selectedGroup_id: listEntry,
+                                  selectedGroupRec: groupsManagedObject[listEntry],
+                                  selectedGroupMembers: await selectMembers(listEntry),
+                                  selectedPerson_id: false,
+                                  selectedPersonRec: false,
+                                  selectedPersonFirstName: false,
+                                  selectedPersonLastName: false,
+                                }, true);
+                              }}
+                              style={AVATextStyle({
+                                size: 1.2,
+                                color: (
                                   (
-                                    reactData.selectedPersonRec
-                                    &&
-                                    reactData.selectedPersonRec.groups.includes(listEntry)
+                                    (
+                                      reactData.selectedPersonRec
+                                      &&
+                                      reactData.selectedPersonRec.groups.includes(listEntry)
+                                    )
+                                    ||
+                                    (reactData.selectedGroup_id === listEntry) || (state.groups.parent_of.hasOwnProperty(listEntry) && state.groups.parent_of[listEntry].includes(reactData.selectedGroup_id))
                                   )
-                                  ||
-                                  (reactData.selectedGroup_id === listEntry) || (state.groups.parent_of.hasOwnProperty(listEntry) && state.groups.parent_of[listEntry].includes(reactData.selectedGroup_id))
-                                )
-                                  ? 'orange'
-                                  : null
-                              ),
-                              weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry)) || (reactData.selectedGroup_id === listEntry)) ? 'bold' : null),
-                              margin: { left: (groupsManagedObject[listEntry].level ? ((groupsManagedObject[listEntry].level - minimumGroupLevel) - 1) * 1.5 : 0), top: 0.35, bottom: 0.65, right: 0.8 },
-                            })}>
-                            {groupsManagedObject[listEntry].group_name}
-                          </Typography>
-                          {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && !reactData.levelVisible[listIndex + 1] &&
-                            <ExpandMoreIcon
-                              style={{ size: 8, fontSize: '1rem' }}
-                              onClick={async () => {
-                                let keyList = Object.keys(groupsManagedObject);
-                                let kLL = keyList.length;
-                                for (let i = listIndex + 1; ((i < kLL) && (groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level)); i++) {
-                                  if (groupsManagedObject[keyList[i]].level === (groupsManagedObject[listEntry].level + 1)) {
-                                    reactData.levelVisible[i] = true;
+                                    ? 'orange'
+                                    : null
+                                ),
+                                weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry)) || (reactData.selectedGroup_id === listEntry)) ? 'bold' : null),
+                                margin: { left: (groupsManagedObject[listEntry].level ? ((groupsManagedObject[listEntry].level - minimumGroupLevel) - 1) * 1.5 : 0), top: 0.35, bottom: 0.65, right: 0.8 },
+                              })}>
+                              {groupsManagedObject[listEntry].group_name}
+                            </Typography>
+                            {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && !reactData.levelVisible[listIndex + 1] &&
+                              <ExpandMoreIcon
+                                style={{ size: 8, fontSize: '1rem' }}
+                                onClick={async () => {
+                                  let keyList = Object.keys(groupsManagedObject);
+                                  let kLL = keyList.length;
+                                  for (let i = listIndex + 1; ((i < kLL) && (groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level)); i++) {
+                                    if (groupsManagedObject[keyList[i]].level === (groupsManagedObject[listEntry].level + 1)) {
+                                      reactData.levelVisible[i] = true;
+                                    }
                                   }
-                                }
-                                updateReactData({
-                                  levelVisible: reactData.levelVisible
-                                }, true);
-                              }}
-                            />
-                          }
-                          {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && reactData.levelVisible[listIndex + 1] &&
-                            <ExpandLessIcon
-                              style={{ size: 8, fontSize: '1rem' }}
-                              onClick={async () => {
-                                let keyList = Object.keys(groupsManagedObject);
-                                let kLL = keyList.length;
-                                for (let i = listIndex + 1; ((i < kLL) && (groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level)); i++) {
-                                  reactData.levelVisible[i] = false;
-                                }
-                                updateReactData({
-                                  levelVisible: reactData.levelVisible
-                                }, true);
-                              }}
-                            />
-                          }
-                        </Box>
-                      </React.Fragment>
-                    )
-                  ))}
-                </Box>
-              </Paper>
-              <SendIcon
-                classes={{ root: classes.rowButton }}
-                size='medium'
-                style={{ alignSelf: 'center' }}
-                aria-label="trash_icon"
-                onDragOver={(e) => handleDragOver(e)}
-                onDrop={async (e) => {
-                  e.preventDefault();
-                  let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
-                  let sendMessage = [];
-                  if (draggedFrom.hasOwnProperty('personObj')) {
-                    sendMessage.push({
-                      person_id: draggedFrom.personObj.person_id,
-                      person_name: `${draggedFrom.personObj.name.first} ${draggedFrom.personObj.name.last}`
-                    });
-                  }
-                  else {
-                    sendMessage.push({
-                      group_id: draggedFrom.group_id,
-                      group_name: draggedFrom.groupObj.group_name
-                    });
-                  }
-                  updateReactData({
-                    sendMessage
-                  }, true);
-                }}
-                edge="start"
-              />
-            </Box>
+                                  updateReactData({
+                                    levelVisible: reactData.levelVisible
+                                  }, true);
+                                }}
+                              />
+                            }
+                            {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && reactData.levelVisible[listIndex + 1] &&
+                              <ExpandLessIcon
+                                style={{ size: 8, fontSize: '1rem' }}
+                                onClick={async () => {
+                                  let keyList = Object.keys(groupsManagedObject);
+                                  let kLL = keyList.length;
+                                  for (let i = listIndex + 1; ((i < kLL) && (groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level)); i++) {
+                                    reactData.levelVisible[i] = false;
+                                  }
+                                  updateReactData({
+                                    levelVisible: reactData.levelVisible
+                                  }, true);
+                                }}
+                              />
+                            }
+                          </Box>
+                        </React.Fragment>
+                      )
+                    ))}
+                  </Box>
+                </Paper>
+                <SendIcon
+                  classes={{ root: classes.rowButton }}
+                  size='medium'
+                  style={{ alignSelf: 'center' }}
+                  aria-label="trash_icon"
+                  onDragOver={(e) => handleDragOver(e)}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
+                    let sendMessage = [];
+                    if (draggedFrom.hasOwnProperty('personObj')) {
+                      sendMessage.push({
+                        person_id: draggedFrom.personObj.person_id,
+                        person_name: `${draggedFrom.personObj.name.first} ${draggedFrom.personObj.name.last}`
+                      });
+                    }
+                    else {
+                      sendMessage.push({
+                        group_id: draggedFrom.group_id,
+                        group_name: draggedFrom.groupObj.group_name
+                      });
+                    }
+                    updateReactData({
+                      sendMessage
+                    }, true);
+                  }}
+                  edge="start"
+                />
+              </Box>
+            }
 
             {/* RIGHT SIDE */}
             {reactData.selectedPersonRec &&
-              <Box display='flex' style={{ width: '50%' }} flexDirection='column'
+              <Box display='flex' style={{ width: isSmallScreen() ? '95%' : '50%', overflow: 'auto' }} flexDirection='column'
                 justifyContent='flex-start'
                 alignItems='flex-start'
-                borderLeft={2}
+                borderLeft={isSmallScreen() ? 0 : 2}
                 paddingLeft={'32px'}
               >
                 <Box display='flex' flexDirection='row'
@@ -1221,10 +1227,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
               </Box>
             }
             {reactData.selectedGroupRec &&
-              <Box display='flex' style={{ width: '50%' }} flexDirection='column'
+              <Box display='flex' style={{ width: isSmallScreen() ? '95%' : '50%', overflow: 'auto' }} flexDirection='column'
                 justifyContent='flex-start'
                 alignItems='flex-start'
-                borderLeft={2}
+                borderLeft={isSmallScreen() ? 0 : 2}
                 paddingLeft={'32px'}
               >
                 <Typography
@@ -1392,6 +1398,28 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
         </Box>
       }
       <DialogActions className={classes.buttonArea} >
+        {(isSmallScreen() && (reactData.selectedPersonRec || reactData.selectedGroupRec)) &&
+          <Button
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'white', color: 'blue' }}
+            size='small'
+            startIcon={<ArrowBackIcon fontSize="small" />}
+            onClick={() => {
+              updateReactData({
+                showQuickSearch: false,
+                selectedGroup_id: false,
+                selectedGroupRec: false,
+                seletedGroupMembers: false,
+                selectedPerson_id: false,
+                selectedPersonRec: false,
+                selectedPersonFirstName: false,
+                selectedPersonLastName: false,
+              }, true);
+            }}
+          >
+            {'Back'}
+          </Button>
+        }
         <Button
           className={AVAClass.AVAButton}
           style={{ backgroundColor: 'red', color: 'white' }}
