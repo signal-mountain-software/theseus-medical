@@ -463,7 +463,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
             </Button>
           }
           {(state.session.user_id !== currentValues.peopleRec.person_id) &&
-            (currentValues.peopleRec.contact_info?.cell?.number) &&
+            (currentValues.peopleRec?.contact_info?.cell?.number || currentValues.peopleRec?.messaging?.sms) &&
             <Button
               className={AVAClass.AVAButton}
               key={`callCellButton`}
@@ -471,7 +471,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
               size='small'
               startIcon={<PhoneInTalkIcon size='small' />}
             >
-              <a href={`tel:${currentValues.peopleRec.contact_info.cell.number}`}
+              <a href={`tel:${currentValues.peopleRec?.contact_info?.cell?.number || currentValues.peopleRec?.messaging?.sms}`}
                 key={`callCell`}
                 style={{ color: 'inherit', textDecoration: 'none' }}>
                 <Typography
