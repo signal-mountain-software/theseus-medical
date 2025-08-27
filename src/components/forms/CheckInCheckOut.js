@@ -108,7 +108,7 @@ export default ({ onSave, onClose }) => {
     }, true);
   };
 
-  async function validateUser(IDString, client_id, nonRes) {
+  async function validateUser(IDString, client_id, nonRes, restricted_to = false) {
     if (!IDString) { return { result: 'invalid', error_field: 0, reason: 'The ID field is empty' }; }
     // get candidates from the words entered
     let personRecs = [];
@@ -128,7 +128,14 @@ export default ({ onSave, onClose }) => {
       if (personRecs[p].messaging.voice) { personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.voice.slice(-4)}`; }
       else if (personRecs[p].messaging.sms) { personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.sms.slice(-4)}`; }
     }
-    personRecs = personRecs.filter(p => { return (p.account_class !== 'inactive'); });
+    personRecs = personRecs.filter(p => {
+      if (restricted_to) { 
+        return restricted_to.includes(p.account_class);
+      }
+      else {
+        return (p.account_class !== 'inactive');
+      }
+    });
     switch (personRecs.length) {
       case 0: {
         return { result: 'invalid', error_field: 1, reason: `That information doesn't match any ${nonRes ? titleCase(nonRes) : 'Resident'} accounts that we can find` };
@@ -262,20 +269,21 @@ export default ({ onSave, onClose }) => {
           || !reactData.previouslyEnteredDestination
           || (responses[x].toLowerCase() !== reactData.previouslyEnteredDestination.toLowerCase())
         ) {
-          let residentRec = await getPersonByWords(state.session.client_id, responses[x].trim().split(/\s+/));
-          switch (residentRec.length) {
-            case 0: {
+          let validation = await validateUser(responses[x], state.session.client_id, 'active', ['resident', 'staff', 'admin']);
+          switch (validation.result) {
+            case 'invalid': {
               errorText[x] = `We don't find anyone to match "${responses[x]}".  Please confirm this is correct.`;
               reactData.previouslyEnteredDestination = responses[x];
               break;
             }
-            case 1: {
-              obo = (`${residentRec[0].name.first.trim()} ${residentRec[0].name.last.trim()}${residentRec[0].location ? ' (' + residentRec[0].location + ')' : ''}`).trim();
+            case 'match': {
+              obo = (`${validation.personRec.name.first.trim()} ${validation.personRec.name.last.trim()}${validation.personRec.location ? ' (' + validation.personRec.location + ')' : ''}`).trim();
               responses[x] = obo;
               break;
             }
+            case 'ambiguous':
             default: {
-              errorText[x] = `There are ${residentRec.length} matches for "${responses[x]}".  Please be more specific if you can, and confirm the name.`;
+              errorText[x] = `${validation.reason}. Please be more specific if you can, and confirm the name.`;
               break;
             }
           }
