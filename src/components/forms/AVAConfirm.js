@@ -57,6 +57,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
   }
 
   function blankLine(p) {
+    if (!p) { return true; }
     let a = p.match(/(\[.+\])/gm);
     let ans;
     if (!a) {

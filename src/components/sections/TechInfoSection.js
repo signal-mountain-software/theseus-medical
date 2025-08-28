@@ -1,12 +1,34 @@
 import React from 'react';
 import { Box, Typography, Switch, Checkbox } from '@material-ui/core/';
 import { getPerson } from '../../util/AVAPeople';
+import { titleCase } from '../../util/AVAUtilities';
 
 import TextField from '@material-ui/core/TextField';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle } from '../../util/AVAStyles';
 
 export default ({ currentValues, ogValues, errorList, reactData, setError, updateField }) => {
+
+  let search_words = [
+    titleCase(reactData.current.peopleRec.name.first),
+    titleCase(reactData.current.peopleRec.name.last),
+    reactData.current.peopleRec.name.first.toLowerCase(),
+    reactData.current.peopleRec.name.last.toLowerCase(),
+    reactData.current.peopleRec.contact_info?.cell?.number
+      ? reactData.current.peopleRec.contact_info.cell.number.slice(-10)
+      : (reactData.current.peopleRec.messaging?.sms ? reactData.current.peopleRec.messaging.sms.slice(-10) : ' ')
+  ];
+
+  if (!reactData.current.peopleRec.search_data) {
+    reactData.current.peopleRec.search_data = search_words.join(' ');
+  }
+  else {
+    for (let this_word of search_words) {
+      if (!reactData.current.peopleRec.search_data.includes(this_word)) {
+        reactData.current.peopleRec.search_data += ' ' + this_word;
+      }
+    }
+  }
 
   return (
     <Box
@@ -483,6 +505,33 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
           </React.Fragment>
         }
 
+
+        <Box display='flex' alignItems='center'
+          justifyContent='flex-start' flexDirection='row'>
+          <TextField
+            style={{ minWidth: '80%', marginTop: '12px' }}
+            multiline
+            id='search_data'
+            autoComplete='off'
+            key={`techSection__search_data__${currentValues.peopleRec.person_id}__${errorList.hasOwnProperty('search_data') ? 'error' : 'ok'}`}
+            defaultValue={currentValues.peopleRec.search_data}
+            onBlur={async (event) => {              
+              let updateObj = {
+                updateList:
+                  [{
+                    tableName: 'peopleRec',
+                    fieldName: 'search_data',
+                    newData: event.target.value
+                  }]
+              };
+              await updateField(updateObj);
+              }
+            }
+            helperText={'Search Data'}
+          />
+        </Box>
+
+
         <React.Fragment>
           <Typography
             style={AVATextStyle({ margin: { top: 1.5 } })}
@@ -511,7 +560,7 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
                   aria-label={`Directory_option__${tIndex}`}
                   name={`Directory_option__${tIndex}`}
                   key={`Directory_option__${tIndex}`}
-                  style={{paddingTop: '2px', paddingBottom: '2px'}}
+                  style={{ paddingTop: '2px', paddingBottom: '2px' }}
                   size='small'
                   checked={((currentValues.peopleRec.directory_option === this_option.option)
                     || ((this_option.option === 'normal') && !currentValues.peopleRec.directory_option))
