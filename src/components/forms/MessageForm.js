@@ -1274,13 +1274,14 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           reactData.threads[this_deliveryRec.thread_id].last_update = this_deliveryRec.last_update;
         }
       }
-      if ((this_deliveryRec.delete_flag) && this_deliveryRec.deleted_by && (this_deliveryRec.deleted_by.includes(state.session.user_id))) {
-        reactData.threads[this_deliveryRec.thread_id].delete_flag = true;
-      }
+      
       if (!isEmpty(this_deliveryRec.reply_to)) {
         reactData.threads[this_deliveryRec.thread_id].messages[message_number].reply_to = this_deliveryRec.reply_to;
       }
       */
+      if ((this_deliveryRec.delete_flag) && this_deliveryRec.deleted_by && (this_deliveryRec.deleted_by.includes(state.session.user_id))) {
+        reactData.threads[this_deliveryRec.thread_id].delete_flag = true;
+      }
       // re-sort messages in this thread (if necessary)
       if (message_added && (reactData.threads[this_deliveryRec.thread_id].messages.length > 1)) {
         reactData.threads[this_deliveryRec.thread_id].messages.sort((a, b) => {
