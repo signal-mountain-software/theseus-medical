@@ -86,7 +86,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     alert: false,
     myFormListObj: {},
     formsInitialized: false,
-    myImage: (options.mode === 'add') ? '' : getImage(person_id || state.session.patient_id),
+    myImage: (options.mode === 'add') ? '' : getImage(person_id || patient?.person_id || personRec?.person_id || state.session.patient_id),
     image_editing: false,
     components: {
       Snapshot: {
@@ -165,6 +165,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       };
       // incoming personRec should tell us who we are editing here
       let parm_personRec = Object.assign({}, { person_id: person_id }, (patient || {}), (personRec || {}));
+      person_id = parm_personRec.person_id;
       reactUpdObj.og = {};
       if (!parm_personRec.person_id || parm_personRec.person_id.startsWith('*NEW~') || options.newPerson) {
         reactUpdObj.mode = 'add';
