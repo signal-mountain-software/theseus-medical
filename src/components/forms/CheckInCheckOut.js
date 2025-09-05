@@ -83,6 +83,18 @@ export default ({ onSave, onClose }) => {
     async function initialize() {
       reactData.initialized = true;
       reactData.marquee_message = JSON.parse(sessionStorage.getItem('marquee_message'));
+
+      if (!reactData.kiosk_mode && (state.session.user_id === state.session.patient_id)) {
+        reactData.validated_user = true;
+        reactData.previouslyEnteredDestination = false;
+        reactData.personRec = state.patient;
+        let got_class = determineClass(state.patient.groups, state.session.group_assignments);
+        let mode = determineMode(Object.assign({}, state.patient, {account_class: got_class}));
+        reactData.currentStatus = await getCurrentStatus(state.session.client_id, state.session.patient_id, mode);
+        reactData.select_user = false;
+      }
+
+
       setReactData(reactData);
       setForceRedisplay(!forceRedisplay);
     }
