@@ -2850,7 +2850,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               });
             }}
           >
-            {(window.window.innerWidth < 800) ? '' : 'Forward 1 week'}
+            {(window.window.innerWidth < 800) ? '+1 week' : 'Forward 1 week'}
           </Button>
         </Box>
       </Box>
