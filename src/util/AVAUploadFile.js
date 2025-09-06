@@ -146,23 +146,23 @@ export default ({ onCancel, onLoad, options = {} }) => {
       var converterParms = {
         PipelineId: '1626108726566-cv5z9u',
         Input: {
-          Key: pTarget.name,
+          Key: newKey,
         },
         Output: {
-          Key: `${pTarget.name.split('.').slice(0, -1).join('.')}.mp4`,
+          Key: `${newKey.split('.').slice(0, -1).join('.')}.mp4`,
           PresetId: '1351620000001-000001',
         },
       };
-      let converterOK = true;
       let data = await elastictranscoder
         .createJob(converterParms)
         .promise()
         .catch(err => {
           enqueueSnackbar(`Conversion unsuccessful`, { variant: 'failure', persist: true });
-          converterOK = false;
         });
       if (false) { console.log(data); }
-      if (converterOK) {
+      let timeoutMs = 30 * 60 * 1000;
+      let converterResult = await waitForEtsJob(data.Job.Id, { intervalMs: 5000, timeoutMs });
+      if (converterResult.ok) {
         s3Resp.Location = `${s3Resp.Location.split('.').slice(0, -1).join('.')}.mp4`;
         extension = 'mp4';
       }
@@ -176,6 +176,25 @@ export default ({ onCancel, onLoad, options = {} }) => {
       buttonText: reactData.buttonText
     }, true);
     return s3Resp;
+
+    async function waitForEtsJob(jobId, { intervalMs = 5000, timeoutMs = 30 * 60 * 1000 } = {}) {
+      const start = Date.now();
+      while (true) {
+        const { Job } = await elastictranscoder
+          .readJob({ Id: jobId })
+          .promise()
+          .catch(err => {
+            enqueueSnackbar(`Conversion unsuccessful`, { variant: 'failure', persist: true });
+            return { ok: false, job: Job };
+          });
+        const status = Job?.Status; // Submitted | Progressing | Complete | Canceled | Error
+        if (status === "Complete") return { ok: true, job: Job };
+        if (status === "Error" || status === "Canceled") return { ok: false, job: Job };
+
+        if (Date.now() - start > timeoutMs) throw new Error("Timed out waiting for job");
+        await new Promise(r => setTimeout(r, intervalMs)); // backoff if you like
+      }
+    }
 
     function performUpload() {
       return new Promise(function (resolve, reject) {
@@ -403,7 +422,12 @@ export default ({ onCancel, onLoad, options = {} }) => {
                           margin: { left: 0.3, right: 1 }
                         })}
                       >
-                        {`${cleanForDisplay(this_attachment.Key)}${loadingInProgress(x) ? ' - ' + ((Math.floor((reactData.loadProgress[x].progress) * 100) / 100).toString() + '%') : ''}`}
+                        {`
+                        ${cleanForDisplay(this_attachment.Key)}
+                        ${loadingInProgress(x) ? ' - ' + ((Math.floor((reactData.loadProgress[x].progress) * 100) / 100).toString() + '%') : ''}
+                        ${(loadingInProgress(x) && (this_attachment.Key.split('.').pop() === 'mov')
+                          && (reactData.loadProgress[x].progress > 95)) ? ` - Converting from MOV format` : ''}
+                        `}
                       </Typography>
                       {!loadingInProgress(x) &&
                         <Box
@@ -416,7 +440,8 @@ export default ({ onCancel, onLoad, options = {} }) => {
                           src={this_attachment.Location}
                         />}
                     </Box>
-                    {loadingInProgress(x) &&
+                    {loadingInProgress(x) && 
+                      !((this_attachment.Key.split('.').pop() === 'mov') && (reactData.loadProgress[x].progress >= 99)) &&
                       <React.Fragment>
                         <LinearProgress
                           variant="determinate"
