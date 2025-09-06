@@ -654,7 +654,7 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
               <AVAUploadFile
                 options={{
                   buttonText: ['Choose', 'Save & Continue'],
-                  title: [reactData.textInput[reactData.selectedSection].new, 'Tap "Choose a File" to select the content to link to'],
+                  title: [reactData.textInput[reactData.selectedSection].new],
                   oneOnly: true
                 }}
                 onCancel={() => {
