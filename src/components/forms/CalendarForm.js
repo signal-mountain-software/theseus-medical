@@ -5,11 +5,9 @@ import { isObject, deepCopy, titleCase, makeArray, isEmpty } from '../../util/AV
 import { getCalendarEntries, writeSlot, getSlotList, publishCalendar } from '../../util/AVACalendars';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import AVATextInput from './AVATextInput';
-import { make_rgba } from '../../util/AVAStyles';
-
 import { Alert, AlertTitle } from '@material-ui/lab/';
 
-import { Snackbar, Box, Typography, Avatar } from '@material-ui/core';
+import { Snackbar, Box, Typography, Avatar, Input } from '@material-ui/core';
 import Tooltip from '@material-ui/core/Tooltip';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -17,7 +15,6 @@ import CloseIcon from '@material-ui/icons/ExitToApp';
 import FilterListIcon from '@material-ui/icons/FilterList';
 
 import CalendarEventEditForm from './CalendarEventEditForm';
-
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
@@ -47,7 +44,7 @@ import PersonFilter from '../forms/PersonFilter';
 
 import Button from '@material-ui/core/Button';
 
-import { AVAclasses, AVATextStyle, AVADefaults, contrastColor, hexColors } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, AVADefaults, contrastColor, hexColors, make_rgba } from '../../util/AVAStyles';
 import useSession from '../../hooks/useSession';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { printCalendar } from '../../util/AVACalendarPrint';
@@ -153,6 +150,11 @@ const useStyles = makeStyles(theme => ({
     textWrap: 'nowrap',
     fontWeight: 'bold',
     size: 'small',
+  },
+  AVAButtonSize: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1)
   },
   freeInput: {
     marginLeft: theme.spacing(2),
@@ -308,6 +310,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   const [anchorEl, setAnchorEl] = React.useState(null);
 
   const selectedDate = React.useRef(null);
+  const dateSelectRef = React.useRef(null);
 
   if (defaultValues.assignmentView) {
     defaultValues.slotsView = true;
@@ -382,6 +385,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     )));
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
+
+  let dateSelectValue = makeDate(reactData.defaultValues.start_date).input;
 
   const handlePublishOptions = async ({ response, results }) => {
     updateReactData({
@@ -575,6 +580,12 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       });
     }
   }, [reactData.needRef]);
+
+  React.useEffect(() => {
+    if (dateSelectRef && dateSelectRef.current) {
+      console.log(dateSelectRef.current.value);
+    }
+  }, [dateSelectRef]);
 
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
@@ -1770,7 +1781,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         <React.Fragment
                           key={`dateBox_container-${dateIndex}`}
                         >
-                          {((!agendaView()) || eventsToShow(this_date)) &&
+                          {((!agendaView()) || eventsToShow(this_date) || (dateIndex === 0)) &&
                             <Box
                               display='flex'
                               key={`dateBox_cell-${dateIndex}_${agendaView() ? 'A' : 'C'}`}
@@ -1878,8 +1889,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                   >
                                     {''}
                                   </Typography>
-                                  {(this_date.dateObj.date.getDate() === 1) &&
-                                    (!isDense(this_date.dateObj.numeric$)) &&
+                                  {((dateIndex === 0) ||
+                                    ((this_date.dateObj.date.getDate() === 1) && (!isDense(this_date.dateObj.numeric$)))) &&
                                     <Typography
                                       style={AVATextStyle({
                                         size: 1.2,
@@ -1950,6 +1961,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                         color: reactData.calendar_fill_text,
                                         size: 1,
                                         textWrap: 'wrap',
+                                        padding: { left: 0.5 }
                                       })}>
                                         {((this_date.eventList.length === 0) ? `No Events Scheduled` : `No Events Match your Filter`)}
                                       </Typography>
@@ -2597,18 +2609,18 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                       }
                     }
                     if (goodRecs === signupStatus.length) {
-                      for (let this_occ of signupStatus) { 
+                      for (let this_occ of signupStatus) {
                         await proceedWithSignUp(this_occ.dragged_id, this_occ.calledWith);
                       }
                     }
                     else {
                       let warn_message = `There are scheduling conflicts with `;
-                      if (badRecs === signupStatus.length) { 
+                      if (badRecs === signupStatus.length) {
                         if (signupStatus.length === 2) {
-                          warn_message += `both of the `
+                          warn_message += `both of the `;
                         }
                         else {
-                          warn_message += `all ${signupStatus.length} of the `
+                          warn_message += `all ${signupStatus.length} of the `;
                         }
                         warn_message += `dates you're scheduling.  What would you like to do?`;
                         updateReactData({
@@ -2762,27 +2774,11 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           }
         </React.Fragment>
       }
-      <Box display='flex' flexDirection='row'
+      <Box display='flex' flexDirection='column'
         className={classes.button_area}
         paddingBottom={'1.5'} px={0}
-        justifyContent='space-between' alignItems='center'
+        justifyContent='center' alignItems='center'
       >
-        <Box display='flex' flexWrap='wrap' flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
-          <Button
-            className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'blue', color: 'white' }}
-            size='small'
-            startIcon={<ArrowBackIcon fontSize="small" />}
-            onClick={() => {
-              onClose({
-                action: 'reset',
-                newStartDate: addDays(reactData.defaultValues.start_date, -7)
-              });
-            }}
-          >
-            {(window.window.innerWidth < 800) ? '' : 'Back 1 week'}
-          </Button>
-        </Box>
         <Box display='flex' flexWrap='wrap' flexGrow={2} flexDirection='row' justifyContent='center' alignItems='center'>
           <Button
             className={AVAClass.AVAButton}
@@ -2795,27 +2791,29 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           >
             {'Done'}
           </Button>
-          <Button
-            className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'gray', color: 'black' }}
-            size='small'
-            startIcon={<TextureIcon fontSize="small" />}
-            onClick={() => {
-              updateReactData({
-                setFilter: true,
-              }, true);
-            }}
-            onDragOver={(e) =>
-              handleDragOver(e, {
-                type: 'filter_button'
-              })
-            }
-            onDrop={async (e) => {
-              await handleDrop(e, 'filter_button');
-            }}
-          >
-            {'Filter'}
-          </Button>
+          {(window.window.innerWidth >= 800) &&
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'gray', color: 'black' }}
+              size='small'
+              startIcon={<TextureIcon fontSize="small" />}
+              onClick={() => {
+                updateReactData({
+                  setFilter: true,
+                }, true);
+              }}
+              onDragOver={(e) =>
+                handleDragOver(e, {
+                  type: 'filter_button'
+                })
+              }
+              onDrop={async (e) => {
+                await handleDrop(e, 'filter_button');
+              }}
+            >
+              {'Filter'}
+            </Button>
+          }
           {!reactData.defaultValues.assignmentView &&
             <Button
               className={AVAClass.AVAButton}
@@ -2837,24 +2835,74 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
             </Button>
           }
         </Box>
-        <Box display='flex' flexWrap='wrap' flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
+        <Box display='flex' flexWrap='noWrap' flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
+          <input
+            type="date"
+            id={`select_date`}
+            key={`select_date`}
+            ref={dateSelectRef}
+            style={{
+              backgroundColor: 'blue',
+              color: 'white',
+              fontFamily: 'Roboto',
+              paddingRight: '16px',
+              paddingTop: '5px',
+              paddingLeft: '16px',
+              paddingBottom: '5px',
+              marginLeft: '16px',
+              marginRight: '-3.2px',
+              borderTop: '0.75px',
+              borderRight: '0px',
+              borderBottom: '0.75px',
+              borderLeft: '0.75px',
+              borderRadius: '30px 0px 0px 30px',
+              textWrap: 'nowrap',
+              minHeight: '30px',
+              maxHeight: '30px'
+            }}
+            defaultValue={makeDate(reactData.defaultValues.start_date).input}
+          />
           <Button
-            className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'blue', color: 'white' }}
+            style={{
+              backgroundColor: 'blue',
+              color: 'white',
+              fontFamily: 'Roboto',
+              paddingLeft: '0px',
+              paddingRight: '0px',
+              paddingTop: '5px',
+              paddingBottom: '5px',
+              marginRight: '16px',
+              marginLeft: '0px',
+              borderTop: '0.75px',
+              borderRight: '0.75px',
+              borderBottom: '0.75px',
+              borderLeft: '0px',
+              borderRadius: '0px 30px 30px 0px',
+              minHeight: '30px',
+              maxHeight: '30px',
+              textWrap: 'nowrap'
+            }}
             size='small'
             endIcon={<ArrowForwardIcon fontSize="small" />}
             onClick={() => {
-              onClose({
-                action: 'reset',
-                newEndDate: addDays(reactData.defaultValues.end_date, 7)
-              });
+              if (dateSelectRef.current && dateSelectRef.current.value) {
+                let dObj = makeDate(dateSelectRef.current.value, { noTime: true, noYearCorrection: true });
+                if (!dObj.error) {
+                  onClose({
+                    action: 'reset',
+                    newStartDate: addDays(dObj.date, -dObj.dayOfWeek),
+                    newEndDate: addDays(dObj.date, 27 - dObj.dayOfWeek)
+                  });
+                }
+              }
             }}
           >
-            {(window.window.innerWidth < 800) ? '+1 week' : 'Forward 1 week'}
+            {''}
           </Button>
         </Box>
       </Box>
-      {reactData.alert &&
+      {
+        reactData.alert &&
         <Snackbar
           style={{ zIndex: 2000 }}
           open={!!reactData.alert}
