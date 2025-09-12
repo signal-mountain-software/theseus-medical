@@ -7,7 +7,7 @@ import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import AVATextInput from './AVATextInput';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 
-import { Snackbar, Box, Typography, Avatar, Input } from '@material-ui/core';
+import { Snackbar, Box, Typography, Avatar } from '@material-ui/core';
 import Tooltip from '@material-ui/core/Tooltip';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -30,7 +30,6 @@ import TextureIcon from '@material-ui/icons/Texture';
 import EventIcon from '@material-ui/icons/Event';
 import AssignmentTurnedInIcon from '@material-ui/icons/AssignmentTurnedIn';
 
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
 
 import Menu from '@material-ui/core/Menu';
@@ -385,8 +384,6 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     )));
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
-
-  let dateSelectValue = makeDate(reactData.defaultValues.start_date).input;
 
   const handlePublishOptions = async ({ response, results }) => {
     updateReactData({
