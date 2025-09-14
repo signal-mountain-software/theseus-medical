@@ -1,13 +1,11 @@
 import React from 'react';
 
-import Dialog from '@material-ui/core/Dialog';
-import Box from '@material-ui/core/Box';
+import { Box, Paper, Typography, Dialog } from '@material-ui/core';
 
 import Button from '@material-ui/core/Button';
 import GoBackIcon from '@material-ui/icons/SettingsBackupRestore';
 import CheckIcon from '@material-ui/icons/DoneSharp';
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import { Typography } from '@material-ui/core';
 
 import { AVATextStyle } from '../../util/AVAStyles';
 
@@ -22,8 +20,6 @@ const useStyles = makeStyles(theme => ({
     borderRadius: '30px',
   },
   page: {
-    paddingTop: theme.spacing(2),
-    paddingBottom: theme.spacing(4),
   },
   notTitle: {
     marginRight: theme.spacing(2),
@@ -96,19 +92,45 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
       fullWidth
       p={2}
     >
-      <Box
-        key={`box-line`}
-        id={`box-line`}
-        sx={{
-          pl: (3 + (3 * Number(makeIndent(promptLines[0])))),
-          borderRadius: '30px 30px 0 0',
-          bgcolor: options.bgColor,
-        }}
-      >
+      <Paper component={Box} className={classes.page} overflow='visible' square>
+          
+
+<Box
+            display='flex' flexDirection='row'
+            className={classes.messageArea}
+            style={AVATextStyle({
+              padding: {
+                left: 1
+              },
+              bgcolor: options.bgColor,
+              margin: {
+                top: 1,
+                right: 0.5,
+                left: 0.5,
+                bottom: 1
+              },
+              size: 1.3,
+              bold: true,
+              overflow: 'visible'
+            })}
+            key={'topBox'}
+         
+          >
+            <Box
+              display='flex'
+              flexDirection='column'
+              overflow='visible'
+              key={'titlesection'}
+            >
+
+
+
+
+
         <Typography
           style={AVATextStyle({
-            margin: { top: 2, right: 2 },
-            size: 1.5,
+            
+            size: 1.4,
             bold: true,
             color: (promptLines[0].includes('[color:') ? promptLines[0].split(/.*\[color:/)[1].split(']')[0] : null)
           })}
@@ -120,7 +142,8 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
             : (promptLines[0].includes('[italic]') ? <i>{makeLine(promptLines[0])}</i> : `${makeLine(promptLines[0])}`)
           }
         </Typography>
-      </Box>
+            </Box></Box>
+      </Paper>
       <Box component={Box}
         sx={{
           pt: '16px',

@@ -224,7 +224,7 @@ export default ({ options, onReset }) => {
   const [showAccountHistory, setShowAccountHistory] = React.useState(false);
   const [promptForName, setPromptForName] = React.useState(false);
   const [superSizeData, setSuperSizeData] = React.useState(false);
-  const [updatesMade, ] = React.useState(false);
+  const [updatesMade,] = React.useState(false);
   const [singlePersonMode, setsinglePersonMode] = React.useState(false);
   const [recipient, setRecipient] = React.useState();
   const [messageType, setMessageType] = React.useState();
@@ -1043,7 +1043,7 @@ export default ({ options, onReset }) => {
             }}
           />
         }
-        {showSuperSize &&
+        {showSuperSize && false &&
           <List classes={{ root: classes.superSizeArea }}   >
             <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
               <Box>
@@ -1241,7 +1241,7 @@ export default ({ options, onReset }) => {
                     </Button>
                     <Button
                       onClick={async () => {
- //                       setGroupData(await getAllGroups(superSizeData.person_id));
+                        //                       setGroupData(await getAllGroups(superSizeData.person_id));
                         setShowEditPerson(superSizeData.person_id);
                         setEditPersonRec(await getPerson(superSizeData.person_id));
                       }}
@@ -1324,6 +1324,25 @@ export default ({ options, onReset }) => {
               }
             </Box>
           </List>
+        }
+        {showSuperSize &&
+          <PeopleMaintenance
+            patient={superSizeData}
+            options={{
+              mode: ((['admin', 'support', 'master'].includes(state.user.account_class)) ? 'edit' : 'view'),
+              sectionList: ['snapshot']
+            }}
+            onClose={(updatedPerson) => {
+              if (updatedPerson) {
+                updatedPerson.account_class = determineClass(updatedPerson.groups, state.session.group_assignments);
+                setSuperSizeData(Object.assign(superSizeData, updatedPerson));
+                // setUpdatesMade(true);
+              }
+              setEditPersonRec(null);
+              setShowEditPerson(null);
+              setshowSuperSize(false);
+            }}
+          />
         }
         {showAccountHistory &&
           <RequestDashboard

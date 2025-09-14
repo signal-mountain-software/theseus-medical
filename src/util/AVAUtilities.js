@@ -53,6 +53,13 @@ export const elastictranscoder = new AWS.ElasticTranscoder({
   region: "us-east-1"
 });
 
+const MediaConvert = require('aws-sdk/clients/mediaconvert');
+export const mediaconvert = new MediaConvert({
+  accessKeyId: sak()[0],
+  secretAccessKey: sak()[1],
+  region: "us-east-1"
+});
+
 const StepFunctions = require('aws-sdk/clients/stepfunctions');
 export const stepFunctions = new StepFunctions({
   accessKeyId: sak()[0],

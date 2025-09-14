@@ -1,7 +1,7 @@
 import React from 'react';
 import { dbClient, lambda, makeArray, getCustomizations, deepCopy, uuid } from '../util/AVAUtilities';
 import { accountAccess, getAllGroups, getGroupsBelongTo } from '../util/AVAGroups';
-import { getAllOccurrences, v2buildCalendar } from '../util/AVACalendars';
+import { getAllOccurrences, v2buildCalendar, createNewOccurrences } from '../util/AVACalendars';
 import { sendMessages } from '../util/AVAMessages';
 import { addDays } from '../util/AVADateTime';
 import { useSnackbar } from 'notistack';
@@ -1709,6 +1709,11 @@ export default Component => props => {
       .catch(error => {
         console.log(`error in loadSyncInfo Calendar. Message is ${error.message}`);
       });
+    
+    await createNewOccurrences({
+      client: pSession.client_id
+    })
+
     v2buildCalendar(
       {
         client_id: pSession.client_id,

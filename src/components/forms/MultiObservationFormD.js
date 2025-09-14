@@ -1660,7 +1660,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
       }
     });
-    let returnArray = [reactData.factName];
+    let returnArray = [`Your request has not been sent yet!`,`[bold]${reactData.factName}`];
     if (reactData.commonText) {
       returnArray = [titleCase(reactData.commonText)];
     }
@@ -2473,7 +2473,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         <AVAConfirm
           promptText={confirmPrompt}
           cancelText={'Go back'}
-          confirmText={'Save/Send'}
+          confirmText={'Send'}
           onCancel={() => { setConfirmStatus(''); }}
           onConfirm={async () => {
             if (!reactData.lockSend) {
@@ -2591,7 +2591,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   }}
                   startIcon={<CheckIcon size="small" />}
                 >
-                  {'Confirm/Send'}
+                  {'Confirm'}
                 </Button>
               }
             </Box>
