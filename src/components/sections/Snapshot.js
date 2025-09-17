@@ -94,6 +94,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
       }
       <Box display='flex' alignItems='center'
         style={{ marginBottom: '16px' }}
+        flexWrap={'wrap'}
         justifyContent='flex-start' flexDirection='row'>
         <Box
           component="img"
@@ -194,11 +195,22 @@ export default ({ currentValues, reactData, updateReactData }) => {
           {`Work phone: ${(formatPhone(currentValues.peopleRec?.contact_info?.work?.number))}`}
         </Typography>
       }
-      {(currentValues.peopleRec?.contact_info?.home?.number) &&
+      {(currentValues.peopleRec?.contact_info?.home?.number || currentValues.peopleRec?.contact_info?.landline?.number || currentValues.peopleRec?.messaging?.voice) &&
         <Typography
           style={AVATextStyle({ margin: { top: 0.5 } })}
         >
-          {`Home phone: ${(formatPhone(currentValues.peopleRec?.contact_info?.home?.number))}`}
+          {`Home phone: ${(formatPhone(currentValues.peopleRec?.contact_info?.home?.number
+            || currentValues.peopleRec?.contact_info?.landline?.number
+            || currentValues.peopleRec?.messaging?.voice
+            || '')
+          )}`}
+        </Typography>
+      }
+      {(currentValues.peopleRec?.contact_info?.email?.address || currentValues.peopleRec?.messaging?.email) &&
+        <Typography
+          style={AVATextStyle({ margin: { top: 0.5 } })}
+        >
+          {`e-Mail: ${currentValues.peopleRec?.contact_info?.email?.address || currentValues.peopleRec?.messaging?.email}`}
         </Typography>
       }
       {(currentValues.peopleRec.emergency_contact?.contact1 || currentValues.peopleRec.emergency_contact?.contact2) &&
@@ -412,17 +424,6 @@ export default ({ currentValues, reactData, updateReactData }) => {
           </Button>
         </Box>
       }
-
-
-
-
-
-
-
-
-
-
-
       <Box
         display='flex'
         alignItems={'center'}
@@ -435,6 +436,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
           alignItems={'center'}
           justifyContent='flex-start' flexDirection='row'
           key={`bottom_buttons`}
+          flexWrap={'wrap'}
           style={{}}
         >
           {(state.session.user_id !== currentValues.peopleRec.person_id) &&
@@ -483,6 +485,78 @@ export default ({ currentValues, reactData, updateReactData }) => {
               </a>
             </Button>
           }
+
+
+
+
+
+
+          {(state.session.user_id !== currentValues.peopleRec.person_id) &&
+          (currentValues.peopleRec?.contact_info?.home?.number || currentValues.peopleRec?.contact_info?.landline?.number || currentValues.peopleRec?.messaging?.voice) &&
+            <Button
+              className={AVAClass.AVAButton}
+              key={`callHomeButton`}
+              style={{ marginLeft: 0, backgroundColor: 'white', color: 'black' }}
+              size='small'
+              startIcon={<PhoneInTalkIcon size='small' />}
+            >
+              <a href={`tel:${currentValues.peopleRec?.contact_info?.home?.number || currentValues.peopleRec?.contact_info?.landline?.number || currentValues.peopleRec?.messaging?.voice}`}
+                key={`callCell`}
+                style={{ color: 'inherit', textDecoration: 'none' }}>
+                <Typography
+                  key={`callHome_words`}
+                  style={AVATextStyle({ size: 0.7, margin: { right: 0.5 } })}
+                >
+                  {`Call Home`}
+                </Typography>
+              </a>
+            </Button>
+          }
+
+
+          {(state.session.user_id !== currentValues.peopleRec.person_id) &&
+          (currentValues.peopleRec?.contact_info?.email?.address || currentValues.peopleRec?.messaging?.email) &&
+            <Button
+              className={AVAClass.AVAButton}
+              key={`eMailButton`}
+              style={{ marginLeft: 0, backgroundColor: 'white', color: 'black' }}
+              size='small'
+              startIcon={<SendIcon size='small' />}
+            >
+              <a href={`mailto:${currentValues.peopleRec?.contact_info?.email?.address || currentValues.peopleRec?.messaging?.email}`}
+                key={`eMailMe`}
+                style={{ color: 'inherit', textDecoration: 'none' }}>
+                <Typography
+                  key={`eMail_words`}
+                  style={AVATextStyle({ size: 0.7, margin: { right: 0.5 } })}
+                >
+                  {`e-Mail`}
+                </Typography>
+              </a>
+            </Button>
+
+          }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
           {(state.session.user_id !== currentValues.peopleRec.person_id) &&
             (currentValues.peopleRec.contact_info?.work?.number) &&
             <Button
@@ -505,17 +579,17 @@ export default ({ currentValues, reactData, updateReactData }) => {
             </Button>
           }
         </Box>
-        {(reactData.administrative_account || (state.session.user_id === currentValues.peopleRec.person_id)) &&
-          <Box display='flex' alignItems='center'
-            justifyContent='flex-end' flexDirection='row'>
-            <Typography
-              style={AVATextStyle({ opacity: '40%', margin: { top: 1, right: 0.5 } })}
-            >
-              {`User ID: ${currentValues.peopleRec.person_id}`}
-            </Typography>
-          </Box>
-        }
       </Box>
+      {(reactData.administrative_account || (state.session.user_id === currentValues.peopleRec.person_id)) &&
+        <Box display='flex' alignItems='center'
+          justifyContent='flex-end' flexDirection='row'>
+          <Typography
+            style={AVATextStyle({ opacity: '40%', margin: { top: 1, right: 0.5 } })}
+          >
+            {`User ID: ${currentValues.peopleRec.person_id}`}
+          </Typography>
+        </Box>
+      }
 
       {reactData.sendMessage &&
         <MakeMessage

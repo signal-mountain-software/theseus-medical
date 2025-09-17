@@ -295,7 +295,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         else if (a.first < b.first) { return -1; }
         else { return 0; }
       });
-      accessList[client_id].list.unshift(...respList[client_id].list);
+  //    accessList[client_id].list.unshift(...respList[client_id].list);
       accessList[client_id].shortList = accessList[client_id].list.map(p => {
         accessList[client_id].count[p.access]++;
         let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
