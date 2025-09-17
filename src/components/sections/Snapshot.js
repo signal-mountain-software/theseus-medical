@@ -1,6 +1,7 @@
 import React from 'react';
 
 import useSession from '../../hooks/useSession';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { Box, Typography, Button } from '@material-ui/core/';
 import { formatPhone } from '../../util/AVAPeople';
@@ -8,6 +9,7 @@ import { deepCopy, titleCase } from '../../util/AVAUtilities';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import SendIcon from '@material-ui/icons/Send';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
+import TextsmsIcon from '@material-ui/icons/Textsms';
 import InfoIcon from '@material-ui/icons/Info';
 
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
@@ -17,6 +19,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
 
   const { state } = useSession();
   const isMounted = React.useRef(false);
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
 
   const AVAClass = AVAclasses();
 
@@ -103,12 +106,13 @@ export default ({ currentValues, reactData, updateReactData }) => {
           minHeight={150}
           maxHeight={150}
           border={1}
+          mr={2}
           alt=''
           src={reactData.myImage}
         />
         <Box
           key={`profileSection_masterBox`}
-          flexGrow={2} px={2} py={4} display='flex' flexDirection='column'
+          flexGrow={2} pr={2} py={isMobile ? 2 : 4} display='flex' flexDirection='column'
         >
           <Typography
             style={AVATextStyle({ margin: { top: 1 }, bold: true, size: 2 })}
@@ -179,39 +183,55 @@ export default ({ currentValues, reactData, updateReactData }) => {
         </Box>
       </Box>
       {(currentValues.peopleRec?.contact_info?.cell?.number || currentValues.peopleRec?.messaging?.sms) &&
-        <Typography
-          style={AVATextStyle({ margin: { top: 0.5 } })}
-        >
-          {`Cell phone: ${(formatPhone(currentValues.peopleRec?.contact_info?.cell?.number
-            ? currentValues.peopleRec.contact_info.cell.number
-            : (currentValues.peopleRec?.messaging?.sms || '')
-          ))}`}
-        </Typography>
+        <a href={`tel:${currentValues.peopleRec?.contact_info?.cell?.number || currentValues.peopleRec?.messaging?.sms}`}
+          key={`callCell`}
+          style={{ color: 'inherit', textDecoration: 'none' }}>
+          <Typography
+            style={AVATextStyle({ margin: { top: 0.5 }, size: 1.5 })}
+          >
+            {`${isMobile ? 'Cell' : 'Cell phone:'} ${(formatPhone(currentValues.peopleRec?.contact_info?.cell?.number
+              ? currentValues.peopleRec.contact_info.cell.number
+              : (currentValues.peopleRec?.messaging?.sms || '')
+            ))}`}
+          </Typography>
+        </a>
       }
       {(currentValues.peopleRec?.contact_info?.work?.number) &&
-        <Typography
-          style={AVATextStyle({ margin: { top: 0.5 } })}
-        >
-          {`Work phone: ${(formatPhone(currentValues.peopleRec?.contact_info?.work?.number))}`}
-        </Typography>
+        <a href={`tel:${currentValues.peopleRec?.contact_info?.work?.number}`}
+          key={`callWork_text`}
+          style={{ color: 'inherit', textDecoration: 'none' }}>
+          <Typography
+            style={AVATextStyle({ margin: { top: 0.5 }, size: 1.5 })}
+          >
+            {`${isMobile ? 'Work' : 'Work phone:'} ${(formatPhone(currentValues.peopleRec?.contact_info?.work?.number))}`}
+          </Typography>
+        </a>
       }
       {(currentValues.peopleRec?.contact_info?.home?.number || currentValues.peopleRec?.contact_info?.landline?.number || currentValues.peopleRec?.messaging?.voice) &&
-        <Typography
-          style={AVATextStyle({ margin: { top: 0.5 } })}
-        >
-          {`Home phone: ${(formatPhone(currentValues.peopleRec?.contact_info?.home?.number
-            || currentValues.peopleRec?.contact_info?.landline?.number
-            || currentValues.peopleRec?.messaging?.voice
-            || '')
-          )}`}
-        </Typography>
+        <a href={`tel:${currentValues.peopleRec?.contact_info?.home?.number || currentValues.peopleRec?.contact_info?.landline?.number || currentValues.peopleRec?.messaging?.voice}`}
+          key={`callHome_text`}
+          style={{ color: 'inherit', textDecoration: 'none' }}>
+          <Typography
+            style={AVATextStyle({ margin: { top: 0.5 }, size: 1.5 })}
+          >
+            {`${isMobile ? 'Home' : 'Home phone:'} ${(formatPhone(currentValues.peopleRec?.contact_info?.home?.number
+              || currentValues.peopleRec?.contact_info?.landline?.number
+              || currentValues.peopleRec?.messaging?.voice
+              || '')
+            )}`}
+          </Typography>
+        </a>
       }
       {(currentValues.peopleRec?.contact_info?.email?.address || currentValues.peopleRec?.messaging?.email) &&
-        <Typography
-          style={AVATextStyle({ margin: { top: 0.5 } })}
-        >
-          {`e-Mail: ${currentValues.peopleRec?.contact_info?.email?.address || currentValues.peopleRec?.messaging?.email}`}
-        </Typography>
+        <a href={`mailto:${currentValues.peopleRec?.contact_info?.email?.address || currentValues.peopleRec?.messaging?.email}`}
+          key={`eMailMe_text`}
+          style={{ color: 'inherit', textDecoration: 'none' }}>
+          <Typography
+            style={AVATextStyle({ margin: { top: 0.5 }, size: 1.5 })}
+          >
+            {`${isMobile ? '' : 'e-Mail: '}${currentValues.peopleRec?.contact_info?.email?.address || currentValues.peopleRec?.messaging?.email}`}
+          </Typography>
+        </a>
       }
       {(currentValues.peopleRec.emergency_contact?.contact1 || currentValues.peopleRec.emergency_contact?.contact2) &&
         <Typography
@@ -457,7 +477,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                 justifyContent='flex-end' flexDirection='column'>
                 <Typography
                   key={`sendMessage`}
-                  style={AVATextStyle({ size: 0.7, margin: { right: 0.5 } })}
+                  style={AVATextStyle({ size: 1.2, margin: { right: 0.5 } })}
                 >
                   {`Message`}
                 </Typography>
@@ -466,6 +486,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
           }
           {(state.session.user_id !== currentValues.peopleRec.person_id) &&
             (currentValues.peopleRec?.contact_info?.cell?.number || currentValues.peopleRec?.messaging?.sms) &&
+            <React.Fragment>
             <Button
               className={AVAClass.AVAButton}
               key={`callCellButton`}
@@ -474,16 +495,35 @@ export default ({ currentValues, reactData, updateReactData }) => {
               startIcon={<PhoneInTalkIcon size='small' />}
             >
               <a href={`tel:${currentValues.peopleRec?.contact_info?.cell?.number || currentValues.peopleRec?.messaging?.sms}`}
-                key={`callCell`}
+                key={`callCell_button`}
                 style={{ color: 'inherit', textDecoration: 'none' }}>
                 <Typography
                   key={`callCell_words`}
-                  style={AVATextStyle({ size: 0.7, margin: { right: 0.5 } })}
+                  style={AVATextStyle({ size: 1.2, margin: { right: 0.5 } })}
                 >
                   {`Call Cell`}
                 </Typography>
               </a>
-            </Button>
+              </Button>
+              <Button
+                className={AVAClass.AVAButton}
+                key={`textCellButton`}
+                style={{ marginLeft: 0, backgroundColor: 'white', color: 'black' }}
+                size='small'
+                startIcon={<TextsmsIcon size='small' />}
+              >
+                <a href={`sms:${currentValues.peopleRec?.contact_info?.cell?.number || currentValues.peopleRec?.messaging?.sms}`}
+                  key={`callCell_button`}
+                  style={{ color: 'inherit', textDecoration: 'none' }}>
+                  <Typography
+                    key={`textCell_words`}
+                    style={AVATextStyle({ margin: { right: 0.5 }, size: 1.2 })}
+                  >
+                    {`Text Msg`}
+                  </Typography>
+                </a>
+              </Button>
+            </React.Fragment>
           }
 
 
@@ -492,7 +532,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
 
 
           {(state.session.user_id !== currentValues.peopleRec.person_id) &&
-          (currentValues.peopleRec?.contact_info?.home?.number || currentValues.peopleRec?.contact_info?.landline?.number || currentValues.peopleRec?.messaging?.voice) &&
+            (currentValues.peopleRec?.contact_info?.home?.number || currentValues.peopleRec?.contact_info?.landline?.number || currentValues.peopleRec?.messaging?.voice) &&
             <Button
               className={AVAClass.AVAButton}
               key={`callHomeButton`}
@@ -501,11 +541,11 @@ export default ({ currentValues, reactData, updateReactData }) => {
               startIcon={<PhoneInTalkIcon size='small' />}
             >
               <a href={`tel:${currentValues.peopleRec?.contact_info?.home?.number || currentValues.peopleRec?.contact_info?.landline?.number || currentValues.peopleRec?.messaging?.voice}`}
-                key={`callCell`}
+                key={`callHome_button`}
                 style={{ color: 'inherit', textDecoration: 'none' }}>
                 <Typography
                   key={`callHome_words`}
-                  style={AVATextStyle({ size: 0.7, margin: { right: 0.5 } })}
+                  style={AVATextStyle({ size: 1.2, margin: { right: 0.5 } })}
                 >
                   {`Call Home`}
                 </Typography>
@@ -515,7 +555,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
 
 
           {(state.session.user_id !== currentValues.peopleRec.person_id) &&
-          (currentValues.peopleRec?.contact_info?.email?.address || currentValues.peopleRec?.messaging?.email) &&
+            (currentValues.peopleRec?.contact_info?.email?.address || currentValues.peopleRec?.messaging?.email) &&
             <Button
               className={AVAClass.AVAButton}
               key={`eMailButton`}
@@ -528,7 +568,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                 style={{ color: 'inherit', textDecoration: 'none' }}>
                 <Typography
                   key={`eMail_words`}
-                  style={AVATextStyle({ size: 0.7, margin: { right: 0.5 } })}
+                  style={AVATextStyle({ size: 1.2, margin: { right: 0.5 } })}
                 >
                   {`e-Mail`}
                 </Typography>
@@ -571,7 +611,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                 style={{ color: 'inherit', textDecoration: 'none' }}>
                 <Typography
                   key={`callWork_words`}
-                  style={AVATextStyle({ size: 0.7, margin: { right: 0.5 } })}
+                  style={AVATextStyle({ size: 1.2, margin: { right: 0.5 } })}
                 >
                   {`Call Work`}
                 </Typography>

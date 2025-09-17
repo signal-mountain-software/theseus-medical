@@ -2,7 +2,7 @@ import React from 'react';
 
 import { getPerson, getImage } from '../../util/AVAPeople';
 import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount, titleCase } from '../../util/AVAUtilities';
-import { AVAclasses, AVADefaults, AVATextStyle, isDark } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, isDark } from '../../util/AVAStyles';
 import { determineClass } from '../../util/AVAGroups';
 
 import useSession from '../../hooks/useSession';
@@ -37,6 +37,8 @@ const useStyles = makeStyles(theme => ({
   paperPallette: {
     borderRadius: '30px 30px 30px 30px',
     width: '95%',
+    margin: 0,
+    maxHeight: '98%',
     maxWidth: '800px'
   },
   padRight: {
@@ -155,7 +157,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
   };
 
   const onExit = (returnObj) => {
-    AVADefaults({ fontSize: state.user?.customizations?.font_size || 1 });
+//    AVADefaults({ fontSize: state.user?.customizations?.font_size || 1 });
     onClose(returnObj);
   };
 
@@ -322,7 +324,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           if (!sessionRec.Item.forceSetPassword) {
             sessionRec.Item.forceSetPassword = false;
           }
-          AVADefaults({ fontSize: sessionRec.Item.customizations.font_size });
+ //         AVADefaults({ fontSize: sessionRec.Item.customizations.font_size });
           reactUpdObj.og.sessionRec = sessionRec.Item;
         }
         else {
