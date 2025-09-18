@@ -71,6 +71,16 @@ export default ({ currentValues, reactData, updateField }) => {
                   tableName: 'customizationRecs',
                   fieldName: 'client_weather.customization_value.nws_place',
                   newData: `${nws_info.properties.relativeLocation?.properties?.city}, ${nws_info.properties.relativeLocation?.properties?.state}`
+                },
+                {
+                  tableName: 'customizationRecs',
+                  fieldName: 'client_weather.customization_value.place_name',
+                  newData: `${nws_info.properties.relativeLocation?.properties?.city}, ${nws_info.properties.relativeLocation?.properties?.state}`
+                },
+                {
+                  tableName: 'customizationRecs',
+                  fieldName: 'client_timezone.customization_value',
+                  newData: nws_info.properties.timeZone
                 }]);
             }
           }
@@ -121,6 +131,16 @@ export default ({ currentValues, reactData, updateField }) => {
                   tableName: 'customizationRecs',
                   fieldName: 'client_weather.customization_value.nws_place',
                   newData: `${nws_info.properties.relativeLocation?.properties?.city}, ${nws_info.properties.relativeLocation?.properties?.state}`
+                },
+                {
+                  tableName: 'customizationRecs',
+                  fieldName: 'client_weather.customization_value.place_name',
+                  newData: `${nws_info.properties.relativeLocation?.properties?.city}, ${nws_info.properties.relativeLocation?.properties?.state}`
+                },
+                {
+                  tableName: 'customizationRecs',
+                  fieldName: 'client_timezone.customization_value',
+                  newData: nws_info.properties.timeZone
                 }]);
             }
           }
@@ -146,6 +166,24 @@ export default ({ currentValues, reactData, updateField }) => {
         }}
         defaultValue={currentValues.customizationRecs.client_weather.customization_value.place_name}
         helperText='Place Name'
+      />
+      <TextField
+        id='Time_Zone'
+        autoComplete='off'
+        key={`loc_${currentValues.customizationRecs.client_timezone.customization_value}`}
+        style={{ width: '300px' }}
+        onBlur={async (event) => {
+          await updateField({
+            updateList:
+              [{
+                tableName: 'customizationRecs',
+                fieldName: 'client_timezone.customization_value',
+                newData: event.target.value
+              }]
+          });
+        }}
+        defaultValue={currentValues.customizationRecs.client_timezone.customization_value}
+        helperText='Time Zone'
       />
       <Button
         className={AVAClass.AVAButton}
@@ -218,6 +256,11 @@ export default ({ currentValues, reactData, updateField }) => {
                   tableName: 'customizationRecs',
                   fieldName: 'client_weather.customization_value.place_name',
                   newData: `${nws_info.properties.relativeLocation?.properties?.city}, ${nws_info.properties.relativeLocation?.properties?.state}`
+                },
+                {
+                  tableName: 'customizationRecs',
+                  fieldName: 'client_timezone.customization_value',
+                  newData: nws_info.properties.timeZone
                 }]);
             }
           }
