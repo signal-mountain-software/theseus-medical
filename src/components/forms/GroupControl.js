@@ -18,7 +18,6 @@ import useMediaQuery from '@material-ui/core/useMediaQuery';
 import GroupAddIcon from '@material-ui/icons/GroupAdd';
 import CloseIcon from '@material-ui/icons/ExitToApp';
 import DeleteIcon from '@material-ui/icons/Delete';
-import PeopleIcon from '@material-ui/icons/People';
 import SettingsIcon from '@material-ui/icons/Settings';
 import SendIcon from '@material-ui/icons/Send';
 import ExpandMoreIcon from '@material-ui/icons/Visibility';
@@ -112,8 +111,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
 
   const { dispatch, state } = useSession();
 
-  const [activity_filter, setActivityFilter] = React.useState('');
-  const [lower_activity_filter, setLowerFilter] = React.useState('');
   const [promptForName, setPromptForName] = React.useState(false);
 
   const [reactData, setReactData] = React.useState({
@@ -809,26 +806,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
-  const handleChangeActivityFilter = event => {
-    setActivityFilter(event.target.value);
-    setLowerFilter(event.target.value.toLowerCase());
-  };
-
-  function OKtoShow(inObj, inNdx) {
-    if ((inObj.level > 2) && (!reactData.levelVisible[inNdx])) { return false; }
-    if (!lower_activity_filter) { return true; }
-    if (inObj.hasOwnProperty('group_name')) {
-      if (inObj.group_name.toLowerCase().includes(lower_activity_filter)) {
-        return true;
-      }
-    }
-    return (inObj.group_id.toLowerCase().includes(lower_activity_filter));
-  };
-
-  function OKtoShowPerson(pName) {
-    return pName.toLowerCase().includes(reactData.lower_people_filter);
-  };
-
   async function selectMembers(this_group) {
     let response = {};
     let memberList = await getMemberList(this_group, state.session.client_id, { "exclude": false });
@@ -1007,7 +984,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                     alignItems='flex-start'
                   >
                     {Object.keys(groupsManagedObject).map((listEntry, listIndex) => (
-                      (OKtoShow(groupsManagedObject[listEntry], listIndex) &&
                         <React.Fragment key={`frag_${listIndex}`}>
                           <Box
                             display='flex' flexDirection='row'
@@ -1112,7 +1088,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                             }
                           </Box>
                         </React.Fragment>
-                      )
                     ))}
                   </Box>
                 </Paper>
@@ -1428,7 +1403,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
               size: 1.5,
               margin: { bottom: 1 },
             })}>
-            {!lower_activity_filter ? 'This Group has no members' : 'No members match that filter'}
+            {'This Group has no members'}
           </Typography>
         </Box>
       }
