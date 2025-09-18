@@ -149,6 +149,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     loading: false,
     needRef: false,
     newGroups: {},
+    people_filter: null,
+    lower_people_filter: null,
     popUpOpen: false,
     progressMessage: 'Building Group List',
     pWidth: 60,
@@ -163,6 +165,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     selectedGroup_id: null,
     selectedGroupRec: false,
     selectedGroupMembers: false,
+    sortedGroupMembers: [],
     updatesMade: false,
     viewPeopleMaintenance: false
   });
@@ -466,11 +469,24 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
             reactData.selectedGroupMembers[draggedFrom.personObj.AVAclassesperson_id] = peopleRec.Item;
           };
           reactUpdObj.selectedGroupMembers = reactData.selectedGroupMembers;
+          reactUpdObj.sortedGroupMembers = sortGroupMembers(reactData.selectedGroupMembers);
         }
       }
       updateReactData(reactUpdObj, true);
     };
   };
+
+  function sortGroupMembers(unsortedObj) {
+    if (!unsortedObj) { return []; }
+    return Object.keys(unsortedObj).sort((a, b) => {
+      if (unsortedObj[a].name.last === unsortedObj[b].name.last) {
+        return (unsortedObj[a].name.first > unsortedObj[b].name.first) ? 1 : -1;
+      }
+      else {
+        return (unsortedObj[a].name.last > unsortedObj[b].name.last) ? 1 : -1;
+      }
+    });
+  }
 
 
   const handleDrop_removeGroup = async (ev) => {
@@ -698,7 +714,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
       }
       updateReactData({
         alert: alertMessage,
-        selectedGroupMembers: reactData.selectedGroupMembers
+        selectedGroupMembers: reactData.selectedGroupMembers,
+        sortedGroupMembers: sortGroupMembers(reactData.selectedGroupMembers)
       }, true);
     }
     else if (draggedFrom.hasOwnProperty('groupObj')) {
@@ -766,6 +783,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
           reactUpdObj.selectedGroupRec = false;
           reactUpdObj.selectedGroup_id = false;
           reactUpdObj.selectedGroupMembers = false;
+          reactUpdObj.sortedGroupMembers = [];
         }
         updateReactData(reactUpdObj, true);
       }
@@ -805,6 +823,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
       }
     }
     return (inObj.group_id.toLowerCase().includes(lower_activity_filter));
+  };
+
+  function OKtoShowPerson(pName) {
+    return pName.toLowerCase().includes(reactData.lower_people_filter);
   };
 
   async function selectMembers(this_group) {
@@ -892,7 +914,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
         <React.Fragment>
           <Box style={{ borderRadius: '30px 30px 30px 30px', marginRight: '16px' }}
             key={'topRow'}
-            display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+            display='flex' flexDirection='row' justifyContent='space-between' alignItems='flex-end'
           >
             <Box
               key={'topBox'}
@@ -900,41 +922,52 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
             >
               <Typography
                 className={classes.title}
-                style={AVATextStyle({ size: 1.3, bold: true, margin: { top: 1.5, left: 1, right: 1 } })}
+                style={AVATextStyle({ size: 1.3, bold: true, margin: { top: 1.5, left: 1.5, right: 1 } })}
                 id='scroll-dialog-title'
               >
-                {'Select a group from this list'}
+                {'Manage Groups and People'}
               </Typography>
               <TextField
                 style={{
-                  marginLeft: '25px',
+                  marginLeft: '24px',
                   marginRight: '16px',
                   marginBottom: '16px',
                   paddingLeft: 0,
                   paddingRight: 0,
                   paddingBottom: '8px',
-                  width: '40%',
+                  width: '400px',
                   verticalAlign: 'middle',
                   fontSize: 0.4,
                   minHeight: 2.8,
                 }}
                 id='List Filter'
-                value={activity_filter}
+                value={reactData.people_filter}
                 className={classes.freeInput}
-                onChange={handleChangeActivityFilter}
-                helperText={'Filter Groups'}
+                onChange={async (event) => {
+                  let reactUpdObj = {
+                    people_filter: event.target.value,
+                    lower_people_filter: event.target.value.toLowerCase()
+                  };
+                  if (!reactData.selectedGroupRec) {
+                    let listEntry = Object.keys(groupsManagedObject)[0];
+                    reactUpdObj.selectedGroup_id = listEntry;
+                    reactUpdObj.selectedGroupRec = groupsManagedObject[listEntry];
+                    reactUpdObj.selectedGroupMembers = await selectMembers(listEntry);
+                    reactUpdObj.sortedGroupMembers = sortGroupMembers(reactUpdObj.selectedGroupMembers);
+                    reactUpdObj.selectedPerson_id = false;
+                    reactUpdObj.selectedPersonRec = false;
+                    reactUpdObj.selectedPersonFirstName = false;
+                    reactUpdObj.selectedPersonLastName = false;
+                  };
+                  updateReactData(reactUpdObj, true);
+                }}
+                helperText={'Filter People'}
                 inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
                 FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                 variant={'standard'}
                 autoComplete='off'
               />
             </Box>
-            <PeopleIcon
-              style={{ marginRight: '32px' }}
-              onClick={() => {
-                updateReactData({ showQuickSearch: true }, true);
-              }}
-            />
           </Box>
 
           <Box display='flex' flexDirection={isSmallScreen() ? 'column' : 'row'} style={{ flexGrow: 1, height: '100px' }}>
@@ -1013,10 +1046,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                             <Typography
                               key={`g_text_${listIndex}_${(listIndex === focusAt) ? 'selected' : ''}`}
                               onClick={async () => {
+                                let selectedGroupMembers = await selectMembers(listEntry);
                                 updateReactData({
                                   selectedGroup_id: listEntry,
                                   selectedGroupRec: groupsManagedObject[listEntry],
-                                  selectedGroupMembers: await selectMembers(listEntry),
+                                  selectedGroupMembers,
+                                  sortedGroupMembers: sortGroupMembers(selectedGroupMembers),
                                   selectedPerson_id: false,
                                   selectedPersonRec: false,
                                   selectedPersonFirstName: false,
@@ -1188,10 +1223,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                           margin: { top: 0, bottom: 0.8 },
                         })}
                         onClick={async () => {
+                          let selectedGroupMembers = await selectMembers(this_group);
                           updateReactData({
                             selectedGroup_id: this_group,
                             selectedGroupRec: groupsManagedObject[this_group],
-                            selectedGroupMembers: await selectMembers(this_group),
+                            selectedGroupMembers,
+                            sortedGroupMembers: sortGroupMembers(selectedGroupMembers),
                             selectedPerson_id: false,
                             selectedPersonRec: false,
                             selectedPersonFirstName: false,
@@ -1250,14 +1287,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                     justifyContent='flex-start'
                     alignItems='flex-start'
                   >
-                    {reactData.selectedGroupMembers && Object.keys(reactData.selectedGroupMembers).sort((a, b) => {
-                      if (reactData.selectedGroupMembers[a].name.last === reactData.selectedGroupMembers[b].name.last) {
-                        return (reactData.selectedGroupMembers[a].name.first > reactData.selectedGroupMembers[b].name.first) ? 1 : -1;
-                      }
-                      else {
-                        return (reactData.selectedGroupMembers[a].name.last > reactData.selectedGroupMembers[b].name.last) ? 1 : -1;
-                      }
-                    }).map((this_person, cX) => (
+                    {reactData.sortedGroupMembers && reactData.sortedGroupMembers.map((this_person, cX) => (
+                      (!reactData.lower_people_filter
+                        || (`${reactData.selectedGroupMembers[this_person].name.first} ${reactData.selectedGroupMembers[this_person].name.last}`).toLowerCase().includes(reactData.lower_people_filter)) &&
                       <Typography
                         key={`g_textpeople-${cX}`}
                         style={AVATextStyle({
@@ -1353,13 +1385,16 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
           person_id={reactData.viewPeopleMaintenance}
           key={`goForPeople_${reactData.viewPeopleMaintenance}`}
           initialValues={{ color: 'green' }}
-          options={{}}
+          options={{
+            sectionToShow: ['snapshot']
+          }}
           onClose={async () => {
             let reactUpd = {
               viewPeopleMaintenance: false
             };
             if (reactData.selectedGroup_id) {
               reactUpd.selectedGroupMembers = await selectMembers(reactData.selectedGroup_id);
+              reactUpd.sortedGroupMembers = sortGroupMembers(reactUpd.selectedGroupMembers);
             }
             updateReactData(reactUpd, true);
           }}

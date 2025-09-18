@@ -23,6 +23,9 @@ import withSession from './hocs/withSession';
 import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
 
+import { dbClient } from './util/AVAUtilities';
+import { sendMessages } from './util/AVAMessages';
+
 const menu = [
   { label: 'AVA', path: '/theseus', icon: <AssignmentIcon />, screen: <TheseusScreen /> },
   { label: 'Refresh', path: '/refresh', icon: <AutorenewIcon />, screen: <Reloader /> },
@@ -31,6 +34,7 @@ const menu = [
 
 const HOME = '/theseus';
 var hasError = false;
+let errorInfo = {};
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -40,16 +44,61 @@ class ErrorBoundary extends React.Component {
 
   static getDerivedStateFromError(error) {
     hasError = true;
+    errorInfo.message = error.message;
+    errorInfo.location = error.lineNumber;
+    errorInfo.fileName = error.fileName;
     // handleWriteError(`AVA caught error "${error.message}" at line ${error.lineNumber} in file ${error.fileName}`);
   }
 
   componentDidCatch(error, info) {
     hasError = true;
+    errorInfo.message = error.cause;
+    errorInfo.location = error.stack;
+    errorInfo.fileName = error.toString();
     // handleWriteError(`AVA caught error.  String is "${error.toString()}". Cause is ${error.cause} on stack ${error.stack}`);
   }
 
   render() {
     if (hasError) {
+      let cookieValues = {};
+      let cookies = document.cookie;
+      let cookieList = cookies.split('; ');
+      for (let this_string of cookieList) {
+        let [this_key, this_value] = this_string.split('=');
+        cookieValues[this_key] = JSON.parse(decodeURIComponent(this_value));
+      }
+      let timestamp = new Date().getTime();
+      dbClient
+        .put({
+          TableName: 'ActivityLog',
+          Item: {
+            timestamp,
+            user_id: cookieValues.AVAuser.user_id || 'error-no_cookie',
+            activity_code: 'ERROR log',
+            activity_name: 'see previous',
+            cookieValues,
+            errorInfo,
+            AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+          }
+        })
+        .promise()
+        .catch(putError => {
+          console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
+        });
+      try {
+        let messageObj = {
+          client: cookieValues.AVAuser.client,
+          author: cookieValues.AVAuser.user_id,
+          messageText: `AVA ERROR ${errorInfo.message} in ${errorInfo.fileName} at ${errorInfo.location || 'n/a'}.  See Activity Log for User ${cookieValues.AVAuser.user_id || 'error-no_cookie'} at ${timestamp}`,
+          thread_id: `error_thread_${timestamp}`,
+          recipientList: 'rsteele',
+          subject: `AVA ERROR at ${cookieValues.AVAuser.client} for ${cookieValues.AVAuser.user_id}`
+        };
+        sendMessages(messageObj);
+      }
+      catch {
+        console.log(`Unable to send message.`);
+      }
       return (
         <Box
           display='flex' flexDirection='column' justifyContent='center' alignItems='center'
