@@ -81,22 +81,43 @@ export default ({ onSave, onClose }) => {
 
   React.useEffect(() => {
     async function initialize() {
-      reactData.initialized = true;
-      reactData.marquee_message = JSON.parse(sessionStorage.getItem('marquee_message'));
+
+      let reactUpdObj = {
+        initialized: true,
+        marquee_message: JSON.parse(sessionStorage.getItem('marquee_message'))
+      };
 
       if (!reactData.kiosk_mode && (state.session.user_id === state.session.patient_id)) {
-        reactData.validated_user = true;
-        reactData.previouslyEnteredDestination = false;
-        reactData.personRec = state.patient;
+        reactUpdObj.validated_user = true;
+        reactUpdObj.previouslyEnteredDestination = false;
+        reactUpdObj.personRec = state.patient;
         let got_class = determineClass(state.patient.groups, state.session.group_assignments);
-        let mode = determineMode(Object.assign({}, state.patient, {account_class: got_class}));
-        reactData.currentStatus = await getCurrentStatus(state.session.client_id, state.session.patient_id, mode);
-        reactData.select_user = false;
+        let mode = determineMode(Object.assign({}, state.patient, { account_class: got_class }));
+        reactUpdObj.currentStatus = await getCurrentStatus(state.session.client_id, state.session.patient_id, mode);
+        if (!reactUpdObj.currentStatus) {
+          let timestamp = new Date().getTime();
+          dbClient
+            .put({
+              TableName: 'ActivityLog',
+              Item: {
+                timestamp,
+                user_id: state.session.patient_id || 'error-no_patient_id',
+                activity_code: 'ERROR log - GetCurrentStatus issue',
+                activity_name: `CheckinCheckOut`,
+                cookieValues: 'n/a',
+                errorInfo: { reactData, reactUpdObj, state, got_class, mode },
+                AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+              }
+            })
+            .promise()
+            .catch(putError => {
+              console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
+            });
+        }
+        reactUpdObj.select_user = false;
       }
 
-
-      setReactData(reactData);
-      setForceRedisplay(!forceRedisplay);
+      updateReactData(reactUpdObj, true);
     }
     isMounted.current = true;
     initialize();
@@ -141,7 +162,7 @@ export default ({ onSave, onClose }) => {
       else if (personRecs[p].messaging.sms) { personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.sms.slice(-4)}`; }
     }
     personRecs = personRecs.filter(p => {
-      if (restricted_to) { 
+      if (restricted_to) {
         return restricted_to.includes(p.account_class);
       }
       else {
@@ -368,7 +389,7 @@ export default ({ onSave, onClose }) => {
 
   function reset() {
     let marquee_message = JSON.parse(sessionStorage.getItem('marquee_message'));
-    setReactData({
+    updateReactData({
       kiosk_mode: (state.session.hasOwnProperty('kiosk_mode') ? state.session.kiosk_mode : false),
       validated_user: false,
       personRec: state.patient,
@@ -387,8 +408,7 @@ export default ({ onSave, onClose }) => {
       initialized: true,
       marquee_message,
       alert: reactData.alert
-    });
-    setForceRedisplay(!forceRedisplay);
+    }, true);
   }
 
   const resolveValue = (object, key, value) => {
@@ -496,7 +516,7 @@ export default ({ onSave, onClose }) => {
           { /* **********************************
                We don't know who this is yet
                ********************************** */
-            !reactData.validated_user && !reactData.add_guest_mode &&
+            ((!reactData.validated_user && !reactData.add_guest_mode) || !reactData.currentStatus) &&
             (!reactData.select_user ?
               <AVATextInput
                 titleText={[(`Welcome to ${state.session.client_name}`)]}
