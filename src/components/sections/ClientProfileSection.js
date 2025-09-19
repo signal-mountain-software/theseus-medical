@@ -352,6 +352,50 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
 
 
+      <Typography
+        style={AVATextStyle({ margin: { top: 1 } })}
+      >
+        {'Show Forms section in Profile'}
+      </Typography>
+      <Box flexGrow={2} display='flex' alignItems='center'
+        justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+        <Typography
+          style={AVATextStyle({
+            size: 0.8, margin: { right: 0.8 },
+            bold: !currentValues.customizationRecs.client_style.customization_value.suppress_forms_in_profile
+          })}
+        >
+          {'Show'}
+        </Typography>
+        <Switch
+          checked={currentValues.customizationRecs.client_style.customization_value?.suppress_forms_in_profile}
+          onClick={async (event) => {
+            await updateField({
+              updateList:
+                [{
+                  tableName: 'customizationRecs',
+                  fieldName: 'client_style.customization_value.suppress_forms_in_profile',
+                  newData: !currentValues.customizationRecs.client_style.customization_value.suppress_forms_in_profile
+                }]
+            });
+          }}
+          name="MessagingStyle"
+          color="primary"
+        />
+        <Typography
+          style={AVATextStyle({
+            size: 0.8, margin: { left: 0.8 },
+            bold: currentValues.customizationRecs.client_style.customization_value.suppress_forms_in_profile
+          })}
+        >
+          {'Hide'}
+        </Typography>
+      </Box>
+
+
+
+
+
 
       <Box display='flex' alignItems='center'
         justifyContent='flex-end' flexDirection='row'>

@@ -137,7 +137,7 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
           component_name: 'ClientProfileSection'
         },
         {
-          section_name: 'Weather',
+          section_name: 'Weather & Time Zone',
           color: initialValues?.color || 'orange',
           isOpen: false,
           isAuthorized: true,

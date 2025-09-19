@@ -1330,7 +1330,8 @@ export default ({ options, onReset }) => {
             patient={superSizeData}
             options={{
               mode: ((['admin', 'support', 'master'].includes(state.user.account_class)) ? 'edit' : 'view'),
-              sectionList: ['snapshot']
+              sectionList: ['snapshot'],
+              sectionToShow: ['snapshot']
             }}
             onClose={(updatedPerson) => {
               if (updatedPerson) {

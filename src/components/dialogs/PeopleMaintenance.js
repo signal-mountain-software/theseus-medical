@@ -2,7 +2,7 @@ import React from 'react';
 
 import { getPerson, getImage } from '../../util/AVAPeople';
 import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount, titleCase } from '../../util/AVAUtilities';
-import { AVAclasses, AVADefaults, AVATextStyle, isDark } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, isDark } from '../../util/AVAStyles';
 import { determineClass } from '../../util/AVAGroups';
 
 import useSession from '../../hooks/useSession';
@@ -37,6 +37,8 @@ const useStyles = makeStyles(theme => ({
   paperPallette: {
     borderRadius: '30px 30px 30px 30px',
     width: '95%',
+    margin: 0,
+    maxHeight: '98%',
     maxWidth: '800px'
   },
   padRight: {
@@ -155,7 +157,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
   };
 
   const onExit = (returnObj) => {
-    AVADefaults({ fontSize: state.user?.customizations?.font_size || 1 });
+//    AVADefaults({ fontSize: state.user?.customizations?.font_size || 1 });
     onClose(returnObj);
   };
 
@@ -322,7 +324,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           if (!sessionRec.Item.forceSetPassword) {
             sessionRec.Item.forceSetPassword = false;
           }
-          AVADefaults({ fontSize: sessionRec.Item.customizations.font_size });
+ //         AVADefaults({ fontSize: sessionRec.Item.customizations.font_size });
           reactUpdObj.og.sessionRec = sessionRec.Item;
         }
         else {
@@ -359,7 +361,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       reactUpdObj.sections = [{
         section_name: 'Snapshot',
         color: initialValues?.color || 'orange',
-        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('Snapshot')) : false),
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().some(this_optionSection => { return (this_optionSection.toLowerCase() === 'snapshot'); })) : false),
         isAuthorized: (reactData.administrative_account || (reactData.sectionList && reactData.sectionList.includes('snapshot'))),
         version_id: 0,
         component_name: 'Snapshot'
@@ -368,7 +370,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         section_name: 'Administrative Data',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('AdministrativeSection')) : false),
-          isAuthorized: (reactData.administrative_account || (reactData.sectionList && reactData.sectionList.includes('admin'))),
+        isAuthorized: (reactData.administrative_account || (reactData.sectionList && reactData.sectionList.includes('admin'))),
         version_id: 0,
         component_name: 'AdministrativeSection'
       },
@@ -416,7 +418,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         section_name: 'Forms & Documents',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('FormSection')) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('forms') : true)),
+        isAuthorized: (reactData.sectionList
+          ? reactData.sectionList.includes('forms')
+          : (!state.session.client_style?.suppress_forms_in_profile ? reactData.administrative_account : false)),
         version_id: 0,
         component_name: 'FormSection'
       },
@@ -1093,7 +1097,10 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           >
             {reactData.sections.map((this_section, sectionNdx) => (
               (this_section.isAuthorized &&
-                (!reactData.options?.sectionToShow || ([reactData.options?.sectionToShow].flat().includes(this_section.component_name))) &&
+                (!reactData.options?.sectionToShow || reactData.administrative_account
+                  || ([reactData.options?.sectionToShow].flat().some(this_optionSection => {
+                  return (this_optionSection.toLowerCase() === this_section.component_name.toLowerCase());
+                }))) &&
                 (reactData.person_id || (this_section.component_name === 'ProfileSection')) &&
                 <Box
                   key={`frag__${sectionNdx}`}
@@ -1138,6 +1145,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                       <Box
                         border={1}
                         ml={2} mr={2}
+                        key={`${this_section.section_name}__renderBoxTop`}
                       >
                         {renderSection(this_section.component_name)}
                       </Box>
@@ -1147,6 +1155,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                         borderLeft={1}
                         borderRight={1}
                         borderBottom={1}
+                        key={`${this_section.section_name}__renderBoxBottom`}
                         style={{
                           borderRadius: '0px 0px 30px 30px',
                           backgroundColor: this_section.color,
