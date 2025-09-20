@@ -407,7 +407,6 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           thread_id: thread_id,
           composite_key: composite_key
         },
-        UpdateExpression: 'set delete_flag = :t',
         ExpressionAttributeValues: {
           ':t': true
         },
@@ -436,10 +435,11 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
             thread_id: thread_id,
             composite_key: composite_key
           },
-          UpdateExpression: 'set delete_flag = :t, deleted_by = :d',
+          UpdateExpression: 'set delete_flag = :t, deleted_by = :d, deleted_time = :n',
           ExpressionAttributeValues: {
             ':t': true,
-            ':d': new_deleted_by
+            ':d': new_deleted_by,
+            ':n': new Date().getTime()
           },
           TableName: "TheseusMessages",
         })
@@ -1279,8 +1279,12 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         reactData.threads[this_deliveryRec.thread_id].messages[message_number].reply_to = this_deliveryRec.reply_to;
       }
       */
+      if (reactData.threads[this_deliveryRec.thread_id].delete_flag && (reactData.threads[this_deliveryRec.thread_id].delete_time < this_deliveryRec.created_time)) {
+        reactData.threads[this_deliveryRec.thread_id].delete_flag = false;
+      }
       if ((this_deliveryRec.delete_flag) && this_deliveryRec.deleted_by && (this_deliveryRec.deleted_by.includes(state.session.user_id))) {
         reactData.threads[this_deliveryRec.thread_id].delete_flag = true;
+        reactData.threads[this_deliveryRec.thread_id].delete_time = this_deliveryRec.delete_time || 9999999999999;
       }
       // re-sort messages in this thread (if necessary)
       if (message_added && (reactData.threads[this_deliveryRec.thread_id].messages.length > 1)) {
