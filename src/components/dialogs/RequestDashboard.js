@@ -2415,7 +2415,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                                       </Typography>
                                     )
                                   ))}
-                                {this_item.workData.open && !options.selectOnly &&
+                                {this_item.workData.open && !options.selectOnly && this_item.workData.messageRecs &&
                                   this_item.workData.messageRecs.map((mLine, dX) => (
                                     <Typography
                                       key={('mrow_out' + dX)}
@@ -2428,7 +2428,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                               </Box>
                             </Box>
                           }
-                          {options.textForm &&
+                          {options.textForm && this_item?.workData?.textBased_request &&
                             <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='column' justifyContent='center' alignItems='flex-start'>
                               {this_item.workData.textBased_request.map((textLine, tX) =>
                                 <Typography
@@ -2547,7 +2547,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               square
             >
               <List>
-                {reactData.display_summaryList.map((this_item, this_index) => (
+                {reactData.display_summaryList && reactData.display_summaryList.map((this_item, this_index) => (
                   <Paper
                     component={Box}
                     elevation={0}
