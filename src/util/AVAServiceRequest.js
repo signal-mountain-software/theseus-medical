@@ -370,6 +370,11 @@ export async function handleServiceRequestMessaging(body, serviceRequestRec) {
       preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
       serviceRequestRec.messages = preparedMessages;
       serviceRequestRec.last_update = rTime.timestamp;
+      if (serviceRequestRec.on_behalf_of.toLowerCase() === 'anonymous') {
+        for (let this_message of preparedMessages) {
+          this_message.anonymous = true;
+        }
+      }
       let sendResults = (await sendMessages(preparedMessages)).pop();   // send all the messages in the queue.  THe service request status will reflect the results of the last message (pop)
       if (!sendResults.sent) {
         serviceRequestRec.last_status = 'Failed to send';

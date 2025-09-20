@@ -2640,6 +2640,9 @@ export async function sendMessages(body) {
       },
       TableName: "PostOffice"
     };
+    if (env.anonymous) { 
+      PostOfficeRec.Item.anonymous = true;
+    }
     if (env.testMode) { PostOfficeRec.TableName = "TestPostOffice"; };
     if (env.attachments) {
       PostOfficeRec.Item.attachments = makeArray(env.attachments);
