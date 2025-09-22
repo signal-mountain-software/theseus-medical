@@ -234,28 +234,49 @@ export default ({ options, defaults, onClose, onAbort }) => {
         }
       }
     };
+    let otherGroups = [];
     for (let gID in state.groups.publicGroups) {
       if (selectAll || pGroupList.includes(gID) || selectOpen) {
-        response[gID] = {
+        otherGroups.push({
           group_name: state.groups.publicGroups[gID].group_name,
           group_id: gID,
           group_type: 'public',
           role: state.groups.publicGroups[gID].role,
           level: 0
-        };
+        })
+  /*      response[gID] = {
+          group_name: state.groups.publicGroups[gID].group_name,
+          group_id: gID,
+          group_type: 'public',
+          role: state.groups.publicGroups[gID].role,
+          level: 0
+        };  */
       }
     };
     for (let gID in state.groups.privateGroups) {
       if (selectAll || pGroupList.includes(gID) || selectPrivate) {
-        response[gID] = {
+        otherGroups.push({
           group_name: state.groups.privateGroups[gID].group_name,
           group_id: gID,
           group_type: 'private',
           role: state.groups.privateGroups[gID].role,
           level: 0
-        };
+        })
+ /*       response[gID] = {
+          group_name: state.groups.privateGroups[gID].group_name,
+          group_id: gID,
+          group_type: 'private',
+          role: state.groups.privateGroups[gID].role,
+          level: 0
+        };  */
       }
     };
+    otherGroups.sort((a, b) => {
+      return (a.group_name < b.group_name) ? -1 : 1;
+    })
+    for (let this_otherGroup of otherGroups) {
+      response[this_otherGroup.group_id] = this_otherGroup
+    }
     return response;
   };
 
