@@ -165,6 +165,9 @@ export default ({ onSave, onClose }) => {
       if (restricted_to) {
         return restricted_to.includes(p.account_class);
       }
+      else if (!p.name) {
+        return false;
+      }
       else {
         return (p.account_class !== 'inactive');
       }
@@ -1320,7 +1323,7 @@ export default ({ onSave, onClose }) => {
                     allowCancel={true}
                   />
                 }
-                {reactData.isVendor &&
+                {reactData.isVendor && reactData.vendorList[reactData.adminIndex] &&
                   <AVAConfirm
                     promptText={`Confirm override check-out for ${reactData.vendorList[reactData.adminIndex].name}`}
                     cancelText={`Cancel`}
@@ -1353,7 +1356,7 @@ export default ({ onSave, onClose }) => {
                     allowCancel={true}
                   />
                 }
-                {reactData.guest_mode &&
+                {reactData.guest_mode && reactData.guestList[reactData.adminIndex] &&
                   <AVAConfirm
                     promptText={`Confirm override check-out for ${reactData.guestList[reactData.adminIndex].name}`}
                     cancelText={`Cancel`}
