@@ -1747,18 +1747,14 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               plugins: [
                                 // Core editing features
                                 // the inlinecss is part of the paid program.  Removing to see what the effect is...
-                               'anchor', 'autolink', 'charmap', 'codesample', 'emoticons', 'image', 'inlinecss', 'link', 'lists', 'media', 'searchreplace', 'table', 'visualblocks', 'wordcount',
+                               'anchor', 'autolink', 'charmap', 'codesample', 'emoticons', 'image', 'inlinecss', 'lists', 'media', 'searchreplace', 'table', 'visualblocks', 'wordcount',
                                 // 'anchor', 'autolink', 'charmap', 'codesample', 'emoticons', 'image', 'link', 'lists', 'media', 'searchreplace', 'table', 'visualblocks', 'wordcount',
                                 // Your account includes a free trial of TinyMCE premium features
                                 // Try the most popular premium features until May 26, 2025:
                                 'checklist', 'mediaembed', 'casechange', 'formatpainter', 'pageembed',  'permanentpen', 'advtable', 'advcode', 'editimage', 'advtemplate', 'mentions', 'tableofcontents', 'footnotes', 'mergetags', 'inlinecss', 'markdown'
                               ],
-                              toolbar: 'undo redo | blocks fontfamily fontsize | bold italic underline forecolor backcolor | link table mergetags | spellcheckdialog | align lineheight | checklist numlist bullist indent outdent | emoticons charmap | removeformat',
+                              toolbar: 'undo redo | blocks fontfamily fontsize | bold italic underline forecolor backcolor | table | spellcheckdialog | align lineheight | checklist numlist bullist indent outdent | emoticons charmap | removeformat',
                               line_height_formats: '0.8 1 1.2 1.4 1.6 2',
-                              mergetags_list: [
-                                { value: 'first_name', title: 'Recipient First Name' },
-                                { value: 'full_name', title: 'Recipient Full Name' }
-                              ],
                             }}
                           />
                         </Box>
