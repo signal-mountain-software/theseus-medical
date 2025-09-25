@@ -306,6 +306,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
         });
       }
       delete state.groups.publicGroups[draggedFrom.group_id];
+      delete state.groups.privateGroups[draggedFrom.group_id];
       dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups) });
       // does the group you are dragging have members?
       // if so, you have to update the groups for EVERY member
@@ -776,6 +777,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
             message: `${draggedFrom.groupObj.group_name} was successfully removed.`
           }
         };
+        delete state.groups.publicGroups[draggedFrom.groupObj.group_id];
+        delete state.groups.privateGroups[draggedFrom.groupObj.group_id];
+        dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups) });
         if (reactData.selectedGroup_id === draggedFrom.groupObj.group_id) {
           reactUpdObj.selectedGroupRec = false;
           reactUpdObj.selectedGroup_id = false;
@@ -980,6 +984,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                   style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
                 >
                   <Box display='flex' flexDirection='column'
+                    key={`activity-list_${Object.keys(groupsManagedObject).length}`}
                     justifyContent='flex-start'
                     alignItems='flex-start'
                   >
