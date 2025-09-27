@@ -6,7 +6,7 @@ import { html_to_pdf } from '../../util/AVAMessages';
 import Select from "react-dropdown-select";
 
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
-import { extract, dbClient, titleCase, listFromArray, cl, uuid, recordExists, isEmpty, array_in_array } from '../../util/AVAUtilities';
+import { extract, dbClient, titleCase, sentenceCase, listFromArray, cl, uuid, recordExists, isEmpty, array_in_array } from '../../util/AVAUtilities';
 import { getMemberList } from '../../util/AVAGroups';
 import { AVATextStyle } from '../../util/AVAStyles';
 import { makeDate } from '../../util/AVADateTime';
@@ -279,30 +279,30 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   const [rowLimit, setRowLimit] = React.useState(20);
   const scrollValue = 20;
 
- /*
-  const autoFocus = React.useRef(null);
-  React.useEffect(() => {
-    if (autoFocus && autoFocus.current) {
-      autoFocus.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      });
-    }
-  }, []);
-*/
-  
+  /*
+   const autoFocus = React.useRef(null);
+   React.useEffect(() => {
+     if (autoFocus && autoFocus.current) {
+       autoFocus.current.scrollIntoView({
+         behavior: 'smooth',
+         block: 'start',
+       });
+     }
+   }, []);
+ */
+
   React.useEffect(() => {
     const onPopState = (e) => {
       console.log("Back navigation triggered");
-      onReset()
+      onReset();
     };
     window.history.pushState(null, 'useEffect', window.location.pathname);
     window.addEventListener("popstate", onPopState);
     return () => {
       window.removeEventListener("popstate", onPopState);
     };
-  }, [onReset])
-  
+  }, [onReset]);
+
   function makeReadableTime(pJavaDate) {
     let dDate = new Date(Number(pJavaDate));
     return dDate.toLocaleDateString('en-US', {
@@ -984,16 +984,16 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         }
       } while (queryObj.ExclusiveStartKey);
     }
-  /*  if (autoFocus && autoFocus.current) {
-      autoFocus.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      });
-    }
-    */
+    /*  if (autoFocus && autoFocus.current) {
+        autoFocus.current.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }
+      */
   }
 
-  async function getSenderNames(senderList) { 
+  async function getSenderNames(senderList) {
     let inputList = [senderList].flat();
     if (inputList.includes('*all')) {
       return reactData.accessList;
@@ -1003,7 +1003,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       return memberObj.peopleList;
     }
   }
-  
+
   async function heldMessages() {
     // Get all messages currently in hold
     let actionRecs;
@@ -1067,13 +1067,13 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         await processDeliveryRecs(mailRecs, 'held', '*any');
       }
     } while (queryObj.ExclusiveStartKey);
-   /*  if (autoFocus && autoFocus.current) {
-      autoFocus.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      });
-    }
-    */
+    /*  if (autoFocus && autoFocus.current) {
+       autoFocus.current.scrollIntoView({
+         behavior: 'smooth',
+         block: 'start',
+       });
+     }
+     */
   }
 
   async function processDeliveryRecs(deliveryRecs, inOut, my_id) {
@@ -1176,7 +1176,10 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           let this_recipient = this_deliveryRec.recipient_list[this_recipient_key];
           if (!reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.includes(this_recipient.id)) {
             reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.push(this_recipient.id);
-            let recipient_number = reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.push({
+          }
+          let recipient_number = reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.findIndex(r => { return r.recipient_id === this_recipient.id; });
+          if (recipient_number === -1) {
+            recipient_number = reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.push({
               recipient_id: this_recipient.id,
               recipient_name: (`${this_recipient.name.first} ${this_recipient.name.last}`).trim(),
               wasHeld: false,
@@ -1188,19 +1191,25 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
               heldUntil: 0,
               methods: {}
             }) - 1;
-            let this_method = standardizeMethod(this_recipient.method);
-            if (this_method === 'held') {
-              reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].wasHeld = true;
-              reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_held = true;
-              reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].heldUntil = this_deliveryRec.recipient_list.holdUntil;
-              if (this_deliveryRec.recipient_list.hold_reason === 'blocked') {
-                reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_blocked = true;
-              }
-              if (this_deliveryRec.recipient_list.hold_reason === 'replaced') {
-                reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_redirected = true;
-              }
+          }
+          let this_method = standardizeMethod(this_recipient.method);
+          if (this_method === 'held') {
+            reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].wasHeld = true;
+            reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_held = true;
+            reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].heldUntil = this_deliveryRec.recipient_list.holdUntil;
+            if (this_deliveryRec.recipient_list.hold_reason === 'blocked') {
+              reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_blocked = true;
+            }
+            if (this_deliveryRec.recipient_list.hold_reason === 'replaced') {
+              reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_redirected = true;
             }
           }
+          reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].methods[this_method] = {
+            last_update_time: this_deliveryRec.created_time,
+            result: this_deliveryRec.results.success.includes(this_recipient_key) ? 'Sucessfully sent' :
+              (this_deliveryRec.results.duplicate.includes(this_recipient_key) ? 'Not sent - duplicate destination address' : 'Failed to send'),
+            composite_key: `${this_deliveryRec.composite_key}~D:${this_recipient_key}`
+          };
         }
       }
 
@@ -1226,18 +1235,18 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         else {
           reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.push(this_deliveryRec.deliver_to);
         }
-   //     recipient_number = reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.push({
-   //       recipient_id: this_deliveryRec.deliver_to,
-   //       recipient_name: (`${this_deliveryRec.recipient_list.name.first} ${this_deliveryRec.recipient_list.name.last}`).trim(),
-   //       wasHeld: false,
-   //       status_held: false,
-   //       status_blocked: false,
-   //       status_redirected: false,
-   //       status_with_rules: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.rule_used),
-   //       status_not_og: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.not_original_recipient),
-   //       heldUntil: 0,
-   //       methods: {}
-   //     }) - 1;
+        //     recipient_number = reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.push({
+        //       recipient_id: this_deliveryRec.deliver_to,
+        //       recipient_name: (`${this_deliveryRec.recipient_list.name.first} ${this_deliveryRec.recipient_list.name.last}`).trim(),
+        //       wasHeld: false,
+        //       status_held: false,
+        //       status_blocked: false,
+        //       status_redirected: false,
+        //       status_with_rules: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.rule_used),
+        //       status_not_og: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.not_original_recipient),
+        //       heldUntil: 0,
+        //       methods: {}
+        //     }) - 1;
       }
       /*
       let this_method = standardizeMethod(this_deliveryRec.deliver_method);
@@ -1353,11 +1362,52 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           result = this_recipient.methods[this_method].result;
         }
       }
-      this_line += ` ${this_recipient.wasHeld ? 'held, then ' : ''}via ${this_method} - ${result} ${makeDate(this_recipient.methods[this_method].last_update_time).relative}`;
+      this_line += ` ${this_recipient.wasHeld ? 'held, then ' : ''}via ${this_method} - ${result}`;
       response.push(this_line);
       this_line = '';
     }
     return response;
+  }
+
+  function makeResultText(request) {
+    /*
+     resultArray: this_status.results,
+     currentValue: this_recipient.methods[this_method].result
+    */
+    let resultText = request.currentValue;
+    let alreadyOpened = false;
+    for (let this_result of request.resultArray) {
+      if (this_result.result.toLowerCase().startsWith('reply')) {
+        return `Replied to ${makeDate(this_result.posted_time).oaDate}`;
+      }
+      else if (this_result.result.toLowerCase() === 'response') {
+        return `Call responded to with "${this_result.response}" ${makeDate(this_result.posted_time).oaDate}`;
+      }
+      else if (!alreadyOpened) {
+        if (this_result.result.toLowerCase() === 'open') {
+          resultText = `Opened ${makeDate(this_result.posted_time).oaDate}`;
+          alreadyOpened = true;
+        }
+        else if (this_result.result.toLowerCase().startsWith('deliver')) {
+          resultText = `Delivery`;
+          if (this_result.info && this_result.info.phoneCarrier) {
+            resultText += ` confirmed by ${this_result.info.phoneCarrier}`;
+          }
+          resultText += ` ${makeDate(this_result.posted_time).oaDate}`;
+        }
+        else if ((this_result.result.toLowerCase().includes('no answer')) || (this_result.result.toLowerCase().includes('busy'))) {
+          resultText = `No answer ${makeDate(this_result.posted_time).oaDate}`;
+        }
+        else if (this_result.result.toLowerCase().includes('answered')) {
+          resultText = `${sentenceCase(this_result.result)} ${makeDate(this_result.posted_time).oaDate}`;
+          alreadyOpened = true;
+        }
+        else {
+
+        }
+      }
+    }
+    return resultText;
   }
 
   function makeMethodLine(this_message) {
@@ -1747,11 +1797,11 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               plugins: [
                                 // Core editing features
                                 // the inlinecss is part of the paid program.  Removing to see what the effect is...
-                               'anchor', 'autolink', 'charmap', 'codesample', 'emoticons', 'image', 'inlinecss', 'lists', 'media', 'searchreplace', 'table', 'visualblocks', 'wordcount',
+                                'anchor', 'autolink', 'charmap', 'codesample', 'emoticons', 'image', 'inlinecss', 'lists', 'media', 'searchreplace', 'table', 'visualblocks', 'wordcount',
                                 // 'anchor', 'autolink', 'charmap', 'codesample', 'emoticons', 'image', 'link', 'lists', 'media', 'searchreplace', 'table', 'visualblocks', 'wordcount',
                                 // Your account includes a free trial of TinyMCE premium features
                                 // Try the most popular premium features until May 26, 2025:
-                                'checklist', 'mediaembed', 'casechange', 'formatpainter', 'pageembed',  'permanentpen', 'advtable', 'advcode', 'editimage', 'advtemplate', 'mentions', 'tableofcontents', 'footnotes', 'mergetags', 'inlinecss', 'markdown'
+                                'checklist', 'mediaembed', 'casechange', 'formatpainter', 'pageembed', 'permanentpen', 'advtable', 'advcode', 'editimage', 'advtemplate', 'mentions', 'tableofcontents', 'footnotes', 'mergetags', 'inlinecss', 'markdown'
                               ],
                               toolbar: 'undo redo | blocks fontfamily fontsize | bold italic underline forecolor backcolor | table | spellcheckdialog | align lineheight | checklist numlist bullist indent outdent | emoticons charmap | removeformat',
                               line_height_formats: '0.8 1 1.2 1.4 1.6 2',
@@ -1975,7 +2025,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                       }}
                     >
                       <Box display='flex' flexDirection='column'
-   //                     ref={((this_thread === reactData.newMessageThread) && (message_index === 0)) ? autoFocus : null}
+                      //                     ref={((this_thread === reactData.newMessageThread) && (message_index === 0)) ? autoFocus : null}
                       >
                         <Box
                           display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
@@ -2154,22 +2204,46 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               flexDirection='row'
                               style={this_message.attachments ? { marginBottom: '8px', marginTop: '8px' } : {}}
                             >
-                              {reactData.expanded_composite_key !== this_message.composite_key ?
-                                <ExpandMoreIcon
-                                  onClick={() => {
-                                    updateReactData({
-                                      expanded_composite_key: this_message.composite_key
-                                    }, true);
-                                  }}
-                                />
-                                :
-                                <ExpandLessIcon
-                                  onClick={() => {
-                                    updateReactData({
-                                      expanded_composite_key: false
-                                    }, true);
-                                  }}
-                                />
+                              {(this_message.inOut !== 'in') &&
+                                (reactData.expanded_composite_key !== this_message.composite_key ?
+                                  <ExpandMoreIcon
+                                    onClick={async () => {
+                                      for (let this_recipient of this_message.recipients) {
+                                        for (let this_method in this_recipient.methods) {
+                                          let this_status = await dbClient
+                                            .get({
+                                              Key: {
+                                                thread_id: this_thread,
+                                                composite_key: this_recipient.methods[this_method].composite_key
+                                              },
+                                              TableName: "TheseusMessages",
+                                            })
+                                            .promise()
+                                            .catch(error => {
+                                              this_status = null;
+                                            });
+                                          if (recordExists(this_status)) {
+                                            this_recipient.methods[this_method].result = makeResultText({
+                                              resultArray: this_status.Item.results,
+                                              currentValue: this_recipient.methods[this_method].result
+                                            });
+                                          }
+                                        }
+                                      }
+                                      updateReactData({
+                                        expanded_composite_key: this_message.composite_key
+                                      }, true);
+                                    }}
+                                  />
+                                  :
+                                  <ExpandLessIcon
+                                    onClick={() => {
+                                      updateReactData({
+                                        expanded_composite_key: false
+                                      }, true);
+                                    }}
+                                  />
+                                )
                               }
                               {(message_index === 0) &&
                                 !reactData.viewOnly &&
