@@ -171,8 +171,16 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       reactUpdObj.og = {};
       if (!parm_personRec.person_id || parm_personRec.person_id.startsWith('*NEW~') || options.newPerson) {
         reactUpdObj.mode = 'add';
-        reactUpdObj.og.peopleRec = Object.assign({}, initialValues?.peopleRec);
-        reactUpdObj.og.sessionRec = Object.assign({}, initialValues?.sessionRec);
+        reactUpdObj.og.peopleRec = Object.assign({},
+          { inbound_customizations: {} },
+          initialValues?.peopleRec);
+        reactUpdObj.og.sessionRec = Object.assign({},
+          {
+            customizations: { font_size: 1 },
+            forceSetPassword: false
+          },
+          initialValues?.sessionRec
+        );
       }
       else {
         reactUpdObj.person_id = parm_personRec.person_id;
@@ -324,7 +332,6 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           if (!sessionRec.Item.forceSetPassword) {
             sessionRec.Item.forceSetPassword = false;
           }
- //         AVADefaults({ fontSize: sessionRec.Item.customizations.font_size });
           reactUpdObj.og.sessionRec = sessionRec.Item;
         }
         else {
