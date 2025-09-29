@@ -8,7 +8,7 @@ import PersonFilter from './PersonFilter';
 import AVAConfirm from './AVAConfirm';
 
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
-import { deepCopy, titleCase, sentenceCase, makeArray, s3, isObject, isEmpty } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, sentenceCase, makeArray, s3, isObject, isEmpty, dbClient } from '../../util/AVAUtilities';
 import { getActivity } from '../../util/AVAObservations';
 import { makeDate } from '../../util/AVADateTime';
 import { buildDisplayRows, buildQualifiers } from '../../util/AVAActivityLoader';
@@ -412,6 +412,27 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   React.useEffect(() => {
     async function initialize() {
+      let activity_info = `${reactData.factName} request started`;
+      if (state.session.user_id !== state.session.patient_id) {
+        activity_info += ` by ${state.session.user_id}`;
+      }
+      dbClient
+        .put({
+          TableName: 'ActivityLog',
+          Item: {
+            timestamp: new Date().getTime(),
+            user_id: state.session.patient_id || 'error-no_patient_id',
+            activity_code: activity_info,
+            activity_name: `MultiObservationFormD`,
+            cookieValues: 'n/a',
+            errorInfo: null,
+            AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+          }
+        })
+        .promise()
+        .catch(putError => {
+          console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
+        });
       await initialLoad();
     }
     if (!reactData.initialLoadComplete) {
@@ -1660,7 +1681,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
       }
     });
-    let returnArray = [`Your request has not been sent yet!`,`[bold]${reactData.factName}`];
+    let returnArray = [`Your request has not been sent yet!`, `[bold]${reactData.factName}`];
     if (reactData.commonText) {
       returnArray = [titleCase(reactData.commonText)];
     }
@@ -1673,6 +1694,24 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
       returnArray.push(...responseArray);
     }
+    let activity_info = `${reactData.factName} confirmation screen shown`;
+    dbClient
+      .put({
+        TableName: 'ActivityLog',
+        Item: {
+          timestamp: new Date().getTime(),
+          user_id: state.session.patient_id || 'error-no_patient_id',
+          activity_code: activity_info,
+          activity_name: `MultiObservationFormD`,
+          cookieValues: 'n/a',
+          errorInfo: returnArray,
+          AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+        }
+      })
+      .promise()
+      .catch(putError => {
+        console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
+      });
     return [confirmStatus, returnArray];
   };
 
@@ -2443,6 +2482,23 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             setCancelPending(false);
           }}
           onConfirm={() => {
+            dbClient
+              .put({
+                TableName: 'ActivityLog',
+                Item: {
+                  timestamp: new Date().getTime(),
+                  user_id: state.session.patient_id || 'error-no_patient_id',
+                  activity_code: `Exit requested and confirmed by user`,
+                  activity_name: `MultiObservationFormD`,
+                  cookieValues: 'n/a',
+                  errorInfo: null,
+                  AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+                }
+              })
+              .promise()
+              .catch(putError => {
+                console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
+              });
             onClose();
           }}
         >
@@ -2474,8 +2530,28 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           promptText={confirmPrompt}
           cancelText={'Go back'}
           confirmText={'Send'}
-          onCancel={() => { setConfirmStatus(''); }}
+          onCancel={async () => {
+            dbClient
+              .put({
+                TableName: 'ActivityLog',
+                Item: {
+                  timestamp: new Date().getTime(),
+                  user_id: state.session.patient_id || 'error-no_patient_id',
+                  activity_code: `Confirmation response "go back" caused return`,
+                  activity_name: `MultiObservationFormD`,
+                  cookieValues: 'n/a',
+                  errorInfo: null,
+                  AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+                }
+              })
+              .promise()
+              .catch(putError => {
+                console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
+              });
+            setConfirmStatus('');
+          }}
           onConfirm={async () => {
+            let activity_info = `Request send confirmed`;
             if (!reactData.lockSend) {
               updateReactData(
                 { lockSend: true },
@@ -2486,6 +2562,26 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               }
               await sendRequests(reactData.columnList);
             }
+            else {
+              activity_info += ` - NOT sent, possible duplicate`;
+            }
+            dbClient
+              .put({
+                TableName: 'ActivityLog',
+                Item: {
+                  timestamp: new Date().getTime(),
+                  user_id: state.session.patient_id || 'error-no_patient_id',
+                  activity_code: activity_info,
+                  activity_name: `MultiObservationFormD`,
+                  cookieValues: 'n/a',
+                  errorInfo: null,
+                  AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+                }
+              })
+              .promise()
+              .catch(putError => {
+                console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
+              });
             onSave();
           }}
         />
