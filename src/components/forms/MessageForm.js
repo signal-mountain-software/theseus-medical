@@ -2168,7 +2168,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                     key={`thread_id`}
                                     style={AVATextStyle({ align: 'right', size: 0.6, margin: { top: 1 } })}
                                   >
-                                    {`(Message ID ${this_message.composite_key.split('~D')[0]})`}
+                                    {`(Message ID ${this_message.composite_key ? (this_message.composite_key.split('~D')[0]) : ''})`}
                                   </Typography>
                                 </Box>
                               }
@@ -2268,7 +2268,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                       updateReactData({
                                         newMessageRecipients,
                                         replyToList,
-                                        newMessageThread: this_message.thread_id || this_message.composite_key.split('~')[0].replace('T:', ''),
+                                        newMessageThread: this_message.thread_id || (this_message.composite_key ? this_message.composite_key.split('~')[0].replace('T:', '') : ''),
                                         newMessageSubject: this_message.subject,
                                         newMessageMode: true
                                       }, true);
@@ -2454,7 +2454,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                   (reactData.selections.length === 0)
                     ? 'Exit'
                     : ((reactData.selections.length === 1)
-                      ? `Reply to ${reactData.selections[0].person_name.split(' ')[0]}`
+                      ? `Reply to ${reactData.selections[0].person_name ? reactData.selections[0].person_name.split(' ')[0] : ''}`
                       : `Reply to ${reactData.selections.length} people`
                     ),
                 showAll: true,
