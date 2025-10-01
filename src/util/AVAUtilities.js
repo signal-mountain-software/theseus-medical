@@ -128,13 +128,11 @@ export async function getMarqueeMessage(client_id, options = {}) {
   let now = new Date().getTime();
   let mRecs = await dbClient
     .query({
-      KeyConditionExpression: 'client_id = :c and end_time > :now',
+      KeyConditionExpression: 'client_id = :c',
       ExpressionAttributeValues: {
         ':c': client_id,
-        ':now': now
       },
       TableName: "MarqueeMessages",
-      IndexName: "end_time-index"
     })
     .promise()
     .catch(error => {
@@ -142,7 +140,10 @@ export async function getMarqueeMessage(client_id, options = {}) {
     });
   if (recordExists(mRecs)) {
     let selectedMRecs = mRecs.Items.filter(mRec => {
-      if (!options.future_OK && (mRec.start_date > now)) {
+      if (!options.future_OK && mRec.start_time && (mRec.start_time > now)) {
+        return false;
+      }
+      if (mRec.end_time && (mRec.end_time < now)) {
         return false;
       }
       if (!options.belongsTo) {
