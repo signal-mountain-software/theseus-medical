@@ -2,6 +2,7 @@ import React from 'react';
 import { titleCase, sentenceCase, dbClient, cl } from '../../util/AVAUtilities';
 import { getBulletinBoard } from '../../util/AVAObservations';
 import AVATextInput from '../forms/AVATextInput';
+import useSession from '../../hooks/useSession';
 
 import { Typography } from '@material-ui/core';
 import TextField from '@material-ui/core/TextField';
@@ -116,6 +117,7 @@ const useStyles = makeStyles(theme => ({
 export default ({ pClient, pGroup = 'ALL', onClose }) => {
 
   var rowsWritten;
+  const { state } = useSession();
 
   const isMounted = React.useRef(false);
   const [reactData, setReactData] = React.useState({
@@ -484,7 +486,7 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
                               updateReactData(reactUpdObj, true);
                             }}
                             edge="start"
-                            />                          
+                          />
                         </Box>
                       </Box>
                       { /* Existing items in this Section */}
@@ -655,9 +657,27 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
                 options={{
                   buttonText: ['Choose', 'Save & Continue'],
                   title: [reactData.textInput[reactData.selectedSection].new],
-                  oneOnly: true
+                  oneOnly: true,
+                  calledFrom: 'BulletinBoard'
                 }}
-                onCancel={() => {
+                onCancel={async () => {
+                  dbClient
+                    .put({
+                      TableName: 'ActivityLog',
+                      Item: {
+                        timestamp: new Date().getTime(),
+                        user_id: state.session.patient_id || 'error-no_patient_id',
+                        activity_code: `BulletinBoard`,
+                        activity_name: `Cancel/Exit tapped - no update to menu`,
+                        cookieValues: 'n/a',
+                        errorInfo: null,
+                        AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+                      }
+                    })
+                    .promise()
+                    .catch(putError => {
+                      console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
+                    });
                   updateReactData({
                     addAttachment: false
                   }, true);
@@ -670,6 +690,8 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
                     updatedLine.unshift(`~~${reactData.selectedSection}`);
                   }
                   reactData.bBoardList[reactData.group_id].groupRec.common_activities.splice(first_entry, 0, ...updatedLine);
+                  let activityLogMsg = `Save tapped - loaded ${updatedLine}`;
+                  let activityLogError = null;
                   await dbClient
                     .update({
                       Key: {
@@ -688,6 +710,25 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
                     .promise()
                     .catch(error => {
                       cl(`caught error updating Group; error is: `, error);
+                      activityLogMsg = `Save tapped but load failed for ${updatedLine}`;
+                      activityLogError = error;
+                    });
+                  dbClient
+                    .put({
+                      TableName: 'ActivityLog',
+                      Item: {
+                        timestamp: new Date().getTime(),
+                        user_id: state.session.patient_id || 'error-no_patient_id',
+                        activity_code: `BulletinBoard`,
+                        activity_name: activityLogMsg,
+                        cookieValues: 'n/a',
+                        errorInfo: activityLogError,
+                        AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+                      }
+                    })
+                    .promise()
+                    .catch(putError => {
+                      console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
                     });
                   let bbResponse = await setBBoard();
                   reactData.textInput[reactData.selectedSection]['new'] = '';

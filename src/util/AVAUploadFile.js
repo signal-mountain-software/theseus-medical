@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { s3, elastictranscoder, makeArray, deepCopy } from '../util/AVAUtilities';
+import { s3, elastictranscoder, makeArray, deepCopy, dbClient } from '../util/AVAUtilities';
+import useSession from '../hooks/useSession';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -46,6 +47,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
 
   const AVAClass = AVAclasses();
   const classes = useStyles();
+  const { state } = useSession();
 
   // if options.buttonText, use buttontext as follows:
   //  [0] - use as default (not shown when no file has been selected yet)
@@ -142,7 +144,41 @@ export default ({ onCancel, onLoad, options = {} }) => {
       total: 1,
       progress: 0
     };
+    dbClient
+      .put({
+        TableName: 'ActivityLog',
+        Item: {
+          timestamp: new Date().getTime(),
+          user_id: state.session.patient_id || 'error-no_patient_id',
+          activity_code: `AVAUploadFile called from ${options.calledFrom || 'not_specified'}`,
+          activity_name: `Upload complete for ${pTarget.name} at ${s3Resp.Location}`,
+          cookieValues: 'n/a',
+          errorInfo: s3Resp,
+          AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+        }
+      })
+      .promise()
+      .catch(putError => {
+        console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
+      });
     if (extension.toLowerCase() === 'mov') {
+      dbClient
+        .put({
+          TableName: 'ActivityLog',
+          Item: {
+            timestamp: new Date().getTime(),
+            user_id: state.session.patient_id || 'error-no_patient_id',
+            activity_code: `AVAUploadFile called from ${options.calledFrom || 'not_specified'}`,
+            activity_name: `Conversion job started for ${pTarget.name}`,
+            cookieValues: 'n/a',
+            errorInfo: s3Resp,
+            AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+          }
+        })
+        .promise()
+        .catch(putError => {
+          console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
+        });
       var converterParms = {
         PipelineId: '1626108726566-cv5z9u',
         Input: {
@@ -166,6 +202,23 @@ export default ({ onCancel, onLoad, options = {} }) => {
         s3Resp.Location = `${s3Resp.Location.split('.').slice(0, -1).join('.')}.mp4`;
         extension = 'mp4';
       }
+      dbClient
+        .put({
+          TableName: 'ActivityLog',
+          Item: {
+            timestamp: new Date().getTime(),
+            user_id: state.session.patient_id || 'error-no_patient_id',
+            activity_code: `AVAUploadFile called from ${options.calledFrom || 'not_specified'}`,
+            activity_name: `Conversion job ended - results: ${converterResult.ok ? 'OK' : converterResult.status}`,
+            cookieValues: 'n/a',
+            errorInfo: s3Resp,
+            AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+          }
+        })
+        .promise()
+        .catch(putError => {
+          console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
+        });
     }
     reactData.uploadList.push({ fName: pTarget.name, fType: extension, fLoc: s3Resp.Location });
     updateReactData({
@@ -189,7 +242,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
           });
         const status = Job?.Status; // Submitted | Progressing | Complete | Canceled | Error
         if (status === "Complete") return { ok: true, job: Job };
-        if (status === "Error" || status === "Canceled") return { ok: false, job: Job };
+        if (status === "Error" || status === "Canceled") return { ok: false, job: Job, status };
 
         if (Date.now() - start > timeoutMs) throw new Error("Timed out waiting for job");
         await new Promise(r => setTimeout(r, intervalMs)); // backoff if you like
@@ -393,7 +446,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
               </Typography>
               {reactData.attachmentList.map((this_attachment, x) => (
                 <Box display='flex' mb={2} flexDirection='row' justifyContent='flex-start'
-                  alignItems='center' key={`qrOpt_attachmentLine-${x}`} width={'100%'} 
+                  alignItems='center' key={`qrOpt_attachmentLine-${x}`} width={'100%'}
                 >
                   <Box display='flex' flexDirection='column' width={'100%'} justifyContent='center'
                     alignItems='flex-start' key={`qrOpt_attachmentBox-${x}`}
@@ -426,7 +479,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
                         ${cleanForDisplay(this_attachment.Key)}
                         ${loadingInProgress(x) ? ' - ' + ((Math.floor((reactData.loadProgress[x].progress) * 100) / 100).toString() + '%') : ''}
                         ${(loadingInProgress(x) && (this_attachment.Key.split('.').pop() === 'mov')
-                          && (reactData.loadProgress[x].progress > 95)) ? ` - Converting from MOV format` : ''}
+                            && (reactData.loadProgress[x].progress > 95)) ? ` - Converting from MOV format, please wait...` : ''}
                         `}
                       </Typography>
                       {!loadingInProgress(x) &&
@@ -440,7 +493,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
                           src={this_attachment.Location}
                         />}
                     </Box>
-                    {loadingInProgress(x) && 
+                    {loadingInProgress(x) &&
                       !((this_attachment.Key.split('.').pop() === 'mov') && (reactData.loadProgress[x].progress >= 99)) &&
                       <React.Fragment>
                         <LinearProgress
