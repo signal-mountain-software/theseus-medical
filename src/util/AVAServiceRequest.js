@@ -171,7 +171,10 @@ export async function getServiceRequests(body) {
         console.log({ 'Error reading ServiceRequests': error, index: qQ.IndexName, qQ });
       });
     if (recordExists(qR)) {
-      unSortedList = unSortedList.concat(qR.Items);
+      unSortedList = unSortedList.concat(qR.Items.map(r => {
+        r.history.splice(50);
+        return r;
+      }));
       qQ.ExclusiveStartKey = qR.LastEvaluatedKey;
     }
     loopCount++;
@@ -739,7 +742,7 @@ export function formatServiceRequestDetails(pInput, options = {}) {
         textValue: <string>
       }, ...
     ],
-    */   
+    */
     this_request = {
       selections: [],
       options: {},
@@ -787,7 +790,7 @@ export function formatServiceRequestDetails(pInput, options = {}) {
       let qualifiers = [];
       if (!this_request.textInput[s]) {
         let unTrimmed_selection = s;
-    //    [unTrimmed_selection, ...choices] = s.split(/[();,]/);
+        //    [unTrimmed_selection, ...choices] = s.split(/[();,]/);
         selection = unTrimmed_selection.trim();
       }
       if (this_request.qualifiers?.[selection]) {
@@ -865,7 +868,7 @@ export function formatServiceRequestDetails(pInput, options = {}) {
     let fee_string = new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-    }).format(total_fees)
+    }).format(total_fees);
     requestDetailsObj[`Total: ${fee_string}`] = [];
   }
   return requestDetailsObj;

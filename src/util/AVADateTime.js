@@ -242,7 +242,7 @@ export function makeDate(pInput, optionIn = {}) {
         absDate += ` ${targetDate.getFullYear()}`;
         if (daysDiff(targetDate, new Date()) > 21) { relDate += ` ${targetDate.getFullYear()}`; }
     }
-    oaDate = `on ${absDate}`;
+    oaDate = `on ${titleCase(absDate)}`;
     if ((targetDate.getHours() > 0) || (targetDate.getMinutes() > 0)) {
         let tOfDay = ` at ${targetDate.toLocaleString([], { timeZone: options.timeZone, hour: 'numeric', minute: '2-digit' })}`;
         absDate += tOfDay;
@@ -310,7 +310,7 @@ export function makeDate(pInput, optionIn = {}) {
         'absolute_full': titleCase(absFull),
         'timeOnly': targetDate.toLocaleString([], { timeZone: options.timeZone, hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }),
         'dateOnly': dateOnly,
-        'oaDate': titleCase(oaDate),
+        'oaDate': oaDate,
         'date': targetDate,
         'timestamp': targetDateStamp,
         'ymd': targetDateYMD,

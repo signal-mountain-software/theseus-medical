@@ -366,10 +366,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         if (marqueeData.findIndex(m => {
           return (m.priorityMessage);
         }) === -1) {
-          marqueeData.unshift([
+          marqueeData.unshift(
             { message: `${reactData.greetingWords}, ${reactData.greetingName}!` },
             { message: `AVA for ${state.session.client_name}` }
-          ]);
+          );
         }
       }
       updateReactData({
@@ -432,10 +432,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         if (marqueeData.findIndex(m => {
           return (m.priorityMessage);
         }) === -1) {
-          marqueeData.unshift([
+          marqueeData.unshift(
             { message: `${reactData.greetingWords}, ${reactData.greetingName}!` },
             { message: `AVA for ${state.session.client_name}` }
-          ]);
+          );
         }
       }
       updateReactData({
@@ -824,10 +824,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           if (marqueeData.findIndex(m => {
             return (m.priorityMessage);
           }) === -1) {
-            marqueeData.unshift([
+            marqueeData.unshift(
               { message: `${reactUpdObj.greetingWords}, ${tempName}!` },
               { message: `AVA for ${state.session.client_name}` }
-            ])
+            )
           }
         }
         updateReactData({

@@ -4,7 +4,7 @@ import AVATextInput from './AVATextInput';
 import { Snackbar, Dialog, Box, Button, Paper, Typography } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 
-import { isEmpty, titleCase, dbClient, cl } from '../../util/AVAUtilities';
+import { isEmpty, titleCase, dbClient, cl, recordExists } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { determineClass } from '../../util/AVAGroups';
 import { getServiceRequests, putServiceRequest, updateServiceRequest } from '../../util/AVAServiceRequest';
@@ -95,6 +95,7 @@ export default ({ onSave, onClose }) => {
         let mode = determineMode(Object.assign({}, state.patient, { account_class: got_class }));
         reactUpdObj.currentStatus = await getCurrentStatus(state.session.client_id, state.session.patient_id, mode);
         if (!reactUpdObj.currentStatus) {
+          reactUpdObj.validated_user = false;
           let timestamp = new Date().getTime();
           dbClient
             .put({
@@ -191,7 +192,24 @@ export default ({ onSave, onClose }) => {
   }
 
   async function getCurrentStatus(client_id, person_id, mode) {
-    let reqArray = await getServiceRequests({ client_id, person_id, foreign_key: mode, request_type: "checkout" });
+    let coRequest = await dbClient
+      .get({
+        Key: {
+          client_id,
+          request_id: `${person_id}_checkout`
+        },
+        TableName: "ServiceRequests"
+      })
+      .promise()
+      .catch(error => { cl(`***ERR reading Customizations*** caught error is: ${error}`); });
+    let reqArray = [];
+    if (recordExists(coRequest)) {
+      coRequest.Item.history.splice(50);
+      reqArray = [coRequest.Item];
+    }
+    else {
+      reqArray = await getServiceRequests({ client_id, person_id, foreign_key: mode, request_type: "checkout" });
+    }
     if (reqArray.length === 0) {
       let now = new Date().getTime();
       return {
@@ -678,6 +696,7 @@ export default ({ onSave, onClose }) => {
                We are checking in/out a Resident
                ********************************** */
             reactData.validated_user
+            && reactData.currentStatus
             && (reactData.resident_mode)
             &&
             (['in', 'none'].includes(reactData.currentStatus.last_status) ?
@@ -768,6 +787,7 @@ export default ({ onSave, onClose }) => {
                We are checking in/out Staff
                ********************************** */
             reactData.validated_user
+            && reactData.currentStatus
             && reactData.staff_mode
             &&
             (['in', 'none'].includes(reactData.currentStatus.last_status) ?
@@ -829,6 +849,7 @@ export default ({ onSave, onClose }) => {
                We are checking in/out a Guest or Vendor
                ********************************** */
             reactData.validated_user
+            && reactData.currentStatus
             && reactData.guest_mode
             &&
             (['in', 'none'].includes(reactData.currentStatus.last_status) ?
