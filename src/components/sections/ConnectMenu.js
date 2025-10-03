@@ -1438,16 +1438,31 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                           }}
                           onContextMenu={async (e) => {
                             e.preventDefault();
-                            updateReactData({
-                              alert: {
-                                severity: 'info',
-                                title: this_row.activity_name,
-                                message: <div>
-                                  Activity Code: {this_row.activity_code}<br />
-                                  Row Type: {this_row.row_type}<br />
-                                  Why on Menu: {this_row.reason}</div>
-                              }
-                            }, true);
+                            if (this_row.activity_code === 'render.generic') {
+                              updateReactData({
+                                alert: {
+                                  severity: 'info',
+                                  title: this_row.activity_name,
+                                  message: <div>
+                                    Activity Code: render.generic<br />
+                                    File: {this_row.default_value.split('/').pop()}<br />
+                                    Row Type: {this_row.row_type}<br />
+                                    Why on Menu: {this_row.reason}</div>
+                                }
+                              }, true);
+                            }
+                            else {
+                              updateReactData({
+                                alert: {
+                                  severity: 'info',
+                                  title: this_row.activity_name,
+                                  message: <div>
+                                    Activity Code: {this_row.activity_code}<br />
+                                    Row Type: {this_row.row_type}<br />
+                                    Why on Menu: {this_row.reason}</div>
+                                }
+                              }, true);
+                            }
                           }}
                           onClick={async () => {
                             await activityLog(pPerson, this_row.activity_code, this_row.activity_name, reactData.sectionOpen.index);
