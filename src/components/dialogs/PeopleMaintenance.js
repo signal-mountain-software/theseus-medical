@@ -233,6 +233,18 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           else {
             peopleRec.Item.checkout_message = false;
           }
+
+          for (let this_customField in reactData.local_customFields) {
+            if (!peopleRec.Item.local_data.hasOwnProperty(this_customField)) {
+              if ((reactData.local_customFields[this_customField].type || reactData.local_customFields[this_customField]) !== 'boolean') {
+                peopleRec.Item.local_data[this_customField] = '';
+              }
+              else {
+                peopleRec.Item.local_data[this_customField] = false;
+              }
+            }
+          }
+
           reactUpdObj.og.familyRecs = [];
           reactUpdObj.myFamilyData = [];
           if (peopleRec.Item.family_groups && (peopleRec.Item.family_groups.length > 0)) {
@@ -374,10 +386,10 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         component_name: 'Snapshot'
       },
       {
-        section_name: 'Administrative Data',
+        section_name: 'Local & Administrative Data',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('AdministrativeSection')) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.sectionList && reactData.sectionList.includes('admin'))),
+        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('admin') : true)),
         version_id: 0,
         component_name: 'AdministrativeSection'
       },
