@@ -234,6 +234,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             peopleRec.Item.checkout_message = false;
           }
 
+          if (!peopleRec.Item.local_data) {
+            peopleRec.Item.local_data = {};
+          }
           for (let this_customField in reactData.local_customFields) {
             if (!peopleRec.Item.local_data.hasOwnProperty(this_customField)) {
               if ((reactData.local_customFields[this_customField].type || reactData.local_customFields[this_customField]) !== 'boolean') {
