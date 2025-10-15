@@ -414,7 +414,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                   style={{ marginLeft: '8px', marginTop: '24px', backgroundColor: 'white', color: 'black' }}
                   size='small'
                 >
-                  {isSmallScreen() ? `Create new` : `Create a new account for the ${currentValues.familyRecs[fNdx].family_name}`}
+                  {isSmallScreen() ? `Create new` : `Create a new account for ${currentValues.familyRecs[fNdx].family_name}`}
                 </Button>
               }
               {(reactData.administrative_account) &&
