@@ -675,7 +675,7 @@ export default ({ request = {}, onClose }) => {
           type: response.fields[this_field].type
         });
         // set prompt
-        response.fields[this_field].prompt = formRec.fields[this_field]?.prompt || { value: sentenceCase(this_field) };
+        response.fields[this_field].prompt = deepCopy(formRec.fields[this_field]?.prompt || { value: sentenceCase(this_field) });
         // Selection Obj should be set for the special case - type = select or type = select & text
         if (response.fields[this_field].type.startsWith('select')) {
           response.fields[this_field].selectionObj = formRec.fields[this_field]?.value.selection;
@@ -789,54 +789,56 @@ export default ({ request = {}, onClose }) => {
           this_field = this_field.field_name;
           this_section.fields[index] = this_field;
         }
-        response.fields[this_field] = {};
-        // Set default value
-        const defaultObj = {};
-        if (!formRec.fields.hasOwnProperty(field_key || this_field)) {
-          const formFieldRec = await getDb({
-            Key: {
-              client_id: state.session.client_id,
-              field_name: field_key || this_field
-            },
-            TableName: "Form_Fields"
-          });
-          if (formFieldRec) {
-            if (field_variables.prompt) {
-              formFieldRec.prompt.value = field_variables.prompt;
-            }
-            if (field_variables.default_source && formFieldRec.default.source && formFieldRec.default.source.startsWith('%%')) {
-              formFieldRec.default.source = field_variables.default_source;
-            }
-            if (field_variables.saveAs && formFieldRec.value.saveAs && formFieldRec.value.saveAs.startsWith('%%')) {
-              formFieldRec.value.saveAs = field_variables.saveAs;
-            }
-            if (field_variables.occurrences) {
-              formFieldRec.prompt.occurrences = field_variables.occurrences;
-            }
-            if (field_variables.newLine) {
-              formFieldRec.prompt.newLine = field_variables.newLine;
-            };
-            if (field_variables.width) {
-              formFieldRec.prompt.width = field_variables.width;
-            }
-            formRec.fields[this_field] = formFieldRec;
-            updateReactData({
-              formRec
-            }, false);
-          }
-          else {
-            response.fields[this_field].ignore = true;
-            continue;
-          }
+        else {
+          field_key = this_field;
         }
-        if (formRec.fields[field_key || this_field].default) {
-          if (formRec.fields[field_key || this_field].default.source) {
+
+        // Set parameters (response.fields[this_field]) for this_field based on the field_key
+        response.fields[this_field] = {};
+        const defaultObj = {};
+
+        if (!formRec.fields.hasOwnProperty(this_field)) {
+          if (formRec.fields.hasOwnProperty(field_key)) {   // the field_key exists already in formRec.fields
+            if (typeof (field_variables.prompt) === 'string') {
+              formRec.fields[field_key].prompt.value = field_variables.prompt;
+              delete field_variables.prompt;
+            }
+            formRec.fields[this_field] = Object.assign({}, formRec.fields[field_key], field_variables);
+          }
+          else {  // the field_key does not exist in formRec.fields
+            let formFieldRec = await getDb({
+              Key: {
+                client_id: state.session.client_id,
+                field_name: field_key
+              },
+              TableName: "Form_Fields"
+            });
+            if (formFieldRec) {
+              if (typeof (field_variables.prompt) === 'string') {
+                formFieldRec.prompt.value = field_variables.prompt;
+                delete field_variables.prompt;
+              }
+              formRec.fields[this_field] = Object.assign({}, formFieldRec, field_variables);
+            }
+            else {   // we couldn't find anything
+              response.fields[this_field].ignore = true;
+              continue;
+            }
+          }
+          updateReactData({
+            formRec
+          }, false);
+        }
+
+        // **** Now build out the form field itself
+        if (formRec.fields[this_field].default) {
+          if (formRec.fields[this_field].default.source) {
             let sourceDefaults = [];
-            if (Array.isArray(formRec.fields[field_key || this_field].default.source)) {
-              sourceDefaults = formRec.fields[field_key || this_field].default.source;
+            if (Array.isArray(formRec.fields[this_field].default.source)) {
+              sourceDefaults = formRec.fields[this_field].default.source;
             }
             else {
-              sourceDefaults = [formRec.fields[field_key || this_field].default.source];
+              sourceDefaults = [formRec.fields[this_field].default.source];
             }
             for (const this_default of sourceDefaults) {
               // if defaultObj has a source, the source is going to tell you where to find the default data
@@ -915,8 +917,8 @@ export default ({ request = {}, onClose }) => {
               }
             }
           }
-          if (!response.fields[this_field].value && formRec.fields[field_key || this_field].default.value) {
-            defaultObj.value_path = makeArray(formRec.fields[field_key || this_field].default.value, '.');
+          if (!response.fields[this_field].value && formRec.fields[this_field].default.value) {
+            defaultObj.value_path = makeArray(formRec.fields[this_field].default.value, '.');
             if (defaultObj.value_path[0].toLowerCase() === 'date') {
               response.fields[this_field].value = makeDate(defaultObj.value_path[1], { notime: true })[defaultObj.value_path[2]];
             }
@@ -938,7 +940,7 @@ export default ({ request = {}, onClose }) => {
             }
             else if (defaultObj.value_path[0].toLowerCase() === 'makenewaccount') {
               response.fields[this_field].value = response.value = await makeNewUser({
-                tableDefaults: formRec.fields[field_key || this_field]?.default?.tables,
+                tableDefaults: formRec.fields[this_field]?.default?.tables,
               });
             }
             else if (defaultObj.value_path.length === 1) {
@@ -946,21 +948,21 @@ export default ({ request = {}, onClose }) => {
             }
           }
         }
-        else if (formRec.fields[field_key || this_field]?.prompt && formRec.fields[field_key || this_field]?.prompt?.value) {
-          if (['image', 'html'].includes(formRec.fields[field_key || this_field]?.value.type || formRec.fields[field_key || this_field]?.default?.type)) {
-            response.fields[this_field].value = formRec.fields[field_key || this_field]?.prompt?.value;
+        else if (formRec.fields[this_field]?.prompt && formRec.fields[this_field]?.prompt?.value) {
+          if (['image', 'html'].includes(formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type)) {
+            response.fields[this_field].value = formRec.fields[this_field]?.prompt?.value;
           }
         }
         if (!response.fields[this_field].value) {
-          if (formRec.fields[field_key || this_field].prompt?.occurrences && (formRec.fields[field_key || this_field].prompt.occurrences > 1)) {
-            response.fields[this_field].value = new Array(formRec.fields[field_key || this_field].prompt.occurrences).fill(null);
+          if (formRec.fields[this_field].prompt?.occurrences && (formRec.fields[this_field].prompt.occurrences > 1)) {
+            response.fields[this_field].value = new Array(formRec.fields[this_field].prompt.occurrences).fill(null);
           }
           else {
             response.fields[this_field].value = null;
           }
         }
         // Set type
-        response.fields[this_field].type = formRec.fields[field_key || this_field]?.value.type || formRec.fields[field_key || this_field]?.default?.type || 'text';
+        response.fields[this_field].type = formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type || 'text';
         // Override computed defaults with preset values (if any)
         if (preset_values && preset_values[this_field]) {
           response.fields[this_field].og_default = await formatValue({
@@ -970,8 +972,8 @@ export default ({ request = {}, onClose }) => {
           response.fields[this_field].value = preset_values[this_field];
         }
         // if prompt.ignore_if exists, check the value
-        if (formRec.fields[field_key || this_field]?.prompt?.ignore_if) {
-          const ignoreList = makeArray(formRec.fields[field_key || this_field]?.prompt?.ignore_if);
+        if (formRec.fields[this_field]?.prompt?.ignore_if) {
+          const ignoreList = makeArray(formRec.fields[this_field]?.prompt?.ignore_if);
           if (!response.fields[this_field].value) {
             if (ignoreList.includes('%%no_data%%')) {
               response.fields[this_field].ignore = true;
@@ -987,10 +989,10 @@ export default ({ request = {}, onClose }) => {
           type: response.fields[this_field].type
         });
         // set prompt
-        response.fields[this_field].prompt = formRec.fields[field_key || this_field]?.prompt || { value: sentenceCase(this_field) };
+        response.fields[this_field].prompt = deepCopy(formRec.fields[this_field]?.prompt || { value: sentenceCase(this_field) });
         // Selection Obj should be set for the special case - type = select or type = select & text
         if (response.fields[this_field].type.startsWith('select') || response.fields[this_field].type.startsWith('drop')) {
-          response.fields[this_field].selectionObj = formRec.fields[field_key || this_field]?.value.selection;
+          response.fields[this_field].selectionObj = formRec.fields[this_field]?.value.selection;
           if ((response.fields[this_field].value) && (Array.isArray(response.fields[this_field].value))
             && (response.fields[this_field].selectionObj.selectionList && Array.isArray(response.fields[this_field].selectionObj.selectionList))
           ) {
@@ -1007,21 +1009,21 @@ export default ({ request = {}, onClose }) => {
         }
         // set options
         response.fields[this_field].options = {
-          required: !!formRec.fields[field_key || this_field].value.required,
-          log_results: formRec.fields[field_key || this_field].value.log_results || false,
-          viewOnly: (formRec.fields[field_key || this_field].value.edit === 'view'),
-          hidden: (formRec.fields[field_key || this_field].value.edit === 'hidden'),
-          ifEmpty: formRec.fields[field_key || this_field].options ? formRec.fields[field_key || this_field].options.ifEmpty : null,
-          resetFields: (formRec.fields[field_key || this_field].value.resetFields
-            || (formRec.fields[field_key || this_field].options ? formRec.fields[field_key || this_field].options.resetFields : null))
+          required: field_variables.hasOwnProperty('required') ? field_variables.required : !!formRec.fields[this_field].value.required,
+          log_results: formRec.fields[this_field].value.log_results || false,
+          viewOnly: (formRec.fields[this_field].value.edit === 'view'),
+          hidden: (formRec.fields[this_field].value.edit === 'hidden'),
+          ifEmpty: formRec.fields[this_field].options ? formRec.fields[this_field].options.ifEmpty : null,
+          resetFields: (formRec.fields[this_field].value.resetFields
+            || (formRec.fields[this_field].options ? formRec.fields[this_field].options.resetFields : null))
 
         };
         if (response.fields[this_field].type === 'signature') {
-          response.fields[this_field].options.sigRefNumber = formRec.fields[field_key || this_field].sigRefNumber;
+          response.fields[this_field].options.sigRefNumber = formRec.fields[this_field].sigRefNumber;
         }
         // set saveAs
-        if (!isEmpty(formRec.fields[field_key || this_field].value.saveAs)) {
-          let wip_saveAs = makeArray(formRec.fields[field_key || this_field].value.saveAs, ".");
+        if (!isEmpty(formRec.fields[this_field].value.saveAs)) {
+          let wip_saveAs = makeArray(formRec.fields[this_field].value.saveAs, ".");
           const wip_file = wip_saveAs[0].slice(0, 6).toLowerCase();
           let found_index = ['person', 'people', 'sessio', 'family'].findIndex(this_word => {
             return (wip_file === this_word);
@@ -1044,8 +1046,8 @@ export default ({ request = {}, onClose }) => {
           response.fields[this_field].saveAs = false;
         }
         // set logAs
-        if (!isEmpty(formRec.fields[field_key || this_field].value.log_results)) {
-          response.fields[this_field].logAs = formRec.fields[field_key || this_field].value.log_results.path;
+        if (!isEmpty(formRec.fields[this_field].value.log_results)) {
+          response.fields[this_field].logAs = formRec.fields[this_field].value.log_results.path;
         }
         else {
           response.fields[this_field].logAs = false;
@@ -2414,41 +2416,45 @@ export default ({ request = {}, onClose }) => {
                               </Typography>
                             }
                             {(reactData.fields[this_field].type === 'text') &&
-                              <TextField
-                                id={`field__${this_field}`}
-                                key={`field__${this_field}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                  ? reactData.fields[this_field].valueText
-                                  : ''}`}
-                                className={classes.inputDisplay}
-                                multiline
-                                variant={reactData.fields[this_field].prompt.rows ? 'outlined' : 'standard'}
-                                disabled={reactData.fields[this_field].options.viewOnly}
-                                style={AVATextStyle({
-                                  lineHeight: 1,
-                                  width: `${reactData.fields[this_field].prompt.width || 200}px`,
-                                  maxWidth: '90%',
-                                  size: 0.75,
-                                  color: 'black',
-                                  margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
-                                })}
-                                autoComplete='off'
-                                defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                  ? (Array.isArray(reactData.fields[this_field].valueText) ? reactData.fields[this_field].valueText[occ_index] : reactData.fields[this_field].valueText)
-                                  : ''
-                                }
-                                onBlur={async (event) => {
-                                  await handleChangeValue({
-                                    newText: event.target.value,
-                                    prop: this_field,
-                                    occ_index,
-                                    sentenceCase: true
-                                  });
-                                }}
-                                helperText={((occ_index > 0) ? null : reconcilePrompt({
-                                  rawValue: reactData.fields[this_field].prompt.value,
-                                  this_field
-                                }))}
-                              />
+                              <Box flexDirection='column' key={`Box__${this_field}`} className={classes.formControlCheckGroup}>
+                                <Typography className={classes.formControlTitle}>
+                                  {((occ_index > 0) ? null : reconcilePrompt({
+                                    rawValue: reactData.fields[this_field].prompt.value,
+                                    this_field
+                                  }))}
+                                </Typography>
+                                <TextField
+                                  id={`field__${this_field}`}
+                                  key={`field__${this_field}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                                    ? reactData.fields[this_field].valueText
+                                    : ''}`}
+                                  className={classes.inputDisplay}
+                                  multiline
+                                  variant={reactData.fields[this_field].prompt.rows ? 'outlined' : 'standard'}
+                                  disabled={reactData.fields[this_field].options.viewOnly}
+                                  style={AVATextStyle({
+                                    lineHeight: 1,
+                                    width: `${reactData.fields[this_field].prompt.width || 200}px`,
+                                    maxWidth: '90%',
+                                    size: 0.75,
+                                    color: 'black',
+                                    margin: { top: 0, bottom: 0.5, left: 0.5, right: 3 }
+                                  })}
+                                  autoComplete='off'
+                                  defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
+                                    ? (Array.isArray(reactData.fields[this_field].valueText) ? reactData.fields[this_field].valueText[occ_index] : reactData.fields[this_field].valueText)
+                                    : ''
+                                  }
+                                  onBlur={async (event) => {
+                                    await handleChangeValue({
+                                      newText: event.target.value,
+                                      prop: this_field,
+                                      occ_index,
+                                      sentenceCase: true
+                                    });
+                                  }}
+                                />
+                              </Box>
                             }
                             {(reactData.fields[this_field].type === 'header') && (occ_index === 0) &&
                               <Typography
@@ -3066,7 +3072,7 @@ export default ({ request = {}, onClose }) => {
         <AVAUploadFile
           options={{
             buttonText: ['Choose', 'Save & Continue'],
-            title: [reactData.field_title, 'Tap "Choose a File" to select the content to upload'],
+            title: [reactData.field_title],
             oneOnly: reactData.hasOwnProperty('oneOnly') ? reactData.oneOnly : true,
             prevSelected: ((makeArray(reactData.fields[reactData.upload_data.prop].valueText).length > 0)
               ? makeArray(reactData.fields[reactData.upload_data.prop].valueText).map(fLoc => {
