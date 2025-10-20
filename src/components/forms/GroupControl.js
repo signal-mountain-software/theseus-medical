@@ -142,7 +142,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     groupsManagedObject: Object.keys(groupsManagedObject),
     groupMemberList: [],
     isDarkMode: useMediaQuery('(prefers-color-scheme: dark)'),
-    levelVisible: [],
+    levelHidden: [],
     loading: false,
     needRef: false,
     newGroups: {},
@@ -989,7 +989,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                     alignItems='flex-start'
                   >
                     {Object.keys(groupsManagedObject).map((listEntry, listIndex) => (
-                        <React.Fragment key={`frag_${listIndex}`}>
+                      <React.Fragment key={`frag_${listIndex}`}>
+                        {!reactData.levelHidden[listIndex] &&
                           <Box
                             display='flex' flexDirection='row'
                             justifyContent='flex-start'
@@ -1059,7 +1060,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                               })}>
                               {groupsManagedObject[listEntry].group_name}
                             </Typography>
-                            {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && !reactData.levelVisible[listIndex + 1] &&
+                            {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && reactData.levelHidden[listIndex + 1] &&
                               <ExpandMoreIcon
                                 style={{ size: 8, fontSize: '1rem' }}
                                 onClick={async () => {
@@ -1067,31 +1068,32 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                                   let kLL = keyList.length;
                                   for (let i = listIndex + 1; ((i < kLL) && (groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level)); i++) {
                                     if (groupsManagedObject[keyList[i]].level === (groupsManagedObject[listEntry].level + 1)) {
-                                      reactData.levelVisible[i] = true;
+                                      reactData.levelHidden[i] = false;
                                     }
                                   }
                                   updateReactData({
-                                    levelVisible: reactData.levelVisible
+                                    levelHidden: reactData.levelHidden
                                   }, true);
                                 }}
                               />
                             }
-                            {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && reactData.levelVisible[listIndex + 1] &&
+                            {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && !reactData.levelHidden[listIndex + 1] &&
                               <ExpandLessIcon
                                 style={{ size: 8, fontSize: '1rem' }}
                                 onClick={async () => {
                                   let keyList = Object.keys(groupsManagedObject);
                                   let kLL = keyList.length;
                                   for (let i = listIndex + 1; ((i < kLL) && (groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level)); i++) {
-                                    reactData.levelVisible[i] = false;
+                                    reactData.levelHidden[i] = true;
                                   }
                                   updateReactData({
-                                    levelVisible: reactData.levelVisible
+                                    levelHidden: reactData.levelHidden
                                   }, true);
                                 }}
                               />
                             }
                           </Box>
+                        }
                         </React.Fragment>
                     ))}
                   </Box>
