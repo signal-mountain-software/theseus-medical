@@ -26,7 +26,11 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   const administrative_account = (['admin', 'support', 'master'].includes(state.user.account_class));
 
   React.useEffect(() => {
-    async function initialize() {
+    console.log('EFFECT mounted');
+  }, [administrative_account]); // should log exactly once (twice in StrictMode dev)
+
+  React.useEffect(() => {
+    function initialize() {
       let reactUpd = {};
       reactUpd.preferred_recipients = [];
       for (let this_group in state.groups.preferred_recipients) {
@@ -46,7 +50,10 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
           let groupList_minLevel = 99;
           loadList('__TOP__', state.groups.groupTree['__TOP__'], 0);
           function loadList(this_item, my_children, this_level) {
-            if (administrative_account || (state.accessList[state.session.client_id].groups[this_item] >= 2)) {
+            if (administrative_account ||
+              ((state.accessList[state.session.client_id].groups[this_item] >= 2) &&
+                (!options.restrictGroups || (state.patient.groups.includes(this_item) && isEmpty(my_children))))
+            ) {
               groupList.push({
                 group_id: this_item,
                 group_name: state.groups.groupNames[this_item],
@@ -65,8 +72,6 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
             }
           }
           reactUpd.groupInfo = Object.assign({}, deepCopy(state.groups), {
-            //           groupList: deepCopy(groupList) });
-
             groupList: groupList.map(this_group => {
               return {
                 group_id: this_group.group_id,
@@ -97,7 +102,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
     isMounted.current = true;
     initialize();
     return () => { isMounted.current = false; };
-  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isMounted]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const clean = (this_entry) => {
     let work = titleCase(this_entry.replace(/GRP|AVA|TOP|ALL/gm, '').replace(/_/gm, ' ').trim());
@@ -160,7 +165,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   };
 
   const OKtoShowGroup = (this_group) => {
-    if (this_group.level === 0) {
+    if ((this_group.level === 0) && !options.restrictGroups) {
       return false;
     }
     return (
@@ -182,7 +187,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
       )
       ||
       (
-        ((reactData.selections.length > 0) && (reactData.selections.some(s => {
+        (reactData.selections && (reactData.selections.length > 0) && (reactData.selections.some(s => {
           return s.person_id === this_person.person_id;
         })))
         ||
@@ -372,7 +377,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                 >
                   <Typography
                     style={Object.assign({},
-                      (reactData.selections.some(s => { return s.rIndex === rIndex; }))
+                      (reactData.selections && reactData.selections.some(s => { return s.rIndex === rIndex; }))
                         ? AVATextStyle({ bold: true, color: 'green' })
                         : AVATextStyle()
                     )}
@@ -477,7 +482,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                 >
                   <Typography
                     style={Object.assign({},
-                      (reactData.selections.some(s => { return s.group_id === this_group.group_id; }))
+                      (reactData.selections && reactData.selections.some(s => { return s.group_id === this_group.group_id; }))
                         ? AVATextStyle({ bold: true, color: 'green' })
                         : AVATextStyle(),
                       { marginLeft: `${((this_group.level - 1) * 10)}px` }
@@ -561,7 +566,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                   }}
                 >
                   <Typography
-                    style={(reactData.selections.some(s => { return s.person_id === this_item.person_id; }))
+                      style={(reactData.selections && reactData.selections.some(s => { return s.person_id === this_item.person_id; }))
                       ? AVATextStyle({ bold: true, color: 'green' })
                       : (reactData.selectedPeople_list && reactData.selectedPeople_list.includes(this_item.person_id)
                         ? AVATextStyle({ bold: true, color: 'orange' })
