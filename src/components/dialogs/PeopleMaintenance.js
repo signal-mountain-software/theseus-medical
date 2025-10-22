@@ -347,6 +347,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           if (!sessionRec.Item.forceSetPassword) {
             sessionRec.Item.forceSetPassword = false;
           }
+          if (!sessionRec.Item.responsible_for) {
+            sessionRec.Item.responsible_for = [];
+          }
           reactUpdObj.og.sessionRec = sessionRec.Item;
         }
         else {
