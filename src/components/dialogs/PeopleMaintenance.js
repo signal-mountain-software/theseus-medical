@@ -157,7 +157,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
   };
 
   const onExit = (returnObj) => {
-//    AVADefaults({ fontSize: state.user?.customizations?.font_size || 1 });
+    //    AVADefaults({ fontSize: state.user?.customizations?.font_size || 1 });
     onClose(returnObj);
   };
 
@@ -177,10 +177,14 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         reactUpdObj.og.sessionRec = Object.assign({},
           {
             customizations: { font_size: 1 },
-            forceSetPassword: false
+            forceSetPassword: false,
+            resopnsible_for: []
           },
           initialValues?.sessionRec
         );
+        reactUpdObj.og.familyRecs = [Object.assign({},
+          initialValues?.familyRec
+        )];
       }
       else {
         reactUpdObj.person_id = parm_personRec.person_id;
@@ -419,7 +423,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         section_name: 'My Family',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('LinkedAccounts')) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('family') : true)),
+        isAuthorized: (!(reactUpdObj.mode === 'add') &&
+          (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('family') : true))),
         version_id: 0,
         component_name: 'LinkedAccounts'
       },
@@ -461,7 +466,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         section_name: 'Check-in/Check-out History',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('CheckoutHistory')) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('checkout') : true)) 
+        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('checkout') : true))
           && reactUpdObj.og.peopleRec.checkout_recent_history
           && (reactUpdObj.og.peopleRec.checkout_recent_history.length > 0),
         version_id: 0,
@@ -931,10 +936,10 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       if (person_id_exists) {
         numberPart++;
         if (newID.includes(clientPart)) {
-          newID = `${namePart.replace(clientPart, '')}${numberPart}${clientPart}`;
+          newID = `${namePart.toLowerCase().replace(clientPart, '')}${numberPart}${clientPart}`;
         }
         else {
-          newID = `${namePart}${numberPart}`;
+          newID = `${namePart.toLowerCase() }${numberPart}`;
         }
         tryAgain = true;
       }
@@ -1124,8 +1129,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
               (this_section.isAuthorized &&
                 (!reactData.options?.sectionToShow || reactData.administrative_account
                   || ([reactData.options?.sectionToShow].flat().some(this_optionSection => {
-                  return (this_optionSection.toLowerCase() === this_section.component_name.toLowerCase());
-                }))) &&
+                    return (this_optionSection.toLowerCase() === this_section.component_name.toLowerCase());
+                  }))) &&
                 (reactData.person_id || (this_section.component_name === 'ProfileSection')) &&
                 <Box
                   key={`frag__${sectionNdx}`}
