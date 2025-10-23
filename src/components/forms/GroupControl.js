@@ -922,7 +922,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                   minHeight: 2.8,
                 }}
                 id='List Filter'
-                value={reactData.people_filter}
+                value={reactData.people_filter || ''}
                 className={classes.freeInput}
                 onChange={async (event) => {
                   let reactUpdObj = {
