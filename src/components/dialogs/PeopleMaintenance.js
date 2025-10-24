@@ -268,20 +268,28 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                 .promise()
                 .catch(error => { cl({ 'Error reading FamilyGroups': error }); });
               if (recordExists(familyRec)) {
-                reactUpdObj.og.familyRecs[i] = familyRec.Items[0];
                 if (familyRec.Items[0].primary_contact.id === parm_personRec.person_id) {
                   reactUpdObj.myFamilyData[i] = deepCopy(familyRec.Items[0].primary_contact);
                   reactUpdObj.myFamilyData[i].primary = true;
                 }
                 else {
-                  for (let o = 0; o < familyRec.Items[0].other_members.length; o++) {
-                    if (familyRec.Items[0].other_members[o].id === parm_personRec.person_id) {
-                      reactUpdObj.myFamilyData[i] = deepCopy(familyRec.Items[0].other_members[o]);
-                      reactUpdObj.myFamilyData[i].primary = false;
-                      reactUpdObj.myFamilyData[i].other_index = o;
-                    }
+                  let o = -1;
+                  if (familyRec.Items[0].other_members?.length > 0) {
+                    o = familyRec.Items[0].other_members?.findIndex(this_member => {
+                      return (this_member.id === parm_personRec.person_id);
+                    });
+                  }
+                  if (o > -1) {
+                        reactUpdObj.myFamilyData[i] = deepCopy(familyRec.Items[0].other_members[o]);
+                        reactUpdObj.myFamilyData[i].primary = false;
+                        reactUpdObj.myFamilyData[i].other_index = o;
+                  }
+                  else {
+                    // this person is not really a member of the family_group at all
+                    continue;
                   }
                 }
+                reactUpdObj.og.familyRecs[i] = familyRec.Items[0];
               }
             }
           }
@@ -850,7 +858,6 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       for (let i = 0; i < reactData.current.familyRecs.length; i++) {
         if (!reactData.og.familyRecs || !reactData.og.familyRecs[i]
           || (JSON.stringify(reactData.og.familyRecs[i]) !== JSON.stringify(reactData.current.familyRecs[i]))) {
-          // **** NEED TO ADD SPECIAL HANDLING FOR CHANGE OF PRIMARY KEY ***  (likely change to inactive account?)
           await dbClient
             .put({
               TableName: 'FamilyGroups',
