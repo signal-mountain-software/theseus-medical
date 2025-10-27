@@ -280,9 +280,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                     });
                   }
                   if (o > -1) {
-                        reactUpdObj.myFamilyData[i] = deepCopy(familyRec.Items[0].other_members[o]);
-                        reactUpdObj.myFamilyData[i].primary = false;
-                        reactUpdObj.myFamilyData[i].other_index = o;
+                    reactUpdObj.myFamilyData[i] = deepCopy(familyRec.Items[0].other_members[o]);
+                    reactUpdObj.myFamilyData[i].primary = false;
+                    reactUpdObj.myFamilyData[i].other_index = o;
                   }
                   else {
                     // this person is not really a member of the family_group at all
@@ -720,6 +720,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
   const saveChanges = async () => {
     const person_id_blank = !reactData.current.peopleRec.person_id;
     const person_id_changed = reactData.current.peopleRec.person_id !== reactData.person_id;
+    // Check for errors before moving forward with updates
     if (person_id_blank || person_id_changed) {
       // check person_id just before saving to assure that it hasn't been claimed between setting and saving
       let person_id_exists = false;
@@ -780,6 +781,25 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         errorList: reactData.errorList,
       }, true);
       return false;
+    }
+    // are there new accounts that need to be created (would have been in LinkedAccounts - which is Family maintenance)
+    for (let this_family of reactData.current.familyRecs) {
+      let primaryPersonRec = await getPerson(this_family.primary_contact.id);
+      for (let this_member of this_family.other_members) {
+        if (this_member.createAccount) {
+          // does an account exist with this name already?  (ADD CODE LATER TO VALIDATE)
+          // assign a people_id and default groups
+          let names = this_member.name.split(' ');
+          this_member.firstName = names.shift();
+          this_member.lastName = names.join(' ').trim();
+          let candidateID = (`${this_member.firstName.charAt(0)}${this_member.lastName.replace(/\W/g, '')}-${state.session.client_id}`).toLowerCase();
+          const { proposedID, newID } = await newUserID(candidateID);
+          this_member.id = newID;
+          cl(`Proposed ID ${proposedID} - ID will be ${newID}`);
+          this_member.groups = ["__TOP__", "ALL"].concat(state.session.default_groups?.new_family_member || []);
+          this_member.address = primaryPersonRec.address;
+        }
+      }
     }
 
     reactData.person_id = reactData.current.peopleRec.person_id;
@@ -870,38 +890,96 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           let memberList = [reactData.current.familyRecs[i].primary_contact].concat(reactData.current.familyRecs[i].other_members || []);
           if (memberList.length > 0) {
             for (let this_member of memberList) {
-              let memberPersonRec = await getPerson(this_member.id);
-              if (!memberPersonRec
-                || (memberPersonRec.family_groups && memberPersonRec.family_groups.includes(reactData.current.familyRecs[i].family_id))) {
-                continue;
-              }
-              else {
-                let updatedFamilyGroups = [];
-                if (!memberPersonRec.family_groups || (memberPersonRec.family_groups.length === 0)) {
-                  updatedFamilyGroups = [reactData.current.familyRecs[i].family_id];
-                }
-                else {
-                  updatedFamilyGroups = memberPersonRec.family_groups;
-                  updatedFamilyGroups.push(reactData.current.familyRecs[i].family_id);
-                }
+              if (this_member.createAccount) {
                 await dbClient
-                  .update({
-                    Key: {
+                  .put({
+                    TableName: 'People',
+                    Item: {
                       person_id: this_member.id,
-                    },
-                    UpdateExpression: 'set #f = :f',
-                    ExpressionAttributeValues: {
-                      ':f': updatedFamilyGroups
-                    },
-                    ExpressionAttributeNames: {
-                      '#f': 'family_groups'
-                    },
-                    TableName: "People",
+                      clients: {
+                        groups: this_member.groups,
+                        id: state.session.client_id
+                      },
+                      client_id: state.session.client_id,
+                      display_name: this_member.name,
+                      address: this_member.address,
+                      family_groups: [
+                        reactData.current.familyRecs[i].family_id
+                      ],
+                      groups: this_member.groups,
+                      name: {
+                        first: this_member.firstName,
+                        last: this_member.lastName
+                      },
+                      preferred_method: "AVA",
+                      preferred_methods: [
+                        "AVA"
+                      ],
+                      search_data: `${this_member.name} ${this_member.name.toLowerCase()} ${this_member.nickname} ${this_member.nickname.toLowerCase()}`,
+                    }
                   })
                   .promise()
                   .catch(error => {
-                    cl(`caught error updating People; error is: `, error);
+                    console.log(`caught error putting to People; error is:`, error);
                   });
+                await dbClient
+                  .put({
+                    TableName: 'SessionsV2',
+                    Item: {
+                      session_id: this_member.id,
+                      client_id: state.session.client_id,
+                      last_login: "password",
+                      method: "added as Family Member",
+                      patient_display_name: this_member.name,
+                      patient_id: this_member.id,
+                      person_id: this_member.id,
+                      requirePassword: false,
+                      storePassword: true,
+                      subscription_status: "na",
+                      user_display_name: this_member.name,
+                      user_homeClient: state.session.client_id,
+                      user_id: this_member.id,
+                    }
+                  })
+                  .promise()
+                  .catch(error => {
+                    console.log(`caught error putting to SessionsV2; error is:`, error);
+                  });
+              }
+              else {
+                let memberPersonRec = await getPerson(this_member.id);
+                if (!memberPersonRec
+                  || (memberPersonRec.family_groups && memberPersonRec.family_groups.includes(reactData.current.familyRecs[i].family_id))) {
+                  continue;
+                }
+                else {
+                  let updatedFamilyGroups = [];
+                  if (!memberPersonRec.family_groups || (memberPersonRec.family_groups.length === 0)) {
+                    updatedFamilyGroups = [reactData.current.familyRecs[i].family_id];
+                  }
+                  else {
+                    updatedFamilyGroups = memberPersonRec.family_groups;
+                    updatedFamilyGroups.push(reactData.current.familyRecs[i].family_id);
+                  }
+                  await dbClient
+                    .update({
+                      Key: {
+                        person_id: this_member.id,
+                      },
+                      UpdateExpression: 'set #f = :f',
+                      ExpressionAttributeValues: {
+                        ':f': updatedFamilyGroups
+                      },
+                      ExpressionAttributeNames: {
+                        '#f': 'family_groups'
+                      },
+                      TableName: "People",
+                    })
+                    .promise()
+                    .catch(error => {
+                      cl(`caught error updating People; error is: `, error);
+                    });
+                }
               }
             }
           }
@@ -914,11 +992,11 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
   async function newUserID(proposedID) {
     let tryAgain;
     let newID, namePart;
-    let clientPart = `-${state.session.client_id.toLowerCase()}`;
+    let clientPart = state.session.client_id.toLowerCase();
     let numberPart = 1;
     if (proposedID) {
       namePart = (proposedID.match(/([\w-]*[^\d]+)(\d*)$/))[1];
-      newID = proposedID.toLowerCase().replace(/\W/g, '');
+      newID = proposedID.toLowerCase().replace(/\W/g, '').replace(clientPart, `-${clientPart}`);
     }
     else {
       if (!reactData.current.peopleRec?.name?.last) {
@@ -935,7 +1013,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       else {
         namePart = `${reactData.current.peopleRec.name.first.trim().charAt(0)}${reactData.current.peopleRec.name.last.trim()}`;
       }
-      newID = `${namePart.toLowerCase().replace(/\W/g, '')}${clientPart}`;
+      newID = `${namePart.toLowerCase().replace(/\W/g, '')}-${clientPart}`;
     }
     do {
       tryAgain = false;
@@ -943,10 +1021,10 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       if (person_id_exists) {
         numberPart++;
         if (newID.includes(clientPart)) {
-          newID = `${namePart.toLowerCase().replace(clientPart, '')}${numberPart}${clientPart}`;
+          newID = `${namePart.toLowerCase().split(clientPart)[0].replace('-', '')}${numberPart}-${clientPart}`;
         }
         else {
-          newID = `${namePart.toLowerCase() }${numberPart}`;
+          newID = `${namePart.toLowerCase()}${numberPart}`;
         }
         tryAgain = true;
       }

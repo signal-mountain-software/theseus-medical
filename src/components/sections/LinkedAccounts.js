@@ -160,6 +160,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                     updateLocalData({
                       viewFamilyMember: {    // was this_familyRec.primary_contact.id
                         primary: true,
+                        createAccount: false,
                         fNdx,
                         other_index: false
                       }
@@ -226,6 +227,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                           updateLocalData({
                             viewFamilyMember: {    // // was this_familyMember.id
                               primary: false,
+                              createAccount: false,
                               fNdx,
                               other_index: memberNdx
                             }
@@ -290,11 +292,24 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
               {((reactData.user_id === this_familyRec.primary_contact.id) || (reactData.administrative_account)) &&
                 <Button
                   onClick={async () => {
-                    let updateObj = {};
-                    updateObj.reactUpd = {
-                      addFamilyMember: currentValues.familyRecs[fNdx].family_id
-                    };
-                    await updateField(updateObj);
+                    let other_index;
+                    if (this_familyRec.other_members) {
+                      other_index = this_familyRec.other_members.length;
+                    }
+                    else {
+                      this_familyRec.other_members = [];
+                      other_index = 0;
+                    }
+                    currentValues.familyRecs[fNdx].other_members[other_index] = {};
+                    await updateReactData({ current: currentValues, OKtoSave: true }, true);
+                    updateLocalData({
+                      viewFamilyMember: {    // was this_familyRec.primary_contact.id
+                        primary: false,
+                        createAccount: true,
+                        fNdx,
+                        other_index
+                      }
+                    }, true);
                   }}
                   className={AVAClass.AVAButton}
                   style={{ marginLeft: '8px', marginTop: '24px', backgroundColor: 'white', color: 'black' }}
@@ -497,9 +512,25 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
               >
                 {localData.viewFamilyMember.primary
                   ? currentValues.familyRecs[localData.viewFamilyMember.fNdx].primary_contact.name
-                  : currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].name
+                  : (currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index]
+                    ? currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].name
+                    : 'Create a new Account'
+                  )
                 }
               </DialogContentText>
+              {localData.viewFamilyMember.createAccount &&
+                <TextField
+                  style={AVATextStyle({ margin: { left: 1 }, width: '80%' })}
+                  key={`person_to_add`}
+                  autoComplete='off'
+                  defaultValue={''}
+                  onBlur={async (event) => {
+                    currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].name = event.target.value;
+                    await updateReactData({ current: currentValues, OKtoSave: true }, true);
+                  }}
+                  helperText={`Name of Person to Add`}
+                />
+              }
               <TextField
                 style={AVATextStyle({ margin: { left: 1 }, width: '80%' })}
                 key={`calls_me`}
@@ -619,9 +650,13 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
               <DialogActions style={{ justifyContent: 'center' }}>
                 <Button
                   className={AVAClass.AVAButton}
-                  style={{ marginTop: '16px', backgroundColor: 'red', color: 'white' }}
+                  style={{ marginTop: '16px', backgroundColor: 'green', color: 'white' }}
                   size='small'
-                  onClick={() => {
+                  onClick={async () => {
+                    if (localData.viewFamilyMember.createAccount) {
+                      currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].createAccount = true;
+                      await updateReactData({ current: currentValues }, false);
+                    }
                     updateLocalData({
                       viewFamilyMember: false
                     }, true);
@@ -629,6 +664,22 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                 >
                   {'Done'}
                 </Button>
+                {localData.viewFamilyMember.createAccount &&
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ marginTop: '16px', backgroundColor: 'red', color: 'white' }}
+                    size='small'
+                    onClick={async () => {
+                      currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members.splice(localData.viewFamilyMember.other_index, 1);
+                      await updateReactData({ current: currentValues }, false);
+                      updateLocalData({
+                        viewFamilyMember: false
+                      }, true);
+                    }}
+                  >
+                    {"Don't Create"}
+                  </Button>
+                }
               </DialogActions>
             </Dialog>
           }
