@@ -50,6 +50,14 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
           let groupList_minLevel = 99;
           loadList('__TOP__', state.groups.groupTree['__TOP__'], 0);
           function loadList(this_item, my_children, this_level) {
+            /* I can "see" a group in this list if:
+                - I am an adminstrative account
+                  OR
+                - I have "view" or higher rights to the group
+                      AND
+                  either restrictGroups is OFF or (if restrictGroups is ON, I am a member of the group and the group is the lowest level in the hierarchy)    
+                  Note: restrictGroups prevents you from seeing groups that are parents or siblings of a group you are in
+            */
             if (administrative_account ||
               ((state.accessList[state.session.client_id].groups[this_item] >= 2) &&
                 (!options.restrictGroups || (state.patient.groups.includes(this_item) && isEmpty(my_children))))

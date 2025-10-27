@@ -2427,6 +2427,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                 pickAndGo: true,
                 keepSelections: true,
                 withGroups: true,
+                restrictGroups: state.session.client_style.restrict_groups,
                 withPreferred: true,
                 buttonColor: (reactData.selections.length === 0) ? 'red' : 'green',
                 buttonText: searchButtonText(),
