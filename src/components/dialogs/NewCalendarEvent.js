@@ -4,8 +4,9 @@ import { prepareTargets } from '../../util/AVAGroups';
 import { makeArray, titleCase, listFromArray } from '../../util/AVAUtilities';
 import { addEvent, writeSlot } from '../../util/AVACalendars';
 import { AVAclasses } from '../../util/AVAStyles';
+import { Alert, AlertTitle } from '@material-ui/lab/';
 
-import ClientsSection from '../sections/ClientsSection';
+import QuickSearch from '../sections/QuickSearch';
 import EditList from '../forms/EditList';
 import Select from "react-dropdown-select";
 
@@ -17,27 +18,28 @@ import PersonFilter from '../forms/PersonFilter';
 
 import { AVATextStyle } from '../../util/AVAStyles';
 
-import AppBar from '@material-ui/core/AppBar';
-import Box from '@material-ui/core/Box';
-import CloseIcon from '@material-ui/icons/Close';
-import Dialog from '@material-ui/core/Dialog';
-import DialogActions from '@material-ui/core/DialogActions';
-import DialogContent from '@material-ui/core/DialogContent';
-import IconButton from '@material-ui/core/IconButton';
-import Toolbar from '@material-ui/core/Toolbar';
-import Typography from '@material-ui/core/Typography';
-import makeStyles from '@material-ui/core/styles/makeStyles';
-import Checkbox from '@material-ui/core/Checkbox';
-import FormGroup from '@material-ui/core/FormGroup';
-
-import TextField from '@material-ui/core/TextField';
-import Button from '@material-ui/core/Button';
-import RadioGroup from '@material-ui/core/RadioGroup';
-import Radio from '@material-ui/core/Radio';
-import FormControlLabel from '@material-ui/core/FormControlLabel';
-import FormControl from '@material-ui/core/FormControl';
-
-import ListItem from '@material-ui/core/ListItem';
+import {
+  Snackbar,
+  AppBar,
+  Box,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  IconButton,
+  Toolbar,
+  Typography,
+  Checkbox,
+  FormGroup,
+  TextField,
+  Button,
+  RadioGroup,
+  Radio,
+  FormControlLabel,
+  FormControl,
+  ListItem,
+  makeStyles
+} from '@material-ui/core';
+import { Close as CloseIcon } from '@material-ui/icons';
 
 import useSession from '../../hooks/useSession';
 import { getPerson } from '../../util/AVAPeople';
@@ -472,6 +474,12 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
 
   const handleChangePeopleToggle = event => {
     setSpecificPeople(event.target.value);
+    if (event.target.value === 'no') {
+      updateReactData({
+        restrictToGroups: [],
+        selections: []
+      }, true);
+    }
   };
 
   const handleChangeSignUp = event => {
@@ -1173,9 +1181,9 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                         id='signup_start'
                         key={`start_${reactData.event_date?.numeric$}_${signup_start}`}
                         defaultValue={(signup_start && (Number(signup_start) > 0) && (reactData.event_date && !reactData.event_date.error))
-                          ? makeDate(addDays(reactData.event_date.date, -signup_start)).absolute 
+                          ? makeDate(addDays(reactData.event_date.date, -signup_start)).absolute
                           : ''}
-                        style={{width: '200px', marginRight: '16px'}}
+                        style={{ width: '200px', marginRight: '16px' }}
                         onBlur={(event) => {
                           if (event.target.value) {
                             let dObj = makeDate(event.target.value, { noTime: true });
@@ -1366,8 +1374,8 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                       defaultValue={'no'}
                       aria-label="restrictions"
                       name="restrictions"
-                      value={specificPeople}
-                      onChange={handleChangePeopleToggle}
+                      value={reactData.restrictToGroups && reactData.restrictToGroups.length > 0 ? 'yes' : 'no'}
+                      onClick={handleChangePeopleToggle}
                     >
                       <FormControlLabel
                         className={classes.formControlLbl}
@@ -1389,22 +1397,52 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                       />
                     </RadioGroup>
                   </FormControl>
+                  {reactData.restrictToGroups && reactData.restrictToGroups.length > 0 &&
+                    <Box
+                      display="flex"
+                      pt={1}
+                      flexDirection='column'
+                      justifyContent="flex-start"
+                      style={{ marginLeft: '16px' }}
+                    >
+                      <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>
+                        Selected Groups:
+                      </Typography>
+                      {reactData.restrictToGroups.map((groupId, index) => (
+                        <Typography key={`group_${index}`} className={classes.radioText} style={{ marginLeft: '8px' }}>
+                          • {state.groups?.groupNames?.[groupId] || groupId}
+                        </Typography>
+                      ))}
+                    </Box>
+                  }
                 </Box>
               }
               {(specificPeople === 'yes') &&
-                <ClientsSection
-                  person={patient}
-                  groupData={state.groups}
-                  multiple={true}
-                  updateGroups={(selections) => {
+                <QuickSearch
+                  reactData={reactData}
+                  updateReactData={updateReactData}
+                  options={{
+                    keepSelections: true,
+                    withGroups: true,
+                    restrictGroups: state.session.client_style.restrict_groups,
+                    withPreferred: false,
+                    showAll: true,
+                    hidePeople: true,
+                    buttonText: {empty: 'Exit', selected: 'Save & Exit'},
+                    showGroupList: true,
+                    title: 'Select Groups to Restrict Event To',
+                  }}
+                  onClose={async (selections) => {
                     if (selections.length === 0) {
                       selections = ['*all'];
                     }
                     updateReactData({
-                      restrictToGroups: selections
-                    }, false);
+                      restrictToGroups: selections.map((entry) => entry.group_id),
+                    }, true);
+                    setSpecificPeople(null);
                   }}
                 />
+
               }
               {!personalEvent && !isAppointment &&
                 <Box
@@ -1548,6 +1586,61 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
             }, true);
           }}
         />
+      }
+      {reactData.alert &&
+        <Snackbar
+          open={!!reactData.alert}
+          px={3}
+          key={`alert_wrapper`}
+          autoHideDuration={(reactData.alert.severity === 'success') ? 5000 : ((reactData.alert.severity === 'info') ? 15000 : null)}
+          onClose={() => {
+            updateReactData({
+              warning: false,
+              alert: false
+            }, true);
+          }}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'center'
+          }}
+        >
+          <Alert
+            severity={reactData.alert.severity || 'info'}
+            key={`alert_box`}
+            style={{ marginX: '8px', borderRadius: '20px', border: 1 }}
+            action={(reactData.alert.action
+              ?
+              <Box
+                display='flex'
+                key={`alert_action`}
+                mx={1}
+                overflow='auto'
+                flexDirection='column'
+              >
+                {([reactData.alert.action].flat()).map((this_action, actionNdx) => (
+                  <Button
+                    key={`alert_button__${actionNdx}`}
+                    className={AVAClass.AVAButton} color="inherit"
+                    onClick={() => this_action.function()}
+                  >
+                    {this_action.text}
+                  </Button>
+                ))}
+              </Box>
+              : null
+            )}
+            variant='filled'
+            onClose={() => {
+              updateReactData({
+                warning: false,
+                alert: false
+              }, true);
+            }}
+          >
+            {reactData.alert.title && <AlertTitle>{reactData.alert.title}</AlertTitle>}
+            {reactData.alert.message}
+          </Alert>
+        </Snackbar >
       }
     </Dialog>
   );

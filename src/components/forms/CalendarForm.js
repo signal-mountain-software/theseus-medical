@@ -679,6 +679,13 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       && (!this_event.published)) {
       return false;
     }
+    if (!reactData.administrative_account && this_event.groups && (this_event.groups.length > 0)) {
+      const isMember = this_event.groups.some((group) => {
+        let response = ((group === '*all') || Object.keys(state.groups.belongsTo).includes(group));
+        return (response);
+      });
+      if (!isMember) { return false; }
+    }
     if (this_event.type === 'personal') {
       if ([this_event.owner].flat().includes(reactData.selectedPerson_id)
         || reactData.administrative_account

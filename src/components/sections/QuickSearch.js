@@ -17,6 +17,32 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
+/**
+ * QuickSearch Component Options Documentation
+ * 
+ * @param {Object} options - Configuration object for QuickSearch behavior
+ * @param {string} [options.title] - Custom title for the search dialog (default: "Quick Search")
+ * @param {boolean} [options.withGroups] - Include group selection functionality in the search
+ * @param {boolean} [options.restrictGroups] - When true, restricts group visibility to only groups the user is a member of at the lowest level in hierarchy
+ * @param {boolean} [options.keepSelections] - Preserve existing selections when initializing the component
+ * @param {boolean} [options.showAll] - Display all items without requiring search input (when false, requires 2+ characters to show results)
+ * @param {boolean} [options.withSpecialValues] - Include special value entries in the people list
+ * @param {boolean} [options.withPreferred] - Display preferred recipients section
+ * @param {boolean} [options.hidePeople] - Hide the people section (can be used with groups-only mode)
+ * @param {boolean} [options.pickAndGo] - Allow immediate selection/deselection without closing dialog
+ * @param {boolean} [options.pickOne] - Close dialog immediately after selecting one item
+ * @param {boolean} [options.showGroupList] - When combined with withGroups=true, automatically show the group list on initialization
+ * @param {string} [options.buttonColor] - Custom color for the exit button (default: red when no selections, green when selections exist)
+ * @param {string|Object} [options.buttonText] - Custom text for the exit button (default: "Select"). Can be a string or an object with 'empty' and 'selected' keys for conditional text based on selections
+ * 
+ * Behavior Notes:
+ * - restrictGroups: Prevents seeing parent/sibling groups, only shows groups where user is a member at lowest hierarchy level
+ * - showAll: Controls whether items are visible without search input; when false, requires 2+ character search
+ * - pickAndGo vs pickOne: pickAndGo allows multiple selections with immediate feedback, pickOne closes after first selection
+ * - withSpecialValues: Adds special system values to the people list for selection
+ */
+
+
 export default ({ reactData, updateReactData, onClose, options = {} }) => {
 
   const classes = useStyles();
@@ -88,6 +114,11 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
               };
             })
           });
+
+          // Auto-show group list if showGroupList option is true
+          if (options.showGroupList) {
+            reactUpd.showGroupList = true;
+          }
 
         }
       }
@@ -305,6 +336,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
               >
                 {'Preferred Recipients'}
               </Typography>
+              {/* Show/Hide Toggle */}
               <Box flexGrow={2} display='flex' alignItems='center'
                 style={{ paddingTop: '2px', marginTop: '4px', marginLeft: '32px', marginBottom: '4px', textWrapStyle: 'balance' }}
                 justifyContent='flex-start' marginBottom={1} flexDirection='row'>
@@ -323,7 +355,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                       showPreferredList: !reactData.showPreferredList
                     }, true);
                   }}
-                  name="ShowGroups"
+                  name="ShowPreferred"
                   color="primary"
                 />
                 <Typography
@@ -384,11 +416,11 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                   }}
                 >
                   <Typography
-                    style={Object.assign({},
+                    style={
                       (reactData.selections && reactData.selections.some(s => { return s.rIndex === rIndex; }))
                         ? AVATextStyle({ bold: true, color: 'green' })
                         : AVATextStyle()
-                    )}
+                    }
                   >
                     {this_recipient.objText}
                   </Typography>
@@ -443,32 +475,35 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
             <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
               style={{ marginLeft: '16px' }}
             >
-              {reactData.showGroupList && reactData.groupInfo.groupList.map((this_group, gIndex) => (
-                OKtoShowGroup(this_group) &&
-                <Box
-                  display='flex'
-                  flexDirection='row'
-                  alignItems={'center'}
-                  key={`select_group_opt${gIndex}`}
-                  style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
-                  onContextMenu={async (e) => {
-                    e.preventDefault();
-                    updateReactData({
-                      alert: {
-                        severity: 'info',
-                        title: `${this_group.group_name}`,
-                        message: <div>
-                          Group ID: <strong>{this_group.group_id}</strong><br /></div>
-                      }
-                    }, true);
-                  }}
-                  onClick={() => {
-                    if (options.pickAndGo) {
-                      const foundAt = reactData.selections.findIndex(s => { return (s.group_id === this_group.group_id); });
+              {reactData.showGroupList &&
+                reactData.groupInfo.groupList.map((this_group, gIndex) => (
+                  OKtoShowGroup(this_group) &&
+                  <Box
+                    display='flex'
+                    flexDirection='row'
+                    alignItems={'center'}
+                    key={`select_group_opt${gIndex}`}
+                    style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
+                    onContextMenu={async (e) => {
+                      e.preventDefault();
+                      updateReactData({
+                        alert: {
+                          severity: 'info',
+                          title: `${this_group.group_name}`,
+                          message: <div>
+                            Group ID: <strong>{this_group.group_id}</strong><br /></div>
+                        }
+                      }, true);
+                    }}
+                    onClick={() => {
+                      const foundAt = reactData.selections?.findIndex(s => { return (s.group_id === this_group.group_id); }) ?? -1;
                       if (foundAt > -1) {
                         reactData.selections.splice(foundAt, 1);
                       }
                       else {
+                        if (!reactData.selections) {
+                          reactData.selections = [];
+                        }
                         reactData.selections.unshift({
                           group_id: this_group.group_id,
                           group_name: this_group.group_name
@@ -480,27 +515,23 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                         selectedPeople_list,
                         selections: reactData.selections
                       }, true);
+                      if (options.pickOne) { onClose(reactData.selections); }
                     }
-                    else {
-                      updateReactData({
-                        showGroupEdit_id: this_group.group_id
-                      }, true);
                     }
-                  }}
-                >
-                  <Typography
-                    style={Object.assign({},
-                      (reactData.selections && reactData.selections.some(s => { return s.group_id === this_group.group_id; }))
-                        ? AVATextStyle({ bold: true, color: 'green' })
-                        : AVATextStyle(),
-                      { marginLeft: `${((this_group.level - 1) * 10)}px` }
-                    )}
                   >
-                    {this_group.group_name}
-                  </Typography>
-                </Box>
-              )
-              )}
+                    <Typography
+                      style={{
+                        ...(reactData.selections && reactData.selections.some(s => { return s.group_id === this_group.group_id; })
+                          ? AVATextStyle({ bold: true, color: 'green' })
+                          : AVATextStyle()
+                        ),
+                        marginLeft: `${((this_group.level - 1) * 10)}px`
+                      }}
+                    >
+                      {this_group.group_name}
+                    </Typography>
+                  </Box>
+                ))}
             </Box>
           </Box>
         }
@@ -574,7 +605,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                   }}
                 >
                   <Typography
-                      style={(reactData.selections && reactData.selections.some(s => { return s.person_id === this_item.person_id; }))
+                    style={(reactData.selections && reactData.selections.some(s => { return s.person_id === this_item.person_id; }))
                       ? AVATextStyle({ bold: true, color: 'green' })
                       : (reactData.selectedPeople_list && reactData.selectedPeople_list.includes(this_item.person_id)
                         ? AVATextStyle({ bold: true, color: 'orange' })
@@ -593,13 +624,33 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button
           className={AVAClass.AVAButton}
-          style={{ backgroundColor: (options.buttonColor || 'red'), color: 'white' }}
+          style={{
+            backgroundColor: (() => {
+              // If a specific buttonColor was provided, use it
+              if (options.buttonColor) {
+                return options.buttonColor;
+              }
+              // Otherwise, use green if there are selections, red if none
+              const hasSelections = reactData.selections && reactData.selections.length > 0;
+              return hasSelections ? 'green' : 'red';
+            })(),
+            color: 'white'
+          }}
           size='small'
           onClick={() => {
             onClose(reactData.selections);
           }}
         >
-          {options.buttonText || 'Exit'}
+          {(() => {
+            if (typeof options.buttonText === 'string') {
+              return options.buttonText;
+            } else if (typeof options.buttonText === 'object' && options.buttonText !== null) {
+              const hasSelections = reactData.selections && reactData.selections.length > 0;
+              return hasSelections ? (options.buttonText.selected || 'Select') : (options.buttonText.empty || 'Select');
+            } else {
+              return 'Select';
+            }
+          })()}
         </Button>
       </DialogActions>
       {
