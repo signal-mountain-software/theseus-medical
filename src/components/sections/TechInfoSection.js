@@ -39,7 +39,9 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
     if (!pName.last) { pName.last = '*No Last Name*'; }
     return (
       (
-        currentValues.sessionRec.responsible_for.includes(pID)
+        (currentValues.sessionRec
+          && currentValues.sessionRec.responsible_for
+          && currentValues.sessionRec.responsible_for.includes(pID))
         ||
         (
           reactData.proxyFilter
@@ -47,7 +49,7 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
           (pName.last.toLowerCase().includes(reactData.proxyFilter) || pName.first.toLowerCase().includes(reactData.proxyFilter))
         )
       )
-      && (pID !== currentValues.sessionRec.session_id)
+      && (pID !== currentValues.sessionRec?.session_id)
     );
   }
 

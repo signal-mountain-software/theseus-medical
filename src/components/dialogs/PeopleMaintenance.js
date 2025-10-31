@@ -783,21 +783,23 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       return false;
     }
     // are there new accounts that need to be created (would have been in LinkedAccounts - which is Family maintenance)
-    for (let this_family of reactData.current.familyRecs) {
-      let primaryPersonRec = await getPerson(this_family.primary_contact.id);
-      for (let this_member of this_family.other_members) {
-        if (this_member.createAccount) {
-          // does an account exist with this name already?  (ADD CODE LATER TO VALIDATE)
-          // assign a people_id and default groups
-          let names = this_member.name.split(' ');
-          this_member.firstName = names.shift();
-          this_member.lastName = names.join(' ').trim();
-          let candidateID = (`${this_member.firstName.charAt(0)}${this_member.lastName.replace(/\W/g, '')}-${state.session.client_id}`).toLowerCase();
-          const { proposedID, newID } = await newUserID(candidateID);
-          this_member.id = newID;
-          cl(`Proposed ID ${proposedID} - ID will be ${newID}`);
-          this_member.groups = ["__TOP__", "ALL"].concat(state.session.default_groups?.new_family_member || []);
-          this_member.address = primaryPersonRec.address;
+    if (reactData.current.familyRecs && (reactData.current.familyRecs.length > 0) && reactData.current.familyRecs[0].hasOwnProperty('primary')) {
+      for (let this_family of reactData.current.familyRecs) {
+        let primaryPersonRec = await getPerson(this_family.primary_contact.id);
+        for (let this_member of this_family.other_members) {
+          if (this_member.createAccount) {
+            // does an account exist with this name already?  (ADD CODE LATER TO VALIDATE)
+            // assign a people_id and default groups
+            let names = this_member.name.split(' ');
+            this_member.firstName = names.shift();
+            this_member.lastName = names.join(' ').trim();
+            let candidateID = (`${this_member.firstName.charAt(0)}${this_member.lastName.replace(/\W/g, '')}-${state.session.client_id}`).toLowerCase();
+            const { proposedID, newID } = await newUserID(candidateID);
+            this_member.id = newID;
+            cl(`Proposed ID ${proposedID} - ID will be ${newID}`);
+            this_member.groups = ["__TOP__", "ALL"].concat(state.session.default_groups?.new_family_member || []);
+            this_member.address = primaryPersonRec.address;
+          }
         }
       }
     }
