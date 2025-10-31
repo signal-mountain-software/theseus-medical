@@ -820,9 +820,9 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                       if (!reactData.prefMethod) {
                         reactUpd.method = 'specific_date';
                       };
-                      let checkedDays = [];
-                      checkedDays[dObj.dayOfWeek] = true;
-                      setCheckedDays(checkedDays);
+                      let newCheckedDays = {};
+                      newCheckedDays[dObj.dayOfWeek] = true;
+                      setCheckedDays(newCheckedDays);
                       updateReactData(reactUpd, true);
                     }
                   }}
@@ -927,17 +927,18 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                       {[0, 1, 2, 3, 4, 5, 6].map(this_dow => (
                         <FormControlLabel
                           className={classes.formControlDays}
+                          key={`dow_label_${this_dow}`}
                           control={
                             <Checkbox
                               className={classes.centerCenter}
                               key={`dow_check_${this_dow}`}
-                              value={checkedDays[this_dow]}
-                              checked={checkedDays[this_dow]}
+                              checked={checkedDays[this_dow] || false}
                               name={`dow_check_${this_dow}`}
                               onClick={() => {
-                                if (checkedDays[this_dow]) { checkedDays[this_dow] = false; }
-                                else { checkedDays[this_dow] = true; }
-                                setCheckedDays(checkedDays);
+                                setCheckedDays(prevDays => ({
+                                  ...prevDays,
+                                  [this_dow]: !prevDays[this_dow]
+                                }));
                               }}
                               disableRipple
                               inputProps={{ 'aria-labelledby': `message_routing_0` }}
@@ -1428,7 +1429,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                     withPreferred: false,
                     showAll: true,
                     hidePeople: true,
-                    buttonText: {empty: 'Exit', selected: 'Save & Exit'},
+                    buttonText: { empty: 'Exit', selected: 'Save & Exit' },
                     showGroupList: true,
                     title: 'Select Groups to Restrict Event To',
                   }}
