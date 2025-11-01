@@ -319,7 +319,7 @@ export function makeDate(pInput, optionIn = {}) {
         'ymd': targetDateYMD,
         'input': targetDateInput,
         'obs': targetDateYMD.replace(regEx, '.'),
-        'slashDate': `${targetDate.toLocaleString([], { timeZone: options.timeZone })}`,
+        'slashDate': `${targetDate.toLocaleDateString([], { timeZone: options.timeZone })}`,
         'numeric': Number(targetDateYMD.replace(/\./g, '')),
         'numeric$': targetDateYMD.replace(/\./g, ''),
         'dayPart': dayPart,

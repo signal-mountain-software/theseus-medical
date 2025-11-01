@@ -39,7 +39,7 @@
  * - client_id: Current session client ID
  * - person_id/patient_id/user_id: All set to same unique user ID
  * - user_display_name/patient_display_name: Full name from form
- * - method: "added as Family Member"
+ * - method: "QuickAdd"
  * - last_login: "password"
  * - user_homeClient: Current session client ID
  * - requirePassword: false, storePassword: true
@@ -67,6 +67,7 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 
 import { deepCopy, titleCase, getDb, putDb } from '../../util/AVAUtilities';
+import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -90,6 +91,7 @@ export default ({ onClose, options = {} }) => {
   const AVAClass = AVAclasses();
   const { state } = useSession();
   const isMounted = React.useRef(false);
+  const dateValidationTimeouts = React.useRef({});
 
   const [reactData, setReactData] = React.useState({
     initialized: false,
@@ -99,6 +101,7 @@ export default ({ onClose, options = {} }) => {
     selected_account_config: null,
     form_fields: {},
     field_values: {},
+    field_validation_errors: {}, // Store validation errors for real-time feedback
     loading_fields: false,
     loading_user_ids: false,
     alert: false,
@@ -132,8 +135,18 @@ export default ({ onClose, options = {} }) => {
     }
     isMounted.current = true;
     initialize();
-    return () => { isMounted.current = false; };
-  }, [isMounted]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Capture the current ref value for cleanup
+    const timeoutsRef = dateValidationTimeouts.current;
+
+    return () => {
+      isMounted.current = false;
+      // Clear all date validation timeouts on unmount using captured ref
+      Object.values(timeoutsRef).forEach(timeout => {
+        if (timeout) clearTimeout(timeout);
+      });
+    };
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const gatherFormFields = async (selectedConfig) => {
     if (!selectedConfig?.field_list || !Array.isArray(selectedConfig.field_list)) {
@@ -190,12 +203,6 @@ export default ({ onClose, options = {} }) => {
         message: `${errorCount} out of ${selectedConfig.field_list.length} fields could not be loaded from the database.`,
         autoHide: false
       });
-    } else {
-      showAlert({
-        severity: 'success',
-        title: 'Fields Loaded Successfully',
-        message: `All ${selectedConfig.field_list.length} fields loaded successfully.`
-      });
     }
   };
 
@@ -209,6 +216,7 @@ export default ({ onClose, options = {} }) => {
       selected_account_config: selectedConfig,
       form_fields: {}, // Clear previous fields
       field_values: {}, // Clear previous values
+      field_validation_errors: {}, // Clear validation errors
       stage: 'fill_fields'
     }));
 
@@ -225,6 +233,7 @@ export default ({ onClose, options = {} }) => {
       selected_account_config: null,
       form_fields: {},
       field_values: {},
+      field_validation_errors: {}, // Clear validation errors
       loading_fields: false,
       stage: 'select_account_type'
     }));
@@ -238,6 +247,147 @@ export default ({ onClose, options = {} }) => {
         [fieldName]: value
       }
     }));
+  };
+
+  const handlePhoneFieldChange = (fieldName, value) => {
+    // Immediately update the field value for responsive typing
+    setReactData(prev => ({
+      ...prev,
+      field_values: {
+        ...prev.field_values,
+        [fieldName]: value
+      }
+    }));
+
+    // Clear any existing timeout for this field
+    if (dateValidationTimeouts.current[fieldName]) {
+      clearTimeout(dateValidationTimeouts.current[fieldName]);
+    }
+
+    // Set a new timeout to validate and format the phone after 500ms of no typing
+    dateValidationTimeouts.current[fieldName] = setTimeout(() => {
+      if (value && value.trim() !== '') {
+        // Remove all non-digit characters for validation
+        const digitsOnly = value.replace(/\D/g, '');
+
+        // Validate phone number format
+        let formattedDisplay = value;
+        let validationError = null;
+
+        if (digitsOnly.length === 10) {
+          // US 10-digit number: format as (555) 123-4567
+          formattedDisplay = `(${digitsOnly.slice(0, 3)}) ${digitsOnly.slice(3, 6)}-${digitsOnly.slice(6)}`;
+        } else if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) {
+          // US 11-digit number starting with 1: format as +1 (555) 123-4567
+          const areaCode = digitsOnly.slice(1, 4);
+          const exchange = digitsOnly.slice(4, 7);
+          const number = digitsOnly.slice(7);
+          formattedDisplay = `+1 (${areaCode}) ${exchange}-${number}`;
+        } else if (digitsOnly.length >= 10 && digitsOnly.length <= 15) {
+          // International format: minimum 10 digits, keep user's formatting
+          formattedDisplay = value; // Keep user's formatting for international numbers
+        } else {
+          validationError = 'Please enter a valid phone number (10 digits for US, minimum 10 digits for international)';
+        }
+
+        // Update field value with formatted display and store validation result
+        setReactData(prev => ({
+          ...prev,
+          field_values: {
+            ...prev.field_values,
+            [fieldName]: formattedDisplay
+          },
+          field_validation_errors: {
+            ...prev.field_validation_errors,
+            [fieldName]: validationError
+          }
+        }));
+      } else {
+        // Clear validation error when field is empty
+        setReactData(prev => ({
+          ...prev,
+          field_validation_errors: {
+            ...prev.field_validation_errors,
+            [fieldName]: null
+          }
+        }));
+      }
+    }, 500);
+  };
+
+  const handleEmailFieldChange = (fieldName, value) => {
+    // Immediately update the field value for responsive typing
+    setReactData(prev => ({
+      ...prev,
+      field_values: {
+        ...prev.field_values,
+        [fieldName]: value
+      }
+    }));
+
+    // Clear any existing timeout for this field
+    if (dateValidationTimeouts.current[fieldName]) {
+      clearTimeout(dateValidationTimeouts.current[fieldName]);
+    }
+
+    // Set a new timeout to validate the email after 500ms of no typing
+    dateValidationTimeouts.current[fieldName] = setTimeout(() => {
+      if (value && value.trim() !== '') {
+        // Comprehensive email validation regex
+        const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+        const isValidEmail = emailRegex.test(value.trim());
+
+        // Store validation result in a separate state for UI feedback
+        setReactData(prev => ({
+          ...prev,
+          field_validation_errors: {
+            ...prev.field_validation_errors,
+            [fieldName]: isValidEmail ? null : 'Please enter a valid email address'
+          }
+        }));
+      } else {
+        // Clear validation error when field is empty
+        setReactData(prev => ({
+          ...prev,
+          field_validation_errors: {
+            ...prev.field_validation_errors,
+            [fieldName]: null
+          }
+        }));
+      }
+    }, 500);
+  };
+
+  const handleDateFieldChange = (fieldName, value) => {
+    // Immediately update the field value for responsive typing
+    setReactData(prev => ({
+      ...prev,
+      field_values: {
+        ...prev.field_values,
+        [fieldName]: value
+      }
+    }));
+
+    // Clear any existing timeout for this field
+    if (dateValidationTimeouts.current[fieldName]) {
+      clearTimeout(dateValidationTimeouts.current[fieldName]);
+    }
+
+    // Set a new timeout to validate and format the date after 500ms of no typing
+    dateValidationTimeouts.current[fieldName] = setTimeout(() => {
+      if (value && value.trim() !== '') {
+        const dateResult = makeDate(value);
+        const displayValue = dateResult.error ? value : dateResult.slashDate;
+
+        setReactData(prev => ({
+          ...prev,
+          field_values: {
+            ...prev.field_values,
+            [fieldName]: displayValue
+          }
+        }));
+      }
+    }, 500);
   };
 
   const showAlert = ({ severity = 'info', title, message, action = null, autoHide = true }) => {
@@ -284,10 +434,32 @@ export default ({ onClose, options = {} }) => {
       selected_account_config: null,
       form_fields: {},
       field_values: {},
+      field_validation_errors: {}, // Clear validation errors
       loading_fields: false,
       current_member_index: prev.current_member_index + 1,
       stage: 'select_account_type'
     }));
+  };
+
+  const goBackToEdit = () => {
+    // Get the most recently added family member
+    const lastMember = reactData.family_members[reactData.family_members.length - 1];
+
+    if (lastMember) {
+      // Remove the last family member from the array and restore its data for editing
+      setReactData(prev => ({
+        ...prev,
+        family_members: prev.family_members.slice(0, -1), // Remove last member
+        selected_account_type: lastMember.account_type,
+        selected_account_config: lastMember.account_config,
+        form_fields: lastMember.form_fields,
+        field_values: lastMember.field_values,
+        field_validation_errors: {}, // Clear validation errors when going back to edit
+        loading_fields: false,
+        current_member_index: lastMember.index, // Restore original index
+        stage: 'fill_fields'
+      }));
+    }
   };
 
   /**
@@ -306,7 +478,7 @@ export default ({ onClose, options = {} }) => {
         session_id: member.proposed_user_id,
         client_id: state.session.client_id,
         last_login: "password",
-        method: "added as Family Member",
+        method: "QuickAdd",
         patient_display_name: memberName,
         patient_id: member.proposed_user_id,
         person_id: member.proposed_user_id,
@@ -379,14 +551,33 @@ export default ({ onClose, options = {} }) => {
       const phone = fieldValues.phone || fieldValues.phone_number || fieldValues['phone number'] || '';
       const cell = fieldValues.cell || fieldValues.cell_phone || fieldValues['cell phone'] || phone;
 
+      // Convert phone numbers to storage format (+12223334444)
+      const convertPhoneToStorageFormat = (phoneValue) => {
+        if (!phoneValue) return phoneValue;
+        const digitsOnly = phoneValue.replace(/\D/g, '');
+
+        if (digitsOnly.length === 10) {
+          return `+1${digitsOnly}`;
+        } else if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) {
+          return `+${digitsOnly}`;
+        } else if (digitsOnly.length >= 10 && digitsOnly.length <= 15) {
+          return phoneValue.startsWith('+') ? phoneValue : `+${digitsOnly}`;
+        }
+        return phoneValue; // Return original if can't convert
+      };
+
+      const cellForStorage = convertPhoneToStorageFormat(cell);
+
       // Determine preferred messaging method
       let preferred_methods = ['AVA'];
       let preferred_method = 'AVA';
 
-      if (cell) {
+      if (cellForStorage) {
         preferred_methods = ['sms'];
         preferred_method = 'sms';
-        search_words.push(cell.slice(-10));
+        // Use last 10 digits for search (removing country code)
+        const searchDigits = cellForStorage.replace(/\D/g, '').slice(-10);
+        search_words.push(searchDigits);
       } else if (email) {
         preferred_methods = ['email'];
         preferred_method = 'email';
@@ -397,8 +588,8 @@ export default ({ onClose, options = {} }) => {
       if (email) {
         contact_info.email = { address: email };
       }
-      if (cell) {
-        contact_info.cell = { number: cell };
+      if (cellForStorage) {
+        contact_info.cell = { number: cellForStorage };
       }
 
       // Build People record following PeopleMaintenance.js pattern
@@ -431,7 +622,38 @@ export default ({ onClose, options = {} }) => {
           'email', 'email_address', 'email address',
           'phone', 'phone_number', 'phone number',
           'cell', 'cell_phone', 'cell phone'].includes(fieldName)) {
-          peopleRecord[fieldName] = fieldValue;
+
+          // Check if this is a date field and convert to numeric$ format for storage
+          const fieldData = member.form_fields[fieldName];
+          if (fieldData && fieldData.value?.type === 'date') {
+            const dateResult = makeDate(fieldValue);
+            // Save the numeric$ value (YYYYMMDD format) instead of the display value
+            const saveValue = dateResult.error ? fieldValue : dateResult.numeric$;
+            console.log(`Converting date field '${fieldName}': '${fieldValue}' -> '${saveValue}'`);
+            peopleRecord[fieldName] = saveValue;
+          } else if (fieldData && fieldData.value?.type === 'phone') {
+            // Convert phone number to +12223334444 format for storage
+            const digitsOnly = fieldValue.replace(/\D/g, '');
+            let phoneForStorage = fieldValue; // Default to original value if conversion fails
+
+            if (digitsOnly.length === 10) {
+              // US 10-digit number: add +1 prefix
+              phoneForStorage = `+1${digitsOnly}`;
+            } else if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) {
+              // US 11-digit number starting with 1: add + prefix
+              phoneForStorage = `+${digitsOnly}`;
+            } else if (digitsOnly.length >= 10 && digitsOnly.length <= 15) {
+              // International format: add + prefix if not present
+              if (!fieldValue.startsWith('+')) {
+                phoneForStorage = `+${digitsOnly}`;
+              }
+            }
+
+            console.log(`Converting phone field '${fieldName}': '${fieldValue}' -> '${phoneForStorage}'`);
+            peopleRecord[fieldName] = phoneForStorage;
+          } else {
+            peopleRecord[fieldName] = fieldValue;
+          }
         }
       });
 
@@ -760,12 +982,18 @@ export default ({ onClose, options = {} }) => {
       >
         <span>
           {reactData.stage === 'ask_for_more' ?
-            `Family Member ${reactData.current_member_index + 1} Added Successfully` :
+            `${getFamilyMemberName(reactData.family_members[reactData.current_member_index])}` :
             reactData.stage === 'complete' ?
-              `All Family Members Added (${reactData.family_members.length} total)` :
+              (reactData.family_members.length === 1 ?
+                `${getFamilyMemberName(reactData.family_members[0])} Ready` :
+                `All Family Members Ready (${reactData.family_members.length} total)`) :
               reactData.selected_account_type ?
-                `${titleCase(reactData.selected_account_type)} - Family Member ${reactData.current_member_index + 1}` :
-                `Select Account Type - Family Member ${reactData.current_member_index + 1}`
+                (reactData.current_member_index > 0 ?
+                  `${titleCase(reactData.selected_account_type)} - Family Member ${reactData.current_member_index + 1}` :
+                  titleCase(reactData.selected_account_type)) :
+                (reactData.current_member_index > 0 ?
+                  `Select Account Type - Family Member ${reactData.current_member_index + 1}` :
+                  'Select Account Type')
           }
         </span>
         {reactData.selected_account_type && (reactData.stage === 'select_account_type' || reactData.stage === 'fill_fields') && (
@@ -792,11 +1020,12 @@ export default ({ onClose, options = {} }) => {
             {/* Show account type selection only if none is selected */}
             {!reactData.selected_account_type && (
               Array.isArray(reactData.new_account_prompts) && reactData.new_account_prompts.length > 0 ? (
-                <FormControl component="fieldset">
-                  <FormLabel component="legend">Choose the type of account to create:</FormLabel>
+                <FormControl component="fieldset" style={{ marginTop: '16px' }}>
+                  <FormLabel component="legend" style={{ marginBottom: '16px' }}>Choose the type of account to create:</FormLabel>
                   <RadioGroup
                     value={reactData.selected_account_type}
                     onChange={handleAccountTypeChange}
+                    style={{ marginLeft: '16px', marginTop: '8px' }}
                   >
                     {reactData.new_account_prompts.map((prompt, index) => (
                       <FormControlLabel
@@ -804,6 +1033,7 @@ export default ({ onClose, options = {} }) => {
                         value={prompt.account_type}
                         control={<Radio />}
                         label={titleCase(prompt.account_type)}
+                        style={{ marginBottom: '8px' }}
                       />
                     ))}
                   </RadioGroup>
@@ -831,7 +1061,7 @@ export default ({ onClose, options = {} }) => {
                     return (
                       <Box key={fieldName} style={{ marginBottom: '8px', color: 'red', marginRight: '16px' }}>
                         <Typography variant="body2">
-                          Field '{fieldName}' not found in database
+                          Field '{titleCase(fieldName.replace(/_/g, ' '))}' not found in database
                         </Typography>
                       </Box>
                     );
@@ -839,7 +1069,19 @@ export default ({ onClose, options = {} }) => {
 
                   const fieldType = fieldData.value?.type || 'text';
                   const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
-                  const isRequired = fieldData.value?.required || false;
+                  const isRequired = reactData.selected_account_config?.required?.includes(fieldName) || false;
+                  const isDateField = fieldType === 'date';
+                  const isEmailField = fieldType === 'email';
+                  const isPhoneField = fieldType === 'phone';
+                  const dateHelperText = isDateField ? 'Enter date (various formats accepted: 12/25/1990, Dec 25 1990, etc.)' : '';
+                  const emailHelperText = isEmailField ? 'Enter a valid email address (e.g., user@example.com)' : '';
+                  const phoneHelperText = isPhoneField ? 'Enter phone number (10 digits for US: 5551234567, minimum 10 digits for international)' : '';
+                  const baseHelperText = fieldData.prompt?.help_text || dateHelperText || emailHelperText || phoneHelperText;
+
+                  // Check for validation errors
+                  const validationError = reactData.field_validation_errors?.[fieldName];
+                  const finalHelperText = validationError || baseHelperText;
+                  const hasError = Boolean(validationError);
 
                   return (
                     <Box key={fieldName} style={{ marginBottom: '16px', marginRight: '16px' }}>
@@ -847,13 +1089,33 @@ export default ({ onClose, options = {} }) => {
                         fullWidth
                         label={fieldLabel}
                         required={isRequired}
-                        type={fieldType === 'email' ? 'email' : fieldType === 'phone' ? 'tel' : 'text'}
+                        type={fieldType === 'email' ? 'email' :
+                          fieldType === 'phone' ? 'tel' : 'text'}
                         value={reactData.field_values[fieldName] || ''}
-                        onChange={(event) => handleFieldValueChange(fieldName, event.target.value)}
+                        onChange={(event) => {
+                          if (fieldType === 'date') {
+                            handleDateFieldChange(fieldName, event.target.value);
+                          } else if (fieldType === 'email') {
+                            handleEmailFieldChange(fieldName, event.target.value);
+                          } else if (fieldType === 'phone') {
+                            handlePhoneFieldChange(fieldName, event.target.value);
+                          } else {
+                            handleFieldValueChange(fieldName, event.target.value);
+                          }
+                        }}
                         variant="outlined"
                         size="small"
                         style={{ marginBottom: '8px' }}
-                        helperText={fieldData.prompt?.help_text || ''}
+                        helperText={finalHelperText}
+                        error={hasError}
+                        InputLabelProps={isDateField ? { shrink: true } : {}}
+                        inputProps={isDateField ? {
+                          placeholder: 'Enter date...'
+                        } : isEmailField ? {
+                          placeholder: 'Enter email address...'
+                        } : isPhoneField ? {
+                          placeholder: 'Enter phone number...'
+                        } : {}}
                       />
                     </Box>
                   );
@@ -867,15 +1129,19 @@ export default ({ onClose, options = {} }) => {
         {reactData.stage === 'ask_for_more' && (
           <Box style={{ textAlign: 'center', marginTop: '20px' }}>
             <Typography variant="h6" style={{ marginBottom: '16px', color: 'green' }}>
-              ✓ Family Member {reactData.current_member_index + 1} Added Successfully!
+              ✓ {reactData.family_members.length === 1 ?
+                `Done - ${getFamilyMemberName(reactData.family_members[0])}` :
+                `Family Member ${reactData.current_member_index + 1} Done - ${getFamilyMemberName(reactData.family_members[reactData.current_member_index])}`}
             </Typography>
-            <Typography variant="body1" style={{ marginBottom: '20px' }}>
-              You have added {reactData.family_members.length} family member{reactData.family_members.length !== 1 ? 's' : ''} so far.
-            </Typography>
+            {reactData.family_members.length > 1 && (
+              <Typography variant="body1" style={{ marginBottom: '20px' }}>
+                You have added {reactData.family_members.length} family member{reactData.family_members.length !== 1 ? 's' : ''} so far.
+              </Typography>
+            )}
             <Typography variant="h6" style={{ marginBottom: '20px' }}>
               Do you want to add another family member?
             </Typography>
-            <Box style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
+            <Box style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
               <Button
                 variant="contained"
                 color="primary"
@@ -883,6 +1149,13 @@ export default ({ onClose, options = {} }) => {
                 style={{ backgroundColor: 'green', color: 'white' }}
               >
                 Yes, Add Another
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={goBackToEdit}
+                style={{ borderColor: 'orange', color: 'orange' }}
+              >
+                Go Back to Edit
               </Button>
               <Button
                 variant="outlined"
@@ -909,12 +1182,16 @@ export default ({ onClose, options = {} }) => {
               </Box>
             ) : (
               <Box>
-                <Typography variant="h6" style={{ marginBottom: '16px', color: 'green' }}>
-                  ✓ All Family Members Added Successfully!
-                </Typography>
-                <Typography variant="body1" style={{ marginBottom: '20px' }}>
-                  Total family members: {reactData.family_members.length}
-                </Typography>
+                {reactData.family_members.length > 1 && (
+                  <Typography variant="h6" style={{ marginBottom: '16px', color: 'green' }}>
+                    ✓ All Family Members Ready ({reactData.family_members.length} total)
+                  </Typography>
+                )}
+                {reactData.family_members.length > 1 && (
+                  <Typography variant="body1" style={{ marginBottom: '20px' }}>
+                    Total family members: {reactData.family_members.length}
+                  </Typography>
+                )}
                 {/* Show family_id if generated for multiple members */}
                 {reactData.family_id && (
                   <Typography variant="body2" style={{ marginBottom: '20px', color: 'blue', fontWeight: 'bold' }}>
@@ -939,7 +1216,9 @@ export default ({ onClose, options = {} }) => {
                   })}
                 </Box>
                 <Typography variant="body1" style={{ marginBottom: '20px' }}>
-                  Ready to save all family member data to the system.
+                  {reactData.family_members.length === 1 ?
+                    'Ready to save data to the system.' :
+                    'Ready to save all family member data to the system.'}
                 </Typography>
                 <Box style={{ display: 'flex', gap: '16px', justifyContent: 'center', marginBottom: '16px' }}>
                   <Button
@@ -947,7 +1226,7 @@ export default ({ onClose, options = {} }) => {
                     onClick={goBackToAddMore}
                     style={{ borderColor: 'orange', color: 'orange' }}
                   >
-                    Add More Family Members
+                    {reactData.family_members.length === 1 ? 'Add Family Members' : 'Add More Family Members'}
                   </Button>
                 </Box>
               </Box>
@@ -963,27 +1242,133 @@ export default ({ onClose, options = {} }) => {
             className={AVAClass.AVAButton}
             style={{
               marginTop: '16px',
-              backgroundColor: (reactData.selected_account_type && !reactData.loading_fields && Object.keys(reactData.form_fields).length > 0) ? 'green' : 'gray',
+              backgroundColor: reactData.loading_fields ? 'gray' :
+                (!reactData.selected_account_type || Object.keys(reactData.form_fields).length === 0) ? 'red' :
+                  (reactData.selected_account_type && !reactData.loading_fields && Object.keys(reactData.form_fields).length > 0) ? 'green' : 'gray',
               color: 'white'
             }}
             size='small'
-            disabled={!reactData.selected_account_type || reactData.loading_fields || Object.keys(reactData.form_fields).length === 0}
+            disabled={reactData.loading_fields}
             onClick={async () => {
+              // Check if this is an exit action (no account type selected or no form fields)
+              const isExitAction = !reactData.selected_account_type || Object.keys(reactData.form_fields).length === 0;
+
+              if (isExitAction) {
+                // Exit the dialog completely
+                if (onClose) {
+                  onClose();
+                }
+                return;
+              }
+
               if (reactData.selected_account_config && reactData.form_fields) {
-                // Validate required fields
-                const requiredFields = Object.entries(reactData.form_fields)
-                  .filter(([, fieldData]) => fieldData && fieldData.value?.required)
-                  .map(([fieldName]) => fieldName);
+                // Validate required fields - only check fields that are actually presented on screen
+                const presentedFields = reactData.selected_account_config?.field_list || [];
+                const requiredFields = (reactData.selected_account_config?.required || [])
+                  .filter(fieldName => presentedFields.includes(fieldName));
 
                 const missingRequiredValues = requiredFields.filter(fieldName =>
                   !reactData.field_values[fieldName] || reactData.field_values[fieldName].trim() === ''
                 );
 
                 if (missingRequiredValues.length > 0) {
+                  // Convert field names to user-friendly prompts
+                  const missingFieldPrompts = missingRequiredValues.map(fieldName => {
+                    const fieldData = reactData.form_fields[fieldName];
+                    return fieldData?.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
+                  });
+
                   showAlert({
                     severity: 'warning',
                     title: 'Required Fields Missing',
-                    message: `Please fill in all required fields: ${missingRequiredValues.join(', ')}`,
+                    message: `Please fill in all required fields: ${missingFieldPrompts.join(', ')}`,
+                    autoHide: false
+                  });
+                  return;
+                }
+
+                // Validate date fields
+                const invalidDateFields = [];
+                Object.entries(reactData.form_fields).forEach(([fieldName, fieldData]) => {
+                  if (fieldData && fieldData.value?.type === 'date') {
+                    const fieldValue = reactData.field_values[fieldName];
+                    if (fieldValue && fieldValue.trim() !== '') {
+                      // Use makeDate to validate the date
+                      const dateResult = makeDate(fieldValue);
+
+                      if (dateResult.error) {
+                        const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
+                        invalidDateFields.push(fieldLabel);
+                      }
+                    }
+                  }
+                });
+
+                if (invalidDateFields.length > 0) {
+                  showAlert({
+                    severity: 'warning',
+                    title: 'Invalid Date Fields',
+                    message: `Please enter valid dates for the following fields: ${invalidDateFields.join(', ')}. Try formats like: 12/25/1990, Dec 25 1990, or 25-Dec-1990.`,
+                    autoHide: false
+                  });
+                  return;
+                }
+
+                // Validate email fields
+                const invalidEmailFields = [];
+                Object.entries(reactData.form_fields).forEach(([fieldName, fieldData]) => {
+                  if (fieldData && fieldData.value?.type === 'email') {
+                    const fieldValue = reactData.field_values[fieldName];
+                    if (fieldValue && fieldValue.trim() !== '') {
+                      // Use comprehensive email validation regex
+                      const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+                      const isValidEmail = emailRegex.test(fieldValue.trim());
+
+                      if (!isValidEmail) {
+                        const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
+                        invalidEmailFields.push(fieldLabel);
+                      }
+                    }
+                  }
+                });
+
+                if (invalidEmailFields.length > 0) {
+                  showAlert({
+                    severity: 'warning',
+                    title: 'Invalid Email Fields',
+                    message: `Please enter valid email addresses for the following fields: ${invalidEmailFields.join(', ')}. Example: user@example.com`,
+                    autoHide: false
+                  });
+                  return;
+                }
+
+                // Validate phone fields
+                const invalidPhoneFields = [];
+                Object.entries(reactData.form_fields).forEach(([fieldName, fieldData]) => {
+                  if (fieldData && fieldData.value?.type === 'phone') {
+                    const fieldValue = reactData.field_values[fieldName];
+                    if (fieldValue && fieldValue.trim() !== '') {
+                      // Remove all non-digit characters for validation
+                      const digitsOnly = fieldValue.replace(/\D/g, '');
+
+                      // Validate phone number format - be more strict
+                      const isValidPhone = (digitsOnly.length === 10) ||
+                        (digitsOnly.length === 11 && digitsOnly.startsWith('1')) ||
+                        (digitsOnly.length >= 10 && digitsOnly.length <= 15);
+
+                      if (!isValidPhone) {
+                        const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
+                        invalidPhoneFields.push(fieldLabel);
+                      }
+                    }
+                  }
+                });
+
+                if (invalidPhoneFields.length > 0) {
+                  showAlert({
+                    severity: 'warning',
+                    title: 'Invalid Phone Fields',
+                    message: `Please enter valid phone numbers for the following fields: ${invalidPhoneFields.join(', ')}. Use 10 digits for US numbers or minimum 10 digits for international format.`,
                     autoHide: false
                   });
                   return;
@@ -991,20 +1376,14 @@ export default ({ onClose, options = {} }) => {
 
                 // Save current family member and proceed to ask for more
                 saveCurrentFamilyMember();
-
-                showAlert({
-                  severity: 'success',
-                  title: 'Family Member Saved',
-                  message: `Successfully saved information for family member ${reactData.current_member_index + 1}.`
-                });
               }
             }}
           >
             {reactData.loading_fields
               ? 'Loading...'
-              : (reactData.stage === 'select_account_type' || Object.keys(reactData.form_fields).length === 0)
-                ? 'Continue'
-                : 'Save Family Member'
+              : (!reactData.selected_account_type || Object.keys(reactData.form_fields).length === 0)
+                ? 'Exit'
+                : 'Save and Continue'
             }
           </Button>
         )}
@@ -1025,7 +1404,9 @@ export default ({ onClose, options = {} }) => {
                 showAlert({
                   severity: 'info',
                   title: 'Saving Data',
-                  message: 'Saving all family member data to People, SessionsV2, and FamilyGroups tables...',
+                  message: reactData.family_members.length === 1 ?
+                    'Saving data to People and SessionsV2 tables...' :
+                    'Saving all family member data to People, SessionsV2, and FamilyGroups tables...',
                   autoHide: false
                 });
 
@@ -1089,7 +1470,9 @@ export default ({ onClose, options = {} }) => {
                     autoHide: false
                   });
                 } else {
-                  let message = `Successfully saved ${savedMembers.length} family member(s) to People and SessionsV2 tables.`;
+                  let message = reactData.family_members.length === 1 ?
+                    `Successfully saved data in AVA.` :
+                    `Successfully saved ${savedMembers.length} family member(s) in AVA.`;
                   if (reactData.family_id) {
                     if (familyGroupsSaved) {
                       message += ` FamilyGroups table updated with Family ID: ${reactData.family_id}`;
@@ -1109,7 +1492,7 @@ export default ({ onClose, options = {} }) => {
 
                   showAlert({
                     severity: 'success',
-                    title: 'All Data Saved Successfully',
+                    title: reactData.family_members.length === 1 ? 'Data Saved Successfully' : 'All Data Saved Successfully',
                     message: message
                   });
 
@@ -1124,13 +1507,15 @@ export default ({ onClose, options = {} }) => {
                 showAlert({
                   severity: 'error',
                   title: 'Save Failed',
-                  message: `Failed to save family member data: ${error.message}`,
+                  message: reactData.family_members.length === 1 ?
+                    `Failed to save data: ${error.message}` :
+                    `Failed to save family member data: ${error.message}`,
                   autoHide: false
                 });
               }
             }}
           >
-            Save All Family Data
+            {reactData.family_members.length === 1 ? 'Save Data' : 'Save All Family Data'}
           </Button>
         )}
       </DialogActions>
