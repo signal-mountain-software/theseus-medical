@@ -6,6 +6,7 @@ import { AVAclasses, AVATextStyle, isDark } from '../../util/AVAStyles';
 import useSession from '../../hooks/useSession';
 
 import ClientProfileSection from '../sections/ClientProfileSection';
+import ClientQRSection from '../sections/ClientQRSection';
 import ClientMessagingSection from './ClientMessagingSection';
 import WeatherSection from '../sections/WeatherSection';
 import GlobalMessagePreferencesSection from '../sections/GlobalMessagePreferencesSection';
@@ -92,6 +93,9 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
       ClientProfileSection: {
         component_id: ClientProfileSection,
       },
+      ClientQRSection: {
+        component_id: ClientQRSection,
+      },
       ClientWeatherSection: {
         component_id: WeatherSection,
       },
@@ -135,6 +139,14 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
           isAuthorized: true,
           version_id: 0,
           component_name: 'ClientProfileSection'
+        },
+        {
+          section_name: 'QR Codes',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'ClientQRSection'
         },
         {
           section_name: 'Weather & Time Zone',
