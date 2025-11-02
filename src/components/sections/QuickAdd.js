@@ -66,9 +66,12 @@ import React from 'react';
 
 import useSession from '../../hooks/useSession';
 
-import { deepCopy, titleCase, getDb, putDb } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, getDb, putDb, isEmpty, uuid } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
+import { getPerson, getPersonByWords } from '../../util/AVAPeople';
+import { determineClass } from '../../util/AVAGroups';
+import { sendMessages } from '../../util/AVAMessages';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import { Box, Button, TextField, Typography, Dialog, DialogContentText, DialogActions, FormControl, FormLabel, RadioGroup, FormControlLabel, Radio, IconButton, Tooltip, Snackbar } from '@material-ui/core/';
@@ -107,8 +110,26 @@ export default ({ onClose, options = {} }) => {
     alert: false,
     family_members: [], // Array to store completed family member data
     current_member_index: 0,
-    stage: 'select_account_type', // 'select_account_type', 'fill_fields', 'ask_for_more', 'complete'
-    options
+    stage: 'select_account_type', // Default to account type selection for normal invocation
+    options,
+    // New fields for name validation
+    entered_name: '',
+    name_validation_result: null,
+    candidates: [],
+    select_user: false,
+    // Fields for email/phone verification stage
+    verification_stage: false,
+    verification_input: '',
+    matched_account: null,
+    // Fields for pre-filling name fields
+    parsed_first_name: '',
+    parsed_last_name: '',
+    // Fields for verification code
+    code_verification_stage: false,
+    sent_verification_code: '',
+    verification_code_input: '',
+    code_sent_to: '',
+    code_send_method: ''
   });
 
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
@@ -129,6 +150,19 @@ export default ({ onClose, options = {} }) => {
       // Grab the new_account_form object from state.session and store as new_account_prompts
       if (state.session?.new_account_form) {
         reactUpd.new_account_prompts = deepCopy(state.session.new_account_form);
+      }
+
+      // Determine initial stage based on how QuickAdd was invoked
+      // If invoked via URL parameter (?create=client_id), start with name verification to prevent duplicates
+      // Otherwise, skip directly to account type selection for normal admin use
+      const invokedViaUrl = options.source === 'url_parameter';
+
+      if (invokedViaUrl) {
+        // URL-driven mode (?create=client_id) - start with name verification to prevent duplicates
+        reactUpd.stage = 'prompt_for_name';
+      } else {
+        // Normal invocation - skip directly to account type selection
+        reactUpd.stage = 'select_account_type';
       }
 
       updateReactData(reactUpd, true);
@@ -189,11 +223,41 @@ export default ({ onClose, options = {} }) => {
       }
     }
 
-    setReactData(prev => ({
-      ...prev,
-      form_fields: fieldData,
-      loading_fields: false
-    }));
+    setReactData(prev => {
+      // Pre-fill name fields if we have parsed names from the initial lookup
+      const updatedFieldValues = { ...prev.field_values };
+
+      if (prev.parsed_first_name || prev.parsed_last_name) {
+        // Look for common first name field variations
+        const firstNameFields = ['first_name', 'firstName', 'fname', 'first name'];
+        const lastNameFields = ['last_name', 'lastName', 'lname', 'surname', 'last name'];
+
+        // Pre-fill first name fields
+        if (prev.parsed_first_name) {
+          firstNameFields.forEach(fieldName => {
+            if (fieldData[fieldName] && !updatedFieldValues[fieldName]) {
+              updatedFieldValues[fieldName] = titleCase(prev.parsed_first_name);
+            }
+          });
+        }
+
+        // Pre-fill last name fields
+        if (prev.parsed_last_name) {
+          lastNameFields.forEach(fieldName => {
+            if (fieldData[fieldName] && !updatedFieldValues[fieldName]) {
+              updatedFieldValues[fieldName] = titleCase(prev.parsed_last_name);
+            }
+          });
+        }
+      }
+
+      return {
+        ...prev,
+        form_fields: fieldData,
+        field_values: updatedFieldValues,
+        loading_fields: false
+      };
+    });
 
     // Show alert if there were errors loading fields
     if (errorCount > 0) {
@@ -437,8 +501,318 @@ export default ({ onClose, options = {} }) => {
       field_validation_errors: {}, // Clear validation errors
       loading_fields: false,
       current_member_index: prev.current_member_index + 1,
-      stage: 'select_account_type'
+      stage: 'prompt_for_name', // Start with name prompt for each family member
+      // Clear all name-related fields for new family member
+      entered_name: '',
+      name_validation_result: null,
+      candidates: [],
+      select_user: false,
+      verification_stage: false,
+      verification_input: '',
+      matched_account: null,
+      parsed_first_name: '',
+      parsed_last_name: ''
     }));
+  };
+
+  // Name validation function based on CheckInCheckOut.js validateUser pattern
+  const validateUser = async (IDString, client_id, nonRes, restricted_to = false) => {
+    if (!IDString) { return { result: 'invalid', error_field: 0, reason: 'The ID field is empty' }; }
+    // get candidates from the words entered
+    let personRecs = [];
+    let ID_words = IDString.trim().split(/\s+/);
+    if (ID_words.length === 1) {  // only one word, try it as a user ID
+      let result = await getPerson(ID_words[0], '*all');
+      if (!isEmpty(result)) { personRecs.push(result); }
+    }
+    if (isEmpty(personRecs)) {
+      personRecs.push(...(await getPersonByWords(client_id, ID_words)));
+      if (isEmpty(personRecs)) {
+        return { result: 'invalid', error_field: 0, reason: `We didn't find an account for ${IDString}` };
+      }
+    }
+    for (let p = 0; p < personRecs.length; p++) {
+      personRecs[p].account_class = determineClass(personRecs[p].groups, state.session.group_assignments);
+      if (personRecs[p].messaging && personRecs[p].messaging.voice) {
+        personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.voice.slice(-4)}`;
+      }
+      else if (personRecs[p].messaging && personRecs[p].messaging.sms) {
+        personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.sms.slice(-4)}`;
+      }
+    }
+    personRecs = personRecs.filter(p => {
+      if (restricted_to) {
+        return restricted_to.includes(p.account_class);
+      }
+      else if (!p.name) {
+        return false;
+      }
+      else {
+        return (p.account_class !== 'inactive');
+      }
+    });
+    switch (personRecs.length) {
+      case 0: {
+        return { result: 'invalid', error_field: 1, reason: `That information doesn't match any ${nonRes ? titleCase(nonRes) : 'Person'} accounts that we can find` };
+      }
+      case 1: {
+        return { result: 'match', person_id: personRecs[0].person_id, personRec: personRecs[0] };
+      }
+      default: {
+        return {
+          result: 'ambiguous',
+          error_field: 1,
+          reason: `"${IDString}" matches more than one ${nonRes ? titleCase(nonRes) : 'Person'} account`,
+          candidates: personRecs
+        };
+      }
+    }
+  };
+
+  const handleNameLookup = async (enteredName) => {
+    if (!enteredName || enteredName.trim() === '') {
+      showAlert({
+        severity: 'error',
+        title: 'Name Required',
+        message: 'Please enter a name to continue.',
+        autoHide: true
+      });
+      return;
+    }
+
+    const validation = await validateUser(enteredName, state.session.client_id);
+
+    setReactData(prev => ({
+      ...prev,
+      entered_name: enteredName,
+      name_validation_result: validation
+    }));
+
+    switch (validation.result) {
+      case 'match':
+        // Single match found - show verification stage
+        setReactData(prev => ({
+          ...prev,
+          candidates: [validation.personRec],
+          verification_stage: true,
+          select_user: false
+        }));
+        break;
+      case 'ambiguous':
+        // Multiple matches found - show verification stage
+        setReactData(prev => ({
+          ...prev,
+          candidates: validation.candidates,
+          verification_stage: true,
+          select_user: false
+        }));
+        break;
+      case 'invalid':
+        // No matches found - can proceed with new account creation
+        // Parse the entered name for pre-filling form fields
+        const nameParts = enteredName.trim().split(/\s+/);
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+
+        setReactData(prev => ({
+          ...prev,
+          stage: 'select_account_type',
+          // Store parsed name parts for pre-filling
+          parsed_first_name: firstName,
+          parsed_last_name: lastName
+        }));
+        break;
+      default:
+        showAlert({
+          severity: 'error',
+          title: 'Validation Error',
+          message: 'An unexpected error occurred during name validation.',
+          autoHide: true
+        });
+    }
+  };
+
+  const handleVerificationInput = async (verificationInput) => {
+    if (!verificationInput || verificationInput.trim() === '') {
+      showAlert({
+        severity: 'error',
+        title: 'Input Required',
+        message: 'Please enter your email address or cell phone number.',
+        autoHide: true
+      });
+      return;
+    }
+
+    const input = verificationInput.trim().toLowerCase();
+    let matchedAccount = null;
+
+    // Search through candidates for matching email or phone
+    for (const candidate of reactData.candidates) {
+      if (candidate.contact_info) {
+        // Check email match
+        if (candidate.contact_info.email && candidate.contact_info.email.address) {
+          if (candidate.contact_info.email.address.toLowerCase() === input) {
+            matchedAccount = candidate;
+            break;
+          }
+        }
+
+        // Check cell phone match
+        if (candidate.contact_info.cell && candidate.contact_info.cell.number) {
+          const candidatePhone = candidate.contact_info.cell.number;
+          // Remove all non-digit characters for comparison
+          const candidateDigits = candidatePhone.replace(/\D/g, '');
+          const inputDigits = input.replace(/\D/g, '');
+
+          // Compare last 10 digits (removing country codes)
+          const candidateLast10 = candidateDigits.slice(-10);
+          const inputLast10 = inputDigits.slice(-10);
+
+          if (inputLast10.length >= 10 && candidateLast10 === inputLast10) {
+            matchedAccount = candidate;
+            break;
+          }
+        }
+      }
+    }
+
+    if (matchedAccount) {
+      // Generate verification code
+      const tempPass = uuid(6);
+
+      // Determine send method and address
+      let sendMethod = '';
+      let sendAddress = '';
+
+      if (matchedAccount.contact_info.email && matchedAccount.contact_info.email.address &&
+        input === matchedAccount.contact_info.email.address.toLowerCase()) {
+        sendMethod = 'email';
+        sendAddress = matchedAccount.contact_info.email.address;
+      } else if (matchedAccount.contact_info.cell && matchedAccount.contact_info.cell.number) {
+        sendMethod = 'sms';
+        sendAddress = matchedAccount.contact_info.cell.number;
+      }
+
+      try {
+        // Send verification code
+        await sendMessages({
+          client: matchedAccount.client_id,
+          author: state.session.user_id,
+          person_id: matchedAccount.person_id,
+          preferred_method: sendMethod,
+          messageText: `To verify your account, use this code: ${tempPass}`,
+          recipientList: [matchedAccount.person_id],
+          subject: `Verification code from ${state.session.client_name}`
+        });
+
+        // Show notification and switch to code verification stage
+        const notificationMessage = sendMethod === 'email'
+          ? `We've sent a verification code to ${sendAddress}. Look for the code in that message and enter it below.`
+          : `We've sent a verification code to ${sendAddress.replace(/(\+\d{1})(\d{3})(\d{3})(\d{4})/, '$1 ($2) $3-$4')}. Look for the code in that text message and enter it below.`;
+
+        setReactData(prev => ({
+          ...prev,
+          matched_account: matchedAccount,
+          code_verification_stage: true,
+          verification_stage: false,
+          sent_verification_code: tempPass,
+          code_sent_to: sendAddress,
+          code_send_method: sendMethod
+        }));
+
+        showAlert({
+          severity: 'info',
+          title: 'Verification Code Sent',
+          message: notificationMessage,
+          autoHide: false
+        });
+
+      } catch (error) {
+        console.error('Error sending verification code:', error);
+        showAlert({
+          severity: 'error',
+          title: 'Send Error',
+          message: 'Failed to send verification code. Please try again.',
+          autoHide: false
+        });
+      }
+    } else {
+      showAlert({
+        severity: 'info',
+        title: 'No Match Found',
+        message: 'That info doesn\'t match any account in our records. You can create a new account below.',
+        autoHide: false
+      });
+    }
+  };
+
+  const resetToNamePrompt = () => {
+    setReactData(prev => ({
+      ...prev,
+      stage: 'prompt_for_name',
+      entered_name: '',
+      name_validation_result: null,
+      candidates: [],
+      select_user: false,
+      verification_stage: false,
+      verification_input: '',
+      matched_account: null,
+      parsed_first_name: '',
+      parsed_last_name: '',
+      code_verification_stage: false,
+      sent_verification_code: '',
+      verification_code_input: '',
+      code_sent_to: '',
+      code_send_method: '',
+      selected_account_type: '',
+      selected_account_config: null,
+      form_fields: {},
+      field_values: {},
+      field_validation_errors: {},
+      loading_fields: false,
+      family_members: [],
+      current_member_index: 0
+    }));
+  };
+
+  const handleVerificationCode = async (inputCode) => {
+    if (!inputCode || inputCode.length !== 6) {
+      showAlert({
+        severity: 'error',
+        title: 'Invalid Code',
+        message: 'Please enter a 6-digit verification code.',
+        autoHide: false
+      });
+      return;
+    }
+
+    if (inputCode !== reactData.sent_verification_code) {
+      showAlert({
+        severity: 'error',
+        title: 'Code Mismatch',
+        message: 'The code you entered doesn\'t match. Please check and try again.',
+        autoHide: false
+      });
+      return;
+    }
+
+    // Code is correct - account verified, log the user in via URL redirect
+    showAlert({
+      severity: 'success',
+      title: 'Account Verified',
+      message: `Welcome back, ${reactData.matched_account.name.first} ${reactData.matched_account.name.last}! Logging you in...`,
+      autoHide: false
+    });
+
+    // Use URL-based login approach (same pattern as TheseusScreen.js)
+    sessionStorage.removeItem('AVASessionData');
+    const baseUrl = window.location.href.split('?')[0];
+    const loginUrl = `${baseUrl}?user=${reactData.matched_account.person_id}`;
+
+    // Small delay to show the success message before redirecting
+    setTimeout(() => {
+      window.location.replace(loginUrl);
+    }, 1000);
   };
 
   const goBackToEdit = () => {
@@ -963,8 +1337,32 @@ export default ({ onClose, options = {} }) => {
       variant={'elevation'}
       elevation={2}
       onClose={() => {
-        if (onClose) { onClose(); }
-        else { return; }
+        // Handle dialog close (X button) based on how QuickAdd was invoked
+        if (options.source === 'url_parameter') {
+          // URL-driven mode - close the entire application
+          sessionStorage.removeItem('AVASessionData');
+
+          // Try to close the window/tab
+          if (window.opener) {
+            // If opened in a popup, close it
+            window.close();
+          } else {
+            // If not a popup, try to navigate away or close
+            try {
+              window.close();
+            } catch (e) {
+              // If we can't close (browser security), navigate to a generic page
+              window.location.href = 'about:blank';
+            }
+          }
+        } else {
+          // Normal admin mode - just close the dialog
+          if (onClose) {
+            onClose();
+          } else {
+            return;
+          }
+        }
       }}
     >
       <DialogContentText
@@ -981,21 +1379,41 @@ export default ({ onClose, options = {} }) => {
         }}
       >
         <span>
-          {reactData.stage === 'ask_for_more' ?
-            `${getFamilyMemberName(reactData.family_members[reactData.current_member_index])}` :
-            reactData.stage === 'complete' ?
-              (reactData.family_members.length === 1 ?
-                `${getFamilyMemberName(reactData.family_members[0])} Ready` :
-                `All Family Members Ready (${reactData.family_members.length} total)`) :
-              reactData.selected_account_type ?
-                (reactData.current_member_index > 0 ?
-                  `${titleCase(reactData.selected_account_type)} - Family Member ${reactData.current_member_index + 1}` :
-                  titleCase(reactData.selected_account_type)) :
-                (reactData.current_member_index > 0 ?
-                  `Select Account Type - Family Member ${reactData.current_member_index + 1}` :
-                  'Select Account Type')
+          {reactData.stage === 'prompt_for_name' ?
+            (state.session?.client_name || 'Enter Name to Get Started') :
+            reactData.stage === 'ask_for_more' ?
+              `${getFamilyMemberName(reactData.family_members[reactData.current_member_index])}` :
+              reactData.stage === 'complete' ?
+                (reactData.family_members.length === 1 ?
+                  `${getFamilyMemberName(reactData.family_members[0])} Ready` :
+                  `All Family Members Ready (${reactData.family_members.length} total)`) :
+                reactData.selected_account_type ?
+                  (reactData.current_member_index > 0 ?
+                    `${titleCase(reactData.selected_account_type)} - Family Member ${reactData.current_member_index + 1}` :
+                    titleCase(reactData.selected_account_type)) :
+                  (reactData.current_member_index > 0 ?
+                    `Select Account Type - Family Member ${reactData.current_member_index + 1}` :
+                    'Select Account Type')
           }
         </span>
+        {/* Show client logo on the right side when in prompt_for_name stage */}
+        {reactData.stage === 'prompt_for_name' && state.session?.client_logo && (
+          <img
+            src={state.session.client_logo}
+            alt="Client Logo"
+            style={{
+              height: '40px',
+              maxWidth: '120px',
+              objectFit: 'contain',
+              marginLeft: '16px',
+              marginRight: '16px'
+            }}
+            onError={(e) => {
+              // Hide the image if it fails to load
+              e.target.style.display = 'none';
+            }}
+          />
+        )}
         {reactData.selected_account_type && (reactData.stage === 'select_account_type' || reactData.stage === 'fill_fields') && (
           <Tooltip title="Change Account Type" placement="left">
             <IconButton
@@ -1014,6 +1432,184 @@ export default ({ onClose, options = {} }) => {
       </DialogContentText>
 
       <Box style={{ padding: '16px' }}>
+        {/* Name Prompt Stage */}
+        {reactData.stage === 'prompt_for_name' && (
+          <Box style={{ marginTop: '16px' }}>
+            <Typography variant="h6" style={{ marginBottom: '16px' }}>
+              Name of the person to add:
+            </Typography>
+            <TextField
+              fullWidth
+              label="Name"
+              value={reactData.entered_name}
+              onChange={(event) => {
+                const value = event?.target?.value || '';
+                setReactData(prev => ({ ...prev, entered_name: value }));
+              }}
+              style={{ marginBottom: '16px' }}
+              onKeyPress={(event) => {
+                if (event?.key === 'Enter') {
+                  handleNameLookup(reactData.entered_name);
+                }
+              }}
+            />
+            <Box style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => handleNameLookup(reactData.entered_name)}
+                disabled={!reactData.entered_name.trim()}
+              >
+                Continue
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={onClose}
+              >
+                Cancel
+              </Button>
+            </Box>
+          </Box>
+        )}
+
+        {/* Email/Phone Verification Stage (when matches found) */}
+        {reactData.verification_stage && reactData.candidates && reactData.candidates.length > 0 && (
+          <Box style={{ marginTop: '48px' }}>
+            <Typography variant="h6" style={{ marginBottom: '16px' }}>
+              It looks like you may already have an account. Enter your e-mail address or cell phone number and I will check, or tap "I'm new here" below to create a new account.
+            </Typography>
+
+            {!reactData.matched_account && (
+              <>
+                <TextField
+                  fullWidth
+                  label="Email Address or Cell Phone Number"
+                  value={reactData.verification_input}
+                  onChange={(event) => {
+                    const value = event?.target?.value || '';
+                    setReactData(prev => ({ ...prev, verification_input: value }));
+                  }}
+                  style={{ marginBottom: '16px' }}
+                  placeholder="Enter your email or cell phone number..."
+                  onKeyPress={(event) => {
+                    if (event?.key === 'Enter') {
+                      handleVerificationInput(reactData.verification_input);
+                    }
+                  }}
+                />
+                <Box style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={() => handleVerificationInput(reactData.verification_input)}
+                    disabled={!reactData.verification_input.trim()}
+                  >
+                    Check Account
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    onClick={() => {
+                      // Proceed to create new account
+                      // Parse the entered name for pre-filling form fields
+                      const nameParts = reactData.entered_name.trim().split(/\s+/);
+                      const firstName = nameParts[0] || '';
+                      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+
+                      setReactData(prev => ({
+                        ...prev,
+                        stage: 'select_account_type',
+                        verification_stage: false,
+                        candidates: [],
+                        verification_input: '',
+                        matched_account: null,
+                        // Store parsed name parts for pre-filling
+                        parsed_first_name: firstName,
+                        parsed_last_name: lastName
+                      }));
+                    }}
+                  >
+                    I'm new here
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={resetToNamePrompt}
+                  >
+                    Start Over
+                  </Button>
+                </Box>
+              </>
+            )}
+
+            {reactData.matched_account && (
+              <Box style={{ marginTop: '16px', textAlign: 'center' }}>
+                <Typography variant="body1" style={{ marginBottom: '16px', color: 'green' }}>
+                  ✓ Account found for {reactData.matched_account.name.first} {reactData.matched_account.name.last}
+                </Typography>
+                <Typography variant="body2" style={{ marginBottom: '16px' }}>
+                  This account already exists in our system. You cannot create a duplicate account.
+                </Typography>
+                <Button
+                  variant="outlined"
+                  onClick={resetToNamePrompt}
+                >
+                  Start Over
+                </Button>
+              </Box>
+            )}
+          </Box>
+        )}
+
+        {/* Verification Code Entry Stage */}
+        {reactData.code_verification_stage && (
+          <Box style={{ marginTop: '48px' }}>
+            <Typography variant="h6" style={{ marginBottom: '16px' }}>
+              Enter Verification Code
+            </Typography>
+            <Typography variant="body1" style={{ marginBottom: '16px' }}>
+              We've sent a verification code to {reactData.code_send_method === 'email'
+                ? reactData.code_sent_to
+                : reactData.code_sent_to.replace(/(\+\d{1})(\d{3})(\d{3})(\d{4})/, '$1 ($2) $3-$4')
+              }. Please enter the code below to verify your account.
+            </Typography>
+
+            <TextField
+              fullWidth
+              label="Verification Code"
+              value={reactData.verification_code_input}
+              onChange={(event) => {
+                const value = event?.target?.value || '';
+                setReactData(prev => ({ ...prev, verification_code_input: value }));
+              }}
+              style={{ marginBottom: '16px' }}
+              placeholder="Enter the 6-digit code..."
+              inputProps={{ maxLength: 6 }}
+              onKeyPress={(event) => {
+                if (event?.key === 'Enter') {
+                  handleVerificationCode(reactData.verification_code_input);
+                }
+              }}
+            />
+
+            <Box style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => handleVerificationCode(reactData.verification_code_input)}
+                disabled={!reactData.verification_code_input.trim() || reactData.verification_code_input.length !== 6}
+              >
+                Verify Code
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={resetToNamePrompt}
+              >
+                Start Over
+              </Button>
+            </Box>
+          </Box>
+        )}
+
         {/* Account Type Selection Stage */}
         {(reactData.stage === 'select_account_type' || reactData.stage === 'fill_fields') && (
           <>
@@ -1254,9 +1850,29 @@ export default ({ onClose, options = {} }) => {
               const isExitAction = !reactData.selected_account_type || Object.keys(reactData.form_fields).length === 0;
 
               if (isExitAction) {
-                // Exit the dialog completely
-                if (onClose) {
-                  onClose();
+                // Handle exit based on how QuickAdd was invoked
+                if (options.source === 'url_parameter') {
+                  // URL-driven mode - close the entire application
+                  sessionStorage.removeItem('AVASessionData');
+
+                  // Try to close the window/tab
+                  if (window.opener) {
+                    // If opened in a popup, close it
+                    window.close();
+                  } else {
+                    // If not a popup, try to navigate away or close
+                    try {
+                      window.close();
+                    } catch (e) {
+                      // If we can't close (browser security), navigate to a generic page
+                      window.location.href = 'about:blank';
+                    }
+                  }
+                } else {
+                  // Normal admin mode - just close the dialog
+                  if (onClose) {
+                    onClose();
+                  }
                 }
                 return;
               }
@@ -1498,7 +2114,13 @@ export default ({ onClose, options = {} }) => {
 
                   // Close dialog after successful save
                   setTimeout(() => {
-                    if (onClose) onClose();
+                    if (onClose) {
+                      // Pass the created person IDs to the onClose callback
+                      const createdPersonIds = reactData.family_members
+                        .filter(member => member.proposed_user_id)
+                        .map(member => member.proposed_user_id);
+                      onClose(createdPersonIds);
+                    }
                   }, 3000);
                 }
 
