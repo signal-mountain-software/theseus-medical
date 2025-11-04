@@ -404,7 +404,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         component_name: 'Snapshot'
       },
       {
-        section_name: 'Local & Administrative Data',
+        section_name: 'Additional Data',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('AdministrativeSection')) : false),
         isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('admin') : true)),

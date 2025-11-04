@@ -75,7 +75,6 @@ import { sendMessages } from '../../util/AVAMessages';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import { Box, Button, TextField, Typography, Dialog, DialogContentText, DialogActions, FormControl, FormLabel, RadioGroup, FormControlLabel, Radio, IconButton, Tooltip, Snackbar } from '@material-ui/core/';
-import { Edit as EditIcon } from '@material-ui/icons';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 
 const useStyles = makeStyles(theme => ({
@@ -912,14 +911,6 @@ export default ({ onClose, options = {} }) => {
       const defaultGroups = member.account_config?.default_groups || [];
       const groups = ["__TOP__", "ALL"].concat(defaultGroups);
 
-      // Build search data
-      const search_words = [
-        titleCase(firstName),
-        titleCase(lastName),
-        firstName.toLowerCase(),
-        lastName.toLowerCase()
-      ];
-
       // Extract contact info for preferred methods
       const email = fieldValues.email || fieldValues.email_address || fieldValues['email address'] || '';
       const phone = fieldValues.phone || fieldValues.phone_number || fieldValues['phone number'] || '';
@@ -949,13 +940,19 @@ export default ({ onClose, options = {} }) => {
       if (cellForStorage) {
         preferred_methods = ['sms'];
         preferred_method = 'sms';
-        // Use last 10 digits for search (removing country code)
-        const searchDigits = cellForStorage.replace(/\D/g, '').slice(-10);
-        search_words.push(searchDigits);
       } else if (email) {
         preferred_methods = ['email'];
         preferred_method = 'email';
       }
+
+      // Build search data following PeopleMaintenance.js pattern (lines 834-854)
+      let search_words = [
+        titleCase(firstName),
+        titleCase(lastName),
+        firstName.toLowerCase(),
+        lastName.toLowerCase(),
+        cellForStorage ? cellForStorage.slice(-10) : ' '
+      ];
 
       // Build contact_info object
       const contact_info = {};
@@ -976,12 +973,15 @@ export default ({ onClose, options = {} }) => {
         },
         display_name: `${firstName} ${lastName}`,
         groups: groups,
-        search_data: search_words.join(' '),
         preferred_methods: preferred_methods,
         preferred_method: preferred_method,
         contact_info: contact_info,
         account_type: member.account_type
       };
+
+      // Set search_data following PeopleMaintenance.js pattern (lines 834-854)
+      // First, ensure we join the search_words as the base search_data
+      peopleRecord.search_data = search_words.join(' ');
 
       // Add family_id if it exists
       if (reactData.family_id) {
@@ -1336,6 +1336,15 @@ export default ({ onClose, options = {} }) => {
       maxWidth="md"
       variant={'elevation'}
       elevation={2}
+      scroll="body"
+      PaperProps={{
+        style: {
+          maxHeight: '90vh',
+          height: '90vh',
+          display: 'flex',
+          flexDirection: 'column'
+        }
+      }}
       onClose={() => {
         // Handle dialog close (X button) based on how QuickAdd was invoked
         if (options.source === 'url_parameter') {
@@ -1375,7 +1384,9 @@ export default ({ onClose, options = {} }) => {
           }),
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between'
+          justifyContent: 'space-between',
+          flexShrink: 0,
+          padding: '16px 24px 8px 24px'
         }}
       >
         <span>
@@ -1414,24 +1425,14 @@ export default ({ onClose, options = {} }) => {
             }}
           />
         )}
-        {reactData.selected_account_type && (reactData.stage === 'select_account_type' || reactData.stage === 'fill_fields') && (
-          <Tooltip title="Change Account Type" placement="left">
-            <IconButton
-              size="small"
-              onClick={handleChangeAccountType}
-              style={{
-                color: '#666',
-                backgroundColor: 'transparent',
-                marginLeft: '8px'
-              }}
-            >
-              <EditIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        )}
       </DialogContentText>
 
-      <Box style={{ padding: '16px' }}>
+      <Box style={{
+        padding: '16px',
+        flexGrow: 1,
+        overflow: 'auto',
+        minHeight: 0
+      }}>
         {/* Name Prompt Stage */}
         {reactData.stage === 'prompt_for_name' && (
           <Box style={{ marginTop: '16px' }}>
@@ -1648,7 +1649,7 @@ export default ({ onClose, options = {} }) => {
 
             {/* Show form input fields when available */}
             {reactData.selected_account_type && !reactData.loading_fields && Object.keys(reactData.form_fields).length > 0 && (
-              <Box style={{ marginTop: '16px', maxHeight: '400px', overflow: 'auto', paddingRight: '16px' }}>
+              <Box style={{ marginTop: '16px', paddingRight: '16px' }}>
                 <Typography variant="h6" style={{ marginBottom: '16px' }}>
                   Enter Information for {titleCase(reactData.selected_account_type)}:
                 </Typography>
@@ -1831,177 +1832,201 @@ export default ({ onClose, options = {} }) => {
         )}
       </Box>
 
-      <DialogActions style={{ justifyContent: 'center' }}>
+      <DialogActions style={{
+        justifyContent: 'center',
+        flexShrink: 0,
+        padding: '8px 24px 16px 24px',
+        borderTop: '1px solid #e0e0e0'
+      }}>
         {/* Buttons for Select Account Type and Fill Fields stages */}
         {(reactData.stage === 'select_account_type' || reactData.stage === 'fill_fields') && (
-          <Button
-            className={AVAClass.AVAButton}
-            style={{
-              marginTop: '16px',
-              backgroundColor: reactData.loading_fields ? 'gray' :
-                (!reactData.selected_account_type || Object.keys(reactData.form_fields).length === 0) ? 'red' :
-                  (reactData.selected_account_type && !reactData.loading_fields && Object.keys(reactData.form_fields).length > 0) ? 'green' : 'gray',
-              color: 'white'
-            }}
-            size='small'
-            disabled={reactData.loading_fields}
-            onClick={async () => {
-              // Check if this is an exit action (no account type selected or no form fields)
-              const isExitAction = !reactData.selected_account_type || Object.keys(reactData.form_fields).length === 0;
+          <Box style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+            {/* Change Account Type button - only show when an account type is selected */}
+            {reactData.selected_account_type && (
+              <Button
+                className={AVAClass.AVAButton}
+                style={{
+                  marginTop: '16px',
+                  backgroundColor: '#666',
+                  color: 'white'
+                }}
+                size='small'
+                onClick={handleChangeAccountType}
+              >
+                Change Account Type
+              </Button>
+            )}
 
-              if (isExitAction) {
-                // Handle exit based on how QuickAdd was invoked
-                if (options.source === 'url_parameter') {
-                  // URL-driven mode - close the entire application
-                  sessionStorage.removeItem('AVASessionData');
+            {/* Main action button (Exit or Save and Continue) */}
+            <Button
+              className={AVAClass.AVAButton}
+              style={{
+                marginTop: '16px',
+                backgroundColor: reactData.loading_fields ? 'gray' :
+                  (!reactData.selected_account_type || Object.keys(reactData.form_fields).length === 0) ? 'red' :
+                    (reactData.selected_account_type && !reactData.loading_fields && Object.keys(reactData.form_fields).length > 0) ? 'green' : 'gray',
+                color: 'white'
+              }}
+              size='small'
+              disabled={reactData.loading_fields}
+              onClick={async () => {
+                // Check if this is an exit action (no account type selected or no form fields)
+                const isExitAction = !reactData.selected_account_type || Object.keys(reactData.form_fields).length === 0;
 
-                  // Try to close the window/tab
-                  if (window.opener) {
-                    // If opened in a popup, close it
-                    window.close();
-                  } else {
-                    // If not a popup, try to navigate away or close
-                    try {
+                if (isExitAction) {
+                  // Handle exit based on how QuickAdd was invoked
+                  if (options.source === 'url_parameter') {
+                    // URL-driven mode - close the entire application
+                    sessionStorage.removeItem('AVASessionData');
+
+                    // Try to close the window/tab
+                    if (window.opener) {
+                      // If opened in a popup, close it
                       window.close();
-                    } catch (e) {
-                      // If we can't close (browser security), navigate to a generic page
-                      window.location.href = 'about:blank';
+                    } else {
+                      // If not a popup, try to navigate away or close
+                      try {
+                        window.close();
+                      } catch (e) {
+                        // If we can't close (browser security), navigate to a generic page
+                        window.location.href = 'about:blank';
+                      }
+                    }
+                  } else {
+                    // Normal admin mode - just close the dialog
+                    if (onClose) {
+                      onClose();
                     }
                   }
-                } else {
-                  // Normal admin mode - just close the dialog
-                  if (onClose) {
-                    onClose();
-                  }
+                  return;
                 }
-                return;
+
+                if (reactData.selected_account_config && reactData.form_fields) {
+                  // Validate required fields - only check fields that are actually presented on screen
+                  const presentedFields = reactData.selected_account_config?.field_list || [];
+                  const requiredFields = (reactData.selected_account_config?.required || [])
+                    .filter(fieldName => presentedFields.includes(fieldName));
+
+                  const missingRequiredValues = requiredFields.filter(fieldName =>
+                    !reactData.field_values[fieldName] || reactData.field_values[fieldName].trim() === ''
+                  );
+
+                  if (missingRequiredValues.length > 0) {
+                    // Convert field names to user-friendly prompts
+                    const missingFieldPrompts = missingRequiredValues.map(fieldName => {
+                      const fieldData = reactData.form_fields[fieldName];
+                      return fieldData?.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
+                    });
+
+                    showAlert({
+                      severity: 'warning',
+                      title: 'Required Fields Missing',
+                      message: `Please fill in all required fields: ${missingFieldPrompts.join(', ')}`,
+                      autoHide: false
+                    });
+                    return;
+                  }
+
+                  // Validate date fields
+                  const invalidDateFields = [];
+                  Object.entries(reactData.form_fields).forEach(([fieldName, fieldData]) => {
+                    if (fieldData && fieldData.value?.type === 'date') {
+                      const fieldValue = reactData.field_values[fieldName];
+                      if (fieldValue && fieldValue.trim() !== '') {
+                        // Use makeDate to validate the date
+                        const dateResult = makeDate(fieldValue);
+
+                        if (dateResult.error) {
+                          const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
+                          invalidDateFields.push(fieldLabel);
+                        }
+                      }
+                    }
+                  });
+
+                  if (invalidDateFields.length > 0) {
+                    showAlert({
+                      severity: 'warning',
+                      title: 'Invalid Date Fields',
+                      message: `Please enter valid dates for the following fields: ${invalidDateFields.join(', ')}. Try formats like: 12/25/1990, Dec 25 1990, or 25-Dec-1990.`,
+                      autoHide: false
+                    });
+                    return;
+                  }
+
+                  // Validate email fields
+                  const invalidEmailFields = [];
+                  Object.entries(reactData.form_fields).forEach(([fieldName, fieldData]) => {
+                    if (fieldData && fieldData.value?.type === 'email') {
+                      const fieldValue = reactData.field_values[fieldName];
+                      if (fieldValue && fieldValue.trim() !== '') {
+                        // Use comprehensive email validation regex
+                        const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+                        const isValidEmail = emailRegex.test(fieldValue.trim());
+
+                        if (!isValidEmail) {
+                          const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
+                          invalidEmailFields.push(fieldLabel);
+                        }
+                      }
+                    }
+                  });
+
+                  if (invalidEmailFields.length > 0) {
+                    showAlert({
+                      severity: 'warning',
+                      title: 'Invalid Email Fields',
+                      message: `Please enter valid email addresses for the following fields: ${invalidEmailFields.join(', ')}. Example: user@example.com`,
+                      autoHide: false
+                    });
+                    return;
+                  }
+
+                  // Validate phone fields
+                  const invalidPhoneFields = [];
+                  Object.entries(reactData.form_fields).forEach(([fieldName, fieldData]) => {
+                    if (fieldData && fieldData.value?.type === 'phone') {
+                      const fieldValue = reactData.field_values[fieldName];
+                      if (fieldValue && fieldValue.trim() !== '') {
+                        // Remove all non-digit characters for validation
+                        const digitsOnly = fieldValue.replace(/\D/g, '');
+
+                        // Validate phone number format - be more strict
+                        const isValidPhone = (digitsOnly.length === 10) ||
+                          (digitsOnly.length === 11 && digitsOnly.startsWith('1')) ||
+                          (digitsOnly.length >= 10 && digitsOnly.length <= 15);
+
+                        if (!isValidPhone) {
+                          const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
+                          invalidPhoneFields.push(fieldLabel);
+                        }
+                      }
+                    }
+                  });
+
+                  if (invalidPhoneFields.length > 0) {
+                    showAlert({
+                      severity: 'warning',
+                      title: 'Invalid Phone Fields',
+                      message: `Please enter valid phone numbers for the following fields: ${invalidPhoneFields.join(', ')}. Use 10 digits for US numbers or minimum 10 digits for international format.`,
+                      autoHide: false
+                    });
+                    return;
+                  }
+
+                  // Save current family member and proceed to ask for more
+                  saveCurrentFamilyMember();
+                }
+              }}
+            >
+              {reactData.loading_fields
+                ? 'Loading...'
+                : (!reactData.selected_account_type || Object.keys(reactData.form_fields).length === 0)
+                  ? 'Exit'
+                  : 'Save and Continue'
               }
-
-              if (reactData.selected_account_config && reactData.form_fields) {
-                // Validate required fields - only check fields that are actually presented on screen
-                const presentedFields = reactData.selected_account_config?.field_list || [];
-                const requiredFields = (reactData.selected_account_config?.required || [])
-                  .filter(fieldName => presentedFields.includes(fieldName));
-
-                const missingRequiredValues = requiredFields.filter(fieldName =>
-                  !reactData.field_values[fieldName] || reactData.field_values[fieldName].trim() === ''
-                );
-
-                if (missingRequiredValues.length > 0) {
-                  // Convert field names to user-friendly prompts
-                  const missingFieldPrompts = missingRequiredValues.map(fieldName => {
-                    const fieldData = reactData.form_fields[fieldName];
-                    return fieldData?.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
-                  });
-
-                  showAlert({
-                    severity: 'warning',
-                    title: 'Required Fields Missing',
-                    message: `Please fill in all required fields: ${missingFieldPrompts.join(', ')}`,
-                    autoHide: false
-                  });
-                  return;
-                }
-
-                // Validate date fields
-                const invalidDateFields = [];
-                Object.entries(reactData.form_fields).forEach(([fieldName, fieldData]) => {
-                  if (fieldData && fieldData.value?.type === 'date') {
-                    const fieldValue = reactData.field_values[fieldName];
-                    if (fieldValue && fieldValue.trim() !== '') {
-                      // Use makeDate to validate the date
-                      const dateResult = makeDate(fieldValue);
-
-                      if (dateResult.error) {
-                        const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
-                        invalidDateFields.push(fieldLabel);
-                      }
-                    }
-                  }
-                });
-
-                if (invalidDateFields.length > 0) {
-                  showAlert({
-                    severity: 'warning',
-                    title: 'Invalid Date Fields',
-                    message: `Please enter valid dates for the following fields: ${invalidDateFields.join(', ')}. Try formats like: 12/25/1990, Dec 25 1990, or 25-Dec-1990.`,
-                    autoHide: false
-                  });
-                  return;
-                }
-
-                // Validate email fields
-                const invalidEmailFields = [];
-                Object.entries(reactData.form_fields).forEach(([fieldName, fieldData]) => {
-                  if (fieldData && fieldData.value?.type === 'email') {
-                    const fieldValue = reactData.field_values[fieldName];
-                    if (fieldValue && fieldValue.trim() !== '') {
-                      // Use comprehensive email validation regex
-                      const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-                      const isValidEmail = emailRegex.test(fieldValue.trim());
-
-                      if (!isValidEmail) {
-                        const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
-                        invalidEmailFields.push(fieldLabel);
-                      }
-                    }
-                  }
-                });
-
-                if (invalidEmailFields.length > 0) {
-                  showAlert({
-                    severity: 'warning',
-                    title: 'Invalid Email Fields',
-                    message: `Please enter valid email addresses for the following fields: ${invalidEmailFields.join(', ')}. Example: user@example.com`,
-                    autoHide: false
-                  });
-                  return;
-                }
-
-                // Validate phone fields
-                const invalidPhoneFields = [];
-                Object.entries(reactData.form_fields).forEach(([fieldName, fieldData]) => {
-                  if (fieldData && fieldData.value?.type === 'phone') {
-                    const fieldValue = reactData.field_values[fieldName];
-                    if (fieldValue && fieldValue.trim() !== '') {
-                      // Remove all non-digit characters for validation
-                      const digitsOnly = fieldValue.replace(/\D/g, '');
-
-                      // Validate phone number format - be more strict
-                      const isValidPhone = (digitsOnly.length === 10) ||
-                        (digitsOnly.length === 11 && digitsOnly.startsWith('1')) ||
-                        (digitsOnly.length >= 10 && digitsOnly.length <= 15);
-
-                      if (!isValidPhone) {
-                        const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
-                        invalidPhoneFields.push(fieldLabel);
-                      }
-                    }
-                  }
-                });
-
-                if (invalidPhoneFields.length > 0) {
-                  showAlert({
-                    severity: 'warning',
-                    title: 'Invalid Phone Fields',
-                    message: `Please enter valid phone numbers for the following fields: ${invalidPhoneFields.join(', ')}. Use 10 digits for US numbers or minimum 10 digits for international format.`,
-                    autoHide: false
-                  });
-                  return;
-                }
-
-                // Save current family member and proceed to ask for more
-                saveCurrentFamilyMember();
-              }
-            }}
-          >
-            {reactData.loading_fields
-              ? 'Loading...'
-              : (!reactData.selected_account_type || Object.keys(reactData.form_fields).length === 0)
-                ? 'Exit'
-                : 'Save and Continue'
-            }
-          </Button>
+            </Button>
+          </Box>
         )}
 
         {/* Button for Complete stage */}
