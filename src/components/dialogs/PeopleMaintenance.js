@@ -172,7 +172,10 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       if (!parm_personRec.person_id || parm_personRec.person_id.startsWith('*NEW~') || options.newPerson) {
         reactUpdObj.mode = 'add';
         reactUpdObj.og.peopleRec = Object.assign({},
-          { inbound_customizations: {} },
+          {
+            inbound_customizations: {},
+            name: { first: '', last: '' }
+          },
           initialValues?.peopleRec);
         reactUpdObj.og.sessionRec = Object.assign({},
           {
@@ -793,7 +796,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             let names = this_member.name.split(' ');
             this_member.firstName = names.shift();
             this_member.lastName = names.join(' ').trim();
-            let candidateID = (`${this_member.firstName.charAt(0)}${this_member.lastName.replace(/\W/g, '')}-${state.session.client_id}`).toLowerCase();
+            let candidateID = (`${(this_member.firstName || '').charAt(0) || 'X'}${(this_member.lastName || '').replace(/\W/g, '')}-${state.session.client_id}`).toLowerCase();
             const { proposedID, newID } = await newUserID(candidateID);
             this_member.id = newID;
             cl(`Proposed ID ${proposedID} - ID will be ${newID}`);
@@ -831,15 +834,20 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       }
     }
 
+    // Ensure name object exists before accessing its properties
+    if (!reactData.current.peopleRec.name) {
+      reactData.current.peopleRec.name = { first: '', last: '' };
+    }
+
     let search_words = [
-      titleCase(reactData.current.peopleRec.name.first),
-      titleCase(reactData.current.peopleRec.name.last),
-      reactData.current.peopleRec.name.first.toLowerCase(),
-      reactData.current.peopleRec.name.last.toLowerCase(),
+      titleCase(reactData.current.peopleRec.name.first || ''),
+      titleCase(reactData.current.peopleRec.name.last || ''),
+      (reactData.current.peopleRec.name.first || '').toLowerCase(),
+      (reactData.current.peopleRec.name.last || '').toLowerCase(),
       reactData.current.peopleRec.contact_info?.cell?.number
         ? reactData.current.peopleRec.contact_info.cell.number.slice(-10)
         : (reactData.current.peopleRec.messaging?.sms ? reactData.current.peopleRec.messaging.sms.slice(-10) : ' ')
-    ];
+    ].filter(word => word && word.trim()); // Remove empty strings
 
     if (!reactData.current.peopleRec.search_data) {
       reactData.current.peopleRec.search_data = search_words.join(' ');
@@ -1013,7 +1021,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         namePart = reactData.current.peopleRec?.name?.last;        // last but not first
       }
       else {
-        namePart = `${reactData.current.peopleRec.name.first.trim().charAt(0)}${reactData.current.peopleRec.name.last.trim()}`;
+        const firstName = reactData.current.peopleRec.name.first || '';
+        const lastName = reactData.current.peopleRec.name.last || '';
+        namePart = `${firstName.trim().charAt(0) || 'X'}${lastName.trim()}`;
       }
       newID = `${namePart.toLowerCase().replace(/\W/g, '')}-${clientPart}`;
     }
@@ -1060,7 +1070,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             onExit({
               saveCompleted: reactData.saveCompleted,
               newID: reactData.current.peopleRec.person_id,
-              newName: (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim()
+              newName: (`${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`).trim()
             });
           }
         }
@@ -1098,7 +1108,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                     left: 1.5
                   }
                 })}>
-                {reactData.current.peopleRec.name ? (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim() : 'Welcome!'}
+                {reactData.current.peopleRec.name ? (`${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`).trim() : 'Welcome!'}
               </Typography>
             </Box>
             {/* Logo and Pop-up Menu */}
@@ -1147,7 +1157,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                       (state.session.client_id || state.session.user_homeClient),
                       {
                         id: reactData.person_id,
-                        name: `${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`
+                        name: `${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`
                       }
                     );
                   }}>
@@ -1157,7 +1167,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                     >
                       <SwapHorizIcon />
                       <Typography style={AVATextStyle({ size: 0.8, margin: { left: 0.5 } })} >
-                        {`Switch to ${reactData.current.peopleRec.name.first}`}
+                        {`Switch to ${reactData.current.peopleRec.name.first || 'User'}`}
                       </Typography>
                     </Box>
                   </MenuItem>
@@ -1175,7 +1185,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                         (state.session.client_id || state.session.user_homeClient),
                         {
                           id: reactData.person_id,
-                          name: `${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`
+                          name: `${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`
                         },
                         { resetUser: true }
                       );
@@ -1326,7 +1336,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                     onExit({
                       saveCompleted: reactData.saveCompleted,
                       newID: reactData.current.peopleRec.person_id,
-                      newName: (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim()
+                      newName: (`${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`).trim()
                     });
                   }
                 }
@@ -1360,7 +1370,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                       if (result) {
                         onExit({
                           newID: reactData.current.peopleRec.person_id,
-                          newName: (`${reactData.current.peopleRec.name.first} ${reactData.current.peopleRec.name.last}`).trim()
+                          newName: (`${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`).trim()
                         });
                       }
                     }}
@@ -1385,7 +1395,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
               (reactData.current.peopleRec?.name?.first &&
                 <Box display='flex' flexDirection='column' justifyContent='flex-end' alignItems='center'>
                   <Typography style={{ size: 1.2, bold: true }}>
-                    {`${(reactData.current.peopleRec?.name?.first + "'s").replace("s's", "s'")} Profile`}
+                    {`${((reactData.current.peopleRec?.name?.first || 'User') + "'s").replace("s's", "s'")} Profile`}
                   </Typography>
                   {(reactData.mode === 'view') &&
                     <Typography style={{ size: 1.2, bold: true }}>
