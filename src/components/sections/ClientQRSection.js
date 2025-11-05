@@ -10,11 +10,13 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
     const [qrCodeDataUrl, setQrCodeDataUrl] = React.useState('');
     const [qrLoginDataUrl, setQrLoginDataUrl] = React.useState('');
 
+    // Extract client_id for stable dependency tracking
+    const client_id = currentValues.customizationRecs?.client_name?.client_id || reactData.client_id;
+
     // Generate QR code when component loads or client_id changes
     React.useEffect(() => {
         const generateQRCode = async () => {
             try {
-                const client_id = currentValues.customizationRecs?.client_name?.client_id || reactData.client_id;
                 if (client_id) {
                     // Generate QR code for account creation
                     const qrUrl = `https://dev.smsoftware.io/?create=${client_id}`;
@@ -46,7 +48,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         };
 
         generateQRCode();
-    }, [currentValues.customizationRecs?.client_name?.client_id, reactData.client_id]);
+    }, [client_id]);
 
     return (
         <Box
@@ -89,7 +91,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
                         <Typography
                             style={AVATextStyle({ size: 0.7, color: '#666' })}
                         >
-                            URL: https://dev.smsoftware.io/?create={currentValues.customizationRecs?.client_name?.client_id || reactData.client_id}
+                            URL: https://dev.smsoftware.io/?create={client_id}
                         </Typography>
                     </Box>
                 </Box>
@@ -129,7 +131,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
                         <Typography
                             style={AVATextStyle({ size: 0.7, color: '#666' })}
                         >
-                            URL: https://dev.smsoftware.io/?client={currentValues.customizationRecs?.client_name?.client_id || reactData.client_id}
+                            URL: https://dev.smsoftware.io/?client={client_id}
                         </Typography>
                     </Box>
                 </Box>
