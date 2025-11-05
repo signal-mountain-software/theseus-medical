@@ -74,7 +74,7 @@ import { determineClass } from '../../util/AVAGroups';
 import { sendMessages } from '../../util/AVAMessages';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import { Box, Button, TextField, Typography, Dialog, DialogContentText, DialogActions, FormControl, FormLabel, RadioGroup, FormControlLabel, Radio, IconButton, Tooltip, Snackbar } from '@material-ui/core/';
+import { Box, Button, TextField, Typography, Dialog, DialogContentText, DialogActions, FormControl, FormLabel, RadioGroup, FormControlLabel, Radio, Snackbar } from '@material-ui/core/';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 
 const useStyles = makeStyles(theme => ({
