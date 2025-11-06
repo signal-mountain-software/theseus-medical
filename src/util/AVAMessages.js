@@ -779,7 +779,7 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
             break;
           }
           case 'header': {
-            pdfLine((docData.fields[this_field].prompt.ref || docData.fields[this_field].prompt.value), { protectOrphan: true, style: 'italic', size: 'medium', align: 'left', before: 2, after: 1 });
+            pdfLine((docData.fields[this_field].prompt.ref || docData.fields[this_field].prompt.value), { style: 'normal', size: 'medium', align: 'left', before: 0, after: 0 });
             break;
           }
 
@@ -933,7 +933,7 @@ export async function printDocumentB({ documentList, options = {} }) {
                 break;
               }
               case 'header': {
-                pdfLine(fields[this_field].prompt.value, { protectOrphan: true, style: 'italic', size: 'medium', align: 'left', before: 2, after: 1 });
+                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', align: 'left', before: 0, after: 0 });
                 break;
               }
               case 'html': {
@@ -1064,7 +1064,7 @@ export async function printEmptyDocument({ documentList, options = {} }) {
               break;
             }
             case 'header': {
-              pdfLine(fields[this_field].prompt.value, { protectOrphan: true, style: 'italic', size: 'medium', align: 'left', before: 2, after: 1 });
+              pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', align: 'left', before: 0, after: 0 });
               break;
             }
             case 'html': {
@@ -1207,7 +1207,7 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
                 break;
               }
               case 'header': {
-                pdfLine(fields[this_field].prompt.value, { protectOrphan: true, style: 'italic', size: 'medium', align: 'left', before: 2, after: 1 });
+                pdfLine(fields[this_field].prompt.value, { protectOrphan: true, style: 'normal', size: 'medium', align: 'left', before: 1, after: 1 });
                 break;
               }
               case 'html': {
@@ -1451,7 +1451,7 @@ export async function html_to_pdf(body) {
   }
   else {
     return null;
-  } 
+  }
 }
 
 export async function buildDocument(body) {
@@ -1665,10 +1665,10 @@ export async function savePDF(doc, pdfInfo, options = {}) {
         responseStatus = 401;
         responseData.message = err.message;
       });
-   // window.open(s3Resp.Location);
-   // for (let this_attachment of attachments) {
-   //   window.open(this_attachment);
-   // };
+    // window.open(s3Resp.Location);
+    // for (let this_attachment of attachments) {
+    //   window.open(this_attachment);
+    // };
     attachments = [];
     if (goodS3) {
       if (options.onSave === 'print') {
@@ -2290,7 +2290,7 @@ function pdfLine(text, options = {}) {
           xOffset = pdfCurrent.xPos + pdfCurrent.indent;
           //    let imageProps = doc.getImageProperties(options.image);
           for (let this_image of makeArray(options.image)) {
-            let [pdir, imageURI] = this_image.split(/\/(?!.*\/)/);   
+            let [pdir, imageURI] = this_image.split(/\/(?!.*\/)/);
             console.log(pdir, imageURI);
             let imageBucket = 'theseus-medical-storage';
             let gotObject =
@@ -2299,7 +2299,7 @@ function pdfLine(text, options = {}) {
                 Key: imageURI,
                 Expires: 3600
               });
-            let pParts = imageURI.split('.');  
+            let pParts = imageURI.split('.');
             attachments.push(gotObject);
             try {
               let jsConfirm = doc.addImage(gotObject, pParts.pop(), xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
@@ -2384,7 +2384,7 @@ function pdfLine(text, options = {}) {
     if (tWords.length > 0) {
       for (let t = 0; t < tWords.length - 1; t++) {
         pdfDown(1);
-        pdfLine(tWords[t], Object.assign({}, options, { noNewLine: true, after: 0 }));
+        pdfLine(tWords[t], Object.assign({}, options, { noNewLine: true, before: 0, after: 0 }));
       }
       pdfDown(1);
       text = tWords[tWords.length - 1];
@@ -2640,7 +2640,7 @@ export async function sendMessages(body) {
       },
       TableName: "PostOffice"
     };
-    if (env.anonymous) { 
+    if (env.anonymous) {
       PostOfficeRec.Item.anonymous = true;
     }
     if (env.testMode) { PostOfficeRec.TableName = "TestPostOffice"; };
