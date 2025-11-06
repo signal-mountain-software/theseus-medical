@@ -779,7 +779,7 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
             break;
           }
           case 'header': {
-            pdfLine((docData.fields[this_field].prompt.ref || docData.fields[this_field].prompt.value), { style: 'normal', size: 'medium', align: 'left', before: 0, after: 0 });
+            pdfLine((docData.fields[this_field].prompt.ref || docData.fields[this_field].prompt.value), { style: 'normal', size: 'medium', align: 'left', before: 0, after: 0, noNewLine: true });
             break;
           }
 
@@ -933,7 +933,7 @@ export async function printDocumentB({ documentList, options = {} }) {
                 break;
               }
               case 'header': {
-                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', align: 'left', before: 0, after: 0 });
+                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', align: 'left', before: 0, after: 0, noNewLine: true });
                 break;
               }
               case 'html': {
@@ -1064,7 +1064,7 @@ export async function printEmptyDocument({ documentList, options = {} }) {
               break;
             }
             case 'header': {
-              pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', align: 'left', before: 0, after: 0 });
+              pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', align: 'left', before: 0, after: 0, noNewLine: true });
               break;
             }
             case 'html': {
