@@ -1,14 +1,19 @@
 import React from 'react';
 
-import { useSnackbar } from 'notistack';
-
 import useSession from '../../hooks/useSession';
+import { useIdleTimer } from 'react-idle-timer';
+
+import useSound from 'use-sound';
+import AVA_AlertSound from '../../ava_alert.mp3';
+import { Alert, AlertTitle } from '@material-ui/lab/';
+
+import LinearProgress from '@material-ui/core/LinearProgress';
 
 import PersonFilter from './PersonFilter';
 import AVAConfirm from './AVAConfirm';
 
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
-import { deepCopy, titleCase, sentenceCase, makeArray, s3, isObject, isEmpty, dbClient } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, sentenceCase, makeArray, s3, isObject, isEmpty, dbClient, cl } from '../../util/AVAUtilities';
 import { getActivity } from '../../util/AVAObservations';
 import { makeDate } from '../../util/AVADateTime';
 import { buildDisplayRows, buildQualifiers } from '../../util/AVAActivityLoader';
@@ -21,7 +26,7 @@ import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
 import { Card, CardActions } from '@material-ui/core';
 import { Button, IconButton, TextField } from '@material-ui/core';
 import { Dialog } from '@material-ui/core';
-import { Box, Paper, Typography, Checkbox, Radio, Avatar } from '@material-ui/core';
+import { Box, Paper, Typography, Checkbox, Radio, Avatar, Snackbar } from '@material-ui/core';
 import { Menu, MenuList, MenuItem } from '@material-ui/core';
 
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
@@ -121,7 +126,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
-  const { enqueueSnackbar, closeSnackbar } = useSnackbar();
   const { state } = useSession();
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -130,6 +134,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   const [confirmPrompt, setConfirmPrompt] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [morePeople, setMorePeople] = React.useState(false);
+
+  const nowObj = new Date();
 
   const [reactData, setReactData] = React.useState({
     initialLoadComplete: false,
@@ -143,6 +149,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     columnList: [],
     loadProgress: [],
     attachmentList: [],
+    idleState: false,
+    lastActiveTime: nowObj,
+    version: 1,
     viewOnly: false,
     allowAttachments: false,
     errorOnScreen: false,
@@ -160,6 +169,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   const [selectedColumn, setSelectedColumn] = React.useState(0);
 
   const factType = fact.activity_key.split('.')[0];
+
+  const [play] = useSound(AVA_AlertSound, { volume: 1 });
 
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
@@ -437,6 +448,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
     if (!reactData.initialLoadComplete) {
       initialize();
+      start();  // idle timer
     }
   }, [defaultValue]);  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -481,6 +493,37 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }, false);
     return;
   }
+
+  function loadingInProgress(index = 'all') {
+    if (!reactData.loadProgress) {
+      return false;
+    }
+    if (index !== 'all') {
+      return (reactData.loadProgress[index] && reactData.loadProgress[index].loading);
+    }
+    else {
+      return (reactData.loadProgress.some(i => {
+        return (i.loading);
+      }));
+    }
+  }
+
+  function cleanForDisplay(inString) {
+    if (!inString) {
+      return '';
+    }
+    else {
+      let response = inString.replaceAll('%20', ' ');
+      let body = response.split('.');
+      if (body.length > 1) {
+        body.pop();
+        response = body.join('.');
+      }
+      return response.replace(/_\d*$/gm, "");
+    }
+  }
+
+
 
   const hiddenFileInput = React.useRef(null);
   const handleFileUpload = event => {
@@ -532,10 +575,24 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           .send((err, good) => {
             if (err) {
               if (err.code === 'RequestAbortedError') {
-                enqueueSnackbar(`AVA stopped loading at your request.`, { variant: 'error', persist: false });
+                updateReactData({
+                  alert: {
+                    severity: 'error',
+                    title: 'File upload stopped',
+                    message: `AVA stopped loading at your request.`,
+                    persist: true
+                  }
+                }, true);
               }
               else {
-                enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+                updateReactData({
+                  alert: {
+                    severity: 'error',
+                    title: 'File upload error',
+                    message: `Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`,
+                    persist: true
+                  }
+                }, true);
               }
               reject({});
             }
@@ -1119,6 +1176,105 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     return response;
   }
 
+  const oneMinute = 1000 * 60;
+  const msBeforeSleeping = 1 * oneMinute;
+
+  function onAction() {
+    let now = new Date();
+    if ((reactData.idleState) || ((now.getTime() - reactData.lastActiveTime.getTime()) > oneMinute)) {
+      cl(`Action/Update at ${now.toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}`);
+      updateReactData({
+        lastActiveTime: now,
+        idleState: false,
+      }, false);
+    }
+    reset();
+  };
+
+  const onIdle = async () => {
+    let now = new Date();
+    let minutesSinceActive = 0;
+    let reactUpdObj = {
+      idleState: true,
+      enteredIdleStateTime: now,
+    };
+    if (!reactData.idleState) {
+      // we weren't previously in an idle state and we are now...
+      cl(`Entered idle state in MutliObservationFormD at ${new Date().toLocaleString()}.`);
+      updateReactData(reactUpdObj, true);
+    }
+    else {
+      minutesSinceActive = Math.floor((now.getTime() - reactData.lastActiveTime.getTime()) / oneMinute);
+      cl(`Still idle in MutliObservationFormD at ${new Date().toLocaleString()} (${minutesSinceActive} minutes).`);
+    }
+    if (minutesSinceActive > 5) {
+      dbClient
+        .put({
+          TableName: 'ActivityLog',
+          Item: {
+            timestamp: new Date().getTime(),
+            user_id: state.session.patient_id || 'error-no_patient_id',
+            activity_code: `Auto-close, no request sent - idle time was ${minutesSinceActive} minutes`,
+            activity_name: `MultiObservationFormD`,
+            cookieValues: 'n/a',
+            errorInfo: null,
+            AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+          }
+        })
+        .promise()
+        .catch(putError => {
+          console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
+        });
+      onClose();
+    }
+    else if (minutesSinceActive >= 3) {
+      dbClient
+        .put({
+          TableName: 'ActivityLog',
+          Item: {
+            timestamp: new Date().getTime(),
+            user_id: state.session.patient_id || 'error-no_patient_id',
+            activity_code: `Idle warning "...over ${minutesSinceActive} minutes"`,
+            activity_name: `MultiObservationFormD`,
+            cookieValues: 'n/a',
+            errorInfo: null,
+            AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+          }
+        })
+        .promise()
+        .catch(putError => {
+          console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
+        });
+      let alertMessage = <div>We haven't heard from you in over {minutesSinceActive} minutes.<br />
+        We'll automatically exit and close in {5 - minutesSinceActive} minutes.<br />
+        (Your request will not be sent.)<br />
+        To keep working on this, move the screen or tap somewhere.</div>;
+      if (minutesSinceActive > 4) {
+        play();
+        alertMessage = <div>We will close this request in 1 minute<br />
+          if the screen remains idle.<br />
+          (Your request <strong>will not</strong> be sent.)<br />
+          To keep working on this, move the screen or tap somewhere.</div>;
+      }
+      updateReactData({
+        alert: {
+          severity: (minutesSinceActive > 4 ? 'warning' : 'info'),
+          title: (minutesSinceActive > 4 ? 'Exiting very soon' : `Are you there?`),
+          message: alertMessage,
+          autoHide: 75000
+        }
+      }, true);
+    }
+    reset();
+  };
+
+  const { start, reset } = useIdleTimer({
+    onIdle,
+    onAction,
+    timeout: msBeforeSleeping,
+    throttle: 500
+  });
+
   async function applyExistingRequest(existingRequest, this_column, this_column_index) {
     this_column.request_to_update = existingRequest.requestToUse;
     this_column.columnActivated = true;
@@ -1300,13 +1456,17 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             phrase += ` dated for ${fKdate.relative}`;
           }
         }
-        enqueueSnackbar(
-          `${phrase}.  What would you like to do?`,
-          { variant: 'warning', persist: true, action: snackAction }
-        );
+        updateReactData({
+          alert: {
+            severity: 'warning',
+            title: 'Request exists',
+            message: `${phrase}.  What would you like to do?`,
+            persist: true,
+            action: snackAction
+          }
+        }, true);
       });
       let rValue = await showWarning;
-      closeSnackbar();
       return rValue;
     }
   };
@@ -1454,10 +1614,14 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             message_body = result.body;
             writtenRecords.push(result.requestRec);
             if (result.message) {
-              enqueueSnackbar(
-                result.message,
-                { variant: 'warning', persist: true }
-              );
+              updateReactData({
+                alert: {
+                  severity: 'warning',
+                  title: 'Results',
+                  message: result.message,
+                  autoHide: 300000
+                }
+              }, true);
             }
           }
         }
@@ -2434,8 +2598,92 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   </Box>
                 ))
               }
+              { /* File upload status */}
+              {(reactData.attachmentList.length > 0) &&
+                <Box display='flex' flexDirection='column' justifyContent='flex-start'
+                  alignItems='flex-start' key={'qrOpt_attachmentlist'}
+                  borderRadius={'16px'}
+                  marginLeft={2}
+                  marginRight={2}
+                  maxWidth={'80%'}
+                  width={'80%'}
+                  marginTop={2}
+                  marginBottom={2}
+                  padding={1}
+                  border={12}
+                  borderColor={'green'}
+                >
+                  <Typography 
+                    style={AVATextStyle({ size: 1.2, margin: { right: 0.5 } })}
+                  >
+                    {`File${(reactData.attachmentList.length > 1) ? 's' : ''}:`}
+                  </Typography>
+                  {reactData.attachmentList.map((this_attachment, x) => (
+                    <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                      alignItems='center' key={`qrOpt_attachmentLine-${x}`} width={'100%'}
+                    >
+                      <Box display='flex' flexDirection='column' width={'100%'} justifyContent='center'
+                        alignItems='flex-start' key={`qrOpt_attachmentBox-${x}`}
+                      >
+                        <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                          alignItems='center' key={`qrOpt_attachmentName-${x}`}
+                        >
+                          <DeleteIcon
+                            className={classes.radioButton}
+                            size="small"
+                            onClick={() => {
+                              reactData.attachmentList.splice(x, 1);
+                              reactData.forceRedisplay = !reactData.forceRedisplay;
+                              if (loadingInProgress(x)) {
+                                reactData.loadProgress[x].loading = 'abort';
+                              }
+                              setReactData(reactData);
+                              setForceRedisplay(forceRedisplay => !forceRedisplay);
+                            }}
+                          />
+                          <Typography
+                            style={AVATextStyle({
+                              size: 0.6,
+                              color: ((loadingInProgress(x)) ? 'gray' : 'black'),
+                              margin: { left: 0.3, right: 1 }
+                            })}
+                          >
+                            {`${cleanForDisplay(this_attachment.Key)}
+                    ${loadingInProgress(x) ? ' - ' + ((Math.floor((reactData.loadProgress[x].progress) * 100) / 100).toString() + '%') : ''}
+                    ${(loadingInProgress(x) && (this_attachment.Key.split('.').pop() === 'mov') && (reactData.loadProgress[x].progress > 95)) ? ` - Converting from MOV format, please wait...` : ''}`}
+                          </Typography>
+                          {!loadingInProgress(x) &&
+                            <Box
+                              component="img"
+                              mb={2}
+                              ml={2}
+                              minWidth={50}
+                              maxWidth={50}
+                              alt=''
+                              src={this_attachment.Location}
+                            />}
+                        </Box>
+                        {loadingInProgress(x) &&
+                          !((this_attachment.Key.split('.').pop() === 'mov') && (reactData.loadProgress[x].progress >= 99)) &&
+                          <React.Fragment>
+                            <LinearProgress
+                              variant="determinate"
+                              key={`qrOpt_progress-${x}`}
+                              className={classes.progressBar}
+                              style={{ width: '95%' }}
+                              value={reactData.loadProgress[x].progress}
+                            />
+                          </React.Fragment>
+                        }
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              }
             </Box>
           </Paper>
+
+
         </React.Fragment>
       }
 
@@ -2694,6 +2942,60 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             <Box display='flex' flexWrap='wrap' flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center' />
           </Box>
         </Box>
+      }
+      {
+        reactData.alert &&
+        <Snackbar
+          open={!!reactData.alert}
+          px={3}
+          key={`alert_wrapper`}
+          autoHideDuration={reactData.alert.persist ? null : (reactData.alert.autoHide || ((reactData.alert.severity === 'success') ? 5000 : ((reactData.alert.severity === 'info') ? 15000 : null)))}
+          onClose={() => {
+            updateReactData({
+              alert: false
+            }, true);
+          }}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'center'
+          }}
+        >
+          <Alert
+            severity={reactData.alert.severity || 'info'}
+            key={`alert_box`}
+            style={{ marginX: '8px', borderRadius: '20px', border: 1 }}
+            action={(reactData.alert.action
+              ?
+              <Box
+                display='flex'
+                key={`alert_action`}
+                mx={1}
+                overflow='auto'
+                flexDirection='column'
+              >
+                {([reactData.alert.action].flat()).map((this_action, actionNdx) => (
+                  <Button
+                    key={`alert_button__${actionNdx}`}
+                    className={AVAClass.AVAButton} color="inherit"
+                    onClick={() => this_action.function()}
+                  >
+                    {this_action.text}
+                  </Button>
+                ))}
+              </Box>
+              : null
+            )}
+            variant='filled'
+            onClose={() => {
+              updateReactData({
+                alert: false
+              }, true);
+            }}
+          >
+            {reactData.alert.title && <AlertTitle>{reactData.alert.title}</AlertTitle>}
+            {reactData.alert.message}
+          </Alert>
+        </Snackbar >
       }
     </Dialog >
   );

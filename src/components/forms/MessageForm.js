@@ -1988,7 +1988,6 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               onClick={async () => {
                                 updateReactData({
                                   showSelectTemplate: true,
-                                  //                           templateList: await getTemplateList()
                                 }, true);
                               }}
                             >
@@ -2400,20 +2399,24 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                   keepSelectedInList={true}
                   noDataLabel={''}
                   onInputChange={async (values) => {
-                    let templateObj = await getTemplateText(values[0].value);
-                    updateReactData({
-                      newMessageText: templateObj.template_body,
-                      showSelectTemplate: false,
-                      html_message: (templateObj.template_type === 'html')
-                    }, true);
+                    if (values.length > 0) {
+                      let templateObj = await getTemplateText(values[0].value);
+                      updateReactData({
+                        newMessageText: (Array.isArray(templateObj.template_body) ? templateObj.template_body.join('') : templateObj.template_body),
+                        showSelectTemplate: false,
+                        html_message: (templateObj.template_type === 'html')
+                      }, true);
+                    }
                   }}
                   onChange={async (values) => {
-                    let templateObj = await getTemplateText(values[0].value);
-                    updateReactData({
-                      newMessageText: templateObj.template_body,
-                      showSelectTemplate: false,
-                      html_message: (templateObj.template_type === 'html')
-                    }, true);
+                    if (values.length > 0) {
+                      let templateObj = await getTemplateText(values[0].value);
+                      updateReactData({
+                        newMessageText: (Array.isArray(templateObj.template_body) ? templateObj.template_body.join('') : templateObj.template_body),
+                        showSelectTemplate: false,
+                        html_message: (templateObj.template_type === 'html')
+                      }, true);
+                    }
                   }}
                 />
               </Dialog>
@@ -2427,6 +2430,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                 pickAndGo: true,
                 keepSelections: true,
                 withGroups: true,
+                restrictGroups: state.session.client_style.restrict_groups,
                 withPreferred: true,
                 buttonColor: (reactData.selections.length === 0) ? 'red' : 'green',
                 buttonText: searchButtonText(),

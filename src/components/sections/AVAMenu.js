@@ -6,6 +6,7 @@ import { getImage } from '../../util/AVAPeople';
 import { getActivity } from '../../util/AVAObservations';
 import { getActivityDetail } from '../../util/AVAActivityLoader';
 import { AVATextStyle, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
+import QuickAdd from './QuickAdd';
 
 import { Snackbar } from '@material-ui/core';
 import Alert from '@material-ui/lab/Alert';
@@ -1429,16 +1430,31 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                                   className={classes.listItem}
                                   onContextMenu={async (e) => {
                                     e.preventDefault();
-                                    updateReactData({
-                                      alert: {
-                                        severity: 'info',
-                                        title: this_row.activity_name,
-                                        message: <div>
-                                          Activity Code: {this_row.activity_code}<br />
-                                          Row Type: {this_row.row_type}<br />
-                                          Why on Menu: {this_row.reason}</div>
-                                      }
-                                    }, true);
+                                    if (this_row.activity_code === 'render.generic') {
+                                      updateReactData({
+                                        alert: {
+                                          severity: 'info',
+                                          title: this_row.activity_name,
+                                          message: <div>
+                                            Activity Code: render.generic<br />
+                                            File: {this_row.default_value.split('/').pop()}<br />
+                                            Row Type: {this_row.row_type}<br />
+                                            Why on Menu: {this_row.reason}</div>
+                                        }
+                                      }, true);
+                                    }
+                                    else {
+                                      updateReactData({
+                                        alert: {
+                                          severity: 'info',
+                                          title: this_row.activity_name,
+                                          message: <div>
+                                            Activity Code: {this_row.activity_code}<br />
+                                            Row Type: {this_row.row_type}<br />
+                                            Why on Menu: {this_row.reason}</div>
+                                        }
+                                      }, true);
+                                    }
                                   }}
                                 >
                                   <Box
@@ -1628,8 +1644,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             <React.Fragment>
               {!session.useOldVersion &&
                 <PeopleMaintenance
-                patient={patient}
-                person_id={state.session.patient_id}
+                  patient={patient}
+                  person_id={state.session.patient_id}
                   onClose={(updatedPerson) => {
                     if (updatedPerson.saveCompleted || !reactData.menu_reloaded) {
                       sessionStorage.removeItem('AVASessionData');
@@ -1669,14 +1685,25 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
           {reactData.showAddAccount &&
             <React.Fragment>
-              {!session.useOldVersion &&
+              {session.new_account_form &&
+                <QuickAdd
+                  open={reactData.showAddAccount}
+                  onClose={() => {
+                    updateReactData({
+                      showAddAccount: false
+                    }, true);
+                  }}
+                />
+              }
+
+              {!session.new_account_form && !session.useOldVersion &&
                 <PeopleMaintenance
-                person_id={null}
-                options={{
-                  mode: 'add',
-                  newPerson: true,
-                  sectionToShow: 'ProfileSection'
-                }}
+                  person_id={null}
+                  options={{
+                    mode: 'add',
+                    newPerson: true,
+                    sectionToShow: 'ProfileSection'
+                  }}
                   initialValues={{
                     peopleRec: {
                       client_id: state.session.client_id,
@@ -1694,7 +1721,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   }}
                 />
               }
-              {session.useOldVersion &&
+              {!session.new_account_form && !session.useOldVersion &&
                 <PatientDialog
                   patient={{
                     "person_id": `*NEW~${new Date().getTime()}`,
@@ -1720,6 +1747,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   }}
                 />
               }
+
             </React.Fragment>
           }
 

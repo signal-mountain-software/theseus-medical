@@ -6,6 +6,7 @@ import { getImage } from '../../util/AVAPeople';
 import { getActivity } from '../../util/AVAObservations';
 import { getActivityDetail } from '../../util/AVAActivityLoader';
 import { AVATextStyle, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
+import QuickAdd from './QuickAdd';
 
 import Card from '@material-ui/core/Card';
 import CardActionArea from '@material-ui/core/CardActionArea';
@@ -808,10 +809,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           belongsTo: (state.groups ? state.groups.belongsTo : {}),
           client_weather: state.session.client_weather
         };
-   //     let marqueeData = [
-   //       { message: `${reactUpdObj.greetingWords}, ${tempName}!` },
-   //       { message: `AVA for ${state.session.client_name}` }
-   //     ];
+        //     let marqueeData = [
+        //       { message: `${reactUpdObj.greetingWords}, ${tempName}!` },
+        //       { message: `AVA for ${state.session.client_name}` }
+        //     ];
         let marqueeData = [];
         marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
         let urgentMessage = marqueeData.find(m => {
@@ -827,7 +828,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             marqueeData.unshift(
               { message: `${reactUpdObj.greetingWords}, ${tempName}!` },
               { message: `AVA for ${state.session.client_name}` }
-            )
+            );
           }
         }
         updateReactData({
@@ -1438,16 +1439,31 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                           }}
                           onContextMenu={async (e) => {
                             e.preventDefault();
-                            updateReactData({
-                              alert: {
-                                severity: 'info',
-                                title: this_row.activity_name,
-                                message: <div>
-                                  Activity Code: {this_row.activity_code}<br />
-                                  Row Type: {this_row.row_type}<br />
-                                  Why on Menu: {this_row.reason}</div>
-                              }
-                            }, true);
+                            if (this_row.activity_code === 'render.generic') {
+                              updateReactData({
+                                alert: {
+                                  severity: 'info',
+                                  title: this_row.activity_name,
+                                  message: <div>
+                                    Activity Code: render.generic<br />
+                                    File: {this_row.default_value.split('/').pop()}<br />
+                                    Row Type: {this_row.row_type}<br />
+                                    Why on Menu: {this_row.reason}</div>
+                                }
+                              }, true);
+                            }
+                            else {
+                              updateReactData({
+                                alert: {
+                                  severity: 'info',
+                                  title: this_row.activity_name,
+                                  message: <div>
+                                    Activity Code: {this_row.activity_code}<br />
+                                    Row Type: {this_row.row_type}<br />
+                                    Why on Menu: {this_row.reason}</div>
+                                }
+                              }, true);
+                            }
                           }}
                           onClick={async () => {
                             await activityLog(pPerson, this_row.activity_code, this_row.activity_name, reactData.sectionOpen.index);
@@ -1637,7 +1653,18 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
           {reactData.showAddAccount &&
             <React.Fragment>
-              {!session.useOldVersion &&
+              {session.new_account_form &&
+                <QuickAdd
+                  open={reactData.showAddAccount}
+                  onClose={() => {
+                    updateReactData({
+                      showAddAccount: false
+                    }, true);
+                  }}
+                />
+              }
+
+              {!session.new_account_form && !session.useOldVersion &&
                 <PeopleMaintenance
                   person_id={null}
                   options={{
@@ -1656,13 +1683,13 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     }
                   }}
                   onClose={() => {
-                    reset();
-                    sessionStorage.removeItem('AVASessionData');
-                    window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+                    updateReactData({
+                      showAddAccount: false
+                    }, true);
                   }}
                 />
               }
-              {session.useOldVersion &&
+              {!session.new_account_form && !session.useOldVersion &&
                 <PatientDialog
                   patient={{
                     "person_id": `*NEW~${new Date().getTime()}`,
@@ -1688,6 +1715,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   }}
                 />
               }
+
             </React.Fragment>
           }
 

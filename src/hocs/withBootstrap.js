@@ -12,6 +12,7 @@ import AVAConfirm from '../components/forms/AVAConfirm';
 import MakeAVAMenu from '../util/MakeAVAMenu';
 import PatientDialog from '../components/dialogs/PatientDialog';
 import SelectAccount from '../components/dialogs/SelectAccount';
+import QuickAdd from '../components/sections/QuickAdd';
 
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
@@ -116,6 +117,78 @@ export default Component => props => {
   React.useEffect(() => {
     let checkUser = (
       async () => {
+        // Check URL parameters first - these override any existing session
+        let urlData = await getParamsFromURL();
+
+        // Handle ?user= parameter - force login as specific user
+        if (urlData && urlData.user) {
+          console.log('User parameter detected:', urlData.user);
+
+          // Clear any existing sessions
+          sessionStorage.removeItem('AVASessionData');
+          try {
+            await Auth.signOut();
+          } catch (e) {
+            console.log('No existing Cognito session to sign out');
+          }
+
+          // Set up URL data with client info if available
+          updateReactData({
+            urlData: Object.assign({}, urlData, {
+              client_id: urlData.client || urlData.client_id,
+              user_id: urlData.user || urlData.user_id
+            })
+          });
+
+          // Load client customizations if client is specified
+          if (urlData.client || urlData.client_id) {
+            const clientId = urlData.client || urlData.client_id;
+            let cData = await getCustomizations('*all', clientId);
+            updateReactData({
+              customizationData: Object.assign({}, cData, urlData),
+              currentClientLogo: cData.logo
+            });
+          }
+
+          console.log('Trying user login:', urlData.user);
+          await tryUser(urlData.user, urlData.client || urlData.client_id, 'url');
+          return;
+        }
+
+        // Handle ?create= parameter - force logout and launch QuickAdd
+        if (urlData && urlData.create) {
+          const clientId = urlData.create;
+          console.log('Create parameter detected:', clientId);
+
+          // Clear any existing sessions
+          sessionStorage.removeItem('AVASessionData');
+          try {
+            await Auth.signOut();
+          } catch (e) {
+            console.log('No existing Cognito session to sign out');
+          }
+
+          updateReactData({
+            urlData: Object.assign({}, urlData, {
+              client_id: clientId,
+              launch_quickadd: true,
+              quickadd_source: 'url_parameter'
+            })
+          });
+
+          // Load client customizations
+          console.log('Loading customizations for client:', clientId);
+          let cData = await getCustomizations('*all', clientId);
+          updateReactData({
+            customizationData: Object.assign({}, cData, urlData, { client_id: clientId }),
+            currentClientLogo: cData.logo
+          });
+
+          console.log('Trying user:', `ava-${clientId.toLowerCase()}`, 'for client:', clientId);
+          await tryUser(`ava-${clientId.toLowerCase()}`, clientId, 'url');
+          return;
+        }
+
         let activeUser;
         let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
         sessionStorage.removeItem('cognito_expires');
@@ -169,12 +242,12 @@ export default Component => props => {
         }
         // No security session OR already logged in, but with an unknown user.  Do we know who this is?
         // Does the URL contain a User ID and/or client?
-        let urlData = await getParamsFromURL();
-        if (urlData) {         
+        let urlDataCheck = await getParamsFromURL();
+        if (urlDataCheck) {
           updateReactData({
-            urlData: Object.assign({}, urlData, {
-              client_id: urlData.client || urlData.client_id,
-              user_id: urlData.user || urlData.user_id
+            urlData: Object.assign({}, urlDataCheck, {
+              client_id: urlDataCheck.client || urlDataCheck.client_id,
+              user_id: urlDataCheck.user || urlDataCheck.user_id
             })
           });
           if (reactData.urlData.client_id) {
@@ -183,10 +256,6 @@ export default Component => props => {
               customizationData: Object.assign({}, cData, reactData.urlData),
               currentClientLogo: cData.logo
             });
-          }
-          if (reactData.urlData.create) {
-            await tryUser(`ava-${reactData.urlData.client_id}`, reactData.urlData.client_id, 'url');
-            return;
           }
           if (reactData.urlData.user_id) {
             await tryUser(reactData.urlData.user_id, reactData.urlData.client_id, 'url');
@@ -470,6 +539,10 @@ export default Component => props => {
 
   function verifySignUp() {
     return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('checkSignUp'));
+  }
+
+  function showQuickAdd() {
+    return (AVAReady && reactData?.urlData?.launch_quickadd);
   }
 
   function testModeErrorTrap() {
@@ -780,7 +853,7 @@ export default Component => props => {
               let this_user = AVAFollowUpData.possibleUserRecs[0];
               // update SessionV2 with this password
               await updateDb(
-                [                  
+                [
                   {
                     table: "SessionsV2",
                     key: {
@@ -1028,6 +1101,31 @@ export default Component => props => {
           />
         }
       </Dialog >
+    );
+  }
+  else if (showQuickAdd()) {
+    return (
+      <QuickAdd
+        onClose={(createdPersonIds) => {
+          // QuickAdd finished - redirect to login with first created person
+          if (createdPersonIds && createdPersonIds.length > 0) {
+            const firstPersonId = createdPersonIds[0];
+            const baseUrl = window.location.href.split('?')[0];
+            const loginUrl = `${baseUrl}?user=${firstPersonId}`;
+            window.location.replace(loginUrl);
+          } else {
+            // No accounts created, clear the QuickAdd flag
+            updateReactData({
+              urlData: Object.assign({}, reactData.urlData, {
+                launch_quickadd: false
+              })
+            });
+          }
+        }}
+        options={{
+          source: reactData.urlData?.quickadd_source || 'normal'
+        }}
+      />
     );
   }
   else {
@@ -1643,14 +1741,14 @@ export default Component => props => {
         }), { path: '/' });
       }
       else if (currentSession.url_parameters.hasOwnProperty('message')) {
-        URLmsg = Object.assign({}, currentSession.url_parameters);       
+        URLmsg = Object.assign({}, currentSession.url_parameters);
       }
     }
     else if (reactData.urlData.hasOwnProperty('document')) {
       putActionCookie(reactData.urlData);
     }
     else if (reactData.urlData.hasOwnProperty('message')) {
-      URLmsg = Object.assign({}, reactData.urlData);       
+      URLmsg = Object.assign({}, reactData.urlData);
     }
     if (URLmsg) {
       removeCookie("AVAaction");
@@ -1709,10 +1807,10 @@ export default Component => props => {
       .catch(error => {
         console.log(`error in loadSyncInfo Calendar. Message is ${error.message}`);
       });
-    
+
     await createNewOccurrences({
       client: pSession.client_id
-    })
+    });
 
     v2buildCalendar(
       {
@@ -1782,7 +1880,7 @@ export default Component => props => {
     else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
   }
 
-  async function extractMessageData(urlData) { 
+  async function extractMessageData(urlData) {
     let urlMessageRec = await dbClient
       .get({
         Key: { message_key: urlData.message },
@@ -1795,7 +1893,7 @@ export default Component => props => {
         }
         console.log({ 'Bad get on MessageReplyTrigger - caught error is': error });
       });
-    if (recordExists(urlMessageRec)) { 
+    if (recordExists(urlMessageRec)) {
       Object.assign(urlData, urlMessageRec.Item);
     }
     return urlData;

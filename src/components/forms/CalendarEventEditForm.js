@@ -772,7 +772,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     return 'view';
   };
 
-  const handleAllocateSlot = async (body) => {
+  const handleAllocateSlot = async ({ body, allocateEventCode = pEventCode, allocateOccurrence = pOccData.date }) => {
     let pPerson, pSlot, pRelease, pIndex;
 
     if (body.release) { pRelease = body.release; }
@@ -812,8 +812,8 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       let writeRequest = {
         "client": pClient,
         "person_id": state.session.patient_id,
-        "event": pEventCode,
-        "occurrence_date": pOccData.date,
+        "event": allocateEventCode,
+        "occurrence_date": allocateOccurrence,
         "owner": newPersonID,
         "override_name": newPersonName,
         "slot": pSlot || newPersonID,
@@ -826,9 +826,6 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       }
       if (body.notes) { writeRequest.notes = body.notes; }
       if (body.guests) { writeRequest.guests = body.guests; }
-
-
-
 
       if (pEvent) {
         if (pEvent.hasOwnProperty('default_forms')) {
@@ -887,7 +884,13 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
           }
         }
       }
+      if (body.rejectDuplicate) {
+        writeRequest.rejectDuplicate = body.rejectDuplicate;
+      }
       let slotInfo = await writeSlot(writeRequest);
+      if (slotInfo.hasOwnProperty('success') && !slotInfo.success) {
+        return { success: false, message: "Slot allocation failed", slotInfo };
+      }
       whereToGo = -1;
       if (pRelease) {
         if (pSlot !== newPersonID) {
@@ -1164,10 +1167,12 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
           if ((this_item.slotData.status === 'selected') || this_item.slotData?.status?.current?.selected) {
             recipientList.push(this_item.slotData.owner);
             await handleAllocateSlot({
-              person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
-              slot: this_item.slotData.id,
-              release: true,
-              index: (index || 0)
+              body: {
+                person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
+                slot: this_item.slotData.id,
+                release: true,
+                index: (index || 0)
+              }
             });
           }
         };
@@ -1975,10 +1980,12 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                                     <PersonAddDisabledIcon
                                       onClick={async () => {
                                         await handleAllocateSlot({
-                                          person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
-                                          slot: this_item.slotData.id,
-                                          release: true,
-                                          index: (index || 0)
+                                          body: {
+                                            person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
+                                            slot: this_item.slotData.id,
+                                            release: true,
+                                            index: (index || 0)
+                                          }
                                         });
                                       }}
                                     />
@@ -2069,10 +2076,84 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                             else {
                               let pName = await makeName(pPatient);
                               await handleAllocateSlot({
-                                person: `${pName}:${pPatient}`,
-                                slot: this_item.slotData.id,
-                                index: (index || 0)
+                                body: {
+                                  person: `${pName}:${pPatient}`,
+                                  slot: this_item.slotData.id,
+                                  index: (index || 0)
+                                }
                               });
+                              // Check for other occurrences in this event
+                              let othersExist = await checkOtherOccurrences();
+                              if (othersExist && (othersExist.length > 0)) {
+                                updateReactData({
+                                  other_occurrences: othersExist,
+                                  popupMenuOpen: false,
+                                  alert: {
+                                    severity: 'warning',
+                                    title: `You are signed up!`,
+                                    message: <div>
+                                      This event has multiple occurrences.<br />
+                                      Would you like to sign up for ALL occurrences of this event?<br />
+                                    </div>,
+                                    action: [
+                                      {
+                                        text: `No. Just this one.`,
+                                        function: (async () => {
+                                          updateReactData({
+                                            alert: false
+                                          }, true);
+                                        })
+                                      },
+                                      {
+                                        text: `Yes, sign me up for all future occurrences`,
+                                        function: (async () => {
+                                          let eventID = pEventCode.split('#')[0];
+                                          let todayYMD = makeDate(new Date()).numeric;
+                                          let failures = 0;
+                                          for (let next_event of reactData.other_occurrences) {
+                                            if (next_event >= todayYMD) {
+                                              pEventCode = `${eventID}#${next_event}`;
+                                              let result = await handleAllocateSlot({
+                                                body: {
+                                                  person: `${pName}:${pPatient}`,
+                                                  slot: this_item.slotData.id,
+                                                  index: (index || 0),
+                                                  rejectDuplicate: true
+                                                },
+                                                allocateEventCode: pEventCode,
+                                                allocateOccurrence: next_event
+                                              });
+                                              if (typeof (result) === "object" && !result.success) {
+                                                failures++;
+                                              }
+                                            }
+                                          }
+                                          if (failures > 0) {
+                                            updateReactData({
+                                              alert: {
+                                                severity: 'error',
+                                                title: `Some sign-ups failed`,
+                                                message: `For ${failures} occurrence(s), someone else was already signed up.`,
+                                                action: [
+                                                  {
+                                                    text: `Acknowledged`,
+                                                    function: (async () => {
+                                                      onReset({ no_change: true });
+                                                    })
+                                                  }
+                                                ]
+                                              }
+                                            }, true);
+                                          }
+                                          else {
+                                            onReset({ no_change: true });
+                                          }
+                                        })
+                                      }
+                                    ]
+                                  }
+                                }, true);
+                              }
                             }
                             if (pOccData.notes_required) {
                               setEditNoteNumber(index);
@@ -2202,7 +2283,74 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                   signUpObject: reactData.signUpObject
                 }, false);
               }
-              await handleAllocateSlot(slotObj);
+              await handleAllocateSlot({ body: slotObj });
+              // Check for other occurrences in this event
+              let othersExist = await checkOtherOccurrences();
+              if (othersExist && (othersExist.length > 0)) {
+                updateReactData({
+                  other_occurrences: othersExist,
+                  popupMenuOpen: false,
+                  alert: {
+                    severity: 'warning',
+                    title: `You are signed up!`,
+                    message: <div>
+                      This event has multiple occurrences.<br />
+                      Would you like to sign up for ALL occurrences of this event?<br />
+                    </div>,
+                    action: [
+                      {
+                        text: `No. Just this one.`,
+                        function: (async () => {
+                          updateReactData({
+                            alert: false
+                          }, true);
+                        })
+                      },
+                      {
+                        text: `Yes, sign me up for all future occurrences`,
+                        function: (async () => {
+                          let eventID = pEventCode.split('#')[0];
+                          let todayYMD = makeDate(new Date()).numeric;
+                          let failures = 0;
+                          for (let next_event of reactData.other_occurrences) {
+                            if (next_event >= todayYMD) {
+                              pEventCode = `${eventID}#${next_event}`;
+                              let result = await handleAllocateSlot({
+                                body: Object.assign({}, slotObj, { rejectDuplicate: true }),
+                                allocateEventCode: pEventCode,
+                                allocateOccurrence: next_event,
+                              });
+                              if (typeof (result) === "object" && !result.success) {
+                                failures++;
+                              }
+                            }
+                          }
+                          if (failures > 0) {
+                            updateReactData({
+                              alert: {
+                                severity: 'error',
+                                title: `Some sign-ups failed`,
+                                message: `For ${failures} occurrence(s), someone else was already signed up.`,
+                                action: [
+                                  {
+                                    text: `Acknowledged`,
+                                    function: (async () => {
+                                      onReset({ no_change: true });
+                                    })
+                                  }
+                                ]
+                              }
+                            }, true);
+                          }
+                          else {
+                            onReset({ no_change: true });
+                          }
+                        })
+                      }
+                    ]
+                  }
+                }, true);
+              }
             }}
           >
           </PersonFilter>
@@ -2635,7 +2783,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                       else {
                         let pName = await makeName(pPatient);
                         let request = { person: `${pName}:${pPatient}` };
-                        let addedIndexAt = await handleAllocateSlot(request);
+                        let addedIndexAt = await handleAllocateSlot({ body: request });
                         setOwnerOfSlots(true);
                         if (pOccData.signup_type !== 'none') {
                           request.slot = firstAvailableSlot;
@@ -2676,27 +2824,6 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
             severity={reactData.alert.severity || 'info'}
             key={`alert_box`}
             style={{ marginX: '8px', borderRadius: '20px', border: 1 }}
-            action={(reactData.alert.action
-              ?
-              <Box
-                display='flex'
-                key={`alert_action`}
-                mx={1}
-                overflow='auto'
-                flexDirection='column'
-              >
-                {([reactData.alert.action].flat()).map((this_action, actionNdx) => (
-                  <Button
-                    key={`alert_button__${actionNdx}`}
-                    className={AVAClass.AVAButton} color="inherit"
-                    onClick={() => this_action.function()}
-                  >
-                    {this_action.text}
-                  </Button>
-                ))}
-              </Box>
-              : null
-            )}
             variant='filled'
             onClose={() => {
               updateReactData({
@@ -2707,6 +2834,29 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
           >
             {reactData.alert.title && <AlertTitle>{reactData.alert.title}</AlertTitle>}
             {reactData.alert.message}
+            {reactData.alert.action &&
+              <Box
+                display='flex'
+                key={`alert_action`}
+                mt={2}
+                gap={1}
+                flexDirection='row'
+                flexWrap='wrap'
+                justifyContent='center'
+              >
+                {([reactData.alert.action].flat()).map((this_action, actionNdx) => (
+                  <Button
+                    key={`alert_button__${actionNdx}`}
+                    className={AVAClass.AVAButton}
+                    color="inherit"
+                    variant="outlined"
+                    onClick={() => this_action.function()}
+                  >
+                    {this_action.text}
+                  </Button>
+                ))}
+              </Box>
+            }
           </Alert>
         </Snackbar >
       }

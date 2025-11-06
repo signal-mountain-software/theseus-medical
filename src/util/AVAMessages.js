@@ -495,7 +495,7 @@ export async function formatRequestDetails(body, summaryType) {
   let htmlMessage = `<h1 style="color: #5e9ca0;"><span style="color: #000000;">${page.title}</span></h1>`;
   let rawMessage = `${page.title}\n\r`;
   pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
-  pdfLine(page.title, { style: 'bold', size: 'large', align: 'center', after: 1 });
+  pdfLine(page.title, { style: 'bold', fontSize: (page.font.size.large * 1.5), align: 'center', after: 1 });
 
   // Person
   let pRec = await getPerson(body.author);
@@ -727,11 +727,11 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
   page.client_id = client_id;
   page.footerText = `AVA reference: ${page.client_id}/${page.document_id}`;
   // pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
-  pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
+  pdfLine(title, { style: 'bold', fontSize: (page.font.size.large * 1.5), align: 'center', after: 1 });
 
   // docData.sections.forEach((sectionObj, sectionNdx) => {
   for (const sectionObj of docData.sections) {
-    pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
+    pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', fontSize: (page.font.size.medium * 1.2), align: 'left', before: 2, after: 1 });
     // sectionObj.fields.forEach((this_field, fieldNdx) => {
     for (const this_field of sectionObj.fields) {
       if (docData.fields.hasOwnProperty(this_field) && !(docData.fields.ignore) && !(docData.fields.hidden)) {
@@ -779,7 +779,7 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
             break;
           }
           case 'header': {
-            pdfLine((docData.fields[this_field].prompt.ref || docData.fields[this_field].prompt.value), { protectOrphan: true, style: 'italic', size: 'medium', align: 'left', before: 2, after: 1 });
+            pdfLine((docData.fields[this_field].prompt.ref || docData.fields[this_field].prompt.value), { style: 'normal', size: 'medium', align: 'left', before: 0, after: 0, noNewLine: true });
             break;
           }
 
@@ -795,14 +795,14 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
                 align: 'left',
                 after: 1
               }));
-            break;
-          }
-          case 'signature': {
-            await pdfImage(docData.fields[this_field].prompt.ref, { image: docDocument[this_field] || docDocument.signature, style: 'normal', size: 'medium', align: 'left', after: 1 });
-            break;
-          }
-          case 'legacy_signature': {
-            pdfLine(docData.fields[this_field].prompt.ref, { image: docDocument[this_field] || docDocument.signature, style: 'normal', size: 'medium', align: 'left', after: 1 });
+            let endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accommodate most situations');
+            if (endX > (page.right)) {
+              pdfDown(2);
+              pdfCurrent.xPos += 10;
+              endX = pdfCurrent.xPos;
+            }
+            doc.line(pdfCurrent.xPos, pdfCurrent.yPos - 8, endX, pdfCurrent.yPos - 8, 'DF');
+            pdfCurrent.xPos = endX;
             break;
           }
           default: {
@@ -876,12 +876,12 @@ export async function printDocumentB({ documentList, options = {} }) {
     page.client_id = client_id;
     page.footerText = `AVA reference: ${page.client_id}_${page.document_id}`;
     pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
-    pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
+    pdfLine(title, { style: 'bold', fontSize: (page.font.size.large * 1.5), align: 'center', after: 1 });
 
     //   sections.forEach((sectionObj, sectionNdx) => {
     for (const sectionObj of sections) {
       if (okToShowSection(sectionObj, fields)) {
-        pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
+        pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', fontSize: (page.font.size.medium * 1.2), align: 'left', before: 2, after: 1 });
         //  sectionObj.fields.forEach((this_field, fieldNdx) => {
         for (const this_field of sectionObj.fields) {
           if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore) && !(fields[this_field].hidden)) {
@@ -933,7 +933,7 @@ export async function printDocumentB({ documentList, options = {} }) {
                 break;
               }
               case 'header': {
-                pdfLine(fields[this_field].prompt.value, { protectOrphan: true, style: 'italic', size: 'medium', align: 'left', before: 2, after: 1 });
+                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', align: 'left', before: 0, after: 0, noNewLine: true });
                 break;
               }
               case 'html': {
@@ -1019,11 +1019,11 @@ export async function printEmptyDocument({ documentList, options = {} }) {
     page.client_id = client_id;
     page.footerText = `AVA reference: ${page.client_id}_${page.document_id}`;
     pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
-    pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
+    pdfLine(title, { style: 'bold', fontSize: (page.font.size.large * 1.5), align: 'center', after: 1 });
     // eslint-disable-next-line
     //  sections.forEach((sectionObj) => {
     for (const sectionObj of sections) {
-      pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
+      pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', fontSize: (page.font.size.medium * 1.2), align: 'left', before: 2, after: 1 });
       //   sectionObj.fields.forEach((this_field) => {
       for (const this_field of sectionObj.fields) {
         if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore) && !(fields[this_field].hidden)) {
@@ -1054,9 +1054,32 @@ export async function printEmptyDocument({ documentList, options = {} }) {
                 if (printType === 'select&text') {
                   const text = `${fields[this_field].prompt.other || 'other'}:`;
                   pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
-                  let endX = pdfCurrent.xPos + doc.getTextWidth('Sample text thats not too long');
-                  doc.line(pdfCurrent.xPos - 6, pdfCurrent.yPos + 1, endX, pdfCurrent.yPos + 1, 'DF');
-                  pdfCurrent.xPos = endX;
+                  const hasWidth = Number.isFinite(fields[this_field]?.prompt?.width) && (fields[this_field].prompt.width > 0);
+                  const hasRows = Number.isFinite(fields[this_field]?.prompt?.rows) && (fields[this_field].prompt.rows > 0);
+                  if (hasWidth && hasRows) {
+                    // Draw a multi-line input box using prompt.width and rows
+                    pdfDown(1);
+                    pdfCurrent.xPos += 10;
+                    const rowCount = Math.max(1, Math.round(fields[this_field].prompt.rows));
+                    const rowHeight = 12; // approximate line height matching existing spacing
+                    const rectWidth = fields[this_field].prompt.width;
+                    const rectHeight = rowCount * rowHeight;
+                    const availableWidth = Math.max(0, page.right - pdfCurrent.xPos);
+                    const drawWidth = Math.min(rectWidth, availableWidth);
+                    // Position rectangle aligned with baseline similar to other underline placements
+                    doc.rect(pdfCurrent.xPos, pdfCurrent.yPos - 4, drawWidth, rectHeight, 'S');
+                    pdfCurrent.xPos += drawWidth;
+                    pdfCurrent.yPos += rectHeight + 2;
+                  }
+                  else {
+                    // If a prompt.width is provided for this field, honor it for the underline length; otherwise use the legacy sample width
+                    const underlineLen = hasWidth
+                      ? fields[this_field].prompt.width
+                      : doc.getTextWidth('Sample text thats not too long');
+                    const endX = Math.min(pdfCurrent.xPos + underlineLen, page.right);
+                    doc.line(pdfCurrent.xPos - 6, pdfCurrent.yPos + 1, endX, pdfCurrent.yPos + 1, 'DF');
+                    pdfCurrent.xPos = endX;
+                  }
                 }
                 pdfDown(1);
                 pdfStyle('reset');
@@ -1064,7 +1087,7 @@ export async function printEmptyDocument({ documentList, options = {} }) {
               break;
             }
             case 'header': {
-              pdfLine(fields[this_field].prompt.value, { protectOrphan: true, style: 'italic', size: 'medium', align: 'left', before: 2, after: 1 });
+              pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', align: 'left', before: 0, after: 0, noNewLine: true });
               break;
             }
             case 'html': {
@@ -1095,17 +1118,35 @@ export async function printEmptyDocument({ documentList, options = {} }) {
               if (fields.hasOwnProperty(this_field)) {
                 const this_text = fields[this_field].prompt.value.split(/%%.*?%%/gm).join("").replace("  ", " ");
                 pdfCurrent.yPos += 12;
-                pdfLine(`${this_text}:  `, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                // Determine whether we'll draw a rectangle (rows+width). If so, keep the prompt and box tight (no blank line).
+                const hasWidth = Number.isFinite(fields[this_field]?.prompt?.width) && (fields[this_field].prompt.width > 0);
+                const hasRows = Number.isFinite(fields[this_field]?.prompt?.rows) && (fields[this_field].prompt.rows > 0);
+                pdfLine(`${this_text}:  `, { style: 'normal', size: 'medium', align: 'left', after: (hasWidth && hasRows ? 0 : 1), noNewLine: (hasWidth && hasRows ? true : false) });
                 let promptWidth = doc.getTextWidth(`${this_text}:  `);
                 pdfCurrent.xPos += promptWidth;
-                let endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accomodate most situations');
-                if (endX > (page.right)) {
-                  pdfDown(2);
+                // If prompt.rows is provided along with a valid prompt.width, render a box; otherwise use underline logic
+                if (hasWidth && hasRows) {
+                  pdfDown(1);
                   pdfCurrent.xPos += 10;
-                  endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accomodate most situations');
+                  const rowCount = Math.max(1, Math.round(fields[this_field].prompt.rows));
+                  const rowHeight = 12;
+                  const rectWidth = fields[this_field].prompt.width;
+                  const rectHeight = rowCount * rowHeight;
+                  const availableWidth = Math.max(0, page.right - pdfCurrent.xPos);
+                  const drawWidth = Math.min(rectWidth, availableWidth);
+                  doc.rect(pdfCurrent.xPos, pdfCurrent.yPos - 4, drawWidth, rectHeight, 'S');
+                  pdfCurrent.xPos += drawWidth;
+                  pdfCurrent.yPos += rectHeight + 2;
                 }
-                doc.line(pdfCurrent.xPos, pdfCurrent.yPos - 8, endX, pdfCurrent.yPos - 8, 'DF');
-                pdfCurrent.xPos = endX;
+                else {
+                  // Prefer an explicit prompt.width for underline length when provided; fall back to legacy sample-based width
+                  const underlineLen = hasWidth
+                    ? fields[this_field].prompt.width
+                    : doc.getTextWidth('Sample text long enough to accomodate most situations');
+                  const endX = Math.min(pdfCurrent.xPos + underlineLen, page.right);
+                  doc.line(pdfCurrent.xPos, pdfCurrent.yPos - 8, endX, pdfCurrent.yPos - 8, 'DF');
+                  pdfCurrent.xPos = endX;
+                }
               }
             }
           }
@@ -1150,12 +1191,12 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
     page.line_was_compressed = false;
     page.footerText = `AVA reference: ${page.client_id}_${page.document_id}`;
     pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
-    pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
+    pdfLine(title, { style: 'bold', fontSize: (page.font.size.large * 1.5), align: 'center', after: 1 });
     // eslint-disable-next-line
     //  sections.forEach((sectionObj, sectionNdx) => {
     for (const sectionObj of sections) {
       if (okToShowSection(sectionObj, fields)) {
-        pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', size: 'medium', align: 'left', before: 4, after: 1 });
+        pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', fontSize: (page.font.size.medium * 1.2), align: 'left', before: 4, after: 1 });
         for (const this_field of sectionObj.fields) {
           if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore) && !(fields[this_field].hidden)) {
             let printType = fields[this_field].type;
@@ -1207,7 +1248,7 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
                 break;
               }
               case 'header': {
-                pdfLine(fields[this_field].prompt.value, { protectOrphan: true, style: 'italic', size: 'medium', align: 'left', before: 2, after: 1 });
+                pdfLine(fields[this_field].prompt.value, { protectOrphan: true, style: 'normal', size: 'medium', align: 'left', before: 1, after: 1 });
                 break;
               }
               case 'html': {
@@ -1263,17 +1304,35 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
                   else {
                     const this_text = fields[this_field].prompt.value.split(/%%.*?%%/gm).join("").replace("  ", " ");
                     pdfCurrent.yPos += 12;
-                    pdfLine(`${this_text}:  `, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                    // Determine whether we'll draw a rectangle (rows+width). If so, keep the prompt and box tight (no blank line).
+                    const hasWidth = Number.isFinite(fields[this_field]?.prompt?.width) && (fields[this_field].prompt.width > 0);
+                    const hasRows = Number.isFinite(fields[this_field]?.prompt?.rows) && (fields[this_field].prompt.rows > 0);
+                    pdfLine(`${this_text}:  `, { style: 'normal', size: 'medium', align: 'left', after: (hasWidth && hasRows ? 0 : 1), noNewLine: (hasWidth && hasRows ? true : false) });
                     let promptWidth = doc.getTextWidth(`${this_text}:  `);
                     pdfCurrent.xPos += promptWidth;
-                    let endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accomodate most situations');
-                    if (endX > (page.right)) {
-                      pdfDown(2);
+                    // If prompt.rows is provided along with a valid prompt.width, render a box; otherwise use underline logic
+                    if (hasWidth && hasRows) {
+                      pdfDown(1);
                       pdfCurrent.xPos += 10;
-                      endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accomodate most situations');
+                      const rowCount = Math.max(1, Math.round(fields[this_field].prompt.rows));
+                      const rowHeight = 12;
+                      const rectWidth = fields[this_field].prompt.width;
+                      const rectHeight = rowCount * rowHeight;
+                      const availableWidth = Math.max(0, page.right - pdfCurrent.xPos);
+                      const drawWidth = Math.min(rectWidth, availableWidth);
+                      doc.rect(pdfCurrent.xPos, pdfCurrent.yPos - 4, drawWidth, rectHeight, 'S');
+                      pdfCurrent.xPos += drawWidth;
+                      pdfCurrent.yPos += rectHeight + 2;
                     }
-                    doc.line(pdfCurrent.xPos, pdfCurrent.yPos - 8, endX, pdfCurrent.yPos - 8, 'DF');
-                    pdfCurrent.xPos = endX;
+                    else {
+                      // Prefer an explicit prompt.width for underline length when provided; fall back to legacy sample-based width
+                      const underlineLen = hasWidth
+                        ? fields[this_field].prompt.width
+                        : doc.getTextWidth('Sample text long enough to accomodate most situations');
+                      const endX = Math.min(pdfCurrent.xPos + underlineLen, page.right);
+                      doc.line(pdfCurrent.xPos, pdfCurrent.yPos - 8, endX, pdfCurrent.yPos - 8, 'DF');
+                      pdfCurrent.xPos = endX;
+                    }
                   }
                 }
               }
@@ -1451,7 +1510,7 @@ export async function html_to_pdf(body) {
   }
   else {
     return null;
-  } 
+  }
 }
 
 export async function buildDocument(body) {
@@ -1665,10 +1724,10 @@ export async function savePDF(doc, pdfInfo, options = {}) {
         responseStatus = 401;
         responseData.message = err.message;
       });
-   // window.open(s3Resp.Location);
-   // for (let this_attachment of attachments) {
-   //   window.open(this_attachment);
-   // };
+    // window.open(s3Resp.Location);
+    // for (let this_attachment of attachments) {
+    //   window.open(this_attachment);
+    // };
     attachments = [];
     if (goodS3) {
       if (options.onSave === 'print') {
@@ -2290,7 +2349,7 @@ function pdfLine(text, options = {}) {
           xOffset = pdfCurrent.xPos + pdfCurrent.indent;
           //    let imageProps = doc.getImageProperties(options.image);
           for (let this_image of makeArray(options.image)) {
-            let [pdir, imageURI] = this_image.split(/\/(?!.*\/)/);   
+            let [pdir, imageURI] = this_image.split(/\/(?!.*\/)/);
             console.log(pdir, imageURI);
             let imageBucket = 'theseus-medical-storage';
             let gotObject =
@@ -2299,7 +2358,7 @@ function pdfLine(text, options = {}) {
                 Key: imageURI,
                 Expires: 3600
               });
-            let pParts = imageURI.split('.');  
+            let pParts = imageURI.split('.');
             attachments.push(gotObject);
             try {
               let jsConfirm = doc.addImage(gotObject, pParts.pop(), xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
@@ -2384,7 +2443,7 @@ function pdfLine(text, options = {}) {
     if (tWords.length > 0) {
       for (let t = 0; t < tWords.length - 1; t++) {
         pdfDown(1);
-        pdfLine(tWords[t], Object.assign({}, options, { noNewLine: true, after: 0 }));
+        pdfLine(tWords[t], Object.assign({}, options, { noNewLine: true, before: 0, after: 0 }));
       }
       pdfDown(1);
       text = tWords[tWords.length - 1];
@@ -2640,7 +2699,7 @@ export async function sendMessages(body) {
       },
       TableName: "PostOffice"
     };
-    if (env.anonymous) { 
+    if (env.anonymous) {
       PostOfficeRec.Item.anonymous = true;
     }
     if (env.testMode) { PostOfficeRec.TableName = "TestPostOffice"; };

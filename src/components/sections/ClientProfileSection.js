@@ -174,7 +174,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
 
 
-  <Typography
+      <Typography
         style={AVATextStyle({ margin: { top: 1 } })}
       >
         {'UI style'}
@@ -305,7 +305,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
           {'New Required'}
         </Typography>
       </Box>
-      
+
 
 
 

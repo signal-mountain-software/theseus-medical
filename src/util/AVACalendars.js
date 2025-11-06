@@ -1257,6 +1257,7 @@ export async function writeSlot(body) {
     "show_this_slot": <boolean>  (assume true if missing or null)
     "no_messaging": false
     "overrideRecipient": [array of recipients to send message to instead of event owner]
+    "rejectDuplicate": <boolean>  (if true, and person already has a slot for this occurrence, do not assign another>
   */
   let [event_id, occ_id] = makeString(body.event, 1).split('#');
   let occurrence = body.occurrence_date || occ_id;
@@ -1332,6 +1333,25 @@ export async function writeSlot(body) {
   putCalendar.id = event_id;
   putCalendar.list_key = `${body.status === 'released' ? 'available' : body.owner}#${occurrence}`;
   putCalendar.schedule_key = 'slot_data';
+
+  // Check if the key already exists before putting the record
+  try {
+    const getResult = await dbClient
+      .get({
+        Key: {
+          client: body.client,
+          event_key: event_key
+        },
+        TableName: "Calendar"
+      })
+      .promise();
+
+    if (getResult.Item && body.rejectDuplicate) {
+      return { success: false, message: "Duplicate slot assignment rejected", existing: getResult.Item }; // Indicate that the slot was not assigned due to duplicate rejection
+    }
+  } catch (error) {
+    console.log(`Error checking for existing Calendar record:`, error);
+  }
 
   await dbClient
     .put({

@@ -2,7 +2,6 @@ import React from 'react';
 import { Box, Typography } from '@material-ui/core/';
 import { formatPhone } from '../../util/AVAPeople';
 import { isEmpty, titleCase } from '../../util/AVAUtilities';
-import { makeDate } from '../../util/AVADateTime';
 
 import { AVATextStyle } from '../../util/AVAStyles';
 import TextField from '@material-ui/core/TextField';
@@ -26,25 +25,27 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
       <Box display='flex' alignItems='center'
         justifyContent='flex-start' flexDirection='row'>
         <TextField
-          id='FirstName'
+          id={`FirstName_${currentValues.peopleRec?.name?.first}`}
+          key={`FirstName_${currentValues.peopleRec?.name?.first}`}
           autoComplete='off'
           onBlur={async (event) => {
+            let preparedFirst = titleCase(event.target.value.trim());
             await updateField({
               updateList:
                 [{
                   tableName: 'peopleRec',
                   fieldName: 'name.first',
-                  newData: event.target.value
+                  newData: preparedFirst
                 },
                 {
                   tableName: 'sessionRec',
                   fieldName: 'user_display_name',
-                  newData: (`${event.target.value} ${currentValues.peopleRec?.name?.last}`).trim()
+                  newData: (`${preparedFirst} ${currentValues.peopleRec?.name?.last}`).trim()
                 },
                 {
                   tableName: 'peopleRec',
                   fieldName: 'display_name',
-                  newData: (`${event.target.value} ${currentValues.peopleRec?.name?.last}`).trim()
+                  newData: (`${preparedFirst} ${currentValues.peopleRec?.name?.last}`).trim()
                 }]
             });
           }}
@@ -52,13 +53,15 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
           helperText='First'
         />
         <TextField
-          id='LastName'
+          id={`LastName_${currentValues.peopleRec?.name?.last}`}
+          key={`LastName_${currentValues.peopleRec?.name?.last}`}
           style={{ marginLeft: 20 }}
           autoComplete='off'
           error={errorList.hasOwnProperty('last_name')}
           helperText={errorList.hasOwnProperty('last_name') ? errorList.last_name.errorMessage : 'Last'}
           onBlur={async (event) => {
-            if (isEmpty(event.target.value) && isEmpty(currentValues.peopleRec.name?.first)) {
+            let preparedLast = titleCase(event.target.value.trim());
+            if (isEmpty(preparedLast) && isEmpty(currentValues.peopleRec.name?.first)) {
               // No name at all.  This is an error.
               setError({
                 errorField: 'last_name',
@@ -77,17 +80,17 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                 [{
                   tableName: 'peopleRec',
                   fieldName: 'name.last',
-                  newData: event.target.value
+                  newData: preparedLast
                 },
                 {
                   tableName: 'sessionRec',
                   fieldName: 'user_display_name',
-                  newData: (`${currentValues.peopleRec?.name.first} ${event.target.value}`).trim()
+                  newData: (`${currentValues.peopleRec?.name.first} ${preparedLast}`).trim()
                 },
                 {
                   tableName: 'peopleRec',
                   fieldName: 'display_name',
-                  newData: (`${currentValues.peopleRec?.name.first} ${event.target.value}`).trim()
+                  newData: (`${currentValues.peopleRec?.name.first} ${preparedLast}`).trim()
                 }]
             };
             if (errorList.hasOwnProperty('last_name')) {
@@ -626,87 +629,6 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
         defaultValue={currentValues.peopleRec.emergency_contact?.contact2 || ''}
         helperText={'Emergency Contact 2 - Name & Phone'}
       />
-      {(Object.keys(reactData.local_customFields).length > 0) && Object.keys(reactData.local_customFields).map((this_customField, cFNdx) => (
-        <React.Fragment
-          key={`frag_important_info_header__${cFNdx}`}
-        >
-          {(cFNdx === 0) &&
-            <Typography
-              style={AVATextStyle({ italic: true, margin: { top: 3, bottom: 1 } })}
-            >
-              {`Additional important information`}
-            </Typography>
-          }
-          <Box display='flex' alignItems='center'
-            key={`local_box__${cFNdx}`}
-            justifyContent='flex-start' flexDirection='row'>
-            <TextField style={{ width: '400px' }}
-              id='email'
-              key={`local__${cFNdx}-${Array.isArray(currentValues.peopleRec?.local_data?.[this_customField])
-                ? currentValues.peopleRec?.local_data?.[this_customField][0]
-                : (currentValues.peopleRec?.local_data?.[this_customField] || '')}`}
-              autoComplete='off'
-              onBlur={async (event) => {
-                let local_result = '';
-                switch (reactData.local_customFields[this_customField].type || reactData.local_customFields[this_customField]) {
-                  case 'phone': {
-                    if (event.target.value) {
-                      local_result = formatPhone(`+1${Number(event.target.value.replace(/\D/g, '')).toString()}`);
-                    }
-                    break;
-                  }
-                  case 'number': {
-                    if (event.target.value) {
-                      let numeric_result = Number(event.target.value.replace(/\D/g, ''));
-                      if (isNaN(numeric_result)) {
-                        local_result = event.target.value; 
-                      }
-                      else {
-                        local_result = numeric_result;
-                      }
-                    }
-                    break;
-                  }
-                  case 'fulldate':
-                  case 'date': {
-                    let lDate = makeDate(event.target.value, { noTime: true, noYearCorrection: true });
-                    if (!lDate.error) { local_result = lDate.absolute; }
-                    else {
-                      setError({
-                        errorField: `local_data.${this_customField}`,
-                        errorValue: event.target.value,
-                        isError: true,
-                        errorMessage: `${event.target.value} is not a valid date.`
-                      });
-                      return;
-                    }
-                    break;
-                  }
-                  default: {
-                    local_result = event.target.value.trim();
-                  }
-                }
-                if (Array.isArray(currentValues.peopleRec?.local_data?.[this_customField])) {
-                  local_result = [local_result];
-                }
-                let updateObj = {
-                  updateList:
-                    [{
-                      tableName: 'peopleRec',
-                      fieldName: `local_data.${this_customField}`,
-                      newData: local_result
-                    }]
-                };
-                await updateField(updateObj);
-              }}
-              defaultValue={Array.isArray(currentValues.peopleRec?.local_data?.[this_customField])
-                ? currentValues.peopleRec?.local_data?.[this_customField][0]
-                : (currentValues.peopleRec?.local_data?.[this_customField] || '')}
-              helperText={titleCase(this_customField.replace(/[^a-z^A-Z^0-9]/g, " "))}
-            />
-          </Box>
-        </React.Fragment>
-      ))}
 
       <Box display='flex' alignItems='center'
         justifyContent='flex-end' flexDirection='row'>

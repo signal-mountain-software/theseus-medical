@@ -1056,6 +1056,22 @@ export async function getDb(getSpec) {
   }
 }
 
+
+export async function putDb(putSpec) {
+  const foundDoc = await dbClient
+    .put(putSpec)
+    .promise()
+    .catch(error => {
+      cl(`Error putting ${putSpec.TableName} in putDb with key of ${putSpec.Key}: ${error}`);
+    });
+  if (recordExists(foundDoc)) {
+    return foundDoc.Item;
+  }
+  else {
+    return false;
+  }
+}
+
 export async function restAPI(pRequest, api_data) {
   let finalReturn = {};
   const TELSdefaults = {

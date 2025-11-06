@@ -6,16 +6,42 @@ import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import QuickSearch from '../sections/QuickSearch';
 import MakeMessage from '../forms/MakeMessage';
 import { getPerson } from '../../util/AVAPeople';
+import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import SendIcon from '@material-ui/icons/Send';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
-import { Box, Button, TextField, Typography, Checkbox } from '@material-ui/core/';
+import { Box, Button, TextField, Typography, Checkbox, Dialog, DialogContentText, DialogActions } from '@material-ui/core/';
+
+const useStyles = makeStyles(theme => ({
+  clientPopUp: {
+    borderRadius: '30px 30px 30px 30px',
+    padding: '16px',
+    minHeight: '200px'
+  }
+}));
 
 export default ({ currentValues, updateField, reactData, updateReactData }) => {
 
   const AVAClass = AVAclasses();
+  const classes = useStyles();
 
   const isMounted = React.useRef(false);
+
+  const [localData, setLocalData] = React.useState({
+    viewFamilyMember: false
+  });
+
+  const [refreshTrigger, setRefreshTrigger] = React.useState(false);
+  const updateLocalData = (newData, force = false) => {
+    if (isMounted.current) {
+      setLocalData((prevValues) => (Object.assign(
+        prevValues,
+        newData
+      )));
+      if (force) { setRefreshTrigger(refreshTrigger => !refreshTrigger); }
+    }
+  };
+
 
   async function getPhone(personObj) {
     if (personObj.phone) { return personObj.phone; }
@@ -55,7 +81,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
 
   return (
     <Box
-      key={`roleSection_masterBox`}
+      key={`roleSection_masterBox_${refreshTrigger ? '1' : '0'}`}
       flexGrow={2} px={2} pt={2} pb={4} display='flex' flexDirection='column'
     >
       {reactData.OKtoShow_Family ?
@@ -85,13 +111,6 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
             <React.Fragment
               key={`sendMessages_masterBox`}
             >
-
-
-
-
-
-
-
               <Box
                 display='flex'
                 alignItems={'center'}
@@ -128,40 +147,6 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                   />
                 }
               </Box>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
               <Box
                 display='flex'
                 flexDirection='row'
@@ -172,11 +157,14 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                 <Typography style={AVATextStyle({ margin: { left: 1 } })}
                   key={`family_${fNdx}__primary`}
                   onClick={async () => {
-                    if (this_familyRec.primary_contact.id !== currentValues.peopleRec.person_id) {
-                      updateReactData({
-                        viewFamilyMember: this_familyRec.primary_contact.id
-                      }, true);
-                    }
+                    updateLocalData({
+                      viewFamilyMember: {    // was this_familyRec.primary_contact.id
+                        primary: true,
+                        createAccount: false,
+                        fNdx,
+                        other_index: false
+                      }
+                    }, true);
                   }}
                 >
                   {`${this_familyRec.primary_contact.name}${this_familyRec.primary_contact.nickname ? (' (' + this_familyRec.primary_contact.nickname + ')') : ''}`}
@@ -236,11 +224,14 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                         style={AVATextStyle({ margin: { left: 1 } })}
                         key={`familymember_${memberNdx}`}
                         onClick={async () => {
-                          if (this_familyMember.id !== currentValues.peopleRec.person_id) {
-                            updateReactData({
-                              viewFamilyMember: this_familyMember.id
-                            }, true);
-                          }
+                          updateLocalData({
+                            viewFamilyMember: {    // // was this_familyMember.id
+                              primary: false,
+                              createAccount: false,
+                              fNdx,
+                              other_index: memberNdx
+                            }
+                          }, true);
                         }}
                       >
                         {`${this_familyMember.name}${this_familyMember.nickname ? (' (' + this_familyMember.nickname + ')') : ''}`}
@@ -298,123 +289,33 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                   helperText={`Family Name`}
                 />
               }
-              <TextField
-                style={AVATextStyle({ margin: { left: 1 }, width: '80%' })}
-                key={`me_${fNdx}`}
-                id={`me_${fNdx}`}
-                autoComplete='off'
-                defaultValue={reactData.myFamilyData[fNdx].nickname}
-                onBlur={async (event) => {
-                  if (reactData.myFamilyData[fNdx].primary) {
-                    currentValues.familyRecs[fNdx].primary_contact.nickname = event.target.value;
-                  }
-                  else {
-                    currentValues.familyRecs[fNdx].other_members[reactData.myFamilyData[fNdx].other_index].nickname = event.target.value;
-                  }
-                  await updateReactData({ current: currentValues, OKtoSave: true }, true);
-                }}
-                helperText={`${this_familyRec.family_name} calls me`}
-              />
-              <TextField
-                style={AVATextStyle({ margin: { left: 1 }, width: '80%' })}
-                key={`myRelationship_${fNdx}`}
-                id={`myRelationship_${fNdx}`}
-                autoComplete='off'
-                defaultValue={reactData.myFamilyData[fNdx].relationship}
-                onBlur={async (event) => {
-                  if (reactData.myFamilyData[fNdx].primary) {
-                    currentValues.familyRecs[fNdx].primary_contact.relationship = event.target.value;
-                  }
-                  else {
-                    currentValues.familyRecs[fNdx].other_members[reactData.myFamilyData[fNdx].other_index].relationship = event.target.value;
-                  }
-                  await updateReactData({ current: currentValues, OKtoSave: true }, true);
-                }}
-                helperText={`My relationship to ${this_familyRec.family_name} is`}
-              />
-              <React.Fragment>
-                {(reactData.myFamilyData[fNdx].primary)
-                  ?
-                  <Typography
-                    style={AVATextStyle({ margin: { top: 1, left: 1 }, bold: true })}
-                  >
-                    {`I am the Primary Contact for ${this_familyRec.family_name}`}
-                  </Typography>
-                  :
-                  <React-Fragment>
-                    <Typography
-                      style={AVATextStyle({ margin: { top: 1, left: 1 } })}
-                    >
-                      {`My role in ${this_familyRec.family_name} is`}
-                    </Typography>
-                    <Box
-                      display='flex'
-                      flexDirection='row'
-                      marginLeft={'16px'}
-                      marginTop={-0}
-                      flexWrap={'wrap'}
-                    >
-                      {(((currentValues.peopleRec.person_id !== this_familyRec.primary_contact.id) &&
-                        ((reactData.user_id === this_familyRec.primary_contact.id) || (reactData.administrative_account)))
-                        ? [{ option: 'primary', label: 'Primary Contact' }]
-                        : []).concat(
-                          [
-                            { option: 'alternate', label: 'Alternate Primary' },
-                            { option: 'messages', label: 'Receive Family Messages and View Information' },
-                            { option: 'view', label: 'View only' }
-                          ]).map((this_option, tIndex) => (
-                            <Box
-                              display='flex'
-                              flexDirection='row'
-                              alignItems={'center'}
-                              key={`role_option__${tIndex}`}
-                              style={{ marginRight: '24px' }}
-                            >
-                              <Checkbox
-                                aria-label={`role_option__${tIndex}`}
-                                name={`role_option__${tIndex}`}
-                                key={`role_option__${tIndex}`}
-                                size='small'
-                                checked={(currentValues.familyRecs[fNdx].other_members[reactData.myFamilyData[fNdx].other_index].role === this_option.option)}
-                                onClick={async () => {
-                                  if (this_option.option === 'primary') {
-                                    let hold_info = deepCopy(currentValues.familyRecs[fNdx].primary_contact);
-                                    currentValues.familyRecs[fNdx].primary_contact = Object.assign({}, currentValues.familyRecs[fNdx].other_members[reactData.myFamilyData[fNdx].other_index], { role: 'primary' });
-                                    currentValues.familyRecs[fNdx].other_members[reactData.myFamilyData[fNdx].other_index] = Object.assign({}, hold_info, { role: 'alternate' });
-                                    reactData.myFamilyData[fNdx] = Object.assign({}, currentValues.familyRecs[fNdx].primary_contact, { primary: true, other_index: null });
-                                  }
-                                  else {
-                                    currentValues.familyRecs[fNdx].other_members[reactData.myFamilyData[fNdx].other_index].role = this_option.option;
-                                    reactData.myFamilyData[fNdx].role = this_option.option;
-                                  }
-                                  await updateReactData({ current: currentValues, OKtoSave: true }, true);
-                                }}
-                                disableRipple
-                                inputProps={{ 'aria-labelledby': `message_routing_3` }}
-                              />
-                              <Typography style={AVATextStyle({ size: 0.8, margin: { left: -0.4 } })} >
-                                {`${this_option.label}`}
-                              </Typography>
-                            </Box>
-                          ))}
-                    </Box>
-                  </React-Fragment>
-                }
-              </React.Fragment>
               {((reactData.user_id === this_familyRec.primary_contact.id) || (reactData.administrative_account)) &&
                 <Button
                   onClick={async () => {
-                    let updateObj = {};
-                    updateObj.reactUpd = {
-                      addFamilyMember: currentValues.familyRecs[fNdx].family_id
-                    };
-                    await updateField(updateObj);
+                    let other_index;
+                    if (this_familyRec.other_members) {
+                      other_index = this_familyRec.other_members.length;
+                    }
+                    else {
+                      this_familyRec.other_members = [];
+                      other_index = 0;
+                    }
+                    currentValues.familyRecs[fNdx].other_members[other_index] = {};
+                    await updateReactData({ current: currentValues, OKtoSave: true }, true);
+                    updateLocalData({
+                      viewFamilyMember: {    // was this_familyRec.primary_contact.id
+                        primary: false,
+                        createAccount: true,
+                        fNdx,
+                        other_index
+                      }
+                    }, true);
                   }}
                   className={AVAClass.AVAButton}
                   style={{ marginLeft: '8px', marginTop: '24px', backgroundColor: 'white', color: 'black' }}
                   size='small'
                 >
-                  {isSmallScreen() ? `Create new` : `Create a new account for the ${currentValues.familyRecs[fNdx].family_name}`}
+                  {isSmallScreen() ? `Create new` : `Create a new account for ${currentValues.familyRecs[fNdx].family_name}`}
                 </Button>
               }
               {(reactData.administrative_account) &&
@@ -452,7 +353,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                   id: currentValues.peopleRec.person_id,
                   name: `${currentValues.peopleRec.name.first} ${currentValues.peopleRec.name.last}`,
                   nickname: currentValues.peopleRec.name.first,
-                  relationship: 'Primary caregiver'
+                  relationship: ''
                 }
               });
               if (!reactData.myFamilyData || (reactData.myFamilyData.length === 0)) {
@@ -569,6 +470,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                     currentValues.familyRecs[familyAt].other_members = [];
                   }
                   for (let this_selection of selections) {
+                    // Add this person to the familyRec
                     currentValues.familyRecs[familyAt].other_members.push({
                       id: this_selection.person_id,
                       name: `${this_selection.person_firstName} ${this_selection.person_lastName}`,
@@ -587,23 +489,201 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
             />
           }
 
-          {reactData.viewFamilyMember &&
-            <PeopleMaintenance
-              person_id={reactData.viewFamilyMember}
-              options={{
-                mode: (reactData.administrative_account ? 'edit' : 'view'),
-                sectionToShow: ['ProfileSection']
-              }}
-              initialValues={{
-                color: 'turquoise'
-              }}
-              onClose={async ({ newID, newName }) => {
-                updateReactData({
+          {localData.viewFamilyMember &&
+            <Dialog open={true || reactData.accessList}
+              p={2}
+              classes={{ paper: classes.clientPopUp }}
+              fullWidth
+              variant={'elevation'}
+              elevation={2}
+              onClose={() => {
+                updateLocalData({
                   viewFamilyMember: false
                 }, true);
               }}
-            />
+            >
+              <DialogContentText
+                id='scroll-dialog-title'
+                style={AVATextStyle({
+                  size: 1.4,
+                  bold: true,
+                  margin: { left: 0.5, top: 1 }
+                })}
+              >
+                {localData.viewFamilyMember.primary
+                  ? currentValues.familyRecs[localData.viewFamilyMember.fNdx].primary_contact.name
+                  : (currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index]
+                    ? currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].name
+                    : 'Create a new Account'
+                  )
+                }
+              </DialogContentText>
+              {localData.viewFamilyMember.createAccount &&
+                <TextField
+                  style={AVATextStyle({ margin: { left: 1 }, width: '80%' })}
+                  key={`person_to_add`}
+                  autoComplete='off'
+                  defaultValue={''}
+                  onBlur={async (event) => {
+                    currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].name = event.target.value;
+                    await updateReactData({ current: currentValues, OKtoSave: true }, true);
+                  }}
+                  helperText={`Name of Person to Add`}
+                />
+              }
+              <TextField
+                style={AVATextStyle({ margin: { left: 1 }, width: '80%' })}
+                key={`calls_me`}
+                autoComplete='off'
+                defaultValue={
+                  localData.viewFamilyMember.primary
+                    ? currentValues.familyRecs[localData.viewFamilyMember.fNdx].primary_contact.nickname
+                    : currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].nickname
+                }
+                onBlur={async (event) => {
+                  if (localData.viewFamilyMember.primary) {
+                    currentValues.familyRecs[localData.viewFamilyMember.fNdx].primary_contact.nickname = event.target.value;
+                  }
+                  else {
+                    currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].nickname = event.target.value;
+                  }
+                  await updateReactData({ current: currentValues, OKtoSave: true }, true);
+                }}
+                helperText={`${currentValues.familyRecs[localData.viewFamilyMember.fNdx].family_name} calls me`}
+              />
+              <TextField
+                style={AVATextStyle({ margin: { left: 1 }, width: '80%' })}
+                key={`myRelationship`}
+                autoComplete='off'
+                defaultValue={localData.viewFamilyMember.primary
+                  ? currentValues.familyRecs[localData.viewFamilyMember.fNdx].primary_contact.relationship
+                  : currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].relationship
+                }
+                onBlur={async (event) => {
+                  if (localData.viewFamilyMember.primary) {
+                    currentValues.familyRecs[localData.viewFamilyMember.fNdx].primary_contact.relationship = event.target.value;
+                  }
+                  else {
+                    currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].relationship = event.target.value;
+                  }
+                  await updateReactData({ current: currentValues, OKtoSave: true }, true);
+                }}
+                helperText={`My relationship to ${currentValues.familyRecs[localData.viewFamilyMember.fNdx].family_name} is`}
+              />
+              <React.Fragment>
+                {localData.viewFamilyMember.primary
+                  ?
+                  <Typography
+                    style={AVATextStyle({ margin: { top: 2, left: 1 }, bold: true })}
+                  >
+                    {`${currentValues.familyRecs[localData.viewFamilyMember.fNdx].primary_contact.name.split(' ')[0]} is the Primary Contact for ${currentValues.familyRecs[localData.viewFamilyMember.fNdx].family_name}`}
+                  </Typography>
+                  :
+                  <React-Fragment>
+                    <Typography
+                      style={AVATextStyle({ margin: { top: 1, left: 1 } })}
+                    >
+                      {`My role in ${currentValues.familyRecs[localData.viewFamilyMember.fNdx].family_name} is`}
+                    </Typography>
+                    <Box
+                      display='flex'
+                      flexDirection='row'
+                      marginLeft={'16px'}
+                      marginTop={-0}
+                      flexWrap={'wrap'}
+                    >
+                      {// In order to include primary as an option, the user must be an admin or the Family primary already
+                        // The person you're editing will not be the primary, because we are on the ":" side of localData.viewFamilyMember.primary test
+                        ((reactData.administrative_account || (reactData.user_id === currentValues.familyRecs[localData.viewFamilyMember.fNdx].primary_contact.id))
+                          ? [{ option: 'primary', label: 'Primary Contact' }]
+                          : []).concat(
+                            [
+                              { option: 'alternate', label: 'Alternate Primary' },
+                              { option: 'messages', label: 'Receive Family Messages and View Information' },
+                              { option: 'view', label: 'View only' }
+                            ]).map((this_option, tIndex) => (
+                              <Box
+                                display='flex'
+                                flexDirection='row'
+                                alignItems={'center'}
+                                key={`role_option__${tIndex}`}
+                                style={{ marginRight: '24px' }}
+                              >
+                                <Checkbox
+                                  aria-label={`role_option__${tIndex}`}
+                                  name={`role_option__${tIndex}`}
+                                  key={`role_option__${tIndex}`}
+                                  size='small'
+                                  checked={(currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].role === this_option.option)}
+                                  onClick={async () => {
+                                    if (this_option.option === 'primary') {
+                                      let hold_info = deepCopy(currentValues.familyRecs[localData.viewFamilyMember.fNdx].primary_contact);
+                                      currentValues.familyRecs[localData.viewFamilyMember.fNdx].primary_contact = Object.assign({}, currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index], { role: 'primary' });
+                                      currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index] = Object.assign({}, hold_info, { role: 'alternate' });
+                                      // if we are editing the person who is the target of the highter-level people maintenance, that person's info
+                                      // is in myFamilyData[localData.viewFamilyMember.fNdx] (data for the specific one of my families that is being worked on)
+                                      if (currentValues.peopleRec.person_id === currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].id) {
+                                        reactData.myFamilyData[localData.viewFamilyMember.fNdx] = Object.assign({}, currentValues.familyRecs[localData.viewFamilyMember.fNdx].primary_contact, { primary: true, other_index: null });
+                                      }
+                                    }
+                                    else {
+                                      currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].role = this_option.option;
+                                      if (currentValues.peopleRec.person_id === currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].id) {
+                                        reactData.myFamilyData[localData.viewFamilyMember.fNdx].role = this_option.option;
+                                      }
+                                    }
+                                    await updateReactData({ current: currentValues, OKtoSave: true }, true);
+                                  }}
+                                  disableRipple
+                                  inputProps={{ 'aria-labelledby': `message_routing_3` }}
+                                />
+                                <Typography style={AVATextStyle({ size: 0.8, margin: { left: -0.4 } })} >
+                                  {`${this_option.label}`}
+                                </Typography>
+                              </Box>
+                            ))}
+                    </Box>
+                  </React-Fragment>
+                }
+              </React.Fragment>
+
+              <DialogActions style={{ justifyContent: 'center' }}>
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ marginTop: '16px', backgroundColor: 'green', color: 'white' }}
+                  size='small'
+                  onClick={async () => {
+                    if (localData.viewFamilyMember.createAccount) {
+                      currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].createAccount = true;
+                      await updateReactData({ current: currentValues }, false);
+                    }
+                    updateLocalData({
+                      viewFamilyMember: false
+                    }, true);
+                  }}
+                >
+                  {'Done'}
+                </Button>
+                {localData.viewFamilyMember.createAccount &&
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ marginTop: '16px', backgroundColor: 'red', color: 'white' }}
+                    size='small'
+                    onClick={async () => {
+                      currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members.splice(localData.viewFamilyMember.other_index, 1);
+                      await updateReactData({ current: currentValues }, false);
+                      updateLocalData({
+                        viewFamilyMember: false
+                      }, true);
+                    }}
+                  >
+                    {"Don't Create"}
+                  </Button>
+                }
+              </DialogActions>
+            </Dialog>
           }
+
 
         </Box>
         :

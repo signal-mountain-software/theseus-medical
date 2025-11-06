@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, Checkbox, FormControlLabel, Input } from '@material-ui/core/';
+import { Box, Typography, Checkbox, FormControlLabel, Input, Switch } from '@material-ui/core/';
 import { isEmpty, deepCopy } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 
@@ -50,6 +50,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
       flexGrow={2} px={2} py={4} display='flex' flexDirection='column'
     >
       {(Object.keys(reactData.form_fields).length > 0) && Object.keys(reactData.form_fields).map((this_formField, cFNdx) => (
+        (reactData.administrative_account || reactData.form_fields[this_formField].fieldRec.options?.non_admin) &&
         <React.Fragment
           key={`mainFrag_${cFNdx}`}
         >
@@ -133,7 +134,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                           />
                         }
                         label={
-                          <Typography style={{                            
+                          <Typography style={{
                             marginLeft: '-8px',
                             marginRight: '16px',
                             '&.MuiInputBaseInput': {
@@ -260,6 +261,77 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                 }}
               />
             </Box>
+          }
+
+          {(reactData.form_fields[this_formField].fieldRec.value.type === 'boolean') &&
+            <Box
+              display='flex'
+              flexDirection='column'
+              id={`switchBox__${this_formField}`}
+              key={`switchbox__${cFNdx}`}
+              justifyContent='flex-start'
+              marginLeft={0}
+              paddingBottom={0}
+              alignItems='flex-start'
+            >
+              <Typography style={Object.assign({},
+                {
+                  margin: 0,
+                  marginLeft: 0,
+                  marginRight: '2px',
+                  marginBottom: 0,
+                  paddingTop: '16px',
+                  paddingBottom: 0,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginTop: 0,
+                },
+                (AVATextStyle({ size: 1, bold: true })))
+              }>
+                {reactData.form_fields[this_formField].prompt}
+              </Typography>
+              <Box flexGrow={2} display='flex' alignItems='center'
+                justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+                <Typography
+                  style={AVATextStyle({
+                    size: 0.8, margin: { right: 0.8 },
+                    bold: (!reactData.form_fields[this_formField].value || (reactData.form_fields[this_formField].value.toLowerCase() === 'no'))
+                  })}
+                >
+                  {'No'}
+                </Typography>
+                <Switch
+                    checked={(reactData.form_fields[this_formField].value && (reactData.form_fields[this_formField].value.toLowerCase() !== 'no'))}
+                  onClick={async () => {
+                    const newValue = !reactData.form_fields[this_formField].value;
+                    let splitSave = reactData.form_fields[this_formField].fieldRec.value.saveAs.split('.');
+                    reactData.form_fields[this_formField].value = newValue;
+                    await updateField({
+                      updateList:
+                        [{
+                          tableName: splitSave.shift(),
+                          fieldName: splitSave.join('.'),
+                          newData: newValue
+                        }],
+                      reactUpd: {
+                        fields: reactData.form_fields
+                      }
+                    });
+                  }}
+                  name={`field__${cFNdx}`}
+                  color="primary"
+                />
+                <Typography
+                  style={AVATextStyle({
+                    size: 0.8, margin: { left: 0.8 },
+                    bold: (reactData.form_fields[this_formField].value && (reactData.form_fields[this_formField].value.toLowerCase() !== 'no'))
+                  })}
+                >
+                  {'Yes'}
+                </Typography>
+              </Box>
+            </Box>
+
           }
         </React.Fragment>
       ))}

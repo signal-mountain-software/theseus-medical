@@ -3,11 +3,10 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 
 import { createNewGroup, getGroupMembers, getMemberList } from '../../util/AVAGroups';
-import { dbClient, sentenceCase, isObject, recordExists, deepCopy, listFromArray } from '../../util/AVAUtilities';
-import QuickSearch from '../sections/QuickSearch';
-import { getPerson, getImage } from '../../util/AVAPeople';
+import { dbClient, sentenceCase, isObject, recordExists, deepCopy, listFromArray, cl } from '../../util/AVAUtilities';
 import AVATextInput from '../forms/AVATextInput';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
+import { getPerson } from '../../util/AVAPeople';
 
 import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -18,7 +17,6 @@ import useMediaQuery from '@material-ui/core/useMediaQuery';
 import GroupAddIcon from '@material-ui/icons/GroupAdd';
 import CloseIcon from '@material-ui/icons/ExitToApp';
 import DeleteIcon from '@material-ui/icons/Delete';
-import SettingsIcon from '@material-ui/icons/Settings';
 import SendIcon from '@material-ui/icons/Send';
 import ExpandMoreIcon from '@material-ui/icons/Visibility';
 import ExpandLessIcon from '@material-ui/icons/VisibilityOff';
@@ -142,7 +140,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     groupsManagedObject: Object.keys(groupsManagedObject),
     groupMemberList: [],
     isDarkMode: useMediaQuery('(prefers-color-scheme: dark)'),
-    levelVisible: [],
+    levelHidden: [],
     loading: false,
     needRef: false,
     newGroups: {},
@@ -177,6 +175,33 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
 
   const isSmallScreen = () => {
     return (reactData.window_width < 800);
+  };
+
+  let filterTimeOut;
+  async function handleChangePersonFilter(vCheck) {
+    clearTimeout(filterTimeOut);
+    cl(`set timeout with ${vCheck} at ${new Date().getTime()}`);
+    filterTimeOut = setTimeout(async () => {
+      cl(`timeout ended ${vCheck} at ${new Date().getTime()}`);
+      let reactUpdObj = {
+        people_filter: vCheck,
+        lower_people_filter: vCheck.toLowerCase(),
+        selectedPerson_id: false,
+        selectedPersonRec: false,
+        selectedPersonFirstName: false,
+        selectedPersonLastName: false
+      };
+      if (!reactData.selectedGroupRec) {
+        // if no group is selected, then assume selection of the highest group in the list
+        let listEntry = Object.keys(groupsManagedObject)[0];
+        let memberList = await selectMembers(listEntry);
+        reactUpdObj.selectedGroup_id = listEntry;
+        reactUpdObj.selectedGroupRec = groupsManagedObject[listEntry];
+        reactUpdObj.selectedGroupMembers = memberList;
+        reactUpdObj.sortedGroupMembers = sortGroupMembers(memberList);
+      };
+      updateReactData(reactUpdObj, true);
+    }, 500);
   };
 
   function handleResize() {
@@ -308,25 +333,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
       delete state.groups.publicGroups[draggedFrom.group_id];
       delete state.groups.privateGroups[draggedFrom.group_id];
       dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups) });
-      // does the group you are dragging have members?
-      // if so, you have to update the groups for EVERY member
-      /*     if (reactData.selectedPersonRec) {
-             let newGroupList = deepCopy(reactData.selectedPersonRec.groups);
-             for (let this_group of targetGroup_formerFamilyTree) {
-               if (newGroupList.includes(this_group)) {
-                 newGroupList.splice(newGroupList.indexOf(this_group), 1);
-               }
-             }
-             for (let this_group of targetGroup_newFamilyTree) {
-               if (!newGroupList.includes(this_group)) {
-                 newGroupList.push(this_group);
-               }
-             }
-             updateReactData({
-               selectedPersonRec: Object.assign({}, reactData.selectedPersonRec, { groups: newGroupList })
-             }, true);
-           }
-           */
     }
     else if (draggedFrom.hasOwnProperty('personObj')) {
       if (draggedFrom.hasOwnProperty('personGroup') && (draggedFrom.intent === 'group')) {
@@ -458,10 +464,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
         .catch(error => {
           console.log(`caught error updating Group; error is: `, error);
         });
-      if (reactData.selectedPersonRec) {
-        reactUpdObj.selectedPersonRec = Object.assign({}, peopleRec.Item, { groups: newGroupList });
-      }
-      else if (reactData.selectedGroupRec) {
+      if (reactData.selectedGroupRec) {
         if (newGroupList.includes(reactData.selectedGroup_id)) {
           if (!reactData.selectedGroupMembers.hasOwnProperty(draggedFrom.personObj.person_id)) {
             reactData.selectedGroupMembers[draggedFrom.personObj.AVAclassesperson_id] = peopleRec.Item;
@@ -485,104 +488,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
       }
     });
   }
-
-
-  const handleDrop_removeGroup = async (ev) => {
-    ev.preventDefault();
-    let draggedFrom = JSON.parse(ev.dataTransfer.getData('id'));
-    console.log(draggedFrom);
-    if (draggedFrom.hasOwnProperty('personGroup')) {
-      // get my peopleRec
-      let peopleRec = await dbClient
-        .get({
-          TableName: 'People',
-          Key: { person_id: draggedFrom.personObj.person_id }
-        })
-        .promise()
-        .catch(error => {
-          console.log(`caught error reading People; error is: `, error);
-        });
-      if (!recordExists(peopleRec)) {
-        updateReactData({
-          alert: {
-            severity: 'error',
-            title: 'Error',
-            message: `Something's not right... we couldn't find ${draggedFrom.personObj.name?.first} in the database.  Contact Support for more assistance`
-          }
-        }, true);
-        return;
-      }
-      // good peopleRec
-      // we are removing the draggedFrom.personGroup from the group list for draggedFrom.person_id;  get the current group list
-      let newGroupList = deepCopy([peopleRec.Item.groups].flat());
-      let foundAt = newGroupList.indexOf(draggedFrom.personGroup);
-      if (foundAt > -1) {
-        newGroupList.splice(foundAt, 1);
-      }
-      // if I am removing a group that has children, remove the chlidren
-      newGroupList = removeChildren(draggedFrom.personGroup, newGroupList);
-
-      // if what is left contains a parent of this group and that parent now has no children remaining, remove it
-      newGroupList = checkEmptyParent(draggedFrom.personGroup, newGroupList);
-
-
-      // make the update
-      let newClientGroupsObj = deepCopy(peopleRec.Item.clients);
-      if (newClientGroupsObj.hasOwnProperty('id')) {     // expected and standard
-        if (newClientGroupsObj.id !== pSession.client_id) {     // but we are in a client other than the typical one (this should be very rare)
-          newClientGroupsObj[newClientGroupsObj.id] = Object.assign({}, newClientGroupsObj);
-          newClientGroupsObj[pSession.client_id] = {
-            id: pSession.client_id,
-            groups: newGroupList
-          };
-        }
-        newClientGroupsObj.groups = newGroupList;
-        newClientGroupsObj.id = pSession.client_id;
-      }
-      else {
-        newClientGroupsObj[pSession.client_id] = {
-          id: pSession.client_id,
-          groups: newGroupList
-        };
-      }
-      let UpdateExpression = 'set #g = :g, #c = :c';
-      let ExpressionAttributeValues = {
-        ':g': newGroupList,
-        ':c': newClientGroupsObj
-      };
-      let ExpressionAttributeNames = {
-        '#g': 'groups',
-        '#c': 'clients'
-      };
-      await dbClient
-        .update({
-          Key: {
-            person_id: draggedFrom.personObj.person_id
-          },
-          UpdateExpression,
-          ExpressionAttributeValues,
-          ExpressionAttributeNames,
-          TableName: "People",
-        })
-        .promise()
-        .catch(error => {
-          console.log(`caught error updating Group; error is: `, error);
-        });
-      let removedGroups = [peopleRec.Item.groups].flat().filter(g => { return !newGroupList.includes(g); });
-      let alertMessage = false;
-      if (removedGroups.length > 0) {
-        alertMessage = {
-          severity: 'success',
-          title: `Success!`,
-          message: `${draggedFrom.personObj.name.first} was removed from ${listFromArray(removedGroups.map(g => { return groupsManagedObject[g].group_name; }))}`
-        };
-      }
-      updateReactData({
-        alert: alertMessage,
-        selectedPersonRec: Object.assign({}, peopleRec.Item, { groups: newGroupList })
-      }, true);
-    };
-  };
 
   function removeChildren(this_group, newGroupList) {
     if (!state.groups.parent_of.hasOwnProperty(this_group)) {
@@ -612,13 +517,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     newGroupList = checkEmptyParent(this_parent, newGroupList);
     return newGroupList;
   }
-
-  const placeholderImage =
-    'https://theseus-medical-storage.s3.amazonaws.com/public/patients/ademo.jpg';
-
-  const onImageError = (e) => {
-    e.target.src = placeholderImage;
-  };
 
   const handleDrop_removePerson = async (ev) => {
     ev.preventDefault();
@@ -922,26 +820,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                   minHeight: 2.8,
                 }}
                 id='List Filter'
-                value={reactData.people_filter}
                 className={classes.freeInput}
-                onChange={async (event) => {
-                  let reactUpdObj = {
-                    people_filter: event.target.value,
-                    lower_people_filter: event.target.value.toLowerCase()
-                  };
-                  if (!reactData.selectedGroupRec) {
-                    let listEntry = Object.keys(groupsManagedObject)[0];
-                    reactUpdObj.selectedGroup_id = listEntry;
-                    reactUpdObj.selectedGroupRec = groupsManagedObject[listEntry];
-                    reactUpdObj.selectedGroupMembers = await selectMembers(listEntry);
-                    reactUpdObj.sortedGroupMembers = sortGroupMembers(reactUpdObj.selectedGroupMembers);
-                    reactUpdObj.selectedPerson_id = false;
-                    reactUpdObj.selectedPersonRec = false;
-                    reactUpdObj.selectedPersonFirstName = false;
-                    reactUpdObj.selectedPersonLastName = false;
-                  };
-                  updateReactData(reactUpdObj, true);
-                }}
+                onChange={event => (handleChangePersonFilter(event.target.value))}
                 helperText={'Filter People'}
                 inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
                 FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
@@ -954,7 +834,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
           <Box display='flex' flexDirection={isSmallScreen() ? 'column' : 'row'} style={{ flexGrow: 1, height: '100px' }}>
 
             {/* LEFT SIDE */}
-            {(!isSmallScreen() || (!reactData.selectedPersonRec && !reactData.selectedGroupRec)) &&
+            {(!isSmallScreen() || !reactData.selectedGroupRec) &&
               <Box display='flex' style={{ width: isSmallScreen() ? '95%' : '44.5%', overflow: 'auto' }}
                 flexDirection='column'
                 justifyContent='flex-start'
@@ -989,7 +869,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                     alignItems='flex-start'
                   >
                     {Object.keys(groupsManagedObject).map((listEntry, listIndex) => (
-                        <React.Fragment key={`frag_${listIndex}`}>
+                      <React.Fragment key={`frag_${listIndex}`}>
+                        {!reactData.levelHidden[listIndex] &&
                           <Box
                             display='flex' flexDirection='row'
                             justifyContent='flex-start'
@@ -1041,25 +922,16 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                               }}
                               style={AVATextStyle({
                                 size: 1.2,
-                                color: (
-                                  (
-                                    (
-                                      reactData.selectedPersonRec
-                                      &&
-                                      reactData.selectedPersonRec.groups.includes(listEntry)
-                                    )
-                                    ||
-                                    (reactData.selectedGroup_id === listEntry) || (state.groups.parent_of.hasOwnProperty(listEntry) && state.groups.parent_of[listEntry].includes(reactData.selectedGroup_id))
-                                  )
-                                    ? 'orange'
-                                    : null
+                                color: ((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry))
+                                  ? 'orange'
+                                  : null
                                 ),
                                 weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry)) || (reactData.selectedGroup_id === listEntry)) ? 'bold' : null),
                                 margin: { left: (groupsManagedObject[listEntry].level ? ((groupsManagedObject[listEntry].level - minimumGroupLevel) - 1) * 1.5 : 0), top: 0.35, bottom: 0.65, right: 0.8 },
                               })}>
                               {groupsManagedObject[listEntry].group_name}
                             </Typography>
-                            {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && !reactData.levelVisible[listIndex + 1] &&
+                            {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && reactData.levelHidden[listIndex + 1] &&
                               <ExpandMoreIcon
                                 style={{ size: 8, fontSize: '1rem' }}
                                 onClick={async () => {
@@ -1067,32 +939,33 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                                   let kLL = keyList.length;
                                   for (let i = listIndex + 1; ((i < kLL) && (groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level)); i++) {
                                     if (groupsManagedObject[keyList[i]].level === (groupsManagedObject[listEntry].level + 1)) {
-                                      reactData.levelVisible[i] = true;
+                                      reactData.levelHidden[i] = false;
                                     }
                                   }
                                   updateReactData({
-                                    levelVisible: reactData.levelVisible
+                                    levelHidden: reactData.levelHidden
                                   }, true);
                                 }}
                               />
                             }
-                            {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && reactData.levelVisible[listIndex + 1] &&
+                            {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && !reactData.levelHidden[listIndex + 1] &&
                               <ExpandLessIcon
                                 style={{ size: 8, fontSize: '1rem' }}
                                 onClick={async () => {
                                   let keyList = Object.keys(groupsManagedObject);
                                   let kLL = keyList.length;
                                   for (let i = listIndex + 1; ((i < kLL) && (groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level)); i++) {
-                                    reactData.levelVisible[i] = false;
+                                    reactData.levelHidden[i] = true;
                                   }
                                   updateReactData({
-                                    levelVisible: reactData.levelVisible
+                                    levelHidden: reactData.levelHidden
                                   }, true);
                                 }}
                               />
                             }
                           </Box>
-                        </React.Fragment>
+                        }
+                      </React.Fragment>
                     ))}
                   </Box>
                 </Paper>
@@ -1128,121 +1001,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
             }
 
             {/* RIGHT SIDE */}
-            {reactData.selectedPersonRec &&
-              <Box display='flex' style={{ width: isSmallScreen() ? '95%' : '50%', overflow: 'auto' }} flexDirection='column'
-                justifyContent='flex-start'
-                alignItems='flex-start'
-                borderLeft={isSmallScreen() ? 0 : 2}
-                paddingLeft={'32px'}
-              >
-                <Box display='flex' flexDirection='row'
-                  justifyContent='space-between'
-                  alignItems='center'
-                  style={{ width: '100%' }}
-                >
-                  <Box display='flex' flexDirection='row'
-                    flexGrow={1}
-                    justifyContent='flex-start'
-                    alignItems='center'
-                  >
-                    <Typography
-                      key={`g_text_end-last_name`}
-                      draggable={true}
-                      onDragStart={(e) => handleDragStart(e, {
-                        person_id: reactData.selectedPerson_id,
-                        personObj: reactData.selectedPersonRec,
-                        intent: 'person'
-                      })}
-                      style={AVATextStyle({
-                        size: 1.5,
-                        overflow: 'visible',
-                        bold: true,
-                        margin: { top: 1, bottom: 1, right: 0 },
-                      })}>
-                      {`${reactData.selectedPersonFirstName} ${reactData.selectedPersonLastName.trim()}'${reactData.selectedPersonLastName.trim().endsWith('s') ? '' : 's'} Groups`}
-                    </Typography>
-                  </Box>
-                  <Box
-                    key={'my_image_box'}
-                    style={{ marginRight: '16px', marginLeft: '6px' }}
-                    onClick={() => {
-                      updateReactData({
-                        viewPeopleMaintenance: reactData.selectedPerson_id
-                      }, true);
-                    }}
-                  >
-                    <img
-                      key={'my_image'}
-                      draggable={true}
-                      onDragStart={(e) => handleDragStart(e, {
-                        person_id: reactData.selectedPerson_id,
-                        personObj: reactData.selectedPersonRec,
-                        intent: 'person'
-                      })}
-                      className={classes.myImageArea}
-                      alt={''}
-                      onError={onImageError}
-                      src={getImage(reactData.selectedPerson_id)}
-                    />
-                    <SettingsIcon style={{ marginLeft: '-26px' }} />
-                  </Box >
-                </Box>
-                <Paper component={Box} width='100%' elevation={0} overflow='auto' square
-                  style={{ scrollbarWidth: 'thin', flexGrow: 1, display: 'flex' }}
-                >
-                  <Box display='flex' flexDirection='column'
-                    justifyContent='flex-start'
-                    alignItems='flex-start'
-                  >
-                    {Object.keys(groupsManagedObject).map((this_group, gX) => (
-                      reactData.selectedPersonRec.groups.includes(this_group) &&
-                      <Typography
-                        key={`g_text_end_group-${gX}`}
-                        style={AVATextStyle({
-                          size: 1.2,
-                          margin: { top: 0, bottom: 0.8 },
-                        })}
-                        onClick={async () => {
-                          let selectedGroupMembers = await selectMembers(this_group);
-                          updateReactData({
-                            selectedGroup_id: this_group,
-                            selectedGroupRec: groupsManagedObject[this_group],
-                            selectedGroupMembers,
-                            sortedGroupMembers: sortGroupMembers(selectedGroupMembers),
-                            selectedPerson_id: false,
-                            selectedPersonRec: false,
-                            selectedPersonFirstName: false,
-                            selectedPersonLastName: false,
-                          }, true);
-                        }}
-                        draggable={pSession?.adminAccount}
-                        onDragStart={(e) => handleDragStart(e, {
-                          personGroup: this_group,
-                          personObj: reactData.selectedPersonRec,
-                          intent: 'group'
-                        })}
-                      >
-                        {groupsManagedObject[this_group].group_name}
-                      </Typography>
-                    ))}
-                  </Box>
-                </Paper>
-                {reactData.administrative_account &&
-                  <DeleteIcon
-                    classes={{ root: classes.rowButton }}
-                    size='medium'
-                    style={{ alignSelf: 'center' }}
-                    aria-label="trash_icon"
-                    onDragOver={(e) => handleDragOver(e)}
-                    onDrop={async (e) => {
-                      await handleDrop_removeGroup(e);
-                      onRefresh();
-                    }}
-                    edge="start"
-                  />
-                }
-              </Box>
-            }
             {reactData.selectedGroupRec &&
               <Box display='flex' style={{ width: isSmallScreen() ? '95%' : '50%', overflow: 'auto' }} flexDirection='column'
                 justifyContent='flex-start'
@@ -1276,10 +1034,33 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                           overflow: 'visible',
                           size: 1.2,
                           margin: { top: 0, bottom: 0.8 },
+                          weight: (reactData.selectedPerson_id === reactData.selectedGroupMembers[this_person].person_id
+                            ? 'bold'
+                            : null
+                          ),
+                          color: (reactData.selectedPerson_id === reactData.selectedGroupMembers[this_person].person_id
+                            ? 'orange'
+                            : null
+                          ),
                         })}
                         onClick={async () => {
                           updateReactData({
                             viewPeopleMaintenance: this_person
+                          }, true);
+                        }}
+                        onContextMenu={async (e) => {
+                          e.preventDefault();
+                          updateReactData({
+                            selectedPerson_id: reactData.selectedGroupMembers[this_person].person_id,
+                            selectedPersonRec: await getPerson(reactData.selectedGroupMembers[this_person].person_id, '*all', true),
+                            selectedPersonFirstName: reactData.selectedGroupMembers[this_person].name.first,
+                            selectedPersonLastName: reactData.selectedGroupMembers[this_person].name.last,
+                            alert: {
+                              severity: 'info',
+                              title: `${reactData.selectedGroupMembers[this_person].name.first} ${reactData.selectedGroupMembers[this_person].name.last}`,
+                              message: <div>
+                                Person ID: <strong>{reactData.selectedGroupMembers[this_person].person_id}</strong></div>
+                            }
                           }, true);
                         }}
                         draggable={pSession?.adminAccount}
@@ -1313,35 +1094,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
           </Box>
 
         </React.Fragment>
-      }
-      {reactData.showQuickSearch &&
-        <QuickSearch
-          reactData={reactData}
-          updateReactData={updateReactData}
-          options={{
-            pickOne: true,
-            showAll: true
-          }}
-          onClose={async (selections) => {
-            if (selections && (selections.length > 0)) {
-              updateReactData({
-                showQuickSearch: false,
-                selectedGroup_id: false,
-                selectedGroupRec: false,
-                seletedGroupMembers: false,
-                selectedPerson_id: selections[0].person_id,
-                selectedPersonRec: await getPerson(selections[0].person_id, '*all', true),
-                selectedPersonFirstName: selections[0].person_firstName,
-                selectedPersonLastName: selections[0].person_lastName,
-              }, true);
-            }
-            else {
-              updateReactData({
-                showQuickSearch: false,
-              }, true);
-            }
-          }}
-        />
       }
       {reactData.sendMessage &&
         <MessageForm

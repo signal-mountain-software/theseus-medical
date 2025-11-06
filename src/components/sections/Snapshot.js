@@ -139,13 +139,13 @@ export default ({ currentValues, reactData, updateReactData }) => {
                 style={{ marginTop: ((cFNdx === 0) ? '12px' : '4px') }}
               >
                 <Typography
-                  key={`local_prompt__${cFNdx}`}
+                  key={`local_prompt__${cFNdx}a`}
                   style={AVATextStyle({ size: 0.8 })}
                 >
                   {`${reactData.local_customFields[this_customField].prompt || titleCase(this_customField.replace(/[^a-z^A-Z^0-9]/g, " "))}:`}
                 </Typography>
                 <Typography
-                  key={`local_prompt__${cFNdx}`}
+                  key={`local_prompt__${cFNdx}b`}
                   style={AVATextStyle({ size: 0.8, margin: { left: 0.5 }, bold: true })}
                 >
                   {currentValues.peopleRec?.local_data?.[this_customField]}
@@ -164,13 +164,13 @@ export default ({ currentValues, reactData, updateReactData }) => {
                   style={{ marginTop: ((cFNdx === 0) ? '12px' : '4px') }}
                 >
                   <Typography
-                    key={`local_prompt__${cFNdx}`}
+                    key={`local_prompt__${cFNdx}c`}
                     style={AVATextStyle({ size: 0.8 })}
                   >
                     {reactData.form_fields[this_formField].fieldRec.prompt.value}
                   </Typography>
                   <Typography
-                    key={`local_prompt__${cFNdx}`}
+                    key={`local_prompt__${cFNdx}d`}
                     style={AVATextStyle({ size: 0.8, margin: { left: 0.5 }, bold: true })}
                   >
                     {reactData.form_fields[this_formField].value}

@@ -3,11 +3,15 @@ import { Box, Typography, Switch, Checkbox } from '@material-ui/core/';
 import { getPerson } from '../../util/AVAPeople';
 import { titleCase } from '../../util/AVAUtilities';
 
+import useSession from '../../hooks/useSession';
+
 import TextField from '@material-ui/core/TextField';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle } from '../../util/AVAStyles';
 
-export default ({ currentValues, ogValues, errorList, reactData, setError, updateField }) => {
+export default ({ currentValues, ogValues, errorList, reactData, setError, updateField, updateReactData }) => {
+
+  const { state } = useSession();
 
   let search_words = [
     titleCase(reactData.current.peopleRec.name.first),
@@ -28,6 +32,25 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
         reactData.current.peopleRec.search_data += ' ' + this_word;
       }
     }
+  }
+
+  function filteredPerson(pID, pName = { last: '*No Name*', first: '*No Name*' }) {
+    if (!pName.first) { pName.first = '*No First Name*'; }
+    if (!pName.last) { pName.last = '*No Last Name*'; }
+    return (
+      (
+        (currentValues.sessionRec
+          && currentValues.sessionRec.responsible_for
+          && currentValues.sessionRec.responsible_for.includes(pID))
+        ||
+        (
+          reactData.proxyFilter
+          &&
+          (pName.last.toLowerCase().includes(reactData.proxyFilter) || pName.first.toLowerCase().includes(reactData.proxyFilter))
+        )
+      )
+      && (pID !== currentValues.sessionRec?.session_id)
+    );
   }
 
   return (
@@ -515,7 +538,7 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
             autoComplete='off'
             key={`techSection__search_data__${currentValues.peopleRec.person_id}__${errorList.hasOwnProperty('search_data') ? 'error' : 'ok'}`}
             defaultValue={currentValues.peopleRec.search_data}
-            onBlur={async (event) => {              
+            onBlur={async (event) => {
               let updateObj = {
                 updateList:
                   [{
@@ -525,7 +548,7 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
                   }]
               };
               await updateField(updateObj);
-              }
+            }
             }
             helperText={'Search Data'}
           />
@@ -585,6 +608,87 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
             ))}
           </Box>
         </React.Fragment>
+
+        <React.Fragment>
+          <Typography
+            style={AVATextStyle({ margin: { top: 1.5 } })}
+          >
+            {`I may assume the identity of...`}
+          </Typography>
+          <Box display='flex' alignItems='center'
+            justifyContent='flex-start' flexDirection='row'>
+            <TextField
+              style={{ minWidth: '80%', marginTop: '0', marginLeft: '12px' }}
+              multiline
+              id='search_data'
+              autoComplete='off'
+              key={`techSection__search_data__${currentValues.peopleRec.person_id}__${errorList.hasOwnProperty('search_data') ? 'error' : 'ok'}`}
+              defaultValue={reactData.proxyFilter || ''}
+              onChange={(event) => {
+                if (event.target.value.length < 2) {
+                  updateReactData({ proxyFilter: false }, true);
+                }
+                else {
+                  updateReactData({ proxyFilter: event.target.value.toLowerCase() }, true);
+                }
+              }
+              }
+              helperText={'Search the directory by name'}
+            />
+          </Box>
+
+          <Box
+            display='flex'
+            flexDirection='row'
+            marginLeft={1}
+            marginTop={-0}
+            flexWrap={'wrap'}
+          >
+            {state.accessList[state.session.client_id].list.map((this_candidate, tIndex) => (
+              filteredPerson(this_candidate.person_id, this_candidate.name) &&
+              <Box
+                display='flex'
+                flexDirection='row'
+                alignItems={'center'}
+                key={`MessagePref_option__${tIndex}`}
+                style={{ marginRight: '24px' }}
+              >
+                <Checkbox
+                  aria-label={`MessagePref_option__${tIndex}`}
+                  name={`MessagePref_option__${tIndex}`}
+                  key={`MessagePref_option__${tIndex}`}
+                  size='small'
+                  checked={currentValues.sessionRec.responsible_for.includes(this_candidate.person_id)}
+                  onClick={async () => {
+                    if (!currentValues.sessionRec.responsible_for.includes(this_candidate.person_id)) {
+                      currentValues.sessionRec.responsible_for.push(this_candidate.person_id);
+                    }
+                    else {
+                      currentValues.sessionRec.responsible_for = currentValues.sessionRec.responsible_for.filter(this_person => {
+                        return (this_person !== this_candidate.person_id);
+                      });
+                    }
+                    await updateField({
+                      updateList:
+                        [{
+                          tableName: 'sessionRec',
+                          fieldName: 'responsible_for',
+                          newData: currentValues.sessionRec.responsible_for
+                        }]
+                    });
+                  }}
+                  disableRipple
+                  inputProps={{ 'aria-labelledby': `message_routing_3` }}
+                />
+                <Typography style={AVATextStyle({ size: 0.8, margin: { left: -0.4 } })} >
+                    {`${this_candidate.name.first} ${this_candidate.name.last}`}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        </React.Fragment>
+
+        
       </Box>
     </Box>
   );
