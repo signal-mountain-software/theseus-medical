@@ -795,14 +795,14 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
                 align: 'left',
                 after: 1
               }));
-            break;
-          }
-          case 'signature': {
-            await pdfImage(docData.fields[this_field].prompt.ref, { image: docDocument[this_field] || docDocument.signature, style: 'normal', size: 'medium', align: 'left', after: 1 });
-            break;
-          }
-          case 'legacy_signature': {
-            pdfLine(docData.fields[this_field].prompt.ref, { image: docDocument[this_field] || docDocument.signature, style: 'normal', size: 'medium', align: 'left', after: 1 });
+            let endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accommodate most situations');
+            if (endX > (page.right)) {
+              pdfDown(2);
+              pdfCurrent.xPos += 10;
+              endX = pdfCurrent.xPos;
+            }
+            doc.line(pdfCurrent.xPos, pdfCurrent.yPos - 8, endX, pdfCurrent.yPos - 8, 'DF');
+            pdfCurrent.xPos = endX;
             break;
           }
           default: {
@@ -1054,9 +1054,32 @@ export async function printEmptyDocument({ documentList, options = {} }) {
                 if (printType === 'select&text') {
                   const text = `${fields[this_field].prompt.other || 'other'}:`;
                   pdfLine(text, { style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
-                  let endX = pdfCurrent.xPos + doc.getTextWidth('Sample text thats not too long');
-                  doc.line(pdfCurrent.xPos - 6, pdfCurrent.yPos + 1, endX, pdfCurrent.yPos + 1, 'DF');
-                  pdfCurrent.xPos = endX;
+                  const hasWidth = Number.isFinite(fields[this_field]?.prompt?.width) && (fields[this_field].prompt.width > 0);
+                  const hasRows = Number.isFinite(fields[this_field]?.prompt?.rows) && (fields[this_field].prompt.rows > 0);
+                  if (hasWidth && hasRows) {
+                    // Draw a multi-line input box using prompt.width and rows
+                    pdfDown(1);
+                    pdfCurrent.xPos += 10;
+                    const rowCount = Math.max(1, Math.round(fields[this_field].prompt.rows));
+                    const rowHeight = 12; // approximate line height matching existing spacing
+                    const rectWidth = fields[this_field].prompt.width;
+                    const rectHeight = rowCount * rowHeight;
+                    const availableWidth = Math.max(0, page.right - pdfCurrent.xPos);
+                    const drawWidth = Math.min(rectWidth, availableWidth);
+                    // Position rectangle aligned with baseline similar to other underline placements
+                    doc.rect(pdfCurrent.xPos, pdfCurrent.yPos - 4, drawWidth, rectHeight, 'S');
+                    pdfCurrent.xPos += drawWidth;
+                    pdfCurrent.yPos += rectHeight + 2;
+                  }
+                  else {
+                    // If a prompt.width is provided for this field, honor it for the underline length; otherwise use the legacy sample width
+                    const underlineLen = hasWidth
+                      ? fields[this_field].prompt.width
+                      : doc.getTextWidth('Sample text thats not too long');
+                    const endX = Math.min(pdfCurrent.xPos + underlineLen, page.right);
+                    doc.line(pdfCurrent.xPos - 6, pdfCurrent.yPos + 1, endX, pdfCurrent.yPos + 1, 'DF');
+                    pdfCurrent.xPos = endX;
+                  }
                 }
                 pdfDown(1);
                 pdfStyle('reset');
@@ -1095,17 +1118,35 @@ export async function printEmptyDocument({ documentList, options = {} }) {
               if (fields.hasOwnProperty(this_field)) {
                 const this_text = fields[this_field].prompt.value.split(/%%.*?%%/gm).join("").replace("  ", " ");
                 pdfCurrent.yPos += 12;
-                pdfLine(`${this_text}:  `, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                // Determine whether we'll draw a rectangle (rows+width). If so, keep the prompt and box tight (no blank line).
+                const hasWidth = Number.isFinite(fields[this_field]?.prompt?.width) && (fields[this_field].prompt.width > 0);
+                const hasRows = Number.isFinite(fields[this_field]?.prompt?.rows) && (fields[this_field].prompt.rows > 0);
+                pdfLine(`${this_text}:  `, { style: 'normal', size: 'medium', align: 'left', after: (hasWidth && hasRows ? 0 : 1), noNewLine: (hasWidth && hasRows ? true : false) });
                 let promptWidth = doc.getTextWidth(`${this_text}:  `);
                 pdfCurrent.xPos += promptWidth;
-                let endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accomodate most situations');
-                if (endX > (page.right)) {
-                  pdfDown(2);
+                // If prompt.rows is provided along with a valid prompt.width, render a box; otherwise use underline logic
+                if (hasWidth && hasRows) {
+                  pdfDown(1);
                   pdfCurrent.xPos += 10;
-                  endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accomodate most situations');
+                  const rowCount = Math.max(1, Math.round(fields[this_field].prompt.rows));
+                  const rowHeight = 12;
+                  const rectWidth = fields[this_field].prompt.width;
+                  const rectHeight = rowCount * rowHeight;
+                  const availableWidth = Math.max(0, page.right - pdfCurrent.xPos);
+                  const drawWidth = Math.min(rectWidth, availableWidth);
+                  doc.rect(pdfCurrent.xPos, pdfCurrent.yPos - 4, drawWidth, rectHeight, 'S');
+                  pdfCurrent.xPos += drawWidth;
+                  pdfCurrent.yPos += rectHeight + 2;
                 }
-                doc.line(pdfCurrent.xPos, pdfCurrent.yPos - 8, endX, pdfCurrent.yPos - 8, 'DF');
-                pdfCurrent.xPos = endX;
+                else {
+                  // Prefer an explicit prompt.width for underline length when provided; fall back to legacy sample-based width
+                  const underlineLen = hasWidth
+                    ? fields[this_field].prompt.width
+                    : doc.getTextWidth('Sample text long enough to accomodate most situations');
+                  const endX = Math.min(pdfCurrent.xPos + underlineLen, page.right);
+                  doc.line(pdfCurrent.xPos, pdfCurrent.yPos - 8, endX, pdfCurrent.yPos - 8, 'DF');
+                  pdfCurrent.xPos = endX;
+                }
               }
             }
           }
@@ -1263,17 +1304,35 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
                   else {
                     const this_text = fields[this_field].prompt.value.split(/%%.*?%%/gm).join("").replace("  ", " ");
                     pdfCurrent.yPos += 12;
-                    pdfLine(`${this_text}:  `, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                    // Determine whether we'll draw a rectangle (rows+width). If so, keep the prompt and box tight (no blank line).
+                    const hasWidth = Number.isFinite(fields[this_field]?.prompt?.width) && (fields[this_field].prompt.width > 0);
+                    const hasRows = Number.isFinite(fields[this_field]?.prompt?.rows) && (fields[this_field].prompt.rows > 0);
+                    pdfLine(`${this_text}:  `, { style: 'normal', size: 'medium', align: 'left', after: (hasWidth && hasRows ? 0 : 1), noNewLine: (hasWidth && hasRows ? true : false) });
                     let promptWidth = doc.getTextWidth(`${this_text}:  `);
                     pdfCurrent.xPos += promptWidth;
-                    let endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accomodate most situations');
-                    if (endX > (page.right)) {
-                      pdfDown(2);
+                    // If prompt.rows is provided along with a valid prompt.width, render a box; otherwise use underline logic
+                    if (hasWidth && hasRows) {
+                      pdfDown(1);
                       pdfCurrent.xPos += 10;
-                      endX = pdfCurrent.xPos + doc.getTextWidth('Sample text long enough to accomodate most situations');
+                      const rowCount = Math.max(1, Math.round(fields[this_field].prompt.rows));
+                      const rowHeight = 12;
+                      const rectWidth = fields[this_field].prompt.width;
+                      const rectHeight = rowCount * rowHeight;
+                      const availableWidth = Math.max(0, page.right - pdfCurrent.xPos);
+                      const drawWidth = Math.min(rectWidth, availableWidth);
+                      doc.rect(pdfCurrent.xPos, pdfCurrent.yPos - 4, drawWidth, rectHeight, 'S');
+                      pdfCurrent.xPos += drawWidth;
+                      pdfCurrent.yPos += rectHeight + 2;
                     }
-                    doc.line(pdfCurrent.xPos, pdfCurrent.yPos - 8, endX, pdfCurrent.yPos - 8, 'DF');
-                    pdfCurrent.xPos = endX;
+                    else {
+                      // Prefer an explicit prompt.width for underline length when provided; fall back to legacy sample-based width
+                      const underlineLen = hasWidth
+                        ? fields[this_field].prompt.width
+                        : doc.getTextWidth('Sample text long enough to accomodate most situations');
+                      const endX = Math.min(pdfCurrent.xPos + underlineLen, page.right);
+                      doc.line(pdfCurrent.xPos, pdfCurrent.yPos - 8, endX, pdfCurrent.yPos - 8, 'DF');
+                      pdfCurrent.xPos = endX;
+                    }
                   }
                 }
               }
