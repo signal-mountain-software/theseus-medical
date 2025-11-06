@@ -427,10 +427,8 @@ export default ({ request = {}, onClose }) => {
               key: defaultObj.source_path
             });
           }
-          else if (source_file.startsWith('formData')) {
-            if (reactData.options.hasOwnProperty('formData') && defaultObj.source_path[0]) {
-              response.value = reactData.options.formData[defaultObj.source_path[0]];
-            }
+          else if (source_file.startsWith('formData') || (source_file.startsWith('field'))) {
+            response.value = reactData.fields[defaultObj.source_path[0]]?.value ?? '';
           }
           if (response.value) {
             break;
@@ -474,7 +472,7 @@ export default ({ request = {}, onClose }) => {
       }
     }
     else if (reactData.fields[this_field]?.prompt && reactData.fields[this_field]?.prompt?.value) {
-      if (['image', 'html'].includes(reactData.fields[this_field]?.value.type || reactData.fields[this_field]?.default?.type)) {
+      if (['image', 'html'].includes(reactData.fields[this_field]?.type || reactData.fields[this_field]?.default?.type)) {
         response.value = reactData.fields[this_field]?.prompt?.value;
       }
     }
@@ -483,16 +481,23 @@ export default ({ request = {}, onClose }) => {
     }
     // if prompt.ignore_if exists, check the value
     if (reactData.fields[this_field]?.prompt?.ignore_if) {
+      const ignoreObj = reactData.fields[this_field]?.prompt?.ignore_if;
       response.ignore = false;
-      const ignoreList = makeArray(reactData.fields[this_field]?.prompt?.ignore_if);
-      if (!response.value) {
+      const check_value = reactData.fields[ignoreObj.data]?.value ?? null;
+      const ignoreList = makeArray(ignoreObj.values);
+      if (check_value === null || check_value === undefined) {
         if (ignoreList.includes('%%no_data%%')) {
-          response.ignore = true;
+          response.ignore = ignoreObj.equals ?? true;
           return response;
         }
       }
-      else if (array_in_array(ignoreList, response.value)) {
-        response.ignore = true;
+      else if (
+        (check_value === false && ignoreList.includes('false')) ||
+        (check_value === true && ignoreList.includes('true')) ||
+        (typeof check_value === 'string' && ignoreList.includes(check_value)) ||
+        (Array.isArray(check_value) && array_in_array(ignoreList, check_value))
+      ) {
+        response.ignore = ignoreObj.equals ?? true;
         return response;
       }
     }
@@ -546,7 +551,7 @@ export default ({ request = {}, onClose }) => {
             TableName: "Form_Fields"
           });
           if (formFieldRec) {
-            if (field_variables.prompt) {
+            if (typeof (field_variables.prompt) === 'string') {
               formFieldRec.prompt.value = field_variables.prompt;
             }
             if (field_variables.default_source && formFieldRec.default.source && formFieldRec.default.source.startsWith('%%')) {
@@ -655,16 +660,23 @@ export default ({ request = {}, onClose }) => {
             response.fields[this_field].value = null;
           }
         }
-        // if prompt.ignore_if exists, check the value
         if (formRec.fields[this_field]?.prompt?.ignore_if) {
-          const ignoreList = makeArray(formRec.fields[this_field]?.prompt?.ignore_if);
-          if (!response.fields[this_field].value) {
+          const ignoreObj = formRec.fields[this_field]?.prompt?.ignore_if;
+          response.ignore = false;
+          const check_value = formRec.fields[ignoreObj.data]?.value ?? null;
+          const ignoreList = makeArray(ignoreObj.values);
+          if (check_value === null || check_value === undefined) {
             if (ignoreList.includes('%%no_data%%')) {
-              response.fields[this_field].ignore = true;
+              response.fields[this_field].ignore = ignoreObj.equals ?? true;
             }
           }
-          else if (ignoreList.includes(response.fields[this_field].value)) {
-            response.fields[this_field].ignore = true;
+          else if (
+            (check_value === false && ignoreList.includes('false')) ||
+            (check_value === true && ignoreList.includes('true')) ||
+            (typeof check_value === 'string' && ignoreList.includes(check_value)) ||
+            (Array.isArray(check_value) && array_in_array(ignoreList, check_value))
+          ) {
+            response.fields[this_field].ignore = ignoreObj.equals ?? true;
           }
         }
         // Set type
@@ -801,8 +813,11 @@ export default ({ request = {}, onClose }) => {
           if (formRec.fields.hasOwnProperty(field_key)) {   // the field_key exists already in formRec.fields
             if (typeof (field_variables.prompt) === 'string') {
               formRec.fields[field_key].prompt.value = field_variables.prompt;
-              delete field_variables.prompt;
             }
+            else {
+              formRec.fields[field_key].prompt = Object.assign({}, formRec.fields[field_key].prompt, field_variables.prompt || {});
+            }
+            delete field_variables.prompt;
             formRec.fields[this_field] = Object.assign({}, formRec.fields[field_key], field_variables);
           }
           else {  // the field_key does not exist in formRec.fields
@@ -816,7 +831,14 @@ export default ({ request = {}, onClose }) => {
             if (formFieldRec) {
               if (typeof (field_variables.prompt) === 'string') {
                 formFieldRec.prompt.value = field_variables.prompt;
-                delete field_variables.prompt;
+              }
+              else {
+                formFieldRec.prompt = Object.assign({}, formFieldRec.prompt, field_variables.prompt || {});
+              }
+              delete field_variables.prompt;
+              if (field_variables.default && formFieldRec.default.source && formFieldRec.default.source.startsWith('%%')) {
+                formFieldRec.default.source = field_variables.default_source;
+                delete field_variables.default_source;
               }
               formRec.fields[this_field] = Object.assign({}, formFieldRec, field_variables);
             }
@@ -971,18 +993,26 @@ export default ({ request = {}, onClose }) => {
           });
           response.fields[this_field].value = preset_values[this_field];
         }
-        // if prompt.ignore_if exists, check the value
         if (formRec.fields[this_field]?.prompt?.ignore_if) {
-          const ignoreList = makeArray(formRec.fields[this_field]?.prompt?.ignore_if);
-          if (!response.fields[this_field].value) {
+          const ignoreObj = formRec.fields[this_field]?.prompt?.ignore_if;
+          response.ignore = false;
+          const check_value = response.fields[ignoreObj.data]?.value ?? null;
+          const ignoreList = makeArray(ignoreObj.values);
+          if (check_value === null || check_value === undefined) {
             if (ignoreList.includes('%%no_data%%')) {
-              response.fields[this_field].ignore = true;
+              response.fields[this_field].ignore = ignoreObj.equals ?? true;
             }
           }
-          else if (array_in_array(ignoreList, response.fields[this_field].value)) {
-            response.fields[this_field].ignore = true;
+          else if (
+            (check_value === false && ignoreList.includes('false')) ||
+            (check_value === true && ignoreList.includes('true')) ||
+            (typeof check_value === 'string' && ignoreList.includes(check_value)) ||
+            (Array.isArray(check_value) && array_in_array(ignoreList, check_value))
+          ) {
+            response.fields[this_field].ignore = ignoreObj.equals ?? true;
           }
         }
+
         // Set default valueText (this may require conversion of value data as in types phone or date or time)
         response.fields[this_field].valueText = await formatValue({
           rawValue: response.fields[this_field].value,
@@ -1474,7 +1504,9 @@ export default ({ request = {}, onClose }) => {
           })}
         </Typography>
         <Box
-          flexDirection='row'
+          display='flex'
+          flexDirection={props.column ? 'column' : 'row'}
+          alignItems='flex-start'
           key={`CheckGroup__${props.prop}`}
         >
           <React.Fragment
@@ -2717,6 +2749,7 @@ export default ({ request = {}, onClose }) => {
                                     ? reactData.fields[this_field].prompt.other || 'other'
                                     : null
                                   }
+                                  column={reactData.fields[this_field].selectionObj.column || false}
                                 />
                               </Box>
                             }
