@@ -389,6 +389,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       if (recordExists(formFieldsRec)) {
         for (const this_fieldRec of formFieldsRec.Items) {
           if (this_fieldRec.showOnProfile && this_fieldRec.value.saveAs) {
+            if (this_fieldRec.value.saveAs.startsWith('personRec.')) { 
+              this_fieldRec.value.saveAs = this_fieldRec.value.saveAs.replace('personRec.', 'peopleRec.');
+            }
             reactUpdObj.form_fields[this_fieldRec.field_name] = {
               fieldRec: this_fieldRec,
               prompt: this_fieldRec.prompt.value,

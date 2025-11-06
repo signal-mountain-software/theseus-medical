@@ -853,6 +853,9 @@ export default ({ request = {}, onClose }) => {
         }
 
         // **** Now build out the form field itself
+        if (!formRec.fields[this_field].default && formRec.fields[this_field].default_source) {
+          formRec.fields[this_field].default = {source: formRec.fields[this_field].default_source};
+        }
         if (formRec.fields[this_field].default) {
           if (formRec.fields[this_field].default.source) {
             let sourceDefaults = [];
@@ -1052,6 +1055,14 @@ export default ({ request = {}, onClose }) => {
           response.fields[this_field].options.sigRefNumber = formRec.fields[this_field].sigRefNumber;
         }
         // set saveAs
+        // formRec contains field information stored in the form itself
+        if (isEmpty(formRec.fields[this_field].value.saveAs)) {
+          if (field_variables.saveAs) {
+            formRec.fields[this_field].value.saveAs = field_variables.saveAs;
+          } else if (formRec.fields[this_field].saveAs) {
+            formRec.fields[this_field].value.saveAs = formRec.fields[this_field].saveAs;
+          }
+        }
         if (!isEmpty(formRec.fields[this_field].value.saveAs)) {
           let wip_saveAs = makeArray(formRec.fields[this_field].value.saveAs, ".");
           const wip_file = wip_saveAs[0].slice(0, 6).toLowerCase();
