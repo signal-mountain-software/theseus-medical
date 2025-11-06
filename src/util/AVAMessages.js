@@ -495,7 +495,7 @@ export async function formatRequestDetails(body, summaryType) {
   let htmlMessage = `<h1 style="color: #5e9ca0;"><span style="color: #000000;">${page.title}</span></h1>`;
   let rawMessage = `${page.title}\n\r`;
   pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
-  pdfLine(page.title, { style: 'bold', size: 'large', align: 'center', after: 1 });
+  pdfLine(page.title, { style: 'bold', fontSize: (page.font.size.large * 1.5), align: 'center', after: 1 });
 
   // Person
   let pRec = await getPerson(body.author);
@@ -727,11 +727,11 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
   page.client_id = client_id;
   page.footerText = `AVA reference: ${page.client_id}/${page.document_id}`;
   // pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
-  pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
+  pdfLine(title, { style: 'bold', fontSize: (page.font.size.large * 1.5), align: 'center', after: 1 });
 
   // docData.sections.forEach((sectionObj, sectionNdx) => {
   for (const sectionObj of docData.sections) {
-    pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
+    pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', fontSize: (page.font.size.medium * 1.2), align: 'left', before: 2, after: 1 });
     // sectionObj.fields.forEach((this_field, fieldNdx) => {
     for (const this_field of sectionObj.fields) {
       if (docData.fields.hasOwnProperty(this_field) && !(docData.fields.ignore) && !(docData.fields.hidden)) {
@@ -876,12 +876,12 @@ export async function printDocumentB({ documentList, options = {} }) {
     page.client_id = client_id;
     page.footerText = `AVA reference: ${page.client_id}_${page.document_id}`;
     pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
-    pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
+    pdfLine(title, { style: 'bold', fontSize: (page.font.size.large * 1.5), align: 'center', after: 1 });
 
     //   sections.forEach((sectionObj, sectionNdx) => {
     for (const sectionObj of sections) {
       if (okToShowSection(sectionObj, fields)) {
-        pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
+        pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', fontSize: (page.font.size.medium * 1.2), align: 'left', before: 2, after: 1 });
         //  sectionObj.fields.forEach((this_field, fieldNdx) => {
         for (const this_field of sectionObj.fields) {
           if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore) && !(fields[this_field].hidden)) {
@@ -1019,11 +1019,11 @@ export async function printEmptyDocument({ documentList, options = {} }) {
     page.client_id = client_id;
     page.footerText = `AVA reference: ${page.client_id}_${page.document_id}`;
     pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
-    pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
+    pdfLine(title, { style: 'bold', fontSize: (page.font.size.large * 1.5), align: 'center', after: 1 });
     // eslint-disable-next-line
     //  sections.forEach((sectionObj) => {
     for (const sectionObj of sections) {
-      pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', size: 'medium', align: 'left', before: 2, after: 1 });
+      pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', fontSize: (page.font.size.medium * 1.2), align: 'left', before: 2, after: 1 });
       //   sectionObj.fields.forEach((this_field) => {
       for (const this_field of sectionObj.fields) {
         if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore) && !(fields[this_field].hidden)) {
@@ -1150,12 +1150,12 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
     page.line_was_compressed = false;
     page.footerText = `AVA reference: ${page.client_id}_${page.document_id}`;
     pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
-    pdfLine(title, { style: 'bold', size: 'large', align: 'center', after: 1 });
+    pdfLine(title, { style: 'bold', fontSize: (page.font.size.large * 1.5), align: 'center', after: 1 });
     // eslint-disable-next-line
     //  sections.forEach((sectionObj, sectionNdx) => {
     for (const sectionObj of sections) {
       if (okToShowSection(sectionObj, fields)) {
-        pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', size: 'medium', align: 'left', before: 4, after: 1 });
+        pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', fontSize: (page.font.size.medium * 1.2), align: 'left', before: 4, after: 1 });
         for (const this_field of sectionObj.fields) {
           if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore) && !(fields[this_field].hidden)) {
             let printType = fields[this_field].type;
