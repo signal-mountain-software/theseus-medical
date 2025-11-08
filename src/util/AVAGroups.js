@@ -212,24 +212,24 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
                       myGroupAccessLevel[g] = Math.max(accessLevelTable.indexOf('view'), myGroupAccessLevel[g]);
                     }
                   }
-/*
-                  if (!this_group.hasOwnProperty('view_group')) {
-                    myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
-                  }
-                  else if (this_group['view_group'].hasOwnProperty(myClass)) {
-                    myGroupAccessLevel[g] = accessLevelTable.indexOf(this_group['view_group'][myClass]);
-                  }
-                  else {
-                    myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
-                  }
-                  if ((myRole === 'member')
-                    && (['local', 'resident', 'staff', 'admin'].includes(myClass))
-                    //  if I am a member of a group and not a guest, vendor, or family
-                    //    ... I may(at least) view other members of my group
-                  ) {
-                    myGroupAccessLevel[g] = Math.max(accessLevelTable.indexOf('view'), myGroupAccessLevel[g]);
-                  }
-  */
+                  /*
+                                    if (!this_group.hasOwnProperty('view_group')) {
+                                      myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
+                                    }
+                                    else if (this_group['view_group'].hasOwnProperty(myClass)) {
+                                      myGroupAccessLevel[g] = accessLevelTable.indexOf(this_group['view_group'][myClass]);
+                                    }
+                                    else {
+                                      myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
+                                    }
+                                    if ((myRole === 'member')
+                                      && (['local', 'resident', 'staff', 'admin'].includes(myClass))
+                                      //  if I am a member of a group and not a guest, vendor, or family
+                                      //    ... I may(at least) view other members of my group
+                                    ) {
+                                      myGroupAccessLevel[g] = Math.max(accessLevelTable.indexOf('view'), myGroupAccessLevel[g]);
+                                    }
+                    */
                 }
               }
               if (myGroupAccessLevel[g] > myMaxAccessLevelToThisPerson) {
@@ -738,7 +738,7 @@ export function determineClass(gList, group_assignments) {
       if (groupFlavor.hasOwnProperty(g)) {
         member_of = Math.min(member_of, groupFlavor[g]);
       }
-    })
+    });
   }
   return groupHierarchy[member_of];
 }
@@ -779,6 +779,80 @@ export async function getMemberList(pGroups, pClient_id, options = {}) {
   }
   else { gList = [pGroups]; }
   if (gList.some(g => g.toLowerCase().includes('*all'))) { gList = ['*all']; }
+
+  // CACHE OPTIMIZATION: Check if state.accessList has pre-loaded data
+  if (options.state?.accessList?.[defaultClient]?.list && gList.length > 0) {
+    console.log('✅ Using CACHED accessList for groups:', gList);
+    console.time('⏱️ Cache filtering');
+    let cachedPeople = options.state.accessList[defaultClient].list;
+    console.log(`📊 Cached people count: ${cachedPeople.length}`);
+
+    // Filter cached people by group membership
+    for (let person of cachedPeople) {
+      if (foundIDs.includes(person.person_id)) continue;
+
+      // Check if person belongs to any of the requested groups or is the person_id itself
+      let matches = gList.includes('*all') ||
+        gList.some(grp => {
+          return (person.groups && person.groups.includes(grp)) || person.person_id === grp;
+        });
+
+      if (matches) {
+        foundIDs.push(person.person_id);
+        if (!checkExclude || (person.directory_option !== 'exclude')) {
+          let i = deepCopy(person);
+          if (!i.name) { i.name = { last: `Unknown ${i.person_id}` }; }
+          if (!i.messaging) { i.messaging = { ava_only: `AVA` }; }
+          if (!i.display_name) { i.display_name = AVAname(i); }
+
+          if (options.nameOnly) {
+            returnArray.push({
+              person_id: i.person_id,
+              name: i.name,
+              display_name: i.display_name
+            });
+          } else {
+            returnArray.push(i);
+          }
+        }
+      }
+    }
+
+    console.log(`📊 Filtered to ${returnArray.length} people`);
+    console.timeEnd('⏱️ Cache filtering');
+
+    // Sort if needed
+    if (sortResults) {
+      console.time('⏱️ Sorting');
+      returnArray.sort((a, b) => {
+        if (a.name.last > b.name.last) { return 1; }
+        else if (a.name.last < b.name.last) { return -1; }
+        else if (a.name.first > b.name.first) { return 1; }
+        else if (a.name.first < b.name.first) { return -1; }
+        else { return 0; }
+      });
+      console.timeEnd('⏱️ Sorting');
+    }
+
+    let rObj = {
+      foundIDs,
+      'peopleList': returnArray,
+      'groupList': gList
+    };
+
+    if (shortList) {
+      rObj.shortList = returnArray.map(p => {
+        let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
+        if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
+        return `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
+      });
+    }
+
+    return rObj;
+  }
+
+  console.log('❌ Cache NOT available, using DB query for groups:', gList);
+  console.time('⏱️ Database query');
   for (let g = 0; g < gList.length; g++) {
     let grp, client;
     if (gList[g].includes(':')) { grp = gList[g].split(':')[1].trim(); }  // some arrays send '~group:group_id' in an element
@@ -809,8 +883,12 @@ export async function getMemberList(pGroups, pClient_id, options = {}) {
       }
       else {
         delete qParm.ExclusiveStartKey;
-        }
+      }
       if (recordExists(gPeopleRecs)) {
+        // OPTIMIZATION: Collect all unique group IDs that need to be fetched
+        let groupsToFetch = new Set();
+        let peopleToProcess = [];
+
         for (let p = 0; p < gPeopleRecs.Items.length; p++) {
           let i = deepCopy(gPeopleRecs.Items[p]);
           if (!foundIDs.includes(i.person_id)) {
@@ -819,36 +897,74 @@ export async function getMemberList(pGroups, pClient_id, options = {}) {
               if (!i.name) { i.name = { last: `Unknown ${i.person_id}` }; }
               if (!i.messaging) { i.messaging = { ava_only: `AVA` }; }
               i.display_name = AVAname(i);
-              if (options.nameOnly) {
-                returnArray.push({
-                  person_id: i.person_id,
-                  name: i.name,
-                  display_name: i.display_name
-                });
-              }
-              else {
-                if (options && options.withSession) {
-                  i.session = await getSession(i.person_id);
-                }
-                // if you belong to a group that has a parent, you belong to the parent
-                if (i.groups) {
-                  for (let g = 0; g < i.groups.length; g++) {
-                    if (!foundGroups.hasOwnProperty(i.groups[g])) {
-                      foundGroups[i.groups[g]] = await getGroup(i.groups[g], client);
-                    }
-                    if ((foundGroups[i.groups[g]]?.belongs_to) && (!i.groups.includes(foundGroups[i.groups[g]].belongs_to))) {
-                      i.groups.push(foundGroups[i.groups[g]].belongs_to);
-                    }
+
+              // Collect groups that need fetching
+              if (!options.nameOnly && i.groups) {
+                for (let g = 0; g < i.groups.length; g++) {
+                  if (!foundGroups.hasOwnProperty(i.groups[g])) {
+                    groupsToFetch.add(i.groups[g]);
                   }
                 }
-                returnArray.push(i);
               }
+
+              peopleToProcess.push(i);
             }
           }
-        };
+        }
+
+        // OPTIMIZATION: Fetch all needed groups in parallel
+        if (groupsToFetch.size > 0) {
+          const groupFetchPromises = Array.from(groupsToFetch).map(groupId =>
+            getGroup(groupId, client).then(groupRec => ({ groupId, groupRec }))
+          );
+          const groupResults = await Promise.all(groupFetchPromises);
+          groupResults.forEach(({ groupId, groupRec }) => {
+            foundGroups[groupId] = groupRec;
+          });
+        }
+
+        // OPTIMIZATION: Fetch all sessions in parallel if needed
+        if (options && options.withSession) {
+          const sessionPromises = peopleToProcess.map(i =>
+            getSession(i.person_id).then(session => ({ person_id: i.person_id, session }))
+          );
+          const sessionResults = await Promise.all(sessionPromises);
+          const sessionMap = {};
+          sessionResults.forEach(({ person_id, session }) => {
+            sessionMap[person_id] = session;
+          });
+          peopleToProcess.forEach(i => {
+            i.session = sessionMap[i.person_id];
+          });
+        }
+
+        // Process people with cached group data
+        for (let i of peopleToProcess) {
+          if (options.nameOnly) {
+            returnArray.push({
+              person_id: i.person_id,
+              name: i.name,
+              display_name: i.display_name
+            });
+          }
+          else {
+            // if you belong to a group that has a parent, you belong to the parent
+            if (i.groups) {
+              for (let g = 0; g < i.groups.length; g++) {
+                if ((foundGroups[i.groups[g]]?.belongs_to) && (!i.groups.includes(foundGroups[i.groups[g]].belongs_to))) {
+                  i.groups.push(foundGroups[i.groups[g]].belongs_to);
+                }
+              }
+            }
+            returnArray.push(i);
+          }
+        }
       }
     } while (qParm.ExclusiveStartKey);
   };
+  console.timeEnd('⏱️ Database query');
+  console.log(`📊 DB query returned ${returnArray.length} people`);
+
   if (sortResults) {
     returnArray.sort((a, b) => {
       if (a.name.last > b.name.last) { return 1; }
