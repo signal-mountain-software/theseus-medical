@@ -111,6 +111,9 @@ const MessageTemplateManager = ({ open, onClose, onSelectTemplate }) => {
     const [isNewTemplate, setIsNewTemplate] = useState(false);
     const [loading, setLoading] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState(null);
+    const [closeConfirm, setCloseConfirm] = useState(false);
+    const [cancelConfirm, setCancelConfirm] = useState(false);
+    const [originalHtml, setOriginalHtml] = useState('');
 
     // Load templates on mount
     useEffect(() => {
@@ -155,23 +158,45 @@ const MessageTemplateManager = ({ open, onClose, onSelectTemplate }) => {
             : (template.template_body || '');
 
         setTemplateHtml(htmlContent);
+        setOriginalHtml(htmlContent);
         setTemplatePlainText(template.plain_text || '');
         setIsEditing(true); // Go directly into edit mode
         setIsNewTemplate(false);
-    }; const handleNewTemplate = () => {
+    };
+
+    const handleNewTemplate = () => {
         setSelectedTemplate(null);
         setTemplateName('');
         setTemplateHtml('');
+        setOriginalHtml('');
         setTemplatePlainText('');
         setIsEditing(true);
         setIsNewTemplate(true);
     };
 
     const handleCancelEdit = () => {
+        // Check for unsaved changes
+        if (isEditing && templateHtml !== originalHtml) {
+            setCancelConfirm(true);
+            return;
+        }
         // Reset to initial state
         setSelectedTemplate(null);
         setTemplateName('');
         setTemplateHtml('');
+        setOriginalHtml('');
+        setTemplatePlainText('');
+        setIsEditing(false);
+        setIsNewTemplate(false);
+    };
+
+    const confirmCancel = () => {
+        setCancelConfirm(false);
+        // Reset to initial state
+        setSelectedTemplate(null);
+        setTemplateName('');
+        setTemplateHtml('');
+        setOriginalHtml('');
         setTemplatePlainText('');
         setIsEditing(false);
         setIsNewTemplate(false);
@@ -302,11 +327,15 @@ const MessageTemplateManager = ({ open, onClose, onSelectTemplate }) => {
     };
 
     const handleClose = () => {
-        if (isEditing && (templateHtml !== (selectedTemplate?.html_content || ''))) {
-            if (!window.confirm('You have unsaved changes. Close anyway?')) {
-                return;
-            }
+        if (isEditing && templateHtml !== originalHtml) {
+            setCloseConfirm(true);
+            return;
         }
+        onClose();
+    };
+
+    const confirmClose = () => {
+        setCloseConfirm(false);
         onClose();
     };
 
@@ -503,6 +532,68 @@ const MessageTemplateManager = ({ open, onClose, onSelectTemplate }) => {
                                     disabled={loading}
                                 >
                                     Delete
+                                </Button>
+                            </Box>
+                        </Box>
+                    </Paper>
+                )}
+
+                {/* Unsaved Changes Confirmation Dialog */}
+                {closeConfirm && (
+                    <Paper className={classes.confirmDialog} elevation={8}>
+                        <Box p={3}>
+                            <Typography variant="h6" gutterBottom>
+                                Unsaved Changes
+                            </Typography>
+                            <Typography variant="body1" gutterBottom>
+                                You have unsaved changes. Close anyway?
+                            </Typography>
+                            <Box mt={3} display="flex" justifyContent="flex-end" style={{ gap: '16px' }}>
+                                <Button
+                                    variant="outlined"
+                                    onClick={() => setCloseConfirm(false)}
+                                    size="medium"
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    variant="contained"
+                                    color="secondary"
+                                    onClick={confirmClose}
+                                    size="medium"
+                                >
+                                    Close Anyway
+                                </Button>
+                            </Box>
+                        </Box>
+                    </Paper>
+                )}
+
+                {/* Cancel Edit Confirmation Dialog */}
+                {cancelConfirm && (
+                    <Paper className={classes.confirmDialog} elevation={8}>
+                        <Box p={3}>
+                            <Typography variant="h6" gutterBottom>
+                                Unsaved Changes
+                            </Typography>
+                            <Typography variant="body1" gutterBottom>
+                                You have unsaved changes. Discard changes and cancel?
+                            </Typography>
+                            <Box mt={3} display="flex" justifyContent="flex-end" style={{ gap: '16px' }}>
+                                <Button
+                                    variant="outlined"
+                                    onClick={() => setCancelConfirm(false)}
+                                    size="medium"
+                                >
+                                    Continue Editing
+                                </Button>
+                                <Button
+                                    variant="contained"
+                                    color="secondary"
+                                    onClick={confirmCancel}
+                                    size="medium"
+                                >
+                                    Discard Changes
                                 </Button>
                             </Box>
                         </Box>
