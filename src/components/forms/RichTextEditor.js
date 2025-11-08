@@ -129,7 +129,7 @@ const useStyles = makeStyles((theme) => ({
  * @param {object} modules - Custom Quill modules configuration
  * @param {array} formats - Allowed formats
  */
-const RichTextEditor = ({
+const RichTextEditor = React.forwardRef(({
     value = '',
     onChange,
     placeholder = 'Enter message...',
@@ -138,9 +138,15 @@ const RichTextEditor = ({
     modules: customModules,
     formats: customFormats,
     ...props
-}) => {
+}, ref) => {
     const classes = useStyles();
     const quillRef = useRef(null);
+
+    // Expose the quillRef to parent components
+    React.useImperativeHandle(ref, () => ({
+        getEditor: () => quillRef.current?.getEditor(),
+        editingArea: quillRef.current?.editingArea
+    }));
 
     // Default toolbar configuration - optimized for messaging
     const defaultModules = useMemo(() => ({
@@ -251,6 +257,6 @@ const RichTextEditor = ({
             />
         </Box>
     );
-};
+});
 
 export default RichTextEditor;

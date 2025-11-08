@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Dialog,
     DialogTitle,
@@ -24,6 +24,7 @@ import { dbClient } from '../../util/AVAUtilities';
 import { AVAclasses } from '../../util/AVAStyles';
 import useSession from '../../hooks/useSession';
 import { useSnackbar } from 'notistack';
+import AVAConfirm from '../forms/AVAConfirm';
 
 const useStyles = makeStyles((theme) => ({
     dialog: {
@@ -111,9 +112,12 @@ const MessageTemplateManager = ({ open, onClose, onSelectTemplate }) => {
     const [isNewTemplate, setIsNewTemplate] = useState(false);
     const [loading, setLoading] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState(null);
-    const [closeConfirm, setCloseConfirm] = useState(false);
     const [cancelConfirm, setCancelConfirm] = useState(false);
     const [originalHtml, setOriginalHtml] = useState('');
+    const [showVariableMenu, setShowVariableMenu] = useState(false);
+    const [variableMenuAnchor, setVariableMenuAnchor] = useState(0);
+
+    const editorRef = useRef(null);
 
     // Load templates on mount
     useEffect(() => {
@@ -328,15 +332,6 @@ const MessageTemplateManager = ({ open, onClose, onSelectTemplate }) => {
     };
 
     const handleClose = () => {
-        if (isEditing && templateHtml !== originalHtml) {
-            setCloseConfirm(true);
-            return;
-        }
-        onClose();
-    };
-
-    const confirmClose = () => {
-        setCloseConfirm(false);
         onClose();
     };
 
@@ -422,53 +417,6 @@ const MessageTemplateManager = ({ open, onClose, onSelectTemplate }) => {
                         <Box className={classes.editorSection}>
                             {selectedTemplate || isNewTemplate ? (
                                 <>
-                                    {/* Action Buttons */}
-                                    <Box className={classes.actionButtons}>
-                                        <Button
-                                            variant="contained"
-                                            color="primary"
-                                            startIcon={<SaveIcon />}
-                                            onClick={handleSaveTemplate}
-                                            disabled={loading}
-                                        >
-                                            Save
-                                        </Button>
-                                        <Button
-                                            variant="outlined"
-                                            startIcon={<CloseIcon />}
-                                            onClick={handleCancelEdit}
-                                            disabled={loading}
-                                        >
-                                            Cancel
-                                        </Button>
-                                        {onSelectTemplate && (
-                                            <Button
-                                                variant="contained"
-                                                color="primary"
-                                                onClick={handleUseTemplate}
-                                            >
-                                                Use This Template
-                                            </Button>
-                                        )}
-                                        <Box flex={1} />
-                                        {!isNewTemplate && selectedTemplate && (
-                                            <Button
-                                                variant="outlined"
-                                                color="secondary"
-                                                startIcon={<DeleteIcon />}
-                                                onClick={() => {
-                                                    console.log('Delete button onClick triggered');
-                                                    console.log('isNewTemplate:', isNewTemplate);
-                                                    console.log('selectedTemplate:', selectedTemplate);
-                                                    handleDeleteTemplate(selectedTemplate);
-                                                }}
-                                                disabled={loading}
-                                            >
-                                                Delete
-                                            </Button>
-                                        )}
-                                    </Box>
-
                                     {/* Template Name */}
                                     <TextField
                                         fullWidth
@@ -482,9 +430,71 @@ const MessageTemplateManager = ({ open, onClose, onSelectTemplate }) => {
                                         required
                                     />
 
+                                    {/* Insert Variable Button and Menu */}
+                                    <Box style={{ marginBottom: '8px', position: 'relative' }}>
+                                        <Button
+                                            className={AVAClass.AVAButton}
+                                            variant="contained"
+                                            color="primary"
+                                            size="small"
+                                            style={{ backgroundColor: 'green', color: 'white', fontSize: '0.75rem', padding: '4px 8px' }}
+                                            onClick={() => {
+                                                if (editorRef.current) {
+                                                    const quill = editorRef.current.getEditor();
+                                                    const cursorPosition = quill.getSelection()?.index || 0;
+                                                    setShowVariableMenu(!showVariableMenu);
+                                                    setVariableMenuAnchor(cursorPosition);
+                                                }
+                                            }}
+                                        >
+                                            Insert Variable
+                                        </Button>
+                                        {showVariableMenu && (
+                                            <Paper
+                                                style={{
+                                                    position: 'absolute',
+                                                    zIndex: 1000,
+                                                    marginTop: '4px',
+                                                    padding: '8px',
+                                                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+                                                }}
+                                                onMouseLeave={() => {
+                                                    setShowVariableMenu(false);
+                                                }}
+                                            >
+                                                <Box display='flex' flexDirection='column'>
+                                                    {(state.session.message_template_variables || []).map((variable, idx) => (
+                                                        <Button
+                                                            key={idx}
+                                                            size="small"
+                                                            style={{ justifyContent: 'flex-start', textTransform: 'none', padding: '6px 12px' }}
+                                                            onClick={() => {
+                                                                if (editorRef.current) {
+                                                                    const quill = editorRef.current.getEditor();
+                                                                    const cursorPosition = variableMenuAnchor || 0;
+                                                                    const variableText = `<<${variable.value}>>`;
+                                                                    quill.insertText(cursorPosition, variableText);
+                                                                    quill.setSelection(cursorPosition + variableText.length);
+
+                                                                    // Update the template HTML state
+                                                                    const updatedHtml = quill.root.innerHTML;
+                                                                    setTemplateHtml(updatedHtml);
+                                                                }
+                                                                setShowVariableMenu(false);
+                                                            }}
+                                                        >
+                                                            {variable.label}
+                                                        </Button>
+                                                    ))}
+                                                </Box>
+                                            </Paper>
+                                        )}
+                                    </Box>
+
                                     {/* Rich Text Editor */}
                                     <Box flex={1}>
                                         <RichTextEditor
+                                            ref={editorRef}
                                             value={templateHtml}
                                             onChange={handleEditorChange}
                                             placeholder="Enter your template content here..."
@@ -539,78 +549,86 @@ const MessageTemplateManager = ({ open, onClose, onSelectTemplate }) => {
                     </Paper>
                 )}
 
-                {/* Unsaved Changes Confirmation Dialog */}
-                {closeConfirm && (
-                    <Paper className={classes.confirmDialog} elevation={8}>
-                        <Box p={3}>
-                            <Typography variant="h6" gutterBottom>
-                                Unsaved Changes
-                            </Typography>
-                            <Typography variant="body1" gutterBottom>
-                                You have unsaved changes. Close anyway?
-                            </Typography>
-                            <Box mt={3} display="flex" justifyContent="flex-end" style={{ gap: '16px' }}>
-                                <Button
-                                    variant="outlined"
-                                    onClick={() => setCloseConfirm(false)}
-                                    size="medium"
-                                >
-                                    Cancel
-                                </Button>
-                                <Button
-                                    variant="contained"
-                                    color="secondary"
-                                    onClick={confirmClose}
-                                    size="medium"
-                                >
-                                    Close Anyway
-                                </Button>
-                            </Box>
-                        </Box>
-                    </Paper>
-                )}
-
                 {/* Cancel Edit Confirmation Dialog */}
                 {cancelConfirm && (
-                    <Paper className={classes.confirmDialog} elevation={8}>
-                        <Box p={3}>
-                            <Typography variant="h6" gutterBottom>
-                                Unsaved Changes
-                            </Typography>
-                            <Typography variant="body1" gutterBottom>
-                                You have unsaved changes. Discard changes and cancel?
-                            </Typography>
-                            <Box mt={3} display="flex" justifyContent="flex-end" style={{ gap: '16px' }}>
-                                <Button
-                                    variant="outlined"
-                                    onClick={() => setCancelConfirm(false)}
-                                    size="medium"
-                                >
-                                    Continue Editing
-                                </Button>
-                                <Button
-                                    variant="contained"
-                                    color="secondary"
-                                    onClick={confirmCancel}
-                                    size="medium"
-                                >
-                                    Discard Changes
-                                </Button>
-                            </Box>
-                        </Box>
-                    </Paper>
+                    <AVAConfirm
+                        promptText={[
+                            'You have unsaved changes.', 'Are you sure you want to cancel?',
+                        ]}
+                        cancelText={'No, keep editing'}
+                        confirmText={'Yes, discard changes'}
+                        onCancel={() => setCancelConfirm(false)}
+                        onConfirm={confirmCancel}
+                    />
                 )}
 
+                {/* Bottom Action Buttons */}
                 <Box className={classes.closeButtonContainer}>
-                    <Button
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'red', color: 'white' }}
-                        size="small"
-                        onClick={handleClose}
-                        disabled={loading}
-                    >
-                        Close
-                    </Button>
+                    {isEditing ? (
+                        <>
+                            <Button
+                                className={AVAClass.AVAButton}
+                                variant="contained"
+                                color="primary"
+                                startIcon={<SaveIcon />}
+                                onClick={handleSaveTemplate}
+                                disabled={loading}
+                                style={{ backgroundColor: 'green', color: 'white' }}
+                                size="small"
+                            >
+                                Save
+                            </Button>
+                            <Button
+                                className={AVAClass.AVAButton}
+                                variant="outlined"
+                                startIcon={<CloseIcon />}
+                                onClick={handleCancelEdit}
+                                disabled={loading}
+                                size="small"
+                            >
+                                Cancel
+                            </Button>
+                            {onSelectTemplate && (selectedTemplate || isNewTemplate) && (
+                                <Button
+                                    className={AVAClass.AVAButton}
+                                    variant="contained"
+                                    color="primary"
+                                    onClick={handleUseTemplate}
+                                    disabled={loading}
+                                    style={{ backgroundColor: 'blue', color: 'white' }}
+                                    size="small"
+                                >
+                                    Use This Template
+                                </Button>
+                            )}
+                            {!isNewTemplate && selectedTemplate && (
+                                <Button
+                                    className={AVAClass.AVAButton}
+                                    variant="outlined"
+                                    color="secondary"
+                                    startIcon={<DeleteIcon />}
+                                    onClick={() => {
+                                        handleDeleteTemplate(selectedTemplate);
+                                    }}
+                                    disabled={loading}
+                                    style={{ color: 'red', borderColor: 'red' }}
+                                    size="small"
+                                >
+                                    Delete
+                                </Button>
+                            )}
+                        </>
+                    ) : (
+                        <Button
+                            className={AVAClass.AVAButton}
+                            style={{ backgroundColor: 'red', color: 'white' }}
+                            size="small"
+                            onClick={handleClose}
+                            disabled={loading}
+                        >
+                            Close
+                        </Button>
+                    )}
                 </Box>
             </Dialog>
         </>
