@@ -51,6 +51,9 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   const isMounted = React.useRef(false);
   const administrative_account = (['admin', 'support', 'master'].includes(state.user.account_class));
 
+  // Virtual scrolling state
+  const [maxPeopleToRender, setMaxPeopleToRender] = React.useState(100);
+
   React.useEffect(() => {
     console.log('EFFECT mounted');
   }, [administrative_account]); // should log exactly once (twice in StrictMode dev)
@@ -261,6 +264,9 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
         key={`key_words`}
         defaultValue={reactData.linkedPersonFilter?.raw || ''}
         onChange={(event) => {
+          // Reset virtual scrolling limit when search changes
+          setMaxPeopleToRender(100);
+
           if (event.target.value.length === 0) {
             updateReactData({
               linkedPersonFilter: {
@@ -283,6 +289,21 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
       />
       <Paper paddingTop={'8px'} paddingBottom={'8px'} paddingLeft={'8px'} component={Box} elevation={0}
         width='100%' height={250} overflow='auto' square
+        onScroll={(e) => {
+          // Virtual scrolling: load more people when scrolling near bottom
+          const element = e.currentTarget;
+          const scrolledToBottom = element.scrollHeight - element.scrollTop <= element.clientHeight + 200;
+
+          if (scrolledToBottom && reactData.accessList) {
+            const fullPeopleList = (options.withSpecialValues ? reactData.special_values || [] : []).concat(reactData.accessList);
+            const filteredCount = fullPeopleList.filter(person => OKtoShow(person)).length;
+
+            if (maxPeopleToRender < filteredCount) {
+              console.log(`📜 QuickSearch: Loading more people: ${maxPeopleToRender} → ${maxPeopleToRender + 100}`);
+              setMaxPeopleToRender(maxPeopleToRender + 100);
+            }
+          }
+        }}
       >
         {reactData.showAll && reactData.selections && (reactData.selections.length > 0) &&
           <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
@@ -548,75 +569,86 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
             <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
               style={{ marginLeft: '16px' }}
             >
-              {((options.withSpecialValues ? reactData.special_values : []).concat(reactData.accessList)).map((this_item, tIndex) => (
-                OKtoShow(this_item) &&
-                <Box
-                  display='flex'
-                  flexDirection='row'
-                  alignItems={'center'}
-                  key={`select_person_opt${tIndex}`}
-                  style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
-                  onContextMenu={async (e) => {
-                    e.preventDefault();
-                    updateReactData({
-                      alert: {
-                        severity: 'info',
-                        title: `${this_item.first} ${this_item.last}`,
-                        message: <div>
-                          User ID: <strong>{this_item.person_id}</strong><br />
-                          Groups: {listFromArray(this_item.groups.map(g => {
-                            return clean(g);
-                          }), { ignoreBlank: true })}<br /></div>
-                      }
-                    }, true);
-                  }}
+              {(() => {
+                // Pre-filter the people list, then apply virtual scrolling
+                const fullPeopleList = (options.withSpecialValues ? reactData.special_values || [] : []).concat(reactData.accessList);
+                const filteredPeople = fullPeopleList.filter(person => OKtoShow(person));
+                const totalFiltered = filteredPeople.length;
+                const peopleToShow = filteredPeople.slice(0, maxPeopleToRender);
 
-                  onClick={() => {
-                    if (options.pickAndGo || options.pickOne) {
-                      const foundAt = reactData.selections.findIndex(s => { return (s.person_id === this_item.person_id); });
-                      if (foundAt > -1) {
-                        reactData.selections.splice(foundAt, 1);
-                      }
-                      else {
-                        reactData.selections.unshift({
-                          person_id: this_item.person_id,
-                          person_name: (`${this_item.first.trim()} ${this_item.last.trim()}`).trim(),
-                          person_firstName: this_item.first.trim(),
-                          person_lastName: this_item.last.trim()
-                        });
-                      }
-                      let { selectedPeople_count, selectedPeople_list } = countSelections();
-                      if (options.pickOne) {
-                        onClose(reactData.selections);
+                // Log virtual scrolling info
+                if (totalFiltered > maxPeopleToRender) {
+                  console.log(`📊 QuickSearch: Showing ${maxPeopleToRender} of ${totalFiltered} people`);
+                }
+
+                return peopleToShow.map((this_item, tIndex) => (
+                  <Box
+                    display='flex'
+                    flexDirection='row'
+                    alignItems={'center'}
+                    key={`select_person_opt${tIndex}`}
+                    style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
+                    onContextMenu={async (e) => {
+                      e.preventDefault();
+                      updateReactData({
+                        alert: {
+                          severity: 'info',
+                          title: `${this_item.first} ${this_item.last}`,
+                          message: <div>
+                            User ID: <strong>{this_item.person_id}</strong><br />
+                            Groups: {listFromArray(this_item.groups.map(g => {
+                              return clean(g);
+                            }), { ignoreBlank: true })}<br /></div>
+                        }
+                      }, true);
+                    }}
+
+                    onClick={() => {
+                      if (options.pickAndGo || options.pickOne) {
+                        const foundAt = reactData.selections.findIndex(s => { return (s.person_id === this_item.person_id); });
+                        if (foundAt > -1) {
+                          reactData.selections.splice(foundAt, 1);
+                        }
+                        else {
+                          reactData.selections.unshift({
+                            person_id: this_item.person_id,
+                            person_name: (`${this_item.first.trim()} ${this_item.last.trim()}`).trim(),
+                            person_firstName: this_item.first.trim(),
+                            person_lastName: this_item.last.trim()
+                          });
+                        }
+                        let { selectedPeople_count, selectedPeople_list } = countSelections();
+                        if (options.pickOne) {
+                          onClose(reactData.selections);
+                        }
+                        else {
+                          updateReactData({
+                            selectedPeople_count,
+                            selectedPeople_list,
+                            selections: reactData.selections
+                          }, true);
+                        }
                       }
                       else {
                         updateReactData({
-                          selectedPeople_count,
-                          selectedPeople_list,
-                          selections: reactData.selections
+                          showProfileEdit_id: this_item.person_id
                         }, true);
                       }
-                    }
-                    else {
-                      updateReactData({
-                        showProfileEdit_id: this_item.person_id
-                      }, true);
-                    }
-                  }}
-                >
-                  <Typography
-                    style={(reactData.selections && reactData.selections.some(s => { return s.person_id === this_item.person_id; }))
-                      ? AVATextStyle({ bold: true, color: 'green' })
-                      : (reactData.selectedPeople_list && reactData.selectedPeople_list.includes(this_item.person_id)
-                        ? AVATextStyle({ bold: true, color: 'orange' })
-                        : AVATextStyle())
-                    }
+                    }}
                   >
-                    {`${this_item.first} ${this_item.last}`}
-                  </Typography>
-                </Box>
-              )
-              )}
+                    <Typography
+                      style={(reactData.selections && reactData.selections.some(s => { return s.person_id === this_item.person_id; }))
+                        ? AVATextStyle({ bold: true, color: 'green' })
+                        : (reactData.selectedPeople_list && reactData.selectedPeople_list.includes(this_item.person_id)
+                          ? AVATextStyle({ bold: true, color: 'orange' })
+                          : AVATextStyle())
+                      }
+                    >
+                      {`${this_item.first} ${this_item.last}`}
+                    </Typography>
+                  </Box>
+                ));
+              })()}
             </Box>
           </Box>
         }
