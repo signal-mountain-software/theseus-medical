@@ -569,9 +569,11 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       }
       if (recordExists(templateRecs)) {
         for (let this_template of templateRecs.Items) {
-          if (this_template.template_mayUse_groupList.includes('*all') ||
+          // Ensure template_mayUse_groupList exists and default to ['*all'] if not
+          const mayUseGroupList = this_template.template_mayUse_groupList || ['*all'];
+          if (mayUseGroupList.includes('*all') ||
             reactData.administrative_account ||
-            array_in_array(this_template.template_mayUse_groupList, state.user.groups)) {
+            array_in_array(mayUseGroupList, state.user.groups)) {
             workingList.push({
               value: this_template.template_id,
               label: this_template.template_name
