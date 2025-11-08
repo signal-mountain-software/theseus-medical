@@ -2,7 +2,7 @@ import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
 import { Box, FormGroup, FormControl } from '@material-ui/core';
 
-
+import MessageTemplateManager from '../dialogs/MessageTemplateManager';
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageForm from '../forms/MessageForm';
 import MessageMonitor from './MessageMonitor';
@@ -402,7 +402,7 @@ export default ({
     */
     case 'message_list':
       let defaultValueObj = {};
-      if (!defaultValue) { defaultValueObj = { }; }
+      if (!defaultValue) { defaultValueObj = {}; }
       else {
         if (Array.isArray(defaultValue)) {
           defaultValue.forEach(d => {
@@ -941,6 +941,13 @@ export default ({
               onSave();
             }
           }}
+        />
+      );
+    case 'template_manager':
+      return (
+        <MessageTemplateManager
+          open={true}
+          onClose={() => onClose()}
         />
       );
     default:
