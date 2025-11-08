@@ -1,7 +1,8 @@
 import React from 'react';
 import useSession from '../../hooks/useSession';
 
-import { Editor } from '@tinymce/tinymce-react';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import { html_to_pdf } from '../../util/AVAMessages';
 import Select from "react-dropdown-select";
 
@@ -236,6 +237,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     showIndividualList: false,
     showPreferredList: ((options && options.hasOwnProperty('showPreferredList') && !options.showPreferredList) ? false : true),
     showQuickSearch: (options && options.newMessage && (!options.recipients || (options.recipients.length === 0))) || false,
+    showVariableMenu: false,
     showVMAlt: ((options && options.hasOwnProperty('hideVMAlt') && options.hideVMAlt) ? true : false),
     singleFilterDigit: false,
     start_time: (options && options.hasOwnProperty('start_time')) ? makeDate(options.start_time).timestamp : false,
@@ -361,9 +363,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   React.useEffect(() => setDirty(false), []);
   const HTMLsave = () => {
     if (editorRef.current) {
-      const HTMLcontent = editorRef.current.getContent();
+      const quillEditor = editorRef.current.getEditor();
+      const HTMLcontent = quillEditor.root.innerHTML;
       setDirty(false);
-      editorRef.current.setDirty(false);
       let reactUpdObj = {
         newMessageText: HTMLcontent
       };
@@ -1781,33 +1783,97 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                           >
                             {'Formatted Message Text'}
                           </Typography>
-                          <Editor
-                            apiKey='jz5usjjdkhrx34z6bm32xhv8pxep9u7iptvmqnsz8goday9n'
-                            key={'tinyMCE_editing_area'}
-                            id={'tinyMCE_editing_area'}
-                            onInit={(evt, editor) => editorRef.current = editor}
-                            onDirty={() => setDirty(true)}
+                          <Box style={{ marginBottom: '8px', position: 'relative' }}>
+                            <Button
+                              className={AVAClass.AVAButton}
+                              size="small"
+                              style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+                              onClick={() => {
+                                if (editorRef.current) {
+                                  const quill = editorRef.current.getEditor();
+                                  const cursorPosition = quill.getSelection()?.index || 0;
+                                  updateReactData({
+                                    showVariableMenu: !reactData.showVariableMenu,
+                                    variableMenuAnchor: cursorPosition
+                                  }, true);
+                                }
+                              }}
+                            >
+                              Insert Variable
+                            </Button>
+                            {reactData.showVariableMenu && (
+                              <Paper
+                                style={{
+                                  position: 'absolute',
+                                  zIndex: 1000,
+                                  marginTop: '4px',
+                                  padding: '8px',
+                                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+                                }}
+                                onMouseLeave={() => {
+                                  updateReactData({ showVariableMenu: false }, true);
+                                }}
+                              >
+                                <Box display='flex' flexDirection='column'>
+                                  {(state.session.message_template_variables || []).map((variable, idx) => (
+                                    <Button
+                                      key={idx}
+                                      size="small"
+                                      style={{ justifyContent: 'flex-start', textTransform: 'none', padding: '6px 12px' }}
+                                      onClick={() => {
+                                        if (editorRef.current) {
+                                          const quill = editorRef.current.getEditor();
+                                          const cursorPosition = reactData.variableMenuAnchor || 0;
+                                          const variableText = `<<${variable.value}>>`;
+                                          quill.insertText(cursorPosition, variableText);
+                                          quill.setSelection(cursorPosition + variableText.length);
+                                          setDirty(true);
+                                        }
+                                        updateReactData({ showVariableMenu: false }, true);
+                                      }}
+                                    >
+                                      {variable.label}
+                                    </Button>
+                                  ))}
+                                </Box>
+                              </Paper>
+                            )}
+                          </Box>
+                          <ReactQuill
+                            ref={editorRef}
+                            theme="snow"
+                            value={reactData.newMessageText}
+                            onChange={(content, delta, source, editor) => {
+                              setDirty(true);
+                              updateReactData({
+                                newMessageText: content
+                              }, false);
+                            }}
                             onBlur={() => {
                               HTMLsave();
                             }}
-                            initialValue={reactData.newMessageText}
-                            init={{
-                              branding: false,
-                              statusbar: false,
-                              height: 300,
-                              selector: 'textarea',
-                              plugins: [
-                                // Core editing features
-                                // the inlinecss is part of the paid program.  Removing to see what the effect is...
-                                'anchor', 'autolink', 'charmap', 'codesample', 'emoticons', 'image', 'inlinecss', 'lists', 'media', 'searchreplace', 'table', 'visualblocks', 'wordcount',
-                                // 'anchor', 'autolink', 'charmap', 'codesample', 'emoticons', 'image', 'link', 'lists', 'media', 'searchreplace', 'table', 'visualblocks', 'wordcount',
-                                // Your account includes a free trial of TinyMCE premium features
-                                // Try the most popular premium features until May 26, 2025:
-                                'checklist', 'mediaembed', 'casechange', 'formatpainter', 'pageembed', 'permanentpen', 'advtable', 'advcode', 'editimage', 'advtemplate', 'mentions', 'tableofcontents', 'footnotes', 'mergetags', 'inlinecss', 'markdown'
-                              ],
-                              toolbar: 'undo redo | blocks fontfamily fontsize | bold italic underline forecolor backcolor | table | spellcheckdialog | align lineheight | checklist numlist bullist indent outdent | emoticons charmap | removeformat',
-                              line_height_formats: '0.8 1 1.2 1.4 1.6 2',
+                            style={{ height: '300px', marginBottom: '50px' }}
+                            modules={{
+                              toolbar: [
+                                [{ 'header': [1, 2, 3, false] }],
+                                ['bold', 'italic', 'underline', 'strike'],
+                                [{ 'color': [] }, { 'background': [] }],
+                                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                                [{ 'indent': '-1' }, { 'indent': '+1' }],
+                                [{ 'align': [] }],
+                                ['link', 'image'],
+                                ['clean']
+                              ]
                             }}
+                            formats={[
+                              'header',
+                              'bold', 'italic', 'underline', 'strike',
+                              'color', 'background',
+                              'list', 'bullet',
+                              'indent',
+                              'align',
+                              'link', 'image'
+                            ]}
                           />
                         </Box>
                       }
