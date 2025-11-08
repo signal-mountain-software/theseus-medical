@@ -53,6 +53,8 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
 
   // Virtual scrolling state
   const [maxPeopleToRender, setMaxPeopleToRender] = React.useState(100);
+  // Show only selected toggle
+  const [showOnlySelected, setShowOnlySelected] = React.useState(false);
 
   React.useEffect(() => {
     console.log('EFFECT mounted');
@@ -194,7 +196,12 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
     return { selectedPeople_count, selectedPeople_list };
   };
 
-  const OKtoShowPreferred = (this_object) => {
+  const OKtoShowPreferred = (this_object, rIndex) => {
+    // If showOnlySelected is true, only show selected preferred recipients
+    if (showOnlySelected) {
+      return reactData.selections && reactData.selections.some(s => s.rIndex === rIndex);
+    }
+
     return (
       (options.showAll && (isEmpty(reactData.linkedPersonFilter) || reactData.linkedPersonFilter?.raw?.length < 2))
       ||
@@ -210,6 +217,12 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
     if ((this_group.level === 0) && !options.restrictGroups) {
       return false;
     }
+
+    // If showOnlySelected is true, only show selected groups
+    if (showOnlySelected) {
+      return reactData.selections && reactData.selections.some(s => s.group_id === this_group.group_id);
+    }
+
     return (
       (options.showAll && (isEmpty(reactData.linkedPersonFilter) || reactData.linkedPersonFilter?.raw?.length < 2))
       ||
@@ -221,6 +234,14 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   const OKtoShow = (this_person) => {
     this_person.first = this_person.first || this_person.name.first;
     this_person.last = this_person.last || this_person.name.last;
+
+    // If showOnlySelected is true, only show selected people and group members
+    if (showOnlySelected) {
+      const isDirectlySelected = reactData.selections && reactData.selections.some(s => s.person_id === this_person.person_id);
+      const isGroupMember = reactData.selectedPeople_list && reactData.selectedPeople_list.includes(this_person.person_id);
+      return isDirectlySelected || isGroupMember;
+    }
+
     return (
       (options.showAll && (isEmpty(reactData.linkedPersonFilter) || reactData.linkedPersonFilter?.raw?.length < 2))
       ||
@@ -259,34 +280,53 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
       >
         {options.title || `Quick Search`}
       </DialogContentText>
-      <TextField
-        style={isMobile ? AVATextStyle({ width: '90%', margin: { left: 0.5 } }) : AVATextStyle({ margin: { left: 1 } })}
-        key={`key_words`}
-        defaultValue={reactData.linkedPersonFilter?.raw || ''}
-        onChange={(event) => {
-          // Reset virtual scrolling limit when search changes
-          setMaxPeopleToRender(100);
+      <Box display='flex' flexDirection='row' alignItems='center' justifyContent='space-between' style={{ marginLeft: '8px', marginRight: '8px' }}>
+        <TextField
+          style={isMobile ? AVATextStyle({ width: '60%' }) : AVATextStyle({ width: '70%' })}
+          key={`key_words`}
+          defaultValue={reactData.linkedPersonFilter?.raw || ''}
+          onChange={(event) => {
+            // Reset virtual scrolling limit when search changes
+            setMaxPeopleToRender(100);
 
-          if (event.target.value.length === 0) {
-            updateReactData({
-              linkedPersonFilter: {
-                raw: '',
-                lower: ''
-              }
-            }, true);
-          }
-          else {
-            updateReactData({
-              linkedPersonFilter: {
-                raw: event.target.value.trim(),
-                lower: event.target.value.trim().toLowerCase()
-              }
-            }, true);
-          }
-        }}
-        autoComplete='off'
-        helperText='Name Search'
-      />
+            if (event.target.value.length === 0) {
+              updateReactData({
+                linkedPersonFilter: {
+                  raw: '',
+                  lower: ''
+                }
+              }, true);
+            }
+            else {
+              updateReactData({
+                linkedPersonFilter: {
+                  raw: event.target.value.trim(),
+                  lower: event.target.value.trim().toLowerCase()
+                }
+              }, true);
+            }
+          }}
+          autoComplete='off'
+          helperText='Name Search'
+        />
+        {/* Only show "Selected Only" toggle if there are selections */}
+        {(((reactData.selections?.length || 0) > 0) || ((reactData.selectedPeople_list?.length || 0) > 0)) &&
+          <Box display='flex' flexDirection='row' alignItems='center'>
+            <Typography variant='body2' style={{ marginRight: '4px' }}>
+              Selected Only
+            </Typography>
+            <Switch
+              checked={showOnlySelected}
+              onChange={(e) => {
+                setShowOnlySelected(e.target.checked);
+                setMaxPeopleToRender(100); // Reset virtual scrolling
+              }}
+              color='primary'
+              size='small'
+            />
+          </Box>
+        }
+      </Box>
       <Paper paddingTop={'8px'} paddingBottom={'8px'} paddingLeft={'8px'} component={Box} elevation={0}
         width='100%' height={250} overflow='auto' square
         onScroll={(e) => {
@@ -350,211 +390,227 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
           </Box>
         }
         {options.withPreferred && (reactData.preferred_recipients.length > 0) &&
-          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-            <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-              <Typography
-                style={{ fontWeight: 'bold', paddingTop: '2px', marginTop: '6.5px', marginBottom: '4px', textWrapStyle: 'balance' }}
-              >
-                {'Preferred Recipients'}
-              </Typography>
-              {/* Show/Hide Toggle */}
-              <Box flexGrow={2} display='flex' alignItems='center'
-                style={{ paddingTop: '2px', marginTop: '4px', marginLeft: '32px', marginBottom: '4px', textWrapStyle: 'balance' }}
-                justifyContent='flex-start' marginBottom={1} flexDirection='row'>
-                <Typography
-                  style={AVATextStyle({
-                    size: 0.8, margin: { right: -0.4 },
-                    bold: !reactData.showPreferredList
-                  })}
-                >
-                  {'Hide'}
-                </Typography>
-                <Switch
-                  checked={reactData.showPreferredList || false}
-                  onClick={async (event) => {
-                    updateReactData({
-                      showPreferredList: !reactData.showPreferredList
-                    }, true);
-                  }}
-                  name="ShowPreferred"
-                  color="primary"
-                />
-                <Typography
-                  style={AVATextStyle({
-                    size: 0.8, margin: { left: -0.4 },
-                    bold: reactData.showPreferredList
-                  })}
-                >
-                  {'Show'}
-                </Typography>
-              </Box>
-            </Box>
-            <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
-              style={{ marginLeft: '16px' }}
-            >
+          (() => {
+            // Check if there are any visible preferred recipients
+            const visiblePreferred = reactData.preferred_recipients.filter((recipient, idx) => OKtoShowPreferred(recipient, idx));
+            if (visiblePreferred.length === 0) return null;
 
-              {reactData.showPreferredList && reactData.preferred_recipients.map((this_recipient, rIndex) => (
-                OKtoShowPreferred(this_recipient) &&
-                <Box
-                  display='flex'
-                  flexDirection='row'
-                  alignItems={'center'}
-                  key={`select_group_opt${rIndex}`}
-                  style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
-                  onContextMenu={async (e) => {
-                    e.preventDefault();
-                    updateReactData({
-                      alert: {
-                        severity: 'info',
-                        title: `${this_recipient.objText}`,
-                        message: <div>
-                          Person IDs: <strong>{listFromArray(this_recipient.personList)}</strong>
-                          Person Names: <strong>{listFromArray(this_recipient.personNames)}</strong><br /></div>
-                      }
-                    }, true);
-                  }}
-                  onClick={() => {
-                    if (options.pickAndGo) {
-                      const foundAt = reactData.selections.findIndex(s => { return (s.rIndex === rIndex); });
-                      if (foundAt > -1) {
-                        reactData.selections.splice(foundAt, 1);
-                      }
-                      else {
-                        reactData.selections.unshift({
-                          rIndex,
-                          personList: this_recipient.personList,
-                          personNames: this_recipient.personNames,
-                          listName: this_recipient.objText
-                        });
-                      }
-                      let { selectedPeople_count, selectedPeople_list } = countSelections();
-                      updateReactData({
-                        selectedPeople_count,
-                        selectedPeople_list,
-                        selections: reactData.selections
-                      }, true);
-                    }
-                  }}
-                >
+            return (
+              <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                   <Typography
-                    style={
-                      (reactData.selections && reactData.selections.some(s => { return s.rIndex === rIndex; }))
-                        ? AVATextStyle({ bold: true, color: 'green' })
-                        : AVATextStyle()
-                    }
+                    style={{ fontWeight: 'bold', paddingTop: '2px', marginTop: '6.5px', marginBottom: '4px', textWrapStyle: 'balance' }}
                   >
-                    {this_recipient.objText}
+                    {'Preferred Recipients'}
                   </Typography>
-                </Box>
-              )
-              )}
-            </Box>
-          </Box>
-        }
-        {options.withGroups && reactData.groupInfo && (reactData.groupInfo.groupList.length > 0) &&
-          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-            <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-              <Typography
-                style={{ fontWeight: 'bold', paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
-              >
-                {'Groups'}
-              </Typography>
-              {(!options.hidePeople || !reactData.showGroupList) &&
-                <Box
-                  flexGrow={2} display='flex' alignItems='center'
-                  style={{ paddingTop: '2px', marginTop: '4px', marginLeft: '32px', marginBottom: '4px', textWrapStyle: 'balance' }}
-                  justifyContent='flex-start' marginBottom={1} flexDirection='row'>
-                  <Typography
-                    style={AVATextStyle({
-                      size: 0.8, margin: { right: -0.4 },
-                      bold: !reactData.showGroupList
-                    })}
-                  >
-                    {'Hide'}
-                  </Typography>
-                  <Switch
-                    checked={reactData.showGroupList || false}
-                    onClick={async (event) => {
-                      updateReactData({
-                        showGroupList: !reactData.showGroupList
-                      }, true);
-                    }}
-                    name="ShowGroups"
-                    color="primary"
-                  />
-                  <Typography
-                    style={AVATextStyle({
-                      size: 0.8, margin: { left: -0.4 },
-                      bold: reactData.showGroupList
-                    })}
-                  >
-                    {'Show'}
-                  </Typography>
-                </Box>
-              }
-            </Box>
-            <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
-              style={{ marginLeft: '16px' }}
-            >
-              {reactData.showGroupList &&
-                reactData.groupInfo.groupList.map((this_group, gIndex) => (
-                  OKtoShowGroup(this_group) &&
-                  <Box
-                    display='flex'
-                    flexDirection='row'
-                    alignItems={'center'}
-                    key={`select_group_opt${gIndex}`}
-                    style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
-                    onContextMenu={async (e) => {
-                      e.preventDefault();
-                      updateReactData({
-                        alert: {
-                          severity: 'info',
-                          title: `${this_group.group_name}`,
-                          message: <div>
-                            Group ID: <strong>{this_group.group_id}</strong><br /></div>
-                        }
-                      }, true);
-                    }}
-                    onClick={() => {
-                      const foundAt = reactData.selections?.findIndex(s => { return (s.group_id === this_group.group_id); }) ?? -1;
-                      if (foundAt > -1) {
-                        reactData.selections.splice(foundAt, 1);
-                      }
-                      else {
-                        if (!reactData.selections) {
-                          reactData.selections = [];
-                        }
-                        reactData.selections.unshift({
-                          group_id: this_group.group_id,
-                          group_name: this_group.group_name
-                        });
-                      }
-                      let { selectedPeople_count, selectedPeople_list } = countSelections();
-                      updateReactData({
-                        selectedPeople_count,
-                        selectedPeople_list,
-                        selections: reactData.selections
-                      }, true);
-                      if (options.pickOne) { onClose(reactData.selections); }
-                    }
-                    }
-                  >
+                  {/* Show/Hide Toggle */}
+                  <Box flexGrow={2} display='flex' alignItems='center'
+                    style={{ paddingTop: '2px', marginTop: '4px', marginLeft: '32px', marginBottom: '4px', textWrapStyle: 'balance' }}
+                    justifyContent='flex-start' marginBottom={1} flexDirection='row'>
                     <Typography
-                      style={{
-                        ...(reactData.selections && reactData.selections.some(s => { return s.group_id === this_group.group_id; })
-                          ? AVATextStyle({ bold: true, color: 'green' })
-                          : AVATextStyle()
-                        ),
-                        marginLeft: `${((this_group.level - 1) * 10)}px`
-                      }}
+                      style={AVATextStyle({
+                        size: 0.8, margin: { right: -0.4 },
+                        bold: !reactData.showPreferredList
+                      })}
                     >
-                      {this_group.group_name}
+                      {'Hide'}
+                    </Typography>
+                    <Switch
+                      checked={reactData.showPreferredList || false}
+                      onClick={async (event) => {
+                        updateReactData({
+                          showPreferredList: !reactData.showPreferredList
+                        }, true);
+                      }}
+                      name="ShowPreferred"
+                      color="primary"
+                    />
+                    <Typography
+                      style={AVATextStyle({
+                        size: 0.8, margin: { left: -0.4 },
+                        bold: reactData.showPreferredList
+                      })}
+                    >
+                      {'Show'}
                     </Typography>
                   </Box>
-                ))}
-            </Box>
-          </Box>
+                </Box>
+                <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
+                  style={{ marginLeft: '16px' }}
+                >
+
+                  {reactData.showPreferredList && reactData.preferred_recipients.map((this_recipient, rIndex) => (
+                    OKtoShowPreferred(this_recipient, rIndex) &&
+                    <Box
+                      display='flex'
+                      flexDirection='row'
+                      alignItems={'center'}
+                      key={`select_group_opt${rIndex}`}
+                      style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
+                      onContextMenu={async (e) => {
+                        e.preventDefault();
+                        updateReactData({
+                          alert: {
+                            severity: 'info',
+                            title: `${this_recipient.objText}`,
+                            message: <div>
+                              Person IDs: <strong>{listFromArray(this_recipient.personList)}</strong>
+                              Person Names: <strong>{listFromArray(this_recipient.personNames)}</strong><br /></div>
+                          }
+                        }, true);
+                      }}
+                      onClick={() => {
+                        if (options.pickAndGo) {
+                          const foundAt = reactData.selections.findIndex(s => { return (s.rIndex === rIndex); });
+                          if (foundAt > -1) {
+                            reactData.selections.splice(foundAt, 1);
+                          }
+                          else {
+                            reactData.selections.unshift({
+                              rIndex,
+                              personList: this_recipient.personList,
+                              personNames: this_recipient.personNames,
+                              listName: this_recipient.objText
+                            });
+                          }
+                          let { selectedPeople_count, selectedPeople_list } = countSelections();
+                          updateReactData({
+                            selectedPeople_count,
+                            selectedPeople_list,
+                            selections: reactData.selections
+                          }, true);
+                        }
+                      }}
+                    >
+                      <Typography
+                        style={
+                          (reactData.selections && reactData.selections.some(s => { return s.rIndex === rIndex; }))
+                            ? AVATextStyle({ bold: true, color: 'green' })
+                            : AVATextStyle()
+                        }
+                      >
+                        {this_recipient.objText}
+                      </Typography>
+                    </Box>
+                  )
+                  )}
+                </Box>
+              </Box>
+            );
+          })()
+        }
+        {options.withGroups && reactData.groupInfo && (reactData.groupInfo.groupList.length > 0) &&
+          (() => {
+            // Check if there are any visible groups
+            const visibleGroups = reactData.groupInfo.groupList.filter(group => OKtoShowGroup(group));
+            if (visibleGroups.length === 0) return null;
+
+            return (
+              <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                  <Typography
+                    style={{ fontWeight: 'bold', paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
+                  >
+                    {'Groups'}
+                  </Typography>
+                  {(!options.hidePeople || !reactData.showGroupList) &&
+                    <Box
+                      flexGrow={2} display='flex' alignItems='center'
+                      style={{ paddingTop: '2px', marginTop: '4px', marginLeft: '32px', marginBottom: '4px', textWrapStyle: 'balance' }}
+                      justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+                      <Typography
+                        style={AVATextStyle({
+                          size: 0.8, margin: { right: -0.4 },
+                          bold: !reactData.showGroupList
+                        })}
+                      >
+                        {'Hide'}
+                      </Typography>
+                      <Switch
+                        checked={reactData.showGroupList || false}
+                        onClick={async (event) => {
+                          updateReactData({
+                            showGroupList: !reactData.showGroupList
+                          }, true);
+                        }}
+                        name="ShowGroups"
+                        color="primary"
+                      />
+                      <Typography
+                        style={AVATextStyle({
+                          size: 0.8, margin: { left: -0.4 },
+                          bold: reactData.showGroupList
+                        })}
+                      >
+                        {'Show'}
+                      </Typography>
+                    </Box>
+                  }
+                </Box>
+                <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
+                  style={{ marginLeft: '16px' }}
+                >
+                  {reactData.showGroupList &&
+                    reactData.groupInfo.groupList.map((this_group, gIndex) => (
+                      OKtoShowGroup(this_group) &&
+                      <Box
+                        display='flex'
+                        flexDirection='row'
+                        alignItems={'center'}
+                        key={`select_group_opt${gIndex}`}
+                        style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
+                        onContextMenu={async (e) => {
+                          e.preventDefault();
+                          updateReactData({
+                            alert: {
+                              severity: 'info',
+                              title: `${this_group.group_name}`,
+                              message: <div>
+                                Group ID: <strong>{this_group.group_id}</strong><br /></div>
+                            }
+                          }, true);
+                        }}
+                        onClick={() => {
+                          const foundAt = reactData.selections?.findIndex(s => { return (s.group_id === this_group.group_id); }) ?? -1;
+                          if (foundAt > -1) {
+                            reactData.selections.splice(foundAt, 1);
+                          }
+                          else {
+                            if (!reactData.selections) {
+                              reactData.selections = [];
+                            }
+                            reactData.selections.unshift({
+                              group_id: this_group.group_id,
+                              group_name: this_group.group_name
+                            });
+                          }
+                          let { selectedPeople_count, selectedPeople_list } = countSelections();
+                          updateReactData({
+                            selectedPeople_count,
+                            selectedPeople_list,
+                            selections: reactData.selections
+                          }, true);
+                          if (options.pickOne) { onClose(reactData.selections); }
+                        }
+                        }
+                      >
+                        <Typography
+                          style={{
+                            ...(reactData.selections && reactData.selections.some(s => { return s.group_id === this_group.group_id; })
+                              ? AVATextStyle({ bold: true, color: 'green' })
+                              : AVATextStyle()
+                            ),
+                            marginLeft: `${((this_group.level - 1) * 10)}px`
+                          }}
+                        >
+                          {this_group.group_name}
+                        </Typography>
+                      </Box>
+                    ))}
+                </Box>
+              </Box>
+            );
+          })()
         }
 
         {reactData.accessList &&
