@@ -105,7 +105,7 @@ export default ({ options = { runType: 'welfare_check' }, onClose }) => {
       else if (p.pStatus.startsWith('multiple inactive')) {
         p.result = `${p.pStatus.split(':')[1]} accounts found.  All are inactive.`;
       }
-      else if (determineClass(p.pRec.groups, state.session.group_assignments) === 'inactive') {
+      else if (determineClass(p.pRec.groups, state.session.group_assignments, { show_as_inactive: p.pRec.inactive_account }) === 'inactive') {
         p.result = 'This is an inactive account';
       }
       else if (p.pStatus === 'multiple') {
@@ -382,7 +382,7 @@ export default ({ options = { runType: 'welfare_check' }, onClose }) => {
       if (pList.length > 1) {    // if more than one account was found, remove any inactive accounts before proceeding
         let pCount = pList.length;
         pList = pList.filter(p => {
-          return (determineClass(p.groups, state.session.group_assignments) !== 'inactive');
+          return (determineClass(p.groups, state.session.group_assignments, { show_as_inactive: p.inactive_account }) !== 'inactive');
         });
         if (pList.length === 0) {
           returnList.push({ pID: '', pName: this_name, pRec: {}, pStatus: `multiple inactive:${pCount}` });

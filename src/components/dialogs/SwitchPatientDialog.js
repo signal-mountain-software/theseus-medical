@@ -160,6 +160,7 @@ export default ({ open, roles, onClose }) => {
     if (!pLine) { return false; }
     if (pLine.access === 'none') { return false; }
     if (pLine.access === 'view') { return false; }
+    if (pLine.inactive_account) { return false; }
     if (array_in_array(state?.session?.group_assignments?.inactive, pLine.groups)) { return false; }
     if (!person_filter) { return true; }
     return Object.values(pLine).toString().toLowerCase().includes(person_filter);

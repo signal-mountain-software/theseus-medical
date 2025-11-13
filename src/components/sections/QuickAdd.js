@@ -540,7 +540,10 @@ export default ({ onClose, options = {} }) => {
       }
     }
     personRecs = personRecs.filter(p => {
-      if (restricted_to) {
+      if (p.inactive_account) {
+        return false;
+      }
+      else if (restricted_to) {
         return restricted_to.includes(p.account_class);
       }
       else if (!p.name) {

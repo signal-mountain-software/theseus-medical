@@ -378,8 +378,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
             title: 'Dropped on Inactive Group',
             message: `You dragged ${peopleRec.Item.name?.first || 'someone'} to a group of Inactive accounts.  
               For safety, we don't allow that here.
-              If you mean to make this account inactive, please tap on ${(peopleRec.Item.name?.first + "'s") || 'their'} name then tap on Groups.  
-              You can select this group from that list.`
+              If you mean to make this account inactive, please tap on ${(peopleRec.Item.name?.first + "'s") || 'their'} name.  
+              You can make the account inactive in that screen.`
           }
         }, true);
         return;

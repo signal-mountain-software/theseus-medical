@@ -716,8 +716,11 @@ export async function getRole(pGroup, pPerson) {
 
 }
 
-export function determineClass(gList, group_assignments) {
+export function determineClass(gList, group_assignments, options = {}) {
   let groupFlavor = {};
+  if (options && options.show_as_inactive) { 
+    return 'inactive';
+  }
   let groupHierarchy = ['inactive', 'admin', 'staff', 'resident', 'student', 'camper', 'family', 'guest', 'vendor', 'other'];
   if (group_assignments) {
     Object.keys(group_assignments).forEach(t => {

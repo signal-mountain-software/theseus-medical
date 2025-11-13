@@ -151,6 +151,11 @@ export default ({ open, last_selected, priority_list, onClose }) => {
         let a_row = accessList[selectedClient].list.find(r => {
           return (r.person_id === (this_row.id || this_row.person_id));
         });
+        // use inactive_account to skip inactive accounts
+        if (a_row.inactive_account) {
+          continue;
+        }
+        // skip if in inactive groups (older method)
         if (a_row.groups.some(r => {
           return (state.session.inactiveGroupList.includes(r));
         })) {
