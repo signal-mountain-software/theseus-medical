@@ -688,7 +688,58 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
           </Box>
         </React.Fragment>
 
-        
+        {reactData.administrative_account &&
+          <Box
+            display="flex"
+            pt={2}
+            flexDirection='column'
+            justifyContent="center"
+          >
+            <Typography
+              style={AVATextStyle({ margin: { top: 1 } })}
+            >
+              {'Inactive Account'}
+            </Typography>
+            <Box flexGrow={2} display='flex' alignItems='center'
+              justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+              <Typography
+                style={AVATextStyle({
+                  size: 0.8, margin: { right: 0.8 },
+                  bold: !currentValues.peopleRec.inactive_account
+                })}
+              >
+                {'No'}
+              </Typography>
+              <Switch
+                checked={currentValues.peopleRec.inactive_account}
+                onClick={async (event) => {
+                  const newValue = !currentValues.peopleRec.inactive_account;
+                  let updateObj = {
+                    updateList: [{
+                      tableName: 'peopleRec',
+                      fieldName: 'inactive_account',
+                      newData: newValue
+                    }]
+                  };
+                  await updateField(updateObj);
+                }}
+                name="InactiveAccount"
+                color="primary"
+              />
+              <Typography
+                style={AVATextStyle({
+                  size: 0.8, margin: { left: 0.8 },
+                  bold: currentValues.peopleRec.inactive_account
+                })}
+              >
+                {'Yes'}
+              </Typography>
+            </Box>
+          </Box>
+        }
+
+
+
       </Box>
     </Box>
   );
