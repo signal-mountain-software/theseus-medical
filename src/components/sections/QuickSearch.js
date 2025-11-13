@@ -90,8 +90,10 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                   Note: restrictGroups prevents you from seeing groups that are parents or siblings of a group you are in
             */
             if (administrative_account ||
-              ((state.accessList[state.session.client_id].groups[this_item] >= 2) &&
-                (!options.restrictGroups || (state.patient.groups.includes(this_item) && isEmpty(my_children))))
+              (
+                state?.accessList?.[state.session?.client_id]?.groups?.[this_item] >= 2 &&
+                (!options.restrictGroups || (state?.patient?.groups?.includes(this_item) && isEmpty(my_children)))
+              )
             ) {
               groupList.push({
                 group_id: this_item,
