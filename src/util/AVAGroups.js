@@ -718,7 +718,7 @@ export async function getRole(pGroup, pPerson) {
 
 export function determineClass(gList, group_assignments, options = {}) {
   let groupFlavor = {};
-  if (options && options.show_as_inactive) { 
+  if (options && options.show_as_inactive) {
     return 'inactive';
   }
   let groupHierarchy = ['inactive', 'admin', 'staff', 'resident', 'student', 'camper', 'family', 'guest', 'vendor', 'other'];
@@ -744,6 +744,61 @@ export function determineClass(gList, group_assignments, options = {}) {
     });
   }
   return groupHierarchy[member_of];
+}
+
+/**
+ * Checks if a person matches any rule in a group.
+ * @param {string|object} groupArg - group_id or groupRec
+ * @param {string|object} personArg - person_id or PeopleRec
+ * @returns {Promise<boolean>} true if any rule matches, else false
+ */
+export async function doesPersonMatchGroupRules(client_id, groupArg, personArg) {
+  // dbClient and state are available in this module
+  let groupRec = groupArg;
+  let peopleRec = personArg;
+  // Fetch groupRec if only group_id is provided
+  if (typeof groupArg === 'string') {
+    const group_id = groupArg;
+    const result = await dbClient.get({
+      Key: { client_id, group_id },
+      TableName: 'Groups',
+    }).promise().catch(() => null);
+    groupRec = result && result.Item ? result.Item : null;
+  }
+  // Fetch peopleRec if only person_id is provided
+  if (typeof personArg === 'string') {
+    const person_id = personArg;
+    const result = await dbClient.get({
+      Key: { person_id },
+      TableName: 'People',
+    }).promise().catch(() => null);
+    peopleRec = result && result.Item ? result.Item : null;
+  }
+  if (!groupRec || !peopleRec || !Array.isArray(groupRec.rules)) return false;
+  for (const rule of groupRec.rules) {
+    if (!rule || !rule.source || !Array.isArray(rule.test)) continue;
+    // Support dot notation in source, e.g., 'name.last' or 'peopleRec.name.last'
+    let sourcePath = rule.source.split('.');
+    // Ignore first element if it is 'peopleRec' or 'personRec'
+    if (['peopleRec', 'personRec'].includes(sourcePath[0])) {
+      sourcePath = sourcePath.slice(1);
+    }
+    let value = sourcePath.reduce((obj, key) => (obj && obj[key] !== undefined ? obj[key] : undefined), peopleRec);
+    if (typeof value === 'string') {
+      value = value.toLowerCase();
+      if (rule.test.some(testVal => typeof testVal === 'string' && value === testVal.toLowerCase())) {
+        return true;
+      }
+    } else if (Array.isArray(value)) {
+      // If value is an array, check if any element matches
+      for (const v of value) {
+        if (typeof v === 'string' && rule.test.some(testVal => typeof testVal === 'string' && v.toLowerCase() === testVal.toLowerCase())) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 export async function getMemberList(pGroups, pClient_id, options = {}) {
@@ -991,6 +1046,67 @@ export async function getMemberList(pGroups, pClient_id, options = {}) {
     });
   }
   return rObj;
+}
+
+/**
+ * Synchronize all People records in a client with dynamic group rules.
+ * For each person, removes all dynamic group memberships, then adds those for which the person matches the rules.
+ * Leaves non-dynamic group memberships untouched.
+ * @param {string} client_id - The client to process
+ * @param {Array} dynamicGroups - Array of dynamic group objects (must include group_id and rules[])
+ * @param {object} [options] - Optional: { logger, progressCallback }
+ */
+export async function syncDynamicGroupsForClient(client_id, dynamicGroups, options = {}) {
+  if (!client_id || !Array.isArray(dynamicGroups)) return;
+  const logger = options.logger || console;
+  const progress = options.progressCallback;
+  // 1. Get all People records for this client
+  let qParm = {
+    KeyConditionExpression: 'client_id = :c',
+    ExpressionAttributeValues: { ':c': client_id },
+    TableName: 'People',
+    IndexName: 'client_id-index',
+  };
+  let allPeople = [];
+  let lastEvaluatedKey = undefined;
+  do {
+    if (lastEvaluatedKey) qParm.ExclusiveStartKey = lastEvaluatedKey;
+    let result = await dbClient.query(qParm).promise().catch(e => { logger.error('Error querying People', e); });
+    if (result && result.Items) allPeople.push(...result.Items);
+    lastEvaluatedKey = result && result.LastEvaluatedKey;
+  } while (lastEvaluatedKey);
+
+  logger.info(`Found ${allPeople.length} people in client ${client_id}`);
+  let dynamicGroupIDs = dynamicGroups.map(g => g.group_id);
+  let updatedCount = 0;
+  for (let i = 0; i < allPeople.length; i++) {
+    let person = allPeople[i];
+    let origGroups = Array.isArray(person.groups) ? [...person.groups] : [];
+    // Remove all dynamic group IDs
+    let newGroups = origGroups.filter(gid => !dynamicGroupIDs.includes(gid));
+    // For each dynamic group, check if person matches
+    for (let dg of dynamicGroups) {
+      let matches = await doesPersonMatchGroupRules(client_id, dg, person);
+      if (matches) newGroups.push(dg.group_id);
+    }
+    // Only update if changed
+    // (sort for stable comparison)
+    newGroups.sort();
+    origGroups.sort();
+    if (JSON.stringify(newGroups) !== JSON.stringify(origGroups)) {
+      await dbClient.update({
+        Key: { person_id: person.person_id },
+        UpdateExpression: 'set groups = :g',
+        ExpressionAttributeValues: { ':g': newGroups },
+        TableName: 'People',
+      }).promise().catch(e => logger.error('Error updating person', person.person_id, e));
+      updatedCount++;
+      if (logger.info) logger.info(`Updated ${person.person_id}: ${origGroups} -> ${newGroups}`);
+    }
+    if (progress && typeof progress === 'function') progress(i + 1, allPeople.length);
+  }
+  logger.info(`syncDynamicGroupsForClient: Updated ${updatedCount} of ${allPeople.length} people.`);
+  return { updated: updatedCount, total: allPeople.length };
 }
 
 export async function getGroupMembers(request = {}) {
@@ -1632,6 +1748,65 @@ export async function getPrivateGroupList(pClient_id, person_id, options) {
   return response;
 }
 
+/**
+ * Fetches public, private, and dynamic groups for a client and person in a single query.
+ * Returns { publicGroups, privateGroups, dynamicGroups } for use in state.groups.
+ */
+export async function getAllGroupTypes(pClient_id, person_id) {
+  if (!pClient_id) {
+    if (session) { pClient_id = session.client_id; }
+    else return { publicGroups: {}, privateGroups: {}, dynamicGroups: [] };
+  }
+  // Query all groups for this client
+  let qParm = {
+    KeyConditionExpression: 'client_id = :c',
+    ExpressionAttributeValues: { ':c': pClient_id },
+    TableName: "Groups"
+  };
+  let groupRec = await dbClient
+    .query(qParm)
+    .promise()
+    .catch(error => {
+      cl({ 'Error reading Groups': error, client_id: `<${pClient_id}>` });
+    });
+  if (!recordExists(groupRec)) { return { publicGroups: {}, privateGroups: {}, dynamicGroups: [] }; }
+  // Sort by name for consistency
+  groupRec.Items.sort((a, b) => (a.name > b.name ? 1 : -1));
+  let publicGroups = {};
+  let privateGroups = {};
+  let dynamicGroups = [];
+  for (let g = 0; g < groupRec.Items.length; g++) {
+    let thisGroup = groupRec.Items[g];
+    // Public: group_type is 'open' or 'public'
+    if (["open", "public"].includes(thisGroup.group_type)) {
+      let role = await getRole(thisGroup.group_id, person_id);
+      publicGroups[thisGroup.group_id] = {
+        group_name: thisGroup.name,
+        group_id: thisGroup.group_id,
+        role
+      };
+    }
+    // Private: group_type is 'private'
+    if (thisGroup.group_type === "private") {
+      let role = await getRole(thisGroup.group_id, person_id);
+      privateGroups[thisGroup.group_id] = {
+        group_name: thisGroup.name,
+        group_id: thisGroup.group_id,
+        role
+      };
+    }
+    // Dynamic: dynamic_group === true
+    if (thisGroup.dynamic_group === true) {
+      dynamicGroups.push({
+        group_id: thisGroup.group_id,
+        group_name: thisGroup.name,
+        rules: thisGroup.rules || []
+      });
+    }
+  }
+  return { publicGroups, privateGroups, dynamicGroups };
+}
+
 export async function getAllGroups(person_id, client_id) {
   /*
    returns the single admin group that this person_id belongs to in the client_id
@@ -1647,86 +1822,21 @@ export async function getAllGroups(person_id, client_id) {
   let session = await getSession(person_id);
   if (!client_id) {
     if (session) { client_id = session.client_id; }
-    if (!client_id) { return { adminHierarchy: [], publicGroups: {}, privateGroups: {} }; }
+    if (!client_id) { return { adminHierarchy: [], publicGroups: {}, privateGroups: {}, dynamicGroups: [] }; }
   }
+  // Use consolidated group fetch
+  const { publicGroups, privateGroups, dynamicGroups } = await getAllGroupTypes(client_id, person_id);
+  // Retain adminHierarchy and other hierarchy data if needed
   let gHResponse = await getGroupHierarchy(client_id, { sort: true });
   responseData.adminHierarchy = gHResponse.hierarchy;
   responseData.groupTree = gHResponse.group_tree;
   responseData.preferred_recipients = gHResponse.preferred_recipients;
   responseData.groupNames = gHResponse.group_names;
-  responseData.parent_of = gHResponse.parent_of;    // for every group, this lists all its descendants (children,  grandchildren, etc)
-  let gXRef = {};
-  responseData.adminHierarchy.forEach((a, x) => {
-    gXRef[a.id] = a;
-    if (a.selectable && profile?.groups?.includes(a.id)) {
-      responseData.selectedID = a.id;
-    }
-  });
-  // belongs_to object list every group you belong to
-  let classHierarchy = ['other', 'vendor', 'vendors', 'guest', 'guests', 'family', 'families', 'camper', 'campers', 'student', 'students', 'resident', 'residents', 'staff', 'admin', 'support', 'master'];
-  let classResult = ['other', 'vendor', 'vendor', 'guest', 'guest', 'family', 'family', 'camper', 'camper', 'student', 'student', 'resident', 'resident', 'staff', 'admin', 'support', 'master'];
-  let classLevel = classHierarchy.findIndex(c => { return c === (profile.admin_class || 'other'); });
-  let belongs_to = {};
-  if (profile.groups) {
-    for (let this_group of profile.groups) {
-      if (gXRef.hasOwnProperty(this_group)) {
-        belongs_to[this_group] = {};   // you belong to every group listed in your people record "groups" key
-        // you also belong to the parent of any group that you belong to
-        // any group that is a parent and has this group in its descendants list is a group you belong to
-        for (let parent_group in responseData.parent_of) {
-          if (responseData.parent_of[parent_group].includes(this_group)) {
-            belongs_to[this_group] = {};
-          }
-        }
-      }
-    }
-    if (session.responsible_for) {
-      for (let this_respFor of session.responsible_for) {
-        let checkGroup = this_respFor.trim();
-        if (belongs_to.hasOwnProperty(checkGroup)) {
-          belongs_to[checkGroup].role = 'responsible';
-        }
-      }
-    }
-    if (session.groups_managed) {
-      for (let this_managed of session.groups_managed) {
-        let checkGroup = this_managed.split('~')[0].trim();
-        if (belongs_to.hasOwnProperty(checkGroup)) {
-          belongs_to[checkGroup].role = 'responsible';
-        }
-      }
-    }
-    for (let this_group in belongs_to) {
-      console.log(this_group);
-      if (gXRef[this_group].admin_list.includes(person_id)) {
-        belongs_to[this_group].role = 'responsible';
-      }
-      if (belongs_to[this_group].role === 'responsible') {   // if I am responsible for a group
-        if (responseData.parent_of.hasOwnProperty(this_group)) {   // ...and that group is a parent
-          for (let child of responseData.parent_of[this_group]) {
-            if (belongs_to.hasOwnProperty(child)) {       // ... and a child of my Group is also in my belongs_to list
-              belongs_to[child].role = 'responsible';    // then I am responsible for that group too
-            }
-          }
-        }
-      }
-    }
-    console.log('check here');
-    for (let this_group in belongs_to) {
-      if (gXRef[this_group].admin_class) {
-        classLevel = Math.max(classLevel, classHierarchy.findIndex(c => { return c === gXRef[this_group].admin_class; }));
-      }
-      belongs_to[this_group].group_name = gXRef[this_group].group_name;
-      if (belongs_to[this_group].role !== 'responsible') {    // if I belong to a group that I am NOT responsible for
-        belongs_to[this_group].role = 'member';    // then I am a member of that group
-      }
-    }
-  }
-
-  responseData.person_admin_class = classResult[classLevel];
-  responseData.publicGroups = await getPublicGroupList(client_id, person_id);
-  // responseData.privateGroups = await getGroupsBelongTo(client_id, person_id, { sort: true });
-  responseData.privateGroups = await getPrivateGroupList(client_id, person_id);
+  responseData.parent_of = gHResponse.parent_of;
+  responseData.publicGroups = publicGroups;
+  responseData.privateGroups = privateGroups;
+  responseData.dynamicGroups = dynamicGroups;
+  // Remove admin groups from privateGroups and publicGroups for consistency
   responseData.adminHierarchy.forEach(a => { delete responseData.privateGroups[a.id]; });
   for (let gID in responseData.publicGroups) { delete responseData.privateGroups[gID]; }
   return responseData;

@@ -7,6 +7,7 @@ import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageForm from '../forms/MessageForm';
 import MessageMonitor from './MessageMonitor';
 import MessageFormLegacy from './MessageFormLegacy';
+import DynamicGroupSyncTool from '../dialogs/DynamicGroupSyncTool';
 import MakeMessage from './MakeMessage';
 import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
@@ -947,6 +948,14 @@ export default ({
       return (
         <MessageTemplateManager
           open={true}
+          onClose={() => onClose()}
+        />
+      );
+    case 'sync_dynamic_groups':
+      return (
+        <DynamicGroupSyncTool
+          client_id={state.session.client_id}
+          dynamicGroups={state.groups.dynamicGroups}
           onClose={() => onClose()}
         />
       );

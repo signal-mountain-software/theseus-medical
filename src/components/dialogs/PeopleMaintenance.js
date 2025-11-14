@@ -1,9 +1,10 @@
+
 import React from 'react';
 
 import { getPerson, getImage } from '../../util/AVAPeople';
 import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount, titleCase } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle, isDark } from '../../util/AVAStyles';
-import { determineClass } from '../../util/AVAGroups';
+import { determineClass, doesPersonMatchGroupRules } from '../../util/AVAGroups';
 
 import useSession from '../../hooks/useSession';
 
@@ -389,7 +390,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       if (recordExists(formFieldsRec)) {
         for (const this_fieldRec of formFieldsRec.Items) {
           if (this_fieldRec.showOnProfile && this_fieldRec.value.saveAs) {
-            if (this_fieldRec.value.saveAs.startsWith('personRec.')) { 
+            if (this_fieldRec.value.saveAs.startsWith('personRec.')) {
               this_fieldRec.value.saveAs = this_fieldRec.value.saveAs.replace('personRec.', 'peopleRec.');
             }
             reactUpdObj.form_fields[this_fieldRec.field_name] = {
@@ -775,6 +776,27 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         return false;
       };
     }
+    // Evaluate dynamic groups and add/remove as needed
+    if (state.groups.dynamicGroups && (state.groups.dynamicGroups.length > 0)) {
+      for (let this_group of state.groups.dynamicGroups) {
+        if (this_group.group_id && this_group.group_id !== '__TOP__') {
+          const doesMatch = await doesPersonMatchGroupRules(state.session.client_id, this_group, reactData.current.peopleRec);
+          if (doesMatch) {
+            // Add the group if not already present
+            if (!reactData.current.peopleRec.groups.includes(this_group.group_id)) {
+              reactData.current.peopleRec.groups.push(this_group.group_id);
+            }
+          } else {
+            // Remove the group if present
+            const index = reactData.current.peopleRec.groups.indexOf(this_group.group_id);
+            if (index > -1) {
+              reactData.current.peopleRec.groups.splice(index, 1);
+            }
+          }
+        }
+      }
+    }
+    // validate that at least one group is selected (not including 'All' or '__Top__')
     let groupOK = reactData.current.peopleRec.groups.some(g => { return ((g.toLowerCase() !== 'all') && (g.toLowerCase() !== '__top__')); });
     if (!groupOK) {
       reactData.errorList['groups'] = {
