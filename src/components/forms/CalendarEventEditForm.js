@@ -819,7 +819,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
         "slot": pSlot || newPersonID,
         "status": (pRelease ? 'released' : 'selected'),
         "show_this_slot": ((pRelease && (pSlot === newPersonID)) ? false : true),
-        "no_messaging": isEventOwner
+        "no_messaging": (body.no_messaging === true) ? true : isEventOwner
       };
       if (pOccData.description) {
         writeRequest.override_description = pOccData.description;
@@ -827,65 +827,73 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       if (body.notes) { writeRequest.notes = body.notes; }
       if (body.guests) { writeRequest.guests = body.guests; }
 
-      if (pEvent) {
-        if (pEvent.hasOwnProperty('default_forms')) {
-          writeRequest.default_forms = deepCopy(pEvent.default_forms);
-        }
-        if (pEvent.hasOwnProperty('customizations')) {
-          writeRequest.customizations = deepCopy(pEvent.customizations);
-        }
-        if (!reactData.defaultValues.message_override) {
-          writeRequest.no_messaging = false;
-        }
-        else {
-          let overrideList = makeArray(reactData.defaultValues.message_override);
-          if (overrideList.some(oItem => {
-            return oItem.toLowerCase().startsWith('*none');
-          })) {
-            writeRequest.no_messaging = true;
+      if (!writeRequest.no_messaging) {
+        if (pEvent) {
+          if (pEvent.hasOwnProperty('default_forms')) {
+            writeRequest.default_forms = deepCopy(pEvent.default_forms);
           }
-          else if (overrideList.some(oItem => {
-            return oItem.toLowerCase().startsWith('*published');
-          })) {
-            if (!pEvent.published) {
-              writeRequest.no_messaging = true;
-            }
-            else {
-              // event is already published and this instruction asks to message people only when published...
-              writeRequest.no_messaging = false;
-              writeRequest.overrideRecipient = [];
-              for (const this_person of overrideList) {
-                let instruction = this_person.split('=');
-                if (instruction[0].startsWith('*published')) {
-                  instruction[0] = instruction[1];
-                }
-                if (instruction) {
-                  if (instruction[0].startsWith('slot')) {
-                    writeRequest.overrideRecipient.push(newPersonID);
-                  }
-                  else if (instruction[0].startsWith('event')) {
-                    writeRequest.overrideRecipient.push(...makeArray(pEvent.owner));
-                  }
-                  else {
-                    writeRequest.overrideRecipient.push(instruction[0]);
-                  }
-                }
-              }
-              if (writeRequest.overrideRecipient.length === 0) {
-                writeRequest.overrideRecipient.push(newPersonID);
-              }
-              writeRequest.override_subject = `Changes have been made to ${pEvent.description} (${makeDate(pEvent.occurrence_date, { noTime: true }).absolute}) that affect you`;
-              writeRequest.override_messageText = `${newPersonName} has been added to this event.`;
-            }
+          if (pEvent.hasOwnProperty('customizations')) {
+            writeRequest.customizations = deepCopy(pEvent.customizations);
+          }
+          if (!reactData.defaultValues.message_override) {
+            writeRequest.no_messaging = false;
           }
           else {
-            writeRequest.no_messaging = false;
-            writeRequest.overrideRecipient = overrideList;
+            let overrideList = makeArray(reactData.defaultValues.message_override);
+            if (overrideList.some(oItem => {
+              return oItem.toLowerCase().startsWith('*none');
+            })) {
+              writeRequest.no_messaging = true;
+            }
+            else if (overrideList.some(oItem => {
+              return oItem.toLowerCase().startsWith('*published');
+            })) {
+              if (!pEvent.published) {
+                writeRequest.no_messaging = true;
+              }
+              else {
+                // event is already published and this instruction asks to message people only when published...
+                writeRequest.no_messaging = false;
+                writeRequest.overrideRecipient = [];
+                for (const this_person of overrideList) {
+                  let instruction = this_person.split('=');
+                  if (instruction[0].startsWith('*published')) {
+                    instruction[0] = instruction[1];
+                  }
+                  if (instruction) {
+                    if (instruction[0].startsWith('slot')) {
+                      writeRequest.overrideRecipient.push(newPersonID);
+                    }
+                    else if (instruction[0].startsWith('event')) {
+                      writeRequest.overrideRecipient.push(...makeArray(pEvent.owner));
+                    }
+                    else {
+                      writeRequest.overrideRecipient.push(instruction[0]);
+                    }
+                  }
+                }
+                if (writeRequest.overrideRecipient.length === 0) {
+                  writeRequest.overrideRecipient.push(newPersonID);
+                }
+                writeRequest.override_subject = `Changes have been made to ${pEvent.description} (${makeDate(pEvent.occurrence_date, { noTime: true }).absolute}) that affect you`;
+                writeRequest.override_messageText = (body.allSubsequent === true)
+                  ? `${newPersonName} has been added to this, and all subsequent events.`
+                  : `${newPersonName} has been added to this event.`;
+              }
+            }
+            else {
+              writeRequest.no_messaging = false;
+              writeRequest.overrideRecipient = overrideList;
+            }
           }
         }
       }
+
       if (body.rejectDuplicate) {
         writeRequest.rejectDuplicate = body.rejectDuplicate;
+      }
+      if (body.allSubsequent === true) {
+        writeRequest.allSubsequent = true;
       }
       let slotInfo = await writeSlot(writeRequest);
       if (slotInfo.hasOwnProperty('success') && !slotInfo.success) {
@@ -2075,13 +2083,6 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                             }
                             else {
                               let pName = await makeName(pPatient);
-                              await handleAllocateSlot({
-                                body: {
-                                  person: `${pName}:${pPatient}`,
-                                  slot: this_item.slotData.id,
-                                  index: (index || 0)
-                                }
-                              });
                               // Check for other occurrences in this event
                               let othersExist = await checkOtherOccurrences();
                               if (othersExist && (othersExist.length > 0)) {
@@ -2090,14 +2091,14 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                                   popupMenuOpen: false,
                                   alert: {
                                     severity: 'warning',
-                                    title: `You are signed up!`,
+                                    title: `Recurring event!`,
                                     message: <div>
                                       This event has multiple occurrences.<br />
                                       Would you like to sign up for ALL occurrences of this event?<br />
                                     </div>,
                                     action: [
                                       {
-                                        text: `No. Just this one.`,
+                                        text: `I changed my mind.  Sign up for nothing at all.`,
                                         function: (async () => {
                                           updateReactData({
                                             alert: false
@@ -2105,8 +2106,31 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                                         })
                                       },
                                       {
-                                        text: `Yes, sign me up for all future occurrences`,
+                                        text: `Sign up for just this one.`,
                                         function: (async () => {
+                                          await handleAllocateSlot({
+                                            body: {
+                                              person: `${pName}:${pPatient}`,
+                                              slot: this_item.slotData.id,
+                                              index: (index || 0),
+                                            }
+                                          });
+                                          updateReactData({
+                                            alert: false
+                                          }, true);
+                                        })
+                                      },
+                                      {
+                                        text: `Sign up this one and all future occurrences`,
+                                        function: (async () => {
+                                          await handleAllocateSlot({
+                                            body: {
+                                              person: `${pName}:${pPatient}`,
+                                              slot: this_item.slotData.id,
+                                              index: (index || 0),
+                                              allSubsequent: true
+                                            }
+                                          });
                                           let eventID = pEventCode.split('#')[0];
                                           let todayYMD = makeDate(new Date()).numeric;
                                           let failures = 0;
@@ -2118,7 +2142,8 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                                                   person: `${pName}:${pPatient}`,
                                                   slot: this_item.slotData.id,
                                                   index: (index || 0),
-                                                  rejectDuplicate: true
+                                                  rejectDuplicate: true,
+                                                  no_messaging: true
                                                 },
                                                 allocateEventCode: pEventCode,
                                                 allocateOccurrence: next_event
@@ -2316,7 +2341,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                             if (next_event >= todayYMD) {
                               pEventCode = `${eventID}#${next_event}`;
                               let result = await handleAllocateSlot({
-                                body: Object.assign({}, slotObj, { rejectDuplicate: true }),
+                                body: Object.assign({}, slotObj, { rejectDuplicate: true, no_messaging: true }),
                                 allocateEventCode: pEventCode,
                                 allocateOccurrence: next_event,
                               });

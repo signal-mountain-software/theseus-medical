@@ -1692,6 +1692,10 @@ export async function writeSlot(body) {
         }
         else { subjectText += 'your event'; }
         subjectText += ` on ${makeDate(occurrence).absolute}`;
+        // Add this and all subsequent events if flag is set
+        if (body.allSubsequent === true) {
+          subjectText += ' and for all subsequent dates';
+        }
       }
 
       if (body.override_messageText) {
