@@ -1844,19 +1844,20 @@ export default ({ onClose, options = {} }) => {
         {/* Buttons for Select Account Type and Fill Fields stages */}
         {(reactData.stage === 'select_account_type' || reactData.stage === 'fill_fields') && (
           <Box style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-            {/* Change Account Type button - only show when an account type is selected */}
+            {/* Exit button - only show when an account type is selected */}
+            {/* Tap will return you to Account Type Selection */}
             {reactData.selected_account_type && (
               <Button
                 className={AVAClass.AVAButton}
                 style={{
                   marginTop: '16px',
-                  backgroundColor: '#666',
+                  backgroundColor: 'red',
                   color: 'white'
                 }}
                 size='small'
                 onClick={handleChangeAccountType}
               >
-                Change Account Type
+                Exit
               </Button>
             )}
 
