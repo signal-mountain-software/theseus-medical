@@ -887,6 +887,10 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
 
     if (JSON.stringify(reactData.og.peopleRec) !== JSON.stringify(reactData.current.peopleRec)) {
       // **** NEED TO ADD SPECIAL HANDLING FOR CHANGE OF PRIMARY KEY ***  (likely change to inactive account?)
+      reactData.current.peopleRec.last_update = new Date().toISOString();  // Expected output: "2011-10-05T14:48:00.000Z"
+      if (!reactData.current.peopleRec.created_on) {
+        reactData.current.peopleRec.created_on = new Date().toISOString();  // Expected output: "2011-10-05T14:48:00.000Z"
+      }
       await dbClient
         .put({
           TableName: 'People',
@@ -899,6 +903,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     }
     if (JSON.stringify(reactData.og.sessionRec) !== JSON.stringify(reactData.current.sessionRec)) {
       // **** NEED TO ADD SPECIAL HANDLING FOR CHANGE OF PRIMARY KEY ***  (likely change to inactive account?)
+      reactData.current.sessionRec.last_update = new Date().toISOString();  // Expected output: "2011-10-05T14:48:00.000Z"
       await dbClient
         .put({
           TableName: 'SessionsV2',
@@ -926,6 +931,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           if (memberList.length > 0) {
             for (let this_member of memberList) {
               if (this_member.createAccount) {
+                reactData.current.peopleRec.created_on = new Date().toISOString();  // Expected output: "2011-10-05T14:48:00.000Z"
                 await dbClient
                   .put({
                     TableName: 'People',

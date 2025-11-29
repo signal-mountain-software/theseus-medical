@@ -863,7 +863,8 @@ export default ({ onClose, options = {} }) => {
         subscription_status: "na",
         user_display_name: memberName,
         user_homeClient: state.session.client_id,
-        user_id: member.proposed_user_id
+        user_id: member.proposed_user_id,
+        last_update: new Date().toISOString()
       };
 
       console.log('Saving SessionsV2 record:', sessionRecord);
@@ -1033,6 +1034,9 @@ export default ({ onClose, options = {} }) => {
           }
         }
       });
+
+      peopleRecord.created_on = new Date().toISOString();  // Expected output: "2011-10-05T14:48:00.000Z"
+      peopleRecord.last_update = new Date().toISOString();  // Expected output: "2011-10-05T14:48:00.000Z"
 
       console.log('Saving People record:', peopleRecord);
 
