@@ -237,6 +237,7 @@ const MessageTemplateManager = ({ open, onClose, onSelectTemplate }) => {
                 template_id: templateId,
                 template_name: templateName.trim(),
                 template_body: templateBodyArray,
+                template_type: 'html',
                 plain_text: templatePlainText.trim(),
                 template_mayUse_groupList: selectedTemplate?.template_mayUse_groupList || ['*all'],
                 updated_by: state.user.person_id,
