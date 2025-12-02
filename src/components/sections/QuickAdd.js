@@ -1672,6 +1672,19 @@ export default ({ onClose, options = {} }) => {
                   }
 
                   const fieldType = fieldData.value?.type || 'text';
+
+                  // If field type is header, just display the text
+                  if (fieldType === 'header') {
+                    const headerText = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
+                    return (
+                      <Box key={fieldName} style={{ marginTop: '16px', marginBottom: '12px', marginRight: '16px' }}>
+                        <Typography variant="subtitle1" style={{ fontWeight: 600 }}>
+                          {headerText}
+                        </Typography>
+                      </Box>
+                    );
+                  }
+
                   const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
                   const isRequired = reactData.selected_account_config?.required?.includes(fieldName) || false;
                   const isDateField = fieldType === 'date';
@@ -1698,13 +1711,23 @@ export default ({ onClose, options = {} }) => {
                         value={reactData.field_values[fieldName] || ''}
                         onChange={(event) => {
                           if (fieldType === 'date') {
-                            handleDateFieldChange(fieldName, event.target.value);
+                            // For date fields, just update the value without formatting
+                            handleFieldValueChange(fieldName, event.target.value);
                           } else if (fieldType === 'email') {
                             handleEmailFieldChange(fieldName, event.target.value);
                           } else if (fieldType === 'phone') {
                             handlePhoneFieldChange(fieldName, event.target.value);
                           } else {
                             handleFieldValueChange(fieldName, event.target.value);
+                          }
+                        }}
+                        onBlur={(event) => {
+                          // Format date only when user leaves the field
+                          if (fieldType === 'date' && event.target.value) {
+                            const dateResult = makeDate(event.target.value);
+                            if (!dateResult.error) {
+                              handleFieldValueChange(fieldName, dateResult.slashDate);
+                            }
                           }
                         }}
                         variant="outlined"
