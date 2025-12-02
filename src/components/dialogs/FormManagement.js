@@ -3,7 +3,7 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 
 import { getMemberList } from '../../util/AVAGroups';
-import { dbClient, recordExists, cl, titleCase } from '../../util/AVAUtilities';
+import { dbClient, recordExists, cl, titleCase, getDb, putDb, deepCopy } from '../../util/AVAUtilities';
 import QuickSearch from '../sections/QuickSearch';
 import { getPerson, getImage, makeName } from '../../util/AVAPeople';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
@@ -11,6 +11,7 @@ import { addDays, makeDate, makeTime } from '../../util/AVADateTime';
 import FormFillB from '../forms/FormFillB';
 import { createDocument } from '../../util/AVADocuments';
 import AVAUploadFile from '../../util/AVAUploadFile';
+import FormEditor from '../forms/FormEditor';
 
 import { Snackbar, Paper, Box, Dialog, DialogActions, DialogContent, DialogContentText, Button, Typography, Checkbox, FormControlLabel } from '@material-ui/core';
 import Select from "react-dropdown-select";
@@ -1044,16 +1045,44 @@ export default ({ defaults, onClose }) => {
               alignItems='flex-start'
               marginLeft={'32px'}
             >
-              <Typography
-                key={`g_client_name_header`}
-                style={AVATextStyle({
-                  size: 1.5,
-                  bold: true,
-                  overflow: 'visible',
-                  margin: { top: 1, bottom: 1 },
-                })}>
-                {`${state.session.client_name} Forms`}
-              </Typography>
+              <Box display='flex' flexDirection='row' alignItems='center' justifyContent='space-between' width='100%'>
+                <Typography
+                  key={`g_client_name_header`}
+                  style={AVATextStyle({
+                    size: 1.5,
+                    bold: true,
+                    overflow: 'visible',
+                    margin: { top: 1, bottom: 1 },
+                  })}>
+                  {`${state.session.client_name} Forms`}
+                </Typography>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  size="small"
+                  style={{
+                    borderRadius: '20px',
+                    textTransform: 'none',
+                    marginRight: '16px'
+                  }}
+                  onClick={() => {
+                    const newForm = {
+                      client_id: state.session.client_id,
+                      form_id: `form_${Date.now()}`,
+                      form_name: 'New Form',
+                      category: '',
+                      sections: [],
+                      fields: {}
+                    };
+                    updateReactData({
+                      showFormEditor: true,
+                      formEditorRecord: newForm
+                    }, true);
+                  }}
+                >
+                  + New Form
+                </Button>
+              </Box>
               <Paper component={Box} elevation={0} overflow='auto' square
                 style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
               >
@@ -1122,6 +1151,31 @@ export default ({ defaults, onClose }) => {
                             })}
                             size='small'
                           />
+                          <EditIcon
+                            key={`edit-button_form${listIndex}`}
+                            onClick={async () => {
+                              // Fetch Forms table record
+                              const getSpec = {
+                                TableName: 'Forms',
+                                Key: {
+                                  client_id: state.session.client_id,
+                                  form_id: this_formID
+                                }
+                              };
+                              let formRec = await getDb(getSpec);
+                              if (!formRec) return;
+                              updateReactData({
+                                showFormEditor: true,
+                                formEditorRecord: deepCopy(formRec)
+                              }, true);
+                            }}
+                            style={AVATextStyle({
+                              size: 1.5,
+                              margin: { right: 0.5 },
+                            })}
+                            size='small'
+                          />
+                          {/* FormEditor Dialog */}
                           <Typography
                             key={`g_text_${listIndex}_0_${reactData.selectedPerson_id}`}
                             draggable={!!reactData.selectedPerson_id}
@@ -2170,14 +2224,15 @@ export default ({ defaults, onClose }) => {
                   if (group.level === 1) return true;
 
                   // Check if all ancestors are expanded
-                  let currentGroup = group;
-                  while (currentGroup.level > 1) {
-                    const parent = state.groups.adminHierarchy.find(g => g.id === currentGroup.belongs_to);
+                  let current = group;
+                  while (current.level > 1) {
+                    const belongsTo = current.belongs_to;
+                    const parent = state.groups.adminHierarchy.find(g => g.id === belongsTo);
                     if (!parent) return false;
                     if (reactData.editFormGroups.collapsedGroups?.includes(parent.id)) {
                       return false;
                     }
-                    currentGroup = parent;
+                    current = parent;
                   }
                   return true;
                 };
@@ -2351,7 +2406,7 @@ export default ({ defaults, onClose }) => {
                 // Update each group's forms array
                 const form_id = reactData.editFormGroups.form_id;
                 let newGroupList = [...reactData.editFormGroups.groupList];
-                const oldGroupList = reactData.masterFormList[form_id].groupList || [];
+                //                const oldGroupList = reactData.masterFormList[form_id].groupList || [];
 
                 // VALIDATION: Clean up orphaned parents
                 // If a parent is selected but NONE of its children are, remove the parent
@@ -2497,9 +2552,45 @@ export default ({ defaults, onClose }) => {
         >
           {'Done'}
         </Button>
-      </DialogActions>;
-      {
-        reactData.alert &&
+      </DialogActions>
+      {reactData.showFormEditor && (
+        <Dialog
+          open={true}
+          onClose={() => updateReactData({ showFormEditor: false }, true)}
+          classes={{
+            paper: classes.paperPallette
+          }}
+          PaperProps={{
+            style: {
+              width: '80vw',
+              maxWidth: '80vw',
+              minWidth: 400,
+            },
+          }}
+          style={{
+            borderRadius: ('25px 25px 25px 25px'),
+          }}
+        >
+          <DialogContent>
+            <FormEditor
+              form={reactData.formEditorRecord}
+              onSave={async (updatedForm) => {
+                // Save to Forms table
+                const putSpec = {
+                  TableName: 'Forms',
+                  Item: updatedForm
+                };
+                await putDb(putSpec);
+                updateReactData({ showFormEditor: false }, true);
+                // Reload the form list to include the new/updated form
+                await initialize();
+              }}
+              onCancel={() => updateReactData({ showFormEditor: false }, true)}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+      {reactData.alert &&
         <Snackbar
           open={!!reactData.alert}
           px={3}
