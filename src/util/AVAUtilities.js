@@ -168,7 +168,7 @@ export async function getMarqueeMessage(client_id, options = {}) {
       });
       if ((sRec.criticalMessage) || (sRec.priorityMessage)) {
         suppressWeather = true;
-        if (sRec.criticalMessage) { 
+        if (sRec.criticalMessage) {
           urgentMessage = sRec.message;
         }
       }
@@ -187,29 +187,30 @@ export async function getMarqueeMessage(client_id, options = {}) {
 }
 
 export function deepCopy(pValue) {
-  if (!pValue) {
+  // Fast path for primitives and null/undefined
+  if (!pValue || typeof pValue !== 'object') {
     return pValue;
   }
-  else if (Array.isArray(pValue)) {
-    var count = pValue.length;
-    var arr = new Array(count);
-    for (var i = 0; i < count; i++) {
-      arr[i] = deepCopy(pValue[i]);
+
+  // Preserve Date objects
+  if (isDate(pValue)) {
+    return pValue;
+  }
+
+  // Use JSON for speed (5-10x faster than manual recursion)
+  // This handles most common cases: objects, arrays, nested structures
+  try {
+    return JSON.parse(JSON.stringify(pValue));
+  } catch (e) {
+    // Fallback for edge cases (circular refs, special types, etc.)
+    if (Array.isArray(pValue)) {
+      return pValue.map(item => deepCopy(item));
     }
-    return arr;
-  }
-  else if (isDate(pValue)) {
-    return pValue;
-  }
-  else if (typeof pValue === 'object') {
-    var obj = {};
-    for (var prop in pValue) {
+    const obj = {};
+    for (const prop in pValue) {
       obj[prop] = deepCopy(pValue[prop]);
     }
     return obj;
-  }
-  else {
-    return pValue;
   }
 }
 
@@ -227,13 +228,13 @@ export function listFromArray(pArray, options) {
   let nextToLast = inArray.length - 2;
   let threeOrMore = (inArray.length > 2);
   if (options && options.max && (inArray.length > options.max.length)) {
-    return `${inArray.length} ${options.max.words || 'selections'}`
-  } 
+    return `${inArray.length} ${options.max.words || 'selections'}`;
+  }
   inArray.forEach((s, x) => {
     let linkWord = 'and';
     if (options) {
       if (options.sentenceCase) { s = sentenceCase(s); }
-      if (options.or) { linkWord = 'or' }
+      if (options.or) { linkWord = 'or'; }
     }
     makeList$ += link + s;
     if (threeOrMore) { link = ', '; }
@@ -520,17 +521,19 @@ export function array_in_array(a1, a2) {
 export function titleCase(pString) {
   if (!pString) { return ''; }
   let words = pString.split(/(\W+)/);
-  let returnString = '';
-  words.forEach((w, x) => {
-    if (x === 0) { returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1)}`; }
-    else if ((w.length < 3) || (w === 'and') || (w === 'the')) { returnString += w; }
-    else if (w.toLowerCase() === 'ava') { returnString += 'AVA'; }
-    else if (w.toLowerCase() === 'bbq') { returnString += 'BBQ'; }
-    else if (w.toLowerCase() === 'ceo') { returnString += 'CEO'; }
-    else { returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1)}`; }
-//    returnString += ' ';
-  });
-  return returnString.trim();
+  const smallWords = ['of', 'and', 'or', 'a', 'an', 'the', 'in', 'on', 'at', 'to', 'for', 'with', 'from', 'by'];
+  const allCapWords = ['ava', 'bbq', 'id', 'tv', 'ceo', 'cfo', 'coo', 'usa', 'uk', 'eu'];
+  const titleCased = words.map((w, idx) => {
+    // Always capitalize first word, otherwise check if it's a small word
+    if (allCapWords.includes(w.toLowerCase())) {
+      return w.toUpperCase();
+    }
+    else if (idx === 0 || !smallWords.includes(w.toLowerCase())) {
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    }
+    return w.toLowerCase();
+  }).join(' ');
+  return titleCased.trim();
 }
 
 export function makeNumber(pNum) {

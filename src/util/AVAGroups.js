@@ -1818,7 +1818,6 @@ export async function getAllGroups(person_id, client_id) {
   */
 
   let responseData = {};
-  let profile = await getPerson(person_id);
   let session = await getSession(person_id);
   if (!client_id) {
     if (session) { client_id = session.client_id; }
