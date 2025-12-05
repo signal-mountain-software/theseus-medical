@@ -2,7 +2,7 @@ import React from 'react';
 
 import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, sentenceCase, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
-import { formatPhone, getPerson, makeName } from '../../util/AVAPeople';
+import { formatPhone, makeName } from '../../util/AVAPeople';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import AVAConfirm from './AVAConfirm';
 import AVAUploadFile from '../../util/AVAUploadFile';
@@ -532,11 +532,6 @@ export default ({ request = {}, onClose }) => {
           }
           response.value = makeName(pertains_to);
         }
-        else if (defaultObj.value_path[0].toLowerCase() === 'makenewaccount') {
-          response.value = await makeNewUser({
-            tableDefaults: reactData.formRec.fields[this_field].default.tables,
-          });
-        }
         else if (defaultObj.value_path[0].toLowerCase() === 'field') {
           if (defaultObj.value_path[1]) {
             response.value = reactData.fields[defaultObj.value_path[1]].value;
@@ -736,11 +731,6 @@ export default ({ request = {}, onClose }) => {
                 response.fields[this_field].value = '';
               }
             }
-            else if (defaultObj.value_path[0].toLowerCase() === 'makenewaccount') {
-              response.fields[this_field].value = response.value = await makeNewUser({
-                tableDefaults: formRec.fields[this_field]?.default?.tables,
-              });
-            }
             else if (defaultObj.value_path.length === 1) {
               response.fields[this_field].value = defaultObj.value_path[0];
             }
@@ -781,8 +771,61 @@ export default ({ request = {}, onClose }) => {
             response.fields[this_field].ignore = ignoreObj.equals ?? true;
           }
         }
+        let pertains_to = state.session.patient_id;
+        if (!reactData.peopleRec || !reactData.peopleRec[pertains_to]) {
+          let gotPerson = await getDb({
+            Key: {
+              person_id: pertains_to
+            },
+            TableName: "People"
+          });
+          updateReactData({
+            peopleRec: Object.assign({}, reactData.peopleRec || {}, { [pertains_to]: gotPerson })
+          }, false);
+        }
         // Set type
         response.fields[this_field].type = formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type || 'text';
+        // If 'select' type and custom_selection is true, set type to 'select & text'
+        if (response.fields[this_field].type === 'select' && formRec.fields[this_field]?.value?.custom_selection) {
+          response.fields[this_field].type = 'select & text';
+        }
+        else if (response.fields[this_field].type === 'yes/no') {
+          response.fields[this_field].type = 'select';
+          response.fields[this_field].selectionObj = {
+            selectionList: ['yes', 'no'],
+            min: 1,
+            max: 1
+          };
+        }
+        else if (response.fields[this_field].type === 'family'
+          && reactData.peopleRec
+          && reactData.peopleRec[pertains_to]
+          && reactData.peopleRec[pertains_to].family_id) {
+          let familyMembers = [];
+          if (reactData.familyRec && reactData.familyRec.primary_contact) {
+            // Add primary contact
+            familyMembers.push({
+              id: reactData.familyRec.primary_contact.id,
+              name: reactData.familyRec.primary_contact.name,
+              nickname: reactData.familyRec.primary_contact.nickname
+            });
+            // Add other members
+            if (reactData.familyRec.other_members && Array.isArray(reactData.familyRec.other_members)) {
+              for (let member of reactData.familyRec.other_members) {
+                familyMembers.push({
+                  id: member.id,
+                  name: member.name,
+                  nickname: member.nickname
+                });
+              }
+            }
+          }
+          response.fields[this_field].familyMembers = familyMembers;
+          updateReactData({
+            familyRec: reactData.familyRec,
+            family_id: reactData.peopleRec[pertains_to].family_id || false,
+          }, false);
+        }
         // Set default valueText (this may require conversion of value data as in types phone or date or time)
         response.fields[this_field].valueText = await formatValue({
           rawValue: response.fields[this_field].value,
@@ -835,20 +878,26 @@ export default ({ request = {}, onClose }) => {
         errorMessage:
     */
     let pertains_to_name;
-    reactData.peopleRec[pertains_to] = await getDb({
-      Key: {
-        person_id: pertains_to
-      },
-      TableName: "People"
-    });
-    if (!reactData.peopleRec[pertains_to]) {
-      reactData.peopleRec[pertains_to] = {};
-    };
+    if (!pertains_to) {
+      pertains_to = state.session.patient_id;
+    }
+    if (!reactData.peopleRec || !reactData.peopleRec[pertains_to]) {
+      let gotPerson = await getDb({
+        Key: {
+          person_id: pertains_to
+        },
+        TableName: "People"
+      });
+      updateReactData({
+        peopleRec: Object.assign({}, reactData.peopleRec || {}, { [pertains_to]: gotPerson })
+      }, false);
+    }
+
     if (request.overrideFormRec && isObject(request.overrideFormRec)) {
       Object.assign(formRec, request.overrideFormRec);
     }
     updateReactData({
-      family_id: reactData.peopleRec[pertains_to].family_id || false,
+      family_id: reactData.peopleRec[pertains_to].family_groups ? reactData.peopleRec[pertains_to].family_groups[0] : (reactData.peopleRec[pertains_to].family_id || false),
       peopleRec: reactData.peopleRec,
       formRec
     }, false);
@@ -1103,11 +1152,6 @@ export default ({ request = {}, onClose }) => {
               }
               response.fields[this_field].value = makeName(pertains_to);
             }
-            else if (defaultObj.value_path[0].toLowerCase() === 'makenewaccount') {
-              response.fields[this_field].value = response.value = await makeNewUser({
-                tableDefaults: formRec.fields[this_field]?.default?.tables,
-              });
-            }
             else if (defaultObj.value_path.length === 1) {
               response.fields[this_field].value = defaultObj.value_path[0];
             }
@@ -1150,6 +1194,57 @@ export default ({ request = {}, onClose }) => {
         }
         // Set type
         response.fields[this_field].type = formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type || 'text';
+
+        // If 'select' type and custom_selection is true, set type to 'select & text'
+        if (response.fields[this_field].type === 'select' && formRec.fields[this_field]?.value?.custom_selection) {
+          response.fields[this_field].type = 'select & text';
+        }
+        else if (response.fields[this_field].type === 'yes/no') {
+          response.fields[this_field].type = 'select';
+          response.fields[this_field].selectionObj = {
+            selectionList: ['yes', 'no'],
+            min: 1,
+            max: 1
+          };
+        }
+        // If 'family' type, load family members for the current person
+        else if (response.fields[this_field].type === 'family'
+          && reactData.peopleRec
+          && reactData.peopleRec[pertains_to]
+          && reactData.peopleRec[pertains_to].family_groups) {
+          reactData.familyRec = await getDb({
+            Key: {
+              client_id: state.session.client_id,
+              composite_key: reactData.peopleRec[pertains_to].family_groups[0]
+            },
+            TableName: "FamilyGroups"
+          });
+          let familyMembers = [];
+          if (reactData.familyRec && reactData.familyRec.primary_contact) {
+            // Add primary contact
+            familyMembers.push({
+              id: reactData.familyRec.primary_contact.id,
+              name: reactData.familyRec.primary_contact.name,
+              nickname: reactData.familyRec.primary_contact.nickname
+            });
+            // Add other members
+            if (reactData.familyRec.other_members && Array.isArray(reactData.familyRec.other_members)) {
+              for (let member of reactData.familyRec.other_members) {
+                familyMembers.push({
+                  id: member.id,
+                  name: member.name,
+                  nickname: member.nickname
+                });
+              }
+            }
+          }
+          response.fields[this_field].familyMembers = familyMembers;
+          updateReactData({
+            familyRec: reactData.familyRec,
+            family_id: reactData.peopleRec[pertains_to].family_id || false,
+          }, false);
+        }
+
         // Override computed defaults with preset values (if any)
         if (preset_values && preset_values[this_field]) {
           response.fields[this_field].og_default = await formatValue({
@@ -1338,93 +1433,6 @@ export default ({ request = {}, onClose }) => {
     return response;
   };
 
-  const makeNewUser = async ({ tableDefaults }) => {
-    let response;
-    let formatter = `%%first_name//^[a-zA-Z]{1}%%%%last_name%%-%%client_id%%`;
-    let candidate = reconcilePrompt({
-      rawValue: formatter,
-      this_field: 'person_id'
-    });
-    candidate = candidate.replace(/\s/gm, '').toLowerCase();
-    let isExisting = await getPerson(candidate);
-    if (isEmpty(isExisting)) {
-      response = candidate.toLowerCase();
-    }
-    else {
-      // try alternate format
-      let formatterB = `%%first_name%%%%last_name%%-%%client_id%%`;
-      let candidateB = reconcilePrompt({
-        rawValue: formatterB,
-        this_field: 'person_id'
-      });
-      candidateB = candidateB.replace(/\s/gm, '').toLowerCase();
-      isExisting = await getPerson(candidateB);
-      if (isEmpty(isExisting)) {
-        response = candidateB.toLowerCase();
-      }
-      else {
-        // start trying numbers
-        let num = 0;
-        do {
-          num++;
-          candidateB = candidate.replace('-', `${num}-`);
-          isExisting = await getPerson(candidateB);
-        }
-        while (!isEmpty(isExisting) && (num < 20));
-        if (isEmpty(isExisting)) {
-          response = candidateB.toLowerCase();
-        }
-        else {
-          response = `${new Date().getTime()}-${candidate.split('-')[1]}`;
-        }
-      }
-    }
-    reactData.peopleRec[response] = Object.assign({},
-      tableDefaults.personRec,
-      {
-        person_id: response,
-        client_id: state.session.client_id,
-      });
-    reactData.sessionRec[response] = Object.assign({},
-      tableDefaults.sessionRec,
-      {
-        session_id: response,
-        patient_id: response,
-        person_id: response,
-        client_id: state.session.client_id,
-        user_homeClient: state.session.client_id,
-        user_id: response
-      });
-    if (!reactData.family_id) {
-      reactData.family_id = `family_${new Date().getTime()}`;
-      reactData.newFamily = true;
-      reactData.familyRec = Object.assign({},
-        {
-          client_id: state.session.client_id,
-          composite_key: reactData.family_id,
-          record_type: 'header',
-          role: 'family',
-          family_id: reactData.family_id,
-        }
-      );
-    };
-    if (reactData.newFamily) {
-      reactData.familyRec.family_name = reactData.fields['last_name']
-        ? `The ${reactData.fields['last_name'].value} Family`
-        : (reactData.fields['first_name'] ? `${reactData.fields['first_name'].value}'s Family` : 'My Family');
-    }
-    updateReactData({
-      newPerson: true,
-      newFamily: reactData.newFamily,
-      family_id: reactData.family_id,
-      peopleRec: reactData.peopleRec,
-      sessionRec: reactData.sessionRec,
-      familyRec: reactData.familyRec,
-      pertains_to: response
-    }, false);
-    return response;
-  };
-
   const handleChangeValue = async ({ newText, newValue, newList, prop, occ_index, sentenceCase, reactUpdObj }) => {
     if (sentenceCase && newText && (newText.length === 1)) {
       newText = newText.toUpperCase();
@@ -1472,8 +1480,8 @@ export default ({ request = {}, onClose }) => {
       let foundAt = reactData.fields[props.prop].value.indexOf(props.clickText);
       if (foundAt < 0) {
         reactData.fields[props.prop].value.push(props.clickText);
-        if (reactData.fields[props.prop].selectionObj.max
-          && (reactData.fields[props.prop].value.length > reactData.fields[props.prop].selectionObj.max)) {
+        const max = reactData.fields[props.prop].selectionObj?.max || 99;
+        if (max < reactData.fields[props.prop].value.length) {
           reactData.fields[props.prop].value.shift();
         }
       }
@@ -1743,6 +1751,63 @@ export default ({ request = {}, onClose }) => {
                   />
                 }
               />
+            }
+          </React.Fragment>
+        </Box>
+      </Box>
+    );
+  };
+
+  const AVAFamilyCheckBoxGroup = (props) => {
+    // props should contain:
+    //   prop - field name
+    //   familyMembers - array of family member objects with { id, name, nickname }
+    const promptHTML = reconcilePrompt({
+      rawValue: reactData.fields[props.prop].prompt.value,
+      this_field: props.prop
+    });
+    return (
+      <Box flexDirection='column' key={`Box__${props.prop}`} className={classes.formControlCheckGroup}>
+        <Typography className={classes.formControlTitle} dangerouslySetInnerHTML={{ __html: promptHTML }} />
+        <Box
+          display='flex'
+          flexDirection='column'
+          alignItems='flex-start'
+          flexWrap='nowrap'
+          key={`CheckGroup__${props.prop}`}
+        >
+          <React.Fragment key={`groupFrag__${props.prop}`}>
+            {(props.familyMembers && props.familyMembers.length > 0) ?
+              props.familyMembers.map((member, tIndex) => (
+                <FormControlLabel
+                  className={classes.formControlDays}
+                  style={{ marginLeft: '16px' }}
+                  key={`${props.prop}_${tIndex}`}
+                  control={
+                    <Checkbox
+                      aria-label={`${props.prop}_${tIndex}`}
+                      name={`${props.prop}_${tIndex}`}
+                      key={`FamilyCheckGroup__${props.prop}_${tIndex}`}
+                      size='small'
+                      checked={reactData.fields[props.prop].value && reactData.fields[props.prop].value.includes(member.id)}
+                      onClick={async () => {
+                        await handleMakeSelection({
+                          clickText: member.id,
+                          prop: props.prop
+                        });
+                      }}
+                      disableRipple
+                      inputProps={{ 'aria-labelledby': `family_member_${tIndex}` }}
+                    />
+                  }
+                  label={<Typography className={classes.radioDays} style={{ whiteSpace: 'nowrap' }}>{`${member.name}${member.nickname ? (' (' + member.nickname + ')') : ''}`}</Typography>}
+                  labelPlacement='end'
+                />
+              ))
+              :
+              <Typography style={AVATextStyle({ size: 0.8, margin: { left: 1 } })}>
+                No family members found
+              </Typography>
             }
           </React.Fragment>
         </Box>
@@ -2940,6 +3005,20 @@ export default ({ request = {}, onClose }) => {
                                 <AVADropDown
                                   prop={this_field}
                                   text={reactData.fields[this_field].selectionObj.selectionList}
+                                />
+                              </Box>
+                            }
+                            {(reactData.fields[this_field].type === 'family') &&
+                              <Box
+                                display='flex'
+                                mb={1}
+                                flexDirection='row'
+                                justifyContent='flex-start'
+                                alignItems='center'
+                              >
+                                <AVAFamilyCheckBoxGroup
+                                  prop={this_field}
+                                  familyMembers={reactData.fields[this_field].familyMembers || []}
                                 />
                               </Box>
                             }

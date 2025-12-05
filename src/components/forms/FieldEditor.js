@@ -240,6 +240,7 @@ const FieldEditor = ({ field, open, onSave, onCancel }) => {
                                     <MenuItem value="date">Date</MenuItem>
                                     <MenuItem value="phone">Phone</MenuItem>
                                     <MenuItem value="yes/no">Yes/No</MenuItem>
+                                    <MenuItem value="family">Family Member List</MenuItem>
                                     <MenuItem value="select">Selection</MenuItem>
                                     <MenuItem value="signature">Signature</MenuItem>
                                     <MenuItem value="initials">Initials</MenuItem>
