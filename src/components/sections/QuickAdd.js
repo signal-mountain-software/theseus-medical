@@ -421,38 +421,6 @@ export default ({ onClose, options = {} }) => {
     }, 500);
   };
 
-  const handleDateFieldChange = (fieldName, value) => {
-    // Immediately update the field value for responsive typing
-    setReactData(prev => ({
-      ...prev,
-      field_values: {
-        ...prev.field_values,
-        [fieldName]: value
-      }
-    }));
-
-    // Clear any existing timeout for this field
-    if (dateValidationTimeouts.current[fieldName]) {
-      clearTimeout(dateValidationTimeouts.current[fieldName]);
-    }
-
-    // Set a new timeout to validate and format the date after 500ms of no typing
-    dateValidationTimeouts.current[fieldName] = setTimeout(() => {
-      if (value && value.trim() !== '') {
-        const dateResult = makeDate(value);
-        const displayValue = dateResult.error ? value : dateResult.slashDate;
-
-        setReactData(prev => ({
-          ...prev,
-          field_values: {
-            ...prev.field_values,
-            [fieldName]: displayValue
-          }
-        }));
-      }
-    }, 500);
-  };
-
   const showAlert = ({ severity = 'info', title, message, action = null, autoHide = true }) => {
     setReactData(prev => ({
       ...prev,
