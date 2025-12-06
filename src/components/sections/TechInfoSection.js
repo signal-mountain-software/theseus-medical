@@ -2,6 +2,13 @@ import React from 'react';
 import { Box, Typography, Switch, Checkbox } from '@material-ui/core/';
 import { getPerson } from '../../util/AVAPeople';
 import { titleCase } from '../../util/AVAUtilities';
+import DeleteIcon from '@material-ui/icons/Delete';
+import IconButton from '@material-ui/core/IconButton';
+import Dialog from '@material-ui/core/Dialog';
+import DialogTitle from '@material-ui/core/DialogTitle';
+import DialogContent from '@material-ui/core/DialogContent';
+import DialogActions from '@material-ui/core/DialogActions';
+import Button from '@material-ui/core/Button';
 
 import useSession from '../../hooks/useSession';
 
@@ -9,9 +16,40 @@ import TextField from '@material-ui/core/TextField';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle } from '../../util/AVAStyles';
 
-export default ({ currentValues, ogValues, errorList, reactData, setError, updateField, updateReactData }) => {
+export default ({ currentValues, ogValues, errorList, reactData, setError, updateField, updateReactData, onClose }) => {
 
   const { state } = useSession();
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
+  const { dbClient } = require('../../util/AVAUtilities');
+
+  const handleDeleteAccount = async () => {
+    try {
+      const person_id = currentValues.peopleRec.person_id;
+
+      // Delete from People table
+      await dbClient.delete({
+        TableName: 'People',
+        Key: { person_id }
+      }).promise();
+
+      // Delete from SessionsV2 table
+      await dbClient.delete({
+        TableName: 'SessionsV2',
+        Key: { session_id: person_id }
+      }).promise();
+
+      setDeleteConfirmOpen(false);
+      console.log(`Account ${person_id} deleted successfully`);
+
+      // Close PeopleMaintenance dialog
+      if (onClose) {
+        onClose({ accountDeleted: true, person_id });
+      }
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      alert(`Failed to delete account: ${error.message}`);
+    }
+  };
 
   let search_words = [
     titleCase(reactData.current.peopleRec.name.first),
@@ -681,7 +719,7 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
                   inputProps={{ 'aria-labelledby': `message_routing_3` }}
                 />
                 <Typography style={AVATextStyle({ size: 0.8, margin: { left: -0.4 } })} >
-                    {`${this_candidate.name.first} ${this_candidate.name.last}`}
+                  {`${this_candidate.name.first} ${this_candidate.name.last}`}
                 </Typography>
               </Box>
             ))}
@@ -689,58 +727,119 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
         </React.Fragment>
 
         {reactData.administrative_account &&
-          <Box
-            display="flex"
-            pt={2}
-            flexDirection='column'
-            justifyContent="center"
-          >
-            <Typography
-              style={AVATextStyle({ margin: { top: 1 } })}
+          <React.Fragment>
+            <Box
+              display="flex"
+              pt={2}
+              flexDirection='column'
+              justifyContent="center"
             >
-              {'Inactive Account'}
-            </Typography>
-            <Box flexGrow={2} display='flex' alignItems='center'
-              justifyContent='flex-start' marginBottom={1} flexDirection='row'>
               <Typography
-                style={AVATextStyle({
-                  size: 0.8, margin: { right: 0.8 },
-                  bold: !currentValues.peopleRec.inactive_account
-                })}
+                style={AVATextStyle({ margin: { top: 1 } })}
               >
-                {'No'}
+                {'Inactive Account'}
               </Typography>
-              <Switch
-                checked={currentValues.peopleRec.inactive_account}
-                onClick={async (event) => {
-                  const newValue = !currentValues.peopleRec.inactive_account;
-                  let updateObj = {
-                    updateList: [{
-                      tableName: 'peopleRec',
-                      fieldName: 'inactive_account',
-                      newData: newValue
-                    }]
-                  };
-                  await updateField(updateObj);
-                }}
-                name="InactiveAccount"
-                color="primary"
-              />
-              <Typography
-                style={AVATextStyle({
-                  size: 0.8, margin: { left: 0.8 },
-                  bold: currentValues.peopleRec.inactive_account
-                })}
-              >
-                {'Yes'}
-              </Typography>
+              <Box flexGrow={2} display='flex' alignItems='center'
+                justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+                <Typography
+                  style={AVATextStyle({
+                    size: 0.8, margin: { right: 0.8 },
+                    bold: !currentValues.peopleRec.inactive_account
+                  })}
+                >
+                  {'No'}
+                </Typography>
+                <Switch
+                  checked={currentValues.peopleRec.inactive_account}
+                  onClick={async (event) => {
+                    const newValue = !currentValues.peopleRec.inactive_account;
+                    let updateObj = {
+                      updateList: [{
+                        tableName: 'peopleRec',
+                        fieldName: 'inactive_account',
+                        newData: newValue
+                      }]
+                    };
+                    await updateField(updateObj);
+                  }}
+                  name="InactiveAccount"
+                  color="primary"
+                />
+                <Typography
+                  style={AVATextStyle({
+                    size: 0.8, margin: { left: 0.8 },
+                    bold: currentValues.peopleRec.inactive_account
+                  })}
+                >
+                  {'Yes'}
+                </Typography>
+              </Box>
             </Box>
-          </Box>
+
+            <Box
+              display="flex"
+              paddingRight={2}
+              flexDirection='row'
+              justifyContent="flex-end"
+              alignItems="center"
+            >
+              <IconButton
+                onClick={() => setDeleteConfirmOpen(true)}
+                color="secondary"
+                title="Delete Account"
+              >
+                <DeleteIcon />
+              </IconButton>
+            </Box>
+          </React.Fragment>
         }
 
 
 
       </Box>
+
+
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        PaperProps={{
+          style: {
+            borderRadius: '30px'
+          }
+        }}
+      >
+        <DialogTitle style={{ textAlign: 'center', fontWeight: 'bold' }}>
+          Delete Account
+        </DialogTitle>
+        <DialogContent style={{ padding: '16px 24px' }}>
+          <Typography>
+            Are you sure you want to delete this account ({currentValues.peopleRec.person_id})?
+          </Typography>
+        </DialogContent>
+        <DialogActions style={{
+          justifyContent: 'center',
+          padding: '16px 24px',
+          gap: '16px'
+        }}>
+          <Button
+            onClick={() => setDeleteConfirmOpen(false)}
+            color="primary"
+            variant="outlined"
+          >
+            No, go back
+          </Button>
+          <Button
+            onClick={handleDeleteAccount}
+            color="secondary"
+            variant="contained"
+            style={{ backgroundColor: '#ff5252', color: 'white' }}
+          >
+            Yes, delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

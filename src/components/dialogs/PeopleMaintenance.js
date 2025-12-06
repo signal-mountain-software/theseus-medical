@@ -641,6 +641,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         updateReactData={(newData, force) => {
           updateReactData(newData, force);
         }}
+        onClose={onExit}
       />);
   }
 
