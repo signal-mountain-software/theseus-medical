@@ -128,7 +128,10 @@ export default ({ onClose, options = {} }) => {
     sent_verification_code: '',
     verification_code_input: '',
     code_sent_to: '',
-    code_send_method: ''
+    code_send_method: '',
+    // Family group fields
+    family_id: options?.family_id || null, // If passed in options, use existing family_id
+    existing_family_rec: null // Store existing FamilyGroups record if adding to existing family
   });
 
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
@@ -149,6 +152,12 @@ export default ({ onClose, options = {} }) => {
       // Grab the new_account_form object from state.session and store as new_account_prompts
       if (state.session?.new_account_form) {
         reactUpd.new_account_prompts = deepCopy(state.session.new_account_form);
+      }
+
+      // If options.family_id is provided, load the existing FamilyGroups record
+      if (options?.family_id) {
+        loadExistingFamily(options.family_id, reactUpd);
+        return; // Exit early; loadExistingFamily will update state
       }
 
       // Determine initial stage based on how QuickAdd was invoked
@@ -180,6 +189,56 @@ export default ({ onClose, options = {} }) => {
       });
     };
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Load an existing FamilyGroups record when adding members to an existing family
+   * Reads the FamilyGroups table and stores the record for later updates
+   * @param {string} familyId - The family_id to load
+   * @param {object} reactUpd - Initial state updates object to merge
+   */
+  const loadExistingFamily = async (familyId, reactUpd) => {
+    try {
+      const result = await getDb({
+        Key: {
+          client_id: state.session.client_id,
+          composite_key: familyId
+        },
+        TableName: 'FamilyGroups'
+      });
+
+      if (result) {
+        console.log('Loaded existing FamilyGroups record:', result);
+        reactUpd.existing_family_rec = result;
+        reactUpd.family_id = familyId;
+        reactUpd.stage = 'select_account_type';
+
+        showAlert({
+          severity: 'info',
+          title: 'Adding to Family',
+          message: `Adding new members to existing family: ${result.family_name}`,
+          autoHide: true
+        });
+      } else {
+        console.warn('FamilyGroups record not found for family_id:', familyId);
+        showAlert({
+          severity: 'warning',
+          title: 'Family Not Found',
+          message: `Could not find family group with ID: ${familyId}`,
+          autoHide: false
+        });
+      }
+
+      updateReactData(reactUpd, true);
+    } catch (error) {
+      console.error('Error loading existing FamilyGroups record:', error);
+      showAlert({
+        severity: 'error',
+        title: 'Load Error',
+        message: `Failed to load family group: ${error.message}`,
+        autoHide: false
+      });
+    }
+  };
 
   const gatherFormFields = async (selectedConfig) => {
     if (!selectedConfig?.field_list || !Array.isArray(selectedConfig.field_list)) {
@@ -950,22 +1009,6 @@ export default ({ onClose, options = {} }) => {
         contact_info: contact_info,
         account_type: member.account_type
       };
-      
-      // pick-out form_field instructions and place data properly in People rec
-      /*
-      Object.entries(reactData.form_fields).forEach(([fieldName, formRec]) => {
-        let saveAs = formRec.saveAs || formRec.values?.saveAs || formRec.prompt?.saveAs || false;
-        if (saveAs) {
-            const keys = saveAs.split('.');            
-                let obj = peopleRecord
-                for (let i = 0; i < keys.length - 1; i++) {
-                    if (!obj[keys[i]]) obj[keys[i]] = {};
-                    obj = obj[keys[i]];
-                }
-                    obj[keys[keys.length - 1]] = fieldValues[fieldName];
-        }
-      })
-      */
 
       // pick-out form_field instructions and place data properly in People rec
       Object.entries(reactData.form_fields).forEach(([fieldName, formRec]) => {
@@ -1066,66 +1109,99 @@ export default ({ onClose, options = {} }) => {
    * Creates both header record and individual person records for the family
    * Based on FamilyMaintenance.js patterns and LinkedAccounts.js family creation
    * 
+   * If adding to existing family:
+   * - Updates existing FamilyGroups record by appending new members to other_members array
+   * - Preserves primary_contact (first member remains primary)
+   * 
    * @param {Array} familyMembers - Array of family member objects with proposed_user_id and field_values
-   * @param {string} familyId - Generated family ID (e.g., "family_1704067200000")
+   * @param {string} familyId - Generated family ID (e.g., "family_1704067200000") or existing family_id
+   * @param {Object} existingFamilyRec - Existing family record if adding to existing family (optional)
    * @returns {Promise<boolean>} - Success status
    */
-  const saveFamilyGroupsRecord = async (familyMembers, familyId) => {
+  const saveFamilyGroupsRecord = async (familyMembers, familyId, existingFamilyRec = null) => {
     try {
       if (!familyId || !Array.isArray(familyMembers) || familyMembers.length === 0) {
         return false; // No family to create
       }
 
-      // Determine primary contact (first family member)
-      const primaryMember = familyMembers[0];
-      const primaryFieldValues = primaryMember.field_values || {};
-      const primaryLastName = primaryFieldValues.last_name ||
-        primaryFieldValues.lastName ||
-        primaryFieldValues.lname ||
-        primaryFieldValues.surname ||
-        primaryFieldValues['last name'] || '';
+      let familyRecord;
 
-      // Create family name using primary member's last name
-      const familyName = primaryLastName ? `The ${primaryLastName} Family` : 'Family';
+      if (existingFamilyRec) {
+        // Adding to existing family - preserve primary_contact and append new members
+        console.log('Adding members to existing family:', existingFamilyRec.family_id);
+        familyRecord = deepCopy(existingFamilyRec);
 
-      // Create family record (following FamilyMaintenance.js pattern line 204-220)
-      const familyRecord = {
-        client_id: state.session.client_id,
-        composite_key: familyId,
-        family_id: familyId,
-        family_name: familyName,
-        primary_contact: {},
-        other_members: []
-      };
+        // Append new members to other_members array
+        for (let i = 0; i < familyMembers.length; i++) {
+          const member = familyMembers[i];
+          const fieldValues = member.field_values || {};
+          const firstName = fieldValues.first_name ||
+            fieldValues.firstName ||
+            fieldValues.fname ||
+            fieldValues['first name'] || '';
+          const lastName = fieldValues.last_name ||
+            fieldValues.lastName ||
+            fieldValues.lname ||
+            fieldValues.surname ||
+            fieldValues['last name'] || '';
 
-      // Create person records for each family member (following FamilyMaintenance.js pattern line 958-970)
-      for (let i = 0; i < familyMembers.length; i++) {
-        const member = familyMembers[i];
-        const fieldValues = member.field_values || {};
-        const firstName = fieldValues.first_name ||
-          fieldValues.firstName ||
-          fieldValues.fname ||
-          fieldValues['first name'] || '';
-        const lastName = fieldValues.last_name ||
-          fieldValues.lastName ||
-          fieldValues.lname ||
-          fieldValues.surname ||
-          fieldValues['last name'] || '';
-
-        if (member.account_config?.family_role === 'primary') {
-          familyRecord.primary_contact = {
-            id: member.proposed_user_id,
-            name: `${firstName} ${lastName}`
-          };
-        }
-        else {
           familyRecord.other_members.push({
             id: member.proposed_user_id,
             name: `${firstName} ${lastName}`,
             role: member.account_config?.family_role || 'member'
           });
         }
+      } else {
+        // Creating new family - determine primary contact (first family member)
+        const primaryMember = familyMembers[0];
+        const primaryFieldValues = primaryMember.field_values || {};
+        const primaryLastName = primaryFieldValues.last_name ||
+          primaryFieldValues.lastName ||
+          primaryFieldValues.lname ||
+          primaryFieldValues.surname ||
+          primaryFieldValues['last name'] || '';
 
+        // Create family name using primary member's last name
+        const familyName = primaryLastName ? `The ${primaryLastName} Family` : 'Family';
+
+        // Create family record (following FamilyMaintenance.js pattern line 204-220)
+        familyRecord = {
+          client_id: state.session.client_id,
+          composite_key: familyId,
+          family_id: familyId,
+          family_name: familyName,
+          primary_contact: {},
+          other_members: []
+        };
+
+        // Create person records for each family member (following FamilyMaintenance.js pattern line 958-970)
+        for (let i = 0; i < familyMembers.length; i++) {
+          const member = familyMembers[i];
+          const fieldValues = member.field_values || {};
+          const firstName = fieldValues.first_name ||
+            fieldValues.firstName ||
+            fieldValues.fname ||
+            fieldValues['first name'] || '';
+          const lastName = fieldValues.last_name ||
+            fieldValues.lastName ||
+            fieldValues.lname ||
+            fieldValues.surname ||
+            fieldValues['last name'] || '';
+
+          if (member.account_config?.family_role === 'primary') {
+            familyRecord.primary_contact = {
+              id: member.proposed_user_id,
+              name: `${firstName} ${lastName}`
+            };
+          }
+          else {
+            familyRecord.other_members.push({
+              id: member.proposed_user_id,
+              name: `${firstName} ${lastName}`,
+              role: member.account_config?.family_role || 'member'
+            });
+          }
+        }
       }
 
       console.log(`Saving FamilyGroups record:`, familyRecord);
@@ -1218,6 +1294,10 @@ export default ({ onClose, options = {} }) => {
    * - Allows grouping related family members in the database
    * - Generates unique user_id for each family member: firstInitial + lastName + "-" + client_id
    * 
+   * If adding to existing family:
+   * - Uses existing family_id instead of generating new one
+   * - Later updates FamilyGroups record to include new members
+   * 
    * References:
    * - FamilyMaintenance.js line 205: const newFamilyID = `family_${new Date().getTime()}`;
    * - LinkedAccounts.js line 343: family_id: `family_${timestamp}`
@@ -1225,6 +1305,8 @@ export default ({ onClose, options = {} }) => {
   const completeProcess = async () => {
     console.log('completeProcess called - current stage:', reactData.stage);
     console.log('Current family_members count:', reactData.family_members.length);
+    console.log('Existing family_id:', reactData.family_id);
+    console.log('Adding to existing family:', !!reactData.existing_family_rec);
 
     try {
       setReactData(prev => {
@@ -1273,8 +1355,8 @@ export default ({ onClose, options = {} }) => {
           stage: 'complete'
         };
 
-        // Generate family_id if multiple family members (following FamilyMaintenance.js pattern)
-        if (prev.family_members.length > 1) {
+        // Generate family_id if multiple family members AND not adding to existing family
+        if (prev.family_members.length > 1 && !prev.existing_family_rec) {
           const family_id = `family_${new Date().getTime()}`;
           updatedData.family_id = family_id;
         }
@@ -1285,12 +1367,20 @@ export default ({ onClose, options = {} }) => {
 
       // Show alerts after state update to avoid interference
       if (reactData.family_members.length > 1) {
-        const family_id = `family_${new Date().getTime()}`;
-        showAlert({
-          severity: 'success',
-          title: 'Family ID Generated',
-          message: `Family ID generated for ${reactData.family_members.length} family members: ${family_id}`
-        });
+        if (reactData.existing_family_rec) {
+          showAlert({
+            severity: 'success',
+            title: 'Adding to Family',
+            message: `Adding ${reactData.family_members.length} member(s) to family: ${reactData.existing_family_rec.family_name}`
+          });
+        } else {
+          const family_id = `family_${new Date().getTime()}`;
+          showAlert({
+            severity: 'success',
+            title: 'Family ID Generated',
+            message: `Family ID generated for ${reactData.family_members.length} family members: ${family_id}`
+          });
+        }
       }
 
       // Show success message with user IDs
@@ -2123,11 +2213,17 @@ export default ({ onClose, options = {} }) => {
                   }
                 }
 
-                // Save FamilyGroups records if family_id exists (multiple members)
+                // Save FamilyGroups records if:
+                // 1. Creating new family (family_id exists and multiple members), OR
+                // 2. Adding to existing family (existing_family_rec exists)
                 let familyGroupsSaved = false;
-                if (reactData.family_id && reactData.family_members.length > 1) {
+                if ((reactData.family_id && reactData.family_members.length > 1) || reactData.existing_family_rec) {
                   try {
-                    familyGroupsSaved = await saveFamilyGroupsRecord(reactData.family_members, reactData.family_id);
+                    familyGroupsSaved = await saveFamilyGroupsRecord(
+                      reactData.family_members,
+                      reactData.family_id,
+                      reactData.existing_family_rec // Pass existing family record if adding to existing family
+                    );
                     if (familyGroupsSaved) {
                       console.log('FamilyGroups records saved successfully');
                     }
