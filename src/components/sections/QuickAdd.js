@@ -951,6 +951,28 @@ export default ({ onClose, options = {} }) => {
         account_type: member.account_type
       };
 
+      // pick-out form_field instructions and place data properly in People rec
+      Object.entries(reactData.form_fields).forEach(([fieldName, formRec]) => {
+        if (fieldValues[fieldName]) {
+          let saveAs = formRec.saveAs || formRec.value?.saveAs || formRec.prompt?.saveAs || false;
+          if (saveAs) {
+            const keys = saveAs.split('.');
+            if (keys[0].startsWith('person') || keys[0].startsWith('people')) { keys.shift(); } // remove leading 'person' if present
+            let obj = peopleRecord;
+            for (let i = 0; i < keys.length - 1; i++) {
+              if (!obj[keys[i]]) obj[keys[i]] = {};
+              obj = obj[keys[i]];
+            }
+            if (formRec.value?.type === 'phone') {
+              obj[keys[keys.length - 1]] = convertPhoneToStorageFormat(fieldValues[fieldName]);
+            }
+            else {
+              obj[keys[keys.length - 1]] = fieldValues[fieldName];
+            }
+          }
+        }
+      });
+
       // Set search_data following PeopleMaintenance.js pattern (lines 834-854)
       // First, ensure we join the search_words as the base search_data
       peopleRecord.search_data = search_words.join(' ');
@@ -1209,7 +1231,11 @@ export default ({ onClose, options = {} }) => {
           console.log('Generated user ID for member:', getFamilyMemberName(member), 'ID:', userId);
         } catch (error) {
           console.error('Error generating user ID for member:', member, error);
-          showAlert('error', `Failed to generate user ID for ${getFamilyMemberName(member)}: ${error.message}`);
+          showAlert({
+            severity: 'error',
+            title: 'User ID Generation Failed',
+            message: `Failed to generate user ID for ${getFamilyMemberName(member)}: ${error.message}`
+          });
 
           // Reset loading state and return to prevent getting stuck
           setReactData(prev => ({
@@ -1244,7 +1270,11 @@ export default ({ onClose, options = {} }) => {
       // Show alerts after state update to avoid interference
       if (reactData.family_members.length > 1) {
         const family_id = `family_${new Date().getTime()}`;
-        showAlert('success', `Family ID generated for ${reactData.family_members.length} family members: ${family_id}`);
+        showAlert({
+          severity: 'success',
+          title: 'Family ID Generated',
+          message: `Family ID generated for ${reactData.family_members.length} family members: ${family_id}`
+        });
       }
 
       // Show success message with user IDs
@@ -1252,10 +1282,18 @@ export default ({ onClose, options = {} }) => {
         `${getFamilyMemberName(member)}: ${member.proposed_user_id}`
       ).join(', ');
 
-      showAlert('success', `User IDs generated: ${userIdList}`);
+      showAlert({
+        severity: 'success',
+        title: 'User IDs Generated',
+        message: `User IDs generated: ${userIdList}`
+      });
     } catch (error) {
       console.error('Error in completeProcess:', error);
-      showAlert('error', `Failed to complete process: ${error.message}`);
+      showAlert({
+        severity: 'error',
+        title: 'Process Failed',
+        message: `Failed to complete process: ${error.message}`
+      });
       setReactData(prev => ({
         ...prev,
         loading_user_ids: false
@@ -2137,15 +2175,13 @@ export default ({ onClose, options = {} }) => {
                   });
 
                   // Close dialog after successful save
-                  setTimeout(() => {
-                    if (onClose) {
-                      // Pass the created person IDs to the onClose callback
-                      const createdPersonIds = reactData.family_members
-                        .filter(member => member.proposed_user_id)
-                        .map(member => member.proposed_user_id);
-                      onClose(createdPersonIds);
-                    }
-                  }, 3000);
+                  if (onClose) {
+                    // Pass the created person IDs to the onClose callback
+                    const createdPersonIds = reactData.family_members
+                      .filter(member => member.proposed_user_id)
+                      .map(member => member.proposed_user_id);
+                    onClose(createdPersonIds);
+                  }
                 }
 
               } catch (error) {
