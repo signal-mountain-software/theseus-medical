@@ -950,6 +950,22 @@ export default ({ onClose, options = {} }) => {
         contact_info: contact_info,
         account_type: member.account_type
       };
+      
+      // pick-out form_field instructions and place data properly in People rec
+      /*
+      Object.entries(reactData.form_fields).forEach(([fieldName, formRec]) => {
+        let saveAs = formRec.saveAs || formRec.values?.saveAs || formRec.prompt?.saveAs || false;
+        if (saveAs) {
+            const keys = saveAs.split('.');            
+                let obj = peopleRecord
+                for (let i = 0; i < keys.length - 1; i++) {
+                    if (!obj[keys[i]]) obj[keys[i]] = {};
+                    obj = obj[keys[i]];
+                }
+                    obj[keys[keys.length - 1]] = fieldValues[fieldName];
+        }
+      })
+      */
 
       // pick-out form_field instructions and place data properly in People rec
       Object.entries(reactData.form_fields).forEach(([fieldName, formRec]) => {
