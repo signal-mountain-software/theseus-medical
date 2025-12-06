@@ -4,8 +4,11 @@ import { deepCopy, isSmallScreen } from '../../util/AVAUtilities';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import QuickSearch from '../sections/QuickSearch';
+import QuickAdd from '../sections/QuickAdd';
 import MakeMessage from '../forms/MakeMessage';
 import { getPerson } from '../../util/AVAPeople';
+import { getDb } from '../../util/AVAUtilities';
+import useSession from '../../hooks/useSession';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import SendIcon from '@material-ui/icons/Send';
@@ -24,11 +27,13 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
 
   const AVAClass = AVAclasses();
   const classes = useStyles();
+  const { state } = useSession();
 
   const isMounted = React.useRef(false);
 
   const [localData, setLocalData] = React.useState({
-    viewFamilyMember: false
+    viewFamilyMember: false,
+    showQuickAdd: null // Will be set to family_id when adding new member to existing family
   });
 
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
@@ -292,23 +297,8 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
               {((reactData.user_id === this_familyRec.primary_contact.id) || (reactData.administrative_account)) &&
                 <Button
                   onClick={async () => {
-                    let other_index;
-                    if (this_familyRec.other_members) {
-                      other_index = this_familyRec.other_members.length;
-                    }
-                    else {
-                      this_familyRec.other_members = [];
-                      other_index = 0;
-                    }
-                    currentValues.familyRecs[fNdx].other_members[other_index] = {};
-                    await updateReactData({ current: currentValues, OKtoSave: true }, true);
                     updateLocalData({
-                      viewFamilyMember: {    // was this_familyRec.primary_contact.id
-                        primary: false,
-                        createAccount: true,
-                        fNdx,
-                        other_index
-                      }
+                      showQuickAdd: this_familyRec.family_id
                     }, true);
                   }}
                   className={AVAClass.AVAButton}
@@ -485,6 +475,61 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                   showQuickSearch: false
                 };
                 await updateField(updateObj);
+              }}
+            />
+          }
+
+          {localData.showQuickAdd &&
+            <QuickAdd
+              onClose={async (result) => {
+                // QuickAdd has handled saving the new members to the family
+                // Reload the family record from the database to display the newly added members
+                try {
+                  const familyId = localData.showQuickAdd;
+                  const updatedFamilyRec = await getDb({
+                    Key: {
+                      client_id: state.session.client_id,
+                      composite_key: familyId
+                    },
+                    TableName: 'FamilyGroups'
+                  });
+
+                  if (updatedFamilyRec) {
+                    // Find the family index and update it with fresh data
+                    const familyIndex = currentValues.familyRecs.findIndex(f => f.family_id === familyId);
+                    if (familyIndex >= 0) {
+                      currentValues.familyRecs[familyIndex] = updatedFamilyRec;
+                      
+                      // Reload phone numbers for newly added members
+                      if (updatedFamilyRec.other_members) {
+                        for (let thisMember of updatedFamilyRec.other_members) {
+                          if (thisMember.id && !thisMember.phone) {
+                            thisMember.phone = await getPhone(thisMember);
+                          }
+                        }
+                      }
+                    }
+                  }
+                } catch (error) {
+                  console.error('Error reloading family record after adding member:', error);
+                }
+
+                // Close QuickAdd dialog and refresh display
+                updateLocalData({
+                  showQuickAdd: null
+                }, true);
+                
+                // Update parent to reflect the new family data
+                if (updateField) {
+                  await updateField({
+                    reactUpd: {
+                      current: currentValues
+                    }
+                  });
+                }
+              }}
+              options={{
+                family_id: localData.showQuickAdd // Pass the family_id to add members to existing family
               }}
             />
           }
