@@ -74,7 +74,7 @@ import { determineClass } from '../../util/AVAGroups';
 import { sendMessages } from '../../util/AVAMessages';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import { Box, Button, TextField, Typography, Dialog, DialogContentText, DialogActions, FormControl, FormLabel, RadioGroup, FormControlLabel, Radio, Snackbar } from '@material-ui/core/';
+import { Box, Button, TextField, Typography, Dialog, DialogContentText, DialogActions, FormControl, FormLabel, RadioGroup, FormControlLabel, Radio, Snackbar, Checkbox } from '@material-ui/core/';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 
 const useStyles = makeStyles(theme => ({
@@ -107,6 +107,7 @@ export default ({ onClose, options = {} }) => {
     loading_fields: false,
     loading_user_ids: false,
     alert: false,
+    exit_confirm: false, // Track if exit confirmation dialog is open
     family_members: [], // Array to store completed family member data
     current_member_index: 0,
     stage: 'select_account_type', // Default to account type selection for normal invocation
@@ -478,6 +479,33 @@ export default ({ onClose, options = {} }) => {
         }));
       }
     }, 500);
+  };
+
+  const handleSelectChange = (fieldName, selectedOption) => {
+    // For select fields, toggle the option in the array
+    const currentValue = reactData.field_values[fieldName] || [];
+    const isArray = Array.isArray(currentValue);
+    let newValue;
+
+    if (isArray) {
+      // Toggle: if already selected, remove it; otherwise add it
+      if (currentValue.includes(selectedOption)) {
+        newValue = currentValue.filter(item => item !== selectedOption);
+      } else {
+        newValue = [...currentValue, selectedOption];
+      }
+    } else {
+      // Initialize as array if not already
+      newValue = [selectedOption];
+    }
+
+    setReactData(prev => ({
+      ...prev,
+      field_values: {
+        ...prev.field_values,
+        [fieldName]: newValue
+      }
+    }));
   };
 
   const showAlert = ({ severity = 'info', title, message, action = null, autoHide = true }) => {
@@ -1446,6 +1474,53 @@ export default ({ onClose, options = {} }) => {
     return titleCase(member.account_type);
   };
 
+  const hasUnsavedChanges = () => {
+    // Check if user has entered any data or is in the middle of creating an account
+    const hasEnteredName = reactData.entered_name && reactData.entered_name.trim() !== '';
+    const hasFieldValues = Object.values(reactData.field_values).some(val => val && val !== '');
+    const hasFamilyMembers = reactData.family_members && reactData.family_members.length > 0;
+
+    return hasEnteredName || hasFieldValues || hasFamilyMembers;
+  };
+
+  const handleDialogClose = async () => {
+    // If there are unsaved changes, show confirmation
+    if (hasUnsavedChanges()) {
+      updateReactData({ exit_confirm: true }, true);
+      return;
+    }
+
+    // No unsaved changes, proceed with close
+    proceedWithExit();
+  };
+
+  const proceedWithExit = () => {
+    // Handle dialog close (X button) based on how QuickAdd was invoked
+    if (options.source === 'url_parameter') {
+      // URL-driven mode - close the entire application
+      sessionStorage.removeItem('AVASessionData');
+
+      // Try to close the window/tab
+      if (window.opener) {
+        // If opened in a popup, close it
+        window.close();
+      } else {
+        // If not a popup, try to navigate away or close
+        try {
+          window.close();
+        } catch (e) {
+          // If we can't close (browser security), navigate to a generic page
+          window.location.href = 'about:blank';
+        }
+      }
+    } else {
+      // Normal admin mode - just close the dialog
+      if (onClose) {
+        onClose();
+      }
+    }
+  };
+
   return (
     <Dialog open={true || reactData.initialized || refreshTrigger}
       aria-labelledby="scroll-dialog-title"
@@ -1465,32 +1540,7 @@ export default ({ onClose, options = {} }) => {
         }
       }}
       onClose={() => {
-        // Handle dialog close (X button) based on how QuickAdd was invoked
-        if (options.source === 'url_parameter') {
-          // URL-driven mode - close the entire application
-          sessionStorage.removeItem('AVASessionData');
-
-          // Try to close the window/tab
-          if (window.opener) {
-            // If opened in a popup, close it
-            window.close();
-          } else {
-            // If not a popup, try to navigate away or close
-            try {
-              window.close();
-            } catch (e) {
-              // If we can't close (browser security), navigate to a generic page
-              window.location.href = 'about:blank';
-            }
-          }
-        } else {
-          // Normal admin mode - just close the dialog
-          if (onClose) {
-            onClose();
-          } else {
-            return;
-          }
-        }
+        handleDialogClose();
       }}
     >
       <DialogContentText
@@ -1793,6 +1843,44 @@ export default ({ onClose, options = {} }) => {
                         <Typography variant="subtitle1" style={{ fontWeight: 600 }}>
                           {headerText}
                         </Typography>
+                      </Box>
+                    );
+                  }
+
+                  // Handle select field type with checkboxes
+                  if (fieldType === 'select') {
+                    const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
+                    const isRequired = reactData.selected_account_config?.required?.includes(fieldName) || false;
+                    const selectOptions = fieldData.value?.selection?.selectionList || [];
+                    const currentValue = reactData.field_values[fieldName] || [];
+
+                    return (
+                      <Box key={fieldName} style={{ marginBottom: '16px', marginRight: '16px' }}>
+                        <Box style={{ marginBottom: '8px' }}>
+                          <Typography variant="subtitle2" style={{ fontWeight: 500, marginBottom: '8px' }}>
+                            {fieldLabel} {isRequired && <span style={{ color: 'red' }}>*</span>}
+                          </Typography>
+                          <Box style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '8px' }}>
+                            {selectOptions.map((option, index) => (
+                              <FormControlLabel
+                                key={`${fieldName}_${index}`}
+                                control={
+                                  <Checkbox
+                                    checked={currentValue.includes(option)}
+                                    onChange={() => handleSelectChange(fieldName, option)}
+                                    size="small"
+                                  />
+                                }
+                                label={<Typography variant="body2">{option}</Typography>}
+                              />
+                            ))}
+                          </Box>
+                          {fieldData.prompt?.help_text && (
+                            <Typography variant="caption" style={{ marginTop: '4px', display: 'block', color: '#666' }}>
+                              {fieldData.prompt.help_text}
+                            </Typography>
+                          )}
+                        </Box>
                       </Box>
                     );
                   }
@@ -2313,6 +2401,43 @@ export default ({ onClose, options = {} }) => {
           </Button>
         )}
       </DialogActions>
+
+      {/* Exit Confirmation Dialog */}
+      {reactData.exit_confirm &&
+        <Dialog
+          open={reactData.exit_confirm}
+          onClose={() => updateReactData({ exit_confirm: false }, true)}
+          aria-labelledby="exit-dialog-title"
+        >
+          <Box style={{ padding: '24px', minWidth: '300px' }}>
+            <Typography id="exit-dialog-title" variant="h6" style={{ marginBottom: '16px', fontWeight: 'bold' }}>
+              Exit QuickAdd?
+            </Typography>
+            <Typography variant="body2" style={{ marginBottom: '20px', color: '#666' }}>
+              You have unsaved changes. Are you sure you want to exit without saving?
+            </Typography>
+            <Box style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <Button
+                variant="outlined"
+                onClick={() => updateReactData({ exit_confirm: false }, true)}
+                style={{ borderColor: 'blue', color: 'blue' }}
+              >
+                Keep Working
+              </Button>
+              <Button
+                variant="contained"
+                onClick={() => {
+                  updateReactData({ exit_confirm: false }, true);
+                  proceedWithExit();
+                }}
+                style={{ backgroundColor: 'red', color: 'white' }}
+              >
+                Exit
+              </Button>
+            </Box>
+          </Box>
+        </Dialog>
+      }
 
       {/* Alert/Snackbar for error and success messages */}
       {reactData.alert &&
