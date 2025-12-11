@@ -189,6 +189,10 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
+// state.session.client_style.
+//    restrict_groups = true/false - prevents you from seeing groups that are parents or siblings of a group you are in
+//    show_all_people = true/false - will suppress the list of people you can select (names can still be searched for)
+
   const placeholderImage =
     'https://theseus-medical-storage.s3.amazonaws.com/public/patients/ademo.jpg';
 
@@ -209,6 +213,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     inOut_filter: (options && options.inOut_filter) || false,
     isSmall: (window.window.innerWidth < 800),
     isTiny: (window.window.innerWidth < 500),
+    is_public: false,
     lastActiveTime: new Date(),
     lastReloadTime: 0,
     messageFilter: false,
@@ -738,7 +743,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         recipient_base: 'list',
         recipient_key,
         subject: reactData.newMessageSubject || `Message from ${await makeName(reactData.newMessageSendFrom)}`,
-        reply_to
+        reply_to,
+        is_public: reactData.is_public
       },
       TableName: 'PostOffice'
     };
@@ -805,7 +811,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
             allowReplyAll: PostOfficeRec.Item.allowReplyAll,
             status_urgent: reactData.newUrgentMessage,
             status_with_attachment: Boolean(reactData.attachments_to_send && (reactData.attachments_to_send.length > 0)),
-            partner_id: PostOfficeRec.Item.recipient_key,
+            partner_id: new Set(PostOfficeRec.Item.recipient_key),
             recipients: reactData.newMessageRecipients.map((r, x) => {
               return {
                 recipient_id: r.person_id || r.group_id || reactData.preferred_recipients[r.rIndex].personList[0],
@@ -826,7 +832,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                 }
               };
             }),
-            other_recipients: []   // these are IDs of people who - on an inbound message to me - also received the same message
+            other_recipients: [],   // these are IDs of people who - on an inbound message to me - also received the same message
+            other_recipientNames: [],   // these are NamesIDs of people who - on an inbound message to me - also received the same message
+            is_public: reactData.is_public
           }
         ]
       };
@@ -850,6 +858,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         newMessageVMAlternative: false,
         newMessageVMAltText: '',
         attachments_to_send: [],
+        is_public: false,
         forceReloadTime: new Date().getTime() + (1000 * 30),
         alert: {
           severity: 'success',
@@ -890,6 +899,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     // Get messages to me
     if (!reactData.inOut_filter || (reactData.inOut_filter === 'in')) {
       let inRecs;
+      let allInRecs = [];
+      let publicThreadIds = new Set();
+      
       queryObj = {
         KeyConditionExpression: 'deliver_to = :p AND created_time between :s and :e',
         ExpressionAttributeValues: {
@@ -932,9 +944,50 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           delete queryObj.ExclusiveStartKey;
         }
         if (recordExists(inRecs)) {
-          await processDeliveryRecs(inRecs.Items, '', person_id);
+          // Collect all inbound records and identify public threads
+          allInRecs.push(...inRecs.Items);
+          for (let rec of inRecs.Items) {
+            if (rec.is_public) {
+              publicThreadIds.add(rec.thread_id);
+            }
+          }
         }
       } while (queryObj.ExclusiveStartKey);
+      
+      // For each public thread, fetch supplemental records from all messages in that thread
+      let supplementalRecs = [];
+      for (let threadId of publicThreadIds) {
+        let allThreadMessages = await dbClient
+          .query({
+            KeyConditionExpression: 'thread_id = :k',
+            ExpressionAttributeValues: {
+              ':k': threadId
+            },
+            TableName: "TheseusMessages",
+          })
+          .promise()
+          .catch(error => {
+            cl(`Error reading all thread messages for thread ${threadId}. Error is ${error}`);
+          });
+        
+        if (recordExists(allThreadMessages)) {
+          // Filter to exclude records we already have and records delivered to current user
+          for (let rec of allThreadMessages.Items) {
+            const recDeliverId = rec.composite_key; // full composite_key for lookup
+            const alreadyHave = allInRecs.some(existing => existing.composite_key === recDeliverId);
+            
+            if (!alreadyHave && rec.deliver_to !== person_id && rec.record_type === 'delivery') {
+              supplementalRecs.push(rec);
+            }
+          }
+        }
+      }
+      
+      // Combine all records and process once
+      const finalInRecs = allInRecs.concat(supplementalRecs);
+      if (finalInRecs.length > 0) {
+        await processDeliveryRecs(finalInRecs, '', person_id);
+      }
     }
     // Get messages from me
     if (!reactData.inOut_filter || (reactData.inOut_filter === 'out')) {
@@ -1099,6 +1152,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         reactData.threads[this_deliveryRec.thread_id] = {
           last_update: this_deliveryRec.created_time || 0,
           delete_flag: false,
+          is_public: this_deliveryRec.is_public ?? false,
           messages: []
         };
       }
@@ -1165,10 +1219,11 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           allowReplyAll: this_deliveryRec.allowReplyAll || false,
           status_urgent: this_deliveryRec.urgency.startsWith('urg'),
           status_with_attachment: Boolean(this_deliveryRec.content.current.attachments && (this_deliveryRec.content.current.attachments.length > 0)),
-          partner_id: [],
+          partner_id: new Set(),
           recipients: [],
           actionRec: this_deliveryRec.actionRec || false,
-          other_recipients: []   // these are IDs of people who - on an inbound message to me - also received the same message
+          other_recipients: [],   // these are IDs of people who - on an inbound message to me - also received the same message
+          other_recipientNames: [],   // these are NamesIDs of people who - on an inbound message to me - also received the same message
         });
         message_added = true;
         message_number = reactData.threads[this_deliveryRec.thread_id].messages.length - 1;
@@ -1178,9 +1233,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       if ((this_deliveryRec.record_type === 'message') && (inOut === 'out')) {
         for (let this_recipient_key in this_deliveryRec.recipient_list) {
           let this_recipient = this_deliveryRec.recipient_list[this_recipient_key];
-          if (!reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.includes(this_recipient.id)) {
-            reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.push(this_recipient.id);
-          }
+          reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.add(this_recipient.id);
           let recipient_number = reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.findIndex(r => { return r.recipient_id === this_recipient.id; });
           if (recipient_number === -1) {
             recipient_number = reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.push({
@@ -1234,10 +1287,47 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       };
       if (recipient_number === -1) {
         if (inOut === 'in') {
-          reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.push(this_deliveryRec.author.author_id);
+          reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.add(this_deliveryRec.author.author_id);
+          
+          // For incoming messages, populate other_recipients from the message record
+          // Extract thread_id and message_number from composite_key: T:<thread_id>~M:<message_number>~D:<recipient>
+          const composite_parts = this_deliveryRec.composite_key.split('~');
+          const message_composite_key = `${composite_parts[0]}~${composite_parts[1]}`; // T:<thread_id>~M:<message_number>
+          
+          let messageRec = await dbClient
+            .query({
+              KeyConditionExpression: 'composite_key = :k',
+              ExpressionAttributeValues: {
+                ':k': message_composite_key
+              },
+              TableName: "TheseusMessages",
+              IndexName: 'composite_key-index'
+            })
+            .promise()
+            .catch(error => {
+              cl(`Error reading message record for composite key ${message_composite_key}. Error is ${error}`);
+            });
+          
+          if (recordExists(messageRec) && messageRec.Items[0]) {
+            const messageRecord = messageRec.Items[0];
+            
+            // Populate other_recipients from recipient_list
+            if (messageRecord.recipient_list) {
+              for (let recipient_key in messageRecord.recipient_list) {
+                const recipient = messageRecord.recipient_list[recipient_key];
+                // Only add if it's not the current user (my_id) and not the sender
+                if (recipient.id && recipient.id !== my_id && recipient.id !== this_deliveryRec.author.author_id) {
+                  if (!reactData.threads[this_deliveryRec.thread_id].messages[message_number].other_recipients.includes(recipient.id)) {
+                    reactData.threads[this_deliveryRec.thread_id].messages[message_number].other_recipients.push(recipient.id);
+                    reactData.threads[this_deliveryRec.thread_id].messages[message_number].other_recipientNames.push(`${recipient.name.first} ${recipient.name.last}`.trim());
+                  }
+                }
+              }
+            }
+          }
         }
-        else {
-          reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.push(this_deliveryRec.deliver_to);
+        else if (this_deliveryRec.record_type === 'delivery') {
+          reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.add(this_deliveryRec.deliver_to);
         }
         //     recipient_number = reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.push({
         //       recipient_id: this_deliveryRec.deliver_to,
@@ -1444,13 +1534,20 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
 
   function makeToLine(this_thread, message_index) {
     let response;
+    let OG_message = ((message_index + 1) === reactData.threads[this_thread].messages.length);
     if (reactData.threads[this_thread].messages[message_index].inOut === 'out') {
       response = `Me -> `;
-      if (reactData.threads[this_thread].messages[message_index].recipients.length < 4) {
+      if (reactData.threads[this_thread].is_public && !OG_message) {
+        response += 'The Group';
+      } else if (reactData.threads[this_thread].messages[message_index].recipients.length < 4) {
         response += listFromArray(reactData.threads[this_thread].messages[message_index].recipients.map(r => { return r.recipient_name; }));
       }
       else {
-        response += `${reactData.threads[this_thread].messages[message_index].recipients.length} people`;
+        // Show first 3 recipients plus count of remaining
+        const allRecipients = reactData.threads[this_thread].messages[message_index].recipients;
+        const displayRecipients = allRecipients.slice(0, 3).map(r => r.recipient_name);
+        const remainingCount = allRecipients.length - 3;
+        response += `${listFromArray(displayRecipients)} (and ${remainingCount} other${remainingCount === 1 ? '' : 's'})`;
       }
     }
     else if (reactData.threads[this_thread].messages[message_index].inOut === 'held') {
@@ -1459,13 +1556,19 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         response += listFromArray(reactData.threads[this_thread].messages[message_index].recipients.map(r => { return r.recipient_name; }));
       }
       else {
-        response += `${reactData.threads[this_thread].messages[message_index].recipients.length} people`;
+        // Show first 3 recipients plus count of remaining
+        const allRecipients = reactData.threads[this_thread].messages[message_index].recipients;
+        const displayRecipients = allRecipients.slice(0, 3).map(r => r.recipient_name);
+        const remainingCount = allRecipients.length - 3;
+        response += `${listFromArray(displayRecipients)} (and ${remainingCount} other${remainingCount === 1 ? '' : 's'})`;
       }
     }
     else {
       response = `${reactData.threads[this_thread].messages[message_index].author_name} -> `;
-      if (reactData.threads[this_thread].messages[message_index].other_recipients.length < 3) {
-        response += listFromArray(reactData.threads[this_thread].messages[message_index].other_recipients.concat(['Me']));
+      if (reactData.threads[this_thread].is_public && !OG_message) {
+        response += 'The Group';
+      } else if (reactData.threads[this_thread].messages[message_index].other_recipients.length < 3) {
+        response += listFromArray(reactData.threads[this_thread].messages[message_index].other_recipientNames.concat(['Me']));
       }
       else {
         response += `Me and ${reactData.threads[this_thread].messages[message_index].other_recipients.length} other people`;
@@ -1541,7 +1644,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     let response = true;
     status_filter_result = false;
     if (reactData.personFilter) {
-      response = reactData.threads[this_thread].messages[this_messageIndex].partner_id.includes(reactData.personFilter);
+      response = reactData.threads[this_thread].messages[this_messageIndex].partner_id.has(reactData.personFilter);
     }
     else if (reactData.messageFilter) {
       response = false;
@@ -1694,25 +1797,46 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               style={AVATextStyle({ size: 1, bold: true })}
                               key={`showNames__${(reactData.newMessageRecipients?.length || 0) + (reactData.selections?.length || 0)}`}
                             >
-                              {((reactData.newMessageRecipients.length > 4) || ((reactData.selections.length > 4) && !reactData.showReplyToSearch))
-                                ? (`${reactData.alternateSenderName || 'Me'} -> ${reactData.selectedPeople_count || reactData.selections.length} recipients`)
-                                : ((reactData.newMessageRecipients.length > 0) || ((reactData.selections.length > 0) && !reactData.showReplyToSearch))
-                                  ? `${reactData.alternateSenderName || 'Me'} -> ${listFromArray(((reactData.newMessageRecipients.length > 0)
+                              {(() => {
+                                const sender = reactData.alternateSenderName || 'Me';
+                                
+                                // If public message, show "Me -> The Group"
+                                if (reactData.is_public && reactData.newMessage_isPublic) {
+                                  return `${sender} -> The Group`;
+                                }
+                                
+                                // If more than 4 recipients, show count
+                                if (reactData.newMessageRecipients.length > 4) {
+                                  return `${sender} -> ${reactData.selectedPeople_count || reactData.selections.length} recipients`;
+                                }
+                                
+                                // If there are recipients to display
+                                const recipientsExist = (reactData.newMessageRecipients.length > 0) || ((reactData.selections.length > 0) && !reactData.showReplyToSearch);
+                                if (recipientsExist) {
+                                  const recipients = reactData.newMessageRecipients.length > 0
                                     ? reactData.newMessageRecipients
-                                    : reactData.selections)
-                                    .map(r => (r.person_name || r.group_name || reactData.preferred_recipients?.[r.rIndex]?.objText)),
-                                    { max: { length: 4, words: 'recipients' } })}`
-                                  : `${reactData.alternateSenderName || 'Me'} ->`
-                              }
+                                    : reactData.selections;
+                                  const recipientNames = listFromArray(
+                                    recipients.map(r => (r.person_name || r.group_name || reactData.preferred_recipients?.[r.rIndex]?.objText)),
+                                    { max: { length: 4, words: 'recipients' } }
+                                  );
+                                  return `${sender} -> ${recipientNames}`;
+                                }
+                                
+                                // Default: just show sender
+                                return `${sender} ->`;
+                              })()}
                             </Typography>
-                            <Typography
-                              style={Object.assign({}, { display: 'flex', textWrap: 'nowrap', alignSelf: 'center' }, AVATextStyle({ margin: { left: 1 }, size: 0.8 }))}
-                            >
-                              {((reactData.newMessageRecipients.length === 0) && isEmpty(reactData.selections))
-                                ? '(Tap here to select Recipients)'
-                                : `(Tap here to add/change Recipients)`
-                              }
-                            </Typography>
+                            {!reactData.newMessage_isPublic &&
+                              <Typography
+                                style={Object.assign({}, { display: 'flex', textWrap: 'nowrap', alignSelf: 'center' }, AVATextStyle({ margin: { left: 1 }, size: 0.8 }))}
+                              >
+                                {((reactData.newMessageRecipients.length === 0) && isEmpty(reactData.selections))
+                                  ? '(Tap here to select Recipients)'
+                                  : `(Tap here to add/change Recipients)`
+                                }
+                              </Typography>
+                            } 
                           </Box>
                           <Typography
                             style={AVATextStyle({ size: 0.8, margin: { bottom: 1 } })}
@@ -1948,24 +2072,19 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                           style={{ flexGrow: 1, marginRight: '-30px' }}
                           alignItems={'flex-end'}
                         >
-                          <Typography
-                            style={AVATextStyle({ size: 1 })}
-                            onClick={() => {
-                              updateReactData({
-                                replyToList: [],
-                                showReplyToSearch: true,
-                                selections: reactData.replyToList
-                              }, true);
-                            }}
-                          >
-                            {((reactData.replyToList.length > 0) || ((reactData.selections.length > 0) && !reactData.showQuickSearch))
-                              ? `Replies cc'd to: ${listFromArray(((reactData.replyToList.length > 0)
-                                ? reactData.replyToList
-                                : reactData.selections).map(r => r.person_name),
-                                { max: { length: 2, words: 'people' } })}`
-                              : `Add Reply To`
-                            }
-                          </Typography>
+                          {/* Show public/private checkbox when multiple recipients, otherwise show Add Reply To */}
+                          {((reactData.selectedPeople_count > 1) || (reactData.newMessage_isPublic)) &&
+                            <Typography
+                              style={AVATextStyle({ size: 1, bold: reactData.is_public })}
+                              onClick={() => {
+                                updateReactData({
+                                  is_public: !reactData.is_public
+                                }, true);
+                              }}
+                            >
+                              {(reactData.is_public) ? '☑ Public message (Chat)' : '☐ Public message (Chat)'}
+                            </Typography>
+                          }
                           {reactData.administrative_account && reactData.allowChangeSender &&
                             <Typography
                               style={AVATextStyle({ size: 1 })}
@@ -2069,6 +2188,11 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                       onClick={() => {
                         updateReactData({
                           newMessageRecipients: [],
+                          selectedPeople_count: 0,
+                          newMessageSubject: '',
+                          newMessageText: '',
+                          attachments_to_send: [],
+                          selectedPeople_list: [],
                           replyToList: [],
                           newMessageMode: false
                         }, true);
@@ -2125,7 +2249,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                       style={{ alignSelf: 'anchor-center' }}
                                       onClick={() => {
                                         updateReactData({
-                                          personFilter: this_message.partner_id[0]
+                                          personFilter: this_message.partner_id.values().next().value
                                         }, true);
                                       }}
                                     >
@@ -2323,7 +2447,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                         newMessageRecipients.push({ person_id: this_message.author_id, person_name: this_message.author_name });
                                       }
                                       else {
-                                        for (let this_person of this_message.partner_id) {
+                                        for (const this_person of this_message.partner_id) {
                                           newMessageRecipients.push({ person_id: this_person, person_name: await makeName(this_person) });
                                         }
                                         if (this_message.reply_to && (this_message.reply_to.length > 0)) {
@@ -2337,7 +2461,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                         replyToList,
                                         newMessageThread: this_message.thread_id || (this_message.composite_key ? this_message.composite_key.split('~')[0].replace('T:', '') : ''),
                                         newMessageSubject: this_message.subject,
-                                        newMessageMode: true
+                                        newMessageMode: true,
+                                        is_public: (reactData.threads[this_thread].is_public ?? false),
+                                        newMessage_isPublic: (reactData.threads[this_thread].is_public ?? false)
                                       }, true);
                                     }}
                                   />
@@ -2472,7 +2598,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                       updateReactData({
                         newMessageText: (Array.isArray(templateObj.template_body) ? templateObj.template_body.join('') : templateObj.template_body),
                         showSelectTemplate: false,
-                        html_message: (templateObj.template_type === 'html')
+                        html_message: !(templateObj.template_type === 'plain')
                       }, true);
                     }
                   }}
@@ -2502,40 +2628,13 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                 withPreferred: true,
                 buttonColor: (reactData.selections.length === 0) ? 'red' : 'green',
                 buttonText: searchButtonText(),
-                showAll: true,
+                showAll: state.session.client_style.show_all_people ?? !state.session.client_style.restrict_groups,
                 title: 'Select Recipients'
               }}
               onClose={async (selections) => {
                 updateReactData({
                   showQuickSearch: false,
                   newMessageRecipients: selections || [],
-                  selections: []
-                }, true);
-              }}
-            />
-          }
-          {reactData.showReplyToSearch &&
-            <QuickSearch
-              reactData={reactData}
-              updateReactData={updateReactData}
-              options={{
-                pickAndGo: true,
-                keepSelections: true,
-                buttonColor: (reactData.selections.length === 0) ? 'red' : 'green',
-                buttonText:
-                  (reactData.selections.length === 0)
-                    ? 'Exit'
-                    : ((reactData.selections.length === 1)
-                      ? `Reply to ${reactData.selections[0].person_name ? reactData.selections[0].person_name.split(' ')[0] : ''}`
-                      : `Reply to ${reactData.selections.length} people`
-                    ),
-                showAll: true,
-                title: 'Select additional people to reply to'
-              }}
-              onClose={async (selections) => {
-                updateReactData({
-                  showReplyToSearch: false,
-                  replyToList: selections || [],
                   selections: []
                 }, true);
               }}
@@ -2555,7 +2654,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                 buttonText: ((reactData.selections.length > 0) && (reactData.selections[0].person_name))
                   ? `Keep ${reactData.selections[0].person_name}`
                   : 'Exit',
-                showAll: true,
+                showAll: state.session.client_style.show_all_people ?? !state.session.client_style.restrict_groups,
                 title: 'Who should be shown as the Sender of this message?'
               }}
               onClose={async (selections) => {
