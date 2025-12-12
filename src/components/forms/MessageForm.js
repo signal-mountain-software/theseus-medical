@@ -2249,7 +2249,6 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                     key={`${thread_index}_c2b_${message_index}`}
                                     flexDirection='column'
                                     style={{
-                                      maxWidth: (reactData.isTiny ? '70%' : null),
                                       flexGrow: 1,
                                       minWidth: 0
                                     }}
