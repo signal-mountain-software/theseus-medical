@@ -295,13 +295,13 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                 <Typography
                   style={AVATextStyle({
                     size: 0.8, margin: { right: 0.8 },
-                    bold: (!reactData.form_fields[this_formField].value || (reactData.form_fields[this_formField].value.toLowerCase() === 'no'))
+                    bold: (!reactData.form_fields[this_formField].value || (typeof reactData.form_fields[this_formField].value === 'string' && reactData.form_fields[this_formField].value.toLowerCase() === 'no'))
                   })}
                 >
                   {'No'}
                 </Typography>
                 <Switch
-                    checked={(reactData.form_fields[this_formField].value && (reactData.form_fields[this_formField].value.toLowerCase() !== 'no'))}
+                  checked={(reactData.form_fields[this_formField].value && (typeof reactData.form_fields[this_formField].value !== 'string' || reactData.form_fields[this_formField].value.toLowerCase() !== 'no'))}
                   onClick={async () => {
                     const newValue = !reactData.form_fields[this_formField].value;
                     let splitSave = reactData.form_fields[this_formField].fieldRec.value.saveAs.split('.');
@@ -324,7 +324,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                 <Typography
                   style={AVATextStyle({
                     size: 0.8, margin: { left: 0.8 },
-                    bold: (reactData.form_fields[this_formField].value && (reactData.form_fields[this_formField].value.toLowerCase() !== 'no'))
+                    bold: (reactData.form_fields[this_formField].value && (typeof reactData.form_fields[this_formField].value !== 'string' || reactData.form_fields[this_formField].value.toLowerCase() !== 'no'))
                   })}
                 >
                   {'Yes'}
