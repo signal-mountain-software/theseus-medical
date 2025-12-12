@@ -212,7 +212,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     isSmall: (window.window.innerWidth < 800),
     isTiny: (window.window.innerWidth < 500),
     is_public: false,
-    is_reply: false,
+    is_reply: ((options && options.newMessage && options.newMessageThread) ? true : false),
     lastActiveTime: new Date(),
     lastReloadTime: 0,
     messageFilter: false,
@@ -1522,7 +1522,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
 
   function makeToLine(this_thread, message_index) {
     let response;
-    let OG_message = ((message_index + 1) === reactData.threads[this_thread].messages.length);
+    let OG_message = message_index === 0;
     if (reactData.threads[this_thread].messages[message_index].inOut === 'out') {
       response = `Me -> `;
       if (reactData.threads[this_thread].is_public && !OG_message) {
@@ -1594,13 +1594,22 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       await allMessages({ person_id: pPerson, start_time: loop_until, end_time: this_end });
     }
     start();  // idle timer
-    updateReactData({
+
+    // If in reply mode, check if replying to a public thread
+    let replyModeUpdate = {
       lastReloadTime: new Date(),
       lastActiveTime: new Date(),
       forceReloadTime: 0,
       idleState: false,
       statusMessage: false
-    }, true);
+    };
+    if (reactData.newMessageThread && reactData.threads[reactData.newMessageThread]) {
+      const threadIsPublic = reactData.threads[reactData.newMessageThread].is_public || false;
+      replyModeUpdate.is_public = threadIsPublic;
+      replyModeUpdate.newMessage_isPublic = threadIsPublic;
+    }
+
+    updateReactData(replyModeUpdate, true);
   }
 
   function standardizeMethod(raw_method) {
@@ -1838,14 +1847,14 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               {/* Show public/private checkbox when multiple recipients, otherwise show Add Reply To */}
                               {((reactData.selectedPeople_count > 1) || (reactData.newMessage_isPublic)) &&
                                 <Typography
-                                  style={AVATextStyle({ size: 1, bold: reactData.is_public, color: reactData.is_public ? 'red' : 'null', cursor: 'pointer' })}
+                                  style={AVATextStyle({ size: 1, bold: reactData.is_public, color: reactData.is_public ? 'red' : null, cursor: 'pointer' })}
                                   onClick={() => {
                                     updateReactData({
                                       is_public: !reactData.is_public
                                     }, true);
                                   }}
                                 >
-                                  {`${reactData.is_reply ? 'Reply to the Group' : 'Allow Reply All'} ${(reactData.is_public) ? '☑' : '☐'}`}
+                                  {`${reactData.is_reply ? 'Reply to the Group' : 'Replies Visible to All'} ${(reactData.is_public) ? '☑' : '☐'}`}
                                 </Typography>
                               }
                             </Box>
@@ -1886,7 +1895,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                       {!reactData.html_message &&
                         <>
                           <Typography
-                          style={AVATextStyle({ size: 0.82, opacity: 0.6, margin: { left: 0.1, bottom: 0.3, top: (reactData.is_reply ? 1.5 : 0) } })}
+                            style={AVATextStyle({ size: 0.82, opacity: 0.6, margin: { left: 0.1, bottom: 0.3, top: (reactData.is_reply ? 1.5 : 0) } })}
                           >
                             {'Message Text'}
                           </Typography>
@@ -2439,7 +2448,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                       {/* HTML message */}
                                       {(this_message.html_message_text && this_message.html_message_text.startsWith('<')) &&
                                         <div
-                                          style={{ border: '1px solid #ccc', padding: '8px', borderRadius: '30px' }}
+                                          style={{ border: '1px solid #ccc', margin: { top: '8px' }, padding: '8px', borderRadius: '30px' }}
                                           dangerouslySetInnerHTML={{ '__html': this_message.html_message_text }}
                                         />
                                       }
