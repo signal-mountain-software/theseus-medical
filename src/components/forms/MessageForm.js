@@ -1527,15 +1527,18 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       response = `Me -> `;
       if (reactData.threads[this_thread].is_public && !OG_message) {
         response += 'The Group';
-      } else if (reactData.threads[this_thread].messages[message_index].recipients.length < 4) {
-        response += listFromArray(reactData.threads[this_thread].messages[message_index].recipients.map(r => { return r.recipient_name; }));
       }
       else {
-        // Show first 3 recipients plus count of remaining
-        const allRecipients = reactData.threads[this_thread].messages[message_index].recipients;
-        const displayRecipients = allRecipients.slice(0, 3).map(r => r.recipient_name);
-        const remainingCount = allRecipients.length - 3;
-        response += `${listFromArray(displayRecipients)} (and ${remainingCount} other${remainingCount === 1 ? '' : 's'})`;
+        if (reactData.threads[this_thread].messages[message_index].recipients.length < 4) {
+          response += listFromArray(reactData.threads[this_thread].messages[message_index].recipients.map(r => { return r.recipient_name; }));
+        }
+        else {
+          // Show first 3 recipients plus count of remaining
+          const allRecipients = reactData.threads[this_thread].messages[message_index].recipients;
+          const displayRecipients = allRecipients.slice(0, 3).map(r => r.recipient_name);
+          const remainingCount = allRecipients.length - 3;
+          response += `${listFromArray(displayRecipients)} (and ${remainingCount} other${remainingCount === 1 ? '' : 's'})`;
+        }
       }
     }
     else if (reactData.threads[this_thread].messages[message_index].inOut === 'held') {
@@ -1555,12 +1558,16 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       response = `${reactData.threads[this_thread].messages[message_index].author_name} -> `;
       if (reactData.threads[this_thread].is_public && !OG_message) {
         response += 'The Group';
-      } else if (reactData.threads[this_thread].messages[message_index].other_recipients.length < 3) {
+      }
+      else if (reactData.threads[this_thread].messages[message_index].other_recipients.length < 3) {
         response += listFromArray(reactData.threads[this_thread].messages[message_index].other_recipientNames.concat(['Me']));
       }
       else {
         response += `Me and ${reactData.threads[this_thread].messages[message_index].other_recipients.length} other people`;
       }
+    }
+    if (reactData.threads[this_thread].is_public && OG_message) {
+      response += ' (Group Message)';
     }
     return response;
   }

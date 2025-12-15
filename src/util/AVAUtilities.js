@@ -520,20 +520,23 @@ export function array_in_array(a1, a2) {
 
 export function titleCase(pString) {
   if (!pString) { return ''; }
-  let words = pString.split(/(\W+)/);
+  let words = pString.split(/([^\w']+)/);
+  console.log(words);
   const smallWords = ['of', 'and', 'or', 'a', 'an', 'the', 'in', 'on', 'at', 'to', 'for', 'with', 'from', 'by'];
   const allCapWords = ['ava', 'bbq', 'id', 'tv', 'ceo', 'cfo', 'coo', 'usa', 'uk', 'eu'];
-  const titleCased = words.map((w, idx) => {
+  var titleCased = [];
+  words.forEach((w, idx) => {
+    if (!w.trim()) { return; }   // ignore spaces between words (we'll put them back in later)
     // Always capitalize first word, otherwise check if it's a small word
     if (allCapWords.includes(w.toLowerCase())) {
-      return w.toUpperCase();
+      titleCased.push(w.toUpperCase());
     }
     else if (idx === 0 || !smallWords.includes(w.toLowerCase())) {
-      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+      titleCased.push(w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
     }
-    return w.toLowerCase();
-  }).join(' ');
-  return titleCased.trim();
+    else { titleCased.push(w.toLowerCase()); }
+  });
+  return titleCased.join(' ').trim();
 }
 
 export function makeNumber(pNum) {
