@@ -1145,17 +1145,25 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       if (!state.patient.hasOwnProperty('preferred_language')) {
         state.patient.preferred_language = 'en';
       }
-      if (this_deliveryRec.content.current.hasOwnProperty(state.patient.preferred_language || 'en')) {
-        this_deliveryRec.message_text = this_deliveryRec.content.current[state.patient.preferred_language || 'en'];
+      if (this_deliveryRec.content.current.hasOwnProperty(state.patient.preferred_language)) {
+        this_deliveryRec.message_text = this_deliveryRec.content.current[state.patient.preferred_language];
       }
       else if (this_deliveryRec.content.current.hasOwnProperty('original')) {
         this_deliveryRec.message_text = this_deliveryRec.content.current.original;
       }
+      else if (this_deliveryRec.content.current.hasOwnProperty('en')) {
+        this_deliveryRec.message_text = this_deliveryRec.content.current['en'];
+      }
+
       else if (this_deliveryRec.content.current.hasOwnProperty('EN-US')) {
         this_deliveryRec.message_text = this_deliveryRec.content.current['EN-US'];
       }
       else {
-        this_deliveryRec.message_text = '(Message content unavailable)';
+        this_deliveryRec.message_text = {
+          text: '(Message content unavailable)',
+          html: '(Message content unavailable)',
+          subject: '(Message content unavailable)',
+        };
       }
       let message_number = -1;
       let message_added = false;
@@ -1191,7 +1199,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         reactData.threads[this_deliveryRec.thread_id].messages.push({
           message_text: this_deliveryRec.message_text.text,
           html_message_text: this_deliveryRec.message_text.html || this_deliveryRec.message_text.text,
-          subject: this_deliveryRec.subject_line,
+          subject: this_deliveryRec.message_text.subject || this_deliveryRec.subject_line || '(No Subject)',
           last_update: 0,
           attachments: this_deliveryRec.content.current.attachments,
           composite_key: this_deliveryRec.composite_key,
