@@ -49,6 +49,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   const AVAClass = AVAclasses();
   const { state } = useSession();
   const isMounted = React.useRef(false);
+  const optionsRef = React.useRef(options);
   const administrative_account = (['admin', 'support', 'master'].includes(state.user.account_class));
 
   // Virtual scrolling state
@@ -62,6 +63,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
 
   React.useEffect(() => {
     function initialize() {
+      console.log('QuickSearch initialize() called with options:', options);
       let reactUpd = {};
       reactUpd.preferred_recipients = [];
       for (let this_group in state.groups.preferred_recipients) {
@@ -75,7 +77,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
           }
         }
       }
-      if (options.withGroups && !reactData.groupInfo) {
+      if (optionsRef.current.withGroups && !reactData.groupInfo) {
         if (state.hasOwnProperty('groups')) {
           let groupList = [];
           let groupList_minLevel = 99;
@@ -123,11 +125,14 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
           });
 
           // Auto-show group list if showGroupList option is true
-          if (options.showGroupList) {
+          if (optionsRef.current.showGroupList || optionsRef.current.restrictGroups) {
             reactUpd.showGroupList = true;
           }
 
         }
+      }
+      if (optionsRef.current.restrictGroups && !optionsRef.current.hasOwnProperty('showAll')) {
+        optionsRef.current.showAll = false;
       }
       if (!reactData.accessList) {
         if (!state.accessList) {
@@ -136,19 +141,20 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
           }
         }
         else {
-          reactUpd.selections = (options.keepSelections ? reactData.selections : []);
+          reactUpd.selections = (optionsRef.current.keepSelections ? reactData.selections : []);
           reactUpd.accessList = deepCopy(state.accessList[state.session.client_id].list);
         }
       }
       else {
-        reactUpd.selections = (options.keepSelections ? reactData.selections : []);
+        reactUpd.selections = (optionsRef.current.keepSelections ? reactData.selections : []);
       }
       updateReactData(reactUpd, true);
     }
     isMounted.current = true;
     initialize();
     return () => { isMounted.current = false; };
-  }, [isMounted]);  // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
+  }, []);
 
   const clean = (this_entry) => {
     let work = titleCase(this_entry.replace(/GRP|AVA|TOP|ALL/gm, '').replace(/_/gm, ' ').trim());
@@ -203,6 +209,10 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
     if (showOnlySelected) {
       return reactData.selections && reactData.selections.some(s => s.rIndex === rIndex);
     }
+       // If restrictGroups is true, we have already filtered out non-member groups
+    if (optionsRef.current.restrictGroups) {
+      return true;
+    }
 
     return (
       (options.showAll && (isEmpty(reactData.linkedPersonFilter) || reactData.linkedPersonFilter?.raw?.length < 2))
@@ -216,7 +226,11 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   };
 
   const OKtoShowGroup = (this_group) => {
-    if ((this_group.level === 0) && !options.restrictGroups) {
+    // If restrictGroups is true, we hve already filtered out non-member groups
+    if (options.restrictGroups) {
+      return true;
+    }
+    if (this_group.level === 0) {
       return false;
     }
 
