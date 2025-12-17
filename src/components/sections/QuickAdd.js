@@ -99,6 +99,7 @@ export default ({ onClose, options = {} }) => {
     initialized: false,
     errorList: {},
     new_account_prompts: {},
+    administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
     selected_account_type: '',
     selected_account_config: null,
     form_fields: {},
@@ -152,7 +153,13 @@ export default ({ onClose, options = {} }) => {
 
       // Grab the new_account_form object from state.session and store as new_account_prompts
       if (state.session?.new_account_form) {
-        reactUpd.new_account_prompts = deepCopy(state.session.new_account_form);
+        reactUpd.new_account_prompts = deepCopy(state.session.new_account_form).filter(entry => {
+          // If restrict_to_admin is true, only include if user is administrative account
+          if (entry.restrict_to_admin && (!reactData.administrative_account || options.source === 'url_parameter')) {
+            return false;
+          }
+          return true;
+        });
       }
 
       // If options.family_id is provided, load the existing FamilyGroups record
@@ -528,7 +535,7 @@ export default ({ onClose, options = {} }) => {
     }));
   };
 
-  const saveCurrentFamilyMember = () => {
+  const saveCurrentFamilyMember = async () => {
     const familyMember = {
       index: reactData.current_member_index,
       account_type: reactData.selected_account_type,
@@ -538,10 +545,25 @@ export default ({ onClose, options = {} }) => {
       timestamp: new Date().toISOString()
     };
 
+    try {
+      familyMember.proposed_user_id = await generateUniqueUserId(familyMember);
+    } catch (error) {
+      console.error('Failed to generate user ID for member:', familyMember, error);
+      showAlert({
+        severity: 'error',
+        title: 'User ID Generation Failed',
+        message: `Failed to generate user ID for ${getFamilyMemberName(familyMember)}: ${error.message}`
+      });
+      throw error;
+    }
+
+    // If family_role is 'none', go directly to complete stage (skip asking for more members)
+    const nextStage = reactData.selected_account_config?.family_role === 'none' ? 'complete' : 'ask_for_more';
+
     setReactData(prev => ({
       ...prev,
       family_members: [...prev.family_members, familyMember],
-      stage: 'ask_for_more'
+      stage: nextStage
     }));
   };
 
@@ -1247,6 +1269,27 @@ export default ({ onClose, options = {} }) => {
   };
 
   /**
+   * Apply field formatting based on field configuration
+   * Supports: sentenceCase
+   * 
+   * @param {string} value - The field value to format
+   * @param {string} formatType - The format type (e.g., "sentenceCase")
+   * @returns {string} - The formatted value
+   */
+  const applyFieldFormat = (value, formatType) => {
+    if (!value || !formatType) {
+      return value;
+    }
+
+    if (formatType === 'sentenceCase') {
+      // Convert to sentence case: first letter uppercase, rest lowercase
+      return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+    }
+
+    return value;
+  };
+
+  /**
    * Generate unique user ID for a family member
    * Format: firstInitial + lastName + "-" + client_id (all lowercase)
    * If duplicate exists, increment counter: firstInitial + lastName + counter + "-" + client_id
@@ -1289,6 +1332,22 @@ export default ({ onClose, options = {} }) => {
       proposedId = `${firstInitial}${cleanLastName}${counter}-${clientId}`.toLowerCase();
 
       try {
+        // Check if this ID already exists in any family members being created
+        let existsInFamily = false;
+        for (const m of reactData.family_members) {
+          if (m.proposed_user_id === proposedId) {
+            existsInFamily = true;
+            break;
+          }
+        }
+
+        if (existsInFamily) {
+          // ID already used in this creation session, increment counter
+          attempts++;
+          counter = attempts + 1; // Start with 2, then 3, 4, etc.
+          continue;
+        }
+
         // Check if this ID already exists in People table
         const existingPerson = await getDb({
           Key: { person_id: proposedId },
@@ -1345,40 +1404,12 @@ export default ({ onClose, options = {} }) => {
         };
       });
 
-      // Generate unique user IDs for all family members
-      const familyMembersWithUserIds = [];
-      for (const member of reactData.family_members) {
-        try {
-          const userId = await generateUniqueUserId(member);
-          familyMembersWithUserIds.push({
-            ...member,
-            proposed_user_id: userId
-          });
-          console.log('Generated user ID for member:', getFamilyMemberName(member), 'ID:', userId);
-        } catch (error) {
-          console.error('Error generating user ID for member:', member, error);
-          showAlert({
-            severity: 'error',
-            title: 'User ID Generation Failed',
-            message: `Failed to generate user ID for ${getFamilyMemberName(member)}: ${error.message}`
-          });
-
-          // Reset loading state and return to prevent getting stuck
-          setReactData(prev => ({
-            ...prev,
-            loading_user_ids: false
-          }));
-          return;
-        }
-      }
-
-      console.log('About to set stage to complete with', familyMembersWithUserIds.length, 'members');
+      console.log('About to set stage to complete with', reactData.family_members.length, 'members');
 
       setReactData(prev => {
         console.log('Setting stage to complete, prev stage:', prev.stage);
         let updatedData = {
           ...prev,
-          family_members: familyMembersWithUserIds,
           loading_user_ids: false,
           stage: 'complete'
         };
@@ -1412,7 +1443,7 @@ export default ({ onClose, options = {} }) => {
       }
 
       // Show success message with user IDs
-      const userIdList = familyMembersWithUserIds.map(member =>
+      const userIdList = reactData.family_members.map(member =>
         `${getFamilyMemberName(member)}: ${member.proposed_user_id}`
       ).join(', ');
 
@@ -1928,6 +1959,10 @@ export default ({ onClose, options = {} }) => {
                             if (!dateResult.error) {
                               handleFieldValueChange(fieldName, dateResult.slashDate);
                             }
+                          } else if (event.target.value && fieldData.value?.format) {
+                            // Apply field formatting if specified
+                            const formattedValue = applyFieldFormat(event.target.value, fieldData.value.format);
+                            handleFieldValueChange(fieldName, formattedValue);
                           }
                         }}
                         variant="outlined"
@@ -2047,15 +2082,17 @@ export default ({ onClose, options = {} }) => {
                     'Ready to save data to the system.' :
                     'Ready to save all family member data to the system.'}
                 </Typography>
-                <Box style={{ display: 'flex', gap: '16px', justifyContent: 'center', marginBottom: '16px' }}>
-                  <Button
-                    variant="outlined"
-                    onClick={goBackToAddMore}
-                    style={{ borderColor: 'orange', color: 'orange' }}
-                  >
-                    {reactData.family_members.length === 1 ? 'Add Family Members' : 'Add More Family Members'}
-                  </Button>
-                </Box>
+                {reactData.family_members[0]?.account_config?.family_role !== 'none' && (
+                  <Box style={{ display: 'flex', gap: '16px', justifyContent: 'center', marginBottom: '16px' }}>
+                    <Button
+                      variant="outlined"
+                      onClick={goBackToAddMore}
+                      style={{ borderColor: 'orange', color: 'orange' }}
+                    >
+                      {reactData.family_members.length === 1 ? 'Add Family Members' : 'Add More Family Members'}
+                    </Button>
+                  </Box>
+                )}
               </Box>
             )}
           </Box>
@@ -2115,13 +2152,7 @@ export default ({ onClose, options = {} }) => {
                       // If opened in a popup, close it
                       window.close();
                     } else {
-                      // If not a popup, try to navigate away or close
-                      try {
-                        window.close();
-                      } catch (e) {
-                        // If we can't close (browser security), navigate to a generic page
-                        window.location.href = 'about:blank';
-                      }
+                      window.location.replace(`${window.location.href.split('?')[0]}thankyou`);
                     }
                   } else {
                     // Normal admin mode - just close the dialog
@@ -2246,7 +2277,7 @@ export default ({ onClose, options = {} }) => {
                   }
 
                   // Save current family member and proceed to ask for more
-                  saveCurrentFamilyMember();
+                  await saveCurrentFamilyMember();
                 }
               }}
             >
@@ -2260,145 +2291,186 @@ export default ({ onClose, options = {} }) => {
           </Box>
         )}
 
-        {/* Button for Complete stage */}
+        {/* Buttons for Complete stage */}
         {reactData.stage === 'complete' && !reactData.loading_user_ids && (
-          <Button
-            className={AVAClass.AVAButton}
-            style={{
-              marginTop: '16px',
-              backgroundColor: 'blue',
-              color: 'white'
-            }}
-            size='small'
-            onClick={async () => {
-              try {
-                // Show loading state
-                showAlert({
-                  severity: 'info',
-                  title: 'Saving Data',
-                  message: reactData.family_members.length === 1 ?
-                    'Saving data to People and SessionsV2 tables...' :
-                    'Saving all family member data to People, SessionsV2, and FamilyGroups tables...',
-                  autoHide: false
-                });
-
-                // Save People and SessionsV2 records for each family member
-                const savedMembers = [];
-                const failedMembers = [];
-
-                for (const member of reactData.family_members) {
-                  try {
-                    // Save People record first
-                    await savePeopleRecord(member);
-
-                    // Then save SessionsV2 record
-                    await saveSessionsV2Record(member);
-
-                    savedMembers.push(getFamilyMemberName(member));
-                  } catch (error) {
-                    console.error('Failed to save member:', member, error);
-                    failedMembers.push(`${getFamilyMemberName(member)}: ${error.message}`);
-                  }
-                }
-
-                // Save FamilyGroups records if:
-                // 1. Creating new family (family_id exists and multiple members), OR
-                // 2. Adding to existing family (existing_family_rec exists)
-                let familyGroupsSaved = false;
-                if ((reactData.family_id && reactData.family_members.length > 1) || reactData.existing_family_rec) {
-                  try {
-                    familyGroupsSaved = await saveFamilyGroupsRecord(
-                      reactData.family_members,
-                      reactData.family_id,
-                      reactData.existing_family_rec // Pass existing family record if adding to existing family
-                    );
-                    if (familyGroupsSaved) {
-                      console.log('FamilyGroups records saved successfully');
-                    }
-                  } catch (error) {
-                    console.error('Failed to save FamilyGroups records:', error);
-                    // Don't add to failedMembers since this is a family-level operation
-                  }
-                }
-
-                // Final summary data for logging
-                const userIdSummary = reactData.family_members.map(member => ({
-                  name: getFamilyMemberName(member),
-                  account_type: member.account_type,
-                  proposed_user_id: member.proposed_user_id,
-                  groups: member.account_config?.default_groups || []
-                }));
-
-                console.log('Save Results (People, SessionsV2 & FamilyGroups):', {
-                  family_members: reactData.family_members,
-                  family_id: reactData.family_id || null,
-                  family_groups_saved: familyGroupsSaved,
-                  total_members: reactData.family_members.length,
-                  saved_members: savedMembers,
-                  failed_members: failedMembers,
-                  user_id_summary: userIdSummary
-                });
-
-                // Show results
-                if (failedMembers.length > 0) {
+          <Box style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{
+                marginTop: '16px',
+                backgroundColor: 'red',
+                color: 'white'
+              }}
+              size='small'
+              onClick={() => {
+                updateReactData({ exit_confirm: true }, true);
+              }}
+            >
+              Exit
+            </Button>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{
+                marginTop: '16px',
+                backgroundColor: 'blue',
+                color: 'white'
+              }}
+              size='small'
+              onClick={async () => {
+                try {
+                  // Show loading state
                   showAlert({
-                    severity: 'error',
-                    title: 'Partial Save Failure',
-                    message: `Saved ${savedMembers.length} members. Failed: ${failedMembers.join(', ')}`,
+                    severity: 'info',
+                    title: 'Saving Data',
+                    message: reactData.family_members.length === 1 ?
+                      'Saving data to People and SessionsV2 tables...' :
+                      'Saving all family member data to People, SessionsV2, and FamilyGroups tables...',
                     autoHide: false
                   });
-                } else {
-                  let message = reactData.family_members.length === 1 ?
-                    `Successfully saved data in AVA.` :
-                    `Successfully saved ${savedMembers.length} family member(s) in AVA.`;
-                  if (reactData.family_id) {
-                    if (familyGroupsSaved) {
-                      message += ` FamilyGroups table updated with Family ID: ${reactData.family_id}`;
+
+                  // All members should already have proposed_user_id set by completeProcess()
+                  // If any don't, generate them now
+                  const membersWithUserIds = [];
+                  for (const member of reactData.family_members) {
+                    if (!member.proposed_user_id) {
+                      try {
+                        const userId = await generateUniqueUserId(member);
+                        membersWithUserIds.push({
+                          ...member,
+                          proposed_user_id: userId
+                        });
+                      } catch (error) {
+                        console.error('Failed to generate user ID for member:', member, error);
+                        showAlert({
+                          severity: 'error',
+                          title: 'User ID Generation Failed',
+                          message: `Failed to generate user ID for ${getFamilyMemberName(member)}: ${error.message}`
+                        });
+                        throw error;
+                      }
                     } else {
-                      message += ` Family ID: ${reactData.family_id}`;
+                      membersWithUserIds.push(member);
                     }
                   }
 
-                  // Add user IDs to success message
-                  const userIds = reactData.family_members
-                    .filter(member => member.proposed_user_id)
-                    .map(member => `${getFamilyMemberName(member)}: ${member.proposed_user_id}`)
-                    .join(', ');
-                  if (userIds) {
-                    message += ` User IDs: ${userIds}`;
+                  // Save People and SessionsV2 records for each family member
+                  const savedMembers = [];
+                  const failedMembers = [];
+
+                  for (const member of membersWithUserIds) {
+                    try {
+                      // Save People record first
+                      await savePeopleRecord(member);
+
+                      // Then save SessionsV2 record
+                      await saveSessionsV2Record(member);
+
+                      savedMembers.push(getFamilyMemberName(member));
+                    } catch (error) {
+                      console.error('Failed to save member:', member, error);
+                      failedMembers.push(`${getFamilyMemberName(member)}: ${error.message}`);
+                    }
                   }
 
-                  showAlert({
-                    severity: 'success',
-                    title: reactData.family_members.length === 1 ? 'Data Saved Successfully' : 'All Data Saved Successfully',
-                    message: message
+                  // Save FamilyGroups records if:
+                  // 1. Creating new family (family_id exists and multiple members), OR
+                  // 2. Adding to existing family (existing_family_rec exists)
+                  let familyGroupsSaved = false;
+                  if ((reactData.family_id && reactData.family_members.length > 1) || reactData.existing_family_rec) {
+                    try {
+                      familyGroupsSaved = await saveFamilyGroupsRecord(
+                        membersWithUserIds,
+                        reactData.family_id,
+                        reactData.existing_family_rec // Pass existing family record if adding to existing family
+                      );
+                      if (familyGroupsSaved) {
+                        console.log('FamilyGroups records saved successfully');
+                      }
+                    } catch (error) {
+                      console.error('Failed to save FamilyGroups records:', error);
+                      // Don't add to failedMembers since this is a family-level operation
+                    }
+                  }
+
+                  // Final summary data for logging
+                  const userIdSummary = membersWithUserIds.map(member => ({
+                    name: getFamilyMemberName(member),
+                    account_type: member.account_type,
+                    proposed_user_id: member.proposed_user_id,
+                    groups: member.account_config?.default_groups || []
+                  }));
+
+                  console.log('Save Results (People, SessionsV2 & FamilyGroups):', {
+                    family_members: membersWithUserIds,
+                    family_id: reactData.family_id || null,
+                    family_groups_saved: familyGroupsSaved,
+                    total_members: reactData.family_members.length,
+                    saved_members: savedMembers,
+                    failed_members: failedMembers,
+                    user_id_summary: userIdSummary
                   });
 
-                  // Close dialog after successful save
-                  if (onClose) {
-                    // Pass the created person IDs to the onClose callback
-                    const createdPersonIds = reactData.family_members
-                      .filter(member => member.proposed_user_id)
-                      .map(member => member.proposed_user_id);
-                    onClose(createdPersonIds);
-                  }
-                }
+                  // Show results
+                  if (failedMembers.length > 0) {
+                    showAlert({
+                      severity: 'error',
+                      title: 'Partial Save Failure',
+                      message: `Saved ${savedMembers.length} members. Failed: ${failedMembers.join(', ')}`,
+                      autoHide: false
+                    });
+                  } else {
+                    let message = reactData.family_members.length === 1 ?
+                      `Successfully saved data in AVA.` :
+                      `Successfully saved ${savedMembers.length} family member(s) in AVA.`;
+                    if (reactData.family_id) {
+                      if (familyGroupsSaved) {
+                        message += ` FamilyGroups table updated with Family ID: ${reactData.family_id}`;
+                      } else {
+                        message += ` Family ID: ${reactData.family_id}`;
+                      }
+                    }
 
-              } catch (error) {
-                console.error('Error in final save process:', error);
-                showAlert({
-                  severity: 'error',
-                  title: 'Save Failed',
-                  message: reactData.family_members.length === 1 ?
-                    `Failed to save data: ${error.message}` :
-                    `Failed to save family member data: ${error.message}`,
-                  autoHide: false
-                });
-              }
-            }}
-          >
-            {reactData.family_members.length === 1 ? 'Save Data' : 'Save All Family Data'}
-          </Button>
+                    // Add user IDs to success message
+                    const userIds = membersWithUserIds
+                      .filter(member => member.proposed_user_id)
+                      .map(member => `${getFamilyMemberName(member)}: ${member.proposed_user_id}`)
+                      .join(', ');
+                    if (userIds) {
+                      message += ` User IDs: ${userIds}`;
+                    }
+
+                    showAlert({
+                      severity: 'success',
+                      title: reactData.family_members.length === 1 ? 'Data Saved Successfully' : 'All Data Saved Successfully',
+                      message: message
+                    });
+
+                    // Close dialog after successful save
+                    if (onClose) {
+                      // Pass the created person IDs to the onClose callback
+                      const createdPersonIds = membersWithUserIds
+                        .filter(member => member.proposed_user_id)
+                        .map(member => member.proposed_user_id);
+                      onClose(createdPersonIds);
+                    }
+                  }
+
+                } catch (error) {
+                  console.error('Error in final save process:', error);
+                  showAlert({
+                    severity: 'error',
+                    title: 'Save Failed',
+                    message: reactData.family_members.length === 1 ?
+                      `Failed to save data: ${error.message}` :
+                      `Failed to save family member data: ${error.message}`,
+                    autoHide: false
+                  });
+                }
+              }}
+            >
+              {reactData.family_members.length === 1 ? 'Save Data' : 'Save All Family Data'}
+            </Button>
+          </Box>
         )}
       </DialogActions>
 
@@ -2411,7 +2483,7 @@ export default ({ onClose, options = {} }) => {
         >
           <Box style={{ padding: '24px', minWidth: '300px' }}>
             <Typography id="exit-dialog-title" variant="h6" style={{ marginBottom: '16px', fontWeight: 'bold' }}>
-              Exit QuickAdd?
+              Exit?
             </Typography>
             <Typography variant="body2" style={{ marginBottom: '20px', color: '#666' }}>
               You have unsaved changes. Are you sure you want to exit without saving?
@@ -2419,7 +2491,16 @@ export default ({ onClose, options = {} }) => {
             <Box style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <Button
                 variant="outlined"
-                onClick={() => updateReactData({ exit_confirm: false }, true)}
+                onClick={() => {
+                  updateReactData({ exit_confirm: false }, true);
+                  // Return to fill_fields stage for the last member being worked on
+                  setReactData(prev => ({
+                    ...prev,
+                    stage: 'fill_fields',
+                    // Remove the most recent entry from family_members since it will be re-added on save
+                    family_members: prev.family_members.slice(0, -1)
+                  }));
+                }}
                 style={{ borderColor: 'blue', color: 'blue' }}
               >
                 Keep Working
