@@ -17,6 +17,11 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
 
   const AVAClass = AVAclasses();
 
+  const isFamilyMember = currentValues.familyRecs  && currentValues.familyRecs.length > 0;
+  const isPrimaryContact = isFamilyMember && currentValues.familyRecs.some(famRec => {
+    return (famRec.primary_contact.id === currentValues.peopleRec.person_id);
+  });
+
   const messageOptions = [
     {
       option: 'ava',
@@ -79,6 +84,20 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
       label: `Phone call`,
       enabled: ` to ${formatPhone(currentValues.peopleRec.contact_info?.alternate?.number)}`,
       show: !isEmpty(currentValues.peopleRec.contact_info?.alternate?.number),
+      exclusive: false
+    },
+    {
+      option: 'family_primary',
+      label: `Message`,
+      enabled: ` to Primary Family Contact (${isFamilyMember ? currentValues.familyRecs[0].primary_contact.name : 'Primary Contact'})`,
+      show: isFamilyMember && !isPrimaryContact,
+      exclusive: false
+    },
+    {
+      option: 'family_all',
+      label: `Message`,
+      enabled: ` to All Family Members`,
+      show: isFamilyMember,
       exclusive: false
     }
   ];

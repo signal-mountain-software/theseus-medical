@@ -19,6 +19,7 @@ export default Component => props => {
         vertical: 'bottom',
         horizontal: 'center',
       }}
+      classes={{}}
       action={key => (
         <Button color='inherit' onClick={onCLickDismiss(key)}>
           Dismiss

@@ -26,6 +26,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
         // then add this group and remove all others
         reactUpdObj = { remembered_groupList: deepCopy(currentValues.peopleRec.groups) };
         currentValues.peopleRec.groups = [(clicked_group.id || clicked_group.group_id)];
+        currentValues.peopleRec.inactive_account = true;
       }
       else {
         // the clicked on group was NOT in the list already.  Add it and add parents up the chain.
@@ -60,6 +61,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
         else {
           currentValues.peopleRec.groups.splice(foundIt, 1);
         }
+        currentValues.peopleRec.inactive_account = false;
       }
       else {
         // the clicked on group WAS in the list already.  Remove AND remove from parent if no other children of that parent

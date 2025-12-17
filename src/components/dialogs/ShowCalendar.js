@@ -191,13 +191,11 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
     setStatusMessage(statusMessage);
     setProgress(progressPct);
     setPWidth(progressWidth);
- //   console.log(statusMessage, progressWidth, progressPct);
+    //   console.log(statusMessage, progressWidth, progressPct);
     setForceRedisplay(!forceRedisplay);
   };
 
   const setCalendar = async () => {
-    // let rightNow = new Date();
-    // let this_date = rightNow.getDate();
     let theCalendar = [];
     let oRecs;
     let checkClient = eventClient || (patient.adopted_client || patient.client_id);
@@ -210,8 +208,7 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
         type: ['occurrence'],
         allow_create: true
       });
-    }
-    else {
+    } else {
       setShowAll(true);
       oRecs = await getCalendarEntries({
         client_id: checkClient,
@@ -220,17 +217,35 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
         type: ['occurrence']
       }, onStatusUpdate);
     }
+    // Batch fetch all event and slot records in parallel
+    const eventKeys = oRecs.map(occRec => occRec.event_key);
+    // Fetch all event records
+    const eventPromises = eventKeys.map(event_key =>
+      getCalendarEntries({
+        client_id: checkClient,
+        event_id: event_key,
+        type: ['event']
+      })
+    );
+    const eventResults = await Promise.all(eventPromises);
+    // Fetch all slot records
+    const slotPromises = oRecs.map(occRec =>
+      getCalendarEntries({
+        client_id: checkClient,
+        event_id: occRec.event_key,
+        person_id: patient.patient_id || patient.person_id,
+        type: ['slot']
+      })
+    );
+    const slotResults = await Promise.all(slotPromises);
+
     for (let o = 0; o < oRecs.length; o++) {
       onStatusUpdate('Checking sign-ups', oRecs.length, ((o / oRecs.length) * 100));
       let occRec = oRecs[o];
-      let [eventRec] = await getCalendarEntries({
-        client_id: checkClient,
-        event_id: occRec.event_key,
-        type: ['event']
-      });
+      let [eventRec] = eventResults[o];
       let description, location, owner, signup_type, time$;
       let time24 = 0;
-      if (eventRec.eventData) {
+      if (eventRec && eventRec.eventData) {
         description = eventRec.eventData.event_data.description;
         owner = eventRec.eventData.event_data.owner;
         signup_type = eventRec.eventData.event_data.type;
@@ -238,17 +253,14 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
           time24 = makeTime(eventRec.eventData.event_data.time.from).numeric24;
           if (eventRec.eventData.event_data.time.to) {
             time$ = 'From ' + eventRec.eventData.event_data.time.from + ' to ' + eventRec.eventData.event_data.time.to;
-          }
-          else { time$ = eventRec.eventData.event_data.time.from; }
+          } else { time$ = eventRec.eventData.event_data.time.from; }
         }
         if (eventRec.eventData.event_data.location) {
           location = ((typeof eventRec.eventData.event_data.location === 'object')
             ? eventRec.eventData.event_data.location.description
             : eventRec.eventData.event_data.location);
-        }
-        else { location = ''; }
-      }
-      else if (eventRec.calData) {
+        } else { location = ''; }
+      } else if (eventRec && eventRec.calData) {
         description = eventRec.calData.description;
         location = eventRec.calData.location;
         owner = eventRec.calData.owner;
@@ -260,12 +272,7 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
       let oDate;
       if (occRec.occData && occRec.occData.date) { oDate = occRec.occData.date; }
       else { oDate = occRec.occurrence_date; }
-      let [slotRec] = await getCalendarEntries({
-        client_id: checkClient,
-        event_id: occRec.event_key,
-        person_id: patient.patient_id || patient.person_id,
-        type: ['slot']
-      });
+      let [slotRec] = slotResults[o];
       let tCal = {
         client: occRec.client,
         event_key: occRec.event_key,
@@ -399,12 +406,20 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
       let startDate, endDate;
       if (reactData.defaultValues.start_date) {
         startDate = makeDate(reactData.defaultValues.start_date).date;
+        if (reactData.defaultValues.weekView) {
+          let revisedStart = addDays(startDate, -(makeDate(startDate).dayOfWeek));
+          startDate = revisedStart;
+        }
       }
       else {
         startDate = new Date();
       }
       if (reactData.defaultValues.end_date) {
         endDate = makeDate(reactData.defaultValues.end_date).date;
+        if (reactData.defaultValues.weekView) {
+          let revisedEnd = addDays(endDate, 6 - (makeDate(endDate).dayOfWeek));
+          endDate = revisedEnd;
+        }
       }
       else {
         endDate = addDays(startDate, 35);

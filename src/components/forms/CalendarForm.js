@@ -280,6 +280,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   DEFAULT VALUES
     slotsView - show all people that are signed up
     agendaView - show in straigh-line "agenda" format
+    weekView - show in week format
     subtitle - if present, text to show under the person name
     onlyRegistered - only show events that I am signed-up for
     onlyPublished - only show events that have alreasdy been published
@@ -1149,16 +1150,46 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     return { slotAssigned: slotToUse, slotUpdates };
   };
 
-  const isDense = (this_date) => {
-    if (window.window.innerWidth < 800) {
-      return false;
+  // isDense is now a stateful map, recalculated only on mount and when window.innerWidth changes
+  const [isDenseMap, setIsDenseMap] = React.useState({});
+
+  // Helper to recalculate isDenseMap
+  const recalculateIsDenseMap = React.useCallback(() => {
+    const newMap = {};
+    const width = window.innerWidth || window.window.innerWidth;
+    if (width < 800) {
+      // All false if mobile
+      if (reactData.myCalendar) {
+        reactData.myCalendar.forEach(dateObj => {
+          newMap[dateObj.dateObj.numeric$] = false;
+        });
+      }
+    } else {
+      if (reactData.myCalendar) {
+        reactData.myCalendar.forEach(dateObj => {
+          if (reactData.denseView.hasOwnProperty(dateObj.dateObj.numeric$)) {
+            newMap[dateObj.dateObj.numeric$] = reactData.denseView[dateObj.dateObj.numeric$];
+          } else {
+            newMap[dateObj.dateObj.numeric$] = reactData.denseView['*all'];
+          }
+        });
+      }
     }
-    else if (reactData.denseView.hasOwnProperty(this_date)) {
-      return reactData.denseView[this_date];
-    }
-    else {
-      return reactData.denseView['*all'];
-    }
+    setIsDenseMap(newMap);
+  }, [reactData.myCalendar, reactData.denseView]);
+
+  React.useEffect(() => {
+    recalculateIsDenseMap();
+    const handleResize = () => {
+      recalculateIsDenseMap();
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [recalculateIsDenseMap]);
+
+  // Use this function in place of the old isDense
+  const isDense = (dateNumeric) => {
+    return isDenseMap[dateNumeric] || false;
   };
 
   const setTextColor = (this_event, this_date, agendaView) => {
@@ -1893,8 +1924,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                   >
                                     {''}
                                   </Typography>
-                                  {((dateIndex === 0) ||
-                                    ((this_date.dateObj.date.getDate() === 1) && (!isDense(this_date.dateObj.numeric$)))) &&
+                                  {((dateIndex === 0) || (this_date.dateObj.date.getDate() === 1)) &&
                                     <Typography
                                       style={AVATextStyle({
                                         size: 1.2,
@@ -1903,7 +1933,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                       })}
                                       key={this_date.dateObj.numeric$ + 'month2' + dateIndex}
                                     >
-                                      {this_date.dateObj.date.toLocaleString([], { month: 'long' })}
+                                      {this_date.dateObj.date.toLocaleString([], { month: 'short' })}
                                     </Typography>
                                   }
                                   <Typography

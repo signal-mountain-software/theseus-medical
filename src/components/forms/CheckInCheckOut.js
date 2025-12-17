@@ -170,7 +170,7 @@ export default ({ onSave, onClose }) => {
         return false;
       }
       else {
-        return (p.account_class !== 'inactive');
+        return ((p.inactive_account !== true) && (p.account_class !== 'inactive'));
       }
     });
     switch (personRecs.length) {

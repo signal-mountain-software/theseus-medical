@@ -2,6 +2,13 @@ import React from 'react';
 import { Box, Typography, Switch, Checkbox } from '@material-ui/core/';
 import { getPerson } from '../../util/AVAPeople';
 import { titleCase } from '../../util/AVAUtilities';
+import DeleteIcon from '@material-ui/icons/Delete';
+import IconButton from '@material-ui/core/IconButton';
+import Dialog from '@material-ui/core/Dialog';
+import DialogTitle from '@material-ui/core/DialogTitle';
+import DialogContent from '@material-ui/core/DialogContent';
+import DialogActions from '@material-ui/core/DialogActions';
+import Button from '@material-ui/core/Button';
 
 import useSession from '../../hooks/useSession';
 
@@ -9,9 +16,100 @@ import TextField from '@material-ui/core/TextField';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle } from '../../util/AVAStyles';
 
-export default ({ currentValues, ogValues, errorList, reactData, setError, updateField, updateReactData }) => {
+export default ({ currentValues, ogValues, errorList, reactData, setError, updateField, updateReactData, onClose }) => {
 
   const { state } = useSession();
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
+  const [familyCheckConfirmOpen, setFamilyCheckConfirmOpen] = React.useState(false);
+  const [familyCheckMessage, setFamilyCheckMessage] = React.useState('');
+  const [canProceedWithDelete, setCanProceedWithDelete] = React.useState(false);
+  const { dbClient } = require('../../util/AVAUtilities');
+
+  const handleDeleteAccount = async () => {
+    try {
+      const person_id = currentValues.peopleRec.person_id;
+      const peopleRec = currentValues.peopleRec;
+
+      // Check if this person has a family_id
+      if (peopleRec.family_id) {
+        try {
+          // Get the FamilyGroups record with this family_id
+          const familyResult = await dbClient.query({
+            KeyConditionExpression: 'family_id = :f',
+            ExpressionAttributeValues: { ':f': peopleRec.family_id },
+            TableName: 'FamilyGroups',
+            IndexName: 'family_id-index'
+          }).promise();
+
+          if (familyResult.Items && familyResult.Items.length > 0) {
+            const familyRec = familyResult.Items[0];
+
+            // Check if this person is the primary contact
+            if (familyRec.primary_contact && familyRec.primary_contact.id === person_id) {
+              setFamilyCheckMessage(
+                `Cannot delete this account. ${familyRec.primary_contact.name} is the primary contact for the family. Please designate a new primary contact or delete the entire family group.`
+              );
+              setCanProceedWithDelete(false);
+              setFamilyCheckConfirmOpen(true);
+              return;
+            }
+
+            // Check if this person is in other_members
+            if (familyRec.other_members && Array.isArray(familyRec.other_members)) {
+              const memberIndex = familyRec.other_members.findIndex(m => m.id === person_id);
+              if (memberIndex > -1) {
+                // This person is a family member; ask for confirmation
+                const memberName = familyRec.other_members[memberIndex].name || person_id;
+                setFamilyCheckMessage(
+                  `${memberName} is a member of the family group "${familyRec.family_name}". Deleting this account will remove them from the family. Are you sure you want to proceed?`
+                );
+                setCanProceedWithDelete(true);
+                setFamilyCheckConfirmOpen(true);
+                return;
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error checking FamilyGroups:', error);
+          // Continue with deletion if family check fails
+        }
+      }
+
+      // No family issues, proceed with deletion
+      await proceedWithAccountDeletion(person_id);
+    } catch (error) {
+      console.error('Error in handleDeleteAccount:', error);
+      alert(`Failed to delete account: ${error.message}`);
+    }
+  };
+
+  const proceedWithAccountDeletion = async (person_id) => {
+    try {
+      // Delete from People table
+      await dbClient.delete({
+        TableName: 'People',
+        Key: { person_id }
+      }).promise();
+
+      // Delete from SessionsV2 table
+      await dbClient.delete({
+        TableName: 'SessionsV2',
+        Key: { session_id: person_id }
+      }).promise();
+
+      setDeleteConfirmOpen(false);
+      setFamilyCheckConfirmOpen(false);
+      console.log(`Account ${person_id} deleted successfully`);
+
+      // Close PeopleMaintenance dialog
+      if (onClose) {
+        onClose({ accountDeleted: true, person_id });
+      }
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      alert(`Failed to delete account: ${error.message}`);
+    }
+  };
 
   let search_words = [
     titleCase(reactData.current.peopleRec.name.first),
@@ -681,15 +779,208 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
                   inputProps={{ 'aria-labelledby': `message_routing_3` }}
                 />
                 <Typography style={AVATextStyle({ size: 0.8, margin: { left: -0.4 } })} >
-                    {`${this_candidate.name.first} ${this_candidate.name.last}`}
+                  {`${this_candidate.name.first} ${this_candidate.name.last}`}
                 </Typography>
               </Box>
             ))}
           </Box>
         </React.Fragment>
 
-        
+        {reactData.administrative_account &&
+          <React.Fragment>
+            <Box
+              display="flex"
+              pt={2}
+              flexDirection='column'
+              justifyContent="center"
+            >
+              <Typography
+                style={AVATextStyle({ margin: { top: 1 } })}
+              >
+                {'Inactive Account'}
+              </Typography>
+              <Box flexGrow={2} display='flex' alignItems='center'
+                justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+                <Typography
+                  style={AVATextStyle({
+                    size: 0.8, margin: { right: 0.8 },
+                    bold: !currentValues.peopleRec.inactive_account
+                  })}
+                >
+                  {'No'}
+                </Typography>
+                <Switch
+                  checked={currentValues.peopleRec.inactive_account}
+                  onClick={async (event) => {
+                    const newValue = !currentValues.peopleRec.inactive_account;
+                    let updateObj = {
+                      updateList: [{
+                        tableName: 'peopleRec',
+                        fieldName: 'inactive_account',
+                        newData: newValue
+                      }]
+                    };
+                    await updateField(updateObj);
+                  }}
+                  name="InactiveAccount"
+                  color="primary"
+                />
+                <Typography
+                  style={AVATextStyle({
+                    size: 0.8, margin: { left: 0.8 },
+                    bold: currentValues.peopleRec.inactive_account
+                  })}
+                >
+                  {'Yes'}
+                </Typography>
+              </Box>
+            </Box>
+
+            <Box
+              display="flex"
+              paddingRight={2}
+              flexDirection='row'
+              justifyContent="flex-end"
+              alignItems="center"
+            >
+              <IconButton
+                onClick={() => setDeleteConfirmOpen(true)}
+                color="secondary"
+                title="Delete Account"
+              >
+                <DeleteIcon />
+              </IconButton>
+            </Box>
+          </React.Fragment>
+        }
+
+
+
       </Box>
+
+
+
+      {/* Family Check Confirmation Dialog */}
+      <Dialog
+        open={familyCheckConfirmOpen}
+        onClose={() => setFamilyCheckConfirmOpen(false)}
+        PaperProps={{
+          style: {
+            borderRadius: '30px'
+          }
+        }}
+      >
+        <DialogTitle style={{ textAlign: 'center', fontWeight: 'bold' }}>
+          Family Group Conflict
+        </DialogTitle>
+        <DialogContent style={{ padding: '16px 24px' }}>
+          <Typography>
+            {familyCheckMessage}
+          </Typography>
+        </DialogContent>
+        <DialogActions style={{
+          justifyContent: 'center',
+          padding: '16px 24px',
+          gap: '16px'
+        }}>
+          <Button
+            onClick={() => {
+              setFamilyCheckConfirmOpen(false);
+              setCanProceedWithDelete(false);
+            }}
+            color="primary"
+            variant="outlined"
+          >
+            {canProceedWithDelete ? 'No, cancel' : 'OK'}
+          </Button>
+          {canProceedWithDelete && (
+            <Button
+              onClick={async () => {
+                const person_id = currentValues.peopleRec.person_id;
+                try {
+                  // Remove this person from the family's other_members array
+                  const familyResult = await dbClient.query({
+                    KeyConditionExpression: 'family_id = :f',
+                    ExpressionAttributeValues: { ':f': currentValues.peopleRec.family_id },
+                    TableName: 'FamilyGroups',
+                    IndexName: 'family_id-index'
+                  }).promise();
+
+                  if (familyResult.Items && familyResult.Items.length > 0) {
+                    const familyRec = familyResult.Items[0];
+                    // Remove this person from other_members
+                    if (familyRec.other_members && Array.isArray(familyRec.other_members)) {
+                      const updatedOtherMembers = familyRec.other_members.filter(m => m.id !== person_id);
+                      // Update the FamilyGroups record with the primary key (client_id and composite_key)
+                      await dbClient.update({
+                        TableName: 'FamilyGroups',
+                        Key: {
+                          client_id: state.session.client_id,
+                          composite_key: familyRec.composite_key || familyRec.family_id
+                        },
+                        UpdateExpression: 'set other_members = :om',
+                        ExpressionAttributeValues: {
+                          ':om': updatedOtherMembers
+                        }
+                      }).promise();
+                    }
+                  }
+                } catch (error) {
+                  console.error('Error updating FamilyGroups:', error);
+                }
+                // Proceed with account deletion
+                await proceedWithAccountDeletion(person_id);
+              }}
+              color="secondary"
+              variant="contained"
+              style={{ backgroundColor: '#ff5252', color: 'white' }}
+            >
+              Yes, proceed with delete
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        PaperProps={{
+          style: {
+            borderRadius: '30px'
+          }
+        }}
+      >
+        <DialogTitle style={{ textAlign: 'center', fontWeight: 'bold' }}>
+          Delete Account
+        </DialogTitle>
+        <DialogContent style={{ padding: '16px 24px' }}>
+          <Typography>
+            Are you sure you want to delete this account ({currentValues.peopleRec.person_id})?
+          </Typography>
+        </DialogContent>
+        <DialogActions style={{
+          justifyContent: 'center',
+          padding: '16px 24px',
+          gap: '16px'
+        }}>
+          <Button
+            onClick={() => setDeleteConfirmOpen(false)}
+            color="primary"
+            variant="outlined"
+          >
+            No, go back
+          </Button>
+          <Button
+            onClick={handleDeleteAccount}
+            color="secondary"
+            variant="contained"
+            style={{ backgroundColor: '#ff5252', color: 'white' }}
+          >
+            Yes, delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

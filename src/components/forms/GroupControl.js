@@ -122,7 +122,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     assignmentList: defaults.assignmentList,
     assignmentView: defaults.assignmentView,
     viewOnly: defaults.viewOnly,
-
+    defaultCollapsed: !(defaults.expand_parents || false),
 
 
 
@@ -378,8 +378,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
             title: 'Dropped on Inactive Group',
             message: `You dragged ${peopleRec.Item.name?.first || 'someone'} to a group of Inactive accounts.  
               For safety, we don't allow that here.
-              If you mean to make this account inactive, please tap on ${(peopleRec.Item.name?.first + "'s") || 'their'} name then tap on Groups.  
-              You can select this group from that list.`
+              If you mean to make this account inactive, please tap on ${(peopleRec.Item.name?.first + "'s") || 'their'} name.  
+              You can make the account inactive in that screen.`
           }
         }, true);
         return;
@@ -870,7 +870,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                   >
                     {Object.keys(groupsManagedObject).map((listEntry, listIndex) => (
                       <React.Fragment key={`frag_${listIndex}`}>
-                        {!reactData.levelHidden[listIndex] &&
+                        {((groupsManagedObject[listEntry].level < 3) ||
+                        !(reactData.levelHidden[listIndex] ?? reactData.defaultCollapsed)) &&
                           <Box
                             display='flex' flexDirection='row'
                             justifyContent='flex-start'
@@ -931,38 +932,39 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                               })}>
                               {groupsManagedObject[listEntry].group_name}
                             </Typography>
-                            {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && reactData.levelHidden[listIndex + 1] &&
-                              <ExpandMoreIcon
-                                style={{ size: 8, fontSize: '1rem' }}
-                                onClick={async () => {
-                                  let keyList = Object.keys(groupsManagedObject);
-                                  let kLL = keyList.length;
-                                  for (let i = listIndex + 1; ((i < kLL) && (groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level)); i++) {
-                                    if (groupsManagedObject[keyList[i]].level === (groupsManagedObject[listEntry].level + 1)) {
-                                      reactData.levelHidden[i] = false;
+                            {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && (
+                              (reactData.levelHidden[listIndex + 1] ?? reactData.defaultCollapsed) ? (
+                                <ExpandMoreIcon
+                                  style={{ size: 8, fontSize: '1rem' }}
+                                  onClick={async () => {
+                                    let keyList = Object.keys(groupsManagedObject);
+                                    let kLL = keyList.length;
+                                    for (let i = listIndex + 1; ((i < kLL) && (groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level)); i++) {
+                                      if (groupsManagedObject[keyList[i]].level === (groupsManagedObject[listEntry].level + 1)) {
+                                        reactData.levelHidden[i] = false;
+                                      }
                                     }
-                                  }
-                                  updateReactData({
-                                    levelHidden: reactData.levelHidden
-                                  }, true);
-                                }}
-                              />
-                            }
-                            {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && !reactData.levelHidden[listIndex + 1] &&
-                              <ExpandLessIcon
-                                style={{ size: 8, fontSize: '1rem' }}
-                                onClick={async () => {
-                                  let keyList = Object.keys(groupsManagedObject);
-                                  let kLL = keyList.length;
-                                  for (let i = listIndex + 1; ((i < kLL) && (groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level)); i++) {
-                                    reactData.levelHidden[i] = true;
-                                  }
-                                  updateReactData({
-                                    levelHidden: reactData.levelHidden
-                                  }, true);
-                                }}
-                              />
-                            }
+                                    updateReactData({
+                                      levelHidden: reactData.levelHidden
+                                    }, true);
+                                  }}
+                                />
+                              ) : (
+                                <ExpandLessIcon
+                                  style={{ size: 8, fontSize: '1rem' }}
+                                  onClick={async () => {
+                                    let keyList = Object.keys(groupsManagedObject);
+                                    let kLL = keyList.length;
+                                    for (let i = listIndex + 1; ((i < kLL) && (groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level)); i++) {
+                                      reactData.levelHidden[i] = true;
+                                    }
+                                    updateReactData({
+                                      levelHidden: reactData.levelHidden
+                                    }, true);
+                                  }}
+                                />
+                              )
+                            )}
                           </Box>
                         }
                       </React.Fragment>

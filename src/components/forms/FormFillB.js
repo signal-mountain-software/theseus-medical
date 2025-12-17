@@ -2,7 +2,7 @@ import React from 'react';
 
 import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, sentenceCase, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
-import { formatPhone, getPerson, makeName } from '../../util/AVAPeople';
+import { formatPhone, makeName } from '../../util/AVAPeople';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import AVAConfirm from './AVAConfirm';
 import AVAUploadFile from '../../util/AVAUploadFile';
@@ -48,6 +48,9 @@ const useStyles = makeStyles(theme => ({
   formControlCheckGroup: {
     marginTop: 0,
     paddingTop: 0,
+  },
+  checkboxWrappedIndent: {
+    marginLeft: 32,
   },
   formControlTitle: {
     margin: 0,
@@ -115,6 +118,79 @@ const useStyles = makeStyles(theme => ({
     }
   }
 }));
+
+// Helper functions to handle both legacy (prompt.value) and new (prompt string) formats
+const sanitizeHTML = (html) => {
+  if (!html || typeof html !== 'string') return '';
+  // Basic sanitization: strip script/style and on* attributes; escape stray angle brackets
+  let safe = html
+    .replace(/<\s*script[^>]*>[\s\S]*?<\s*\/\s*script\s*>/gi, '')
+    .replace(/<\s*style[^>]*>[\s\S]*?<\s*\/\s*style\s*>/gi, '')
+    .replace(/on[a-zA-Z]+\s*=\s*"[^"]*"/g, '')
+    .replace(/on[a-zA-Z]+\s*=\s*'[^']*'/g, '')
+    .replace(/on[a-zA-Z]+\s*=\s*[^\s>]+/g, '');
+  return safe;
+};
+
+const escapeToHTML = (text) => {
+  if (text == null) return '';
+  const s = String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/\n/g, '<br/>');
+  return s;
+};
+
+const getPromptValue = (field) => {
+  if (!field || !field.prompt) return '';
+  // New format: prompt is a string
+  if (typeof field.prompt === 'string') return field.prompt;
+  // Legacy format: prompt.value
+  if (typeof field.prompt === 'object' && field.prompt !== null && 'value' in field.prompt) {
+    return field.prompt.value;
+  }
+  return '';
+};
+
+const getPromptProperty = (field, property) => {
+  if (!field || !field.prompt) return undefined;
+  // New format: properties are in value object
+  if (typeof field.prompt === 'string' && field.value) {
+    return field.value[property];
+  }
+  // Legacy format: properties in prompt object
+  if (typeof field.prompt === 'object' && field.prompt !== null) {
+    return field.prompt[property];
+  }
+  return undefined;
+};
+
+const normalizeFieldPrompt = (field) => {
+  // Ensure prompt is safe HTML for display; return legacy-like object { value: html, ...meta }
+  if (!field || !field.prompt) {
+    return { value: '' };
+  }
+  const raw = typeof field.prompt === 'string' ? field.prompt : (field.prompt.value || '');
+  // Detect if raw contains HTML tags; if not, escape to HTML
+  const looksLikeHTML = /<[^>]+>/.test(raw);
+  const html = looksLikeHTML ? sanitizeHTML(raw) : escapeToHTML(raw);
+  // Merge any meta (rows, width, occurrences) from either value (new) or prompt (legacy)
+  const meta = {};
+  if (field.value && typeof field.value === 'object') {
+    ['rows', 'width', 'occurrences', 'ignore_if'].forEach(k => {
+      if (field.value[k] !== undefined) meta[k] = field.value[k];
+    });
+  }
+  if (typeof field.prompt === 'object' && field.prompt !== null) {
+    ['rows', 'width', 'occurrences', 'ignore_if'].forEach(k => {
+      if (field.prompt[k] !== undefined && meta[k] === undefined) meta[k] = field.prompt[k];
+    });
+  }
+  return { value: html, ...meta };
+};
 
 export default ({ request = {}, onClose }) => {
   const classes = useStyles();
@@ -456,11 +532,6 @@ export default ({ request = {}, onClose }) => {
           }
           response.value = makeName(pertains_to);
         }
-        else if (defaultObj.value_path[0].toLowerCase() === 'makenewaccount') {
-          response.value = await makeNewUser({
-            tableDefaults: reactData.formRec.fields[this_field].default.tables,
-          });
-        }
         else if (defaultObj.value_path[0].toLowerCase() === 'field') {
           if (defaultObj.value_path[1]) {
             response.value = reactData.fields[defaultObj.value_path[1]].value;
@@ -539,25 +610,48 @@ export default ({ request = {}, onClose }) => {
           this_field = this_field.field_name;
           this_section.fields[index] = this_field;
         }
+        else {
+          field_key = this_field;
+        }
+
         response.fields[this_field] = {};
         // Set default value
         const defaultObj = {};
         if (!formRec.fields.hasOwnProperty(this_field)) {
-          const formFieldRec = await getDb({
+          // Priority 1: Check form's local fields object (already checked above)
+          // Priority 2: Check Common_Fields table
+          let formFieldRec = await getDb({
             Key: {
               client_id: state.session.client_id,
-              field_name: field_key || this_field
+              field_id: field_key || this_field
             },
-            TableName: "Form_Fields"
+            TableName: "Common_Fields"
           });
+
+          // Priority 3: Check legacy Form_Fields table
+          if (!formFieldRec) {
+            formFieldRec = await getDb({
+              Key: {
+                client_id: state.session.client_id,
+                field_name: field_key || this_field
+              },
+              TableName: "Form_Fields"
+            });
+          }
+
           if (formFieldRec) {
+            // Handle both legacy (prompt.value) and new (prompt string) formats
             if (typeof (field_variables.prompt) === 'string') {
-              formFieldRec.prompt.value = field_variables.prompt;
+              if (typeof formFieldRec.prompt === 'object' && formFieldRec.prompt !== null && 'value' in formFieldRec.prompt) {
+                formFieldRec.prompt.value = field_variables.prompt;
+              } else {
+                formFieldRec.prompt = field_variables.prompt;
+              }
             }
-            if (field_variables.default_source && formFieldRec.default.source && formFieldRec.default.source.startsWith('%%')) {
+            if (field_variables.default_source && formFieldRec.default && formFieldRec.default.source && formFieldRec.default.source.startsWith('%%')) {
               formFieldRec.default.source = field_variables.default_source;
             }
-            if (field_variables.saveAs && formFieldRec.value.saveAs && formFieldRec.value.saveAs.startsWith('%%')) {
+            if (field_variables.saveAs && formFieldRec.value && formFieldRec.value.saveAs && formFieldRec.value.saveAs.startsWith('%%')) {
               formFieldRec.value.saveAs = field_variables.saveAs;
             }
             formRec.fields[this_field] = formFieldRec;
@@ -637,31 +731,29 @@ export default ({ request = {}, onClose }) => {
                 response.fields[this_field].value = '';
               }
             }
-            else if (defaultObj.value_path[0].toLowerCase() === 'makenewaccount') {
-              response.fields[this_field].value = response.value = await makeNewUser({
-                tableDefaults: formRec.fields[this_field]?.default?.tables,
-              });
-            }
             else if (defaultObj.value_path.length === 1) {
               response.fields[this_field].value = defaultObj.value_path[0];
             }
           }
         }
-        else if (formRec.fields[this_field]?.prompt && formRec.fields[this_field]?.prompt?.value) {
-          if (['image', 'html'].includes(formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type)) {
-            response.fields[this_field].value = formRec.fields[this_field]?.prompt?.value;
+        else if (formRec.fields[this_field]?.prompt) {
+          const promptValue = getPromptValue(formRec.fields[this_field]);
+          if (promptValue && ['image', 'html'].includes(formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type)) {
+            response.fields[this_field].value = promptValue;
           }
         }
         if (!response.fields[this_field].value) {
-          if (formRec.fields[this_field].prompt?.occurrences && (formRec.fields[this_field].prompt.occurrences > 1)) {
-            response.fields[this_field].value = new Array(formRec.fields[this_field].prompt.occurrences).fill(null);
+          const occurrences = getPromptProperty(formRec.fields[this_field], 'occurrences');
+          if (occurrences && occurrences > 1) {
+            response.fields[this_field].value = new Array(occurrences).fill(null);
           }
           else {
             response.fields[this_field].value = null;
           }
         }
-        if (formRec.fields[this_field]?.prompt?.ignore_if) {
-          const ignoreObj = formRec.fields[this_field]?.prompt?.ignore_if;
+        const ignoreIfValue = getPromptProperty(formRec.fields[this_field], 'ignore_if');
+        if (ignoreIfValue) {
+          const ignoreObj = ignoreIfValue;
           response.ignore = false;
           const check_value = formRec.fields[ignoreObj.data]?.value ?? null;
           const ignoreList = makeArray(ignoreObj.values);
@@ -679,15 +771,68 @@ export default ({ request = {}, onClose }) => {
             response.fields[this_field].ignore = ignoreObj.equals ?? true;
           }
         }
+        let pertains_to = state.session.patient_id;
+        if (!reactData.peopleRec || !reactData.peopleRec[pertains_to]) {
+          let gotPerson = await getDb({
+            Key: {
+              person_id: pertains_to
+            },
+            TableName: "People"
+          });
+          updateReactData({
+            peopleRec: Object.assign({}, reactData.peopleRec || {}, { [pertains_to]: gotPerson })
+          }, false);
+        }
         // Set type
         response.fields[this_field].type = formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type || 'text';
+        // If 'select' type and custom_selection is true, set type to 'select & text'
+        if (response.fields[this_field].type === 'select' && formRec.fields[this_field]?.value?.custom_selection) {
+          response.fields[this_field].type = 'select & text';
+        }
+        else if (response.fields[this_field].type === 'yes/no') {
+          response.fields[this_field].type = 'select';
+          response.fields[this_field].selectionObj = {
+            selectionList: ['yes', 'no'],
+            min: 1,
+            max: 1
+          };
+        }
+        else if (response.fields[this_field].type === 'family'
+          && reactData.peopleRec
+          && reactData.peopleRec[pertains_to]
+          && reactData.peopleRec[pertains_to].family_id) {
+          let familyMembers = [];
+          if (reactData.familyRec && reactData.familyRec.primary_contact) {
+            // Add primary contact
+            familyMembers.push({
+              id: reactData.familyRec.primary_contact.id,
+              name: reactData.familyRec.primary_contact.name,
+              nickname: reactData.familyRec.primary_contact.nickname
+            });
+            // Add other members
+            if (reactData.familyRec.other_members && Array.isArray(reactData.familyRec.other_members)) {
+              for (let member of reactData.familyRec.other_members) {
+                familyMembers.push({
+                  id: member.id,
+                  name: member.name,
+                  nickname: member.nickname
+                });
+              }
+            }
+          }
+          response.fields[this_field].familyMembers = familyMembers;
+          updateReactData({
+            familyRec: reactData.familyRec,
+            family_id: reactData.peopleRec[pertains_to].family_id || false,
+          }, false);
+        }
         // Set default valueText (this may require conversion of value data as in types phone or date or time)
         response.fields[this_field].valueText = await formatValue({
           rawValue: response.fields[this_field].value,
           type: response.fields[this_field].type
         });
         // set prompt
-        response.fields[this_field].prompt = deepCopy(formRec.fields[this_field]?.prompt || { value: sentenceCase(this_field) });
+        response.fields[this_field].prompt = deepCopy(normalizeFieldPrompt(formRec.fields[this_field]) || { value: sentenceCase(this_field) });
         // Selection Obj should be set for the special case - type = select or type = select & text
         if (response.fields[this_field].type.startsWith('select')) {
           response.fields[this_field].selectionObj = formRec.fields[this_field]?.value.selection;
@@ -733,17 +878,26 @@ export default ({ request = {}, onClose }) => {
         errorMessage:
     */
     let pertains_to_name;
-    reactData.peopleRec[pertains_to] = await getDb({
-      Key: {
-        person_id: pertains_to
-      },
-      TableName: "People"
-    });
-    if (!reactData.peopleRec[pertains_to]) {
-      reactData.peopleRec[pertains_to] = {};
-    };
+    if (!pertains_to) {
+      pertains_to = state.session.patient_id;
+    }
+    if (!reactData.peopleRec || !reactData.peopleRec[pertains_to]) {
+      let gotPerson = await getDb({
+        Key: {
+          person_id: pertains_to
+        },
+        TableName: "People"
+      });
+      updateReactData({
+        peopleRec: Object.assign({}, reactData.peopleRec || {}, { [pertains_to]: gotPerson })
+      }, false);
+    }
+
+    if (request.overrideFormRec && isObject(request.overrideFormRec)) {
+      Object.assign(formRec, request.overrideFormRec);
+    }
     updateReactData({
-      family_id: reactData.peopleRec[pertains_to].family_id || false,
+      family_id: reactData.peopleRec[pertains_to].family_groups ? reactData.peopleRec[pertains_to].family_groups[0] : (reactData.peopleRec[pertains_to].family_id || false),
       peopleRec: reactData.peopleRec,
       formRec
     }, false);
@@ -797,7 +951,7 @@ export default ({ request = {}, onClose }) => {
       for (let [index, this_field] of this_section.fields.entries()) {
         if (isObject(this_field)) {
           field_variables = Object.assign({}, this_field);
-          field_key = this_field.form_field;
+          field_key = this_field.form_field || this_field.field_id || this_field.field_name || this_field;
           this_field = this_field.field_name;
           this_section.fields[index] = this_field;
         }
@@ -809,34 +963,69 @@ export default ({ request = {}, onClose }) => {
         response.fields[this_field] = {};
         const defaultObj = {};
 
-        if (!formRec.fields.hasOwnProperty(this_field)) {
+        // If we have field_variables (field was an object), use that data directly first
+        if (field_variables && Object.keys(field_variables).length > 0) {
+          formRec.fields[this_field] = Object.assign({}, field_variables);
+        }
+        else if (!formRec.fields.hasOwnProperty(this_field)) {
           if (formRec.fields.hasOwnProperty(field_key)) {   // the field_key exists already in formRec.fields
             if (typeof (field_variables.prompt) === 'string') {
-              formRec.fields[field_key].prompt.value = field_variables.prompt;
+              // Handle both legacy (prompt.value) and new (prompt string) formats
+              if (typeof formRec.fields[field_key].prompt === 'object' && formRec.fields[field_key].prompt !== null && 'value' in formRec.fields[field_key].prompt) {
+                formRec.fields[field_key].prompt.value = field_variables.prompt;
+              } else {
+                formRec.fields[field_key].prompt = field_variables.prompt;
+              }
             }
             else {
-              formRec.fields[field_key].prompt = Object.assign({}, formRec.fields[field_key].prompt, field_variables.prompt || {});
+              if (typeof formRec.fields[field_key].prompt === 'object' && formRec.fields[field_key].prompt !== null) {
+                formRec.fields[field_key].prompt = Object.assign({}, formRec.fields[field_key].prompt, field_variables.prompt || {});
+              }
             }
             delete field_variables.prompt;
             formRec.fields[this_field] = Object.assign({}, formRec.fields[field_key], field_variables);
           }
           else {  // the field_key does not exist in formRec.fields
+            // Priority 1: Check form's local fields object (already checked above)
+            // Priority 2: Check Common_Fields table
             let formFieldRec = await getDb({
               Key: {
                 client_id: state.session.client_id,
-                field_name: field_key
+                field_id: field_key
               },
-              TableName: "Form_Fields"
+              TableName: "Common_Fields"
             });
+
+            // Priority 3: Check legacy Form_Fields table
+            if (!formFieldRec) {
+              formFieldRec = await getDb({
+                Key: {
+                  client_id: state.session.client_id,
+                  field_name: field_key
+                },
+                TableName: "Form_Fields"
+              });
+            }
+
             if (formFieldRec) {
+              // Handle both legacy (prompt.value) and new (prompt string) formats
               if (typeof (field_variables.prompt) === 'string') {
-                formFieldRec.prompt.value = field_variables.prompt;
+                if (typeof formFieldRec.prompt === 'object' && formFieldRec.prompt !== null && 'value' in formFieldRec.prompt) {
+                  formFieldRec.prompt.value = field_variables.prompt;
+                } else {
+                  formFieldRec.prompt = field_variables.prompt;
+                }
               }
               else {
-                formFieldRec.prompt = Object.assign({}, formFieldRec.prompt, field_variables.prompt || {});
+                if (typeof formFieldRec.prompt === 'object' && formFieldRec.prompt !== null) {
+                  formFieldRec.prompt = Object.assign({}, formFieldRec.prompt, field_variables.prompt || {});
+                }
               }
               delete field_variables.prompt;
-              if (field_variables.default && formFieldRec.default.source && formFieldRec.default.source.startsWith('%%')) {
+              if (field_variables.default && formFieldRec.default && formFieldRec.default.source &&
+                ((typeof formFieldRec.default.source === 'string' && formFieldRec.default.source.startsWith('%%'))
+                  || (Array.isArray(formFieldRec.default.source) && formFieldRec.default.source[0].startsWith('%%')))
+              ) {
                 formFieldRec.default.source = field_variables.default_source;
                 delete field_variables.default_source;
               }
@@ -854,7 +1043,7 @@ export default ({ request = {}, onClose }) => {
 
         // **** Now build out the form field itself
         if (!formRec.fields[this_field].default && formRec.fields[this_field].default_source) {
-          formRec.fields[this_field].default = {source: formRec.fields[this_field].default_source};
+          formRec.fields[this_field].default = { source: formRec.fields[this_field].default_source };
         }
         if (formRec.fields[this_field].default) {
           if (formRec.fields[this_field].default.source) {
@@ -963,31 +1152,99 @@ export default ({ request = {}, onClose }) => {
               }
               response.fields[this_field].value = makeName(pertains_to);
             }
-            else if (defaultObj.value_path[0].toLowerCase() === 'makenewaccount') {
-              response.fields[this_field].value = response.value = await makeNewUser({
-                tableDefaults: formRec.fields[this_field]?.default?.tables,
-              });
-            }
             else if (defaultObj.value_path.length === 1) {
               response.fields[this_field].value = defaultObj.value_path[0];
             }
           }
         }
-        else if (formRec.fields[this_field]?.prompt && formRec.fields[this_field]?.prompt?.value) {
-          if (['image', 'html'].includes(formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type)) {
-            response.fields[this_field].value = formRec.fields[this_field]?.prompt?.value;
+        else if (formRec.fields[this_field]?.prompt) {
+          const promptValue = getPromptValue(formRec.fields[this_field]);
+          if (promptValue && ['image', 'html'].includes(formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type)) {
+            response.fields[this_field].value = promptValue;
           }
         }
         if (!response.fields[this_field].value) {
-          if (formRec.fields[this_field].prompt?.occurrences && (formRec.fields[this_field].prompt.occurrences > 1)) {
-            response.fields[this_field].value = new Array(formRec.fields[this_field].prompt.occurrences).fill(null);
+          const occurrences = getPromptProperty(formRec.fields[this_field], 'occurrences');
+          if (occurrences && occurrences > 1) {
+            response.fields[this_field].value = new Array(occurrences).fill(null);
           }
           else {
             response.fields[this_field].value = null;
           }
         }
+        const ignoreIfValue = getPromptProperty(formRec.fields[this_field], 'ignore_if');
+        if (ignoreIfValue) {
+          const ignoreObj = ignoreIfValue;
+          response.ignore = false;
+          const check_value = response.fields[ignoreObj.data]?.value ?? null;
+          const ignoreList = makeArray(ignoreObj.values);
+          if (check_value === null || check_value === undefined) {
+            if (ignoreList.includes('%%no_data%%')) {
+              response.fields[this_field].ignore = ignoreObj.equals ?? true;
+            }
+          }
+          else if (
+            (check_value === false && ignoreList.includes('false')) ||
+            (check_value === true && ignoreList.includes('true')) ||
+            (typeof check_value === 'string' && ignoreList.includes(check_value)) ||
+            (Array.isArray(check_value) && array_in_array(ignoreList, check_value))
+          ) {
+            response.fields[this_field].ignore = ignoreObj.equals ?? true;
+          }
+        }
         // Set type
         response.fields[this_field].type = formRec.fields[this_field]?.value.type || formRec.fields[this_field]?.default?.type || 'text';
+
+        // If 'select' type and custom_selection is true, set type to 'select & text'
+        if (response.fields[this_field].type === 'select' && formRec.fields[this_field]?.value?.custom_selection) {
+          response.fields[this_field].type = 'select & text';
+        }
+        else if (response.fields[this_field].type === 'yes/no') {
+          response.fields[this_field].type = 'select';
+          response.fields[this_field].selectionObj = {
+            selectionList: ['yes', 'no'],
+            min: 1,
+            max: 1
+          };
+        }
+        // If 'family' type, load family members for the current person
+        else if (response.fields[this_field].type === 'family'
+          && reactData.peopleRec
+          && reactData.peopleRec[pertains_to]
+          && reactData.peopleRec[pertains_to].family_groups) {
+          reactData.familyRec = await getDb({
+            Key: {
+              client_id: state.session.client_id,
+              composite_key: reactData.peopleRec[pertains_to].family_groups[0]
+            },
+            TableName: "FamilyGroups"
+          });
+          let familyMembers = [];
+          if (reactData.familyRec && reactData.familyRec.primary_contact) {
+            // Add primary contact
+            familyMembers.push({
+              id: reactData.familyRec.primary_contact.id,
+              name: reactData.familyRec.primary_contact.name,
+              nickname: reactData.familyRec.primary_contact.nickname
+            });
+            // Add other members
+            if (reactData.familyRec.other_members && Array.isArray(reactData.familyRec.other_members)) {
+              for (let member of reactData.familyRec.other_members) {
+                familyMembers.push({
+                  id: member.id,
+                  name: member.name,
+                  nickname: member.nickname
+                });
+              }
+            }
+          }
+          response.fields[this_field].familyMembers = familyMembers;
+          updateReactData({
+            familyRec: reactData.familyRec,
+            family_id: reactData.peopleRec[pertains_to].family_id || false,
+          }, false);
+        }
+
         // Override computed defaults with preset values (if any)
         if (preset_values && preset_values[this_field]) {
           response.fields[this_field].og_default = await formatValue({
@@ -1022,7 +1279,7 @@ export default ({ request = {}, onClose }) => {
           type: response.fields[this_field].type
         });
         // set prompt
-        response.fields[this_field].prompt = deepCopy(formRec.fields[this_field]?.prompt || { value: sentenceCase(this_field) });
+        response.fields[this_field].prompt = deepCopy(normalizeFieldPrompt(formRec.fields[this_field]) || { value: sentenceCase(this_field) });
         // Selection Obj should be set for the special case - type = select or type = select & text
         if (response.fields[this_field].type.startsWith('select') || response.fields[this_field].type.startsWith('drop')) {
           response.fields[this_field].selectionObj = formRec.fields[this_field]?.value.selection;
@@ -1176,93 +1433,6 @@ export default ({ request = {}, onClose }) => {
     return response;
   };
 
-  const makeNewUser = async ({ tableDefaults }) => {
-    let response;
-    let formatter = `%%first_name//^[a-zA-Z]{1}%%%%last_name%%-%%client_id%%`;
-    let candidate = reconcilePrompt({
-      rawValue: formatter,
-      this_field: 'person_id'
-    });
-    candidate = candidate.replace(/\s/gm, '').toLowerCase();
-    let isExisting = await getPerson(candidate);
-    if (isEmpty(isExisting)) {
-      response = candidate.toLowerCase();
-    }
-    else {
-      // try alternate format
-      let formatterB = `%%first_name%%%%last_name%%-%%client_id%%`;
-      let candidateB = reconcilePrompt({
-        rawValue: formatterB,
-        this_field: 'person_id'
-      });
-      candidateB = candidateB.replace(/\s/gm, '').toLowerCase();
-      isExisting = await getPerson(candidateB);
-      if (isEmpty(isExisting)) {
-        response = candidateB.toLowerCase();
-      }
-      else {
-        // start trying numbers
-        let num = 0;
-        do {
-          num++;
-          candidateB = candidate.replace('-', `${num}-`);
-          isExisting = await getPerson(candidateB);
-        }
-        while (!isEmpty(isExisting) && (num < 20));
-        if (isEmpty(isExisting)) {
-          response = candidateB.toLowerCase();
-        }
-        else {
-          response = `${new Date().getTime()}-${candidate.split('-')[1]}`;
-        }
-      }
-    }
-    reactData.peopleRec[response] = Object.assign({},
-      tableDefaults.personRec,
-      {
-        person_id: response,
-        client_id: state.session.client_id,
-      });
-    reactData.sessionRec[response] = Object.assign({},
-      tableDefaults.sessionRec,
-      {
-        session_id: response,
-        patient_id: response,
-        person_id: response,
-        client_id: state.session.client_id,
-        user_homeClient: state.session.client_id,
-        user_id: response
-      });
-    if (!reactData.family_id) {
-      reactData.family_id = `family_${new Date().getTime()}`;
-      reactData.newFamily = true;
-      reactData.familyRec = Object.assign({},
-        {
-          client_id: state.session.client_id,
-          composite_key: reactData.family_id,
-          record_type: 'header',
-          role: 'family',
-          family_id: reactData.family_id,
-        }
-      );
-    };
-    if (reactData.newFamily) {
-      reactData.familyRec.family_name = reactData.fields['last_name']
-        ? `The ${reactData.fields['last_name'].value} Family`
-        : (reactData.fields['first_name'] ? `${reactData.fields['first_name'].value}'s Family` : 'My Family');
-    }
-    updateReactData({
-      newPerson: true,
-      newFamily: reactData.newFamily,
-      family_id: reactData.family_id,
-      peopleRec: reactData.peopleRec,
-      sessionRec: reactData.sessionRec,
-      familyRec: reactData.familyRec,
-      pertains_to: response
-    }, false);
-    return response;
-  };
-
   const handleChangeValue = async ({ newText, newValue, newList, prop, occ_index, sentenceCase, reactUpdObj }) => {
     if (sentenceCase && newText && (newText.length === 1)) {
       newText = newText.toUpperCase();
@@ -1310,8 +1480,8 @@ export default ({ request = {}, onClose }) => {
       let foundAt = reactData.fields[props.prop].value.indexOf(props.clickText);
       if (foundAt < 0) {
         reactData.fields[props.prop].value.push(props.clickText);
-        if (reactData.fields[props.prop].selectionObj.max
-          && (reactData.fields[props.prop].value.length > reactData.fields[props.prop].selectionObj.max)) {
+        const max = reactData.fields[props.prop].selectionObj?.max || 99;
+        if (max < reactData.fields[props.prop].value.length) {
           reactData.fields[props.prop].value.shift();
         }
       }
@@ -1438,17 +1608,16 @@ export default ({ request = {}, onClose }) => {
         label: this_option
       });
     });
+    const promptHTML = reconcilePrompt({
+      rawValue: reactData.fields[props.prop].prompt.value,
+      this_field: props.prop
+    });
     return (
       <Box
         key={'topBox'} flexGrow={1}
         display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
       >
-        <Typography className={classes.formControlTitle}>
-          {reconcilePrompt({
-            rawValue: reactData.fields[props.prop].prompt.value,
-            this_field: props.prop
-          })}
-        </Typography>
+        <Typography className={classes.formControlTitle} dangerouslySetInnerHTML={{ __html: promptHTML }} />
         <React.Fragment>
           <Box
             key={`selectBox_filterdrop`}
@@ -1506,18 +1675,18 @@ export default ({ request = {}, onClose }) => {
     // props should contain
     //   prop
     //   text - an array of options, each can independently go true or false
+    const promptHTML = reconcilePrompt({
+      rawValue: reactData.fields[props.prop].prompt.value,
+      this_field: props.prop
+    });
     return (
       <Box flexDirection='column' key={`Box__${props.prop}`} className={classes.formControlCheckGroup}>
-        <Typography className={classes.formControlTitle}>
-          {reconcilePrompt({
-            rawValue: reactData.fields[props.prop].prompt.value,
-            this_field: props.prop
-          })}
-        </Typography>
+        <Typography className={classes.formControlTitle} dangerouslySetInnerHTML={{ __html: promptHTML }} />
         <Box
           display='flex'
           flexDirection={props.column ? 'column' : 'row'}
           alignItems='flex-start'
+          flexWrap={props.column ? 'nowrap' : 'wrap'}
           key={`CheckGroup__${props.prop}`}
         >
           <React.Fragment
@@ -1544,7 +1713,7 @@ export default ({ request = {}, onClose }) => {
                     inputProps={{ 'aria-labelledby': `message_routing_3` }}
                   />
                 }
-                label={<Typography className={classes.radioDays}>{text}</Typography>}
+                label={<Typography className={classes.radioDays} style={{ whiteSpace: 'nowrap' }}>{text}</Typography>}
                 labelPlacement='end'
               />
             ))}
@@ -1582,6 +1751,63 @@ export default ({ request = {}, onClose }) => {
                   />
                 }
               />
+            }
+          </React.Fragment>
+        </Box>
+      </Box>
+    );
+  };
+
+  const AVAFamilyCheckBoxGroup = (props) => {
+    // props should contain:
+    //   prop - field name
+    //   familyMembers - array of family member objects with { id, name, nickname }
+    const promptHTML = reconcilePrompt({
+      rawValue: reactData.fields[props.prop].prompt.value,
+      this_field: props.prop
+    });
+    return (
+      <Box flexDirection='column' key={`Box__${props.prop}`} className={classes.formControlCheckGroup}>
+        <Typography className={classes.formControlTitle} dangerouslySetInnerHTML={{ __html: promptHTML }} />
+        <Box
+          display='flex'
+          flexDirection='column'
+          alignItems='flex-start'
+          flexWrap='nowrap'
+          key={`CheckGroup__${props.prop}`}
+        >
+          <React.Fragment key={`groupFrag__${props.prop}`}>
+            {(props.familyMembers && props.familyMembers.length > 0) ?
+              props.familyMembers.map((member, tIndex) => (
+                <FormControlLabel
+                  className={classes.formControlDays}
+                  style={{ marginLeft: '16px' }}
+                  key={`${props.prop}_${tIndex}`}
+                  control={
+                    <Checkbox
+                      aria-label={`${props.prop}_${tIndex}`}
+                      name={`${props.prop}_${tIndex}`}
+                      key={`FamilyCheckGroup__${props.prop}_${tIndex}`}
+                      size='small'
+                      checked={reactData.fields[props.prop].value && reactData.fields[props.prop].value.includes(member.id)}
+                      onClick={async () => {
+                        await handleMakeSelection({
+                          clickText: member.id,
+                          prop: props.prop
+                        });
+                      }}
+                      disableRipple
+                      inputProps={{ 'aria-labelledby': `family_member_${tIndex}` }}
+                    />
+                  }
+                  label={<Typography className={classes.radioDays} style={{ whiteSpace: 'nowrap' }}>{`${member.name}${member.nickname ? (' (' + member.nickname + ')') : ''}`}</Typography>}
+                  labelPlacement='end'
+                />
+              ))
+              :
+              <Typography style={AVATextStyle({ size: 0.8, margin: { left: 1 } })}>
+                No family members found
+              </Typography>
             }
           </React.Fragment>
         </Box>
@@ -2460,20 +2686,25 @@ export default ({ request = {}, onClose }) => {
                             }
                             {(reactData.fields[this_field].type === 'text') &&
                               <Box flexDirection='column' key={`Box__${this_field}`} className={classes.formControlCheckGroup}>
-                                <Typography className={classes.formControlTitle}>
-                                  {((occ_index > 0) ? null : reconcilePrompt({
-                                    rawValue: reactData.fields[this_field].prompt.value,
-                                    this_field
-                                  }))}
-                                </Typography>
+                                {occ_index === 0 && (
+                                  <Typography
+                                    className={classes.formControlTitle}
+                                    dangerouslySetInnerHTML={{
+                                      __html: reconcilePrompt({
+                                        rawValue: reactData.fields[this_field].prompt.value,
+                                        this_field
+                                      })
+                                    }}
+                                  />
+                                )}
                                 <TextField
                                   id={`field__${this_field}`}
                                   key={`field__${this_field}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
                                     ? reactData.fields[this_field].valueText
                                     : ''}`}
                                   className={classes.inputDisplay}
-                                  multiline
-                                  variant={reactData.fields[this_field].prompt.rows ? 'outlined' : 'standard'}
+                                  multiline={(reactData.fields[this_field].prompt.rows || reactData.fields[this_field].value?.rows || 1) > 1}
+                                  variant={(reactData.fields[this_field].prompt.rows || reactData.fields[this_field].value?.rows || 1) > 1 ? 'outlined' : 'standard'}
                                   disabled={reactData.fields[this_field].options.viewOnly}
                                   style={AVATextStyle({
                                     lineHeight: 1,
@@ -2509,9 +2740,8 @@ export default ({ request = {}, onClose }) => {
                                   },
                                   reactData.fields[this_field].prompt.style || {}
                                 ))}
-                              >
-                                {reactData.fields[this_field].prompt.value}
-                              </Typography>
+                                dangerouslySetInnerHTML={{ __html: reactData.fields[this_field].prompt.value }}
+                              />
                             }
                             {(reactData.fields[this_field].type === 'image') &&
                               <Box
@@ -2775,6 +3005,20 @@ export default ({ request = {}, onClose }) => {
                                 <AVADropDown
                                   prop={this_field}
                                   text={reactData.fields[this_field].selectionObj.selectionList}
+                                />
+                              </Box>
+                            }
+                            {(reactData.fields[this_field].type === 'family') &&
+                              <Box
+                                display='flex'
+                                mb={1}
+                                flexDirection='row'
+                                justifyContent='flex-start'
+                                alignItems='center'
+                              >
+                                <AVAFamilyCheckBoxGroup
+                                  prop={this_field}
+                                  familyMembers={reactData.fields[this_field].familyMembers || []}
                                 />
                               </Box>
                             }

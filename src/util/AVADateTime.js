@@ -569,6 +569,16 @@ export function makeDate(pInput, optionIn = {}) {
         else if (pStringLower === 'yesterday') {
             return addDays(currentDate, - 1);
         }
+        else if (pStringLower === 'first_of_month' || pStringLower === 'firstofmonth') {
+            let returnDate = new Date(currentDate.setDate(1));
+            return returnDate;
+        }
+        else if (pStringLower === 'end_of_month' || pStringLower === 'endofmonth') {
+            let currentMonth = currentDate.getMonth();
+            let currentYear = currentDate.getFullYear();
+            let returnDate = new Date(currentYear, currentMonth + 1, 0);
+            return returnDate;
+        }
         else {
             let currentDofWeek = new Date().getDay();
             let requestedDofWeek = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(pStringLower.slice(0, 3));

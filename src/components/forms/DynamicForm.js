@@ -2,11 +2,12 @@ import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
 import { Box, FormGroup, FormControl } from '@material-ui/core';
 
-
+import MessageTemplateManager from '../dialogs/MessageTemplateManager';
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageForm from '../forms/MessageForm';
 import MessageMonitor from './MessageMonitor';
 import MessageFormLegacy from './MessageFormLegacy';
+import DynamicGroupSyncTool from '../dialogs/DynamicGroupSyncTool';
 import MakeMessage from './MakeMessage';
 import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
@@ -402,7 +403,7 @@ export default ({
     */
     case 'message_list':
       let defaultValueObj = {};
-      if (!defaultValue) { defaultValueObj = { }; }
+      if (!defaultValue) { defaultValueObj = {}; }
       else {
         if (Array.isArray(defaultValue)) {
           defaultValue.forEach(d => {
@@ -941,6 +942,21 @@ export default ({
               onSave();
             }
           }}
+        />
+      );
+    case 'template_manager':
+      return (
+        <MessageTemplateManager
+          open={true}
+          onClose={() => onClose()}
+        />
+      );
+    case 'sync_dynamic_groups':
+      return (
+        <DynamicGroupSyncTool
+          client_id={state.session.client_id}
+          dynamicGroups={state.groups.dynamicGroups}
+          onClose={() => onClose()}
         />
       );
     default:
