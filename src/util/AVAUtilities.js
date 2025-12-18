@@ -521,7 +521,7 @@ export function array_in_array(a1, a2) {
 export function titleCase(pString) {
   if (!pString) { return ''; }
   let words = pString.split(/([^\w']+)/);
-  console.log(words);
+  // console.log(words);
   const smallWords = ['of', 'and', 'or', 'a', 'an', 'the', 'in', 'on', 'at', 'to', 'for', 'with', 'from', 'by'];
   const allCapWords = ['ava', 'bbq', 'id', 'tv', 'ceo', 'cfo', 'coo', 'usa', 'uk', 'eu'];
   var titleCased = [];
