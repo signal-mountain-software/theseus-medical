@@ -1216,6 +1216,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           allowReplyAll: this_deliveryRec.allowReplyAll || false,
           status_urgent: this_deliveryRec.urgency.startsWith('urg'),
           status_with_attachment: Boolean(this_deliveryRec.content.current.attachments && (this_deliveryRec.content.current.attachments.length > 0)),
+          status_with_rules: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.rule_used),
           partner_id: new Set(),
           recipients: [],
           actionRec: this_deliveryRec.actionRec || false,
@@ -1225,7 +1226,6 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         message_added = true;
         message_number = reactData.threads[this_deliveryRec.thread_id].messages.length - 1;
       }
-
 
       if ((this_deliveryRec.record_type === 'message') && (inOut === 'out')) {
         for (let this_recipient_key in this_deliveryRec.recipient_list) {
@@ -1240,22 +1240,31 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
               status_held: false,
               status_blocked: false,
               status_redirected: false,
-              status_with_rules: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.rule_used),
-              status_not_og: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.not_original_recipient),
+              status_with_rules: this_recipient.rule_used || false,
+              status_not_og: this_recipient.not_original_recipient || false,
               heldUntil: 0,
               methods: {}
             }) - 1;
+            if (this_recipient.rule_used) {
+              reactData.threads[this_deliveryRec.thread_id].messages[message_number].status_with_rules = true;
+            };
+            if (this_recipient.not_original_recipient) {
+              reactData.threads[this_deliveryRec.thread_id].messages[message_number].status_not_og = true;
+            }
           }
           let this_method = standardizeMethod(this_recipient.method);
           if (this_method === 'held') {
             reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].wasHeld = true;
             reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_held = true;
+            reactData.threads[this_deliveryRec.thread_id].messages[message_number].status_held = true;
             reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].heldUntil = this_deliveryRec.recipient_list.holdUntil;
             if (this_deliveryRec.recipient_list.hold_reason === 'blocked') {
               reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_blocked = true;
+              reactData.threads[this_deliveryRec.thread_id].messages[message_number].status_blocked = true;
             }
             if (this_deliveryRec.recipient_list.hold_reason === 'replaced') {
               reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_redirected = true;
+              reactData.threads[this_deliveryRec.thread_id].messages[message_number].status_redirected = true;
             }
           }
           reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].methods[this_method] = {
@@ -1266,15 +1275,6 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           };
         }
       }
-
-
-
-
-
-
-
-
-
 
       let recipient_number = -1;
       if (reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.length > 0) {
@@ -1326,59 +1326,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         else if (this_deliveryRec.record_type === 'delivery') {
           reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.add(this_deliveryRec.deliver_to);
         }
-        //     recipient_number = reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.push({
-        //       recipient_id: this_deliveryRec.deliver_to,
-        //       recipient_name: (`${this_deliveryRec.recipient_list.name.first} ${this_deliveryRec.recipient_list.name.last}`).trim(),
-        //       wasHeld: false,
-        //       status_held: false,
-        //       status_blocked: false,
-        //       status_redirected: false,
-        //       status_with_rules: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.rule_used),
-        //       status_not_og: Boolean(this_deliveryRec.recipient_list && this_deliveryRec.recipient_list.not_original_recipient),
-        //       heldUntil: 0,
-        //       methods: {}
-        //     }) - 1;
       }
-      /*
-      let this_method = standardizeMethod(this_deliveryRec.deliver_method);
-      if (this_method === 'held') {
-        reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].wasHeld = true;
-        reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_held = true;
-        reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].heldUntil = this_deliveryRec.recipient_list.holdUntil;
-        if (this_deliveryRec.recipient_list.hold_reason === 'blocked') {
-          reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_blocked = true;
-        }
-        if (this_deliveryRec.recipient_list.hold_reason === 'replaced') {
-          reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].status_redirected = true;
-        }
-      }
-      let this_result = this_deliveryRec.results[0];
-      this_deliveryRec.last_update = Number(this_result.posted_time || this_deliveryRec.created_time);
-      if (((this_method !== 'held') && (this_method !== 'AVA'))
-        || (Object.keys(reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].methods).length === 0)) {
-        if (reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].methods) {
-          delete reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].methods['held'];
-          delete reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].methods['AVA'];
-        }
-        reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].methods[this_method] = {
-          last_update_time: (this_result.posted_time || this_deliveryRec.created_time).toString(),
-          result: this_result.result,
-          composite_key: this_deliveryRec.composite_key,
-        };
-      }
-      if (this_deliveryRec.last_update > reactData.threads[this_deliveryRec.thread_id].messages[message_number].last_update) {
-        reactData.threads[this_deliveryRec.thread_id].messages[message_number].last_update = this_deliveryRec.last_update;
-        if ((this_deliveryRec.last_update > reactData.threads[this_deliveryRec.thread_id].last_update)
-          && (!['open', 'delivered', 'delivery'].includes(this_deliveryRec.delivery_status))
-        ) {
-          reactData.threads[this_deliveryRec.thread_id].last_update = this_deliveryRec.last_update;
-        }
-      }
-      
-      if (!isEmpty(this_deliveryRec.reply_to)) {
-        reactData.threads[this_deliveryRec.thread_id].messages[message_number].reply_to = this_deliveryRec.reply_to;
-      }
-      */
       if (reactData.threads[this_deliveryRec.thread_id].delete_flag && (reactData.threads[this_deliveryRec.thread_id].delete_time < this_deliveryRec.created_time)) {
         reactData.threads[this_deliveryRec.thread_id].delete_flag = false;
       }
