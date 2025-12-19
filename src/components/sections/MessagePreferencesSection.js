@@ -5,7 +5,7 @@ import FormControlLabel from '@material-ui/core/FormControlLabel';
 import { Box, Checkbox, IconButton, TextField, Button } from '@material-ui/core';
 
 import { formatPhone } from '../../util/AVAPeople';
-import { isEmpty, isMobile } from '../../util/AVAUtilities';
+import { isEmpty, isMobile, lambda } from '../../util/AVAUtilities';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import { makeTime } from '../../util/AVADateTime';
 
@@ -13,11 +13,11 @@ import DeleteIcon from '@material-ui/icons/Delete';
 import ArrowDownwardIcon from '@material-ui/icons/ArrowDownward';
 import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
 
-export default ({ currentValues, errorList, setError, updateField, reactData }) => {
+export default ({ currentValues, errorList, setError, updateField, updateReactData }) => {
 
   const AVAClass = AVAclasses();
 
-  const isFamilyMember = currentValues.familyRecs  && currentValues.familyRecs.length > 0;
+  const isFamilyMember = currentValues.familyRecs && currentValues.familyRecs.length > 0;
   const isPrimaryContact = isFamilyMember && currentValues.familyRecs.some(famRec => {
     return (famRec.primary_contact.id === currentValues.peopleRec.person_id);
   });
@@ -274,6 +274,72 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
         >
           {'Add a Rule'}
         </Button>
+
+        <Box
+          display='flex'
+          flexDirection='column'
+          alignItems={'flex-start'}
+          marginTop={2}
+          marginBottom={1}
+        >
+          <Typography
+            style={AVATextStyle({ italic: true, margin: { bottom: 0 } })}
+          >
+            {`Missing e-Mails? Tap here to check and remove ${currentValues.peopleRec.contact_info?.email?.address} from the "blocked" list.`}
+          </Typography>
+          <Button
+            onClick={async () => {
+              let params = {
+                FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:RemoveUserFromSESSuppressionList',
+                InvocationType: 'RequestResponse',
+                LogType: 'Tail',
+                Payload: ''
+              };
+              params.Payload = JSON.stringify({
+                body: { email: currentValues.peopleRec.contact_info?.email?.address }
+              });
+              let invokeFailed = false;
+              let fResp = await lambda
+                .invoke(params)
+                .promise()
+                .catch(err => {
+                  console.log("AVA couldn't complete the query.  Error is", JSON.stringify(err));
+                  updateReactData({
+                    alert: {
+                      severity: 'error',
+                      title: 'Sorry... There was a problem',
+                      message: `We had a problem with that request.  The error is ${JSON.stringify(err)}`,
+                      open: true
+                    }
+                  }, true);
+                  invokeFailed = true;
+                });
+              if (!invokeFailed) {
+                let fullResponse = JSON.parse(fResp.Payload);
+                                  let mBody = JSON.parse(fullResponse.body);
+
+                if (fullResponse.body.length > 0) {
+                  let alert = {
+                      severity: 'info',
+                      title: 'Blocked List Check',
+                      message: mBody.error ? `Error: ${mBody.error}` : mBody.message,
+                      open: true
+                    }
+                  if (mBody.removed) {
+                    alert.severity = 'success';
+                    alert.message = `${currentValues.peopleRec.contact_info?.email?.address} has been removed from the blocked list. You should start receiving messages again shortly.`;
+                  }
+                  updateReactData({ alert }, true);
+                }
+              }
+            }}
+            className={AVAClass.AVAButton}
+            style={{ marginLeft: 0, backgroundColor: 'white', color: 'black' }}
+            size='small'
+          >
+            {'Check Blocked List'}
+          </Button>
+        </Box>
       </Box>
 
       <React.Fragment>
@@ -782,6 +848,6 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
             </Box>
           ))}
       </React.Fragment>
-    </Box>
+    </Box >
   );
 };

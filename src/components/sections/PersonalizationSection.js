@@ -284,12 +284,13 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
                     newPhoto = await handleSaveFile({ photo: editedPhoto, temp: false });
                     updateReactData({
                       imageEditing: false,
-                      myImage: newPhoto.Location
+                      myImage: newPhoto.Location,
+                      OKtoSave: true,
                     }, true);
                   }), 'image/jpeg');
               }}
             >
-              {'Save this photo'}
+              {'Keep this photo'}
             </Button>
           </Box>
 
@@ -451,7 +452,7 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
             if (event.target.value !== (currentValues.peopleRec.email_sourceAddress || defaultHandle())) {
               const validateEmail = (email) => {
                 let eRegEx = /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|.(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
-                let response = eRegEx.test(email)
+                let response = eRegEx.test(email);
                 return response;
               };
               event.target.value = event.target.value.replace(' ', '.');

@@ -437,17 +437,19 @@ export default ({ defaults, onCancel }) => {
     return response;
   }
 
-  async function messageFetch({ response, startTime }) {
+  async function queryMessagesByIndex(indexName, partitionKeyName, personId, startTime) {
+    let allMessages = [];
     let queryObj = {
-      KeyConditionExpression: 'record_type = :t and created_time > :s',
+      KeyConditionExpression: `${partitionKeyName} = :pk and created_time > :s`,
       ExpressionAttributeValues: {
-        ':t': 'delivery',
+        ':pk': personId,
         ':s': `${startTime}`
       },
       TableName: "TheseusMessages",
-      IndexName: 'record_type-created_time-index',
+      IndexName: indexName,
       ScanIndexForward: false,
     };
+
     do {
       let mRecs = await dbClient
         .query(queryObj)
@@ -464,15 +466,45 @@ export default ({ defaults, onCancel }) => {
           }
           console.log({ 'Error reading Messages': error });
         });
-      if (mRecs.LastEvaluatedKey) {
-        queryObj.ExclusiveStartKey = mRecs.LastEvaluatedKey;
+
+      if (mRecs && mRecs.hasOwnProperty('Items')) {
+        allMessages = allMessages.concat(mRecs.Items);
       }
-      else {
+
+      if (mRecs?.LastEvaluatedKey) {
+        queryObj.ExclusiveStartKey = mRecs.LastEvaluatedKey;
+      } else {
         delete queryObj.ExclusiveStartKey;
       }
-      if (mRecs && mRecs.hasOwnProperty('Items')) {
-        for (const this_message of mRecs.Items) {
-          let isUrgent = (this_message.urgency.startsWith('urg') ? 1 : 0);
+    } while (queryObj.ExclusiveStartKey);
+
+    return allMessages;
+  }
+
+  async function messageFetch({ response, startTime }) {
+    const personIds = Object.keys(response);
+    const processedMessageIds = new Set(); // prevent duplicate counting
+
+    try {
+      // Run all person queries in parallel (both sent_from and deliver_to indexes)
+      const allQueries = personIds.flatMap(personId => [
+        queryMessagesByIndex('sent_from-index', 'sent_from', personId, startTime),
+        queryMessagesByIndex('deliver_to-index', 'deliver_to', personId, startTime)
+      ]);
+
+      const allResults = await Promise.all(allQueries);
+
+      // Process all messages from both indexes
+      for (const messages of allResults) {
+        for (const this_message of messages) {
+          // Skip if we've already processed this message
+          const messageId = this_message.id || `${this_message.author?.author_id}_${this_message.created_time}_${this_message.deliver_to}`;
+          if (processedMessageIds.has(messageId)) {
+            continue;
+          }
+          processedMessageIds.add(messageId);
+
+          let isUrgent = (this_message.urgency?.startsWith('urg') ? 1 : 0);
           let isAttachment = ((this_message.content?.current?.attachments && (this_message.content.current.attachments.length > 0)) ? 1 : 0);
           let ruleUsed = this_message.recipient_list?.rule_used ? 1 : 0;
           let blocked = 0;
@@ -480,9 +512,11 @@ export default ({ defaults, onCancel }) => {
           let held = 0;
           if (this_message.delivery_status === 'held') {
             held = 1;
-            blocked = ((this_message.recipient_list.hold_reason === 'blocked') ? 1 : 0);
-            redirected = ((this_message.recipient_list.hold_reason === 'replaced') ? 1 : 0);
+            blocked = ((this_message.recipient_list?.hold_reason === 'blocked') ? 1 : 0);
+            redirected = ((this_message.recipient_list?.hold_reason === 'replaced') ? 1 : 0);
           }
+
+          // Process sender side
           if (response.hasOwnProperty(this_message.author?.author_id)) {
             let sender = this_message.author?.author_id;
             response[sender].messageData.sent.count++;
@@ -496,6 +530,8 @@ export default ({ defaults, onCancel }) => {
               objRefIncrement(response[sender].messageData.sent.rule_list, this_message.recipient_list.rule_used);
             }
           }
+
+          // Process recipient side
           if (response.hasOwnProperty(this_message.deliver_to)) {
             let recipient = this_message.deliver_to;
             response[recipient].messageData.received.count++;
@@ -508,13 +544,16 @@ export default ({ defaults, onCancel }) => {
             if (ruleUsed) {
               objRefIncrement(response[recipient].messageData.received.rule_list, this_message.recipient_list.rule_used);
             }
-            if (this_message.recipient_list.not_original_recipient) {
+            if (this_message.recipient_list?.not_original_recipient) {
               response[recipient].messageData.received.not_og++;
-            };
+            }
           }
         }
       }
-    } while (queryObj.ExclusiveStartKey);
+    } catch (error) {
+      console.error('Error in messageFetch:', error);
+    }
+
     return response;
   };
 
@@ -855,7 +894,7 @@ export default ({ defaults, onCancel }) => {
                               onClick={async () => {
                                 updateReactData({
                                   personMessages: this_person,
-                                  personMessages_inOutFilter: ((this_key === 'count') ? (reactData.received_mode ? 'in' : 'out') : false),
+                                  personMessages_inOutFilter: (reactData.received_mode ? 'in' : 'out') ,
                                   personMessages_statusFilter: ((this_key === 'count') ? false : this_key)
                                 }, true);
                               }}
