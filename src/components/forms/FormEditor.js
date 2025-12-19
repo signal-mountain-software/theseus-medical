@@ -14,11 +14,12 @@ import {
   Dialog
 } from '@material-ui/core';
 import { Add, Delete, Visibility, ExpandLess, ExpandMore } from '@material-ui/icons';
-import { getDb, dbClient, recordExists, deepCopy } from '../../util/AVAUtilities';
+import { getDb, dbClient, recordExists, deepCopy, uuid, titleCase } from '../../util/AVAUtilities';
 import AVAConfirm from './AVAConfirm';
 import { AVATextStyle } from '../../util/AVAStyles';
 import FormFillB from '../forms/FormFillB';
 import FieldEditor from './FieldEditor';
+import useSession from '../../hooks/useSession';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -70,6 +71,7 @@ const useStyles = makeStyles(theme => ({
 
 // Main Form Editor Component
 const FormEditor = ({ form, onSave, onCancel }) => {
+  const { state } = useSession();
   // Unified drag handler for sections and fields
   const handleDragEnd = result => {
     const { destination, source, type } = result;
@@ -121,102 +123,197 @@ const FormEditor = ({ form, onSave, onCancel }) => {
       }
       setEditForm(prev => ({ ...prev, sections: newSections, stagingFields: staging }));
     }
-  };
-  const classes = useStyles();
-
-  // Prepare Form for editing (async) - flatten prompt and ensure new schema defaults
-  const prepareFormForEditing = async (form) => {
-    const clonedForm = JSON.parse(JSON.stringify(form));
-    if (!clonedForm.sections) clonedForm.sections = [];
-    for (let section of clonedForm.sections) {
-      if (!section.fields) section.fields = [];
-      for (let i = 0; i < section.fields.length; i++) {
-        let field = section.fields[i];
-        if (typeof field === 'string') {
-          // Field is a string reference - need to look it up
-          let fieldData = null;
-
-          // First check the form's local fields object
-          if (clonedForm.fields && clonedForm.fields[field]) {
-            fieldData = Object.assign({ field_name: field }, clonedForm.fields[field]);
-          }
-          // Then check Common_Fields table
-          else {
-            let commonFieldRec = await getDb({
-              TableName: 'Common_Fields',
-              Key: {
-                client_id: clonedForm.client_id,
-                field_id: field
-              }
-            });
-            if (commonFieldRec) {
-              fieldData = Object.assign({}, commonFieldRec);
-            }
-          }
-
-          // Legacy fallback: check Form_Fields table
-          if (!fieldData) {
-            let fieldRec = await getDb({
-              TableName: 'Form_Fields',
-              Key: {
-                client_id: clonedForm.client_id,
-                field_id: field
-              }
-            });
-            if (fieldRec) {
-              fieldData = Object.assign({}, fieldRec);
-            }
-          }
-
-          // If still not found, remove from section
-          if (!fieldData) {
-            section.fields.splice(i, 1);
-            i--;
-            continue;
-          }
-
-          section.fields[i] = fieldData;
-        } else if (field.form_field) {
-          // Legacy reference structure
-          let fieldRec = await getDb({
-            TableName: 'Form_Fields',
-            Key: {
-              client_id: clonedForm.client_id,
-              field_name: field.form_field
-            }
-          });
-          if (fieldRec) {
-            section.fields[i] = Object.assign({}, fieldRec, field);
-          }
+    if (type === 'rule') {
+      const sourceId = source.droppableId;
+      const destId = destination.droppableId;
+      const newSections = Array.from(editForm.sections);
+      const staging = Array.from(editForm.stagingRules || []);
+      const getList = (id) => {
+        if (id === 'staging-rules') return staging;
+        if (id.startsWith('section-rules-')) {
+          const idx = parseInt(id.replace('section-rules-', ''), 10);
+          return Array.from(newSections[idx].rules || []);
         }
-        let f = section.fields[i];
-        // For legacy fields: use raw field_name as stable field_id, then normalize field_name
-        if (!f.field_id && f.field_name) {
-          const rawName = f.field_name;
-          f.field_id = rawName; // preserve original identifier
-          f.field_name = rawName.toLowerCase().replace(/[^a-zA-Z0-9]+/g, '_');
+        return [];
+      };
+      const setList = (id, list) => {
+        if (id === 'staging-rules') {
+          staging.splice(0, staging.length, ...list);
+        } else if (id.startsWith('section-rules-')) {
+          const idx = parseInt(id.replace('section-rules-', ''), 10);
+          newSections[idx] = { ...newSections[idx], rules: list };
         }
-        if (!f.prompt) {
-          f.prompt = f.field_name || '';
-        } else if (typeof f.prompt === 'object' && f.prompt !== null && 'value' in f.prompt) {
-          f.prompt = f.prompt.value;
-        }
-        if (!f.value || typeof f.value !== 'object') f.value = {};
-        if (!f.value.selection) f.value.selection = { selectionList: [], max: 1 };
-        if (f.value.rows == null) f.value.rows = f.prompt?.rows || 1;
-        if (f.value.width == null) f.value.width = f.prompt?.width || 500;
-        if (f.value.occurrences == null) f.value.occurrences = 1;
-        if (!f.value.type) f.value.type = f.prompt?.type || 'text';
+      };
+
+      // Same list - reorder within same section
+      if (sourceId === destId) {
+        const list = getList(sourceId);
+        const [moved] = list.splice(source.index, 1);
+        list.splice(destination.index, 0, moved);
+        setList(sourceId, list);
+      } else {
+        // Different lists - move between sections
+        const sourceList = getList(sourceId);
+        const destList = getList(destId);
+        const [moved] = sourceList.splice(source.index, 1);
+        destList.splice(destination.index, 0, moved);
+        setList(sourceId, sourceList);
+        setList(destId, destList);
       }
+      setEditForm(prev => ({ ...prev, sections: newSections, stagingRules: staging }));
     }
-    if (!clonedForm.stagingFields) clonedForm.stagingFields = [];
-    return clonedForm;
   };
+
+  // Helper: Convert rule to show_if format
+  const ruleToShowIf = (rule) => {
+    if (rule.rule_type === 'member of') {
+      return {
+        rule_name: rule.rule_name,
+        memberOf: rule.selected_groups || []
+      };
+    }
+    if (rule.rule_type === 'data dependent') {
+      return {
+        rule_name: rule.rule_name,
+        field: rule.selected_field,
+        values: rule.rule_values || []
+      };
+    }
+    return {};
+  };
+
+  // Helper: Convert show_if entry back to rule format
+  const showIfToRule = (showIfEntry) => {
+    if (showIfEntry.memberOf) {
+      return {
+        rule_id: `rule_${Date.now()}_${uuid(6)}`,
+        rule_type: 'member of',
+        rule_name: showIfEntry.rule_name || 'Member Of Rule',
+        selected_groups: showIfEntry.memberOf
+      };
+    }
+    if (showIfEntry.field && showIfEntry.values) {
+      return {
+        rule_id: `rule_${Date.now()}_${uuid(6)}`,
+        rule_type: 'data dependent',
+        rule_name: showIfEntry.rule_name || 'Data Dependent Rule',
+        selected_field: showIfEntry.field,
+        rule_values: showIfEntry.values
+      };
+    }
+    return null;
+  };
+
+  const classes = useStyles();
 
   const [editForm, setEditForm] = useState(() => ({ ...form }));
   React.useEffect(() => {
     let isMounted = true;
     (async () => {
+      // Prepare Form for editing (async) - flatten prompt and ensure new schema defaults
+      const prepareFormForEditing = async (form) => {
+        const clonedForm = JSON.parse(JSON.stringify(form));
+        if (!clonedForm.sections) clonedForm.sections = [];
+        for (let section of clonedForm.sections) {
+          if (!section.fields) section.fields = [];
+          for (let i = 0; i < section.fields.length; i++) {
+            let field = section.fields[i];
+            if (typeof field === 'string') {
+              // Field is a string reference - need to look it up
+              let fieldData = null;
+
+              // First check the form's local fields object
+              if (clonedForm.fields && clonedForm.fields[field]) {
+                fieldData = Object.assign({ field_name: field }, clonedForm.fields[field]);
+              }
+              // Then check Common_Fields table
+              else {
+                let commonFieldRec = await getDb({
+                  TableName: 'Common_Fields',
+                  Key: {
+                    client_id: clonedForm.client_id,
+                    field_id: field
+                  }
+                });
+                if (commonFieldRec) {
+                  fieldData = Object.assign({}, commonFieldRec);
+                }
+              }
+
+              // Legacy fallback: check Form_Fields table
+              if (!fieldData) {
+                let fieldRec = await getDb({
+                  TableName: 'Form_Fields',
+                  Key: {
+                    client_id: clonedForm.client_id,
+                    field_id: field
+                  }
+                });
+                if (fieldRec) {
+                  fieldData = Object.assign({}, fieldRec);
+                }
+              }
+
+              // If still not found, remove from section
+              if (!fieldData) {
+                section.fields.splice(i, 1);
+                i--;
+                continue;
+              }
+
+              section.fields[i] = fieldData;
+            } else if (field.form_field) {
+              // Legacy reference structure
+              let fieldRec = await getDb({
+                TableName: 'Form_Fields',
+                Key: {
+                  client_id: clonedForm.client_id,
+                  field_name: field.form_field
+                }
+              });
+              if (fieldRec) {
+                section.fields[i] = Object.assign({}, fieldRec, field);
+              }
+            }
+            let f = section.fields[i];
+            // For legacy fields: use raw field_name as stable field_id, then normalize field_name
+            if (!f.field_id && f.field_name) {
+              const rawName = f.field_name;
+              f.field_id = rawName; // preserve original identifier
+              f.field_name = rawName.toLowerCase().replace(/[^a-zA-Z0-9]+/g, '_');
+            }
+            if (!f.prompt) {
+              f.prompt = f.field_name || '';
+            } else if (typeof f.prompt === 'object' && f.prompt !== null && 'value' in f.prompt) {
+              f.prompt = f.prompt.value;
+            }
+            if (!f.value || typeof f.value !== 'object') f.value = {};
+            if (!f.value.selection) f.value.selection = { selectionList: [], max: 1 };
+            if (f.value.rows == null) f.value.rows = f.prompt?.rows || 1;
+            if (f.value.width == null) f.value.width = f.prompt?.width || 500;
+            if (f.value.occurrences == null) f.value.occurrences = 1;
+            if (!f.value.type) f.value.type = f.prompt?.type || 'text';
+          }
+        }
+        if (!clonedForm.stagingFields) clonedForm.stagingFields = [];
+        if (!clonedForm.stagingRules) clonedForm.stagingRules = [];
+
+        // Parse existing show_if from sections into rules attached to sections
+        for (let section of clonedForm.sections) {
+          if (section.show_if && Array.isArray(section.show_if)) {
+            if (!section.rules) section.rules = [];
+            for (let showIfEntry of section.show_if) {
+              const rule = showIfToRule(showIfEntry);
+              if (rule) {
+                section.rules.push(rule);
+              }
+            }
+          }
+        }
+
+        return clonedForm;
+      };
+
       const prepared = await prepareFormForEditing(form);
       if (isMounted) setEditForm(prepared);
     })();
@@ -229,7 +326,8 @@ const FormEditor = ({ form, onSave, onCancel }) => {
     selectedSectionIdx: null,
     addFieldDialogOpen: false,
     commonFields: [],
-    commonFieldsFilter: ''
+    commonFieldsFilter: '',
+    addRuleDialogOpen: false
   });
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
   const updateReactData = (newData, force = false) => {
@@ -341,6 +439,25 @@ const FormEditor = ({ form, onSave, onCancel }) => {
     setEditForm(prev => ({ ...prev, sections: newSections }));
   };
 
+  // Generate unique rule ID
+  const generateUniqueRuleId = () => {
+    return `rule_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  };
+
+  // Add new rule to staging
+  const handleAddRule = (ruleType) => {
+    const rule_id = generateUniqueRuleId();
+    const newRule = {
+      rule_id,
+      rule_type: ruleType,
+      rule_name: `New ${ruleType} Rule`,
+      isNew: true
+    };
+    setEditForm(prev => ({ ...prev, stagingRules: [...(prev.stagingRules || []), newRule] }));
+    handleOpenRuleEditor(newRule);
+    updateReactData({ addRuleDialogOpen: false }, true);
+  };
+
   // Remove section
   const handleRemoveSection = idx => {
     setConfirmDialog({
@@ -353,11 +470,11 @@ const FormEditor = ({ form, onSave, onCancel }) => {
     });
   };
 
-  // Save changes (exclude stagingFields, process Common_Fields, build fields object)
+  // Save changes (exclude stagingFields and stagingRules, process Common_Fields, build fields object)
   const handleSave = async () => {
     if (!onSave) return;
 
-    const { stagingFields, ...formToSave } = editForm;
+    const { stagingFields, stagingRules, ...formToSave } = editForm;
 
     // Step 1: Collect all fields from all sections
     const allFields = [];
@@ -408,13 +525,23 @@ const FormEditor = ({ form, onSave, onCancel }) => {
       }
     }
 
-    // Step 4: Update sections to reference fields by field_id only
-    const sectionsToSave = formToSave.sections.map(section => ({
-      ...section,
-      fields: section.fields.map(field =>
-        typeof field === 'string' ? field : field.field_id
-      )
-    }));
+    // Step 4: Update sections to reference fields by field_id only and convert rules to show_if
+    const sectionsToSave = formToSave.sections.map(section => {
+      const sectionToSave = {
+        ...section,
+        fields: section.fields.map(field =>
+          typeof field === 'string' ? field : field.field_id
+        )
+      };
+
+      // Convert rules to show_if format
+      if (section.rules && section.rules.length > 0) {
+        sectionToSave.show_if = section.rules.map(rule => ruleToShowIf(rule));
+        delete sectionToSave.rules; // Remove rules property from saved section
+      }
+
+      return sectionToSave;
+    });
 
     // Step 5: Prepare final form object for Forms table
     const finalForm = {
@@ -429,6 +556,28 @@ const FormEditor = ({ form, onSave, onCancel }) => {
   // Cancel editing
   const handleCancel = () => {
     if (onCancel) onCancel();
+  };
+
+  // Rule editor handlers
+  const [ruleEditorOpen, setRuleEditorOpen] = React.useState(false);
+  const [ruleEditorRule, setRuleEditorRule] = React.useState(null);
+
+  const handleOpenRuleEditor = async (rule) => {
+    // Fetch common fields if this is a data dependent rule
+    if (rule.rule_type === 'data dependent' && editForm.client_id) {
+      const resp = await dbClient
+        .query({
+          TableName: 'Common_Fields',
+          KeyConditionExpression: 'client_id = :c',
+          ExpressionAttributeValues: { ':c': editForm.client_id }
+        })
+        .promise()
+        .catch(() => null);
+      const list = resp && recordExists(resp) ? (resp.Items || []) : [];
+      updateReactData({ ruleEditorCommonFields: list }, true);
+    }
+    setRuleEditorRule(rule);
+    setRuleEditorOpen(true);
   };
 
   // Field editor handlers
@@ -512,6 +661,35 @@ const FormEditor = ({ form, onSave, onCancel }) => {
     setFieldEditorOpen(false);
   };
 
+  const handleSaveRuleEditor = (updatedRule) => {
+    setEditForm(prev => {
+      const newStagingRules = (prev.stagingRules || []).map(r =>
+        r.rule_id === updatedRule.rule_id ? updatedRule : r
+      );
+      const newSections = prev.sections.map(section => {
+        if (section.rules && section.rules.find(r => r.rule_id === updatedRule.rule_id)) {
+          return {
+            ...section,
+            rules: section.rules.map(r => r.rule_id === updatedRule.rule_id ? updatedRule : r)
+          };
+        }
+        return section;
+      });
+      return { ...prev, sections: newSections, stagingRules: newStagingRules };
+    });
+    setRuleEditorOpen(false);
+  };
+
+  const handleCancelRuleEditor = () => {
+    if (ruleEditorRule && ruleEditorRule.isNew) {
+      setEditForm(prev => ({
+        ...prev,
+        stagingRules: (prev.stagingRules || []).filter(r => r.rule_id !== ruleEditorRule.rule_id)
+      }));
+    }
+    setRuleEditorOpen(false);
+  };
+
   return (
     <Paper className={classes.root} elevation={0}>
       <Box className={classes.header}>
@@ -564,6 +742,69 @@ const FormEditor = ({ form, onSave, onCancel }) => {
           />
         </Box>
       </Box>
+      {/* Add Rule choice dialog */}
+      {reactData.addRuleDialogOpen && (
+        <Dialog
+          open={true}
+          onClose={() => updateReactData({ addRuleDialogOpen: false }, true)}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            style: {
+              borderRadius: '25px',
+            }
+          }}
+        >
+          <Box display="flex" flexDirection="column" style={{ minHeight: 250 }}>
+            <Box p={2} style={{ borderBottom: '1px solid #eee' }}>
+              <Typography variant="h6" gutterBottom>Select Rule Type</Typography>
+            </Box>
+            <Box p={2} style={{ overflowY: 'auto', flex: 1 }}>
+              <Box
+                display="flex"
+                alignItems="center"
+                mb={2}
+                p={2}
+                style={{
+                  cursor: 'pointer',
+                  borderRadius: '8px',
+                  border: '1px solid #e0e0e0',
+                  transition: 'background-color 0.2s'
+                }}
+                onClick={() => handleAddRule('member of')}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <Typography>
+                  Member Of
+                </Typography>
+              </Box>
+              <Box
+                display="flex"
+                alignItems="center"
+                mb={2}
+                p={2}
+                style={{
+                  cursor: 'pointer',
+                  borderRadius: '8px',
+                  border: '1px solid #e0e0e0',
+                  transition: 'background-color 0.2s'
+                }}
+                onClick={() => handleAddRule('data dependent')}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <Typography>
+                  Data Dependent
+                </Typography>
+              </Box>
+            </Box>
+            <Box p={2} display="flex" justifyContent="flex-end" style={{ borderTop: '1px solid #eee' }}>
+              <Button variant="outlined" onClick={() => updateReactData({ addRuleDialogOpen: false }, true)}>Cancel</Button>
+            </Box>
+          </Box>
+        </Dialog>
+      )}
       {/* Add Field choice dialog */}
       {reactData.addFieldDialogOpen && (
         <Dialog
@@ -638,6 +879,39 @@ const FormEditor = ({ form, onSave, onCancel }) => {
       <Typography variant="h6" style={{ marginLeft: 16, marginTop: 16, marginBottom: 2, fontWeight: 600 }}>Fields & Sections</Typography>
       <Box className={classes.sectionsArea}>
         <DragDropContext onDragEnd={handleDragEnd}>
+          {(editForm.stagingRules && editForm.stagingRules.length > 0) && (
+            <Droppable droppableId="staging-rules" type="rule">
+              {(provided) => (
+                <div ref={provided.innerRef} {...provided.droppableProps} style={{ marginBottom: 16 }}>
+                  <Typography variant="subtitle2" style={{ marginLeft: 8, fontWeight: 600 }}>Unplaced Rules</Typography>
+                  <ul style={{ margin: 0, paddingLeft: 24 }}>
+                    {editForm.stagingRules.map((rule, idx) => (
+                      <Draggable key={rule.rule_id} draggableId={`rule-${rule.rule_id}`} index={idx}>
+                        {(dragProvided, dragSnapshot) => (
+                          <li
+                            ref={dragProvided.innerRef}
+                            {...dragProvided.draggableProps}
+                            {...dragProvided.dragHandleProps}
+                            style={{
+                              ...dragProvided.draggableProps.style,
+                              listStyleType: 'none',
+                              fontSize: '0.95rem',
+                              marginBottom: '6px',
+                              opacity: dragSnapshot.isDragging ? 0.7 : 1,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {rule.rule_name || `${rule.rule_type} Rule`}
+                          </li>
+                        )}
+                      </Draggable>
+                    ))}
+                    {provided.placeholder}
+                  </ul>
+                </div>
+              )}
+            </Droppable>
+          )}
           {(editForm.stagingFields && editForm.stagingFields.length > 0) && (
             <Droppable droppableId="staging-fields" type="field">
               {(provided) => (
@@ -730,6 +1004,47 @@ const FormEditor = ({ form, onSave, onCancel }) => {
                           </Box>
                           {reactData[`collapse_${idx}`] && (
                             <Box ml={4} mt={1}>
+                              <Typography variant="body2" style={{ fontWeight: 600, marginBottom: 8, marginTop: 12 }}>Rules</Typography>
+                              <Droppable droppableId={`section-rules-${idx}`} type="rule">
+                                {(provided) => (
+                                  <ul style={{ margin: 0, paddingLeft: 16, marginTop: -8, minHeight: 30 }} ref={provided.innerRef} {...provided.droppableProps}>
+                                    {section.rules && section.rules.length > 0 ? (
+                                      section.rules.map((rule, rIdx) => (
+                                        <Draggable key={rule.rule_id} draggableId={`rule-${rule.rule_id}`} index={rIdx}>
+                                          {(dragProvided, dragSnapshot) => (
+                                            <li
+                                              ref={dragProvided.innerRef}
+                                              {...dragProvided.draggableProps}
+                                              {...dragProvided.dragHandleProps}
+                                              style={{
+                                                ...dragProvided.draggableProps.style,
+                                                listStyleType: 'none',
+                                                fontSize: '0.95rem',
+                                                marginBottom: '6px',
+                                                opacity: dragSnapshot.isDragging ? 0.7 : 1,
+                                                cursor: 'pointer',
+                                              }}
+                                              onClick={() => {
+                                                handleOpenRuleEditor(rule);
+                                              }}
+                                            >
+                                              <Box display="flex" alignItems="center">
+                                                <Typography style={{ fontSize: '1rem' }}>
+                                                  {rule.rule_name || `${rule.rule_type} Rule`}
+                                                </Typography>
+                                              </Box>
+                                            </li>
+                                          )}
+                                        </Draggable>
+                                      ))
+                                    ) : (
+                                      <Typography variant="body2" color="textSecondary" style={{ marginLeft: 8, fontSize: '0.85rem' }}>No rules</Typography>
+                                    )}
+                                    {provided.placeholder}
+                                  </ul>
+                                )}
+                              </Droppable>
+                              <Typography variant="body2" style={{ fontWeight: 600, marginBottom: 8, marginTop: 12 }}>Fields</Typography>
                               <Droppable droppableId={`section-fields-${idx}`} type="field">
                                 {(provided) => (
                                   <ul style={{ margin: 0, paddingLeft: 16, marginTop: -8 }} ref={provided.innerRef} {...provided.droppableProps}>
@@ -794,6 +1109,187 @@ const FormEditor = ({ form, onSave, onCancel }) => {
           onCancel={handleCancelFieldEditor}
         />
       }
+      {/* Rule Editor dialog */}
+      {ruleEditorOpen && ruleEditorRule && (
+        <Dialog
+          open={true}
+          onClose={handleCancelRuleEditor}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            style: {
+              borderRadius: '25px',
+            }
+          }}
+        >
+          <Box display="flex" flexDirection="column" style={{ minHeight: 400 }}>
+            <Box p={2} style={{ borderBottom: '1px solid #eee' }}>
+              <Typography variant="h6" gutterBottom>
+                {ruleEditorRule.rule_type === 'member of'
+                  ? 'Only show this section when the user is a member of one of the selected groups below'
+                  : `Configure ${ruleEditorRule.rule_type} Rule`
+                }
+              </Typography>
+              <TextField
+                label="Rule Name"
+                defaultValue={ruleEditorRule.rule_name || ''}
+                onBlur={(e) => setRuleEditorRule(prev => ({ ...prev, rule_name: e?.target?.value || '' }))}
+                fullWidth
+                size="small"
+              />
+            </Box>
+            {ruleEditorRule.rule_type === 'member of' && (
+              <Box p={2} style={{ overflowY: 'auto', flex: 1, borderBottom: '1px solid #eee' }}>
+                <Typography variant="subtitle2" style={{ marginBottom: 8, fontWeight: 600 }}>
+                  Select Groups
+                </Typography>
+                {editForm.client_id && state?.groups ? (
+                  <Box>
+                    {state.groups.adminHierarchy && state.groups.adminHierarchy.length > 0 && (
+                      <Box mb={2}>
+                        <Typography variant="body2" style={{ fontWeight: 600, marginBottom: 8 }}>
+                          Administrative Groups
+                        </Typography>
+                        {state.groups.adminHierarchy.map((gObj, idx) => (
+                          <Box
+                            key={`admin-${idx}`}
+                            display="flex"
+                            alignItems="center"
+                            style={{
+                              marginLeft: `${gObj.level * 16}px`,
+                              marginBottom: '4px'
+                            }}
+                          >
+                            <Checkbox
+                              size="small"
+                              checked={(ruleEditorRule.selected_groups || []).includes(gObj.id)}
+                              onChange={(e) => {
+                                const newGroups = ruleEditorRule.selected_groups || [];
+                                if (e.target.checked) {
+                                  if (!newGroups.includes(gObj.id)) {
+                                    newGroups.push(gObj.id);
+                                  }
+                                } else {
+                                  const idx = newGroups.indexOf(gObj.id);
+                                  if (idx > -1) {
+                                    newGroups.splice(idx, 1);
+                                  }
+                                }
+                                setRuleEditorRule(prev => ({ ...prev, selected_groups: [...newGroups] }));
+                              }}
+                            />
+                            <Typography>
+                              {gObj.name}
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Box>
+                    )}
+                    {state.groups.publicGroups && Object.keys(state.groups.publicGroups).length > 0 && (
+                      <Box>
+                        <Typography variant="body2" style={{ fontWeight: 600, marginBottom: 8 }}>
+                          Public Groups
+                        </Typography>
+                        {Object.keys(state.groups.publicGroups).map((gID, idx) => {
+                          const grp = state.groups.publicGroups[gID];
+                          return (
+                            <Box
+                              key={`public-${idx}`}
+                              display="flex"
+                              alignItems="center"
+                              style={{ marginBottom: '4px' }}
+                            >
+                              <Checkbox
+                                size="small"
+                                checked={(ruleEditorRule.selected_groups || []).includes(gID)}
+                                onChange={(e) => {
+                                  const newGroups = ruleEditorRule.selected_groups || [];
+                                  if (e.target.checked) {
+                                    if (!newGroups.includes(gID)) {
+                                      newGroups.push(gID);
+                                    }
+                                  } else {
+                                    const idx = newGroups.indexOf(gID);
+                                    if (idx > -1) {
+                                      newGroups.splice(idx, 1);
+                                    }
+                                  }
+                                  setRuleEditorRule(prev => ({ ...prev, selected_groups: [...newGroups] }));
+                                }}
+                              />
+                              <Typography>
+                                {grp.group_name}
+                              </Typography>
+                            </Box>
+                          );
+                        })}
+                      </Box>
+                    )}
+                  </Box>
+                ) : (
+                  <Typography variant="body2" color="textSecondary">
+                    Loading groups...
+                  </Typography>
+                )}
+              </Box>
+            )}
+            {ruleEditorRule.rule_type === 'data dependent' && (
+              <Box p={2} style={{ overflowY: 'auto', flex: 1, borderBottom: '1px solid #eee' }}>
+                <Typography variant="subtitle2" style={{ marginBottom: 8, fontWeight: 600 }}>
+                  Select Field
+                </Typography>
+                <TextField
+                  select
+                  value={ruleEditorRule.selected_field || ''}
+                  onChange={(e) => setRuleEditorRule(prev => ({ ...prev, selected_field: e.target.value }))}
+                  fullWidth
+                  size="small"
+                  style={{ marginBottom: 16 }}
+                >
+                  {reactData.ruleEditorCommonFields && reactData.ruleEditorCommonFields.length > 0 ? (
+                    reactData.ruleEditorCommonFields.map((field) => (
+                      <option key={field.field_id} value={field.field_id}>
+                        {titleCase(field.field_name || field.field_id)}
+                      </option>
+                    ))
+                  ) : (
+                    <option disabled>No fields available</option>
+                  )}
+                </TextField>
+
+                <Typography variant="subtitle2" style={{ marginBottom: 8, fontWeight: 600 }}>
+                  Enter Values (one per line)
+                </Typography>
+                <TextField
+                  multiline
+                  minRows={4}
+                  variant="outlined"
+                  defaultValue={(ruleEditorRule.rule_values || []).join('\n')}
+                  onBlur={(e) => {
+                    const lines = e.target.value.split('\n').map(line => line.trim()).filter(line => line);
+                    setRuleEditorRule(prev => ({ ...prev, rule_values: lines }));
+                  }}
+                  fullWidth
+                  placeholder="Enter each value on a new line"
+                  size="small"
+                />
+              </Box>
+            )}
+            <Box p={2} display="flex" justifyContent="space-between" style={{ borderTop: '1px solid #eee' }}>
+              <Button variant="outlined" onClick={handleCancelRuleEditor}>
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => handleSaveRuleEditor(ruleEditorRule)}
+              >
+                Save Rule
+              </Button>
+            </Box>
+          </Box>
+        </Dialog>
+      )}
       <Box
         overflow='auto'
         display='flex'
@@ -821,6 +1317,16 @@ const FormEditor = ({ form, onSave, onCancel }) => {
             style={{ marginLeft: 12 }}
           >
             Add Field
+          </Button>
+          <Button
+            startIcon={<Add />}
+            onClick={() => updateReactData({ addRuleDialogOpen: true }, true)}
+            variant="contained"
+            color="primary"
+            className={classes.button}
+            style={{ marginLeft: 12 }}
+          >
+            Add Rule
           </Button>
         </Box>
         <Box>
