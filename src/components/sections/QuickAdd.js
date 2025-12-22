@@ -1474,6 +1474,7 @@ export default ({ onClose, options = {} }) => {
   };
 
   const getFamilyMemberName = (member) => {
+    if (!member) return titleCase(member.account_type);
     const fieldValues = member.field_values || {};
 
     // Look for common first name field variations
