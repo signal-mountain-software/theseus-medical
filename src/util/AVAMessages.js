@@ -718,6 +718,38 @@ export async function formatRequestDetails(body, summaryType) {
   return [htmlMessage, rawMessage, pdfInfo];
 }
 
+export async function printFromHTML({ htmlContent, client_id, title, docID }) {
+  // Prep the PDF output
+  await pdfLaunch({ client_id });
+  let checkpoint3 = { type: typeof htmlContent, isElement: htmlContent instanceof Element, outerHTMLLength: htmlContent?.outerHTML?.length };
+  console.log('printFromHTML received:', checkpoint3);
+
+  // Extract outerHTML if it's a DOM element
+  const htmlToRender = (htmlContent instanceof Element) ? htmlContent.outerHTML : htmlContent;
+  console.log('printFromHTML rendering:', { isString: typeof htmlToRender === 'string', length: htmlToRender?.length });
+
+  doc.html(htmlToRender, {
+    callback: function (doc) {
+      // Save the PDF file once the conversion is complete
+      doc.save('downloaded-document.pdf');
+    },
+    x: 10, // Optional: X coordinate
+    y: page.yPos || 10, // Optional: Y coordinate
+    width: page.width - 20, // Optional: Width of the content
+    windowWidth: 1000, // Optional: Width of the virtual browser window
+    autoPaging: 'text', // Optional: Auto paging mode
+    margin: [10, 10, 10, 10], // Optional: Margins [top, left, bottom, right]
+    html2canvas: { // Optional: html2canvas options
+      allowTaint: true,
+      useCORS: true,
+    //  letterRendering: true,
+      width: page.width - 20,
+      scale: 0.5
+    }
+  });
+
+  
+}
 
 export async function printDocument({ docData, docValues, docDocument, docID, client_id, title }) {
   // Prep the PDF output
