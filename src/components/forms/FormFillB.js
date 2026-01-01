@@ -1967,12 +1967,12 @@ export default ({ request = {}, onClose }) => {
     if (reactData.docRec?.history) {
       docData.history = reactData.docRec?.history;
     }
+    docData.form_stage = reactData.current_formStage;
     const recWritten = await updateDocument({
       docData,
       author: state.session.patient_id,
       isNew: false,
       pending,
-      form_stage: reactData.current_formStage,
       save_type: url ? 'printed' : (final ? 'save_final' : (timeout ? 'on_timeout' : 'in_process')),
       url
     });

@@ -220,6 +220,7 @@ export async function updateDocument({ docData, author, isNew = false, save_type
     docOut.history.unshift({
         last_update: now,
         status: pending ? 'pending' : save_type,
+        stage: docData.form_stage || 'unknown',
         update_by: author || 'updateDocument'
     });
     if (url) {
