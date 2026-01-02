@@ -736,19 +736,19 @@ export async function printFromHTML({ htmlContent, client_id, title, docID }) {
     x: 10, // Optional: X coordinate
     y: page.yPos || 10, // Optional: Y coordinate
     width: page.width - 20, // Optional: Width of the content
-    windowWidth: 1000, // Optional: Width of the virtual browser window
+    windowWidth: 900, // Increased for better rendering (common desktop width)
     autoPaging: 'text', // Optional: Auto paging mode
     margin: [10, 10, 10, 10], // Optional: Margins [top, left, bottom, right]
     html2canvas: { // Optional: html2canvas options
       allowTaint: true,
       useCORS: true,
-    //  letterRendering: true,
-      width: page.width - 20,
-      scale: 0.5
+      letterRendering: true, // Critical: fixes letter spacing issues
+      scale: 0.5, // Changed from 0.5 to 1 to prevent rendering artifacts
+      logging: false
     }
   });
 
-  
+
 }
 
 export async function printDocument({ docData, docValues, docDocument, docID, client_id, title }) {

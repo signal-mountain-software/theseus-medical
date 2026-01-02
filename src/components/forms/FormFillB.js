@@ -963,7 +963,7 @@ export default ({ request = {}, onClose }) => {
     }
     formRec.stages.push({ stage_name: 'complete' });
     updateReactData({
-      peopleRec: {},
+      peopleRec: reactData.peopleRec || {},
       formRec
     }, false);
     let response = {
@@ -2525,6 +2525,13 @@ export default ({ request = {}, onClose }) => {
         key={`wholeScreen__`}
         onClose={handleAbort}
         classes={{ paper: classes.clientBackground }}
+        maxWidth={false}
+        PaperProps={{
+          style: {
+            minWidth: '80vw',
+            maxWidth: '80vw'
+          }
+        }}
       >
         {!isInitializing() &&
           <React.Fragment>

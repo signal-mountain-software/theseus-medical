@@ -996,7 +996,7 @@ export default ({ onClose, options = {} }) => {
       const groups = ["__TOP__", "ALL"].concat(defaultGroups);
 
       // Extract contact info for preferred methods
-      const email = fieldValues.email || fieldValues.eMail || fieldValues.e-Mail || fieldValues.email_address || fieldValues['email address'] || '';
+      const email = fieldValues.email || fieldValues.eMail || fieldValues['e-Mail'] || fieldValues.email_address || fieldValues['email address'] || '';
       const phone = fieldValues.phone || fieldValues.phone_number || fieldValues['phone number'] || '';
       const cell = fieldValues.cell || fieldValues.cell_phone || fieldValues['cell phone'] || phone;
 

@@ -59,10 +59,11 @@ export default ({ currentValues, reactData, updateReactData }) => {
     // get all the groups that this person belongs to
     // and build myFormListObj with one object for each form assigned to members of this person's groups
     let my_form_people = [currentValues.peopleRec.person_id];
-    if (currentValues.peopleRec.myFamilyMembers && (Object.keys(currentValues.peopleRec.myFamilyMembers).length > 0)) {
-      for (let this_person in currentValues.peopleRec.myFamilyMembers) {
-        my_form_people.push(this_person);
-      }
+    if ((currentValues.peopleRec.myFamilyMembers || []).length > 0) {
+      my_form_people = [];
+      currentValues.peopleRec.myFamilyMembers.forEach(this_person => {
+        my_form_people.push(this_person.id);
+      });
     }
     for (let this_person of my_form_people) {
       let myFormListObj = {};
@@ -285,11 +286,11 @@ export default ({ currentValues, reactData, updateReactData }) => {
     if (!formRec) { return 'not_started'; }
 
     // get the document stages
-    let docStages = [formRec.stages].flat() || [];
+    let docStages = formRec.stages || [];
 
     // Ensure 'default' is first and 'complete' is last
     // Remove any existing 'default' and 'complete' entries
-    docStages = docStages.filter(stage => !['default', 'complete'].includes(stage.stage_name));
+    docStages = docStages.filter(stage => !['default', 'complete'].includes(stage?.stage_name));
 
     // Build final stages array with default first and complete last
     const finalStages = [{ stage_name: 'default' }];
