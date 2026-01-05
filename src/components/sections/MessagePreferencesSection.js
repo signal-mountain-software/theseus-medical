@@ -17,9 +17,11 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
 
   const AVAClass = AVAclasses();
 
-  const isFamilyMember = currentValues.familyRecs && currentValues.familyRecs.length > 0;
+  const isFamilyMember = currentValues.familyRecs && currentValues.familyRecs.some(famRec => {
+    return (famRec.hasOwnProperty('primary_contact'));
+  }); 
   const isPrimaryContact = isFamilyMember && currentValues.familyRecs.some(famRec => {
-    return (famRec.primary_contact.id === currentValues.peopleRec.person_id);
+    return (famRec?.primary_contact?.id === currentValues.peopleRec.person_id);
   });
 
   const messageOptions = [
