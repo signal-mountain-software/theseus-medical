@@ -789,7 +789,7 @@ export default ({ onClose, options = {} }) => {
 
         // Show notification and switch to code verification stage
         const notificationMessage = sendMethod === 'email'
-          ? `We've sent a verification code to ${sendAddress}. Look for the code in that message and enter it below.`
+          ? `We've sent a verification code to ${sendAddress}. Look for the code in that message and enter it below.  (Make sure to check your spam/junk folder if you don't see the message in a minute or two.)`
           : `We've sent a verification code to ${sendAddress.replace(/(\+\d{1})(\d{3})(\d{3})(\d{4})/, '$1 ($2) $3-$4')}. Look for the code in that text message and enter it below.`;
 
         setReactData(prev => ({
