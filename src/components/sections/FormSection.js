@@ -330,7 +330,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
   const setPencilColor = (rObj) => {
     // rObj is coming from myDocs
     if (rObj && rObj.wipDocs.length > 0) {
-      if (rObj.wipDocs[0].doc_status === 'incomplete') {
+      if ((rObj.wipDocs[0].doc_status === 'incomplete') || (rObj.wipDocs[0].doc_status.startsWith('pending'))) {
         orangePencilDisplayed.current = true;
         return 'orange';
       }
@@ -546,7 +546,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                     })}
                                   >
                                     {(myDocs.wipDocs.length > 0)
-                                      ? `${((myDocs.wipDocs[0].doc_status.startsWith('pending')) ? 'Your sections are Complete!' : 'Started but incomplete')}`
+                                      ? `${((pencilColor === 'green') ? 'Your sections are Complete!' : 'Started but incomplete')}`
                                       : `Not started`
                                     }
                                     {(myDocs.dueDate) &&
