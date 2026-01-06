@@ -609,11 +609,14 @@ export default ({ onClose, options = {} }) => {
     }
     for (let p = 0; p < personRecs.length; p++) {
       personRecs[p].account_class = determineClass(personRecs[p].groups, state.session.group_assignments);
-      if (personRecs[p].messaging && personRecs[p].messaging.voice) {
-        personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.voice.slice(-4)}`;
+      if (personRecs[p].contact_info?.cell?.number) {
+        personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].contact_info.cell.number.slice(-4)}`;
       }
-      else if (personRecs[p].messaging && personRecs[p].messaging.sms) {
+      else if (personRecs[p].messaging?.sms) {
         personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.sms.slice(-4)}`;
+      }
+      else if (personRecs[p].messaging?.voice) {
+        personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.voice.slice(-4)}`;
       }
     }
     personRecs = personRecs.filter(p => {
@@ -786,7 +789,7 @@ export default ({ onClose, options = {} }) => {
 
         // Show notification and switch to code verification stage
         const notificationMessage = sendMethod === 'email'
-          ? `We've sent a verification code to ${sendAddress}. Look for the code in that message and enter it below.`
+          ? `We've sent a verification code to ${sendAddress}. Look for the code in that message and enter it below.  (Make sure to check your spam/junk folder if you don't see the message in a minute or two.)`
           : `We've sent a verification code to ${sendAddress.replace(/(\+\d{1})(\d{3})(\d{3})(\d{4})/, '$1 ($2) $3-$4')}. Look for the code in that text message and enter it below.`;
 
         setReactData(prev => ({
@@ -993,7 +996,7 @@ export default ({ onClose, options = {} }) => {
       const groups = ["__TOP__", "ALL"].concat(defaultGroups);
 
       // Extract contact info for preferred methods
-      const email = fieldValues.email || fieldValues.email_address || fieldValues['email address'] || '';
+      const email = fieldValues.email || fieldValues.eMail || fieldValues['e-Mail'] || fieldValues.email_address || fieldValues['email address'] || '';
       const phone = fieldValues.phone || fieldValues.phone_number || fieldValues['phone number'] || '';
       const cell = fieldValues.cell || fieldValues.cell_phone || fieldValues['cell phone'] || phone;
 
@@ -1037,11 +1040,14 @@ export default ({ onClose, options = {} }) => {
 
       // Build contact_info object
       const contact_info = {};
+      const messaging = {};
       if (email) {
         contact_info.email = { address: email };
+        messaging.email = email;
       }
       if (cellForStorage) {
         contact_info.cell = { number: cellForStorage };
+        messaging.sms = cellForStorage;
       }
 
       // Build People record following PeopleMaintenance.js pattern
@@ -1057,6 +1063,7 @@ export default ({ onClose, options = {} }) => {
         preferred_methods: preferred_methods,
         preferred_method: preferred_method,
         contact_info: contact_info,
+        messaging: messaging,
         account_type: member.account_type
       };
 
@@ -1474,6 +1481,7 @@ export default ({ onClose, options = {} }) => {
   };
 
   const getFamilyMemberName = (member) => {
+    if (!member) return titleCase(member.account_type);
     const fieldValues = member.field_values || {};
 
     // Look for common first name field variations

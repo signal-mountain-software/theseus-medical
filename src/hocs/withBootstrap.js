@@ -13,6 +13,7 @@ import MakeAVAMenu from '../util/MakeAVAMenu';
 import PatientDialog from '../components/dialogs/PatientDialog';
 import SelectAccount from '../components/dialogs/SelectAccount';
 import QuickAdd from '../components/sections/QuickAdd';
+import FormFillB from '../components/forms/FormFillB';
 
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
@@ -156,37 +157,48 @@ export default Component => props => {
         }
 
         // Handle ?create= parameter - force logout and launch QuickAdd
-        if (urlData && urlData.create) {
-          const clientId = urlData.create;
-          console.log('Create parameter detected:', clientId);
+        if (urlData) {
+          if (urlData.create) {
+            const clientId = urlData.create;
+            console.log('Create parameter detected:', clientId);
 
-          // Clear any existing sessions
-          sessionStorage.removeItem('AVASessionData');
-          try {
-            await Auth.signOut();
-          } catch (e) {
-            console.log('No existing Cognito session to sign out');
+            // Clear any existing sessions
+            sessionStorage.removeItem('AVASessionData');
+            try {
+              await Auth.signOut();
+            } catch (e) {
+              console.log('No existing Cognito session to sign out');
+            }
+
+            updateReactData({
+              urlData: Object.assign({}, urlData, {
+                client_id: clientId,
+                launch_quickadd: true,
+                quickadd_source: 'url_parameter'
+              })
+            });
+
+            // Load client customizations
+            console.log('Loading customizations for client:', clientId);
+            let cData = await getCustomizations('*all', clientId);
+            updateReactData({
+              customizationData: Object.assign({}, cData, urlData, { client_id: clientId }),
+              currentClientLogo: cData.logo
+            });
+
+            console.log('Trying user:', `ava-${clientId.toLowerCase()}`, 'for client:', clientId);
+            await tryUser(`ava-${clientId.toLowerCase()}`, clientId, 'url');
+            return;
           }
-
-          updateReactData({
-            urlData: Object.assign({}, urlData, {
-              client_id: clientId,
-              launch_quickadd: true,
-              quickadd_source: 'url_parameter'
-            })
-          });
-
-          // Load client customizations
-          console.log('Loading customizations for client:', clientId);
-          let cData = await getCustomizations('*all', clientId);
-          updateReactData({
-            customizationData: Object.assign({}, cData, urlData, { client_id: clientId }),
-            currentClientLogo: cData.logo
-          });
-
-          console.log('Trying user:', `ava-${clientId.toLowerCase()}`, 'for client:', clientId);
-          await tryUser(`ava-${clientId.toLowerCase()}`, clientId, 'url');
-          return;
+          else if (urlData.document_id) {
+            console.log('Document parameter detected:', urlData.document_id);
+            updateReactData({
+              urlData: Object.assign({}, urlData, {
+                launch_formFill: true,
+                formFill_documentID: urlData.document_id
+              })
+            });
+          }
         }
 
         let activeUser;
@@ -543,6 +555,10 @@ export default Component => props => {
 
   function showQuickAdd() {
     return (AVAReady && reactData?.urlData?.launch_quickadd);
+  }
+
+  function showFormFill() {
+    return (AVAReady && reactData?.urlData?.launch_formFill);
   }
 
   function testModeErrorTrap() {
@@ -1124,6 +1140,20 @@ export default Component => props => {
         }}
         options={{
           source: reactData.urlData?.quickadd_source || 'normal'
+        }}
+      />
+    );
+  }
+  else if (showFormFill()) {
+    return (
+      <FormFillB
+        onClose={(ignore_me, statusObj) => {
+          sessionStorage.removeItem('AVASessionData');
+          let jumpTo = `${window.location.href.replace('refresh', 'theseus').split('?')[0]}?continue`;
+          window.location.replace(jumpTo);
+        }}
+        request={{
+          document_id: reactData.urlData?.formFill_documentID
         }}
       />
     );

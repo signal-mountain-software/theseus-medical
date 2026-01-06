@@ -814,7 +814,6 @@ export default ({ defaults, onClose }) => {
       });
     if (recordExists(allForms)) {
       for (let formRec of allForms.Items) {
-        if (!formRec.active) { continue; }
         // due_by works like this...
         //   if due_by is single date and the date is in the future, use that date
         //   if due_by is an array of dates, take the nearest date that is in the future
@@ -836,14 +835,20 @@ export default ({ defaults, onClose }) => {
             }
           }
         }
+        // Determine category: inactive forms go to "Inactive Forms" by default
+        let formCategory = formRec.category || 'No Category';
+        if (!formRec.active) {
+          formCategory = 'Inactive Forms';
+        }
         masterFormList[formRec.form_id] = {
           form_id: formRec.form_id,
           form_name: formRec.form_name || `Form ${titleCase(formRec.form_id.replace(/[^a-zA-z0-9]|_/g, ' '))}`,
-          category: formRec.category || 'No Category',
+          category: formCategory,
           groupList: [],  // all the groups that require this form
           options: formRec.options || {},
           dueDate: date_assigned,
-          dated_docs: formRec.options?.dated_docs || false
+          dated_docs: formRec.options?.dated_docs || false,
+          active: formRec.active || false
         };
       }
     }
@@ -876,9 +881,16 @@ export default ({ defaults, onClose }) => {
     }
     // now we've got a list of all the forms that are attached to all the groups 
     // Sort by category first, then by form_name within each category
+    // "Inactive Forms" category should always appear last
     let sortedForms = Object.keys(masterFormList).sort((a, b) => {
       const catA = masterFormList[a].category || 'No Category';
       const catB = masterFormList[b].category || 'No Category';
+
+      // Move "Inactive Forms" to the end
+      const aIsInactive = catA === 'Inactive Forms';
+      const bIsInactive = catB === 'Inactive Forms';
+      if (aIsInactive && !bIsInactive) return 1;
+      if (!aIsInactive && bIsInactive) return -1;
 
       // First sort by category
       if (catA < catB) return -1;

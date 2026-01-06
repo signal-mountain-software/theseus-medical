@@ -262,12 +262,12 @@ export default ({ currentValues, reactData, updateReactData }) => {
           >
             {`${currentValues.peopleRec.name?.first} is responsible for:`}
           </Typography>
-          {Object.keys(currentValues.peopleRec.myFamilyMembers).sort((p1, p2) => {
-            if (currentValues.peopleRec.myFamilyMembers[p1].type !== currentValues.peopleRec.myFamilyMembers[p2].type) {
-              return ((currentValues.peopleRec.myFamilyMembers[p1].type > currentValues.peopleRec.myFamilyMembers[p2].type) ? 1 : -1);
+          {currentValues.peopleRec.myFamilyMembers.sort((p1, p2) => {
+            if (p1.type !== p2.type) {
+              return ((p1.type > p2.type) ? 1 : -1);
             }
             else {
-              return ((currentValues.peopleRec.myFamilyMembers[p1].name > currentValues.peopleRec.myFamilyMembers[p2].name) ? 1 : -1);
+              return ((p1.name > p2.name) ? 1 : -1);
             }
           }).map((this_member, memberNdx) => (
             <Box
@@ -277,7 +277,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
 
               key={`family_${memberNdx}`}
             >
-              {(currentValues.peopleRec.myFamilyMembers[this_member].type.toLowerCase() === 'camper') &&
+              {(this_member.type && this_member.type.toLowerCase() === 'camper') &&
                 <Typography style={AVATextStyle({ margin: { top: 0, left: 1, right: -0.8 }, bold: true })}>
                   {`Camper -`}
                 </Typography>
@@ -290,7 +290,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                   }, true);
                 }}
               >
-                {`${currentValues.peopleRec.myFamilyMembers[this_member].name}`}
+                {`${this_member?.name || this_member?.id || 'Unknown Person'}`}
               </Typography>
             </Box>
           ))}
@@ -337,7 +337,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
         </React.Fragment>
       }
       {currentValues.peopleRec.myFamilyMembers &&
-        (Object.keys(currentValues.peopleRec.myFamilyMembers).length > 0) &&
+        (currentValues.peopleRec.myFamilyMembers.length > 0) &&
         reactData.accessList &&
         <React.Fragment>
           <Typography
@@ -346,13 +346,13 @@ export default ({ currentValues, reactData, updateReactData }) => {
             {`${currentValues.peopleRec.name?.first} is a Caregiver for:`}
           </Typography>
           <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-            {Object.keys(currentValues.peopleRec.myFamilyMembers).map((this_item, tIndex) => (
+            {currentValues.peopleRec.myFamilyMembers.map((this_member, tIndex) => (
               <Button
                 className={AVAClass.AVAButton_noBorder}
                 key={`child_button__${tIndex}`}
                 onClick={async () => {
                   updateReactData({
-                    viewFamilySnapshot: this_item
+                    viewFamilySnapshot: this_member.id
                   }, true);
                 }}
                 style={{ marginLeft: '18px', backgroundColor: 'white', color: 'black' }}
@@ -365,7 +365,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                     key={`child_name__${tIndex}`}
                     style={AVATextStyle({ margin: { top: 0, left: 0 }, bold: true })}
                   >
-                    {`${currentValues.peopleRec.myFamilyMembers[this_item].name}`}
+                    {`${this_member.name}`}
                   </Typography>
                 </Box>
               </Button>

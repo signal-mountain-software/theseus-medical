@@ -520,10 +520,10 @@ export function array_in_array(a1, a2) {
 
 export function titleCase(pString) {
   if (!pString) { return ''; }
-  let words = pString.split(/([^\w']+)/);
+  let words = pString.split(/([^\w':]+)/);
   // console.log(words);
   const smallWords = ['of', 'and', 'or', 'a', 'an', 'the', 'in', 'on', 'at', 'to', 'for', 'with', 'from', 'by'];
-  const allCapWords = ['ava', 'bbq', 'id', 'tv', 'ceo', 'cfo', 'coo', 'usa', 'uk', 'eu'];
+  const allCapWords = ['ava', 'bbq', 'id', 'tv', 'ceo', 'cfo', 'coo', 'usa', 'uk', 'eu', 'am', 'pm'];
   var titleCased = [];
   words.forEach((w, idx) => {
     if (!w.trim()) { return; }   // ignore spaces between words (we'll put them back in later)

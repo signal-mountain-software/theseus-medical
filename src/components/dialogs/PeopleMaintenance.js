@@ -192,7 +192,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       }
       else {
         reactUpdObj.person_id = parm_personRec.person_id;
-        let peopleRec = await dbClient
+        let foundPeopleRec = await dbClient
           .get({
             Key: { person_id: parm_personRec.person_id },
             TableName: "People"
@@ -201,144 +201,136 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           .catch(error => {
             cl({ [`in People Maintenance, Error reading ${parm_personRec.person_id}`]: error });
           });
-        if (recordExists(peopleRec)) {
+        if (recordExists(foundPeopleRec)) {
+          let peopleRec = deepCopy(foundPeopleRec.Item);
           // convert from earlier versions if necessary
-          if (!peopleRec.Item.contact_info) {
-            peopleRec.Item.contact_info = {
-              cell: { number: peopleRec.Item.messaging?.sms },
-              landline: { number: peopleRec.Item.messaging?.voice },
-              work: { number: peopleRec.Item.messaging?.office },
-              email: { address: peopleRec.Item.messaging?.email },
+          if (!peopleRec.contact_info) {
+            peopleRec.contact_info = {
+              cell: { number: peopleRec.messaging?.sms },
+              landline: { number: peopleRec.messaging?.voice },
+              work: { number: peopleRec.messaging?.office },
+              email: { address: peopleRec.messaging?.email },
             };
           }
-          else if (!peopleRec.Item.contact_info.landline) {
-            peopleRec.Item.contact_info.landline = { number: peopleRec.Item.messaging?.voice };
+          else if (!peopleRec.contact_info.landline) {
+            peopleRec.contact_info.landline = { number: peopleRec.messaging?.voice };
           }
-          if (!peopleRec.Item.inbound_customizations) {
-            peopleRec.Item.inbound_customizations = {};
+          if (!peopleRec.inbound_customizations) {
+            peopleRec.inbound_customizations = {};
           }
-          if (!peopleRec.Item.account_class) {
-            peopleRec.Item.account_class = determineClass(peopleRec.Item.groups, state.session.group_assignments);
+          if (!peopleRec.account_class) {
+            peopleRec.account_class = determineClass(peopleRec.groups, state.session.group_assignments);
           }
-          if (peopleRec.Item.checkout_status) {
-            if (['admin', 'staff', 'resident', 'student', 'camper'].includes(peopleRec.Item.account_class)) {
-              if (peopleRec.Item.checkout_status === 'out') {
-                peopleRec.Item.checkout_message = peopleRec.Item.checkout_recent_history[0];
+          if (peopleRec.checkout_status) {
+            if (['admin', 'staff', 'resident', 'student', 'camper'].includes(peopleRec.account_class)) {
+              if (peopleRec.checkout_status === 'out') {
+                peopleRec.checkout_message = peopleRec.checkout_recent_history[0];
               }
               else {
-                peopleRec.Item.checkout_message = false;
+                peopleRec.checkout_message = false;
               }
             }
             else {
-              if (peopleRec.Item.checkout_status === 'in') {
-                peopleRec.Item.checkout_message = peopleRec.Item.checkout_recent_history[0];
+              if (peopleRec.checkout_status === 'in') {
+                peopleRec.checkout_message = peopleRec.checkout_recent_history[0];
               }
               else {
-                peopleRec.Item.checkout_message = false;
+                peopleRec.checkout_message = false;
               }
             }
           }
           else {
-            peopleRec.Item.checkout_message = false;
+            peopleRec.checkout_message = false;
           }
 
-          if (!peopleRec.Item.local_data) {
-            peopleRec.Item.local_data = {};
+          if (!peopleRec.local_data) {
+            peopleRec.local_data = {};
           }
           for (let this_customField in reactData.local_customFields) {
-            if (!peopleRec.Item.local_data.hasOwnProperty(this_customField)) {
+            if (!peopleRec.local_data.hasOwnProperty(this_customField)) {
               if ((reactData.local_customFields[this_customField].type || reactData.local_customFields[this_customField]) !== 'boolean') {
-                peopleRec.Item.local_data[this_customField] = '';
+                peopleRec.local_data[this_customField] = '';
               }
               else {
-                peopleRec.Item.local_data[this_customField] = false;
+                peopleRec.local_data[this_customField] = false;
               }
             }
           }
 
           reactUpdObj.og.familyRecs = [];
-          reactUpdObj.myFamilyData = [];
-          if (peopleRec.Item.family_groups && (peopleRec.Item.family_groups.length > 0)) {
-            for (let i = 0; i < peopleRec.Item.family_groups.length; i++) {
+          reactUpdObj.myFamilyData = [];          
+          if (peopleRec.family_groups && (peopleRec.family_groups.length > 0)) {
+            for (let i = 0; i < peopleRec.family_groups.length; i++) {
               let familyRec = await dbClient
                 .query({
                   KeyConditionExpression: 'family_id = :f',
                   TableName: "FamilyGroups",
                   IndexName: 'family_id-index',
                   ExpressionAttributeValues: {
-                    ':f': peopleRec.Item.family_groups[i]
+                    ':f': peopleRec.family_groups[i]
                   }
                 })
                 .promise()
                 .catch(error => { cl({ 'Error reading FamilyGroups': error }); });
               if (recordExists(familyRec)) {
-                if (familyRec.Items[0].primary_contact.id === parm_personRec.person_id) {
-                  reactUpdObj.myFamilyData[i] = deepCopy(familyRec.Items[0].primary_contact);
-                  reactUpdObj.myFamilyData[i].primary = true;
-                }
-                else {
-                  let o = -1;
-                  if (familyRec.Items[0].other_members?.length > 0) {
-                    o = familyRec.Items[0].other_members?.findIndex(this_member => {
-                      return (this_member.id === parm_personRec.person_id);
-                    });
-                  }
-                  if (o > -1) {
-                    reactUpdObj.myFamilyData[i] = deepCopy(familyRec.Items[0].other_members[o]);
-                    reactUpdObj.myFamilyData[i].primary = false;
-                    reactUpdObj.myFamilyData[i].other_index = o;
-                  }
-                  else {
-                    // this person is not really a member of the family_group at all
-                    continue;
-                  }
-                }
-                reactUpdObj.og.familyRecs[i] = familyRec.Items[0];
-              }
-            }
-          }
-          if (!peopleRec.Item.address) {
-            peopleRec.Item.address = {};
-            if (peopleRec.Item.location) {
-              peopleRec.Item.address = { address: peopleRec.Item.location };
-            }
-          }
-          if (!peopleRec.Item.preferred_methods) {
-            if (peopleRec.Item.preferred_method) {
-              if (Array.isArray(peopleRec.Item.preferred_method)) {
-                const x = peopleRec.Item.preferred_method.length - 1;
-                peopleRec.Item.preferred_methods = [peopleRec.Item.preferred_method[x].method.toLowerCase()];
+                const myFamilyRec = deepCopy(familyRec.Items[0]);
+                reactUpdObj.og.familyRecs[i] = myFamilyRec;
+                // Primary contact?
+                reactUpdObj.myFamilyData.push(Object.assign({}, myFamilyRec.primary_contact, { primary: true }));
+                // Gather other members of my Family Group
+                (myFamilyRec.other_members || []).forEach((this_member, member_index) => {
+                  reactUpdObj.myFamilyData.push(Object.assign({}, this_member, { primary: false, other_index: member_index }));
+                });
               }
               else {
-                peopleRec.Item.preferred_methods = [peopleRec.Item.preferred_method.toLowerCase()];
+                // this person is not really a member of the family_group at all
+                continue;
+              }
+            }
+            peopleRec.myFamilyMembers = reactUpdObj.myFamilyData || [];
+          }
+          if (!peopleRec.address) {
+            peopleRec.address = {};
+            if (peopleRec.location) {
+              peopleRec.address = { address: peopleRec.location };
+            }
+          }
+          if (!peopleRec.preferred_methods) {
+            if (peopleRec.preferred_method) {
+              if (Array.isArray(peopleRec.preferred_method)) {
+                const x = peopleRec.preferred_method.length - 1;
+                peopleRec.preferred_methods = [peopleRec.preferred_method[x].method.toLowerCase()];
+              }
+              else {
+                peopleRec.preferred_methods = [peopleRec.preferred_method.toLowerCase()];
               }
             }
             else {
-              peopleRec.Item.preferred_methods = 'ava';
+              peopleRec.preferred_methods = ['ava'];
             }
           }
-          if (peopleRec.Item.time_based_rules) {
-            peopleRec.Item.time_based_rules = peopleRec.Item.time_based_rules.filter(this_rule => {
+          if (peopleRec.time_based_rules) {
+            peopleRec.time_based_rules = peopleRec.time_based_rules.filter(this_rule => {
               return !this_rule.global_rule;
             });
           }
           if (state.session?.global_mail_rules?.time_based_rules) {
-            let start_index = peopleRec.Item.time_based_rules?.length || 0;
-            peopleRec.Item.time_based_rules = (peopleRec.Item.time_based_rules || []).concat(state.session?.global_mail_rules?.time_based_rules);
-            for (let i = start_index; i < peopleRec.Item.time_based_rules.length; i++) {
-              if (peopleRec.Item.time_based_rules[i].name) {
-                peopleRec.Item.time_based_rules[i].name += ` (Administrative Rule)`;
+            let start_index = peopleRec.time_based_rules?.length || 0;
+            peopleRec.time_based_rules = (peopleRec.time_based_rules || []).concat(state.session?.global_mail_rules?.time_based_rules);
+            for (let i = start_index; i < peopleRec.time_based_rules.length; i++) {
+              if (peopleRec.time_based_rules[i].name) {
+                peopleRec.time_based_rules[i].name += ` (Administrative Rule)`;
               }
               else {
-                peopleRec.Item.time_based_rules[i].name = `${reactData.client_name} Administrative Rule`;
+                peopleRec.time_based_rules[i].name = `${reactData.client_name} Administrative Rule`;
               }
-              peopleRec.Item.time_based_rules[i].global_rule = true;
+              peopleRec.time_based_rules[i].global_rule = true;
             }
           }
-          if (!peopleRec.Item.proxy_allowed_from) {
-            peopleRec.Item.proxy_allowed_from = {};
+          if (!peopleRec.proxy_allowed_from) {
+            peopleRec.proxy_allowed_from = {};
           }
-          reactUpdObj.og.peopleRec = Object.assign({}, peopleRec.Item, initialValues?.peopleRec);
+          reactUpdObj.og.peopleRec = Object.assign({}, peopleRec, initialValues?.peopleRec);
         }
         else {
           return {
@@ -465,7 +457,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('FormSection')) : false),
         isAuthorized: (reactData.sectionList
           ? reactData.sectionList.includes('forms')
-          : (!state.session.client_style?.suppress_forms_in_profile ? reactData.administrative_account : false)),
+          : (state.session.client_style?.suppress_forms_in_profile ? reactData.administrative_account : true)),
         version_id: 0,
         component_name: 'FormSection'
       },
@@ -569,7 +561,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       };
       updateReactData(reactUpdObj, true);
       window.addEventListener('resize', handleResize);
-    }
+    };
     function handleResize() {
       updateReactData({
         isMobile: (window.window.innerWidth < 800),
