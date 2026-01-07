@@ -1481,7 +1481,7 @@ export default ({ onClose, options = {} }) => {
   };
 
   const getFamilyMemberName = (member) => {
-    if (!member) return titleCase(member.account_type);
+    if (!member) return 'My Family';
     const fieldValues = member.field_values || {};
 
     // Look for common first name field variations
@@ -1645,7 +1645,7 @@ export default ({ onClose, options = {} }) => {
         {reactData.stage === 'prompt_for_name' && (
           <Box style={{ marginTop: '16px' }}>
             <Typography variant="h6" style={{ marginBottom: '16px' }}>
-              Name of the person to add:
+              Please enter the name of one family member. (You’ll have the opportunity to add all family members one at a time.)
             </Typography>
             <TextField
               fullWidth
@@ -1673,7 +1673,19 @@ export default ({ onClose, options = {} }) => {
               </Button>
               <Button
                 variant="outlined"
-                onClick={onClose}
+                onClick={() => {
+                  // If we have family members already, go back to ask_for_more screen
+                  if (reactData.family_members && reactData.family_members.length > 0) {
+                    setReactData(prev => ({
+                      ...prev,
+                      stage: 'ask_for_more',
+                      entered_name: ''
+                    }));
+                  } else {
+                    // Otherwise close the entire dialog
+                    onClose();
+                  }
+                }}
               >
                 Cancel
               </Button>
@@ -2315,6 +2327,24 @@ export default ({ onClose, options = {} }) => {
               }}
             >
               Exit
+            </Button>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{
+                marginTop: '16px',
+                backgroundColor: 'orange',
+                color: 'white'
+              }}
+              size='small'
+              onClick={() => {
+                setReactData(prev => ({
+                  ...prev,
+                  stage: 'ask_for_more',
+                  current_member_index: prev.current_member_index - 1
+                }));
+              }}
+            >
+              Back
             </Button>
             <Button
               className={AVAClass.AVAButton}
