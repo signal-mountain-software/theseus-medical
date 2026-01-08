@@ -116,7 +116,7 @@ export async function getMarqueeMessage(client_id, options = {}) {
   let weatherMessage = false;
   let urgentMessage;
   let suppressWeather = false;
-  if (options.client_weather) {
+  if (options.client_weather && !options.critical_only) {
     let weather = await getLocalWeather(options.client_weather);
     if (weather) {
       weatherMessage = {
@@ -160,16 +160,18 @@ export async function getMarqueeMessage(client_id, options = {}) {
       return selectedMRecs;
     }
     selectedMRecs.forEach(sRec => {
-      response.push({
-        style: sRec.style,
-        message: sRec.message,
-        criticalMessage: sRec.criticalMessage,
-        priorityMessage: sRec.priorityMessage
-      });
-      if ((sRec.criticalMessage) || (sRec.priorityMessage)) {
-        suppressWeather = true;
-        if (sRec.criticalMessage) {
-          urgentMessage = sRec.message;
+      if (sRec.criticalMessage || sRec.priorityMessage || !options.critical_only) {
+        response.push({
+          style: sRec.style,
+          message: sRec.message,
+          criticalMessage: sRec.criticalMessage,
+          priorityMessage: sRec.priorityMessage
+        });
+        if ((sRec.criticalMessage) || (sRec.priorityMessage)) {
+          suppressWeather = true;
+          if (sRec.criticalMessage) {
+            urgentMessage = sRec.message;
+          }
         }
       }
     });
