@@ -355,6 +355,50 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
       <Typography
         style={AVATextStyle({ margin: { top: 1 } })}
       >
+        {'Scrolling Marquee'}
+      </Typography>
+      <Box flexGrow={2} display='flex' alignItems='center'
+        justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+        <Typography
+          style={AVATextStyle({
+            size: 0.8, margin: { right: 0.8 },
+            bold: !currentValues.customizationRecs.client_style.customization_value.marquee_critical_only
+          })}
+        >
+          {'Show Marquee'}
+        </Typography>
+        <Switch
+          checked={currentValues.customizationRecs.client_style.customization_value?.marquee_critical_only}
+          onClick={async (event) => {
+            await updateField({
+              updateList:
+                [{
+                  tableName: 'customizationRecs',
+                  fieldName: 'client_style.customization_value.marquee_critical_only',
+                  newData: !currentValues.customizationRecs.client_style.customization_value.marquee_critical_only
+                }]
+            });
+          }}
+          name="MarqueeStyle"
+          color="primary"
+        />
+        <Typography
+          style={AVATextStyle({
+            size: 0.8, margin: { left: 0.8 },
+            bold: currentValues.customizationRecs.client_style.customization_value.marquee_critical_only
+          })}
+        >
+          {'Hide Unless Critical/Urgent'}
+        </Typography>
+      </Box>
+
+
+
+
+
+      <Typography
+        style={AVATextStyle({ margin: { top: 1 } })}
+      >
         {'Show Forms section in Profile'}
       </Typography>
       <Box flexGrow={2} display='flex' alignItems='center'

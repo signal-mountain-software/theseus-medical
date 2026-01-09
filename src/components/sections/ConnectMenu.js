@@ -351,35 +351,40 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     }
     else if ((now.getTime() - reactData.lastActiveTime.getTime()) > (5 * oneMinute)) {
       cl(`Update while idle at ${now.toLocaleString()}.`);
-      let options = {
-        belongsTo: (state.groups ? state.groups.belongsTo : {}),
-        client_weather: state.session.client_weather
-      };
-      let marqueeData = [];
-      marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
-      let urgentMessage = marqueeData.find(m => {
-        return (m.criticalMessage);
-      });
-      if (urgentMessage) {
-        marqueeData = [urgentMessage];
-      }
-      else {
-        if (marqueeData.findIndex(m => {
-          return (m.priorityMessage);
-        }) === -1) {
-          marqueeData.unshift(
-            { message: `${reactData.greetingWords}, ${reactData.greetingName}!` },
-            { message: `AVA for ${state.session.client_name}` }
-          );
-        }
-      }
+      await updateMarquee();
       updateReactData({
         lastActiveTime: now,
-        marqueeData: marqueeData,
-        marqueeVersion: reactData.marqueeVersion++
       }, true);
     }
     reset();
+  };
+
+  const updateMarquee = async () => {
+    let options = {
+      belongsTo: (state.groups ? state.groups.belongsTo : {}),
+      client_weather: state.session.client_weather,
+      critical_only: state.session.client_style?.marquee_critical_only || false
+    };
+    let marqueeData = [];
+    marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
+    let urgentMessage = marqueeData.find(m => {
+      return (m.criticalMessage);
+    });
+    if (urgentMessage) {
+      marqueeData = [urgentMessage];
+    }
+    else {
+      if (!state.session.client_style?.marquee_critical_only && !marqueeData.some(m => { return (m.priorityMessage); })) {
+        marqueeData.unshift(
+          { message: `${reactData.greetingWords}, ${reactData.greetingName}!` },
+          { message: `AVA for ${state.session.client_name}` }
+        );
+      }
+    }
+    updateReactData({
+      marqueeData: marqueeData,
+      marqueeVersion: reactData.marqueeVersion++
+    }, false);
   };
 
   const checkReload = async () => {
@@ -417,33 +422,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     let now = new Date();
     if ((reactData.idleState) || ((now.getTime() - reactData.lastActiveTime.getTime()) > oneMinute)) {
       cl(`Action/Update at ${now.toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}`);
-      let options = {
-        belongsTo: (state.groups ? state.groups.belongsTo : {}),
-        client_weather: state.session.client_weather
-      };
-      let marqueeData = [];
-      marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
-      let urgentMessage = marqueeData.find(m => {
-        return (m.criticalMessage);
-      });
-      if (urgentMessage) {
-        marqueeData = [urgentMessage];
-      }
-      else {
-        if (marqueeData.findIndex(m => {
-          return (m.priorityMessage);
-        }) === -1) {
-          marqueeData.unshift(
-            { message: `${reactData.greetingWords}, ${reactData.greetingName}!` },
-            { message: `AVA for ${state.session.client_name}` }
-          );
-        }
-      }
+      await updateMarquee();
       updateReactData({
         lastActiveTime: now,
         idleState: false,
-        marqueeData: marqueeData,
-        marqueeVersion: reactData.marqueeVersion++
       }, true);
     }
     if (!reactData.menu_reloaded) {
@@ -805,35 +787,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         reactUpdObj.loading = 'Building your AVA menu';
         updateReactData(reactUpdObj, true);
         await buildMenu();
-        let options = {
-          belongsTo: (state.groups ? state.groups.belongsTo : {}),
-          client_weather: state.session.client_weather
-        };
-        //     let marqueeData = [
-        //       { message: `${reactUpdObj.greetingWords}, ${tempName}!` },
-        //       { message: `AVA for ${state.session.client_name}` }
-        //     ];
-        let marqueeData = [];
-        marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
-        let urgentMessage = marqueeData.find(m => {
-          return (m.criticalMessage);
-        });
-        if (urgentMessage) {
-          marqueeData = [urgentMessage];
-        }
-        else {
-          if (marqueeData.findIndex(m => {
-            return (m.priorityMessage);
-          }) === -1) {
-            marqueeData.unshift(
-              { message: `${reactUpdObj.greetingWords}, ${tempName}!` },
-              { message: `AVA for ${state.session.client_name}` }
-            );
-          }
-        }
+        await updateMarquee();
         updateReactData({
-          marqueeData: marqueeData,
-          marqueeVersion: reactData.marqueeVersion++,
           loading: false
         }, true);
       }
@@ -1689,7 +1644,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   }}
                 />
               }
-              {!session.new_account_form && !session.useOldVersion &&
+              {!session.new_account_form && session.useOldVersion &&
                 <PatientDialog
                   patient={{
                     "person_id": `*NEW~${new Date().getTime()}`,

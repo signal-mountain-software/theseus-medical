@@ -154,6 +154,11 @@ export async function getPersonByName(pClient, pFirstName, pLastName) {
 
 export async function getPersonByWords(pClient, pWords) {
     if (!pWords || pWords.length === 0) { return []; }
+    // Filter to only include valid search words (truthy and length > 2)
+    pWords = pWords.filter(w => w && w.length > 2);
+    if (pWords.length === 0) { return []; }
+    pWords = pWords.map(w => w.replace(/\W/g, '').toLowerCase());
+    
     let qQ = { TableName: 'People' };
     qQ.IndexName = 'client_id-index';
     qQ.KeyConditionExpression = 'client_id = :c';
@@ -161,14 +166,11 @@ export async function getPersonByWords(pClient, pWords) {
     qQ.ExpressionAttributeValues = { ':c': pClient };
     qQ.FilterExpression = '';
     let conjunction = '';
-    for (let x = 0; x < pWords.length; x++) {
-        if (pWords[x] && (pWords[x].length > 2)) {
-            qQ.FilterExpression += ` ${conjunction} contains(#d, :f${x})`;
-            qQ.ExpressionAttributeValues[`:f${x}`] = pWords[x];
-            conjunction = 'and';
-        }
-    }
-    if (!qQ.FilterExpression) { return []; }
+    pWords.forEach((word, x) => {
+        qQ.FilterExpression += ` ${conjunction} contains(#d, :f${x})`;
+        qQ.ExpressionAttributeValues[`:f${x}`] = word;
+        conjunction = 'and';
+    });
     let qR = await dbClient
         .query(qQ)
         .promise()
@@ -179,16 +181,14 @@ export async function getPersonByWords(pClient, pWords) {
             console.log({ 'Error reading People by Name': error });
         });
     if (recordExists(qR)) {
-        for (let p = 0; p < qR.Items.length; p++) {
-            let searchWords = qR.Items[p].search_data.split(/[\W,]/);
-            let notFoundWords = pWords.filter(w => { return (w && !searchWords.includes(w)); });
-            if (notFoundWords.length === 0) {
-                foundPeople[qR.Items[p].person_id] = qR.Items[p];
+        qR.Items = qR.Items.filter(item => {
+            let searchWords = item.search_data.split(/[\W,]/);
+            let allWordsFound = pWords.every(w => searchWords.includes(w));
+            if (allWordsFound) {
+                foundPeople[item.person_id] = item;
             }
-            else {
-                qR.Items.splice(p, 1);
-            }
-        }
+            return allWordsFound;
+        });
         return qR.Items;
     }
     else { return []; }

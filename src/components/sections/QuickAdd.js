@@ -1672,7 +1672,8 @@ export default ({ onClose, options = {} }) => {
                 Continue
               </Button>
               <Button
-                variant="outlined"
+                variant="contained"
+                style={{ backgroundColor: '#9c27b0', color: 'white' }}
                 onClick={() => {
                   // If we have family members already, go back to ask_for_more screen
                   if (reactData.family_members && reactData.family_members.length > 0) {
@@ -2033,16 +2034,16 @@ export default ({ onClose, options = {} }) => {
                 Yes, Add Another
               </Button>
               <Button
-                variant="outlined"
+                variant="contained"
                 onClick={goBackToEdit}
-                style={{ borderColor: 'orange', color: 'orange' }}
+                style={{ backgroundColor: 'orange', color: 'black' }}
               >
                 Go Back to Edit
               </Button>
               <Button
-                variant="outlined"
+                variant="contained"
                 onClick={completeProcess}
-                style={{ borderColor: 'blue', color: 'blue' }}
+                style={{ backgroundColor: 'blue', color: 'white' }}
               >
                 No, I'm Done
               </Button>
@@ -2105,9 +2106,9 @@ export default ({ onClose, options = {} }) => {
                 {reactData.family_members[0]?.account_config?.family_role !== 'none' && (
                   <Box style={{ display: 'flex', gap: '16px', justifyContent: 'center', marginBottom: '16px' }}>
                     <Button
-                      variant="outlined"
+                      variant="contained"
                       onClick={goBackToAddMore}
-                      style={{ borderColor: 'orange', color: 'orange' }}
+                      style={{ backgroundColor: 'orange', color: 'black' }}
                     >
                       {reactData.family_members.length === 1 ? 'Add Family Members' : 'Add More Family Members'}
                     </Button>
@@ -2528,7 +2529,7 @@ export default ({ onClose, options = {} }) => {
             </Typography>
             <Box style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <Button
-                variant="outlined"
+                variant="contained"
                 onClick={() => {
                   updateReactData({ exit_confirm: false }, true);
                   // Return to fill_fields stage for the last member being worked on
@@ -2539,7 +2540,7 @@ export default ({ onClose, options = {} }) => {
                     family_members: prev.family_members.slice(0, -1)
                   }));
                 }}
-                style={{ borderColor: 'blue', color: 'blue' }}
+                style={{ backgroundColor: 'blue', color: 'white' }}
               >
                 Keep Working
               </Button>
