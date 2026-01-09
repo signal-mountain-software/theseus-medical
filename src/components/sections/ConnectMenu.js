@@ -1644,7 +1644,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   }}
                 />
               }
-              {!session.new_account_form && !session.useOldVersion &&
+              {!session.new_account_form && session.useOldVersion &&
                 <PatientDialog
                   patient={{
                     "person_id": `*NEW~${new Date().getTime()}`,
