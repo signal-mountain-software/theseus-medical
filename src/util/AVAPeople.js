@@ -157,6 +157,7 @@ export async function getPersonByWords(pClient, pWords) {
     // Filter to only include valid search words (truthy and length > 2)
     pWords = pWords.filter(w => w && w.length > 2);
     if (pWords.length === 0) { return []; }
+    pWords = pWords.map(w => w.replace(/\W/g, '').toLowerCase());
     
     let qQ = { TableName: 'People' };
     qQ.IndexName = 'client_id-index';

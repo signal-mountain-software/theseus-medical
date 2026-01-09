@@ -528,7 +528,7 @@ export function titleCase(pString) {
   const allCapWords = ['ava', 'bbq', 'id', 'tv', 'ceo', 'cfo', 'coo', 'usa', 'uk', 'eu', 'am', 'pm'];
   var titleCased = [];
   words.forEach((w, idx) => {
-    if (!w.trim()) { return; }   // ignore spaces between words (we'll put them back in later)
+    // if (!w.trim()) { return; }   // ignore spaces between words (we'll put them back in later)
     // Always capitalize first word, otherwise check if it's a small word
     if (allCapWords.includes(w.toLowerCase())) {
       titleCased.push(w.toUpperCase());
@@ -538,7 +538,7 @@ export function titleCase(pString) {
     }
     else { titleCased.push(w.toLowerCase()); }
   });
-  return titleCased.join(' ').trim();
+  return titleCased.join('').trim();
 }
 
 export function makeNumber(pNum) {
