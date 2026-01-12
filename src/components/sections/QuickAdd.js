@@ -1152,6 +1152,8 @@ export default ({ onClose, options = {} }) => {
         Item: peopleRecord
       });
 
+      
+
       return true;
     } catch (error) {
       console.error('Error saving People record for member:', member, error);

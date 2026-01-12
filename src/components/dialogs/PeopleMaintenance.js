@@ -893,6 +893,56 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         .catch(error => {
           console.log(`caught error putting to People; error is:`, error);
         });
+      // update the cross-reference table PeopleAccounts
+      // Note here...  we are intentionally NOT removing old records from PeopleAccounts because we want to preserve the history of all accounts that have ever been associated with this person_id
+      // This means that a mis-spelled email, phone number, or name will still be a valid cross reference.
+      
+      // Add new records for all phone numbers and email addresses
+      const phoneFields = [
+        { field: reactData.current.peopleRec.contact_info?.cell?.number?.slice(-10), type: 'phone_number' },
+        { field: reactData.current.peopleRec.contact_info?.landline?.number?.slice(-10), type: 'phone_number' },
+        { field: reactData.current.peopleRec.contact_info?.work?.number?.slice(-10), type: 'phone_number' },
+        { field: reactData.current.peopleRec.contact_info?.alternate?.number?.slice(-10), type: 'phone_number' }
+      ];
+      
+      const emailFields = [
+        { field: reactData.current.peopleRec.contact_info?.email?.address?.toLowerCase(), type: 'eMail' },
+        { field: reactData.current.peopleRec.contact_info?.alt_email?.address?.toLowerCase(), type: 'eMail' }
+      ];
+
+      const nameFields = [
+        { field: (`${reactData.current.peopleRec.name?.first} ${reactData.current.peopleRec.name?.last} ${reactData.current.peopleRec.client_id}`).toLowerCase(), type: 'name' },
+      ];
+      
+      const allFields = [...phoneFields, ...emailFields, ...nameFields];
+      
+      // Build batch write items for non-empty fields
+      const putRequests = allFields
+        .filter(accountField => !isEmpty(accountField.field))
+        .map(accountField => ({
+          PutRequest: {
+            Item: {
+              person_id: reactData.current.peopleRec.person_id,
+              identifier: accountField.field,
+              account_type: accountField.type
+            }
+          }
+        }));
+      
+      // Write all records in a single batch operation
+      if (putRequests.length > 0) {
+        await dbClient
+          .batchWrite({
+            RequestItems: {
+              'PeopleAccounts': putRequests
+            }
+          })
+          .promise()
+          .catch(error => {
+            console.log(`caught error batch writing to PeopleAccounts; error is:`, error);
+          });
+      }
+      
     }
     if (JSON.stringify(reactData.og.sessionRec) !== JSON.stringify(reactData.current.sessionRec)) {
       // **** NEED TO ADD SPECIAL HANDLING FOR CHANGE OF PRIMARY KEY ***  (likely change to inactive account?)
