@@ -488,7 +488,7 @@ export default ({ onClose, options = {} }) => {
     }, 500);
   };
 
-  const handleSelectChange = (fieldName, selectedOption) => {
+  const handleSelectChange = (fieldName, selectedOption, select_max) => {
     // For select fields, toggle the option in the array
     const currentValue = reactData.field_values[fieldName] || [];
     const isArray = Array.isArray(currentValue);
@@ -499,7 +499,13 @@ export default ({ onClose, options = {} }) => {
       if (currentValue.includes(selectedOption)) {
         newValue = currentValue.filter(item => item !== selectedOption);
       } else {
-        newValue = [...currentValue, selectedOption];
+        if (currentValue.length >= select_max) { 
+          currentValue.splice(0, 1, selectedOption); // Enforce max selection limit
+          newValue = currentValue;
+        }
+        else {
+          newValue = [...currentValue, selectedOption];
+        }
       }
     } else {
       // Initialize as array if not already
@@ -1152,7 +1158,7 @@ export default ({ onClose, options = {} }) => {
         Item: peopleRecord
       });
 
-      
+
 
       return true;
     } catch (error) {
@@ -1902,26 +1908,82 @@ export default ({ onClose, options = {} }) => {
                   }
 
                   // Handle select field type with checkboxes
-                  if (fieldType === 'select') {
+                  if (fieldType.startsWith('select')) {
                     const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
                     const isRequired = reactData.selected_account_config?.required?.includes(fieldName) || false;
                     const selectOptions = fieldData.value?.selection?.selectionList || [];
+                    const select_max = fieldData.value?.selection?.max || 999;
+                    let select_min = fieldData.value?.selection?.min || 0;
+                    if (isRequired && select_min === 0) {
+                      select_min = 1; // If field is required but min is 0, set min to 1 to enforce at least one selection  
+                    }
                     const currentValue = reactData.field_values[fieldName] || [];
 
                     return (
                       <Box key={fieldName} style={{ marginBottom: '16px', marginRight: '16px' }}>
-                        <Box style={{ marginBottom: '8px' }}>
-                          <Typography variant="subtitle2" style={{ fontWeight: 500, marginBottom: '8px' }}>
-                            {fieldLabel} {isRequired && <span style={{ color: 'red' }}>*</span>}
-                          </Typography>
-                          <Box style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '8px' }}>
+                        <Box
+                          style={{
+                            position: 'relative',
+                            borderRadius: '4px',
+                            padding: '8px 14px'
+                          }}
+                        >
+                          <fieldset
+                            aria-hidden="true"
+                            style={{
+                              textAlign: 'left',
+                              position: 'absolute',
+                              bottom: 0,
+                              right: 0,
+                              top: '-5px',
+                              left: 0,
+                              margin: 0,
+                              padding: '0 8px',
+                              pointerEvents: 'none',
+                              borderRadius: 'inherit',
+                              borderStyle: 'solid',
+                              borderWidth: '1px',
+                              overflow: 'hidden',
+                              minWidth: '0%',
+                              borderColor: 'rgba(0, 0, 0, 0.23)'
+                            }}
+                          >
+                            <legend
+                              style={{
+                                float: 'unset',
+                                width: 'auto',
+                                overflow: 'hidden',
+                                display: 'block',
+                                padding: 0,
+                                height: '16px',
+                                paddingBottom: '20px',
+                                fontSize: '1em',
+                                visibility: 'visible',
+                                maxWidth: '100%',
+                                transition: 'max-width 100ms cubic-bezier(0.0, 0, 0.2, 1) 50ms',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              <span style={{
+                                paddingLeft: '5px',
+                                paddingRight: '5px',
+                                display: 'inline-block',
+                                fontSize: '1em',
+                                marginTop: '-16px',
+                                color: 'rgba(0, 0, 0, 0.5)'
+                              }}>
+                                {fieldLabel} {isRequired && '*'}
+                              </span>
+                            </legend>
+                          </fieldset>
+                          <Box style={{ display: 'flex', color: 'rgba(0, 0, 0, 0.5)', flexDirection: 'column', gap: '4px', paddingTop: '4px' }}>
                             {selectOptions.map((option, index) => (
                               <FormControlLabel
                                 key={`${fieldName}_${index}`}
                                 control={
                                   <Checkbox
                                     checked={currentValue.includes(option)}
-                                    onChange={() => handleSelectChange(fieldName, option)}
+                                    onChange={() => handleSelectChange(fieldName, option, select_max)}
                                     size="small"
                                   />
                                 }
@@ -1930,7 +1992,7 @@ export default ({ onClose, options = {} }) => {
                             ))}
                           </Box>
                           {fieldData.prompt?.help_text && (
-                            <Typography variant="caption" style={{ marginTop: '4px', display: 'block', color: '#666' }}>
+                            <Typography variant="caption" style={{ marginTop: '8px', marginLeft: '14px', marginRight: '14px', display: 'block', color: '#666' }}>
                               {fieldData.prompt.help_text}
                             </Typography>
                           )}
