@@ -357,7 +357,12 @@ export function makeDate(pInput, optionIn = {}) {
         // is this a string as yyyy-mm-dd?
         let test_me = pString.split('-');
         if (test_me.length === 3) {
-            pString = `${test_me[1].trim()}/${test_me[2].trim()}/${test_me[0].trim()}`;
+            if (test_me[0] < 13) {
+                pString = `${test_me[0].trim()}/${test_me[1].trim()}/${test_me[2].trim()}`;
+            }
+            else {
+                pString = `${test_me[1].trim()}/${test_me[2].trim()}/${test_me[0].trim()}`;
+            }
         }
         // is the text a good date on its own?
         let parsed = pString.match(/[+-]/);
