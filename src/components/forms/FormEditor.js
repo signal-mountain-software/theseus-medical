@@ -176,7 +176,7 @@ const FormEditor = ({ form, onSave, onCancel }) => {
                   TableName: 'Form_Fields',
                   Key: {
                     client_id: clonedForm.client_id,
-                    field_id: field
+                    field_name: field
                   }
                 });
                 if (fieldRec) {

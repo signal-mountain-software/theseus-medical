@@ -493,6 +493,19 @@ const FieldEditor = ({ field, open, onSave, onCancel, fieldsMap = {}, onAddRule,
                     style={{ marginTop: 16 }}
                   />
                 )}
+                {editField.value.type === 'select' && (
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={!!editField.value.column}
+                        onChange={e => handleChange('value.column', e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label="Show in Column format"
+                    style={{ marginTop: 16 }}
+                  />
+                )}
                 {editField.value.type && editField.value.type !== 'header' && editField.value.type !== 'signature' && editField.value.type !== 'initials' && (
                   <>
                     <FormControlLabel

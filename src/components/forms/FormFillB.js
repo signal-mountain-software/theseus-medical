@@ -748,7 +748,7 @@ export default ({ request = {}, onClose }) => {
     });
     if (commonFieldRec) {
       // Found in Common_Fields table
-      field_variables = Object.assign({}, field_variables, commonFieldRec);
+      field_variables = Object.assign({}, field_variables, commonFieldRec.value, commonFieldRec);
     }
 
     // Now override with any values in formRec.fields[field_name]
@@ -770,9 +770,9 @@ export default ({ request = {}, onClose }) => {
     let field_variables = await getFieldVariables({ field_key, field_name, fieldEntry, formRec });
 
     if (isObject(field_variables.prompt)) {
-      returnObj.prompt = Object.assign({}, field_variables.prompt);
+      returnObj.prompt = Object.assign({}, field_variables.value, field_variables.prompt);
     } else {
-      returnObj.prompt = { value: field_variables.prompt };
+      returnObj.prompt = Object.assign({}, field_variables.value, { value: field_variables.prompt });
     }
 
     if (isObject(field_variables.default)) {
@@ -803,9 +803,9 @@ export default ({ request = {}, onClose }) => {
 
     // Set type
     returnObj.type = field_variables.value?.type || field_variables.default?.type || 'text';
-    // If 'select' type and custom_selection is true, set type to 'select & text'
+    // If 'select' type and custom_selection is true, set type to 'select&text'
     if (returnObj.type === 'select' && field_variables.custom_selection) {
-      returnObj.type = 'select & text';
+      returnObj.type = 'select&text';
     }
     else if (returnObj.type === 'yes/no') {
       returnObj.type = 'select';
@@ -860,9 +860,10 @@ export default ({ request = {}, onClose }) => {
     });
 
     // Selection Obj should be set for the special case - type = select or type = select & text
-    if (returnObj.type.startsWith('select')) {
+    if (returnObj.type.startsWith('select') || returnObj.type.startsWith('drop')) {
       returnObj.selectionObj = Object.assign({},
         { min: 0, max: 999 },
+        field_variables.value,
         field_variables.value?.selection
       );
     }
@@ -1391,10 +1392,15 @@ export default ({ request = {}, onClose }) => {
     //   prompt
     //   text - an array of options, each can independently go true or false
     let optionList = props.text.sort().map(this_option => {
-      return ({
-        value: this_option,
-        label: this_option
-      });
+      if (isObject(this_option)) {
+        return this_option;
+      }
+      else {
+        return ({
+          value: this_option,
+          label: this_option
+        });
+      }
     });
     const promptHTML = reconcilePrompt({
       rawValue: reactData.fields[props.prop].prompt?.value,
