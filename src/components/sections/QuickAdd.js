@@ -67,11 +67,9 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 import { useCookies } from 'react-cookie';
 
-import { deepCopy, titleCase, getDb, putDb, isEmpty, uuid } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, getDb, putDb, isEmpty, uuid, recordExists, dbClient } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
-import { getPerson, getPersonByWords } from '../../util/AVAPeople';
-import { determineClass } from '../../util/AVAGroups';
 import { sendMessages } from '../../util/AVAMessages';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -319,6 +317,39 @@ export default ({ onClose, options = {} }) => {
             }
           });
         }
+      }
+
+      // Pre-fill email fields
+      if (prev.parsed_email) {
+        const emailFields = ['email', 'eMail', 'email_address', 'emailAddress', 'e-mail', 'e-Mail'];
+        emailFields.forEach(fieldName => {
+          if (fieldData[fieldName] && !updatedFieldValues[fieldName]) {
+            updatedFieldValues[fieldName] = prev.parsed_email;
+          }
+        });
+      }
+
+      if (prev.parsed_phone) {
+        // Look for common phone field variations
+        const phoneFields = ['phone', 'cell', 'cell_phone', 'phone_number', 'mobile'];
+        phoneFields.forEach(fieldName => {
+          if (fieldData[fieldName] && !updatedFieldValues[fieldName]) {
+            const digitsOnly = prev.parsed_phone.replace(/\D/g, '');
+            if (digitsOnly.length === 10) {
+              // US 10-digit number: format as (555) 123-4567
+              updatedFieldValues[fieldName] = `(${digitsOnly.slice(0, 3)}) ${digitsOnly.slice(3, 6)}-${digitsOnly.slice(6)}`;
+            } else if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) {
+              // US 11-digit number starting with 1: format as +1 (555) 123-4567
+              const areaCode = digitsOnly.slice(1, 4);
+              const exchange = digitsOnly.slice(4, 7);
+              const number = digitsOnly.slice(7);
+              updatedFieldValues[fieldName] = `+1 (${areaCode}) ${exchange}-${number}`;
+            } else if (digitsOnly.length >= 10 && digitsOnly.length <= 15) {
+              // International format: minimum 10 digits, keep user's formatting
+              updatedFieldValues[fieldName] = digitsOnly; // Keep user's formatting for international numbers
+            }
+          }
+        });
       }
 
       return {
@@ -612,61 +643,62 @@ export default ({ onClose, options = {} }) => {
   // Name validation function based on CheckInCheckOut.js validateUser pattern
   const validateUser = async (IDString, client_id, nonRes, restricted_to = false) => {
     if (!IDString) { return { result: 'invalid', error_field: 0, reason: 'The ID field is empty' }; }
-    // get candidates from the words entered
-    let personRecs = [];
-    let ID_words = IDString.trim().split(/\s+/);
-    if (ID_words.length === 1) {  // only one word, try it as a user ID
-      let result = await getPerson(ID_words[0], '*all');
-      if (!isEmpty(result)) { personRecs.push(result); }
+    // get candidates from the words entered - all cross references are the PeopleAccounts table, so we can use the same function for both user ID and name lookups
+
+    let lookupString = IDString;
+    let lookupType = 'name'; // Default to name lookup
+
+    // Determine if IDString is an email, phone number, or name
+    const trimmedInput = IDString.trim();
+
+    // Check if it's an email (contains @ and a domain pattern)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (emailRegex.test(trimmedInput)) {
+      lookupString = trimmedInput.toLowerCase();
+      lookupType = 'email';
     }
-    if (isEmpty(personRecs)) {
-      personRecs.push(...(await getPersonByWords(client_id, ID_words)));
-      if (isEmpty(personRecs)) {
-        return { result: 'invalid', error_field: 0, reason: `We didn't find an account for ${IDString}` };
-      }
+    // Check if it's a phone number (digits with optional formatting)
+    else if (/^[\d\s\-()+.]+$/.test(trimmedInput) && trimmedInput.replace(/\D/g, '').length >= 10) {
+      // Strip out all non-digits and take last 10 digits only (removes country code if present)
+      const digitsOnly = trimmedInput.replace(/\D/g, '');
+      lookupString = digitsOnly.slice(-10);
+      lookupType = 'phone';
     }
-    for (let p = 0; p < personRecs.length; p++) {
-      personRecs[p].account_class = determineClass(personRecs[p].groups, state.session.group_assignments);
-      if (personRecs[p].contact_info?.cell?.number) {
-        personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].contact_info.cell.number.slice(-4)}`;
-      }
-      else if (personRecs[p].messaging?.sms) {
-        personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.sms.slice(-4)}`;
-      }
-      else if (personRecs[p].messaging?.voice) {
-        personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.voice.slice(-4)}`;
-      }
-    }
-    personRecs = personRecs.filter(p => {
-      if (p.inactive_account) {
-        return false;
-      }
-      else if (restricted_to) {
-        return restricted_to.includes(p.account_class);
-      }
-      else if (!p.name) {
-        return false;
+    // Otherwise treat as name
+    else {
+      const wordList = trimmedInput.split(/\s+/);
+      if (wordList.length === 1) {
+        return { result: 'warning', error_field: 0, reason: 'Please enter both first and last names' };
       }
       else {
-        return (p.account_class !== 'inactive');
-      }
-    });
-    switch (personRecs.length) {
-      case 0: {
-        return { result: 'invalid', error_field: 1, reason: `That information doesn't match any ${nonRes ? titleCase(nonRes) : 'Person'} accounts that we can find` };
-      }
-      case 1: {
-        return { result: 'match', person_id: personRecs[0].person_id, personRec: personRecs[0] };
-      }
-      default: {
-        return {
-          result: 'ambiguous',
-          error_field: 1,
-          reason: `"${IDString}" matches more than one ${nonRes ? titleCase(nonRes) : 'Person'} account`,
-          candidates: personRecs
-        };
+        lookupString = (`${wordList.join(' ')} ${client_id}`).toLowerCase();
       }
     }
+
+    let existingPerson = null;
+    let gotPerson = await dbClient
+      .query({
+        KeyConditionExpression: 'identifier = :i',
+        ExpressionAttributeValues: { ':i': lookupString },
+        TableName: "PeopleAccounts",
+        IndexName: 'alternate_id-index'
+      })
+      .promise()
+      .catch(error => { console.log(`getGroup ERROR reading Customizations; caught error is: ${error}`); });
+    if (recordExists(gotPerson)) {
+      existingPerson = gotPerson.Items[0];
+    }
+
+    if (!existingPerson) {
+      return { result: 'invalid', error_field: 0, reason: `We didn't find an account for ${IDString}`, lookupString, lookupType };
+    }
+    else if (existingPerson.inactive_account) {
+      return { result: 'invalid', error_field: 0, reason: `We found an inactive account for ${IDString}, but nothing current.`, lookupString, lookupType };
+    }
+    else {
+      return { result: 'match', person_id: existingPerson.person_id, personRec: existingPerson, lookupString, lookupType };
+    }
+
   };
 
   const handleNameLookup = async (enteredName) => {
@@ -695,21 +727,28 @@ export default ({ onClose, options = {} }) => {
           ...prev,
           candidates: [validation.personRec],
           verification_stage: true,
+          verification_input: `${validation.lookupType !== 'email' ? 'e-Mail Address' : ''}${validation.lookupType === 'name' ? ' or ' : ''}${validation.lookupType !== 'phone' ? 'Cell Phone Number' : ''}`,
           select_user: false
         }));
         break;
-      case 'ambiguous':
-        // Multiple matches found - show verification stage
-        setReactData(prev => ({
-          ...prev,
-          candidates: validation.candidates,
-          verification_stage: true,
-          select_user: false
-        }));
+      case 'warning':
+        // Not enough information to determine a single match, send message and retry
+        showAlert({
+          severity: 'info',
+          title: 'Not enough information',
+          message: 'If trying a name, please enter first and last names',
+          autoHide: false
+        });
         break;
       case 'invalid':
         // No matches found - can proceed with new account creation
         // Parse the entered name for pre-filling form fields
+        showAlert({
+          severity: 'info',
+          title: 'No Match Found',
+          message: 'We didn\'t find a match, let\'s set a new account up!',
+          autoHide: false
+        });
         const nameParts = enteredName.trim().split(/\s+/);
         const firstName = nameParts[0] || '';
         const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
@@ -737,7 +776,7 @@ export default ({ onClose, options = {} }) => {
       showAlert({
         severity: 'error',
         title: 'Input Required',
-        message: 'Please enter your email address or cell phone number.',
+        message: `Please enter your ${reactData.verification_input}.`,
         autoHide: true
       });
       return;
@@ -907,7 +946,9 @@ export default ({ onClose, options = {} }) => {
     // Use URL-based login approach (same pattern as TheseusScreen.js)
     sessionStorage.removeItem('AVASessionData');
     const baseUrl = window.location.href.split('?')[0];
-    const loginUrl = `${baseUrl}?user=${reactData.matched_account.person_id}`;
+    let loginUrl = `${baseUrl}?user=${reactData.matched_account.person_id}`;
+
+    if (reactData.on_save_callback && (options.source === 'url_parameter')) { loginUrl += `&${reactData.on_save_callback}=true`; }
 
     // Small delay to show the success message before redirecting
     setTimeout(() => {
@@ -1558,7 +1599,7 @@ export default ({ onClose, options = {} }) => {
     if (options.source === 'url_parameter') {
       // URL-driven mode - close the entire application
       sessionStorage.removeItem('AVASessionData');
-      removeCookie("AVAuser");
+      removeCookie("AVAuser", { path: '/' });
       try {
         await Auth.signOut();
       } catch (e) {
@@ -1602,18 +1643,18 @@ export default ({ onClose, options = {} }) => {
           ...AVATextStyle({
             size: 1.4,
             bold: true,
-            margin: { left: 0.5, top: 1 }
+            margin: { left: 0, top: 1 }
           }),
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexShrink: 0,
-          padding: '16px 24px 8px 24px'
+          padding: '16px 24px 8px 16px'
         }}
       >
         <span>
           {reactData.stage === 'prompt_for_name' ?
-            (state.session?.client_name || 'Enter Name to Get Started') :
+            (state.session?.client_name || "Let's Get Started") :
             reactData.stage === 'ask_for_more' ?
               `${getFamilyMemberName(reactData.family_members[reactData.current_member_index])}` :
               reactData.stage === 'complete' ?
@@ -1659,11 +1700,11 @@ export default ({ onClose, options = {} }) => {
         {reactData.stage === 'prompt_for_name' && (
           <Box style={{ marginTop: '16px' }}>
             <Typography variant="h6" style={{ marginBottom: '16px' }}>
-              Please enter the name of one family member. (You’ll have the opportunity to add all family members one at a time.)
+              First, let's check to see if you already have an account. Please enter your name, e-Mail address, or phone number.  If we find a match, we'll ask you to verify your account.  If not, we'll help you create a new one.
             </Typography>
             <TextField
               fullWidth
-              label="Name"
+              label="Name (first and last), e-Mail, or Phone Number"
               value={reactData.entered_name}
               onChange={(event) => {
                 const value = event?.target?.value || '';
@@ -1712,21 +1753,19 @@ export default ({ onClose, options = {} }) => {
         {reactData.verification_stage && reactData.candidates && reactData.candidates.length > 0 && (
           <Box style={{ marginTop: '48px' }}>
             <Typography variant="h6" style={{ marginBottom: '16px' }}>
-              It looks like you may already have an account. Enter your e-mail address or cell phone number and I will check, or tap "I'm new here" below to create a new account.
+              {`It looks like you may already have an account. Enter your ${reactData.verification_input} and I will double check, or tap "I'm new here" below to create a new account.`}
             </Typography>
 
             {!reactData.matched_account && (
               <>
                 <TextField
                   fullWidth
-                  label="Email Address or Cell Phone Number"
-                  value={reactData.verification_input}
+                  label={reactData.verification_input}
                   onChange={(event) => {
                     const value = event?.target?.value || '';
                     setReactData(prev => ({ ...prev, verification_input: value }));
                   }}
                   style={{ marginBottom: '16px' }}
-                  placeholder="Enter your email or cell phone number..."
                   onKeyPress={(event) => {
                     if (event?.key === 'Enter') {
                       handleVerificationInput(reactData.verification_input);
@@ -1748,9 +1787,26 @@ export default ({ onClose, options = {} }) => {
                     onClick={() => {
                       // Proceed to create new account
                       // Parse the entered name for pre-filling form fields
-                      const nameParts = reactData.entered_name.trim().split(/\s+/);
-                      const firstName = nameParts[0] || '';
-                      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+
+                      let firstName, lastName, email, phone;
+                      switch (reactData.name_validation_result.lookupType) {
+                        case 'name': {
+                          const nameParts = reactData.name_validation_result.lookupString.trim().split(/\s+/);
+                          nameParts.pop(); // Remove the last part (assumed to be the last name)
+                          firstName = nameParts[0] || '';
+                          lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+                          break;
+                        }
+                        case 'email': {
+                          email = reactData.name_validation_result.lookupString;
+                          break;
+                        }
+                        case 'phone': {
+                          phone = reactData.name_validation_result.lookupString;
+                          break;
+                        }
+                        default: { break; }
+                      }
 
                       setReactData(prev => ({
                         ...prev,
@@ -1761,7 +1817,9 @@ export default ({ onClose, options = {} }) => {
                         matched_account: null,
                         // Store parsed name parts for pre-filling
                         parsed_first_name: firstName,
-                        parsed_last_name: lastName
+                        parsed_last_name: lastName,
+                        parsed_email: email,
+                        parsed_phone: phone
                       }));
                     }}
                   >
@@ -2543,7 +2601,11 @@ export default ({ onClose, options = {} }) => {
                       const createdPersonIds = membersWithUserIds
                         .filter(member => member.proposed_user_id)
                         .map(member => member.proposed_user_id);
-                      onClose(createdPersonIds, (reactData.on_save_callback || null));
+                      if (options.source === 'url_parameter') {
+                        onClose(createdPersonIds, (reactData.on_save_callback || null));
+                      } else {
+                        onClose(createdPersonIds);
+                      }
                     }
                   }
 
