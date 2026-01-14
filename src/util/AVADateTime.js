@@ -41,6 +41,7 @@ export function makeDate(pInput, optionIn = {}) {
             'error': true,
             'relative': '',  // next Tuesday
             'absolute': '',  // Tue, Aug 22
+            'absolute_withAge': '',  // Aug 22, 2023
             'absolute_full': '',  // Tuesday, August 22, 2023
             'dateOnly': '',  // August 22
             'timeOnly': '', // 2:45pm
@@ -120,6 +121,7 @@ export function makeDate(pInput, optionIn = {}) {
                 'error': true,
                 'relative': `${pInput} is not a valid date`,
                 'absolute': `${pInput} is not a valid date`,
+                'absolute_withAge': `${pInput} is not a valid date`,
                 'absolute_full': `${pInput} is not a valid date`,
                 'dateOnly': `${pInput} is not a valid date`,
                 'timeOnly': `${pInput} is not a valid date`,
@@ -173,6 +175,7 @@ export function makeDate(pInput, optionIn = {}) {
                 'error': true,
                 'relative': foundError,
                 'absolute': foundError,
+                'absolute_withAge': foundError,
                 'absolute_full': foundError,
                 'dateOnly': foundError,
                 'timeOnly': foundError,
@@ -310,6 +313,7 @@ export function makeDate(pInput, optionIn = {}) {
         'error': false,
         'relative': titleCase(relDate),
         'absolute': titleCase(absDate),
+        'absolute_withAge': `${titleCase(absDate)} (${calculateAge(targetDate)} years old)`,
         'absolute_full': titleCase(absFull),
         'timeOnly': targetDate.toLocaleString([], { timeZone: options.timeZone, hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }),
         'dateOnly': dateOnly,
@@ -330,6 +334,19 @@ export function makeDate(pInput, optionIn = {}) {
         'textOut': pInput
     };
 
+    function calculateAge(birthdate) {
+        const today = new Date();
+        const birthDate = new Date(birthdate);
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDifference = today.getMonth() - birthDate.getMonth();
+
+        if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birthDate.getDate())) {
+            age--;
+        }
+
+        return age;
+    }
+
     function buildDate(pString) {
         if (!pString) {
             return {
@@ -340,7 +357,12 @@ export function makeDate(pInput, optionIn = {}) {
         // is this a string as yyyy-mm-dd?
         let test_me = pString.split('-');
         if (test_me.length === 3) {
-            pString = `${test_me[1].trim()}/${test_me[2].trim()}/${test_me[0].trim()}`;
+            if (test_me[0] < 13) {
+                pString = `${test_me[0].trim()}/${test_me[1].trim()}/${test_me[2].trim()}`;
+            }
+            else {
+                pString = `${test_me[1].trim()}/${test_me[2].trim()}/${test_me[0].trim()}`;
+            }
         }
         // is the text a good date on its own?
         let parsed = pString.match(/[+-]/);

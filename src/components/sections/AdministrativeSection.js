@@ -54,7 +54,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
         <React.Fragment
           key={`mainFrag_${cFNdx}`}
         >
-          {(reactData.form_fields[this_formField].fieldRec.value.type === 'select') &&
+          {(reactData.form_fields[this_formField].fieldRec.value.type.startsWith('select')) &&
             <Box
               display='flex'
               mb={0}

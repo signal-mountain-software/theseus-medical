@@ -6,6 +6,7 @@ import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { Box, Typography, Button } from '@material-ui/core/';
 import { formatPhone } from '../../util/AVAPeople';
 import { deepCopy, titleCase } from '../../util/AVAUtilities';
+import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import SendIcon from '@material-ui/icons/Send';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
@@ -173,7 +174,10 @@ export default ({ currentValues, reactData, updateReactData }) => {
                     key={`local_prompt__${cFNdx}d`}
                     style={AVATextStyle({ size: 0.8, margin: { left: 0.5 }, bold: true })}
                   >
-                    {reactData.form_fields[this_formField].value}
+                    {reactData.form_fields[this_formField].fieldRec?.value?.type === 'date'
+                      ? makeDate(reactData.form_fields[this_formField].value).absolute_withAge
+                      : reactData.form_fields[this_formField].value
+                    }
                   </Typography>
                 </Box>
               }
@@ -260,7 +264,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
           <Typography
             style={AVATextStyle({ margin: { top: 1 } })}
           >
-            {`${currentValues.peopleRec.name?.first} is responsible for:`}
+            {`${currentValues.peopleRec.name?.first}'s family:`}
           </Typography>
           {currentValues.peopleRec.myFamilyMembers.sort((p1, p2) => {
             if (p1.type !== p2.type) {
@@ -270,29 +274,27 @@ export default ({ currentValues, reactData, updateReactData }) => {
               return ((p1.name > p2.name) ? 1 : -1);
             }
           }).map((this_member, memberNdx) => (
-            <Box
+            (this_member.id !== currentValues.peopleRec.person_id) && <Box
               display='flex'
               flexDirection='row'
               alignItems={'flex-start'}
 
               key={`family_${memberNdx}`}
             >
-              {(this_member.type && this_member.type.toLowerCase() === 'camper') &&
-                <Typography style={AVATextStyle({ margin: { top: 0, left: 1, right: -0.8 }, bold: true })}>
-                  {`Camper -`}
-                </Typography>
-              }
               <Typography
                 style={AVATextStyle({ margin: { top: 0, left: 1 }, bold: true })}
                 onClick={async () => {
                   updateReactData({
-                    viewFamilyMember: this_member
+                    viewFamilyMember: this_member.id
                   }, true);
                 }}
               >
-                {`${this_member?.name || this_member?.id || 'Unknown Person'}`}
+                {`${this_member?.name.trim() || this_member?.id || 'Unknown Person'}`}
               </Typography>
-            </Box>
+                <Typography style={AVATextStyle({ margin: { top: 0, left: 0.5, right: -0.8 }, bold: true })}>
+                  {this_member.role && this_member.role === 'primary' ? '- Primary' : (this_member.relationship ? ('- ' + this_member.relationship) : '')}
+                </Typography>
+            </Box>              
           ))}
         </React.Fragment>
       }
@@ -328,44 +330,6 @@ export default ({ currentValues, reactData, updateReactData }) => {
                     style={AVATextStyle({ margin: { top: 0, left: 0 }, bold: true })}
                   >
                     {`${this_item.first} ${this_item.last}`}
-                  </Typography>
-                </Box>
-              </Button>
-            )
-            )}
-          </Box>
-        </React.Fragment>
-      }
-      {currentValues.peopleRec.myFamilyMembers &&
-        (currentValues.peopleRec.myFamilyMembers.length > 0) &&
-        reactData.accessList &&
-        <React.Fragment>
-          <Typography
-            style={AVATextStyle({ margin: { top: 1 } })}
-          >
-            {`${currentValues.peopleRec.name?.first} is a Caregiver for:`}
-          </Typography>
-          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-            {currentValues.peopleRec.myFamilyMembers.map((this_member, tIndex) => (
-              <Button
-                className={AVAClass.AVAButton_noBorder}
-                key={`child_button__${tIndex}`}
-                onClick={async () => {
-                  updateReactData({
-                    viewFamilySnapshot: this_member.id
-                  }, true);
-                }}
-                style={{ marginLeft: '18px', backgroundColor: 'white', color: 'black' }}
-                size='small'
-              >
-                <Box display='flex' alignItems='center'
-                  key={`child_box__${tIndex}`}
-                  justifyContent='flex-end' flexDirection='column'>
-                  <Typography
-                    key={`child_name__${tIndex}`}
-                    style={AVATextStyle({ margin: { top: 0, left: 0 }, bold: true })}
-                  >
-                    {`${this_member.name}`}
                   </Typography>
                 </Box>
               </Button>
@@ -487,23 +451,23 @@ export default ({ currentValues, reactData, updateReactData }) => {
           {(state.session.user_id !== currentValues.peopleRec.person_id) &&
             (currentValues.peopleRec?.contact_info?.cell?.number || currentValues.peopleRec?.messaging?.sms) &&
             <React.Fragment>
-            <Button
-              className={AVAClass.AVAButton}
-              key={`callCellButton`}
-              style={{ marginLeft: 0, backgroundColor: 'white', color: 'black' }}
-              size='small'
-              startIcon={<PhoneInTalkIcon size='small' />}
-            >
-              <a href={`tel:${currentValues.peopleRec?.contact_info?.cell?.number || currentValues.peopleRec?.messaging?.sms}`}
-                key={`callCell_button`}
-                style={{ color: 'inherit', textDecoration: 'none' }}>
-                <Typography
-                  key={`callCell_words`}
-                  style={AVATextStyle({ size: 1.2, margin: { right: 0.5 } })}
-                >
-                  {`Call Cell`}
-                </Typography>
-              </a>
+              <Button
+                className={AVAClass.AVAButton}
+                key={`callCellButton`}
+                style={{ marginLeft: 0, backgroundColor: 'white', color: 'black' }}
+                size='small'
+                startIcon={<PhoneInTalkIcon size='small' />}
+              >
+                <a href={`tel:${currentValues.peopleRec?.contact_info?.cell?.number || currentValues.peopleRec?.messaging?.sms}`}
+                  key={`callCell_button`}
+                  style={{ color: 'inherit', textDecoration: 'none' }}>
+                  <Typography
+                    key={`callCell_words`}
+                    style={AVATextStyle({ size: 1.2, margin: { right: 0.5 } })}
+                  >
+                    {`Call Cell`}
+                  </Typography>
+                </a>
               </Button>
               <Button
                 className={AVAClass.AVAButton}

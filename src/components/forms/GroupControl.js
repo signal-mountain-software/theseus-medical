@@ -1018,7 +1018,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                     bold: true,
                     margin: { top: 1, bottom: 1 },
                   })}>
-                  {`${reactData.selectedGroupRec.group_name} Members`}
+                  {`${reactData.selectedGroupRec.group_name} (${reactData.sortedGroupMembers?.length || 0})`}
                 </Typography>
                 <Paper component={Box} width='100%' elevation={0} overflow='auto' square
                   style={{ scrollbarWidth: 'thin', flexGrow: 1, display: 'flex' }}

@@ -65,15 +65,15 @@
 import React from 'react';
 
 import useSession from '../../hooks/useSession';
+import { useCookies } from 'react-cookie';
 
-import { deepCopy, titleCase, getDb, putDb, isEmpty, uuid } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, getDb, putDb, isEmpty, uuid, recordExists, dbClient } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
-import { getPerson, getPersonByWords } from '../../util/AVAPeople';
-import { determineClass } from '../../util/AVAGroups';
 import { sendMessages } from '../../util/AVAMessages';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
+import { Auth } from 'aws-amplify';
 import { Box, Button, TextField, Typography, Dialog, DialogContentText, DialogActions, FormControl, FormLabel, RadioGroup, FormControlLabel, Radio, Snackbar, Checkbox } from '@material-ui/core/';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 
@@ -94,6 +94,8 @@ export default ({ onClose, options = {} }) => {
   const { state } = useSession();
   const isMounted = React.useRef(false);
   const dateValidationTimeouts = React.useRef({});
+
+  const [, , removeCookie] = useCookies(['AVAuser']);
 
   const [reactData, setReactData] = React.useState({
     initialized: false,
@@ -317,6 +319,39 @@ export default ({ onClose, options = {} }) => {
         }
       }
 
+      // Pre-fill email fields
+      if (prev.parsed_email) {
+        const emailFields = ['email', 'eMail', 'email_address', 'emailAddress', 'e-mail', 'e-Mail'];
+        emailFields.forEach(fieldName => {
+          if (fieldData[fieldName] && !updatedFieldValues[fieldName]) {
+            updatedFieldValues[fieldName] = prev.parsed_email;
+          }
+        });
+      }
+
+      if (prev.parsed_phone) {
+        // Look for common phone field variations
+        const phoneFields = ['phone', 'cell', 'cell_phone', 'phone_number', 'mobile'];
+        phoneFields.forEach(fieldName => {
+          if (fieldData[fieldName] && !updatedFieldValues[fieldName]) {
+            const digitsOnly = prev.parsed_phone.replace(/\D/g, '');
+            if (digitsOnly.length === 10) {
+              // US 10-digit number: format as (555) 123-4567
+              updatedFieldValues[fieldName] = `(${digitsOnly.slice(0, 3)}) ${digitsOnly.slice(3, 6)}-${digitsOnly.slice(6)}`;
+            } else if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) {
+              // US 11-digit number starting with 1: format as +1 (555) 123-4567
+              const areaCode = digitsOnly.slice(1, 4);
+              const exchange = digitsOnly.slice(4, 7);
+              const number = digitsOnly.slice(7);
+              updatedFieldValues[fieldName] = `+1 (${areaCode}) ${exchange}-${number}`;
+            } else if (digitsOnly.length >= 10 && digitsOnly.length <= 15) {
+              // International format: minimum 10 digits, keep user's formatting
+              updatedFieldValues[fieldName] = digitsOnly; // Keep user's formatting for international numbers
+            }
+          }
+        });
+      }
+
       return {
         ...prev,
         form_fields: fieldData,
@@ -488,7 +523,7 @@ export default ({ onClose, options = {} }) => {
     }, 500);
   };
 
-  const handleSelectChange = (fieldName, selectedOption) => {
+  const handleSelectChange = (fieldName, selectedOption, select_max) => {
     // For select fields, toggle the option in the array
     const currentValue = reactData.field_values[fieldName] || [];
     const isArray = Array.isArray(currentValue);
@@ -499,7 +534,13 @@ export default ({ onClose, options = {} }) => {
       if (currentValue.includes(selectedOption)) {
         newValue = currentValue.filter(item => item !== selectedOption);
       } else {
-        newValue = [...currentValue, selectedOption];
+        if (currentValue.length >= select_max) {
+          currentValue.splice(0, 1, selectedOption); // Enforce max selection limit
+          newValue = currentValue;
+        }
+        else {
+          newValue = [...currentValue, selectedOption];
+        }
       }
     } else {
       // Initialize as array if not already
@@ -560,6 +601,14 @@ export default ({ onClose, options = {} }) => {
     // If family_role is 'none', go directly to complete stage (skip asking for more members)
     const nextStage = reactData.selected_account_config?.family_role === 'none' ? 'complete' : 'ask_for_more';
 
+    // if selected account config includes "on_save" key, store this.  We'll use it on exit.
+    if (reactData.selected_account_config?.on_save) {
+      setReactData(prev => ({
+        ...prev,
+        on_save_callback: reactData.selected_account_config.on_save
+      }));
+    }
+
     setReactData(prev => ({
       ...prev,
       family_members: [...prev.family_members, familyMember],
@@ -594,61 +643,62 @@ export default ({ onClose, options = {} }) => {
   // Name validation function based on CheckInCheckOut.js validateUser pattern
   const validateUser = async (IDString, client_id, nonRes, restricted_to = false) => {
     if (!IDString) { return { result: 'invalid', error_field: 0, reason: 'The ID field is empty' }; }
-    // get candidates from the words entered
-    let personRecs = [];
-    let ID_words = IDString.trim().split(/\s+/);
-    if (ID_words.length === 1) {  // only one word, try it as a user ID
-      let result = await getPerson(ID_words[0], '*all');
-      if (!isEmpty(result)) { personRecs.push(result); }
+    // get candidates from the words entered - all cross references are the PeopleAccounts table, so we can use the same function for both user ID and name lookups
+
+    let lookupString = IDString;
+    let lookupType = 'name'; // Default to name lookup
+
+    // Determine if IDString is an email, phone number, or name
+    const trimmedInput = IDString.trim();
+
+    // Check if it's an email (contains @ and a domain pattern)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (emailRegex.test(trimmedInput)) {
+      lookupString = trimmedInput.toLowerCase();
+      lookupType = 'email';
     }
-    if (isEmpty(personRecs)) {
-      personRecs.push(...(await getPersonByWords(client_id, ID_words)));
-      if (isEmpty(personRecs)) {
-        return { result: 'invalid', error_field: 0, reason: `We didn't find an account for ${IDString}` };
-      }
+    // Check if it's a phone number (digits with optional formatting)
+    else if (/^[\d\s\-()+.]+$/.test(trimmedInput) && trimmedInput.replace(/\D/g, '').length >= 10) {
+      // Strip out all non-digits and take last 10 digits only (removes country code if present)
+      const digitsOnly = trimmedInput.replace(/\D/g, '');
+      lookupString = digitsOnly.slice(-10);
+      lookupType = 'phone';
     }
-    for (let p = 0; p < personRecs.length; p++) {
-      personRecs[p].account_class = determineClass(personRecs[p].groups, state.session.group_assignments);
-      if (personRecs[p].contact_info?.cell?.number) {
-        personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].contact_info.cell.number.slice(-4)}`;
-      }
-      else if (personRecs[p].messaging?.sms) {
-        personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.sms.slice(-4)}`;
-      }
-      else if (personRecs[p].messaging?.voice) {
-        personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.voice.slice(-4)}`;
-      }
-    }
-    personRecs = personRecs.filter(p => {
-      if (p.inactive_account) {
-        return false;
-      }
-      else if (restricted_to) {
-        return restricted_to.includes(p.account_class);
-      }
-      else if (!p.name) {
-        return false;
+    // Otherwise treat as name
+    else {
+      const wordList = trimmedInput.split(/\s+/);
+      if (wordList.length === 1) {
+        return { result: 'warning', error_field: 0, reason: 'Please enter both first and last names' };
       }
       else {
-        return (p.account_class !== 'inactive');
-      }
-    });
-    switch (personRecs.length) {
-      case 0: {
-        return { result: 'invalid', error_field: 1, reason: `That information doesn't match any ${nonRes ? titleCase(nonRes) : 'Person'} accounts that we can find` };
-      }
-      case 1: {
-        return { result: 'match', person_id: personRecs[0].person_id, personRec: personRecs[0] };
-      }
-      default: {
-        return {
-          result: 'ambiguous',
-          error_field: 1,
-          reason: `"${IDString}" matches more than one ${nonRes ? titleCase(nonRes) : 'Person'} account`,
-          candidates: personRecs
-        };
+        lookupString = (`${wordList.join(' ')} ${client_id}`).toLowerCase();
       }
     }
+
+    let existingPerson = null;
+    let gotPerson = await dbClient
+      .query({
+        KeyConditionExpression: 'identifier = :i',
+        ExpressionAttributeValues: { ':i': lookupString },
+        TableName: "PeopleAccounts",
+        IndexName: 'alternate_id-index'
+      })
+      .promise()
+      .catch(error => { console.log(`getGroup ERROR reading Customizations; caught error is: ${error}`); });
+    if (recordExists(gotPerson)) {
+      existingPerson = gotPerson.Items[0];
+    }
+
+    if (!existingPerson) {
+      return { result: 'invalid', error_field: 0, reason: `We didn't find an account for ${IDString}`, lookupString, lookupType };
+    }
+    else if (existingPerson.inactive_account) {
+      return { result: 'invalid', error_field: 0, reason: `We found an inactive account for ${IDString}, but nothing current.`, lookupString, lookupType };
+    }
+    else {
+      return { result: 'match', person_id: existingPerson.person_id, personRec: existingPerson, lookupString, lookupType };
+    }
+
   };
 
   const handleNameLookup = async (enteredName) => {
@@ -677,21 +727,28 @@ export default ({ onClose, options = {} }) => {
           ...prev,
           candidates: [validation.personRec],
           verification_stage: true,
+          verification_input: `${validation.lookupType !== 'email' ? 'e-Mail Address' : ''}${validation.lookupType === 'name' ? ' or ' : ''}${validation.lookupType !== 'phone' ? 'Cell Phone Number' : ''}`,
           select_user: false
         }));
         break;
-      case 'ambiguous':
-        // Multiple matches found - show verification stage
-        setReactData(prev => ({
-          ...prev,
-          candidates: validation.candidates,
-          verification_stage: true,
-          select_user: false
-        }));
+      case 'warning':
+        // Not enough information to determine a single match, send message and retry
+        showAlert({
+          severity: 'info',
+          title: 'Not enough information',
+          message: 'If trying a name, please enter first and last names',
+          autoHide: false
+        });
         break;
       case 'invalid':
         // No matches found - can proceed with new account creation
         // Parse the entered name for pre-filling form fields
+        showAlert({
+          severity: 'info',
+          title: 'No Match Found',
+          message: 'We didn\'t find a match, let\'s set a new account up!',
+          autoHide: false
+        });
         const nameParts = enteredName.trim().split(/\s+/);
         const firstName = nameParts[0] || '';
         const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
@@ -719,7 +776,7 @@ export default ({ onClose, options = {} }) => {
       showAlert({
         severity: 'error',
         title: 'Input Required',
-        message: 'Please enter your email address or cell phone number.',
+        message: `Please enter your ${reactData.verification_input}.`,
         autoHide: true
       });
       return;
@@ -889,7 +946,9 @@ export default ({ onClose, options = {} }) => {
     // Use URL-based login approach (same pattern as TheseusScreen.js)
     sessionStorage.removeItem('AVASessionData');
     const baseUrl = window.location.href.split('?')[0];
-    const loginUrl = `${baseUrl}?user=${reactData.matched_account.person_id}`;
+    let loginUrl = `${baseUrl}?user=${reactData.matched_account.person_id}`;
+
+    if (reactData.on_save_callback && (options.source === 'url_parameter')) { loginUrl += `&${reactData.on_save_callback}=true`; }
 
     // Small delay to show the success message before redirecting
     setTimeout(() => {
@@ -1151,6 +1210,8 @@ export default ({ onClose, options = {} }) => {
         TableName: 'People',
         Item: peopleRecord
       });
+
+
 
       return true;
     } catch (error) {
@@ -1530,28 +1591,22 @@ export default ({ onClose, options = {} }) => {
     }
 
     // No unsaved changes, proceed with close
-    proceedWithExit();
+    await proceedWithExit();
   };
 
-  const proceedWithExit = () => {
+  const proceedWithExit = async () => {
     // Handle dialog close (X button) based on how QuickAdd was invoked
     if (options.source === 'url_parameter') {
       // URL-driven mode - close the entire application
       sessionStorage.removeItem('AVASessionData');
-
-      // Try to close the window/tab
-      if (window.opener) {
-        // If opened in a popup, close it
-        window.close();
-      } else {
-        // If not a popup, try to navigate away or close
-        try {
-          window.close();
-        } catch (e) {
-          // If we can't close (browser security), navigate to a generic page
-          window.location.href = 'about:blank';
-        }
+      removeCookie("AVAuser", { path: '/' });
+      try {
+        await Auth.signOut();
+      } catch (e) {
+        console.log('No existing Cognito session to sign out');
       }
+      let jumpTo = window.location.origin;
+      window.location.replace(`${jumpTo}?client=${state.session.client_id}`);
     } else {
       // Normal admin mode - just close the dialog
       if (onClose) {
@@ -1578,8 +1633,8 @@ export default ({ onClose, options = {} }) => {
           flexDirection: 'column'
         }
       }}
-      onClose={() => {
-        handleDialogClose();
+      onClose={async () => {
+        await handleDialogClose();
       }}
     >
       <DialogContentText
@@ -1588,18 +1643,18 @@ export default ({ onClose, options = {} }) => {
           ...AVATextStyle({
             size: 1.4,
             bold: true,
-            margin: { left: 0.5, top: 1 }
+            margin: { left: 0, top: 1 }
           }),
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexShrink: 0,
-          padding: '16px 24px 8px 24px'
+          padding: '16px 24px 8px 16px'
         }}
       >
         <span>
           {reactData.stage === 'prompt_for_name' ?
-            (state.session?.client_name || 'Enter Name to Get Started') :
+            (state.session?.client_name || "Let's Get Started") :
             reactData.stage === 'ask_for_more' ?
               `${getFamilyMemberName(reactData.family_members[reactData.current_member_index])}` :
               reactData.stage === 'complete' ?
@@ -1645,11 +1700,11 @@ export default ({ onClose, options = {} }) => {
         {reactData.stage === 'prompt_for_name' && (
           <Box style={{ marginTop: '16px' }}>
             <Typography variant="h6" style={{ marginBottom: '16px' }}>
-              Please enter the name of one family member. (You’ll have the opportunity to add all family members one at a time.)
+              First, let's check to see if you already have an account. Please enter your name, e-Mail address, or phone number.  If we find a match, we'll ask you to verify your account.  If not, we'll help you create a new one.
             </Typography>
             <TextField
               fullWidth
-              label="Name"
+              label="Name (first and last), e-Mail, or Phone Number"
               value={reactData.entered_name}
               onChange={(event) => {
                 const value = event?.target?.value || '';
@@ -1698,21 +1753,19 @@ export default ({ onClose, options = {} }) => {
         {reactData.verification_stage && reactData.candidates && reactData.candidates.length > 0 && (
           <Box style={{ marginTop: '48px' }}>
             <Typography variant="h6" style={{ marginBottom: '16px' }}>
-              It looks like you may already have an account. Enter your e-mail address or cell phone number and I will check, or tap "I'm new here" below to create a new account.
+              {`It looks like you may already have an account. Enter your ${reactData.verification_input} and I will double check, or tap "I'm new here" below to create a new account.`}
             </Typography>
 
             {!reactData.matched_account && (
               <>
                 <TextField
                   fullWidth
-                  label="Email Address or Cell Phone Number"
-                  value={reactData.verification_input}
+                  label={reactData.verification_input}
                   onChange={(event) => {
                     const value = event?.target?.value || '';
                     setReactData(prev => ({ ...prev, verification_input: value }));
                   }}
                   style={{ marginBottom: '16px' }}
-                  placeholder="Enter your email or cell phone number..."
                   onKeyPress={(event) => {
                     if (event?.key === 'Enter') {
                       handleVerificationInput(reactData.verification_input);
@@ -1734,9 +1787,26 @@ export default ({ onClose, options = {} }) => {
                     onClick={() => {
                       // Proceed to create new account
                       // Parse the entered name for pre-filling form fields
-                      const nameParts = reactData.entered_name.trim().split(/\s+/);
-                      const firstName = nameParts[0] || '';
-                      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+
+                      let firstName, lastName, email, phone;
+                      switch (reactData.name_validation_result.lookupType) {
+                        case 'name': {
+                          const nameParts = reactData.name_validation_result.lookupString.trim().split(/\s+/);
+                          nameParts.pop(); // Remove the last part (assumed to be the last name)
+                          firstName = nameParts[0] || '';
+                          lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+                          break;
+                        }
+                        case 'email': {
+                          email = reactData.name_validation_result.lookupString;
+                          break;
+                        }
+                        case 'phone': {
+                          phone = reactData.name_validation_result.lookupString;
+                          break;
+                        }
+                        default: { break; }
+                      }
 
                       setReactData(prev => ({
                         ...prev,
@@ -1747,7 +1817,9 @@ export default ({ onClose, options = {} }) => {
                         matched_account: null,
                         // Store parsed name parts for pre-filling
                         parsed_first_name: firstName,
-                        parsed_last_name: lastName
+                        parsed_last_name: lastName,
+                        parsed_email: email,
+                        parsed_phone: phone
                       }));
                     }}
                   >
@@ -1900,26 +1972,82 @@ export default ({ onClose, options = {} }) => {
                   }
 
                   // Handle select field type with checkboxes
-                  if (fieldType === 'select') {
+                  if (fieldType.startsWith('select')) {
                     const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
                     const isRequired = reactData.selected_account_config?.required?.includes(fieldName) || false;
                     const selectOptions = fieldData.value?.selection?.selectionList || [];
+                    const select_max = fieldData.value?.selection?.max || 999;
+                    let select_min = fieldData.value?.selection?.min || 0;
+                    if (isRequired && select_min === 0) {
+                      select_min = 1; // If field is required but min is 0, set min to 1 to enforce at least one selection  
+                    }
                     const currentValue = reactData.field_values[fieldName] || [];
 
                     return (
                       <Box key={fieldName} style={{ marginBottom: '16px', marginRight: '16px' }}>
-                        <Box style={{ marginBottom: '8px' }}>
-                          <Typography variant="subtitle2" style={{ fontWeight: 500, marginBottom: '8px' }}>
-                            {fieldLabel} {isRequired && <span style={{ color: 'red' }}>*</span>}
-                          </Typography>
-                          <Box style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '8px' }}>
+                        <Box
+                          style={{
+                            position: 'relative',
+                            borderRadius: '4px',
+                            padding: '8px 14px'
+                          }}
+                        >
+                          <fieldset
+                            aria-hidden="true"
+                            style={{
+                              textAlign: 'left',
+                              position: 'absolute',
+                              bottom: 0,
+                              right: 0,
+                              top: '-5px',
+                              left: 0,
+                              margin: 0,
+                              padding: '0 8px',
+                              pointerEvents: 'none',
+                              borderRadius: 'inherit',
+                              borderStyle: 'solid',
+                              borderWidth: '1px',
+                              overflow: 'hidden',
+                              minWidth: '0%',
+                              borderColor: 'rgba(0, 0, 0, 0.23)'
+                            }}
+                          >
+                            <legend
+                              style={{
+                                float: 'unset',
+                                width: 'auto',
+                                overflow: 'hidden',
+                                display: 'block',
+                                padding: 0,
+                                height: '16px',
+                                paddingBottom: '20px',
+                                fontSize: '1em',
+                                visibility: 'visible',
+                                maxWidth: '100%',
+                                transition: 'max-width 100ms cubic-bezier(0.0, 0, 0.2, 1) 50ms',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              <span style={{
+                                paddingLeft: '5px',
+                                paddingRight: '5px',
+                                display: 'inline-block',
+                                fontSize: '1em',
+                                marginTop: '-16px',
+                                color: 'rgba(0, 0, 0, 0.5)'
+                              }}>
+                                {fieldLabel} {isRequired && '*'}
+                              </span>
+                            </legend>
+                          </fieldset>
+                          <Box style={{ display: 'flex', color: 'rgba(0, 0, 0, 0.5)', flexDirection: 'column', gap: '4px', paddingTop: '4px' }}>
                             {selectOptions.map((option, index) => (
                               <FormControlLabel
                                 key={`${fieldName}_${index}`}
                                 control={
                                   <Checkbox
                                     checked={currentValue.includes(option)}
-                                    onChange={() => handleSelectChange(fieldName, option)}
+                                    onChange={() => handleSelectChange(fieldName, option, select_max)}
                                     size="small"
                                   />
                                 }
@@ -1928,7 +2056,7 @@ export default ({ onClose, options = {} }) => {
                             ))}
                           </Box>
                           {fieldData.prompt?.help_text && (
-                            <Typography variant="caption" style={{ marginTop: '4px', display: 'block', color: '#666' }}>
+                            <Typography variant="caption" style={{ marginTop: '8px', marginLeft: '14px', marginRight: '14px', display: 'block', color: '#666' }}>
                               {fieldData.prompt.help_text}
                             </Typography>
                           )}
@@ -2163,24 +2291,7 @@ export default ({ onClose, options = {} }) => {
                 const isExitAction = !reactData.selected_account_type || Object.keys(reactData.form_fields).length === 0;
 
                 if (isExitAction) {
-                  // Handle exit based on how QuickAdd was invoked
-                  if (options.source === 'url_parameter') {
-                    // URL-driven mode - close the entire application
-                    sessionStorage.removeItem('AVASessionData');
-
-                    // Try to close the window/tab
-                    if (window.opener) {
-                      // If opened in a popup, close it
-                      window.close();
-                    } else {
-                      window.location.replace(`${window.location.href.split('?')[0]}thankyou`);
-                    }
-                  } else {
-                    // Normal admin mode - just close the dialog
-                    if (onClose) {
-                      onClose();
-                    }
-                  }
+                  await proceedWithExit();
                   return;
                 }
 
@@ -2190,9 +2301,9 @@ export default ({ onClose, options = {} }) => {
                   const requiredFields = (reactData.selected_account_config?.required || [])
                     .filter(fieldName => presentedFields.includes(fieldName));
 
-                  const missingRequiredValues = requiredFields.filter(fieldName =>
-                    !reactData.field_values[fieldName] || reactData.field_values[fieldName].trim() === ''
-                  );
+                  const missingRequiredValues = requiredFields.filter(fieldName => {
+                    return isEmpty(reactData.field_values[fieldName]);
+                  });
 
                   if (missingRequiredValues.length > 0) {
                     // Convert field names to user-friendly prompts
@@ -2490,7 +2601,11 @@ export default ({ onClose, options = {} }) => {
                       const createdPersonIds = membersWithUserIds
                         .filter(member => member.proposed_user_id)
                         .map(member => member.proposed_user_id);
-                      onClose(createdPersonIds);
+                      if (options.source === 'url_parameter') {
+                        onClose(createdPersonIds, (reactData.on_save_callback || null));
+                      } else {
+                        onClose(createdPersonIds);
+                      }
                     }
                   }
 

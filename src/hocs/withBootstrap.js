@@ -14,6 +14,7 @@ import PatientDialog from '../components/dialogs/PatientDialog';
 import SelectAccount from '../components/dialogs/SelectAccount';
 import QuickAdd from '../components/sections/QuickAdd';
 import FormFillB from '../components/forms/FormFillB';
+import PeopleMaintenance from '../components/dialogs/PeopleMaintenance';
 
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
@@ -152,8 +153,8 @@ export default Component => props => {
           }
 
           console.log('Trying user login:', urlData.user);
-          await tryUser(urlData.user, urlData.client || urlData.client_id, 'url');
-          return;
+          let results = await tryUser(urlData.user, urlData.client || urlData.client_id, 'url');
+          if ((Object.keys(urlData).length === 1) || (results !== 'good')) return;
         }
 
         // Handle ?create= parameter - force logout and launch QuickAdd
@@ -189,6 +190,14 @@ export default Component => props => {
             console.log('Trying user:', `ava-${clientId.toLowerCase()}`, 'for client:', clientId);
             await tryUser(`ava-${clientId.toLowerCase()}`, clientId, 'url');
             return;
+          }
+          else if (urlData.my_forms) {
+            console.log('Document parameter detected:', urlData.document_id);
+            updateReactData({
+              urlData: Object.assign({}, urlData, {
+                launch_myForms: true
+              })
+            });
           }
           else if (urlData.document_id) {
             console.log('Document parameter detected:', urlData.document_id);
@@ -559,6 +568,10 @@ export default Component => props => {
 
   function showFormFill() {
     return (AVAReady && reactData?.urlData?.launch_formFill);
+  }
+
+  function showMyForms() {
+    return (AVAReady && reactData?.urlData?.launch_myForms);
   }
 
   function testModeErrorTrap() {
@@ -1122,12 +1135,13 @@ export default Component => props => {
   else if (showQuickAdd()) {
     return (
       <QuickAdd
-        onClose={(createdPersonIds) => {
+        onClose={(createdPersonIds, onSaveCallback = null) => {
           // QuickAdd finished - redirect to login with first created person
           if (createdPersonIds && createdPersonIds.length > 0) {
             const firstPersonId = createdPersonIds[0];
             const baseUrl = window.location.href.split('?')[0];
-            const loginUrl = `${baseUrl}?user=${firstPersonId}`;
+            let loginUrl = `${baseUrl}?user=${firstPersonId}`;
+            if (onSaveCallback) { loginUrl += `&${onSaveCallback}=true`; }
             window.location.replace(loginUrl);
           } else {
             // No accounts created, clear the QuickAdd flag
@@ -1154,6 +1168,25 @@ export default Component => props => {
         }}
         request={{
           document_id: reactData.urlData?.formFill_documentID
+        }}
+      />
+    );
+  }
+  else if (showMyForms()) {
+    return (
+      <PeopleMaintenance
+        person_id={reactData.urlData?.user_id || getCookie()?.user_id || null}
+        options={{
+          "sectionList": [
+            "forms"
+          ],
+          "sectionToShow": [
+            "FormSection"
+          ]
+        }}
+        onClose={() => {
+          sessionStorage.removeItem('AVASessionData');
+          window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
         }}
       />
     );
