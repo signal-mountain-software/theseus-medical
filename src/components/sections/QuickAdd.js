@@ -65,6 +65,7 @@
 import React from 'react';
 
 import useSession from '../../hooks/useSession';
+import { useCookies } from 'react-cookie';
 
 import { deepCopy, titleCase, getDb, putDb, isEmpty, uuid } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
@@ -74,6 +75,7 @@ import { determineClass } from '../../util/AVAGroups';
 import { sendMessages } from '../../util/AVAMessages';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
+import { Auth } from 'aws-amplify';
 import { Box, Button, TextField, Typography, Dialog, DialogContentText, DialogActions, FormControl, FormLabel, RadioGroup, FormControlLabel, Radio, Snackbar, Checkbox } from '@material-ui/core/';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 
@@ -94,6 +96,8 @@ export default ({ onClose, options = {} }) => {
   const { state } = useSession();
   const isMounted = React.useRef(false);
   const dateValidationTimeouts = React.useRef({});
+
+  const [, , removeCookie] = useCookies(['AVAuser']);
 
   const [reactData, setReactData] = React.useState({
     initialized: false,
@@ -499,7 +503,7 @@ export default ({ onClose, options = {} }) => {
       if (currentValue.includes(selectedOption)) {
         newValue = currentValue.filter(item => item !== selectedOption);
       } else {
-        if (currentValue.length >= select_max) { 
+        if (currentValue.length >= select_max) {
           currentValue.splice(0, 1, selectedOption); // Enforce max selection limit
           newValue = currentValue;
         }
@@ -565,6 +569,14 @@ export default ({ onClose, options = {} }) => {
 
     // If family_role is 'none', go directly to complete stage (skip asking for more members)
     const nextStage = reactData.selected_account_config?.family_role === 'none' ? 'complete' : 'ask_for_more';
+
+    // if selected account config includes "on_save" key, store this.  We'll use it on exit.
+    if (reactData.selected_account_config?.on_save) {
+      setReactData(prev => ({
+        ...prev,
+        on_save_callback: reactData.selected_account_config.on_save
+      }));
+    }
 
     setReactData(prev => ({
       ...prev,
@@ -1538,28 +1550,22 @@ export default ({ onClose, options = {} }) => {
     }
 
     // No unsaved changes, proceed with close
-    proceedWithExit();
+    await proceedWithExit();
   };
 
-  const proceedWithExit = () => {
+  const proceedWithExit = async () => {
     // Handle dialog close (X button) based on how QuickAdd was invoked
     if (options.source === 'url_parameter') {
       // URL-driven mode - close the entire application
       sessionStorage.removeItem('AVASessionData');
-
-      // Try to close the window/tab
-      if (window.opener) {
-        // If opened in a popup, close it
-        window.close();
-      } else {
-        // If not a popup, try to navigate away or close
-        try {
-          window.close();
-        } catch (e) {
-          // If we can't close (browser security), navigate to a generic page
-          window.location.href = 'about:blank';
-        }
+      removeCookie("AVAuser");
+      try {
+        await Auth.signOut();
+      } catch (e) {
+        console.log('No existing Cognito session to sign out');
       }
+      let jumpTo = window.location.origin;
+      window.location.replace(`${jumpTo}?client=${state.session.client_id}`);
     } else {
       // Normal admin mode - just close the dialog
       if (onClose) {
@@ -1586,8 +1592,8 @@ export default ({ onClose, options = {} }) => {
           flexDirection: 'column'
         }
       }}
-      onClose={() => {
-        handleDialogClose();
+      onClose={async () => {
+        await handleDialogClose();
       }}
     >
       <DialogContentText
@@ -2227,24 +2233,7 @@ export default ({ onClose, options = {} }) => {
                 const isExitAction = !reactData.selected_account_type || Object.keys(reactData.form_fields).length === 0;
 
                 if (isExitAction) {
-                  // Handle exit based on how QuickAdd was invoked
-                  if (options.source === 'url_parameter') {
-                    // URL-driven mode - close the entire application
-                    sessionStorage.removeItem('AVASessionData');
-
-                    // Try to close the window/tab
-                    if (window.opener) {
-                      // If opened in a popup, close it
-                      window.close();
-                    } else {
-                      window.location.replace(`${window.location.href.split('?')[0]}thankyou`);
-                    }
-                  } else {
-                    // Normal admin mode - just close the dialog
-                    if (onClose) {
-                      onClose();
-                    }
-                  }
+                  await proceedWithExit();
                   return;
                 }
 
@@ -2254,9 +2243,9 @@ export default ({ onClose, options = {} }) => {
                   const requiredFields = (reactData.selected_account_config?.required || [])
                     .filter(fieldName => presentedFields.includes(fieldName));
 
-                  const missingRequiredValues = requiredFields.filter(fieldName =>
-                    !reactData.field_values[fieldName] || reactData.field_values[fieldName].trim() === ''
-                  );
+                  const missingRequiredValues = requiredFields.filter(fieldName => {
+                    return isEmpty(reactData.field_values[fieldName]);
+                  });
 
                   if (missingRequiredValues.length > 0) {
                     // Convert field names to user-friendly prompts
@@ -2554,7 +2543,7 @@ export default ({ onClose, options = {} }) => {
                       const createdPersonIds = membersWithUserIds
                         .filter(member => member.proposed_user_id)
                         .map(member => member.proposed_user_id);
-                      onClose(createdPersonIds);
+                      onClose(createdPersonIds, (reactData.on_save_callback || null));
                     }
                   }
 
