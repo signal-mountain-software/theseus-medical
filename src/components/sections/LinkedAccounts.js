@@ -11,9 +11,10 @@ import { getDb } from '../../util/AVAUtilities';
 import useSession from '../../hooks/useSession';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
+import { Alert, AlertTitle } from '@material-ui/lab/';
 import SendIcon from '@material-ui/icons/Send';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
-import { Box, Button, TextField, Typography, Checkbox, Dialog, DialogContentText, DialogActions } from '@material-ui/core/';
+import { Snackbar, Box, Button, TextField, Typography, Checkbox, Dialog, DialogContentText, DialogActions } from '@material-ui/core/';
 
 const useStyles = makeStyles(theme => ({
   clientPopUp: {
@@ -125,6 +126,16 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
               >
                 <Typography
                   style={AVATextStyle({ margin: { right: 2 }, bold: true })}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    updateReactData({
+                      alert: {
+                        severity: 'info',
+                        title: 'Family ID',
+                        message: `Family ID: ${this_familyRec.family_id}`                        
+                      }
+                    }, true);
+                  }}
                 >
                   {this_familyRec.family_name}
                 </Typography>
@@ -499,7 +510,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                     const familyIndex = currentValues.familyRecs.findIndex(f => f.family_id === familyId);
                     if (familyIndex >= 0) {
                       currentValues.familyRecs[familyIndex] = updatedFamilyRec;
-                      
+
                       // Reload phone numbers for newly added members
                       if (updatedFamilyRec.other_members) {
                         for (let thisMember of updatedFamilyRec.other_members) {
@@ -518,7 +529,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                 updateLocalData({
                   showQuickAdd: null
                 }, true);
-                
+
                 // Update parent to reflect the new family data
                 if (updateField) {
                   await updateField({
@@ -729,6 +740,59 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
             </Dialog>
           }
 
+          {reactData.alert &&
+            <Snackbar
+              open={!!reactData.alert}
+              px={3}
+              key={`alert_wrapper`}
+              autoHideDuration={(reactData.alert.severity === 'success') ? 5000 : ((reactData.alert.severity === 'info') ? 15000 : null)}
+              onClose={() => {
+                updateReactData({
+                  alert: false
+                }, true);
+              }}
+              anchorOrigin={{
+                vertical: 'bottom',
+                horizontal: 'center'
+              }}
+            >
+              <Alert
+                severity={reactData.alert.severity || 'info'}
+                key={`alert_box`}
+                style={{ marginX: '8px', borderRadius: '20px', border: 1 }}
+                action={(reactData.alert.action
+                  ?
+                  <Box
+                    display='flex'
+                    key={`alert_action`}
+                    mx={1}
+                    overflow='auto'
+                    flexDirection='column'
+                  >
+                    {([reactData.alert.action].flat()).map((this_action, actionNdx) => (
+                      <Button
+                        key={`alert_button__${actionNdx}`}
+                        className={AVAClass.AVAButton} color="inherit"
+                        onClick={() => this_action.function()}
+                      >
+                        {this_action.text}
+                      </Button>
+                    ))}
+                  </Box>
+                  : null
+                )}
+                variant='filled'
+                onClose={() => {
+                  updateReactData({
+                    alert: false
+                  }, true);
+                }}
+              >
+                {reactData.alert.title && <AlertTitle>{reactData.alert.title}</AlertTitle>}
+                {reactData.alert.message}
+              </Alert>
+            </Snackbar >
+          }
 
         </Box>
         :
@@ -740,4 +804,4 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
       }
     </Box>
   );
-};;
+};
