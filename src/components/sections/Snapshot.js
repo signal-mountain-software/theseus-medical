@@ -25,16 +25,23 @@ export default ({ currentValues, reactData, updateReactData }) => {
   const AVAClass = AVAclasses();
 
   const makeLocation = () => {
-    if (currentValues.peopleRec.hasOwnProperty('address')) {
+    if (currentValues.peopleRec.hasOwnProperty('address') && currentValues.peopleRec.address) {
       if (!currentValues.peopleRec.address.address1 && currentValues.peopleRec.location) {
-        return currentValues.peopleRec.location;
+        return currentValues.peopleRec.location || '';
       }
       else {
-        return (`${currentValues.peopleRec.address.address1 || ''} ${currentValues.peopleRec.address.city || ''} ${currentValues.peopleRec.address.state || ''}`).trim();
+        // Filter out nullish values and join with spaces
+        const addressParts = [
+          currentValues.peopleRec.address.address1,
+          currentValues.peopleRec.address.city,
+          currentValues.peopleRec.address.state
+        ].filter(part => part != null && part !== ''); // Filter out null, undefined, and empty strings
+        
+        return addressParts.join(' ').trim();
       }
     }
     else {
-      return currentValues.peopleRec.location;
+      return currentValues.peopleRec.location || '';
     }
   };
 
@@ -132,6 +139,43 @@ export default ({ currentValues, reactData, updateReactData }) => {
               {currentValues.peopleRec.checkout_message}
             </Typography>
           }
+
+          {/* Display leaf groups (groups with no children) */}
+          {currentValues.peopleRec.groups && currentValues.peopleRec.groups.length > 0 && (() => {
+            // Filter to only show groups with no children (leaf nodes)
+            const leafGroups = currentValues.peopleRec.groups.filter(group_id => {
+              // Exclude if this group has children (exists in parent_of and has entries)
+              return !(state.groups?.parent_of?.[group_id] && state.groups.parent_of[group_id].length > 0);
+            });
+            
+            if (leafGroups.length === 0) return null;
+            
+            return (
+              <Box display='flex' flexDirection='column' style={{ marginTop: '12px' }}>
+                <Typography style={AVATextStyle({ size: 0.8 })}>
+                  {'Groups:'}
+                </Typography>
+                {leafGroups.map((group_id, idx) => {
+                  // Find the group name
+                  const groupInfo = state.groups?.adminHierarchy?.find(g => g.id === group_id);
+                  const groupName = groupInfo?.name || 
+                                   state.groups?.publicGroups?.[group_id]?.group_name ||
+                                   state.groups?.privateGroups?.[group_id]?.group_name ||
+                                   group_id;
+                  
+                  return (
+                    <Typography
+                      key={`group__${idx}`}
+                      style={AVATextStyle({ size: 0.8, margin: { left: 1 }, bold: true })}
+                    >
+                      {groupName}
+                    </Typography>
+                  );
+                })}
+              </Box>
+            );
+          })()}
+          
           {(Object.keys(reactData.local_customFields).length > 0) && Object.keys(reactData.local_customFields).map((this_customField, cFNdx) => (
             (currentValues.peopleRec?.local_data?.[this_customField] &&
               <Box
