@@ -123,6 +123,7 @@ export default ({ onClose, options = {} }) => {
     // Fields for email/phone verification stage
     verification_stage: false,
     verification_input: '',
+    verification_message: '',
     matched_account: null,
     // Fields for pre-filling name fields
     parsed_first_name: '',
@@ -634,6 +635,7 @@ export default ({ onClose, options = {} }) => {
       select_user: false,
       verification_stage: false,
       verification_input: '',
+      verification_message: '',
       matched_account: null,
       parsed_first_name: '',
       parsed_last_name: ''
@@ -727,7 +729,7 @@ export default ({ onClose, options = {} }) => {
           ...prev,
           candidates: [validation.personRec],
           verification_stage: true,
-          verification_input: `${validation.lookupType !== 'email' ? 'e-Mail Address' : ''}${validation.lookupType === 'name' ? ' or ' : ''}${validation.lookupType !== 'phone' ? 'Cell Phone Number' : ''}`,
+          verification_message: `${validation.lookupType !== 'email' ? 'e-Mail Address' : ''}${validation.lookupType === 'name' ? ' or ' : ''}${validation.lookupType !== 'phone' ? 'Cell Phone Number' : ''}`,
           select_user: false
         }));
         break;
@@ -776,44 +778,21 @@ export default ({ onClose, options = {} }) => {
       showAlert({
         severity: 'error',
         title: 'Input Required',
-        message: `Please enter your ${reactData.verification_input}.`,
+        message: `Please enter your ${reactData.verification_message}.`,
         autoHide: true
       });
       return;
     }
 
-    const input = verificationInput.trim().toLowerCase();
-    let matchedAccount = null;
+    const input = reactData.verification_input.trim().toLowerCase();
 
-    // Search through candidates for matching email or phone
-    for (const candidate of reactData.candidates) {
-      if (candidate.contact_info) {
-        // Check email match
-        if (candidate.contact_info.email && candidate.contact_info.email.address) {
-          if (candidate.contact_info.email.address.toLowerCase() === input) {
-            matchedAccount = candidate;
-            break;
-          }
-        }
-
-        // Check cell phone match
-        if (candidate.contact_info.cell && candidate.contact_info.cell.number) {
-          const candidatePhone = candidate.contact_info.cell.number;
-          // Remove all non-digit characters for comparison
-          const candidateDigits = candidatePhone.replace(/\D/g, '');
-          const inputDigits = input.replace(/\D/g, '');
-
-          // Compare last 10 digits (removing country codes)
-          const candidateLast10 = candidateDigits.slice(-10);
-          const inputLast10 = inputDigits.slice(-10);
-
-          if (inputLast10.length >= 10 && candidateLast10 === inputLast10) {
-            matchedAccount = candidate;
-            break;
-          }
-        }
-      }
-    }
+    // Does the candidate person_id have a PeopleAccounts record with email or cell that matches the input?
+    let matchedAccount = await getDb({
+            Key: {
+              person_id: reactData.candidates[0].person_id
+            },
+            TableName: "People"
+          });
 
     if (matchedAccount) {
       // Generate verification code
@@ -895,6 +874,7 @@ export default ({ onClose, options = {} }) => {
       select_user: false,
       verification_stage: false,
       verification_input: '',
+      verification_message: '',
       matched_account: null,
       parsed_first_name: '',
       parsed_last_name: '',
@@ -1211,8 +1191,55 @@ export default ({ onClose, options = {} }) => {
         Item: peopleRecord
       });
 
+      // update the cross-reference table PeopleAccounts
+      // Note here...  we are intentionally NOT removing old records from PeopleAccounts because we want to preserve the history of all accounts that have ever been associated with this person_id
+      // This means that a mis-spelled email, phone number, or name will still be a valid cross reference.
 
+      // Add new records for all phone numbers and email addresses
+      const phoneFields = [
+        { field: peopleRecord.contact_info?.cell?.number?.slice(-10), type: 'phone_number' },
+        { field: peopleRecord.contact_info?.landline?.number?.slice(-10), type: 'phone_number' },
+        { field: peopleRecord.contact_info?.work?.number?.slice(-10), type: 'phone_number' },
+        { field: peopleRecord.contact_info?.alternate?.number?.slice(-10), type: 'phone_number' }
+      ];
 
+      const emailFields = [
+        { field: peopleRecord.contact_info?.email?.address?.toLowerCase(), type: 'eMail' },
+        { field: peopleRecord.contact_info?.alt_email?.address?.toLowerCase(), type: 'eMail' }
+      ];
+
+      const nameFields = [
+        { field: (`${peopleRecord.name?.first} ${peopleRecord.name?.last} ${peopleRecord.client_id}`).toLowerCase(), type: 'name' },
+      ];
+
+      const allFields = [...phoneFields, ...emailFields, ...nameFields];
+
+      // Build batch write items for non-empty fields
+      const putRequests = allFields
+        .filter(accountField => !isEmpty(accountField.field))
+        .map(accountField => ({
+          PutRequest: {
+            Item: {
+              person_id: peopleRecord.person_id,
+              identifier: accountField.field,
+              account_type: accountField.type
+            }
+          }
+        }));
+
+      // Write all records in a single batch operation
+      if (putRequests.length > 0) {
+        await dbClient
+          .batchWrite({
+            RequestItems: {
+              'PeopleAccounts': putRequests
+            }
+          })
+          .promise()
+          .catch(error => {
+            console.log(`caught error batch writing to PeopleAccounts; error is:`, error);
+          });
+      }
       return true;
     } catch (error) {
       console.error('Error saving People record for member:', member, error);
@@ -1753,14 +1780,14 @@ export default ({ onClose, options = {} }) => {
         {reactData.verification_stage && reactData.candidates && reactData.candidates.length > 0 && (
           <Box style={{ marginTop: '48px' }}>
             <Typography variant="h6" style={{ marginBottom: '16px' }}>
-              {`It looks like you may already have an account. Enter your ${reactData.verification_input} and I will double check, or tap "I'm new here" below to create a new account.`}
+              {`It looks like you may already have an account. Enter your ${reactData.verification_message} and I will double check, or tap "I'm new here" below to create a new account.`}
             </Typography>
 
             {!reactData.matched_account && (
               <>
                 <TextField
                   fullWidth
-                  label={reactData.verification_input}
+                  label={reactData.verification_message}
                   onChange={(event) => {
                     const value = event?.target?.value || '';
                     setReactData(prev => ({ ...prev, verification_input: value }));
