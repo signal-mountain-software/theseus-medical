@@ -39,7 +39,7 @@ export default () => {
 
           }}
           onClose={async (ignore_me, statusObj) => {
-            removeCookie("AVAaction");
+            removeCookie("AVAaction", { path: '/' });
             if (statusObj.document_status !== 'aborted') {
               if (statusObj.nextAction) {
                 if (statusObj.nextAction.action === 'logIn') {
@@ -61,7 +61,7 @@ export default () => {
           person_id={patient.person_id}
           options={{ sectionToShow: ['FormSection'] }}
           onClose={() => {
-            removeCookie("AVAaction");
+            removeCookie("AVAaction", { path: '/' });
           }}
         />
       );
@@ -88,7 +88,7 @@ export default () => {
           pClient={cookies.AVAaction.client_id}
           pMessageList={[]}
           onReset={() => {
-            removeCookie("AVAaction");
+            removeCookie("AVAaction", { path: '/' });
             window.close();
           }}
           options={messageOptions}
