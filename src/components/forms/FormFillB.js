@@ -1299,10 +1299,13 @@ export default ({ request = {}, onClose }) => {
         });
       }
     }
-    updateReactData(Object.assign({}, (reactUpdObj || {}), {
-      formUpdates: ++reactData.formUpdates,
-      fields: reactData.fields
-    }), true);
+    // Delay forced re-render to prevent race condition with checkbox clicks
+    setTimeout(() => {
+      updateReactData(Object.assign({}, (reactUpdObj || {}), {
+        formUpdates: ++reactData.formUpdates,
+        fields: reactData.fields
+      }), true);
+    }, 0);
   };
 
   const handleMakeSelection = async (props) => {
@@ -1586,7 +1589,7 @@ export default ({ request = {}, onClose }) => {
                     key={`CheckGroup__${props.prop}_${tIndex}`}
                     size='small'
                     checked={reactData.fields[props.prop].value && reactData.fields[props.prop].value.includes(text)}
-                    onClick={async () => {
+                    onMouseDown={async () => {
                       await handleMakeSelection({
                         clickText: text,
                         prop: props.prop
@@ -1625,10 +1628,13 @@ export default ({ request = {}, onClose }) => {
                         reactData.fields[props.prop].value = [];
                       }
                       reactData.fields[props.prop].bonusText = event.target.value;
-                      updateReactData({
-                        formUpdates: reactData.formUpdates++,
-                        fields: reactData.fields
-                      }, true);
+                      // Delay re-render to allow checkbox clicks to complete first
+                      setTimeout(() => {
+                        updateReactData({
+                          formUpdates: reactData.formUpdates++,
+                          fields: reactData.fields
+                        }, true);
+                      }, 0);
                     }}
                     helperText={props.withPrompt}
                   />
@@ -1811,8 +1817,13 @@ export default ({ request = {}, onClose }) => {
   const resolveValue = (object, key, value) => {
     const this_key = key.shift();
     if (key.length === 0) {
-      object[this_key] = value;
-      return object;
+      if (isEmpty(object)) {
+        return { [this_key]: value };
+      }
+      else {
+        object[this_key] = value;
+        return object;
+      }
     }
     else if (isEmpty(object)) {
       let resolvedObj = resolveValue({}, key, value);
