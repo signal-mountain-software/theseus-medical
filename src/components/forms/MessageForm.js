@@ -1149,7 +1149,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         state.patient.preferred_language = 'en';
       }
       if (this_deliveryRec.content.current.hasOwnProperty(state.patient.preferred_language)) {
-        this_deliveryRec.message_text = this_deliveryRec.content.current[state.patient.preferred_language];
+        let this_lang_content = Array.isArray(state.patient.preferred_language) ? state.patient.preferred_language[0] : state.patient.preferred_language;
+        this_deliveryRec.message_text = this_deliveryRec.content.current[this_lang_content];
       }
       else if (this_deliveryRec.content.current.hasOwnProperty('original')) {
         this_deliveryRec.message_text = this_deliveryRec.content.current.original;
