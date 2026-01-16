@@ -1524,10 +1524,19 @@ export default ({ request = {}, onClose }) => {
                 dropdownHandle={true}
                 variant={'standard'}
                 dropdownPosition={'auto'}
-                value={reactData.fields[props.prop]?.value ? (reactData.fields[props.prop]?.value[0] || '') : ''}
+                values={(reactData.fields[props.prop]?.value && reactData.fields[props.prop]?.value.length > 0)
+                  ? (() => {
+                    let currentLang = reactData.fields[props.prop]?.value[0];
+                    if (currentLang) {
+                      return optionList.filter(option => option.value === currentLang);
+                    }
+                    return [{ label: 'English', value: 'en' }];
+                  })()
+                  : [{ label: 'English', value: 'en' }]
+                }
                 clearable={true}
                 clearOnSelect={false}
-                placeholder={reactData.fields[props.prop]?.value ? (reactData.fields[props.prop]?.value[0] || '') : ''}
+                placeholder={'Please select your preferred language'}
                 clearOnBlur={false}
                 key={`selectBox_selectdrop`}
                 searchable={true}
@@ -1539,13 +1548,13 @@ export default ({ request = {}, onClose }) => {
                 noDataLabel={''}
                 onInputChange={async (values) => {
                   await handleMakeSelection({
-                    clickText: values[0].label,
+                    clickText: values[0].value,
                     prop: props.prop
                   });
                 }}
                 onChange={async (values) => {
                   await handleMakeSelection({
-                    clickText: values[0].label,
+                    clickText: values[0].value,
                     prop: props.prop
                   });
                 }}
