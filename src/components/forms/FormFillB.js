@@ -2040,7 +2040,7 @@ export default ({ request = {}, onClose }) => {
             });
         }
       };
-      generateHtmlOutput();
+      // generateHtmlOutput();
 
       /* Temporarily disabled PDF generation
       const s3Results = await printDocumentB({
@@ -2079,7 +2079,7 @@ export default ({ request = {}, onClose }) => {
       author: state.session.patient_id,
       isNew: false,
       pending,
-      save_type: url ? 'printed' : (final ? 'save_final' : (timeout ? 'on_timeout' : 'in_process')),
+      save_type: final ? 'save_final' : (timeout ? 'on_timeout' : 'in_process'),
       url
     });
     response.location = url;
