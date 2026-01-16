@@ -60,10 +60,19 @@ export default ({ currentValues, reactData, updateReactData }) => {
     // and build myFormListObj with one object for each form assigned to members of this person's groups
     let my_form_people = [currentValues.peopleRec.person_id];
     if ((currentValues.peopleRec.myFamilyMembers || []).length > 0) {
-      my_form_people = [];
-      currentValues.peopleRec.myFamilyMembers.forEach(this_person => {
-        my_form_people.push(this_person.id);
-      });
+      if (currentValues.peopleRec.myFamilyMembers.some(this_person => {
+        if (this_person.id === currentValues.peopleRec.person_id) {
+          return this_person.primary;
+        }
+        else {
+          return false;
+        }
+      })) {
+        my_form_people = [];
+        currentValues.peopleRec.myFamilyMembers.forEach(this_person => {
+          my_form_people.push(this_person.id);
+        });
+      }
     }
     for (let this_person of my_form_people) {
       let myFormListObj = {};
