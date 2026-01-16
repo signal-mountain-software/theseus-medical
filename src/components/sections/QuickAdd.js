@@ -1766,7 +1766,8 @@ export default ({ onClose, options = {} }) => {
                     }));
                   } else {
                     // Otherwise close the entire dialog
-                    onClose();
+                    proceedWithExit();
+                    // onClose();
                   }
                 }}
               >
