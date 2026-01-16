@@ -11,7 +11,6 @@ import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import SendIcon from '@material-ui/icons/Send';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
 import TextsmsIcon from '@material-ui/icons/Textsms';
-import InfoIcon from '@material-ui/icons/Info';
 
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import MakeMessage from '../forms/MakeMessage';
@@ -25,16 +24,23 @@ export default ({ currentValues, reactData, updateReactData }) => {
   const AVAClass = AVAclasses();
 
   const makeLocation = () => {
-    if (currentValues.peopleRec.hasOwnProperty('address')) {
+    if (currentValues.peopleRec.hasOwnProperty('address') && currentValues.peopleRec.address) {
       if (!currentValues.peopleRec.address.address1 && currentValues.peopleRec.location) {
-        return currentValues.peopleRec.location;
+        return currentValues.peopleRec.location || '';
       }
       else {
-        return (`${currentValues.peopleRec.address.address1 || ''} ${currentValues.peopleRec.address.city || ''} ${currentValues.peopleRec.address.state || ''}`).trim();
+        // Filter out nullish values and join with spaces
+        const addressParts = [
+          currentValues.peopleRec.address.address1,
+          currentValues.peopleRec.address.city,
+          currentValues.peopleRec.address.state
+        ].filter(part => part != null && part !== ''); // Filter out null, undefined, and empty strings
+        
+        return addressParts.join(' ').trim();
       }
     }
     else {
-      return currentValues.peopleRec.location;
+      return currentValues.peopleRec.location || '';
     }
   };
 
@@ -132,6 +138,47 @@ export default ({ currentValues, reactData, updateReactData }) => {
               {currentValues.peopleRec.checkout_message}
             </Typography>
           }
+
+          {/* Display leaf groups (groups with no children) */}
+          {currentValues.peopleRec.groups && currentValues.peopleRec.groups.length > 0 && (() => {
+            // Filter to only show groups with no children (leaf nodes)
+            const leafGroups = currentValues.peopleRec.groups.filter(group_id => {
+              // Exclude if this group is '_top_'
+              if (group_id.toLowerCase() === '_top_') { return false; }
+              // Exclude if this group has children (exists in parent_of and has entries) AND I belong to at least one of those children
+              let hasChildren = state.groups?.parent_of?.[group_id] && (state.groups.parent_of[group_id].length > 0);
+              let belongsToChild = hasChildren && state.groups.parent_of[group_id].some(child_id => currentValues.peopleRec.groups.includes(child_id));
+              return !belongsToChild;
+            });
+            
+            if (leafGroups.length === 0) return null;
+            
+            return (
+              <Box display='flex' flexDirection='column' style={{ marginTop: '12px' }}>
+                <Typography style={AVATextStyle({ size: 0.8 })}>
+                  {'Groups:'}
+                </Typography>
+                {leafGroups.map((group_id, idx) => {
+                  // Find the group name
+                  const groupInfo = state.groups?.adminHierarchy?.find(g => g.id === group_id);
+                  const groupName = groupInfo?.name || 
+                                   state.groups?.publicGroups?.[group_id]?.group_name ||
+                                   state.groups?.privateGroups?.[group_id]?.group_name ||
+                                   group_id;
+                  
+                  return (
+                    <Typography
+                      key={`group__${idx}`}
+                      style={AVATextStyle({ size: 0.8, margin: { left: 1 }, bold: true })}
+                    >
+                      {groupName}
+                    </Typography>
+                  );
+                })}
+              </Box>
+            );
+          })()}
+          
           {(Object.keys(reactData.local_customFields).length > 0) && Object.keys(reactData.local_customFields).map((this_customField, cFNdx) => (
             (currentValues.peopleRec?.local_data?.[this_customField] &&
               <Box
@@ -366,46 +413,6 @@ export default ({ currentValues, reactData, updateReactData }) => {
               </Typography>
             </Box>
           ))}
-        </Box>
-      }
-
-
-
-      {reactData.form_fields && (Object.keys(reactData.form_fields).length > 0) &&
-        <Box
-          display='flex'
-          alignItems={'center'}
-          marginBottom={'-32px'}
-          justifyContent='flex-end' flexDirection='row'
-          key={`adminData_buttons`}
-          style={{}}
-        >
-          <Button
-            key={`adminData_Button`}
-            onClick={async () => {
-              let sectionNdx = reactData.sections.findIndex(s => { return (s.section_name === 'Administrative Data'); });
-              reactData.sections[sectionNdx].isOpen = true;
-              updateReactData({
-                focusAt: 'Administrative Data',
-                sections: reactData.sections
-              }, true);
-            }}
-            className={AVAClass.AVAButton}
-            style={{ marginLeft: 0, backgroundColor: 'red', color: 'white' }}
-            size='small'
-            startIcon={<InfoIcon size='small' />}
-          >
-            <Box display='flex' alignItems='center'
-              key={`adminData`}
-              justifyContent='flex-end' flexDirection='column'>
-              <Typography
-                key={`adminData2`}
-                style={AVATextStyle({ size: 0.7, margin: { right: 0.5 } })}
-              >
-                {`Admin Data`}
-              </Typography>
-            </Box>
-          </Button>
         </Box>
       }
       <Box

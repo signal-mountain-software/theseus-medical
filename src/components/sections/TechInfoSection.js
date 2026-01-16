@@ -31,48 +31,54 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
       const peopleRec = currentValues.peopleRec;
 
       // Check if this person has a family_id
-      if (peopleRec.family_id) {
-        try {
-          // Get the FamilyGroups record with this family_id
-          const familyResult = await dbClient.query({
-            KeyConditionExpression: 'family_id = :f',
-            ExpressionAttributeValues: { ':f': peopleRec.family_id },
-            TableName: 'FamilyGroups',
-            IndexName: 'family_id-index'
-          }).promise();
+      if (peopleRec.family_groups && peopleRec.family_groups.length > 0) {
+        peopleRec.family_groups.forEach(async (family_id) => {
+          if (family_id) {
+            try {
+              // Get the FamilyGroups record with this family_id
+              const familyResult = await dbClient.query({
+                KeyConditionExpression: 'family_id = :f',
+                ExpressionAttributeValues: { ':f': family_id },
+                TableName: 'FamilyGroups',
+                IndexName: 'family_id-index'
+              }).promise();
 
-          if (familyResult.Items && familyResult.Items.length > 0) {
-            const familyRec = familyResult.Items[0];
+              if (familyResult.Items && familyResult.Items.length > 0) {
+                const familyRec = familyResult.Items[0];
 
-            // Check if this person is the primary contact
-            if (familyRec.primary_contact && familyRec.primary_contact.id === person_id) {
-              setFamilyCheckMessage(
-                `Cannot delete this account. ${familyRec.primary_contact.name} is the primary contact for the family. Please designate a new primary contact or delete the entire family group.`
-              );
-              setCanProceedWithDelete(false);
-              setFamilyCheckConfirmOpen(true);
-              return;
-            }
+                // Check if this person is the primary contact
+                if (familyRec.primary_contact && familyRec.primary_contact.id === person_id) {
+                  setFamilyCheckMessage(
+                    `Cannot delete this account. ${familyRec.primary_contact.name} is the primary contact for the family. Please designate a new primary contact or delete the entire family group.`
+                  );
+                  setCanProceedWithDelete(false);
+                  setFamilyCheckConfirmOpen(true);
+                  return;
+                }
 
-            // Check if this person is in other_members
-            if (familyRec.other_members && Array.isArray(familyRec.other_members)) {
-              const memberIndex = familyRec.other_members.findIndex(m => m.id === person_id);
-              if (memberIndex > -1) {
-                // This person is a family member; ask for confirmation
-                const memberName = familyRec.other_members[memberIndex].name || person_id;
-                setFamilyCheckMessage(
-                  `${memberName} is a member of the family group "${familyRec.family_name}". Deleting this account will remove them from the family. Are you sure you want to proceed?`
-                );
-                setCanProceedWithDelete(true);
-                setFamilyCheckConfirmOpen(true);
-                return;
+                // Check if this person is in other_members
+                if (familyRec.other_members && Array.isArray(familyRec.other_members) && familyRec.other_members.some(m => m.id === person_id)) {
+                  familyRec.other_members = familyRec.other_members.filter(m => m.id !== person_id);
+                  await dbClient.update({
+                    TableName: 'FamilyGroups',
+                    Key: {
+                      client_id: state.session.client_id,
+                      composite_key: familyResult.Items[0].family_id
+                    },
+                    UpdateExpression: 'set other_members = :om',
+                    ExpressionAttributeValues: {
+                      ':om': familyRec.other_members
+                    }
+                  }).promise();
+                  return;
+                }
               }
+            } catch (error) {
+              console.error('Error checking FamilyGroups:', error);
+              // Continue with deletion if family check fails
             }
           }
-        } catch (error) {
-          console.error('Error checking FamilyGroups:', error);
-          // Continue with deletion if family check fails
-        }
+        });
       }
 
       // No family issues, proceed with deletion

@@ -1203,7 +1203,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               }
               <MenuItem onClick={async () => {
                 await accessLog(session.user_id, `*na*`, `Manual sign-out`);
-                removeCookie("AVAuser");
+                removeCookie("AVAuser", { path: '/' });
                 Auth.signOut().then(() => {
                   let jumpTo = window.location.origin;
                   window.location.replace(jumpTo);

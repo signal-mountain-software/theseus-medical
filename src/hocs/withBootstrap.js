@@ -1260,7 +1260,7 @@ export default Component => props => {
   }
 
   function putActionCookie(urlObj) {
-    removeCookie("AVAaction");
+    removeCookie("AVAaction", { path: '/' });
     setCookie('AVAaction', JSON.stringify({
       document: (urlObj.document || null),
       docUser: (urlObj.docUser || null)
@@ -1798,7 +1798,7 @@ export default Component => props => {
         putActionCookie(currentSession.url_parameters);
       }
       else if (currentSession.url_parameters.hasOwnProperty('forms')) {
-        removeCookie("AVAaction");
+        removeCookie("AVAaction", { path: '/' });
         setCookie('AVAaction', JSON.stringify({
           forms: true
         }), { path: '/' });
@@ -1814,7 +1814,7 @@ export default Component => props => {
       URLmsg = Object.assign({}, reactData.urlData);
     }
     if (URLmsg) {
-      removeCookie("AVAaction");
+      removeCookie("AVAaction", { path: '/' });
       setCookie('AVAaction', JSON.stringify({
         message: URLmsg.message,
         sender: (URLmsg.sender || null),

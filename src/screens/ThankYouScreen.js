@@ -100,7 +100,7 @@ export default () => {
             });
     }
 
-    removeCookie("AVAuser");
+    removeCookie("AVAuser", { path: '/' });
 
     return (
         <Box

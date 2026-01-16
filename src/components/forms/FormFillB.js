@@ -476,6 +476,95 @@ export default ({ request = {}, onClose }) => {
   };
 
   // **************************
+  // Helper to recursively get all descendants (children, grandchildren, etc.) of groups in a list
+  const getAllChildrenOfGroups = (groupList) => {
+    if (!groupList || !Array.isArray(groupList) || groupList.length === 0) {
+      return [];
+    }
+
+    const allDescendants = new Set(groupList); // Pre-load with original groups
+    const visited = new Set(); // Track visited nodes to prevent infinite loops
+
+    // Recursive helper to add a group's children and all their descendants
+    const addDescendants = (group_id) => {
+      // If we've already visited this group, skip it (circular reference protection)
+      if (visited.has(group_id)) {
+        return;
+      }
+
+      // Mark this group as visited
+      visited.add(group_id);
+
+      // Check if this group has children
+      if (state.groups.parent_of && state.groups.parent_of.hasOwnProperty(group_id)) {
+        // For each child
+        for (const child of state.groups.parent_of[group_id]) {
+          // Add the child to the set
+          allDescendants.add(child);
+          // Recursively add the child's descendants
+          addDescendants(child);
+        }
+      }
+    };
+
+    // Process each group in the input list
+    for (const this_group of groupList) {
+      addDescendants(this_group);
+    }
+
+    // Convert Set back to array and return
+    return Array.from(allDescendants);
+  };
+
+  // **************************
+  // Helper to recursively get all ancestors (parents, grandparents, etc.) of groups in a list
+  const getAllParentsOfGroups = (groupList) => {
+    if (!groupList || !Array.isArray(groupList) || groupList.length === 0) {
+      return [];
+    }
+
+    const allAncestors = new Set(groupList); // Pre-load with original groups
+    const visited = new Set(); // Track visited nodes to prevent infinite loops
+
+    // Helper to find a group's parent
+    const getParent = (group_id) => {
+      const groupInfo = state.groups.adminHierarchy?.find(g => g.id === group_id);
+      if (groupInfo && groupInfo.belongs_to && !groupInfo.belongs_to.toLowerCase().includes('_top_')) {
+        return groupInfo.belongs_to;
+      }
+      return null;
+    };
+
+    // Recursive helper to add a group's parents and all their ancestors
+    const addAncestors = (group_id) => {
+      // If we've already visited this group, skip it (circular reference protection)
+      if (visited.has(group_id)) {
+        return;
+      }
+
+      // Mark this group as visited
+      visited.add(group_id);
+
+      // Get the parent of this group
+      const parent = getParent(group_id);
+      if (parent) {
+        // Add the parent to the set
+        allAncestors.add(parent);
+        // Recursively add the parent's ancestors
+        addAncestors(parent);
+      }
+    };
+
+    // Process each group in the input list
+    for (const this_group of groupList) {
+      addAncestors(this_group);
+    }
+
+    // Convert Set back to array and return
+    return Array.from(allAncestors);
+  };
+
+  // **************************
   // Consolidated helper to resolve and return default value for a field
   const getDefaultValueForField = async ({ fieldRec, fieldName }) => {
     // fieldRec: the field record from formRec.fields[fieldName]
@@ -1210,10 +1299,13 @@ export default ({ request = {}, onClose }) => {
         });
       }
     }
-    updateReactData(Object.assign({}, (reactUpdObj || {}), {
-      formUpdates: ++reactData.formUpdates,
-      fields: reactData.fields
-    }), true);
+    // Delay forced re-render to prevent race condition with checkbox clicks
+    setTimeout(() => {
+      updateReactData(Object.assign({}, (reactUpdObj || {}), {
+        formUpdates: ++reactData.formUpdates,
+        fields: reactData.fields
+      }), true);
+    }, 0);
   };
 
   const handleMakeSelection = async (props) => {
@@ -1497,7 +1589,7 @@ export default ({ request = {}, onClose }) => {
                     key={`CheckGroup__${props.prop}_${tIndex}`}
                     size='small'
                     checked={reactData.fields[props.prop].value && reactData.fields[props.prop].value.includes(text)}
-                    onClick={async () => {
+                    onMouseDown={async () => {
                       await handleMakeSelection({
                         clickText: text,
                         prop: props.prop
@@ -1536,10 +1628,13 @@ export default ({ request = {}, onClose }) => {
                         reactData.fields[props.prop].value = [];
                       }
                       reactData.fields[props.prop].bonusText = event.target.value;
-                      updateReactData({
-                        formUpdates: reactData.formUpdates++,
-                        fields: reactData.fields
-                      }, true);
+                      // Delay re-render to allow checkbox clicks to complete first
+                      setTimeout(() => {
+                        updateReactData({
+                          formUpdates: reactData.formUpdates++,
+                          fields: reactData.fields
+                        }, true);
+                      }, 0);
                     }}
                     helperText={props.withPrompt}
                   />
@@ -1722,8 +1817,13 @@ export default ({ request = {}, onClose }) => {
   const resolveValue = (object, key, value) => {
     const this_key = key.shift();
     if (key.length === 0) {
-      object[this_key] = value;
-      return object;
+      if (isEmpty(object)) {
+        return { [this_key]: value };
+      }
+      else {
+        object[this_key] = value;
+        return object;
+      }
     }
     else if (isEmpty(object)) {
       let resolvedObj = resolveValue({}, key, value);
@@ -1940,7 +2040,7 @@ export default ({ request = {}, onClose }) => {
             });
         }
       };
-      generateHtmlOutput();
+      // generateHtmlOutput();
 
       /* Temporarily disabled PDF generation
       const s3Results = await printDocumentB({
@@ -1979,7 +2079,7 @@ export default ({ request = {}, onClose }) => {
       author: state.session.patient_id,
       isNew: false,
       pending,
-      save_type: url ? 'printed' : (final ? 'save_final' : (timeout ? 'on_timeout' : 'in_process')),
+      save_type: final ? 'save_final' : (timeout ? 'on_timeout' : 'in_process'),
       url
     });
     response.location = url;
@@ -1990,12 +2090,16 @@ export default ({ request = {}, onClose }) => {
     if (reactData.previous_formStage !== reactData.current_formStage) {
       // log stage change
       cl(`Form ${document_id} stage changed from ${reactData.previous_formStage} to ${reactData.current_formStage}`);
-      //check stage exit
+
+      // we may be manipulating thie groups list of the person in the pertains_to account, so we need to get that first
+      let groupList = reactData.peopleRec[reactData.pertains_to].groups || [];
+
+      // check stage exit
       let previous_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.previous_formStage);
       if (previous_stageIndex >= 0) {
-        let messageInstructions_complete = reactData.formRec.stages[previous_stageIndex].on_complete_message;
-
-        if (messageInstructions_complete) {
+        // send message on stage exit /  complete     
+        let messageInstructions_onStageExit = reactData.formRec.stages[previous_stageIndex].on_complete_message;
+        if (messageInstructions_onStageExit) {
           // send stage complete message
           /*
           {
@@ -2008,11 +2112,11 @@ export default ({ request = {}, onClose }) => {
           */
           let final_messageText = '';
           let final_html = '';
-          if (messageInstructions_complete.template_id) {
+          if (messageInstructions_onStageExit.template_id) {
             let templateRec = await getDb({
               Key: {
                 client_id: state.session.client_id,
-                template_id: messageInstructions_complete.template_id
+                template_id: messageInstructions_onStageExit.template_id
               },
               TableName: 'MessageTemplates'
             });
@@ -2021,17 +2125,17 @@ export default ({ request = {}, onClose }) => {
               final_html = templateRec.html_text ? await resolveVariables(templateRec.html_text) : final_messageText;
             }
           }
-          else if (messageInstructions_complete.text) {
-            final_messageText = await deepResolve(messageInstructions_complete.text, reactData.peopleRec[reactData.pertains_to]);
+          else if (messageInstructions_onStageExit.text) {
+            final_messageText = await deepResolve(messageInstructions_onStageExit.text, reactData.peopleRec[reactData.pertains_to]);
             final_html = final_messageText;
           }
           let recipientList = [];
-          if (messageInstructions_complete.recipientList) {
-            if (messageInstructions_complete.recipientList.people) {
-              recipientList = recipientList.concat(messageInstructions_complete.recipientList.people);
+          if (messageInstructions_onStageExit.recipientList) {
+            if (messageInstructions_onStageExit.recipientList.people) {
+              recipientList = recipientList.concat(messageInstructions_onStageExit.recipientList.people);
             }
-            if (messageInstructions_complete.recipientList.groups) {
-              for (const this_group of messageInstructions_complete.recipientList.groups) {
+            if (messageInstructions_onStageExit.recipientList.groups) {
+              for (const this_group of messageInstructions_onStageExit.recipientList.groups) {
                 recipientList.push(`GRP//${this_group}`);
               }
             }
@@ -2047,19 +2151,38 @@ export default ({ request = {}, onClose }) => {
             htmlText: final_html,
             recipientList: recipientList,
             attachments: `${jumpTo}?document=${reactData.document_id}`,
-            subject: messageInstructions_complete.subject
-              ? await resolveVariables(messageInstructions_complete.subject)
+            subject: messageInstructions_onStageExit.subject
+              ? await resolveVariables(messageInstructions_onStageExit.subject)
               : `A message from ${reactData.peopleRec[reactData.pertains_to].display_name || 'AVA Document Management'}`
           });
+        }
+        // remove and add groups from pertains_to account's group list if any
+        let groupInstructions_onStageExit = reactData.formRec.stages[previous_stageIndex].on_complete_groups;
+        if (groupInstructions_onStageExit) {
+          if (groupInstructions_onStageExit.remove) {
+            // if i am removing a group that's a parent, you are also removing that group's children. So we need to check for that and remove those as well
+            const allGroupstoRemove = getAllChildrenOfGroups(groupInstructions_onStageExit.remove, reactData.groupsRec);
+            groupList = groupList.filter(g => !allGroupstoRemove.includes(g));
+          }
+          if (groupInstructions_onStageExit.add) {
+            // if i am adding a group that's a child, you are also adding that group's parents. So we need to check for that and add those as well
+            const allGroupstoAdd = getAllParentsOfGroups(groupInstructions_onStageExit.add, reactData.groupsRec);
+            for (const this_group of allGroupstoAdd) {
+              if (!groupList.includes(this_group)) {
+                groupList.push(this_group);
+              }
+            }
+          }
+          reactData.peopleRec[reactData.pertains_to].groups = groupList;
         }
       }
 
       //check stage entry
       let this_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.current_formStage);
       if (this_stageIndex >= 0) {
-        let messageInstructions_current = reactData.formRec.stages[this_stageIndex].on_entry_message;
-
-        if (messageInstructions_current) {
+        // send message on stage entry
+        let messageInstructions_onStageEntry = reactData.formRec.stages[this_stageIndex].on_entry_message;
+        if (messageInstructions_onStageEntry) {
           // send stage complete message
           /*
           {
@@ -2072,11 +2195,11 @@ export default ({ request = {}, onClose }) => {
           */
           let final_messageText = '';
           let final_html = '';
-          if (messageInstructions_current.template_id) {
+          if (messageInstructions_onStageEntry.template_id) {
             let templateRec = await getDb({
               Key: {
                 client_id: state.session.client_id,
-                template_id: messageInstructions_current.template_id
+                template_id: messageInstructions_onStageEntry.template_id
               },
               TableName: 'MessageTemplates'
             });
@@ -2085,17 +2208,17 @@ export default ({ request = {}, onClose }) => {
               final_html = templateRec.html_text ? await resolveVariables(templateRec.html_text) : final_messageText;
             }
           }
-          else if (messageInstructions_current.text) {
-            final_messageText = await deepResolve(messageInstructions_current.text, reactData.peopleRec[reactData.pertains_to]);
+          else if (messageInstructions_onStageEntry.text) {
+            final_messageText = await deepResolve(messageInstructions_onStageEntry.text, reactData.peopleRec[reactData.pertains_to]);
             final_html = final_messageText;
           }
           let recipientList = [];
-          if (messageInstructions_current.recipientList) {
-            if (messageInstructions_current.recipientList.people) {
-              recipientList = recipientList.concat(messageInstructions_current.recipientList.people);
+          if (messageInstructions_onStageEntry.recipientList) {
+            if (messageInstructions_onStageEntry.recipientList.people) {
+              recipientList = recipientList.concat(messageInstructions_onStageEntry.recipientList.people);
             }
-            if (messageInstructions_current.recipientList.groups) {
-              for (const this_group of messageInstructions_current.recipientList.groups) {
+            if (messageInstructions_onStageEntry.recipientList.groups) {
+              for (const this_group of messageInstructions_onStageEntry.recipientList.groups) {
                 recipientList.push(`GRP//${this_group}`);
               }
             }
@@ -2111,12 +2234,60 @@ export default ({ request = {}, onClose }) => {
             htmlText: final_html,
             recipientList: recipientList,
             attachments: `${jumpTo}?document=${reactData.document_id}`,
-            subject: messageInstructions_current.subject
-              ? await resolveVariables(messageInstructions_current.subject)
+            subject: messageInstructions_onStageEntry.subject
+              ? await resolveVariables(messageInstructions_onStageEntry.subject)
               : `A message from ${reactData.peopleRec[reactData.pertains_to].display_name || 'AVA Document Management'}`
           });
         }
+        // remove and add groups from pertains_to account's group list if any
+        let groupInstructions_onStageEntry = reactData.formRec.stages[previous_stageIndex].on_complete_groups;
+        if (groupInstructions_onStageEntry) {
+          if (groupInstructions_onStageEntry.remove) {
+            // if i am removing a group that's a parent, you are also removing that group's children. So we need to check for that and remove those as well
+            const allGroupstoRemove = getAllChildrenOfGroups(groupInstructions_onStageEntry.remove, reactData.groupsRec);
+            groupList = groupList.filter(g => !allGroupstoRemove.includes(g));
+          }
+          if (groupInstructions_onStageEntry.add) {
+            // if i am adding a group that's a child, you are also adding that group's parents. So we need to check for that and add those as well
+            const allGroupstoAdd = getAllParentsOfGroups(groupInstructions_onStageEntry.add, reactData.groupsRec);
+            for (const this_group of allGroupstoAdd) {
+              if (!groupList.includes(this_group)) {
+                groupList.push(this_group);
+              }
+            }
+          }
+          reactData.peopleRec[reactData.pertains_to].groups = groupList;
+        }
+
       }
+
+      let UpdateExpression = 'set #g = :g, #c = :c';
+      let ExpressionAttributeValues = {
+        ':g': groupList,
+        ':c': {
+          id: state.session.client_id,
+          groups: groupList
+        }
+      };
+      let ExpressionAttributeNames = {
+        '#g': 'groups',
+        '#c': 'clients'
+      };
+      await dbClient
+        .update({
+          Key: {
+            person_id: reactData.pertains_to
+          },
+          UpdateExpression,
+          ExpressionAttributeValues,
+          ExpressionAttributeNames,
+          TableName: "People",
+        })
+        .promise()
+        .catch(error => {
+          console.log(`caught error updating Group; error is: `, error);
+        });
+
     }
 
     if (final && reactData.formRec?.options?.messaging) {
