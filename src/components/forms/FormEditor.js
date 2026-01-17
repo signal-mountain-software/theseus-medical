@@ -13,7 +13,7 @@ import {
   Paper,
   Dialog
 } from '@material-ui/core';
-import { Add, Delete, Visibility, ExpandLess, ExpandMore, VerifiedUser } from '@material-ui/icons';
+import { Add, Delete, Visibility, ExpandLess, ExpandMore, VerifiedUser, Shuffle } from '@material-ui/icons';
 import { getDb, dbClient, recordExists, deepCopy, uuid, titleCase } from '../../util/AVAUtilities';
 import AVAConfirm from './AVAConfirm';
 import { AVATextStyle } from '../../util/AVAStyles';
@@ -431,6 +431,15 @@ const FormEditor = ({ form, onSave, onCancel }) => {
   // Add new rule directly to a specific section
   const handleAddRuleToSection = (sectionIdx) => {
     updateReactData({ addRuleDialogOpen: true, targetSectionIdx: sectionIdx }, true);
+  };
+
+
+  // Move section down
+  const handleMoveSectionDown = (idx) => {
+    if (idx === editForm.sections.length - 1) return; // Already at the bottom
+    const newSections = [editForm.sections[idx + 1], editForm.sections[idx]];
+    editForm.sections.splice(idx, 2, ...newSections);
+    setEditForm(prev => ({ ...prev, sections: editForm.sections }));
   };
 
   // Remove section
@@ -893,7 +902,7 @@ const FormEditor = ({ form, onSave, onCancel }) => {
           {editForm.sections.map((section, idx) => (
             <div key={`section-${idx}`}>
               <Box marginBottom={1}>
-                <Box display="flex" marginLeft={2} alignItems="center">
+                <Box display="flex" marginTop={(idx > 0 ? '-60px' : '0')} minHeight={'100px'} marginLeft={2} alignItems="center">
                   {reactData[`editing_section_${idx}`] ? (
                     <TextField
                       value={section.section_name || ''}
@@ -917,6 +926,13 @@ const FormEditor = ({ form, onSave, onCancel }) => {
                       {section.section_name || 'Untitled Section'}
                     </Typography>
                   )}
+                  {(idx !== (editForm.sections.length - 1)) &&
+                    <Box style={{ paddingTop: '60px' }}>
+                      <IconButton onClick={() => handleMoveSectionDown(idx)} disabled={idx === editForm.sections.length - 1} title="Move section down">
+                        <Shuffle />
+                      </IconButton>
+                    </Box>
+                  }
                   <IconButton onClick={() => handleAddFieldToSection(idx)} title="Add field to this section">
                     <Add />
                   </IconButton>
