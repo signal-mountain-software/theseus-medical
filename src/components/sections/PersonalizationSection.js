@@ -94,6 +94,9 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
   if (!currentValues.peopleRec.preferred_language) {
     currentValues.peopleRec.preferred_language = 'en';
   }
+  else if (Array.isArray(currentValues.peopleRec.preferred_language)) {
+    currentValues.peopleRec.preferred_language = currentValues.peopleRec.preferred_language[0];
+  }
   let myAnswer = {
     label: languageTable.find(l => {
       return l.value === currentValues.peopleRec.preferred_language;

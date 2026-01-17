@@ -748,20 +748,45 @@ export default ({ onClose, options = {} }) => {
         showAlert({
           severity: 'info',
           title: 'No Match Found',
-          message: 'We didn\'t find a match, let\'s set a new account up!',
-          autoHide: false
+          message: 'We didn\'t find a match.  What would you like to do?',
+          autoHide: false,
+          action: [
+            {
+              text: `Try Again`,
+              function: () => {
+                setReactData(prev => ({
+                  ...prev,
+                  entered_name: '',
+                  alert: false,
+                  name_validation_result: null,
+                  candidates: [],
+                  verification_stage: false,
+                  select_user: false
+                }));
+              }
+            },
+            {
+              text: `Create a New Account`,
+              function: () => {
+                const nameParts = enteredName.trim().split(/\s+/);
+                const firstName = nameParts[0] || '';
+                const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+                setReactData(prev => ({
+                  ...prev,
+                  stage: 'select_account_type',
+                  verification_stage: false,
+                  // Store parsed name parts for pre-filling
+                  parsed_first_name: firstName,
+                  parsed_last_name: lastName,
+                  alert: false,
+                  name_validation_result: null,
+                  candidates: [],
+                  select_user: false
+                }));
+              }
+            }
+          ]
         });
-        const nameParts = enteredName.trim().split(/\s+/);
-        const firstName = nameParts[0] || '';
-        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
-
-        setReactData(prev => ({
-          ...prev,
-          stage: 'select_account_type',
-          // Store parsed name parts for pre-filling
-          parsed_first_name: firstName,
-          parsed_last_name: lastName
-        }));
         break;
       default:
         showAlert({
@@ -788,11 +813,11 @@ export default ({ onClose, options = {} }) => {
 
     // Does the candidate person_id have a PeopleAccounts record with email or cell that matches the input?
     let matchedAccount = await getDb({
-            Key: {
-              person_id: reactData.candidates[0].person_id
-            },
-            TableName: "People"
-          });
+      Key: {
+        person_id: reactData.candidates[0].person_id
+      },
+      TableName: "People"
+    });
 
     if (matchedAccount) {
       // Generate verification code
@@ -806,53 +831,65 @@ export default ({ onClose, options = {} }) => {
         input === matchedAccount.contact_info.email.address.toLowerCase()) {
         sendMethod = 'email';
         sendAddress = matchedAccount.contact_info.email.address;
-      } else if (matchedAccount.contact_info.cell && matchedAccount.contact_info.cell.number) {
+      } else if (matchedAccount.contact_info.cell && matchedAccount.contact_info.cell.number &&
+        input.slice(-10) === matchedAccount.contact_info.cell.number.slice(-10)) {
         sendMethod = 'sms';
         sendAddress = matchedAccount.contact_info.cell.number;
       }
 
-      try {
-        // Send verification code
-        await sendMessages({
-          client: matchedAccount.client_id,
-          author: state.session.user_id,
-          person_id: matchedAccount.person_id,
-          preferred_method: sendMethod,
-          messageText: `To verify your account, use this code: ${tempPass}`,
-          recipientList: [matchedAccount.person_id],
-          subject: `Verification code from ${state.session.client_name}`
-        });
-
-        // Show notification and switch to code verification stage
-        const notificationMessage = sendMethod === 'email'
-          ? `We've sent a verification code to ${sendAddress}. Look for the code in that message and enter it below.  (Make sure to check your spam/junk folder if you don't see the message in a minute or two.)`
-          : `We've sent a verification code to ${sendAddress.replace(/(\+\d{1})(\d{3})(\d{3})(\d{4})/, '$1 ($2) $3-$4')}. Look for the code in that text message and enter it below.`;
-
-        setReactData(prev => ({
-          ...prev,
-          matched_account: matchedAccount,
-          code_verification_stage: true,
-          verification_stage: false,
-          sent_verification_code: tempPass,
-          code_sent_to: sendAddress,
-          code_send_method: sendMethod
-        }));
-
-        showAlert({
-          severity: 'info',
-          title: 'Verification Code Sent',
-          message: notificationMessage,
-          autoHide: false
-        });
-
-      } catch (error) {
-        console.error('Error sending verification code:', error);
+      if (!sendMethod) {
         showAlert({
           severity: 'error',
-          title: 'Send Error',
-          message: 'Failed to send verification code. Please try again.',
-          autoHide: false
+          title: 'No Match Found',
+          message: `The ${reactData.verification_message} you entered doesn't match our records for this account. Please check and try again.`,
+          autoHide: true
         });
+        return;
+      }
+      else {
+        try {
+          // Send verification code
+          await sendMessages({
+            client: matchedAccount.client_id,
+            author: state.session.user_id,
+            person_id: matchedAccount.person_id,
+            preferred_method: sendMethod,
+            messageText: `To verify your account, use this code: ${tempPass}`,
+            recipientList: [matchedAccount.person_id],
+            subject: `Verification code from ${state.session.client_name}`
+          });
+
+          // Show notification and switch to code verification stage
+          const notificationMessage = sendMethod === 'email'
+            ? `We've sent a verification code to ${sendAddress}. Look for the code in that message and enter it below.  (Make sure to check your spam/junk folder if you don't see the message in a minute or two.)`
+            : `We've sent a verification code to ${sendAddress.replace(/(\+\d{1})(\d{3})(\d{3})(\d{4})/, '$1 ($2) $3-$4')}. Look for the code in that text message and enter it below.`;
+
+          setReactData(prev => ({
+            ...prev,
+            matched_account: matchedAccount,
+            code_verification_stage: true,
+            verification_stage: false,
+            sent_verification_code: tempPass,
+            code_sent_to: sendAddress,
+            code_send_method: sendMethod
+          }));
+
+          showAlert({
+            severity: 'info',
+            title: 'Verification Code Sent',
+            message: notificationMessage,
+            autoHide: false
+          });
+
+        } catch (error) {
+          console.error('Error sending verification code:', error);
+          showAlert({
+            severity: 'error',
+            title: 'Send Error',
+            message: 'Failed to send verification code. Please try again.',
+            autoHide: false
+          });
+        }
       }
     } else {
       showAlert({
@@ -1624,16 +1661,21 @@ export default ({ onClose, options = {} }) => {
   const proceedWithExit = async () => {
     // Handle dialog close (X button) based on how QuickAdd was invoked
     if (options.source === 'url_parameter') {
-      // URL-driven mode - close the entire application
-      sessionStorage.removeItem('AVASessionData');
-      removeCookie("AVAuser", { path: '/' });
-      try {
-        await Auth.signOut();
-      } catch (e) {
-        console.log('No existing Cognito session to sign out');
+      if (reactData.stage !== 'prompt_for_name') {
+        resetToNamePrompt();
       }
-      let jumpTo = window.location.origin;
-      window.location.replace(`${jumpTo}?client=${state.session.client_id}`);
+      else {
+        // URL-driven mode - close the entire application
+        sessionStorage.removeItem('AVASessionData');
+        removeCookie("AVAuser", { path: '/' });
+        try {
+          await Auth.signOut();
+        } catch (e) {
+          console.log('No existing Cognito session to sign out');
+        }
+        let jumpTo = window.location.origin;
+        window.location.replace(`${jumpTo}?client=${state.session.client_id}`);
+      }
     } else {
       // Normal admin mode - just close the dialog
       if (onClose) {
@@ -1724,7 +1766,7 @@ export default ({ onClose, options = {} }) => {
         minHeight: 0
       }}>
         {/* Name Prompt Stage */}
-        {reactData.stage === 'prompt_for_name' && (
+        {reactData.stage === 'prompt_for_name' && !reactData.verification_stage && (
           <Box style={{ marginTop: '16px' }}>
             <Typography variant="h6" style={{ marginBottom: '16px' }}>
               First, let's check to see if you already have an account. Please enter your name, e-Mail address, or phone number.  If we find a match, we'll ask you to verify your account.  If not, we'll help you create a new one.

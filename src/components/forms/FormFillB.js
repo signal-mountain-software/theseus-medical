@@ -1310,7 +1310,10 @@ export default ({ request = {}, onClose }) => {
 
   const handleMakeSelection = async (props) => {
     if (isEmpty(reactData.fields[props.prop].value)) {
-      reactData.fields[props.prop].value = [props.clickText];
+      reactData.fields[props.prop].value = props.singleValue ? props.clickText : [props.clickText];
+    }
+    else if (props.singleValue) {
+      reactData.fields[props.prop].value = props.clickText;
     }
     else {
       if (!Array.isArray(reactData.fields[props.prop].value)) {
@@ -1524,10 +1527,19 @@ export default ({ request = {}, onClose }) => {
                 dropdownHandle={true}
                 variant={'standard'}
                 dropdownPosition={'auto'}
-                value={reactData.fields[props.prop]?.value ? (reactData.fields[props.prop]?.value[0] || '') : ''}
+                values={(reactData.fields[props.prop]?.value && reactData.fields[props.prop]?.value.length > 0)
+                  ? (() => {
+                    let currentValue = Array.isArray(reactData.fields[props.prop]?.value) ? reactData.fields[props.prop]?.value[0] : reactData.fields[props.prop]?.value || '';
+                    if (currentValue) {
+                      return optionList.filter(option => option.value === currentValue);
+                    }
+                    return [{ label: 'English', value: 'en' }];
+                  })()
+                  : [{ label: 'English', value: 'en' }]
+                }
                 clearable={true}
                 clearOnSelect={false}
-                placeholder={reactData.fields[props.prop]?.value ? (reactData.fields[props.prop]?.value[0] || '') : ''}
+                placeholder={'Please select your preferred language'}
                 clearOnBlur={false}
                 key={`selectBox_selectdrop`}
                 searchable={true}
@@ -1539,14 +1551,16 @@ export default ({ request = {}, onClose }) => {
                 noDataLabel={''}
                 onInputChange={async (values) => {
                   await handleMakeSelection({
-                    clickText: values[0].label,
-                    prop: props.prop
+                    clickText: values[0].value,
+                    prop: props.prop,
+                    singleValue: (reactData.fields[props.prop]?.selectionObj?.max > 1) ? false : true
                   });
                 }}
                 onChange={async (values) => {
                   await handleMakeSelection({
-                    clickText: values[0].label,
-                    prop: props.prop
+                    clickText: values[0].value,
+                    prop: props.prop,
+                    singleValue: (reactData.fields[props.prop]?.selectionObj?.max > 1) ? false : true
                   });
                 }}
               />
@@ -1592,7 +1606,8 @@ export default ({ request = {}, onClose }) => {
                     onMouseDown={async () => {
                       await handleMakeSelection({
                         clickText: text,
-                        prop: props.prop
+                        prop: props.prop,
+                        singleValue: (reactData.fields[props.prop]?.selectionObj?.max > 1) ? false : true
                       });
                     }}
                     disableRipple
