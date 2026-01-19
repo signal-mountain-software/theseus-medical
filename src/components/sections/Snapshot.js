@@ -26,7 +26,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
   const makeLocation = () => {
     if (currentValues.peopleRec.hasOwnProperty('address') && currentValues.peopleRec.address) {
       if (!currentValues.peopleRec.address.address1 && currentValues.peopleRec.location) {
-        return currentValues.peopleRec.location || '';
+        return currentValues.peopleRec.location.replace(/undefined/g, '').trim() || '';
       }
       else {
         // Filter out nullish values and join with spaces
@@ -36,11 +36,11 @@ export default ({ currentValues, reactData, updateReactData }) => {
           currentValues.peopleRec.address.state
         ].filter(part => part != null && part !== ''); // Filter out null, undefined, and empty strings
         
-        return addressParts.join(' ').trim();
+        return addressParts.join(' ').replace(/undefined/g, '').trim();
       }
     }
     else {
-      return currentValues.peopleRec.location || '';
+      return currentValues.peopleRec.location.replace(/undefined/g, '').trim() || '';
     }
   };
 
@@ -144,7 +144,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
             // Filter to only show groups with no children (leaf nodes)
             const leafGroups = currentValues.peopleRec.groups.filter(group_id => {
               // Exclude if this group is '_top_'
-              if (group_id.toLowerCase() === '_top_') { return false; }
+              if (group_id.toLowerCase().includes('_top_')) { return false; }
               // Exclude if this group has children (exists in parent_of and has entries) AND I belong to at least one of those children
               let hasChildren = state.groups?.parent_of?.[group_id] && (state.groups.parent_of[group_id].length > 0);
               let belongsToChild = hasChildren && state.groups.parent_of[group_id].some(child_id => currentValues.peopleRec.groups.includes(child_id));
