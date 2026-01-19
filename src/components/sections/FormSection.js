@@ -201,7 +201,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
               });
               categoryList.add((formRec.category || 'Uncategorized').trim());
             }
-            if (this_doc.status === 'complete') {
+            if ((this_doc.status === 'complete') || (this_doc.status === 'save_final')) {
               // does this have an occerrence date?
               let occDate;
               if (this_doc.occurrence) {
@@ -386,8 +386,8 @@ export default ({ currentValues, reactData, updateReactData }) => {
       }
     }
     else if (!rObj || (rObj.completedDocs.length > 0)) {
-      pencilDisplayed.current = true;
-      return null;
+      greenPencilDisplayed.current = true;
+      return 'green';
     }
     else {
       redPencilDisplayed.current = true;
@@ -400,9 +400,9 @@ export default ({ currentValues, reactData, updateReactData }) => {
       checkCircleDisplayed.current = true;
       return 'green';
     }
-    if (!rObj || (rObj.completedDocs.length > 0)) {
+    else if (rObj.completedDocs && (rObj.completedDocs.length > 0)) {
       circleDisplayed.current = true;
-      return null;
+      return 'green';
     }
     else if (rObj.wipDocs.length > 0) {
       orangeCircleDisplayed.current = true;
@@ -532,9 +532,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                               margin: { right: 0.5 },
                                             })}
                                             onClick={() => {
-                                              let nowJ = new Date().getTime();
-                                              window.open(`${myDocs.completedDocs[0].location}?qt=${nowJ.toString()}`
-                                                , myDocs.completedDocs[0].date_completed);
+                                              editForm(person_id, this_formID);
                                             }}
                                             size='small'
                                           />
@@ -589,14 +587,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                             <Typography
                                               key={`name-col_form${form_index}`}
                                               onClick={() => {
-                                                if (myDocs.completedDocs.length > 0) {
-                                                  let nowJ = new Date().getTime();
-                                                  window.open(`${myDocs.completedDocs[0].location}?qt=${nowJ.toString()}`
-                                                    , myDocs.completedDocs[0].date_completed);
-                                                }
-                                                else if (!myDocs.view_only) {
-                                                  editForm(person_id, this_formID);
-                                                }
+                                                editForm(person_id, this_formID);
                                               }}
                                               style={AVATextStyle({
                                                 size: 1.5,
@@ -767,6 +758,27 @@ export default ({ currentValues, reactData, updateReactData }) => {
           })}
         </Box >
       }
+      {reactData.isViewingForm &&
+        <FormFillB
+          key={`docPerson-viewing_ffB`}
+          request={{
+            form_id: reactData.isViewingForm.form_id,
+            person_id: currentValues.peopleRec.person_id,
+            mode: 'viewOnly',
+            viewOnly: true,
+            formRec: reactData.masterFormList[reactData.isViewingForm.person_id].myFormListObj[reactData.isViewingForm.form_id].formRec,
+            options: { viewOnly: true },
+          }}
+          onClose={() => {
+            reactData.masterFormList[reactData.isViewingForm.person_id].myFormListObj[reactData.isViewingForm.form_id].isViewing = false;
+            updateReactData({
+              isViewingForm: false,
+              masterFormList: reactData.masterFormList
+            }, true);
+          }}
+        />
+      }
+
       {reactData.isAmendingForm &&
         <FormFillB
           key={`docPerson-amending_ffB`}
