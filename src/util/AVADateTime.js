@@ -151,10 +151,11 @@ export function makeDate(pInput, optionIn = {}) {
         targetDate.setHours(0, 0, 0, 0);
     }
 
+
     // validation
-    if (options.validation) {
+    if (options.validation || options.noFuture || options.noPast) {
         let foundError;
-        switch (options.validation) {
+        switch (options.validation || (options.noFuture ? 'noFuture' : (options.noPast ? 'noPast' : null))) {
             case 'noFuture': {
                 if (targetDate > currentDate) {
                     foundError =

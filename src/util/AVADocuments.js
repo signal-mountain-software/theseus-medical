@@ -226,7 +226,7 @@ export async function updateDocument({ docData, author, isNew = false, save_type
     if (url) {
         docOut.history[0].url = url;
     }
-    if (((save_type === 'printed') && !pending) || (save_type === 'uploaded')) {
+    if (((save_type === 'printed') && !pending) || (save_type === 'uploaded') || (save_type === 'save_final')) {
         docOut.status = 'complete';
     }
     else {

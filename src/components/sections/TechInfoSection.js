@@ -641,14 +641,14 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
             id='search_data'
             autoComplete='off'
             key={`techSection__search_data__${currentValues.peopleRec.person_id}__${errorList.hasOwnProperty('search_data') ? 'error' : 'ok'}`}
-            defaultValue={currentValues.peopleRec.search_data}
+            defaultValue={currentValues.peopleRec.search_data.replace(/undefined/g, '') || ''}
             onBlur={async (event) => {
               let updateObj = {
                 updateList:
                   [{
                     tableName: 'peopleRec',
                     fieldName: 'search_data',
-                    newData: event.target.value
+                    newData: event.target.value.replace(/undefined/g, '')
                   }]
               };
               await updateField(updateObj);
