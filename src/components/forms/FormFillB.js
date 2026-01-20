@@ -891,12 +891,14 @@ export default ({ request = {}, onClose }) => {
     }
 
     // Set type
+    let yesNoType = false;
     returnObj.type = field_variables.value?.type || field_variables.default?.type || 'text';
     // If 'select' type and custom_selection is true, set type to 'select&text'
     if (returnObj.type === 'select' && field_variables.custom_selection) {
       returnObj.type = 'select&text';
     }
     else if (returnObj.type === 'yes/no') {
+      yesNoType = true;
       returnObj.type = 'select';
       returnObj.selectionObj = {
         selectionList: ['yes', 'no'],
@@ -949,7 +951,7 @@ export default ({ request = {}, onClose }) => {
     });
 
     // Selection Obj should be set for the special case - type = select or type = select & text
-    if (returnObj.type.startsWith('select') || returnObj.type.startsWith('drop')) {
+    if (!yesNoType && (returnObj.type.startsWith('select') || returnObj.type.startsWith('drop'))) {
       returnObj.selectionObj = Object.assign({},
         { min: 0, max: 999 },
         field_variables.value,
