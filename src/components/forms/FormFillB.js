@@ -907,7 +907,7 @@ export default ({ request = {}, onClose }) => {
     else if (returnObj.type === 'family'
       && reactData.family_id) {
       let familyMembers = [];
-      if (reactData.familyRec && reactData.familyRec.primary_contact) {
+      if (reactData.familyRec) {
         // Add primary contact
         familyMembers.push({
           id: reactData.familyRec.primary_contact.id,
@@ -1052,6 +1052,7 @@ export default ({ request = {}, onClose }) => {
       }
     }
     formRec.stages.push({ stage_name: 'complete' });
+    // We have a person - do they have a familyRec?  If so, go ahead and get it
     updateReactData({
       peopleRec: reactData.peopleRec || {},
       formRec
@@ -1130,7 +1131,18 @@ export default ({ request = {}, onClose }) => {
         },
         TableName: "People"
       });
+      let familyRec = null;
+      if (gotPerson.family_groups && Array.isArray(gotPerson.family_groups) && gotPerson.family_groups.length > 0) {
+        familyRec = await getDb({
+          Key: {
+            client_id: state.session.client_id,
+            composite_key: gotPerson.family_groups[0]
+          },
+          TableName: "FamilyGroups"
+        })
+      }
       updateReactData({
+        familyRec: familyRec || null,
         family_id: gotPerson.family_groups ? gotPerson.family_groups[0] : (gotPerson.family_id || false),
         peopleRec: Object.assign({}, reactData.peopleRec || {}, { [pertains_to]: gotPerson })
       }, false);
@@ -1149,10 +1161,7 @@ export default ({ request = {}, onClose }) => {
       pertains_to_name = state.session.client_name;
     }
     else {
-      pertains_to_name = reactData.peopleRec[pertains_to]?.display_name || state.session.client_name;
-    }
-    if (!pertains_to_name && (reactData.peopleRec[pertains_to] && reactData.peopleRec[pertains_to].hasOwnProperty('name'))) {
-      pertains_to_name = (`${reactData.peopleRec[pertains_to]?.name.first} ${reactData.peopleRec[pertains_to]?.name.last}`).trim();
+      pertains_to_name = (`${reactData.peopleRec[pertains_to]?.name?.first} ${reactData.peopleRec[pertains_to]?.name?.last}` || state.session.client_name).trim();
     }
     let tempTitle;
     if (pertains_to_name) {
