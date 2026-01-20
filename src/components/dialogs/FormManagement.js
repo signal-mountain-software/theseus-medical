@@ -913,6 +913,16 @@ export default ({ defaults, onClose }) => {
     }, true);
   }
 
+  const makeColor = (status) => {
+    switch (status.slice(0, 7)) {
+      case 'complet': return 'green';
+      case 'in_proc': return 'orange';
+      case 'pending': return 'blue';
+      case 'not_sta': return 'red';
+      default: return 'red';
+    }
+  }
+
   React.useEffect(() => {
     initialize();
     window.addEventListener('resize', handleResize);
@@ -1430,16 +1440,7 @@ export default ({ defaults, onClose }) => {
                                   style={AVATextStyle({
                                     size: 1.5,
                                     margin: { right: 0.5 },
-                                    color: ((!reactData.masterPeopleList.hasOwnProperty(reactData.selectedPerson_id))
-                                      ? 'red'
-                                      : (!reactData.masterPeopleList[reactData.selectedPerson_id].hasOwnProperty(this_form)
-                                        ? 'red'
-                                        : ((reactData.masterPeopleList[reactData.selectedPerson_id][this_form].status.startsWith('complete'))
-                                          ? 'green'
-                                          : ((reactData.masterPeopleList[reactData.selectedPerson_id][this_form].status === 'not_started')
-                                            ? 'red'
-                                            : 'orange')
-                                        )))
+                                    color: makeColor(reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status || 'not_started')
                                   })}
                                   size='small'
                                 />
@@ -1456,16 +1457,7 @@ export default ({ defaults, onClose }) => {
                               style={AVATextStyle({
                                 size: 1.2,
                                 margin: { top: 0, bottom: 0 },
-                                color: ((!reactData.masterPeopleList.hasOwnProperty(reactData.selectedPerson_id))
-                                  ? 'red'
-                                  : (!reactData.masterPeopleList[reactData.selectedPerson_id].hasOwnProperty(this_form)
-                                    ? 'red'
-                                    : ((reactData.masterPeopleList[reactData.selectedPerson_id][this_form].status.startsWith('complete'))
-                                      ? 'green'
-                                      : ((reactData.masterPeopleList[reactData.selectedPerson_id][this_form].status === 'not_started')
-                                        ? 'red'
-                                        : 'orange')
-                                    )))
+                                color: makeColor(reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status || 'not_started')
                               })}
                               onClick={async () => {
                                 await formPeople(this_form);
@@ -1497,9 +1489,17 @@ export default ({ defaults, onClose }) => {
                                   margin: { left: 0.5, right: 0.5 },
                                 })}
                                 onClick={() => {
-                                  let nowJ = new Date().getTime();
-                                  window.open(`${reactData.masterFormList[this_form].memberList[reactData.selectedPerson_id].completedDocs[0].location}?qt=${nowJ.toString()}`
-                                    , reactData.masterFormList[this_form].memberList[reactData.selectedPerson_id].completedDocs[0].location);
+
+                                  updateReactData({
+                                    isEditing: {
+                                      calledFrom: 'people',
+                                      person_id: reactData.selectedPerson_id,
+                                      form_id: this_form,
+                                      document_id: (reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.completedDocs[0]?.document_id)
+                                    }
+                                  }, true);
+
+
                                 }}
                                 size='small'
                               />
@@ -1738,9 +1738,7 @@ export default ({ defaults, onClose }) => {
                                 style={AVATextStyle({
                                   size: 1.5,
                                   margin: { right: 0.5 },
-                                  color: (((reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'not_started') || (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'completed'))
-                                    ? 'red'
-                                    : 'orange')
+                                  color: makeColor(reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status || 'not_started')
                                 })}
                                 size='small'
                               />
@@ -1826,9 +1824,14 @@ export default ({ defaults, onClose }) => {
                                   margin: { left: 0.5, right: 0.5 },
                                 })}
                                 onClick={() => {
-                                  let nowJ = new Date().getTime();
-                                  window.open(`${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].completedDocs[0].location}?qt=${nowJ.toString()}`
-                                    , reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].completedDocs[0].location);
+                                  updateReactData({
+                                    isEditing: {
+                                      calledFrom: 'forms',
+                                      person_id: this_person,
+                                      form_id: reactData.selectedForm_id,
+                                      document_id: reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].completedDocs[0].document_id
+                                    }
+                                  }, true);
                                 }}
                                 size='small'
                               />
@@ -1869,7 +1872,7 @@ export default ({ defaults, onClose }) => {
                                       style={AVATextStyle({
                                         size: 1,
                                         margin: { right: 0.5 },
-                                        color: ((this_assignedDoc.status === 'not_started') ? 'red' : 'orange')
+                                        color: makeColor(this_assignedDoc.status)
                                       })}
                                       size='small'
                                       onClick={async () => {
@@ -1913,9 +1916,15 @@ export default ({ defaults, onClose }) => {
                                     })}
                                     size='small'
                                     onClick={async () => {
-                                      let nowJ = new Date().getTime();
-                                      window.open(`${this_assignedDoc.location}?qt=${nowJ.toString()}`
-                                        , this_assignedDoc.location);
+
+                                      updateReactData({
+                                        isEditing: {
+                                          calledFrom: 'forms',
+                                          person_id: this_person,
+                                          form_id: reactData.selectedForm_id,
+                                          document_id: reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].completedDocs[0].document_id
+                                        }
+                                      }, true);
                                     }}
                                   />
                                 }
