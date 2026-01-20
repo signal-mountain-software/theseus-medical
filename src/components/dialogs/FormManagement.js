@@ -28,6 +28,7 @@ import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import EditIcon from '@material-ui/icons/Edit';
 import VisibilityIcon from '@material-ui/icons/Visibility';
+import LockIcon from '@material-ui/icons/Lock';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
 
@@ -485,7 +486,8 @@ export default ({ defaults, onClose }) => {
           event_time: eventTime,
           event_key: this_doc.event_key,
           location: this_doc.history[0].url,
-          status: this_doc.status
+          status: this_doc.status,
+          formLocked: this_doc.formLocked || false
         });
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].dated_docs = true;
         reactData.masterFormList[this_doc.form_type].dated_docs = true;
@@ -520,7 +522,8 @@ export default ({ defaults, onClose }) => {
         last_update: this_doc.history[0].last_update,
         date_completed: makeDate(this_doc.history[0].last_update).relative,
         title: this_doc.title,
-        amendments: this_doc.amendments
+        amendments: this_doc.amendments,
+        formLocked: this_doc.formLocked || false
       };
       if ((completed_count === 0) || (this_doc.history[0].last_update > reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs[0].last_update)) {
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.unshift(cObj);
@@ -554,7 +557,8 @@ export default ({ defaults, onClose }) => {
           last_update: this_doc.history[0].last_update,
           doc_status: this_doc.status,
           due_date: this_doc.due_date || reactData.masterFormList[this_doc.form_type].dueDate,
-          title: this_doc.title
+          title: this_doc.title,
+          formLocked: this_doc.formLocked || false
         });
       }
       else {
@@ -563,7 +567,8 @@ export default ({ defaults, onClose }) => {
           last_update: this_doc.history[0].last_update,
           doc_status: this_doc.status,
           due_date: this_doc.due_date || reactData.masterFormList[this_doc.form_type].dueDate,
-          title: this_doc.title
+          title: this_doc.title,
+          formLocked: this_doc.formLocked || false
         });
       }
     }
@@ -921,7 +926,7 @@ export default ({ defaults, onClose }) => {
       case 'not_sta': return 'red';
       default: return 'red';
     }
-  }
+  };
 
   React.useEffect(() => {
     initialize();
@@ -1398,53 +1403,81 @@ export default ({ defaults, onClose }) => {
                               margin: { top: 0, bottom: 0.8 }
                             })}
                           >
-                            {(reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status === 'pending')
+                            {(reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.formLocked
+                              || reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.completedDocs[0]?.formLocked)
                               ?
                               <React.Fragment>
-                                <CheckCircleIcon
-                                  key={`radio-button_form${gX}edit`}
-                                  id={`radio-button_form${gX}edit`}
+                                <LockIcon
+                                  key={`radio-button_form${gX}lock`}
+                                  id={`radio-button_form${gX}lock`}
                                   onClick={() => {
                                     updateReactData({
                                       isEditing: {
                                         calledFrom: 'people',
                                         person_id: reactData.selectedPerson_id,
                                         form_id: this_form,
-                                        document_id: (reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.document_id || 'new')
+                                        document_id: (reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.document_id
+                                          || reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.completedDocs[0]?.document_id
+                                          || 'new')
                                       }
                                     }, true);
                                   }}
                                   style={AVATextStyle({
                                     size: 1.5,
                                     margin: { right: 0.5 },
-                                    color: 'orange'
+                                    color: 'gray'
                                   })}
                                   size='small'
                                 />
                               </React.Fragment>
                               :
-                              <React.Fragment>
-                                <EditIcon
-                                  key={`radio-button_form${gX}edit`}
-                                  id={`radio-button_form${gX}edit`}
-                                  onClick={() => {
-                                    updateReactData({
-                                      isEditing: {
-                                        calledFrom: 'people',
-                                        person_id: reactData.selectedPerson_id,
-                                        form_id: this_form,
-                                        document_id: ((reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status.startsWith('complete')) ? 'new' : (reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.document_id || 'new'))
-                                      }
-                                    }, true);
-                                  }}
-                                  style={AVATextStyle({
-                                    size: 1.5,
-                                    margin: { right: 0.5 },
-                                    color: makeColor(reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status || 'not_started')
-                                  })}
-                                  size='small'
-                                />
-                              </React.Fragment>
+                              (reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status === 'pending')
+                                ?
+                                <React.Fragment>
+                                  <CheckCircleIcon
+                                    key={`radio-button_form${gX}edit`}
+                                    id={`radio-button_form${gX}edit`}
+                                    onClick={() => {
+                                      updateReactData({
+                                        isEditing: {
+                                          calledFrom: 'people',
+                                          person_id: reactData.selectedPerson_id,
+                                          form_id: this_form,
+                                          document_id: (reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.document_id || 'new')
+                                        }
+                                      }, true);
+                                    }}
+                                    style={AVATextStyle({
+                                      size: 1.5,
+                                      margin: { right: 0.5 },
+                                      color: 'orange'
+                                    })}
+                                    size='small'
+                                  />
+                                </React.Fragment>
+                                :
+                                <React.Fragment>
+                                  <EditIcon
+                                    key={`radio-button_form${gX}edit`}
+                                    id={`radio-button_form${gX}edit`}
+                                    onClick={() => {
+                                      updateReactData({
+                                        isEditing: {
+                                          calledFrom: 'people',
+                                          person_id: reactData.selectedPerson_id,
+                                          form_id: this_form,
+                                          document_id: ((reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status.startsWith('complete')) ? 'new' : (reactData.masterFormList[this_form].memberList?.[reactData.selectedPerson_id]?.wipDocs[0]?.document_id || 'new'))
+                                        }
+                                      }, true);
+                                    }}
+                                    style={AVATextStyle({
+                                      size: 1.5,
+                                      margin: { right: 0.5 },
+                                      color: makeColor(reactData.masterPeopleList[reactData.selectedPerson_id]?.[this_form]?.status || 'not_started')
+                                    })}
+                                    size='small'
+                                  />
+                                </React.Fragment>
                             }
                             <Typography
                               key={`g_text_end_group-${gX}`}
@@ -1680,7 +1713,33 @@ export default ({ defaults, onClose }) => {
                               }, true);
                             }}
                           >
-                            {!reactData.masterFormList[reactData.selectedForm_id].dated_docs &&
+                            {(reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.formLocked
+                              || reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.formLocked)
+                              ?
+                              <LockIcon
+                                key={`radio-button_person${cX}lock`}
+                                id={`radio-button_person${cX}lock`}
+                                onClick={() => {
+                                  updateReactData({
+                                    isEditing: {
+                                      calledFrom: 'forms',
+                                      person_id: this_person,
+                                      form_id: reactData.selectedForm_id,
+                                      document_id: (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id
+                                        || reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.document_id
+                                        || 'new')
+                                    }
+                                  }, true);
+                                }}
+                                style={AVATextStyle({
+                                  size: 1.5,
+                                  margin: { right: 0.5 },
+                                  color: 'gray'
+                                })}
+                                size='small'
+                              />
+                              :
+                              !reactData.masterFormList[reactData.selectedForm_id].dated_docs &&
                               (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'pending')
                               &&
                               <CheckCircleIcon
@@ -1704,7 +1763,9 @@ export default ({ defaults, onClose }) => {
                                 size='small'
                               />
                             }
-                            {!reactData.masterFormList[reactData.selectedForm_id].dated_docs &&
+                            {!(reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.formLocked
+                              || reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.formLocked) &&
+                              !reactData.masterFormList[reactData.selectedForm_id].dated_docs &&
                               (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status !== 'pending')
                               &&
                               <EditIcon
@@ -2079,7 +2140,8 @@ export default ({ defaults, onClose }) => {
                     last_update: new Date().getTime(),
                     doc_status: 'in_process',
                     due_date: reactData.masterFormList[reactData.isEditing.form_id].dueDate,
-                    title: statusObj.document_title
+                    title: statusObj.document_title,
+                    formLocked: statusObj.formLocked || false,
                   });
                 }
                 else {
@@ -2105,7 +2167,8 @@ export default ({ defaults, onClose }) => {
                   location: statusObj.location,
                   last_update: new Date().getTime(),
                   date_completed: makeDate(new Date().getTime()).relative,
-                  title: statusObj.document_title
+                  title: statusObj.document_title,
+                  formLocked: statusObj.formLocked || false,
                 });
               }
               updateReactData({

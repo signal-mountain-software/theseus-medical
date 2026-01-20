@@ -12,6 +12,7 @@ import EditIcon from '@material-ui/icons/Edit';
 import AddCircleIcon from '@material-ui/icons/AddCircle';
 import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
 import DynamicFeedIcon from '@material-ui/icons/DynamicFeed';
+import LockIcon from '@material-ui/icons/Lock';
 
 import FormFillB from '../forms/FormFillB';
 
@@ -224,7 +225,8 @@ export default ({ currentValues, reactData, updateReactData }) => {
                 date_completed: makeDate(this_doc.history[0].last_update).relative,
                 title: this_doc.title,
                 amendments: this_doc.amendments,
-                occDate: occDate
+                occDate: occDate,
+                formLocked: this_doc.formLocked || false
               };
               myFormListObj[this_doc.form_type].completedDocs.push(cObj);
             }
@@ -235,7 +237,8 @@ export default ({ currentValues, reactData, updateReactData }) => {
                 field_values: this_doc.field_values,
                 doc_status: await setPersonalStatus({ docRec: this_doc, formRec: myFormListObj[this_doc.form_type].formRec }),
                 due_date: this_doc.due_date || myFormListObj[this_doc.form_type].dueDate,
-                title: this_doc.title
+                title: this_doc.title,
+                formLocked: this_doc.formLocked || false
               };
               const shouldUnshift = (myFormListObj[this_doc.form_type].wipDocs.length > 0) && (myFormListObj[this_doc.form_type].wipDocs[0].last_update < this_doc.history[0].last_update);
               myFormListObj[this_doc.form_type].wipDocs[shouldUnshift ? 'unshift' : 'push'](wipDoc);
@@ -246,7 +249,8 @@ export default ({ currentValues, reactData, updateReactData }) => {
                 last_update: this_doc.history[0].last_update,
                 field_values: this_doc.field_values,
                 due_date: this_doc.due_date || myFormListObj[this_doc.form_type].dueDate,
-                title: this_doc.title
+                title: this_doc.title,
+                formLocked: this_doc.formLocked || false
               });
             }
           }
@@ -523,14 +527,13 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                       justifyContent='center'
                                       alignItems='center'
                                     >
-                                      {((myDocs.completedDocs.length > 0) &&
-                                        (myDocs.wipDocs.length === 0)) ?
+                                      {(myDocs.wipDocs[0]?.formLocked || myDocs.completedDocs[0]?.formLocked) ?
                                         <React.Fragment>
-                                          <CheckCircleIcon
-                                            key={`radio-button_form${form_index}off`}
-                                            id={`radio-button_form${form_index}off`}
+                                          <LockIcon
+                                            key={`radio-button_form${form_index}locked`}
+                                            id={`radio-button_form${form_index}locked`}
                                             style={AVATextStyle({
-                                              color: setCheckCircleColor(),
+                                              color: 'gray',
                                               size: 1.5,
                                               margin: { right: 0.5 },
                                             })}
@@ -540,45 +543,62 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                             size='small'
                                           />
                                         </React.Fragment>
-                                        :
-                                        ((!myDocs.view_only
-                                          || (
-                                            (myDocs.wipDocs.length > 0)
-                                            && myDocs.wipDocs[0].hasOwnProperty('assigned_to')
-                                            && myDocs.wipDocs[0].assigned_to.hasOwnProperty(state.session.patient_id)
-                                            && myDocs.wipDocs[0].assigned_to[state.session.patient_id] !== 'view_only'
-                                          )
-                                        )
-                                          ?
+                                        : ((myDocs.completedDocs.length > 0) &&
+                                          (myDocs.wipDocs.length === 0)) ?
                                           <React.Fragment>
-                                            <EditIcon
-                                              key={`radio-button_form${form_index}edit`}
-                                              id={`radio-button_form${form_index}edit`}
+                                            <CheckCircleIcon
+                                              key={`radio-button_form${form_index}off`}
+                                              id={`radio-button_form${form_index}off`}
+                                              style={AVATextStyle({
+                                                color: setCheckCircleColor(),
+                                                size: 1.5,
+                                                margin: { right: 0.5 },
+                                              })}
                                               onClick={() => {
                                                 editForm(person_id, this_formID);
                                               }}
-                                              style={AVATextStyle({
-                                                size: 1.5,
-                                                margin: { right: 0.5 },
-                                                color: setPencilColor(myDocs)
-                                              })}
                                               size='small'
                                             />
                                           </React.Fragment>
                                           :
-                                          <React.Fragment>
-                                            <RadioButtonUncheckedIcon
-                                              key={`radio-button_open_form${form_index}edit`}
-                                              style={AVATextStyle({
-                                                size: 1.5,
-                                                margin: { right: 0.5 },
-                                                color: setCheckCircleColor(myDocs)
-                                              })}
-                                              size='small'
-                                            />
-                                          </React.Fragment>
+                                          ((!myDocs.view_only
+                                            || (
+                                              (myDocs.wipDocs.length > 0)
+                                              && myDocs.wipDocs[0].hasOwnProperty('assigned_to')
+                                              && myDocs.wipDocs[0].assigned_to.hasOwnProperty(state.session.patient_id)
+                                              && myDocs.wipDocs[0].assigned_to[state.session.patient_id] !== 'view_only'
+                                            )
+                                          )
+                                            ?
+                                            <React.Fragment>
+                                              <EditIcon
+                                                key={`radio-button_form${form_index}edit`}
+                                                id={`radio-button_form${form_index}edit`}
+                                                onClick={() => {
+                                                  editForm(person_id, this_formID);
+                                                }}
+                                                style={AVATextStyle({
+                                                  size: 1.5,
+                                                  margin: { right: 0.5 },
+                                                  color: setPencilColor(myDocs)
+                                                })}
+                                                size='small'
+                                              />
+                                            </React.Fragment>
+                                            :
+                                            <React.Fragment>
+                                              <RadioButtonUncheckedIcon
+                                                key={`radio-button_open_form${form_index}edit`}
+                                                style={AVATextStyle({
+                                                  size: 1.5,
+                                                  margin: { right: 0.5 },
+                                                  color: setCheckCircleColor(myDocs)
+                                                })}
+                                                size='small'
+                                              />
+                                            </React.Fragment>
 
-                                        )
+                                          )
                                       }
                                       {(() => {
                                         const pencilColor = setPencilColor(myDocs);

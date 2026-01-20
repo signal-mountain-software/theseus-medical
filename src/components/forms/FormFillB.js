@@ -14,6 +14,8 @@ import Select from "react-dropdown-select";
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import EditIcon from '@material-ui/icons/Edit';
 import PrintIcon from '@material-ui/icons/Print';
+import LockIcon from '@material-ui/icons/Lock';
+import LockOpenIcon from '@material-ui/icons/LockOpen';
 import { Dialog, DialogContent, Snackbar, Box, Typography, FormControlLabel, Button, TextField, Checkbox } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -218,6 +220,7 @@ export default ({ request = {}, onClose }) => {
     options,
     document_id: options.document_id,
     document_title: options.document_title,
+    administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
     fields: {},
     /* 
     fields is keyed by field_name: {
@@ -397,7 +400,8 @@ export default ({ request = {}, onClose }) => {
         document_title: reactData.document_title,
         document_status: (reactData.clientSampleMode ? 'cancel' : 'work_in_process'),
         pertains_to: reactData.pertains_to,
-        recWritten: reactData.recWritten
+        recWritten: reactData.recWritten,
+        formLocked: reactData.docRec?.formLocked
       });
     }
     else if (minutesSinceActive > 3) {
@@ -1141,7 +1145,7 @@ export default ({ request = {}, onClose }) => {
             composite_key: gotPerson.family_groups[0]
           },
           TableName: "FamilyGroups"
-        })
+        });
       }
       updateReactData({
         familyRec: familyRec || null,
@@ -1613,7 +1617,7 @@ export default ({ request = {}, onClose }) => {
                     name={`${props.prop}_${tIndex}`}
                     key={`CheckGroup__${props.prop}_${tIndex}`}
                     size='small'
-                    disabled={reactData.fields[props.prop].options.viewOnly || reactData.viewOnlyMode}
+                    disabled={reactData.fields[props.prop].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
                     checked={reactData.fields[props.prop].value && reactData.fields[props.prop].value.includes(text)}
                     onMouseDown={async () => {
                       await handleMakeSelection({
@@ -1644,7 +1648,7 @@ export default ({ request = {}, onClose }) => {
                     })}
                     className={classes.radioDays}
                     autoComplete='off'
-                    disabled={reactData.fields[props.prop].options.viewOnly || reactData.viewOnlyMode}
+                    disabled={reactData.fields[props.prop].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
                     id={`${props.prop}_otherText`}
                     defaultValue={(reactData.fields[props.prop].value && reactData.fields[props.prop].bonusText)
                       ? reactData.fields[props.prop].bonusText
@@ -1705,6 +1709,7 @@ export default ({ request = {}, onClose }) => {
                       name={`${props.prop}_${tIndex}`}
                       key={`FamilyCheckGroup__${props.prop}_${tIndex}`}
                       size='small'
+                      disabled={reactData.fields[props.prop].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
                       checked={reactData.fields[props.prop].value && reactData.fields[props.prop].value.includes(member.id)}
                       onClick={async () => {
                         await handleMakeSelection({
@@ -1739,7 +1744,8 @@ export default ({ request = {}, onClose }) => {
   const handleAbort = () => {
     onClose(0, {
       document_id: null,
-      document_status: 'aborted'
+      document_status: 'aborted',
+      formLocked: reactData.docRec?.formLocked
     });
   };
 
@@ -1869,7 +1875,154 @@ export default ({ request = {}, onClose }) => {
     }
   };
 
-  const handleSave = async ({ document_id, final, timeout, pending = false }) => {
+  const handleToggleLock = async () => {
+    const currentLockedState = reactData.docRec?.formLocked;
+    
+    // If currently unlocked, we're locking - validate first
+    if (!currentLockedState) {
+      // Run validation like handleReview does
+      let messageList = ['There are problems with this form'];
+      let errors_on_Form = 0;
+      let form_stageStatus = {};
+      
+      for (const sectionObj of reactData.sections) {
+        let stage_name = sectionObj.belongs_to_stage || 'default';
+        if (!form_stageStatus.hasOwnProperty(stage_name)) {
+          form_stageStatus[stage_name] = {
+            errors_in_stage: 0,
+          };
+        }
+        if (okToShowSection(sectionObj)) {
+          for (const this_field of sectionObj.fields) {
+            if (reactData.fields[this_field].ignore) {
+              continue;
+            }
+            reactData.fields[this_field].isError = false;
+            if (reactData.fields[this_field]?.options?.ifEmpty && isEmpty(reactData.fields[this_field].value)) {
+              reactData.fields[this_field].value = reconcilePrompt({
+                rawValue: reactData.fields[this_field].options.ifEmpty,
+                this_field
+              });
+            }
+            if (reactData.fields[this_field]?.options?.required || reactData.fields[this_field]?.value?.required) {
+              const signature_ok = (reactData.fields[this_field].type === 'signature')
+                ? (signatureRef[reactData.fields[this_field].options.sigRefNumber].current
+                  && (!signatureRef[reactData.fields[this_field].options.sigRefNumber].current.isEmpty()))
+                : null;
+              if (!signature_ok ?? isEmpty(reactData.fields[this_field].value)) {
+                reactData.fields[this_field].errorMessage = `${reconcilePrompt({
+                  rawValue: reactData.fields[this_field].prompt?.value,
+                  this_field
+                })} is required`;
+                reactData.fields[this_field].isError = true;
+                messageList.push(reactData.fields[this_field].errorMessage);
+                errors_on_Form++;
+                form_stageStatus[stage_name].errors_in_stage++;
+              }
+            }
+            else if (reactData.fields[this_field].type.startsWith('select')) {
+              let numberOfSelections = [reactData.fields[this_field].value ?? []].flat().length;
+              if (numberOfSelections < (reactData.fields[this_field].selectionObj.min ?? 0)) {
+                const prompt_part = reconcilePrompt({
+                  rawValue: reactData.fields[this_field].prompt?.value,
+                  this_field
+                });
+                reactData.fields[this_field].errorMessage = numberOfSelections === 0
+                  ? `Please make a selection for ${prompt_part}`
+                  : `You must make at least ${reactData.fields[this_field].selectionObj.min} selections for ${prompt_part}`;
+                reactData.fields[this_field].isError = true;
+                messageList.push(reactData.fields[this_field].errorMessage);
+                errors_on_Form++;
+                form_stageStatus[stage_name].errors_in_stage++;
+              }
+            }
+          }
+        }
+        else {
+          form_stageStatus[stage_name].errors_in_stage++;
+        }
+      }
+      
+      let current_form_stage = null;
+      for (const this_stage of reactData.formStages) {
+        if (form_stageStatus.hasOwnProperty(this_stage.stage_name)) {
+          if (form_stageStatus[this_stage.stage_name].errors_in_stage > 0) {
+            current_form_stage = this_stage.stage_name;
+            break;
+          }
+        }
+      }
+      if (!current_form_stage) {
+        current_form_stage = 'complete';
+      }
+      
+      // If errors exist, show them and don't lock
+      if (errors_on_Form) {
+        updateReactData({
+          messageList,
+          errors_on_Form,
+          fields: reactData.fields,
+          stage: 'confirm',
+          current_formStage: current_form_stage
+        }, true);
+        return;
+      }
+      
+      // No errors - proceed with locking and saving
+      // Update docRec with locked state (not formRec)
+      const updatedDocRec = Object.assign({}, reactData.docRec, {
+        formLocked: true
+      });
+      
+      // Update local state
+      updateReactData({
+        docRec: updatedDocRec
+      }, false);
+      
+      try {
+        // Save the document as final with formLocked = true
+        await handleSave({
+          document_id: reactData.document_id,
+          final: true,
+          formLocked: true
+        });
+        
+        // Exit the form
+        onClose('complete', {
+          document_id: reactData.document_id,
+          document_title: reactData.document_title,
+          document_status: 'complete',
+          pertains_to: reactData.pertains_to,
+          formLocked: true
+        });
+      } catch (error) {
+        cl('Error locking and saving form:', error);
+      }
+    } else {
+      // Currently locked, just unlock (toggle behavior)
+      const updatedDocRec = Object.assign({}, reactData.docRec, {
+        formLocked: false
+      });
+      
+      // Update local state and save document
+      updateReactData({
+        docRec: updatedDocRec
+      }, true);
+      
+      // Save the unlocked state to the document
+      try {
+        await handleSave({
+          document_id: reactData.document_id,
+          final: false,
+          formLocked: false
+        });
+      } catch (error) {
+        cl('Error unlocking form:', error);
+      }
+    }
+  };
+
+  const handleSave = async ({ document_id, final, timeout, pending = false, formLocked }) => {
     let response = { goodPut: true };
     // always save this in DocumentsInProcess
     if (!document_id) {
@@ -2095,7 +2248,8 @@ export default ({ request = {}, onClose }) => {
       form_type: reactData.form_id,
       client_id_form_type: `${state.session.client_id}%%${reactData.form_id}`,
       field_values,
-      options: reactData.formRec.options
+      options: reactData.formRec.options,
+      formLocked: formLocked !== undefined ? formLocked : (reactData.docRec?.formLocked || false)
     };
     if (reactData.docRec?.history) {
       docData.history = reactData.docRec?.history;
@@ -2810,8 +2964,8 @@ export default ({ request = {}, onClose }) => {
                                     className={classes.inputDisplay}
                                     multiline={(reactData.fields[this_field].prompt?.rows || reactData.fields[this_field].value?.rows || 1) > 1}
                                     variant={(reactData.fields[this_field].prompt?.rows || reactData.fields[this_field].value?.rows || 1) > 1 ? 'outlined' : 'standard'}
-                                    disabled={reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode}
-                                    InputProps={{ disableUnderline: reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode }}
+                                    disabled={reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
+                                    InputProps={{ disableUnderline: reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked }}
                                     style={AVATextStyle({
                                       lineHeight: 1,
                                       width: `${reactData.fields[this_field].prompt?.width || 200}px`,
@@ -2931,8 +3085,8 @@ export default ({ request = {}, onClose }) => {
                                   id={`field__${fieldNdx}`}
                                   className={classes.inputDisplay}
                                   autoComplete='off'
-                                  disabled={reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode}
-                                  InputProps={{ disableUnderline: reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode }}
+                                  disabled={reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
+                                  InputProps={{ disableUnderline: reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked }}
                                   key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
                                     ? reactData.fields[this_field].valueText
                                     : ''}`}
@@ -3031,8 +3185,8 @@ export default ({ request = {}, onClose }) => {
                                 <TextField
                                   id={`field__${fieldNdx}`}
                                   className={classes.inputDisplay}
-                                  disabled={reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode}
-                                  InputProps={{ disableUnderline: reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode }}
+                                  disabled={reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
+                                  InputProps={{ disableUnderline: reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked }}
                                   autoComplete='off'
                                   key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
                                     ? reactData.fields[this_field].value
@@ -3351,7 +3505,22 @@ export default ({ request = {}, onClose }) => {
                 {'Exit'}
               </Button>
               <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-                {!reactData.formRec?.options?.noSaveContinue && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode &&
+               {reactData.administrative_account &&
+                <Button
+                  onClick={handleToggleLock}
+                  className={AVAClass.AVAButton}
+                  style={{ 
+                    color: reactData.docRec?.formLocked ? 'green' : 'red',                     
+                    borderColor: reactData.docRec?.formLocked ? 'green' : 'red',
+                    borderWidth: 2,
+                    borderStyle: 'solid',}}
+                  size='small'
+                  startIcon={reactData.docRec?.formLocked ? <LockOpenIcon /> : <LockIcon />}
+                >
+                  {reactData.docRec?.formLocked ? 'Unlock' : 'Lock/Save'}
+                </Button>
+              }
+                {!reactData.formRec?.options?.noSaveContinue && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
                   <Button
                     onClick={async () => {
                       const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
@@ -3367,7 +3536,7 @@ export default ({ request = {}, onClose }) => {
                     {isMobile() ? 'Save' : 'Save/Continue'}
                   </Button>
                 }
-                {!reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode &&
+                {!reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
                   <Button
                     onClick={async () => {
                       await handleReview();
@@ -3379,7 +3548,7 @@ export default ({ request = {}, onClose }) => {
                     {'Finish'}
                   </Button>
                 }
-                {!reactData.formRec.upload_only && !reactData.viewOnlyMode &&
+                {!reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
                   <PrintIcon
                     classes={{ root: classes.rowButton }}
                     size='medium'
@@ -3391,7 +3560,7 @@ export default ({ request = {}, onClose }) => {
                     edge="start"
                   />
                 }
-                {!reactData.clientSampleMode && !reactData.viewOnlyMode &&
+                {!reactData.clientSampleMode && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
                   <CloudUploadIcon
                     classes={{ root: classes.rowButton }}
                     style={{ marginLeft: '16px' }}
@@ -3456,7 +3625,8 @@ export default ({ request = {}, onClose }) => {
                     nextAction: (reactData.formRec?.options?.onFinish
                       ? makeNextAction({ instruction: reactData.formRec?.options?.onFinish })
                       : null
-                    )
+                    ),
+                    formLocked: reactData.docRec?.formLocked
                   }
                 );
               };
@@ -3536,7 +3706,8 @@ export default ({ request = {}, onClose }) => {
                     nextAction: (reactData.formRec?.options?.onFinish
                       ? makeNextAction({ instruction: reactData.formRec?.options?.onFinish })
                       : null
-                    )
+                    ),
+                    formLocked: reactData.docRec?.formLocked
                   }
                 );
               }
@@ -3562,7 +3733,8 @@ export default ({ request = {}, onClose }) => {
                     document_title: reactData.document_title,
                     document_status: 'work_in_process',
                     pertains_to: reactData.pertains_to,
-                    recWritten: reactData.recWritten
+                    recWritten: reactData.recWritten,
+                    formLocked: reactData.docRec?.formLocked
                   }
                 );
               }
@@ -3570,7 +3742,8 @@ export default ({ request = {}, onClose }) => {
                 onClose('aborted',
                   {
                     document_id: 'n/a',
-                    document_status: 'aborted'
+                    document_status: 'aborted',
+                    formLocked: reactData.docRec?.formLocked
                   }
                 );
               }
