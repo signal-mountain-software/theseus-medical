@@ -312,6 +312,49 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
       <Typography
         style={AVATextStyle({ margin: { top: 1 } })}
       >
+        {'When User doesn\'t specify a choice, prefer which messaging method?'}
+      </Typography>
+      <Box flexGrow={2} display='flex' alignItems='center'
+        justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+        <Typography
+          style={AVATextStyle({
+            size: 0.8, margin: { right: 0.8 },
+            bold: !currentValues.customizationRecs.client_style.customization_value.preferred_communication ||
+              currentValues.customizationRecs.client_style.customization_value.preferred_communication !== 'text'
+          })}
+        >
+          {'e-Mail Preferred'}
+        </Typography>
+        <Switch
+          checked={currentValues.customizationRecs.client_style.customization_value?.preferred_communication === 'text'}
+          onClick={async (event) => {
+            await updateField({
+              updateList:
+                [{
+                  tableName: 'customizationRecs',
+                  fieldName: 'client_style.customization_value.preferred_communication',
+                  newData: !currentValues.customizationRecs.client_style.customization_value.preferred_communication ? 'email' :
+                    (currentValues.customizationRecs.client_style.customization_value.preferred_communication === 'text' ? 'email' : 'text')
+                }]
+            });
+          }}
+          name="MessagingStyle"
+          color="primary"
+        />
+        <Typography
+          style={AVATextStyle({
+            size: 0.8, margin: { left: 0.8 },
+            bold: currentValues.customizationRecs.client_style.customization_value.preferred_communication === 'text'
+          })}
+        >
+          {'Text Messages Preferred'}
+        </Typography>
+      </Box>
+
+
+      <Typography
+        style={AVATextStyle({ margin: { top: 1 } })}
+      >
         {'Mandatory Passwords'}
       </Typography>
       <Box flexGrow={2} display='flex' alignItems='center'
@@ -336,7 +379,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
                 }]
             });
           }}
-          name="MessagingStyle"
+          name="PasswordStyle"
           color="primary"
         />
         <Typography
@@ -423,7 +466,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
                 }]
             });
           }}
-          name="MessagingStyle"
+          name="ShowFFormsInProfile"
           color="primary"
         />
         <Typography

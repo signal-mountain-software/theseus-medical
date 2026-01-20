@@ -1097,12 +1097,27 @@ export default ({ onClose, options = {} }) => {
       let preferred_methods = ['AVA'];
       let preferred_method = 'AVA';
 
-      if (cellForStorage) {
-        preferred_methods = ['sms'];
-        preferred_method = 'sms';
-      } else if (email) {
-        preferred_methods = ['email'];
-        preferred_method = 'email';
+      let client_preference = state.session?.client_style?.preferred_communication || 'email';
+
+      if (client_preference === 'sms' || client_preference === 'text') {
+        if (cellForStorage) {
+          preferred_methods = ['sms'];  
+          preferred_method = 'sms';
+        }
+        else if (email) {
+          preferred_methods = ['email'];
+          preferred_method = 'email';
+        }
+      }
+      else {
+        if (email) {
+          preferred_methods = ['email'];
+          preferred_method = 'email';
+        }
+        else if (cellForStorage) {
+          preferred_methods = ['sms'];
+          preferred_method = 'sms';
+        }
       }
 
       // Build search data following PeopleMaintenance.js pattern (lines 834-854)
