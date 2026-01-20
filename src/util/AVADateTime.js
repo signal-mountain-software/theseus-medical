@@ -82,7 +82,7 @@ export function makeDate(pInput, optionIn = {}) {
         targetDate = new Date(pInput);
     }
     else {
-        if (Number(pInput).toString() === pInput.replace(/^0+/, '')) {
+        if ((typeof pInput) === 'string' && (Number(pInput).toString() === pInput.toString().replace(/^0+/, ''))) {
             console.log(Number(pInput).toString());
             pInput = Number(pInput);
         }  // convert a string that is all digits to its numeric equivalent
