@@ -434,6 +434,9 @@ export default ({ currentValues, reactData, updateReactData }) => {
     else if (reactData.masterFormList[this_person_id].myFormListObj[this_formID].assignedDocs.length > 0) {
       reactData.masterFormList[this_person_id].myFormListObj[this_formID].isUpdating = reactData.masterFormList[this_person_id].myFormListObj[this_formID].assignedDocs[0].document_id;
     }
+    else if (reactData.masterFormList[this_person_id].myFormListObj[this_formID].completedDocs.length > 0) {
+      reactData.masterFormList[this_person_id].myFormListObj[this_formID].isUpdating = reactData.masterFormList[this_person_id].myFormListObj[this_formID].completedDocs[0].document_id;
+    }
     else {
       reactData.masterFormList[this_person_id].myFormListObj[this_formID].isUpdating = 'new';
     }
@@ -716,6 +719,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                           form_id: this_formID,
                                           document_id: myDocs.isUpdating,
                                           person_id: person_id || currentValues.peopleRec.person_id,
+                                          open_complete: true
                                         }}
                                       onClose={async (ignore_me, statusObj) => {
                                         myDocs.isUpdating = false;

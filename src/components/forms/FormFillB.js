@@ -1602,6 +1602,7 @@ export default ({ request = {}, onClose }) => {
                     name={`${props.prop}_${tIndex}`}
                     key={`CheckGroup__${props.prop}_${tIndex}`}
                     size='small'
+                    disabled={reactData.fields[props.prop].options.viewOnly || reactData.viewOnlyMode}
                     checked={reactData.fields[props.prop].value && reactData.fields[props.prop].value.includes(text)}
                     onMouseDown={async () => {
                       await handleMakeSelection({
@@ -3339,7 +3340,7 @@ export default ({ request = {}, onClose }) => {
                 {'Exit'}
               </Button>
               <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-                {!reactData.formRec?.options?.noSaveContinue && !reactData.clientSampleMode && !reactData.formRec.upload_only &&
+                {!reactData.formRec?.options?.noSaveContinue && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode &&
                   <Button
                     onClick={async () => {
                       const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
@@ -3355,7 +3356,7 @@ export default ({ request = {}, onClose }) => {
                     {isMobile() ? 'Save' : 'Save/Continue'}
                   </Button>
                 }
-                {!reactData.clientSampleMode && !reactData.formRec.upload_only &&
+                {!reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode &&
                   <Button
                     onClick={async () => {
                       await handleReview();
@@ -3367,7 +3368,7 @@ export default ({ request = {}, onClose }) => {
                     {'Finish'}
                   </Button>
                 }
-                {!reactData.formRec.upload_only &&
+                {!reactData.formRec.upload_only && !reactData.viewOnlyMode &&
                   <PrintIcon
                     classes={{ root: classes.rowButton }}
                     size='medium'
@@ -3379,7 +3380,7 @@ export default ({ request = {}, onClose }) => {
                     edge="start"
                   />
                 }
-                {!reactData.clientSampleMode &&
+                {!reactData.clientSampleMode && !reactData.viewOnlyMode &&
                   <CloudUploadIcon
                     classes={{ root: classes.rowButton }}
                     style={{ marginLeft: '16px' }}
