@@ -1988,6 +1988,7 @@ export default ({ request = {}, onClose }) => {
     let field_values = {};
     let signatures = [];
     let now = makeDate(new Date());
+    let needsUpdate = { peopleRec: false, sessionRec: false };
     for (const this_field in reactData.fields) {
       if (reactData.fields[this_field].bonusText) {   // an extra value added to the end of a list of selections (as in "other - please specify")
         let current_value = [reactData.fields[this_field].value].flat();
@@ -2115,7 +2116,6 @@ export default ({ request = {}, onClose }) => {
       author: state.session.patient_id,
       isNew: false,
       save_type: final ? 'save_final' : (timeout ? 'on_timeout' : 'in_process'),
-      url
     });
 
     // send messages or create new forms as indicated in formRec options upon final save
@@ -2127,9 +2127,6 @@ export default ({ request = {}, onClose }) => {
           continue;
         }
         if (this_instruction.hasOwnProperty('send_message')) {
-          if (this_instruction.send_message.attach) {
-            this_instruction.send_message.url = url;
-          };
           if (!this_instruction.send_message.subject) {
             this_instruction.send_message.subject = `Form update - status is ${docData.status}`;
           }
@@ -2143,7 +2140,7 @@ export default ({ request = {}, onClose }) => {
           await createForm({        // finishing this form issues an instruction to create another form ("teacher recommendation" use case, for example)
             instructions: this_instruction,
             source_doc: document_id,
-            doc_location: response.location
+            doc_location: response.document_id
           });
         }
       }
@@ -2158,7 +2155,6 @@ export default ({ request = {}, onClose }) => {
     }, true);
 
     response = Object.assign({}, response, {
-      location: url,
       document_status: docData.status,
       status: docData.status,
       document_id: docData.document_id

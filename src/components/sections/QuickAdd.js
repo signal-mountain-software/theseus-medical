@@ -627,7 +627,7 @@ export default ({ onClose, options = {} }) => {
       field_validation_errors: {}, // Clear validation errors
       loading_fields: false,
       current_member_index: prev.current_member_index + 1,
-      stage: 'prompt_for_name', // Start with name prompt for each family member
+      stage: 'select_account_type', // Back to account type selection
       // Clear all name-related fields for new family member
       entered_name: '',
       name_validation_result: null,
