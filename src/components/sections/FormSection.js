@@ -222,7 +222,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                 document_id: this_doc.document_id,
                 location: this_doc.history[0].url,
                 last_update: this_doc.history[0].last_update,
-                date_completed: makeDate(this_doc.history[0].last_update).relative,
+                date_completed: makeDate(this_doc.history[0].last_update, {timeZone: state.session.client_timezone}).absolute,
                 title: this_doc.title,
                 amendments: this_doc.amendments,
                 occDate: occDate,
@@ -656,7 +656,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                                     margin: { top: 0, left: 0 },
                                                   })}
                                                 >
-                                                  {`${((myDocs.dueDate || (myDocs.wipDocs.length > 0)) ? 'Previously c' : 'C')}ompleted ${makeDate(myDocs.completedDocs[0].last_update).relative}`}
+                                                  {`${((myDocs.dueDate || (myDocs.wipDocs.length > 0)) ? 'Previously c' : 'C')}ompleted ${makeDate(myDocs.completedDocs[0].last_update, {timeZone: state.session.client_timezone}).absolute}`}
                                                 </Typography>
                                               </React.Fragment>
                                             }
