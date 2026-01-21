@@ -833,14 +833,14 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         reactData.current.peopleRec.preferred_methods = [reactData.current.peopleRec.preferred_method];
       }
       else {
-        if (!isEmpty(reactData.current.peopleRec.contact_info?.cell?.number)) {
-          reactData.current.peopleRec.preferred_methods = ['sms'];
-          reactData.current.peopleRec.preferred_method = 'sms';
-        }
-        else if (!isEmpty(reactData.current.peopleRec.contact_info?.email?.address)) {
+        if (!isEmpty(reactData.current.peopleRec.contact_info?.email?.address)) {
           reactData.current.peopleRec.preferred_methods = ['email'];
           reactData.current.peopleRec.preferred_method = 'email';
         }
+        else if (!isEmpty(reactData.current.peopleRec.contact_info?.cell?.number)) {
+          reactData.current.peopleRec.preferred_methods = ['sms'];
+          reactData.current.peopleRec.preferred_method = 'sms';
+        } 
         else if (!isEmpty(reactData.current.peopleRec.contact_info?.alt_email?.address)) {
           reactData.current.peopleRec.preferred_methods = ['alt_email'];
           reactData.current.peopleRec.preferred_method = 'alt_email';
@@ -848,6 +848,15 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         else if (!isEmpty(reactData.current.peopleRec.contact_info?.landline?.number)) {
           reactData.current.peopleRec.preferred_methods = ['voice'];
           reactData.current.peopleRec.preferred_method = 'voice';
+        }
+        // set the preference based on an e-Mail first policy.  I
+        // If the client preferes text first, we will honor that here
+        if (((state.session.client_style.preferred_communication === 'text' ||
+          state.session.client_style.preferred_communication === 'sms')) &&
+          (!isEmpty(reactData.current.peopleRec.contact_info?.cell?.number))
+        ) {
+          reactData.current.peopleRec.preferred_methods = ['sms'];
+          reactData.current.peopleRec.preferred_method = 'sms';
         }
       }
     }

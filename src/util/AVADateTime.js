@@ -82,7 +82,10 @@ export function makeDate(pInput, optionIn = {}) {
         targetDate = new Date(pInput);
     }
     else {
-        if (Number(pInput).toString() === pInput) { pInput = Number(pInput); }  // convert a string that is all digits to its numeric equivalent
+        if ((typeof pInput) === 'string' && (Number(pInput).toString() === pInput.toString().replace(/^0+/, ''))) {
+            console.log(Number(pInput).toString());
+            pInput = Number(pInput);
+        }  // convert a string that is all digits to its numeric equivalent
         if ((typeof pInput) === 'number') {
             //      101 -     1231 mm dd in logical year (see makedate)
             //    10101 -   123199 mm dd yy

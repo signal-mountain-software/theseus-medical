@@ -2894,7 +2894,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               minHeight: '30px',
               maxHeight: '30px'
             }}
-            defaultValue={makeDate(reactData.defaultValues.start_date).input}
+            defaultValue={makeDate(reactData.defaultValues?.start_date || new Date()).input}
           />
           <Button
             style={{
