@@ -46,7 +46,7 @@ export async function createDocument({ docData, author }) {
         status: 'not_started',
         assigned_to: [docData.assigned_to].flat()
     };
-    const formData = await documentDueDate(docData.client_id, docData.form_type);
+    const formData = await getForm_withDueDate(docData.client_id, docData.form_type);
     if (!docData.due_date && formData.due_date) {
         docRec.due_date = formData.due_date;
     }
@@ -68,7 +68,7 @@ export async function createDocument({ docData, author }) {
     return (goodPut ? docOut.document_id : false);
 };
 
-export async function documentDueDate(client_id, formIn, dueDate_key) {
+export async function getForm_withDueDate(client_id, formIn, dueDate_key) {
     let formRec;
     if (typeof (formIn) === 'string') {   // passed in a form_id
         let formRecIn = await dbClient
@@ -81,7 +81,7 @@ export async function documentDueDate(client_id, formIn, dueDate_key) {
             })
             .promise()
             .catch(error => {
-                cl({ [`in documentDueDate, Error reading Forms key=${formIn}`]: error });
+                cl({ [`in getForm_withDueDate, Error reading Forms key=${formIn}`]: error });
             });
         if (!recordExists(formRecIn) || !formRecIn.Item.due_by) {
             return {
@@ -134,86 +134,64 @@ export async function documentDueDate(client_id, formIn, dueDate_key) {
 
 export async function updateDocument({ docData, author, isNew = false, save_type, url, pending }) {
     // save_type is one of 'final', 'in_process', 'on_timeout', 'printed', 'uploaded'
-    if ((save_type === 'uploaded') && !url) {
+    if (((save_type === 'uploaded') && !url) || (!docData.document_id)) {
         return false;
     }
-    let docBasis = {};
     const now = new Date().getTime();
-    if (!docData.document_id) {
+
+    docData.client_id = docData.client_id || docData.client;
+    if (!docData.client_id) return false;
+
+    docData.pertains_to = docData.pertains_to || docData.person_id;
+    if (!docData.pertains_to) return false;
+
+    docData.form_type = docData.form_type || docData.form_id || docData.formType;
+    if (docData.form_id) delete docData.form_id;
+    if (docData.formType) delete docData.formType;
+    if (!docData.form_type) return false;
+
+    let fetchedRec = await dbClient
+        .get({
+            Key: {
+                document_id: docData.document_id
+            },
+            TableName: "DocumentMaster"
+        })
+        .promise()
+        .catch(error => {
+            cl(`in updateDocument, bad get to DocumentMaster with ${docData.document_id || '(null)'}. Error is: ${error}`);
+        });
+    
+    let docBasis = {};
+    if (recordExists(fetchedRec)) {
+        docBasis = fetchedRec.Item;
+    }
+    else if (!isNew) {
         return false;
     }
     else {
-        if (!docData.client_id) {
-            if (docData.client) {
-                docData.client_id = docData.client;
-            }
-            else {
-                return false;
-            }
+        const formData = await getForm_withDueDate(docData.client_id, docData.form_type);
+        docBasis = {
+            document_id: docData.document_id || `${docData.pertains_to}%%${docData.form_type}%%${now}`,
+            client_id_form_type: `${docData.client_id}%%${docData.form_type}`,
+            history: [
+                {
+                    last_update: now,
+                    status: 'created',
+                    update_by: author || 'updateDocument'
+                }
+            ],
+            status: 'not_started',
+            due_date: formData.due_date || null,
+            restricted_access: formData.formRec.restricted_access || null,
         };
-        if (!docData.pertains_to) {
-            if (docData.person_id) {
-                docData.pertains_to = docData.person_id;
-            }
-            else {
-                return false;
-            }
-        }
-        if (!docData.form_type) {
-            if (docData.form_id) {
-                docData.form_type = docData.form_id;
-                delete docData.form_id;
-            }
-            else if (docData.formType) {
-                docData.form_type = docData.formType;
-                delete docData.formType;
-            }
-            else {
-                return false;
-            }
-        }
-        if (!docData.client_id || !docData.pertains_to || !docData.form_type) {
-            let fetchedRec = await dbClient
-                .get({
-                    Key: {
-                        document_id: docData.document_id
-                    },
-                    TableName: "DocumentMaster"
-                })
-                .promise()
-                .catch(error => {
-                    cl(`in updateDocument, bad get to DocumentMaster with ${docData.document_id || '(null)'}. Error is: ${error}`);
-                });
-            if (recordExists(fetchedRec)) {
-                docBasis = fetchedRec.Item;
-            }
-        }
-        else {
-            docBasis = {
-                document_id: docData.document_id || `${docData.pertains_to}%%${docData.form_type}%%${now}`,
-                client_id_form_type: `${docData.client_id}%%${docData.form_type}`,
-                history: [
-                    {
-                        last_update: now,
-                        status: 'created',
-                        update_by: author || 'updateDocument'
-                    }
-                ],
-                status: 'not_started',
-            };
-        }
     }
+
     let docOut = Object.assign({}, docBasis, docData);
-    if (isNew) {
-        const formData = await documentDueDate(docOut.client_id, docOut.form_type);
-        if (!docOut.due_date && formData.due_date) {
-            docOut.due_date = formData.due_date;
-        }
-        if (formData.formRec.restricted_access) {
-            docOut.restricted_access = formData.formRec.restricted_access;
-        }
-    }
+
     // save_type is one of 'save_final', 'in_process', 'on_timeout', 'printed', 'uploaded', 'cancelled'
+    
+    // if the last history item is 'on_timeout', remove it - we are about to add a history item that supercedes it
     if (docOut.history[0].status === 'on_timeout') {
         docOut.history.splice(0, 1);
     }

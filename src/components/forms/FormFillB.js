@@ -245,7 +245,7 @@ export default ({ request = {}, onClose }) => {
 
     formStages: [{}],  // this loads from the Form template (FormRec.stages)
     previous_formStage: 'default',
-    errors_on_Form: 0,
+    number_of_errorsOnForm: 0,
     /* 
      A form can define a stages array in its form record.  
      The stage objects will be sequential in the array and imply progress through the form. 
@@ -1757,7 +1757,7 @@ export default ({ request = {}, onClose }) => {
     // Validates all fields in the form and returns error information
     // Used by both handleReview and handleToggleLock
     let messageList = ['There are problems with this form'];
-    let errors_on_Form = 0;
+    let number_of_errorsOnForm = 0;
     let form_stageStatus = {};
     for (const sectionObj of reactData.sections) {
       let stage_name = sectionObj.belongs_to_stage || 'default';
@@ -1792,7 +1792,7 @@ export default ({ request = {}, onClose }) => {
               })} is required`;
               reactData.fields[this_field].isError = true;
               messageList.push(reactData.fields[this_field].errorMessage);
-              errors_on_Form++;
+              number_of_errorsOnForm++;
               form_stageStatus[stage_name].errors_in_stage++;
             }
           }
@@ -1808,7 +1808,7 @@ export default ({ request = {}, onClose }) => {
                 : `You must make at least ${reactData.fields[this_field].selectionObj.min} selections for ${prompt_part}`;
               reactData.fields[this_field].isError = true;
               messageList.push(reactData.fields[this_field].errorMessage);
-              errors_on_Form++;
+              number_of_errorsOnForm++;
               form_stageStatus[stage_name].errors_in_stage++;
             }
           }
@@ -1840,7 +1840,7 @@ export default ({ request = {}, onClose }) => {
 
     return {
       messageList,
-      errors_on_Form,
+      number_of_errorsOnForm,
       fields: reactData.fields,
       current_formStage: current_form_stage
     };
@@ -1849,13 +1849,13 @@ export default ({ request = {}, onClose }) => {
   const handleReview = async () => {
     const validationResult = validateForm();
 
-    if (!validationResult.errors_on_Form) {
+    if (!validationResult.number_of_errorsOnForm) {
       validationResult.messageList = ['This form is complete!', 'Tap "Complete" below to save it.'];
     }
 
     updateReactData({
       messageList: validationResult.messageList,
-      errors_on_Form: validationResult.errors_on_Form,
+      number_of_errorsOnForm: validationResult.number_of_errorsOnForm,
       fields: validationResult.fields,
       stage: 'confirm'
     }, true);
@@ -1900,10 +1900,10 @@ export default ({ request = {}, onClose }) => {
       const validationResult = validateForm();
 
       // If errors exist, show them and don't lock
-      if (validationResult.errors_on_Form) {
+      if (validationResult.number_of_errorsOnForm) {
         updateReactData({
           messageList: validationResult.messageList,
-          errors_on_Form: validationResult.errors_on_Form,
+          number_of_errorsOnForm: validationResult.number_of_errorsOnForm,
           fields: validationResult.fields,
           stage: 'confirm'
         }, true);
@@ -1965,158 +1965,112 @@ export default ({ request = {}, onClose }) => {
   };
 
   const handleSave = async ({ document_id, final, timeout, pending = false, formLocked }) => {
-    let response = { goodPut: true };
-    // always save this in DocumentsInProcess
-    if (!document_id) {
-      document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
-      updateReactData({
-        document_id
-      }, false);
+
+    // assure that peopleRec and sessionRec are available
+    if (!reactData.peopleRec.hasOwnProperty(reactData.pertains_to)) {
+      reactData.peopleRec[reactData.pertains_to] = await getDb({
+        Key: { person_id: reactData.pertains_to },
+        TableName: "People"
+      });
     }
-    // updates to the Database as per instructions in fields[this_field].saveAs
-    let needsUpdate = {
-      peopleRec: false,
-      sessionRec: false,
-      familyRec: false
-    };
+    if (!reactData.sessionRec.hasOwnProperty(reactData.pertains_to)) {
+      reactData.sessionRec[reactData.pertains_to] = await getDb({
+        Key: { session_id: reactData.pertains_to },
+        TableName: "SessionsV2"
+      });
+    }
+    updateReactData({
+      peopleRec: reactData.peopleRec,
+      sessionRec: reactData.sessionRec,
+      document_id: document_id || reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`
+    }, false);
+
     let field_values = {};
+    let signatures = [];
     let now = makeDate(new Date());
     for (const this_field in reactData.fields) {
-      if (reactData.fields[this_field].bonusText) {
-        if (reactData.fields[this_field].value) {
-          let valueArray = makeArray(reactData.fields[this_field].value);
-          valueArray.push(reactData.fields[this_field].bonusText);
-          reactData.fields[this_field].value = valueArray;
-          reactData.fields[this_field].valueText = listFromArray(valueArray);
-        }
-        else {
-          reactData.fields[this_field].value = reactData.fields[this_field].bonusText;
-          reactData.fields[this_field].valueText = reactData.fields[this_field].bonusText;
-        }
+      if (reactData.fields[this_field].bonusText) {   // an extra value added to the end of a list of selections (as in "other - please specify")
+        let current_value = [reactData.fields[this_field].value].flat();
+        current_value.push(reactData.fields[this_field].bonusText);
+        current_value = current_value.filter(v => v && v.toString().trim() !== '');
+        reactData.fields[this_field].value = current_value;
+        reactData.fields[this_field].valueText = listFromArray(current_value);
       }
       if (!reactData.fields[this_field].options?.viewOnly) {
         field_values[this_field] = reactData.fields[this_field].value;
       }
-      if (!reactData.fields[this_field].ignore) {
-        if (reactData.fields[this_field].saveAs) {
-          const save_instructions = reactData.fields[this_field].saveAs;
-          const save_file = save_instructions.shift();
-          if (save_file === 'peopleRec') {
-            if (!reactData.peopleRec.hasOwnProperty(reactData.pertains_to)) {
-              reactData.peopleRec[reactData.pertains_to] = await getDb({
-                Key: {
-                  person_id: reactData.pertains_to
-                },
-                TableName: "People"
-              });
-              updateReactData({
-                peopleRec: reactData.peopleRec
-              }, false);
-            }
-            reactData.peopleRec[reactData.pertains_to] = resolveValue(
-              reactData.peopleRec[reactData.pertains_to],
-              save_instructions,
-              reactData.fields[this_field].value
-            );
-            needsUpdate.peopleRec = true;
-          }
-          else if (save_file === 'sessionRec') {
-            if (!reactData.sessionRec.hasOwnProperty(reactData.pertains_to)) {
-              reactData.sessionRec[reactData.pertains_to] = await getDb({
-                Key: {
-                  person_id: reactData.pertains_to
-                },
-                TableName: "SessionsV2"
-              });
-              updateReactData({
-                sessionRec: reactData.sessionRec
-              }, false);
-            }
-            reactData.sessionRec[reactData.pertains_to] = resolveValue(
-              reactData.sessionRec[reactData.pertains_to],
-              save_instructions,
-              reactData.fields[this_field].value
-            );
-            needsUpdate.sessionRec = true;
-          }
-          else if (save_file === 'familyRec') {
-            // we need to get the familyRec; do we have it already?           
-            if (!reactData.familyRec && reactData.family_id) {
-              reactData.familyRec = await getDb({
-                Key: {
-                  client_id: state.session.client_id,
-                  composite_key: reactData.family_id
-                },
-                TableName: "FamilyGroups"
-              });
-              updateReactData({
-                familyRec: reactData.familyRec
-              }, false);
-            }
-            if (reactData.familyRec) {
-              reactData.familyRec = resolveValue(
-                reactData.familyRec,
-                save_instructions,
-                reactData.fields[this_field].value
-              );
-              needsUpdate.familyRec = true;
-            }
-          }
+      if (reactData.fields[this_field].ignore) { continue; }  // load the values, but don't save them anywhere
+      if (reactData.fields[this_field].saveAs) {
+        const save_instructions = reactData.fields[this_field].saveAs;
+        const save_file = save_instructions.shift();
+        if ((save_file === 'peopleRec') || (save_file === 'personRec')) {
+          reactData.peopleRec[reactData.pertains_to] = resolveValue(
+            reactData.peopleRec[reactData.pertains_to],
+            save_instructions,
+            reactData.fields[this_field].value
+          );
+          needsUpdate.peopleRec = true;
         }
-        if ((!!reactData.fields[this_field].options?.log_results)
-          && (!reactData.fields[this_field].options.log_results.if_value
-            || reactData.fields[this_field].options.log_results.if_value.some(v => {
-              if (typeof (reactData.fields[this_field].value) === 'string') { return v = reactData.fields[this_field].value; }
-              else { return reactData.fields[this_field].value.includes(v); }
-            }))) {
-          const log_instructions = reactData.fields[this_field].options.log_results.path.split('.');
-          const log_file = log_instructions.shift();
-          if (log_file === 'peopleRec') {
-            if (!reactData.peopleRec.hasOwnProperty(reactData.pertains_to)) {
-              reactData.peopleRec[reactData.pertains_to] = await getDb({
-                Key: {
-                  person_id: reactData.pertains_to
-                },
-                TableName: "People"
-              });
-              updateReactData({
-                peopleRec: reactData.peopleRec
-              }, false);
-            }
-            reactData.peopleRec[reactData.pertains_to] = resolveValue(
-              reactData.peopleRec[reactData.pertains_to],
-              log_instructions,
-              sentenceCase(`Previously ${reactData.fields[this_field].value} ${now.oaDate} by ${state.profile.name.first} ${state.profile.name.last}`)
-            );
-            needsUpdate.peopleRec = true;
-          }
-          else if (log_file === 'sessionRec') {
-            if (!reactData.sessionRec.hasOwnProperty(reactData.pertains_to)) {
-              reactData.sessionRec[reactData.pertains_to] = await getDb({
-                Key: {
-                  person_id: reactData.pertains_to
-                },
-                TableName: "SessionsV2"
-              });
-              updateReactData({
-                sessionRec: reactData.sessionRec
-              }, false);
-            }
-            reactData.sessionRec[reactData.pertains_to] = resolveValue(
-              reactData.sessionRec[reactData.pertains_to],
-              log_instructions,
-              sentenceCase(`Previously ${reactData.fields[this_field].value} ${now.oaDate} by ${state.profile.name.first} ${state.profile.name.last}`)
-            );
-            needsUpdate.sessionRec = true;
-          }
+        else if (save_file === 'sessionRec') {
+          reactData.sessionRec[reactData.pertains_to] = resolveValue(
+            reactData.sessionRec[reactData.pertains_to],
+            save_instructions,
+            reactData.fields[this_field].value
+          );
+          needsUpdate.sessionRec = true;
         }
-
+      }
+      if ((reactData.fields[this_field].type === 'signature')
+        && (signatureRef[reactData.fields[this_field].options.sigRefNumber].current)) {  // we have a valid signature to save
+        signatures[reactData.fields[this_field].options.sigRefNumber] = signatureRef[reactData.fields[this_field].options.sigRefNumber].current.getTrimmedCanvas().toDataURL('image/png');
       }
     }
-    if (needsUpdate.peopleRec || reactData.newPerson) {
-      if (reactData.newFamily) {
-        reactData.peopleRec[reactData.pertains_to].family_id = reactData.family_id;
+    // all field data is now prepared for saving
+
+    // check for actions needed leaving or entering stages
+
+    if ((reactData.previous_formStage !== reactData.current_formStage) && reactData.formRec.stages) {
+      // log stage change
+      cl(`Form ${document_id} stage changed from ${reactData.previous_formStage} to ${reactData.current_formStage}`);
+
+      // check stage exit
+      let previous_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.previous_formStage);
+      if (previous_stageIndex >= 0) {
+        // send message on stage exit /  complete     
+        let messageInstructions_onStageExit = reactData.formRec.stages[previous_stageIndex].on_complete_message;
+        if (messageInstructions_onStageExit) {
+          await send_stageMessage(messageInstructions_onStageExit); // send stage complete message
+        }
+        // remove and add groups from pertains_to account's group list if any
+        let groupInstructions_onStageExit = reactData.formRec.stages[previous_stageIndex].on_complete_groups;
+        if (groupInstructions_onStageExit) {
+          reactData.peopleRec[reactData.pertains_to].groups = update_stageGroups(groupInstructions_onStageExit);
+        }
       }
+
+      //check stage entry
+      let this_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.current_formStage);
+      if (this_stageIndex >= 0) {
+        // send message on stage entry
+        let messageInstructions_onStageEntry = reactData.formRec.stages[this_stageIndex].on_entry_message;
+        if (messageInstructions_onStageEntry) {
+          await send_stageMessage(messageInstructions_onStageEntry); // send stage entered message
+        }
+        // remove and add groups from pertains_to account's group list if any
+        let groupInstructions_onStageEntry = reactData.formRec.stages[this_stageIndex].on_entry_groups;
+        if (groupInstructions_onStageEntry) {
+          reactData.peopleRec[reactData.pertains_to].groups = update_stageGroups(groupInstructions_onStageEntry);
+        }
+        // lock the form?
+        if (reactData.formRec.stages[this_stageIndex].on_entry_lock) { formLocked = true; }
+      }
+    }
+
+
+    let response = { goodPut: true };
+    // save any changes to peopleRec and sessionRec that were indicated to be
+    // done with the fields in the form
+    if (needsUpdate.peopleRec || reactData.newPerson) {
       await dbClient
         .put({
           Item: reactData.peopleRec[reactData.pertains_to],
@@ -2141,278 +2095,30 @@ export default ({ request = {}, onClose }) => {
         });
     }
 
-    // updates - if any - are done
-    // if this is the type of document that needs to generate a final printout, do that now
-    let url;
-    if (final && !reactData.formRec?.options?.noFinal) {
-      // render signatures (if any) before printing
-      let signatures = [];
-      for (const this_field in reactData.fields) {
-        if (reactData.fields[this_field].ignore) {
-          continue;
-        }
-        if ((reactData.fields[this_field].type === 'signature') && (signatureRef[reactData.fields[this_field].options.sigRefNumber].current)) {
-          signatures[reactData.fields[this_field].options.sigRefNumber] = signatureRef[reactData.fields[this_field].options.sigRefNumber].current.getTrimmedCanvas().toDataURL('image/png');
-        }
-        if (reactData.fields[this_field].prompt) {
-          reactData.fields[this_field].prompt.value =
-            reconcilePrompt({
-              rawValue: reactData.fields[this_field].prompt.value,
-              this_field
-            });
-        }
-      };
-      // generateHtmlOutput();
-
-      /* Temporarily disabled PDF generation
-      const s3Results = await printDocumentB({
-        documentList: [{
-          sections: reactData.sections,
-          fields: reactData.fields,
-          docID: document_id,
-          signatures,
-          client_id: state.session.client_id,
-          title: reactData.document_title
-        }]
-      });
-      url = s3Results[0].s3Location;
-      */
-    }
-
-    // printing is done (or wasn't necessary)
-    // save_type is one of 'final', 'in_process', 'on_timeout', 'printed'
     let docData = {
       client_id: state.session.client_id,
       document_id,
       title: reactData.document_title,
       pertains_to: reactData.pertains_to,
-      status: final ? (pending ? 'pending' : 'complete') : 'in_process',   // need to set pending when appropriate
+      status: final ? 'complete' : 'in_process',
       form_type: reactData.form_id,
       client_id_form_type: `${state.session.client_id}%%${reactData.form_id}`,
       field_values,
       options: reactData.formRec.options,
-      formLocked: formLocked !== undefined ? formLocked : (reactData.docRec?.formLocked || false)
+      formLocked: formLocked !== undefined ? formLocked : (reactData.docRec?.formLocked || false),
+      history: reactData.docRec?.history || [],
+      form_stage: reactData.current_formStage
     };
-    if (reactData.docRec?.history) {
-      docData.history = reactData.docRec?.history;
-    }
-    docData.form_stage = reactData.current_formStage;
+
     const recWritten = await updateDocument({
       docData,
       author: state.session.patient_id,
       isNew: false,
-      pending,
       save_type: final ? 'save_final' : (timeout ? 'on_timeout' : 'in_process'),
       url
     });
-    response.location = url;
-    response.document_status = docData.status;
-    response.status = docData.status;
-    response.document_id = docData.document_id;
 
-    if (reactData.previous_formStage !== reactData.current_formStage) {
-      // log stage change
-      cl(`Form ${document_id} stage changed from ${reactData.previous_formStage} to ${reactData.current_formStage}`);
-
-      // we may be manipulating thie groups list of the person in the pertains_to account, so we need to get that first
-      let groupList = reactData.peopleRec[reactData.pertains_to].groups || [];
-
-      // check stage exit
-      let previous_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.previous_formStage);
-      if (previous_stageIndex >= 0) {
-        // send message on stage exit /  complete     
-        let messageInstructions_onStageExit = reactData.formRec.stages[previous_stageIndex].on_complete_message;
-        if (messageInstructions_onStageExit) {
-          // send stage complete message
-          /*
-          {
-            template_id: <template_id>,
-            text: 'Form has not been started yet',
-            recipientList: {
-              people: [<user_id>, <user_id>, ...],
-              groups: [<group_id>, <group_id>, ...]
-           }
-          */
-          let final_messageText = '';
-          let final_html = '';
-          if (messageInstructions_onStageExit.template_id) {
-            let templateRec = await getDb({
-              Key: {
-                client_id: state.session.client_id,
-                template_id: messageInstructions_onStageExit.template_id
-              },
-              TableName: 'MessageTemplates'
-            });
-            if (templateRec) {
-              final_messageText = await resolveVariables(templateRec.message_text);
-              final_html = templateRec.html_text ? await resolveVariables(templateRec.html_text) : final_messageText;
-            }
-          }
-          else if (messageInstructions_onStageExit.text) {
-            final_messageText = await deepResolve(messageInstructions_onStageExit.text, reactData.peopleRec[reactData.pertains_to]);
-            final_html = final_messageText;
-          }
-          let recipientList = [];
-          if (messageInstructions_onStageExit.recipientList) {
-            if (messageInstructions_onStageExit.recipientList.people) {
-              recipientList = recipientList.concat(messageInstructions_onStageExit.recipientList.people);
-            }
-            if (messageInstructions_onStageExit.recipientList.groups) {
-              for (const this_group of messageInstructions_onStageExit.recipientList.groups) {
-                recipientList.push(`GRP//${this_group}`);
-              }
-            }
-          }
-          let jumpTo = window.location.origin;
-          final_html = final_messageText + `<br><br>The document is available <a href=${jumpTo}?document=${reactData.document_id}>here</a>`;
-          final_messageText += `\r\n\nThe document is available at: ${jumpTo}?document=${reactData.document_id}`;
-          await sendMessages({
-            client: state.session.client_id,
-            author: state.session.user_id,
-            person_id: state.session.patient_id,
-            messageText: final_messageText,
-            htmlText: final_html,
-            recipientList: recipientList,
-            attachments: `${jumpTo}?document=${reactData.document_id}`,
-            subject: messageInstructions_onStageExit.subject
-              ? await resolveVariables(messageInstructions_onStageExit.subject)
-              : `A message from ${reactData.peopleRec[reactData.pertains_to].display_name || 'AVA Document Management'}`
-          });
-        }
-        // remove and add groups from pertains_to account's group list if any
-        let groupInstructions_onStageExit = reactData.formRec.stages[previous_stageIndex].on_complete_groups;
-        if (groupInstructions_onStageExit) {
-          if (groupInstructions_onStageExit.remove) {
-            // if i am removing a group that's a parent, you are also removing that group's children. So we need to check for that and remove those as well
-            const allGroupstoRemove = getAllChildrenOfGroups(groupInstructions_onStageExit.remove, reactData.groupsRec);
-            groupList = groupList.filter(g => !allGroupstoRemove.includes(g));
-          }
-          if (groupInstructions_onStageExit.add) {
-            // if i am adding a group that's a child, you are also adding that group's parents. So we need to check for that and add those as well
-            const allGroupstoAdd = getAllParentsOfGroups(groupInstructions_onStageExit.add, reactData.groupsRec);
-            for (const this_group of allGroupstoAdd) {
-              if (!groupList.includes(this_group)) {
-                groupList.push(this_group);
-              }
-            }
-          }
-          reactData.peopleRec[reactData.pertains_to].groups = groupList;
-        }
-      }
-
-      //check stage entry
-      let this_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.current_formStage);
-      if (this_stageIndex >= 0) {
-        // send message on stage entry
-        let messageInstructions_onStageEntry = reactData.formRec.stages[this_stageIndex].on_entry_message;
-        if (messageInstructions_onStageEntry) {
-          // send stage complete message
-          /*
-          {
-            template_id: <template_id>,
-            text: 'Form has not been started yet',
-            recipientList: {
-              people: [<user_id>, <user_id>, ...],
-              groups: [<group_id>, <group_id>, ...]
-           }
-          */
-          let final_messageText = '';
-          let final_html = '';
-          if (messageInstructions_onStageEntry.template_id) {
-            let templateRec = await getDb({
-              Key: {
-                client_id: state.session.client_id,
-                template_id: messageInstructions_onStageEntry.template_id
-              },
-              TableName: 'MessageTemplates'
-            });
-            if (templateRec) {
-              final_messageText = await resolveVariables(templateRec.message_text);
-              final_html = templateRec.html_text ? await resolveVariables(templateRec.html_text) : final_messageText;
-            }
-          }
-          else if (messageInstructions_onStageEntry.text) {
-            final_messageText = await deepResolve(messageInstructions_onStageEntry.text, reactData.peopleRec[reactData.pertains_to]);
-            final_html = final_messageText;
-          }
-          let recipientList = [];
-          if (messageInstructions_onStageEntry.recipientList) {
-            if (messageInstructions_onStageEntry.recipientList.people) {
-              recipientList = recipientList.concat(messageInstructions_onStageEntry.recipientList.people);
-            }
-            if (messageInstructions_onStageEntry.recipientList.groups) {
-              for (const this_group of messageInstructions_onStageEntry.recipientList.groups) {
-                recipientList.push(`GRP//${this_group}`);
-              }
-            }
-          }
-          let jumpTo = window.location.origin;
-          final_html = final_messageText + `<br><br>The document is available <a href=${jumpTo}?document=${reactData.document_id}>here</a>`;
-          final_messageText += `\r\n\nThe document is available at: ${jumpTo}?document=${reactData.document_id}`;
-          await sendMessages({
-            client: state.session.client_id,
-            author: state.session.user_id,
-            person_id: state.session.patient_id,
-            messageText: final_messageText,
-            htmlText: final_html,
-            recipientList: recipientList,
-            attachments: `${jumpTo}?document=${reactData.document_id}`,
-            subject: messageInstructions_onStageEntry.subject
-              ? await resolveVariables(messageInstructions_onStageEntry.subject)
-              : `A message from ${reactData.peopleRec[reactData.pertains_to].display_name || 'AVA Document Management'}`
-          });
-        }
-        // remove and add groups from pertains_to account's group list if any
-        let groupInstructions_onStageEntry = reactData.formRec.stages[previous_stageIndex].on_entry_groups;
-        if (groupInstructions_onStageEntry) {
-          if (groupInstructions_onStageEntry.remove) {
-            // if i am removing a group that's a parent, you are also removing that group's children. So we need to check for that and remove those as well
-            const allGroupstoRemove = getAllChildrenOfGroups(groupInstructions_onStageEntry.remove, reactData.groupsRec);
-            groupList = groupList.filter(g => !allGroupstoRemove.includes(g));
-          }
-          if (groupInstructions_onStageEntry.add) {
-            // if i am adding a group that's a child, you are also adding that group's parents. So we need to check for that and add those as well
-            const allGroupstoAdd = getAllParentsOfGroups(groupInstructions_onStageEntry.add, reactData.groupsRec);
-            for (const this_group of allGroupstoAdd) {
-              if (!groupList.includes(this_group)) {
-                groupList.push(this_group);
-              }
-            }
-          }
-          reactData.peopleRec[reactData.pertains_to].groups = groupList;
-        }
-
-      }
-
-      let UpdateExpression = 'set #g = :g, #c = :c';
-      let ExpressionAttributeValues = {
-        ':g': groupList,
-        ':c': {
-          id: state.session.client_id,
-          groups: groupList
-        }
-      };
-      let ExpressionAttributeNames = {
-        '#g': 'groups',
-        '#c': 'clients'
-      };
-      await dbClient
-        .update({
-          Key: {
-            person_id: reactData.pertains_to
-          },
-          UpdateExpression,
-          ExpressionAttributeValues,
-          ExpressionAttributeNames,
-          TableName: "People",
-        })
-        .promise()
-        .catch(error => {
-          console.log(`caught error updating Group; error is: `, error);
-        });
-
-    }
-
+    // send messages or create new forms as indicated in formRec options upon final save
     if (final && reactData.formRec?.options?.messaging) {
       // conditional based on responses should be allowed here
       // in user lists, user can be a person: person_id, group: group_id, or author: true
@@ -2442,6 +2148,7 @@ export default ({ request = {}, onClose }) => {
         }
       }
     }
+
     updateReactData({
       document_id,
       docRec: recWritten,
@@ -2449,9 +2156,82 @@ export default ({ request = {}, onClose }) => {
       dataSaved: true,
       formUpdates: 0
     }, true);
+
+    response = Object.assign({}, response, {
+      location: url,
+      document_status: docData.status,
+      status: docData.status,
+      document_id: docData.document_id
+    });
     return response;
   };
 
+  async function send_stageMessage(messageInstructions) {
+    let final_messageText = '';
+    let final_html = '';
+    if (messageInstructions.template_id) {
+      let templateRec = await getDb({
+        Key: {
+          client_id: state.session.client_id,
+          template_id: messageInstructions.template_id
+        },
+        TableName: 'MessageTemplates'
+      });
+      if (templateRec) {
+        final_messageText = await resolveVariables(templateRec.message_text);
+        final_html = templateRec.html_text ? await resolveVariables(templateRec.html_text) : final_messageText;
+      }
+    }
+    else if (messageInstructions.text) {
+      final_messageText = await deepResolve(messageInstructions.text, reactData.peopleRec[reactData.pertains_to]);
+      final_html = final_messageText;
+    }
+    let recipientList = [];
+    if (messageInstructions.recipientList) {
+      if (messageInstructions.recipientList.people) {
+        recipientList = recipientList.concat(messageInstructions.recipientList.people);
+      }
+      if (messageInstructions.recipientList.groups) {
+        for (const this_group of messageInstructions.recipientList.groups) {
+          recipientList.push(`GRP//${this_group}`);
+        }
+      }
+    }
+    let jumpTo = window.location.origin;
+    final_html = final_messageText + `<br><br>The document is available <a href=${jumpTo}?document=${reactData.document_id}>here</a>`;
+    final_messageText += `\r\n\nThe document is available at: ${jumpTo}?document=${reactData.document_id}`;
+    await sendMessages({
+      client: state.session.client_id,
+      author: state.session.user_id,
+      person_id: state.session.patient_id,
+      messageText: final_messageText,
+      htmlText: final_html,
+      recipientList: recipientList,
+      attachments: `${jumpTo}?document=${reactData.document_id}`,
+      subject: messageInstructions.subject
+        ? await resolveVariables(messageInstructions.subject)
+        : `A message from ${reactData.peopleRec[reactData.pertains_to].display_name || 'AVA Document Management'}`
+    });
+  }
+
+  function update_stageGroups(groupInstructions) {
+    let groupList = reactData.peopleRec[reactData.pertains_to].groups || [];
+    if (groupInstructions.remove) {
+      // if i am removing a group that's a parent, you are also removing that group's children. So we need to check for that and remove those as well
+      const allGroupstoRemove = getAllChildrenOfGroups(groupInstructions.remove, reactData.groupsRec);
+      groupList = groupList.filter(g => !allGroupstoRemove.includes(g));
+    }
+    if (groupInstructions.add) {
+      // if i am adding a group that's a child, you are also adding that group's parents. So we need to check for that and add those as well
+      const allGroupstoAdd = getAllParentsOfGroups(groupInstructions.add, reactData.groupsRec);
+      for (const this_group of allGroupstoAdd) {
+        if (!groupList.includes(this_group)) {
+          groupList.push(this_group);
+        }
+      }
+    }
+    return groupList;
+  }
 
   async function sendMessage(send_instructions) {
     let postTime = new Date().getTime();
@@ -3612,15 +3392,14 @@ export default ({ request = {}, onClose }) => {
             }}
           />
         }
-        {
-          (reactData.stage === 'confirm') &&
+        {(reactData.stage === 'confirm') &&
           <AVAConfirm
             promptText={reactData.messageList}
             cancelText={'Go back'}
-            confirmText={(reactData.errors_on_Form > 0)
-              ? '*none*'
-              : (reactData.errors_on_Form ? 'Submit' : 'Complete')
-            }
+            // if there were errors that this user is responsible for, we would not have gotten this far
+            // number_of_errorsOnForm > 0 means there are errors on the form, but none of the errors are in a stage that this user has access to
+            // this used to imply "pending" status, but that has been removed in favor of "in_process"
+            confirmText={(reactData.number_of_errorsOnForm ? 'Submit' : 'Complete')}
             onCancel={() => {
               updateReactData({
                 stage: 'fill'
@@ -3630,7 +3409,7 @@ export default ({ request = {}, onClose }) => {
               let response = await handleSave({
                 document_id: reactData.document_id,
                 final: true,
-                pending: !!reactData.errors_on_Form
+                pending: !!reactData.number_of_errorsOnForm
               });
               if (!response.goodPut) {
                 updateReactData({
