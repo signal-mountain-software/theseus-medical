@@ -32,7 +32,7 @@ export default ({ currentValues, reactData, updateField }) => {
       <TextField
         id='Latitude'
         autoComplete='off'
-        key={`lat_${currentValues.customizationRecs.client_weather.customization_value.latitude}`}
+        key={`lat_${currentValues.customizationRecs?.client_weather?.customization_value?.latitude || ''}`}
         style={{ width: '100px' }}
         onBlur={async (event) => {
           let updateList =
@@ -41,10 +41,10 @@ export default ({ currentValues, reactData, updateField }) => {
               fieldName: 'client_weather.customization_value.latitude',
               newData: event.target.value
             }];
-          if (currentValues.customizationRecs.client_weather.customization_value.longitude && event.target.value) {
+          if (currentValues.customizationRecs?.client_weather?.customization_value?.longitude && event.target.value) {
             let nws_info = await restAPI({
               hostname: 'api.weather.gov',
-              path: `/points/${event.target.value},${currentValues.customizationRecs.client_weather.customization_value.longitude}`,
+              path: `/points/${event.target.value},${currentValues.customizationRecs?.client_weather?.customization_value?.longitude || ''}`,
               method: 'GET',
               headers: {
                 "User-Agent": "(AVASeniorConnect.com, rsteele@avaseniorconnect.com)"
@@ -86,13 +86,13 @@ export default ({ currentValues, reactData, updateField }) => {
           }
           await updateField({ updateList });
         }}
-        defaultValue={currentValues.customizationRecs.client_weather.customization_value.latitude}
+        defaultValue={currentValues.customizationRecs?.client_weather?.customization_value?.latitude}
         helperText='Latitude'
       />
       <TextField
         id='Longitude'
         autoComplete='off'
-        key={`lon_${currentValues.customizationRecs.client_weather.customization_value.longitude}`}
+        key={`lon_${currentValues.customizationRecs?.client_weather?.customization_value?.longitude || ''}`}
         style={{ width: '100px' }}
         onBlur={async (event) => {
           let updateList =
@@ -101,10 +101,10 @@ export default ({ currentValues, reactData, updateField }) => {
               fieldName: 'client_weather.customization_value.longitude',
               newData: `-${Math.abs(Number(event.target.value))}`
             }];
-          if (currentValues.customizationRecs.client_weather.customization_value.latitude && event.target.value) {
+          if (currentValues.customizationRecs?.client_weather?.customization_value?.latitude && event.target.value) {
             let nws_info = await restAPI({
               hostname: 'api.weather.gov',
-              path: `/points/${currentValues.customizationRecs.client_weather.customization_value.latitude},-${Math.abs(Number(event.target.value))}`,
+              path: `/points/${currentValues.customizationRecs?.client_weather?.customization_value?.latitude},-${Math.abs(Number(event.target.value))}`,
               method: 'GET',
               headers: {
                 "User-Agent": "(AVASeniorConnect.com, rsteele@avaseniorconnect.com)"
@@ -146,13 +146,13 @@ export default ({ currentValues, reactData, updateField }) => {
           }
           await updateField({ updateList });
         }}
-        defaultValue={currentValues.customizationRecs.client_weather.customization_value.longitude}
+        defaultValue={currentValues.customizationRecs?.client_weather?.customization_value?.longitude}
         helperText='Longitude'
       />
       <TextField
         id='Place'
         autoComplete='off'
-        key={`loc_${currentValues.customizationRecs.client_weather.customization_value.place_name}`}
+        key={`loc_${currentValues.customizationRecs?.client_weather?.customization_value?.place_name || ''}`}
         style={{ width: '300px' }}
         onBlur={async (event) => {
           await updateField({
@@ -164,13 +164,13 @@ export default ({ currentValues, reactData, updateField }) => {
               }]
           });
         }}
-        defaultValue={currentValues.customizationRecs.client_weather.customization_value.place_name}
+        defaultValue={currentValues.customizationRecs?.client_weather?.customization_value?.place_name}
         helperText='Place Name'
       />
       <TextField
         id='Time_Zone'
         autoComplete='off'
-        key={`loc_${currentValues.customizationRecs.client_timezone.customization_value}`}
+        key={`loc_${currentValues.customizationRecs?.client_timezone?.customization_value || ''}`}
         style={{ width: '300px' }}
         onBlur={async (event) => {
           await updateField({
@@ -182,7 +182,7 @@ export default ({ currentValues, reactData, updateField }) => {
               }]
           });
         }}
-        defaultValue={currentValues.customizationRecs.client_timezone.customization_value}
+        defaultValue={currentValues.customizationRecs?.client_timezone?.customization_value}
         helperText='Time Zone'
       />
       <Button
@@ -278,17 +278,17 @@ export default ({ currentValues, reactData, updateField }) => {
         <Typography
           style={AVATextStyle({ opacity: '40%', margin: { top: 1, right: 0.5 } })}
         >
-          {`Location: ${currentValues.customizationRecs.client_weather.customization_value.nws_place}`}
+          {`Location: ${currentValues.customizationRecs?.client_weather?.customization_value?.nws_place}`}
         </Typography>
         <Typography
           style={AVATextStyle({ size: 0.8, opacity: '40%', margin: { top: 0.5, right: 0.5 } })}
         >
-          {`NWS Office: ${currentValues.customizationRecs.client_weather.customization_value.nws_office}`}
+          {`NWS Office: ${currentValues.customizationRecs?.client_weather?.customization_value?.nws_office}`}
         </Typography>
         <Typography
           style={AVATextStyle({ size: 0.8, opacity: '40%', margin: { top: 0.5, right: 0.5 } })}
         >
-          {`NWS Grid: ${currentValues.customizationRecs.client_weather.customization_value.nws_x}/${currentValues.customizationRecs.client_weather.customization_value.nws_y}`}
+          {`NWS Grid: ${currentValues.customizationRecs?.client_weather?.customization_value?.nws_x}/${currentValues.customizationRecs?.client_weather?.customization_value?.nws_y}`}
         </Typography>
       </Box>
     </Box>
