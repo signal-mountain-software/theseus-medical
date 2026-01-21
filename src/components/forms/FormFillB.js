@@ -1046,7 +1046,11 @@ export default ({ request = {}, onClose }) => {
     // Ensure stages array is properly set up
     if (!formRec.stages || !Array.isArray(formRec.stages) || (formRec.stages.length === 0) || formRec.stages[0].stage_name !== 'default') {
       formRec.stages = [{ stage_name: 'default' }];
-    };
+    }
+    else {
+      // Remove any 'complete' stage(s) from the stages array
+      formRec.stages = formRec.stages.filter(stage => stage.stage_name !== 'complete');
+    }
     for (const this_section of formRec.sections) {
       if (!this_section.belongs_to_stage) {
         this_section.belongs_to_stage = 'default';
@@ -1749,7 +1753,9 @@ export default ({ request = {}, onClose }) => {
     });
   };
 
-  const handleReview = async () => {
+  const validateForm = () => {
+    // Validates all fields in the form and returns error information
+    // Used by both handleReview and handleToggleLock
     let messageList = ['There are problems with this form'];
     let errors_on_Form = 0;
     let form_stageStatus = {};
@@ -1792,8 +1798,7 @@ export default ({ request = {}, onClose }) => {
           }
           else if (reactData.fields[this_field].type.startsWith('select')) {
             let numberOfSelections = [reactData.fields[this_field].value ?? []].flat().length;
-            if (numberOfSelections < (reactData.fields[this_field].selectionObj.min ?? 0)
-            ) {
+            if (numberOfSelections < (reactData.fields[this_field].selectionObj.min ?? 0)) {
               const prompt_part = reconcilePrompt({
                 rawValue: reactData.fields[this_field].prompt?.value,
                 this_field
@@ -1809,13 +1814,15 @@ export default ({ request = {}, onClose }) => {
           }
         }
       }
+      // if the section is not being shown, then flag the stage that contains the section as "in error" (it can't be cleared yet) 
       else {
         form_stageStatus[stage_name].errors_in_stage++;
       }
-    };
-
+    }
+    // we've finished checking sections, the current stage is the first stage we reach that has an error
+    // if no stage has an error, the current stage is "complete"
     let current_form_stage = null;
-    for (const this_stage of reactData.formStages) {
+    for (const this_stage of reactData.formStages) {   // formStages was set up in initializeFromFormDefinition from formRec.stages and is sequential
       if (form_stageStatus.hasOwnProperty(this_stage.stage_name)) {
         if (form_stageStatus[this_stage.stage_name].errors_in_stage > 0) {
           // stop at the first stage that has errors
@@ -1827,24 +1834,31 @@ export default ({ request = {}, onClose }) => {
     if (!current_form_stage) {
       current_form_stage = 'complete';
     }
-
-    if (!errors_on_Form) {
-      if (current_form_stage !== 'complete') {
-        messageList = ['Your part of this form looks good!', 'Tap below to continue.'];
-      }
-      else {
-        messageList = ['This form is complete!', 'Tap "Complete" below to save it.'];
-      }
-    }
-
     updateReactData({
+      current_formStage: current_form_stage
+    }, false);
+
+    return {
       messageList,
       errors_on_Form,
       fields: reactData.fields,
-      stage: 'confirm',
       current_formStage: current_form_stage
-    }, true);
+    };
+  };
 
+  const handleReview = async () => {
+    const validationResult = validateForm();
+
+    if (!validationResult.errors_on_Form) {
+      validationResult.messageList = ['This form is complete!', 'Tap "Complete" below to save it.'];
+    }
+
+    updateReactData({
+      messageList: validationResult.messageList,
+      errors_on_Form: validationResult.errors_on_Form,
+      fields: validationResult.fields,
+      stage: 'confirm'
+    }, true);
   };
 
   const resolveValue = (object, key, value) => {
@@ -1877,108 +1891,36 @@ export default ({ request = {}, onClose }) => {
 
   const handleToggleLock = async () => {
     const currentLockedState = reactData.docRec?.formLocked;
-    
+
     // If currently unlocked, we're locking - validate first
+    // We don't want to lock a form that has problems
+    // Consequently, locking a form forces its status to be 'complete'
     if (!currentLockedState) {
-      // Run validation like handleReview does
-      let messageList = ['There are problems with this form'];
-      let errors_on_Form = 0;
-      let form_stageStatus = {};
-      
-      for (const sectionObj of reactData.sections) {
-        let stage_name = sectionObj.belongs_to_stage || 'default';
-        if (!form_stageStatus.hasOwnProperty(stage_name)) {
-          form_stageStatus[stage_name] = {
-            errors_in_stage: 0,
-          };
-        }
-        if (okToShowSection(sectionObj)) {
-          for (const this_field of sectionObj.fields) {
-            if (reactData.fields[this_field].ignore) {
-              continue;
-            }
-            reactData.fields[this_field].isError = false;
-            if (reactData.fields[this_field]?.options?.ifEmpty && isEmpty(reactData.fields[this_field].value)) {
-              reactData.fields[this_field].value = reconcilePrompt({
-                rawValue: reactData.fields[this_field].options.ifEmpty,
-                this_field
-              });
-            }
-            if (reactData.fields[this_field]?.options?.required || reactData.fields[this_field]?.value?.required) {
-              const signature_ok = (reactData.fields[this_field].type === 'signature')
-                ? (signatureRef[reactData.fields[this_field].options.sigRefNumber].current
-                  && (!signatureRef[reactData.fields[this_field].options.sigRefNumber].current.isEmpty()))
-                : null;
-              if (!signature_ok ?? isEmpty(reactData.fields[this_field].value)) {
-                reactData.fields[this_field].errorMessage = `${reconcilePrompt({
-                  rawValue: reactData.fields[this_field].prompt?.value,
-                  this_field
-                })} is required`;
-                reactData.fields[this_field].isError = true;
-                messageList.push(reactData.fields[this_field].errorMessage);
-                errors_on_Form++;
-                form_stageStatus[stage_name].errors_in_stage++;
-              }
-            }
-            else if (reactData.fields[this_field].type.startsWith('select')) {
-              let numberOfSelections = [reactData.fields[this_field].value ?? []].flat().length;
-              if (numberOfSelections < (reactData.fields[this_field].selectionObj.min ?? 0)) {
-                const prompt_part = reconcilePrompt({
-                  rawValue: reactData.fields[this_field].prompt?.value,
-                  this_field
-                });
-                reactData.fields[this_field].errorMessage = numberOfSelections === 0
-                  ? `Please make a selection for ${prompt_part}`
-                  : `You must make at least ${reactData.fields[this_field].selectionObj.min} selections for ${prompt_part}`;
-                reactData.fields[this_field].isError = true;
-                messageList.push(reactData.fields[this_field].errorMessage);
-                errors_on_Form++;
-                form_stageStatus[stage_name].errors_in_stage++;
-              }
-            }
-          }
-        }
-        else {
-          form_stageStatus[stage_name].errors_in_stage++;
-        }
-      }
-      
-      let current_form_stage = null;
-      for (const this_stage of reactData.formStages) {
-        if (form_stageStatus.hasOwnProperty(this_stage.stage_name)) {
-          if (form_stageStatus[this_stage.stage_name].errors_in_stage > 0) {
-            current_form_stage = this_stage.stage_name;
-            break;
-          }
-        }
-      }
-      if (!current_form_stage) {
-        current_form_stage = 'complete';
-      }
-      
+      // Run validation
+      const validationResult = validateForm();
+
       // If errors exist, show them and don't lock
-      if (errors_on_Form) {
+      if (validationResult.errors_on_Form) {
         updateReactData({
-          messageList,
-          errors_on_Form,
-          fields: reactData.fields,
-          stage: 'confirm',
-          current_formStage: current_form_stage
+          messageList: validationResult.messageList,
+          errors_on_Form: validationResult.errors_on_Form,
+          fields: validationResult.fields,
+          stage: 'confirm'
         }, true);
         return;
       }
-      
+
       // No errors - proceed with locking and saving
       // Update docRec with locked state (not formRec)
       const updatedDocRec = Object.assign({}, reactData.docRec, {
         formLocked: true
       });
-      
+
       // Update local state
       updateReactData({
         docRec: updatedDocRec
       }, false);
-      
+
       try {
         // Save the document as final with formLocked = true
         await handleSave({
@@ -1986,7 +1928,7 @@ export default ({ request = {}, onClose }) => {
           final: true,
           formLocked: true
         });
-        
+
         // Exit the form
         onClose('complete', {
           document_id: reactData.document_id,
@@ -2003,12 +1945,12 @@ export default ({ request = {}, onClose }) => {
       const updatedDocRec = Object.assign({}, reactData.docRec, {
         formLocked: false
       });
-      
+
       // Update local state and save document
       updateReactData({
         docRec: updatedDocRec
       }, true);
-      
+
       // Save the unlocked state to the document
       try {
         await handleSave({
@@ -2421,7 +2363,7 @@ export default ({ request = {}, onClose }) => {
           });
         }
         // remove and add groups from pertains_to account's group list if any
-        let groupInstructions_onStageEntry = reactData.formRec.stages[previous_stageIndex].on_complete_groups;
+        let groupInstructions_onStageEntry = reactData.formRec.stages[previous_stageIndex].on_entry_groups;
         if (groupInstructions_onStageEntry) {
           if (groupInstructions_onStageEntry.remove) {
             // if i am removing a group that's a parent, you are also removing that group's children. So we need to check for that and remove those as well
@@ -2505,6 +2447,7 @@ export default ({ request = {}, onClose }) => {
       docRec: recWritten,
       recWritten: recWritten,
       dataSaved: true,
+      formUpdates: 0
     }, true);
     return response;
   };
@@ -3505,21 +3448,22 @@ export default ({ request = {}, onClose }) => {
                 {'Exit'}
               </Button>
               <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-               {reactData.administrative_account &&
-                <Button
-                  onClick={handleToggleLock}
-                  className={AVAClass.AVAButton}
-                  style={{ 
-                    color: reactData.docRec?.formLocked ? 'green' : 'red',                     
-                    borderColor: reactData.docRec?.formLocked ? 'green' : 'red',
-                    borderWidth: 2,
-                    borderStyle: 'solid',}}
-                  size='small'
-                  startIcon={reactData.docRec?.formLocked ? <LockOpenIcon /> : <LockIcon />}
-                >
-                  {reactData.docRec?.formLocked ? 'Unlock' : 'Lock/Save'}
-                </Button>
-              }
+                {reactData.administrative_account &&
+                  <Button
+                    onClick={handleToggleLock}
+                    className={AVAClass.AVAButton}
+                    style={{
+                      color: reactData.docRec?.formLocked ? 'green' : 'red',
+                      borderColor: reactData.docRec?.formLocked ? 'green' : 'red',
+                      borderWidth: 2,
+                      borderStyle: 'solid',
+                    }}
+                    size='small'
+                    startIcon={reactData.docRec?.formLocked ? <LockOpenIcon /> : <LockIcon />}
+                  >
+                    {reactData.docRec?.formLocked ? 'Unlock' : 'Lock/Save'}
+                  </Button>
+                }
                 {!reactData.formRec?.options?.noSaveContinue && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
                   <Button
                     onClick={async () => {
