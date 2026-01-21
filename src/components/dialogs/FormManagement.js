@@ -581,13 +581,26 @@ export default ({ defaults, onClose }) => {
     }
 
     // ALWAYS refresh filteredMemberIds when form is clicked (not just first time)
+    applyFilterToForm(this_form);
+    /*
     if (reactData.masterFormList[this_form].build_complete && reactData.masterFormList[this_form].sortedMemberIds) {
-      reactData.masterFormList[this_form].filteredMemberIds = reactData.masterFormList[this_form].sortedMemberIds;
+      reactData.masterFormList[this_form].filteredMemberIds = reactData.masterFormList[this_form].sortedMemberIds.filter(person_id => {
+        const personData = reactData.masterFormList[this_form].memberList[person_id];
+        const status = personData.overall_status || 'not_started';
+
+        if (activeFilters.filterComplete && status.startsWith('complete')) return true;
+        if (activeFilters.filterInProcess && status === 'in_process') return true;
+        if (activeFilters.filterPending && status === 'pending') return true;
+        if (activeFilters.filterNotStarted && status === 'not_started') return true;
+
+        return false;
+      });
+
       updateReactData({
         masterFormList: reactData.masterFormList
       }, true);
     }
-
+    */
     if (!reactData.masterFormList[this_form].build_complete) {
       console.time('⏱️ Setup and initialization');
       let this_date = makeDate(new Date());
@@ -2122,6 +2135,7 @@ export default ({ defaults, onClose }) => {
             else {
               if (statusObj.document_status === 'work_in_process') {
                 reactData.masterPeopleList[reactData.isEditing.person_id][reactData.isEditing.form_id].status = 'in_process';
+                reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].overall_status = 'in_process';
                 if (!reactData.masterFormList[reactData.isEditing.form_id].memberList.hasOwnProperty(reactData.isEditing.person_id)) {
                   reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id] = {
                     person_id: reactData.isEditing.person_id,
@@ -2150,6 +2164,7 @@ export default ({ defaults, onClose }) => {
               }
               else if (statusObj.document_status.startsWith('complete')) {
                 reactData.masterPeopleList[reactData.isEditing.person_id][reactData.isEditing.form_id].status = 'completed';
+                reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].overall_status = 'complete';
                 if (!reactData.masterFormList[reactData.isEditing.form_id].memberList.hasOwnProperty(reactData.isEditing.person_id)) {
                   reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id] = {
                     person_id: reactData.isEditing.person_id,
