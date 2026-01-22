@@ -570,8 +570,62 @@ export function parseNumeric(pIn) {
   });
 };
 
+export function validatePhone(pInput, options = {}) {
+  if (!pInput) {
+    return {
+      'error': true,
+      'raw': '',  // last 10 digits only
+      'dial': '',  // +12223334444
+      'display': '',  // (222) 333-4444
+      'area_code': '',  // 222
+      'numeric': '',  // 2223334444
+      'isPhoneNumber': false
+    };
+  }
+  if (typeof pInput !== 'string') {
+    pInput = pInput.toString();
+  }
+  let digitsOnly = pInput.replace(/\D/g, '');
+  let raw = digitsOnly.toString().slice(-10);
+  let area_code = raw.slice(0, 3);
+  let numeric = Number(raw);
+  let display = `(${area_code}) ${raw.slice(3, 6)}-${raw.slice(6)}`;
+  let dial = `+1${raw}`;
+  if (options.country_code) {
+    dial = `+${options.country_code}${raw}`;
+  }
+  if (digitsOnly.length === 10) { /* valid US number */ }
+  else if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) { /* valid US number with country code */ }
+  else if (digitsOnly.length >= 10 && digitsOnly.length <= 15) {
+    // International number - keep user's formatting
+    raw = digitsOnly;
+    area_code = '';
+    numeric = Number(digitsOnly);
+    display = pInput;
+    dial = `+${digitsOnly}`;
+  }
+  return {
+    error: false,
+    raw,
+    dial,
+    display,
+    area_code,
+    numeric,
+    isPhoneNumber: raw.length >= 10
+  };
+};
+
 export function isPhoneNumber(pIn) {
   return !isNaN(Number(pIn.toString().replace(/[()-\s.]/g, "")));
+}
+
+export function isEMail(pIn) {
+  return isValidEmail(pIn);
+}
+
+export function isValidEmail(pIn) {
+  const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+  return emailRegex.test(pIn);
 }
 
 export async function getIcon(pIcon) {
@@ -1050,34 +1104,44 @@ export async function deleteDbRec(pData) {
 }
 
 export async function getDb(getSpec) {
-  const foundDoc = await dbClient
+  const foundRec = await dbClient
     .get(getSpec)
     .promise()
     .catch(error => {
       cl(`Error reading ${getSpec.TableName} in getDb with key of ${getSpec.Key}: ${error}`);
     });
-  if (recordExists(foundDoc)) {
-    return foundDoc.Item;
+  if (recordExists(foundRec)) {
+    return foundRec.Item;
   }
   else {
     return false;
   }
 }
 
-
-export async function putDb(putSpec) {
-  const foundDoc = await dbClient
-    .put(putSpec)
+export async function queryDb(querySpec) {
+  const foundRecs = await dbClient
+    .query(querySpec)
     .promise()
     .catch(error => {
-      cl(`Error putting ${putSpec.TableName} in putDb with key of ${putSpec.Key}: ${error}`);
+      cl(`Error reading ${querySpec.TableName} in getDb with key of ${querySpec.Key}: ${error}`);
     });
-  if (recordExists(foundDoc)) {
-    return foundDoc.Item;
+  if (recordExists(foundRecs)) {
+    return foundRecs.Items;
   }
   else {
     return false;
   }
+}
+
+export async function putDb(putSpec) {
+  await dbClient
+    .put(putSpec)
+    .promise()
+    .catch(error => {
+      cl(`Error putting ${putSpec.TableName} in putDb with key of ${putSpec.Key}: ${error}`);
+      return false;
+    });
+  return putSpec.Item;
 }
 
 export async function restAPI(pRequest, api_data) {
