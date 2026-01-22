@@ -1,4 +1,4 @@
-import { cl, recordExists, dbClient } from './AVAUtilities';
+import { cl, recordExists, dbClient, getDb } from './AVAUtilities';
 import { addDays, makeDate } from './AVADateTime';
 
 export async function createDocument({ docData, author }) {
@@ -150,21 +150,14 @@ export async function updateDocument({ docData, author, isNew = false, save_type
     if (docData.formType) delete docData.formType;
     if (!docData.form_type) return false;
 
-    let fetchedRec = await dbClient
-        .get({
-            Key: {
-                document_id: docData.document_id
-            },
+    let fetchedRec = await getDb({
+            Key: { document_id: docData.document_id },
             TableName: "DocumentMaster"
-        })
-        .promise()
-        .catch(error => {
-            cl(`in updateDocument, bad get to DocumentMaster with ${docData.document_id || '(null)'}. Error is: ${error}`);
-        });
+          });
     
     let docBasis = {};
-    if (recordExists(fetchedRec)) {
-        docBasis = fetchedRec.Item;
+    if (fetchedRec) {
+        docBasis = fetchedRec;
     }
     else if (!isNew) {
         return false;
@@ -192,7 +185,7 @@ export async function updateDocument({ docData, author, isNew = false, save_type
     // save_type is one of 'save_final', 'in_process', 'on_timeout', 'printed', 'uploaded', 'cancelled'
     
     // if the last history item is 'on_timeout', remove it - we are about to add a history item that supercedes it
-    if (docOut.history[0].status === 'on_timeout') {
+    if (docData.history && docData.history.length > 0 && docData.history[0].status === 'on_timeout') {
         docOut.history.splice(0, 1);
     }
     docOut.history.unshift({

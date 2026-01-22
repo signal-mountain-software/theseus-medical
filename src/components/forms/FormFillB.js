@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, sentenceCase, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile } from '../../util/AVAUtilities';
+import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { formatPhone, makeName } from '../../util/AVAPeople';
 import { makeDate, makeTime } from '../../util/AVADateTime';
@@ -375,7 +375,7 @@ export default ({ request = {}, onClose }) => {
     };
     if (!reactData.idleState) {
       // if we weren't previously in an idle state and we are now...
-      if (!isInitializing() && valuesChanged()) {
+      if (!isInitializing() && valuesChanged() && !reactData.saveInProcess) {
         cl(`Auto save at ${now.toLocaleString()}.`);
         let response = await handleSave({
           document_id: reactData.document_id,
@@ -1043,13 +1043,18 @@ export default ({ request = {}, onClose }) => {
       };
     }
 
+    let complete_stage = { stage_name: 'complete' };
     // Ensure stages array is properly set up
     if (!formRec.stages || !Array.isArray(formRec.stages) || (formRec.stages.length === 0) || formRec.stages[0].stage_name !== 'default') {
       formRec.stages = [{ stage_name: 'default' }];
     }
     else {
       // Remove any 'complete' stage(s) from the stages array
-      formRec.stages = formRec.stages.filter(stage => stage.stage_name !== 'complete');
+      let existingCompleteStage = formRec.stages.find(stage => stage.stage_name === 'complete');
+      if (existingCompleteStage) {
+        complete_stage = existingCompleteStage;
+        formRec.stages = formRec.stages.filter(stage => stage.stage_name !== 'complete');
+      }
     }
     for (const this_section of formRec.sections) {
       if (!this_section.belongs_to_stage) {
@@ -1061,7 +1066,7 @@ export default ({ request = {}, onClose }) => {
         });
       }
     }
-    formRec.stages.push({ stage_name: 'complete' });
+    formRec.stages.push(complete_stage);
     // We have a person - do they have a familyRec?  If so, go ahead and get it
     updateReactData({
       peopleRec: reactData.peopleRec || {},
@@ -1545,6 +1550,7 @@ export default ({ request = {}, onClose }) => {
                 }}
                 dropdownHandle={true}
                 variant={'standard'}
+                disabled={reactData.fields[props.prop].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
                 dropdownPosition={'auto'}
                 values={(reactData.fields[props.prop]?.value && reactData.fields[props.prop]?.value.length > 0)
                   ? (() => {
@@ -1980,6 +1986,7 @@ export default ({ request = {}, onClose }) => {
       });
     }
     updateReactData({
+      saveInProcess: true,
       peopleRec: reactData.peopleRec,
       sessionRec: reactData.sessionRec,
       document_id: document_id || reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`
@@ -1987,7 +1994,6 @@ export default ({ request = {}, onClose }) => {
 
     let field_values = {};
     let signatures = [];
-    let now = makeDate(new Date());
     let needsUpdate = { peopleRec: false, sessionRec: false };
     for (const this_field in reactData.fields) {
       if (reactData.fields[this_field].bonusText) {   // an extra value added to the end of a list of selections (as in "other - please specify")
@@ -2114,7 +2120,7 @@ export default ({ request = {}, onClose }) => {
     const recWritten = await updateDocument({
       docData,
       author: state.session.patient_id,
-      isNew: false,
+      isNew: true,
       save_type: final ? 'save_final' : (timeout ? 'on_timeout' : 'in_process'),
     });
 
@@ -2147,6 +2153,7 @@ export default ({ request = {}, onClose }) => {
     }
 
     updateReactData({
+      saveInProcess: false,
       document_id,
       docRec: recWritten,
       recWritten: recWritten,
@@ -3119,6 +3126,7 @@ export default ({ request = {}, onClose }) => {
                                       dropdownHandle={true}
                                       clearOnSelect={true}
                                       clearOnBlur={true}
+                                      disabled={reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
                                       key={`selectOptions-${this_field}_${sectionNdx}`}
                                       searchable={true}
                                       create={false}
@@ -3395,7 +3403,7 @@ export default ({ request = {}, onClose }) => {
             // if there were errors that this user is responsible for, we would not have gotten this far
             // number_of_errorsOnForm > 0 means there are errors on the form, but none of the errors are in a stage that this user has access to
             // this used to imply "pending" status, but that has been removed in favor of "in_process"
-            confirmText={(reactData.number_of_errorsOnForm ? 'Submit' : 'Complete')}
+            confirmText={(reactData.number_of_errorsOnForm ? '*none*' : 'Complete')}
             onCancel={() => {
               updateReactData({
                 stage: 'fill'
