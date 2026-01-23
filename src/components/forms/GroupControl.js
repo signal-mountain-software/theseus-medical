@@ -479,14 +479,24 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
 
   function sortGroupMembers(unsortedObj) {
     if (!unsortedObj) { return []; }
-    return Object.keys(unsortedObj).sort((a, b) => {
-      if (unsortedObj[a].name.last === unsortedObj[b].name.last) {
-        return (unsortedObj[a].name.first > unsortedObj[b].name.first) ? 1 : -1;
-      }
-      else {
-        return (unsortedObj[a].name.last > unsortedObj[b].name.last) ? 1 : -1;
-      }
-    });
+    if (state.session.client_style.sort_order === 'last_first') {
+      return Object.keys(unsortedObj).sort((a, b) => {
+        if (unsortedObj[a].name.last === unsortedObj[b].name.last) {
+          return (unsortedObj[a].name.first > unsortedObj[b].name.first) ? 1 : -1;
+        }
+        else
+          return (unsortedObj[a].name.last > unsortedObj[b].name.last) ? 1 : -1;
+      });
+    }
+    else {
+      return Object.keys(unsortedObj).sort((a, b) => {
+        if (unsortedObj[a].name.first === unsortedObj[b].name.first) {
+          return (unsortedObj[a].name.last > unsortedObj[b].name.last) ? 1 : -1;
+        }
+        else
+          return (unsortedObj[a].name.first > unsortedObj[b].name.first) ? 1 : -1;
+      });
+    }
   }
 
   function removeChildren(this_group, newGroupList) {
@@ -550,7 +560,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
       if (foundAt > -1) {
         newGroupList.splice(foundAt, 1);
       }
-      // if I am removing a group that has children, remove the chlidren
+      // if I am removing a group that has children, remove the children
       newGroupList = removeChildren(draggedFrom.personGroup, newGroupList);
 
       // if what is left contains a parent of this group and that parent now has no children remaining, remove it
@@ -871,7 +881,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                     {Object.keys(groupsManagedObject).map((listEntry, listIndex) => (
                       <React.Fragment key={`frag_${listIndex}`}>
                         {((groupsManagedObject[listEntry].level < 3) ||
-                        !(reactData.levelHidden[listIndex] ?? reactData.defaultCollapsed)) &&
+                          !(reactData.levelHidden[listIndex] ?? reactData.defaultCollapsed)) &&
                           <Box
                             display='flex' flexDirection='row'
                             justifyContent='flex-start'

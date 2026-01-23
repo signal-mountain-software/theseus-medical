@@ -5,7 +5,7 @@ import useSession from '../../hooks/useSession';
 import { getMemberList } from '../../util/AVAGroups';
 import { dbClient, recordExists, cl, titleCase, getDb, putDb, deepCopy } from '../../util/AVAUtilities';
 import QuickSearch from '../sections/QuickSearch';
-import { getPerson, getImage, makeName } from '../../util/AVAPeople';
+import { getPerson, getImage } from '../../util/AVAPeople';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import { addDays, makeDate, makeTime } from '../../util/AVADateTime';
 import FormFillB from '../forms/FormFillB';
@@ -355,6 +355,9 @@ export default ({ defaults, onClose }) => {
           person_name: `${reactData.selectedPersonRec.name.first} ${reactData.selectedPersonRec.name.last}`,
           person_first: reactData.selectedPersonRec.name.first,
           person_last: reactData.selectedPersonRec.name.last,
+          sort_order: state.session.client_style.sort_order === 'last_first' ?
+            `${reactData.selectedPersonRec.name.last}, ${reactData.selectedPersonRec.name.first}` :
+            `${reactData.selectedPersonRec.name.first} ${reactData.selectedPersonRec.name.last}`,
           wipDocs: [],
           dated_docs: false,
           dated_status: {},
@@ -391,6 +394,31 @@ export default ({ defaults, onClose }) => {
     }, true);
   }
 
+  function makeName(person_id) {
+    let peopleList = state.accessList?.[state.session.client_id].list;
+    let foundPerson = peopleList?.find(p => p.person_id === person_id);
+    if (foundPerson) {
+      return {
+        found: true,
+        first: foundPerson.name.first,
+        last: foundPerson.name.last,
+        display: `${foundPerson.name.first} ${foundPerson.name.last}`,
+        sort: state.session.client_style.sort_order === 'last_first' ?
+          `${foundPerson.name.last}, ${foundPerson.name.first}` :
+          `${foundPerson.name.first} ${foundPerson.name.last}`
+      };
+    }
+    else {
+      return {
+        found: false,
+        first: person_id,
+        last: state.session.client_id,
+        display: person_id,
+        sort: `ZZZ_${person_id}`
+      };
+    }
+  }
+
   async function buildMasters(this_doc, eventCache = {}) {
     if ((this_doc.restricted_access === 'admin_only') && (!reactData.administrative_account)) {
       return;    // skip this document
@@ -402,13 +430,14 @@ export default ({ defaults, onClose }) => {
       reactData.masterFormList[this_doc.form_type].memberList = {};
     }
     if (!reactData.masterFormList[this_doc.form_type].memberList.hasOwnProperty(this_doc.pertains_to)) {
-      let goodPerson = await makeName(this_doc.pertains_to);
-      if (goodPerson) {
+      let personName = makeName(this_doc.pertains_to);
+      if (personName.found) {
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to] = {
           person_id: this_doc.pertains_to,
-          person_name: goodPerson,
-          person_first: `${this_doc.pertains_to}`,
-          person_last: `${this_doc.pertains_to}`,
+          person_name: personName.display,
+          person_first: personName.first,
+          person_last: personName.last,
+          sort_order: personName.sort,
           wipDocs: [],
           assignedDocs: [],
           dated_docs: false,
@@ -631,6 +660,9 @@ export default ({ defaults, onClose }) => {
             person_name: `${this_member.name.first} ${this_member.name.last}`,
             person_first: this_member.name.first,
             person_last: this_member.name.last,
+            sort_order: state.session.client_style.sort_order === 'last_first' ?
+              `${this_member.name.last}, ${this_member.name.first}` :
+              `${this_member.name.first} ${this_member.name.last}`,
             wipDocs: [],
             dated_docs: false,
             assignedDocs: [],
@@ -650,7 +682,7 @@ export default ({ defaults, onClose }) => {
       // PRE-SORT: Create sorted list of person IDs once, not on every render
       console.time('⏱️ Sorting members');
       reactData.masterFormList[this_form].sortedMemberIds = Object.keys(reactData.masterFormList[this_form].memberList).sort((a, b) => {
-        return (reactData.masterFormList[this_form].memberList[a].person_name > reactData.masterFormList[this_form].memberList[b].person_name) ? 1 : -1;
+        return (reactData.masterFormList[this_form].memberList[a].sort_order > reactData.masterFormList[this_form].memberList[b].sort_order) ? 1 : -1;
       });
       console.timeEnd('⏱️ Sorting members');
 
@@ -2137,11 +2169,12 @@ export default ({ defaults, onClose }) => {
                 reactData.masterPeopleList[reactData.isEditing.person_id][reactData.isEditing.form_id].status = 'in_process';
                 reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].overall_status = 'in_process';
                 if (!reactData.masterFormList[reactData.isEditing.form_id].memberList.hasOwnProperty(reactData.isEditing.person_id)) {
+                  let personName = makeName(reactData.isEditing.person_id);
                   reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id] = {
-                    person_id: reactData.isEditing.person_id,
-                    person_name: reactData.isEditing.person_id,
-                    person_first: reactData.isEditing.person_id,
-                    person_last: reactData.isEditing.person_id,
+                    person_name: personName.display,
+                    person_first: personName.first,
+                    person_last: personName.last,
+                    sort_order: personName.sort,
                     wipDocs: [],
                     dated_docs: false,
                     assignedDocs: [],
@@ -2166,11 +2199,13 @@ export default ({ defaults, onClose }) => {
                 reactData.masterPeopleList[reactData.isEditing.person_id][reactData.isEditing.form_id].status = 'completed';
                 reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id].overall_status = 'complete';
                 if (!reactData.masterFormList[reactData.isEditing.form_id].memberList.hasOwnProperty(reactData.isEditing.person_id)) {
+                  let personName = makeName(reactData.isEditing.person_id);
                   reactData.masterFormList[reactData.isEditing.form_id].memberList[reactData.isEditing.person_id] = {
                     person_id: reactData.isEditing.person_id,
-                    person_name: reactData.isEditing.person_id,
-                    person_first: reactData.isEditing.person_id,
-                    person_last: reactData.isEditing.person_id,
+                    person_name: personName.display,
+                    person_first: personName.first,
+                    person_last: personName.last,
+                    sort_order: personName.sort,
                     wipDocs: [],
                     dated_docs: false,
                     assignedDocs: [],
