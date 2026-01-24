@@ -16,7 +16,8 @@ import EditIcon from '@material-ui/icons/Edit';
 import PrintIcon from '@material-ui/icons/Print';
 import LockIcon from '@material-ui/icons/Lock';
 import LockOpenIcon from '@material-ui/icons/LockOpen';
-import { Dialog, DialogContent, Snackbar, Box, Typography, FormControlLabel, Button, TextField, Checkbox } from '@material-ui/core';
+import InsertDriveFileIcon from '@material-ui/icons/InsertDriveFile';
+import { Dialog, DialogContent, Snackbar, Box, Typography, FormControlLabel, Button, TextField, Checkbox, IconButton } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -304,14 +305,19 @@ export default ({ request = {}, onClose }) => {
 
   function uploadIcon(this_field, occ_index) {
     const IconToRender = (makeArray(reactData.fields[this_field].valueText).length > 1) ? EditIcon : CloudUploadIcon;
+    const isDisabled = (reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked);
     return (
-      <IconToRender
+      <IconButton
         classes={{ root: classes.rowButton }}
-        style={{ marginLeft: '16px', marginBottom: '4px' }}
+        style={{ marginLeft: 0, marginTop: 0, marginBottom: 0, paddingTop: 0 }}
         key={`radio-button_upload`}
         id={`radio-button_upload`}
+        disabled={isDisabled}
         size='medium'
         onClick={() => {
+          if (isDisabled) {
+            return;
+          }
           updateReactData({
             stage: 'uploadField',
             field_title: reconcilePrompt({
@@ -328,7 +334,9 @@ export default ({ request = {}, onClose }) => {
             }
           }, true);
         }}
-      />
+      >
+        <IconToRender />
+      </IconButton>
     );
   };
 
@@ -665,6 +673,10 @@ export default ({ request = {}, onClose }) => {
 
     // Handle default.value
     if (!response.value && fieldRec.default.value) {
+      if (fieldRec.default.type === 'url') {
+        response.value = fieldRec.default.value;
+        return response;
+      }
       defaultObj.value_path = makeArray(fieldRec.default.value, '.');
       if (defaultObj.value_path[0].toLowerCase() === 'date') {
         response.value = makeDate(defaultObj.value_path[1], { notime: true })[defaultObj.value_path[2]];
@@ -873,12 +885,12 @@ export default ({ request = {}, onClose }) => {
     }
 
     // Set default value
-    if (docFields && docFields.hasOwnProperty(field_name)) {
+    if (docFields && docFields.hasOwnProperty(field_name) && docFields[field_name] !== null && docFields[field_name] !== undefined) {
       // if we have a document field value, use it
       returnObj.field_value = docFields[field_name];
     }
     // if this is an image or html type field, set the value to the prompt value if present
-    else if (returnObj.prompt?.value && ['image', 'html'].includes(field_variables.value?.type || field_variables.default?.type)) {
+    else if (returnObj.prompt?.value && (field_variables.value?.type || field_variables.default?.type) === 'html') {
       returnObj.field_value = returnObj.prompt?.value;
     }
     else if (returnObj.prompt?.occurrences && returnObj.prompt?.occurrences > 1) {
@@ -1240,7 +1252,7 @@ export default ({ request = {}, onClose }) => {
         case 'date_select':
         case 'date': {
           // return makeDate(rawValue, { noTime: true, noYearCorrection: true }).absolute;
-          response[index] = makeDate(this_value, { noTime: true, noYearCorrection: true }).absolute;
+          response[index] = makeDate(this_value, { noTime: true, noYearCorrection: true }).slashDate;
           break;
         }
         case 'time': {
@@ -2730,19 +2742,103 @@ export default ({ request = {}, onClose }) => {
                                 />
                               }
                               {(reactData.fields[this_field].type === 'image') &&
-                                <Box
-                                  className={classes.imageArea}
-                                  component="img"
-                                  alt={''}
-                                  src={reactData.fields[this_field].valueText}
-                                />
+                                <React.Fragment>
+                                  <Typography
+                                    style={AVATextStyle(Object.assign(
+                                      {},
+                                      {
+                                        size: 0.75,
+                                        margin: { top: 2, bottom: 0.5, right: 3 }
+                                      },
+                                      reactData.fields[this_field].prompt?.style || {}
+                                    ))}
+                                  >
+                                    {reconcilePrompt({
+                                      rawValue: reactData.fields[this_field].prompt?.value,
+                                      this_field
+                                    })}
+                                  </Typography>
+                                  <Box
+                                    display='flex'
+                                    mb={0}
+                                    flexDirection='row'
+                                    justifyContent='flex-start'
+                                    alignItems='center'
+                                    padding={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
+                                  >
+                                    {makeArray(reactData.fields[this_field].valueText).map((this_image, imageNdx) => {
+                                      const fileExtension = this_image.split('.').pop().toLowerCase();
+                                      const isImage = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(fileExtension);
+                                      const isPDF = fileExtension === 'pdf';
+
+                                      return (
+                                        <Box
+                                          borderRadius={'20px'}
+                                          border={1}
+                                          marginRight={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
+                                          key={`image_${sectionNdx}_${fieldNdx}_${imageNdx}`}
+                                          onClick={() => {
+                                            window.open(this_image, `${fileExtension} File`);
+                                          }}
+                                          style={{
+                                            minWidth: '150px',
+                                            maxWidth: '450px',
+                                            minHeight: '150px',
+                                            maxHeight: '450px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            justifyContent: 'center',
+                                            alignItems: 'center',
+                                            cursor: 'pointer',
+                                            backgroundColor: isImage ? 'transparent' : '#f5f5f5',
+                                            overflow: 'hidden'
+                                          }}
+                                        >
+                                          {isImage ? (
+                                            <Box
+                                              component="img"
+                                              alt={`${fileExtension} file`}
+                                              src={this_image}
+                                              style={{
+                                                width: '100%',
+                                                height: '100%',
+                                                objectFit: 'cover'
+                                              }}
+                                            />
+                                          ) : isPDF ? (
+                                            <iframe
+                                              src={`${this_image}#toolbar=0&navpanes=0&scrollbar=0`}
+                                              title={`PDF ${imageNdx}`}
+                                              style={{
+                                                width: '100%',
+                                                height: '100%',
+                                                border: 'none',
+                                                pointerEvents: 'none'
+                                              }}
+                                            />
+                                          ) : (
+                                            <>
+                                              <InsertDriveFileIcon style={{ fontSize: '48px', color: '#666' }} />
+                                              <Typography style={{ fontSize: '0.7rem', marginTop: '8px', textAlign: 'center' }}>
+                                                {fileExtension.toUpperCase()}
+                                              </Typography>
+                                              <Typography style={{ fontSize: '0.6rem', color: '#999', textAlign: 'center' }}>
+                                                Tap to view
+                                              </Typography>
+                                            </>
+                                          )}
+                                        </Box>
+                                      );
+                                    })}
+                                  </Box>
+                                </React.Fragment>
                               }
                               {(reactData.fields[this_field].type === 'upload') &&
                                 <Box
                                   display='flex'
                                   mb={0}
                                   flexDirection='column'
-                                  justifyContent='center'
+                                  justifyContent='flex-start'
                                   alignItems='flex-start'
                                   style={{
                                     paddingTop: '16px',
@@ -2751,58 +2847,101 @@ export default ({ request = {}, onClose }) => {
                                   <Box
                                     display='flex'
                                     mb={0}
-                                    flexDirection='row'
+                                    flexDirection='column'
                                     justifyContent='flex-start'
-                                    alignItems='center'
+                                    alignItems='flex-start'
                                   >
                                     <Typography
-                                      style={{
-                                        margin: 0,
-                                        marginLeft: 0,
-                                        marginRight: '2px',
-                                        paddingBottom: 0,
-                                        fontSize: 0.8,
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        marginTop: 0,
-                                        marginBottom: 0,
-                                      }}
+                                      style={AVATextStyle(Object.assign(
+                                        {},
+                                        {
+                                          size: 0.75,
+                                          margin: { top: 2, bottom: 0.75, right: 3 }
+                                        },
+                                        reactData.fields[this_field].prompt?.style || {}
+                                      ))}
                                     >
                                       {reconcilePrompt({
                                         rawValue: reactData.fields[this_field].prompt?.value,
                                         this_field
                                       })}
                                     </Typography>
-                                    {uploadIcon(this_field, occ_index)}
+                                    {!((reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked))
+                                      && uploadIcon(this_field, occ_index)
+                                    }
                                   </Box>
                                   <Box
                                     display='flex'
-                                    mb={0}
+                                    mb={0}                                    
                                     flexDirection='row'
                                     justifyContent='center'
                                     alignItems='center'
                                     padding={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
                                   >
-                                    {makeArray(reactData.fields[this_field].valueText).map((this_image, imageNdx) => (
-                                      <Box
-                                        borderRadius={'20px'}
-                                        border={1}
-                                        marginRight={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
-                                        key={`image_${sectionNdx}_${fieldNdx}_${imageNdx}`}
-                                        onClick={() => {
-                                          window.open(this_image, `${this_image.split('.').pop()} File`);
-                                        }}
-                                        style={{
-                                          minWidth: '150px',
-                                          maxWidth: '150px',
-                                          minHeight: '150px',
-                                          maxHeight: '150px',
-                                        }}
-                                        component="img"
-                                        alt={`\nNo image available.  \nThis is a ${this_image.split('.').pop()} file.  \nTap to view`}
-                                        src={this_image}
-                                      />
-                                    ))}
+                                    {makeArray(reactData.fields[this_field].valueText).map((this_image, imageNdx) => {
+                                      const fileExtension = this_image.split('.').pop().toLowerCase();
+                                      const isImage = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(fileExtension);
+                                      const isPDF = fileExtension === 'pdf';
+
+                                      return (
+                                        <Box
+                                          borderRadius={'20px'}
+                                          border={1}
+                                          marginRight={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
+                                          key={`image_${sectionNdx}_${fieldNdx}_${imageNdx}`}
+                                          onClick={() => {
+                                            window.open(this_image, `${fileExtension} File`);
+                                          }}
+                                          style={{
+                                            minWidth: '150px',
+                                            maxWidth: '450px',
+                                            minHeight: '150px',
+                                            maxHeight: '450px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            justifyContent: 'center',
+                                            alignItems: 'center',
+                                            cursor: 'pointer',
+                                            backgroundColor: isImage ? 'transparent' : '#f5f5f5',
+                                            overflow: 'hidden'
+                                          }}
+                                        >
+                                          {isImage ? (
+                                            <Box
+                                              component="img"
+                                              alt={`${fileExtension} file`}
+                                              src={this_image}
+                                              style={{
+                                                width: '100%',
+                                                height: '100%',
+                                                objectFit: 'cover'
+                                              }}
+                                            />
+                                          ) : isPDF ? (
+                                            <iframe
+                                              src={`${this_image}#toolbar=0&navpanes=0&scrollbar=0`}
+                                              title={`PDF ${imageNdx}`}
+                                              style={{
+                                                width: '100%',
+                                                height: '100%',
+                                                border: 'none',
+                                                pointerEvents: 'none'
+                                              }}
+                                            />
+                                          ) : (
+                                            <>
+                                              <InsertDriveFileIcon style={{ fontSize: '48px', color: '#666' }} />
+                                              <Typography style={{ fontSize: '0.7rem', marginTop: '8px', textAlign: 'center' }}>
+                                                {fileExtension.toUpperCase()}
+                                              </Typography>
+                                              <Typography style={{ fontSize: '0.6rem', color: '#999', textAlign: 'center' }}>
+                                                Tap to view
+                                              </Typography>
+                                            </>
+                                          )}
+                                        </Box>
+                                      );
+                                    })}
                                   </Box>
                                 </Box>
                               }
@@ -3276,7 +3415,7 @@ export default ({ request = {}, onClose }) => {
                     {'Finish'}
                   </Button>
                 }
-                {!reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
+                {false && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
                   <PrintIcon
                     classes={{ root: classes.rowButton }}
                     size='medium'
@@ -3286,20 +3425,6 @@ export default ({ request = {}, onClose }) => {
                       // await printWIP({ document_id: reactData.document_id });
                     }}
                     edge="start"
-                  />
-                }
-                {!reactData.clientSampleMode && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
-                  <CloudUploadIcon
-                    classes={{ root: classes.rowButton }}
-                    style={{ marginLeft: '16px' }}
-                    key={`radio-button_upload`}
-                    id={`radio-button_upload`}
-                    size='medium'
-                    onClick={() => {
-                      updateReactData({
-                        stage: 'upload'
-                      }, true);
-                    }}
                   />
                 }
               </Box>
