@@ -434,11 +434,11 @@ const FormEditor = ({ form, onSave, onCancel }) => {
   };
 
 
-  // Move section down
-  const handleMoveSectionDown = (idx) => {
-    if (idx === editForm.sections.length - 1) return; // Already at the bottom
-    const newSections = [editForm.sections[idx + 1], editForm.sections[idx]];
-    editForm.sections.splice(idx, 2, ...newSections);
+  // Move section up
+  const handleMoveSectionUp = (idx) => {
+    if (idx === 0) return; // Already at the top
+    const newSections = [editForm.sections[idx], editForm.sections[idx - 1]];
+    editForm.sections.splice(idx - 1, 2, ...newSections);
     setEditForm(prev => ({ ...prev, sections: editForm.sections }));
   };
 
@@ -902,7 +902,7 @@ const FormEditor = ({ form, onSave, onCancel }) => {
           {editForm.sections.map((section, idx) => (
             <div key={`section-${idx}`}>
               <Box marginBottom={1}>
-                <Box display="flex" marginTop={(idx > 0 ? '-60px' : '0')} minHeight={'100px'} marginLeft={2} alignItems="center">
+                <Box display="flex" marginTop={0} marginLeft={2} alignItems="center">
                   {reactData[`editing_section_${idx}`] ? (
                     <TextField
                       value={section.section_name || ''}
@@ -926,9 +926,9 @@ const FormEditor = ({ form, onSave, onCancel }) => {
                       {section.section_name || 'Untitled Section'}
                     </Typography>
                   )}
-                  {(idx !== (editForm.sections.length - 1)) &&
-                    <Box style={{ paddingTop: '60px' }}>
-                      <IconButton onClick={() => handleMoveSectionDown(idx)} disabled={idx === editForm.sections.length - 1} title="Move section down">
+                  {(idx !== 0) &&
+                    <Box>
+                      <IconButton onClick={() => handleMoveSectionUp(idx)} disabled={idx === 0} title="Move section up">
                         <Shuffle />
                       </IconButton>
                     </Box>
