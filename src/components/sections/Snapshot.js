@@ -37,7 +37,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
         // If 'street' exists, use it as address1
         currentValues.peopleRec.address.address1 = currentValues.peopleRec.address.street;
       }
-      if (!currentValues.peopleRec.address.address1 && currentValues.peopleRec.location) {
+      if ((!currentValues.peopleRec.address || Object.keys(currentValues.peopleRec.address).length === 0) && currentValues.peopleRec.location) {
         return sanitizeLocation(currentValues.peopleRec.location);
       }
       else {
