@@ -23,6 +23,14 @@ export default ({ currentValues, reactData, updateReactData }) => {
 
   const AVAClass = AVAclasses();
 
+  const sanitizeLocation = (value) => {
+    if (!value) return '';
+    return String(value)
+      .replace(/undefined/g, '')
+      .trim()
+      .replace(/^[\s,;:]+|[\s,;:]+$/g, '');
+  };
+
   const makeLocation = () => {
     if (currentValues.peopleRec.hasOwnProperty('address') && currentValues.peopleRec.address) {
       if (currentValues.peopleRec.address.street) {
@@ -30,7 +38,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
         currentValues.peopleRec.address.address1 = currentValues.peopleRec.address.street;
       }
       if (!currentValues.peopleRec.address.address1 && currentValues.peopleRec.location) {
-        return currentValues.peopleRec.location.replace(/undefined/g, '').trim() || '';
+        return sanitizeLocation(currentValues.peopleRec.location);
       }
       else {
         // Filter out nullish values and join with spaces
@@ -59,11 +67,11 @@ export default ({ currentValues, reactData, updateReactData }) => {
         ) {
           addressParts += currentValues.peopleRec.address.zip;
         }
-        return addressParts.trim().replace(/[,;]$/g, '');
+        return sanitizeLocation(addressParts);
       }
     }
     else {
-      return currentValues.peopleRec.location.replace(/undefined/g, '').trim() || '';
+      return sanitizeLocation(currentValues.peopleRec.location);
     }
   };
 
