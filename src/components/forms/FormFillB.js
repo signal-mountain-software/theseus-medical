@@ -908,7 +908,7 @@ export default ({ request = {}, onClose }) => {
 
     // Set type
     let yesNoType = false;
-    returnObj.type = field_variables.value?.type || field_variables.default?.type || 'text';
+    returnObj.type = field_variables.type || field_variables.value?.type || field_variables.default?.type || 'text';
     // If 'select' type and custom_selection is true, set type to 'select&text'
     if (returnObj.type === 'select' && field_variables.custom_selection) {
       returnObj.type = 'select&text';
