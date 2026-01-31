@@ -23,24 +23,55 @@ export default ({ currentValues, reactData, updateReactData }) => {
 
   const AVAClass = AVAclasses();
 
+  const sanitizeLocation = (value) => {
+    if (!value) return '';
+    return String(value)
+      .replace(/undefined/g, '')
+      .trim()
+      .replace(/^[\s,;:]+|[\s,;:]+$/g, '');
+  };
+
   const makeLocation = () => {
     if (currentValues.peopleRec.hasOwnProperty('address') && currentValues.peopleRec.address) {
-      if (!currentValues.peopleRec.address.address1 && currentValues.peopleRec.location) {
-        return currentValues.peopleRec.location.replace(/undefined/g, '').trim() || '';
+      if (currentValues.peopleRec.address.street) {
+        // If 'street' exists, use it as address1
+        currentValues.peopleRec.address.address1 = currentValues.peopleRec.address.street;
+      }
+      if ((!currentValues.peopleRec.address || Object.keys(currentValues.peopleRec.address).length === 0) && currentValues.peopleRec.location) {
+        return sanitizeLocation(currentValues.peopleRec.location);
       }
       else {
         // Filter out nullish values and join with spaces
-        const addressParts = [
-          currentValues.peopleRec.address.address1,
-          currentValues.peopleRec.address.city,
-          currentValues.peopleRec.address.state
-        ].filter(part => part != null && part !== ''); // Filter out null, undefined, and empty strings
-        
-        return addressParts.join(' ').replace(/undefined/g, '').trim();
+        let addressParts = '';
+        if (currentValues.peopleRec.address.address1
+          && currentValues.peopleRec.address.address1.trim() !== ''
+          && currentValues.peopleRec.address.address1.includes('undefined') !== true
+        ) {
+          addressParts += titleCase(currentValues.peopleRec.address.address1) + "; ";
+        }
+        if (currentValues.peopleRec.address.city
+          && currentValues.peopleRec.address.city.trim() !== ''
+          && currentValues.peopleRec.address.city.includes('undefined') !== true
+        ) {
+          addressParts += titleCase(currentValues.peopleRec.address.city) + ", ";
+        }
+        if (currentValues.peopleRec.address.state
+          && currentValues.peopleRec.address.state.trim() !== ''
+          && currentValues.peopleRec.address.state.includes('undefined') !== true
+        ) {
+          addressParts += currentValues.peopleRec.address.state + " ";
+        }
+        if (currentValues.peopleRec.address.zip
+          && currentValues.peopleRec.address.zip.trim() !== ''
+          && currentValues.peopleRec.address.zip.includes('undefined') !== true
+        ) {
+          addressParts += currentValues.peopleRec.address.zip;
+        }
+        return sanitizeLocation(addressParts);
       }
     }
     else {
-      return currentValues.peopleRec.location.replace(/undefined/g, '').trim() || '';
+      return sanitizeLocation(currentValues.peopleRec.location);
     }
   };
 
@@ -150,9 +181,9 @@ export default ({ currentValues, reactData, updateReactData }) => {
               let belongsToChild = hasChildren && state.groups.parent_of[group_id].some(child_id => currentValues.peopleRec.groups.includes(child_id));
               return !belongsToChild;
             });
-            
+
             if (leafGroups.length === 0) return null;
-            
+
             return (
               <Box display='flex' flexDirection='column' style={{ marginTop: '12px' }}>
                 <Typography style={AVATextStyle({ size: 0.8 })}>
@@ -161,11 +192,11 @@ export default ({ currentValues, reactData, updateReactData }) => {
                 {leafGroups.map((group_id, idx) => {
                   // Find the group name
                   const groupInfo = state.groups?.adminHierarchy?.find(g => g.id === group_id);
-                  const groupName = groupInfo?.name || 
-                                   state.groups?.publicGroups?.[group_id]?.group_name ||
-                                   state.groups?.privateGroups?.[group_id]?.group_name ||
-                                   group_id;
-                  
+                  const groupName = groupInfo?.name ||
+                    state.groups?.publicGroups?.[group_id]?.group_name ||
+                    state.groups?.privateGroups?.[group_id]?.group_name ||
+                    group_id;
+
                   return (
                     <Typography
                       key={`group__${idx}`}
@@ -178,7 +209,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
               </Box>
             );
           })()}
-          
+
           {(Object.keys(reactData.local_customFields).length > 0) && Object.keys(reactData.local_customFields).map((this_customField, cFNdx) => (
             (currentValues.peopleRec?.local_data?.[this_customField] &&
               <Box
@@ -338,10 +369,10 @@ export default ({ currentValues, reactData, updateReactData }) => {
               >
                 {`${this_member?.name.trim() || this_member?.id || 'Unknown Person'}`}
               </Typography>
-                <Typography style={AVATextStyle({ margin: { top: 0, left: 0.5, right: -0.8 }, bold: true })}>
-                  {this_member.role && this_member.role === 'primary' ? '- Primary' : (this_member.relationship ? ('- ' + this_member.relationship) : '')}
-                </Typography>
-            </Box>              
+              <Typography style={AVATextStyle({ margin: { top: 0, left: 0.5, right: -0.8 }, bold: true })}>
+                {this_member.role && this_member.role === 'primary' ? '- Primary' : (this_member.relationship ? ('- ' + this_member.relationship) : '')}
+              </Typography>
+            </Box>
           ))}
         </React.Fragment>
       }

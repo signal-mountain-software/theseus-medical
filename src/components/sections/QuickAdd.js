@@ -627,7 +627,7 @@ export default ({ onClose, options = {} }) => {
       field_validation_errors: {}, // Clear validation errors
       loading_fields: false,
       current_member_index: prev.current_member_index + 1,
-      stage: 'prompt_for_name', // Start with name prompt for each family member
+      stage: 'select_account_type', // Back to account type selection
       // Clear all name-related fields for new family member
       entered_name: '',
       name_validation_result: null,
@@ -1160,11 +1160,15 @@ export default ({ onClose, options = {} }) => {
 
       // pick-out form_field instructions and place data properly in People rec
       Object.entries(reactData.form_fields).forEach(([fieldName, formRec]) => {
-        if (fieldValues[fieldName]) {
-          let saveAs = formRec.saveAs || formRec.value?.saveAs || formRec.prompt?.saveAs || false;
+        if (Object.prototype.hasOwnProperty.call(fieldValues, fieldName)) {
+          const rawSaveAs = formRec.saveAs || formRec.value?.saveAs || formRec.prompt?.saveAs || false;
+          const saveAs = (typeof rawSaveAs === 'string')
+            ? rawSaveAs.trim().replace(/^['"]+|['"]+$/g, '').replace(/[;,]+$/g, '')
+            : rawSaveAs;
           if (saveAs) {
-            const keys = saveAs.split('.');
-            if (keys[0].startsWith('person') || keys[0].startsWith('people')) { keys.shift(); } // remove leading 'person' if present
+            const keys = String(saveAs).split('.');
+            const rootKey = (keys[0] || '').toLowerCase();
+            if (rootKey.startsWith('person') || rootKey.startsWith('people')) { keys.shift(); } // remove leading 'person' if present
             let obj = peopleRecord;
             for (let i = 0; i < keys.length - 1; i++) {
               if (!obj[keys[i]]) obj[keys[i]] = {};

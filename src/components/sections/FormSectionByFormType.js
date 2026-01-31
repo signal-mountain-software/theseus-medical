@@ -4,7 +4,7 @@ import useSession from '../../hooks/useSession';
 import { dbClient, recordExists, cl } from '../../util/AVAUtilities';
 import { AVATextStyle } from '../../util/AVAStyles';
 import { makeDate } from '../../util/AVADateTime';
-import { documentDueDate, updateDocument } from '../../util/AVADocuments';
+import { getForm_withDueDate, updateDocument } from '../../util/AVADocuments';
 import { getMemberList } from '../../util/AVAGroups';
 
 import { Typography, Box } from '@material-ui/core/';
@@ -39,7 +39,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
     async function initialize() {
       let myFormListObj = {};
       let personXRef = [];
-      const { due_date, formRec } = await documentDueDate(state.session.client_id, reactData.selectedForm);
+      const { due_date, formRec } = await getForm_withDueDate(state.session.client_id, reactData.selectedForm);
       if (formRec.options?.restricted_access && !reactData.administrative_account) {
         if (formRec.options.restricted_access === 'admin_only') {
           return;    // not authorized

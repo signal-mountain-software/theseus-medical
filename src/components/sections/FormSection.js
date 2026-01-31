@@ -222,7 +222,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                 document_id: this_doc.document_id,
                 location: this_doc.history[0].url,
                 last_update: this_doc.history[0].last_update,
-                date_completed: makeDate(this_doc.history[0].last_update, {timeZone: state.session.client_timezone}).absolute,
+                date_completed: makeDate(this_doc.history[0].last_update, { timeZone: state.session.client_timezone }).absolute,
                 title: this_doc.title,
                 amendments: this_doc.amendments,
                 occDate: occDate,
@@ -612,6 +612,30 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                               onClick={() => {
                                                 editForm(person_id, this_formID);
                                               }}
+                                              onContextMenu={(e) => {
+                                                e.preventDefault();
+                                                updateReactData({
+                                                  alert: {
+                                                    severity: 'info',
+                                                    title: "Document Info",
+                                                    message: <div>
+                                                      Document ID: <strong>{myDocs.completedDocs
+                                                        ? myDocs.completedDocs[0].document_id
+                                                        : (myDocs.wipDocs ? myDocs.wipDocs[0].document_id : 'Not started')}</strong><br />
+                                                      Form ID: <strong>{this_formID}</strong><br />
+                                                    </div>
+                                                  }
+                                                }, true);
+                                              }}
+
+
+
+
+
+
+
+
+
                                               style={AVATextStyle({
                                                 size: 1.5,
                                                 margin: { left: 0 },
@@ -656,7 +680,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                                     margin: { top: 0, left: 0 },
                                                   })}
                                                 >
-                                                  {`${((myDocs.dueDate || (myDocs.wipDocs.length > 0)) ? 'Previously c' : 'C')}ompleted ${makeDate(myDocs.completedDocs[0].last_update, {timeZone: state.session.client_timezone}).absolute}`}
+                                                  {`${((myDocs.dueDate || (myDocs.wipDocs.length > 0)) ? 'Previously c' : 'C')}ompleted ${makeDate(myDocs.completedDocs[0].last_update, { timeZone: state.session.client_timezone }).absolute}`}
                                                 </Typography>
                                               </React.Fragment>
                                             }
