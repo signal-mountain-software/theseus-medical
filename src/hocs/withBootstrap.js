@@ -210,6 +210,23 @@ export default Component => props => {
           }
         }
 
+        // If a client is provided via URL, always prompt for user and ignore session/cookie
+        if (urlData && (urlData.client || urlData.client_id) && !(urlData.user || urlData.user_id)) {
+          const clientId = urlData.client || urlData.client_id;
+          updateReactData({
+            urlData: Object.assign({}, urlData, {
+              client_id: clientId
+            })
+          });
+          let cData = await getCustomizations('*all', clientId);
+          updateReactData({
+            customizationData: Object.assign({}, cData, urlData, { client_id: clientId }),
+            currentClientLogo: cData.logo
+          });
+          setAVAFollowUpData({ 'NeedUser': true });
+          return;
+        }
+
         let activeUser;
         let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
         sessionStorage.removeItem('cognito_expires');
