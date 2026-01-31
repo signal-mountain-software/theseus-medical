@@ -286,7 +286,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     loadedMenuVersion: 1,
     marqueeData: [],
     marqueeVersion: 0,
-    alert: false
+    alert: false,
+    testMode: ["T", "L"].includes(window.location.href.split('//')[1].slice(0, 1).toUpperCase())
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const updateReactData = (newData, force = false) => {
@@ -775,6 +776,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     let urgentMessage = marqueeData.find(m => {
       return (m.criticalMessage);
     });
+    if (reactData.testMode) {
+      marqueeData.push( { message: `--- TEST MODE ACTIVE --- User: ${state.session.user_id} Client: ${state.session.client_id} Proxy: ${state.session.patient_id}` });
+    }
     if (urgentMessage) {
       marqueeData = [urgentMessage];
     }
