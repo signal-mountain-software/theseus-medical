@@ -721,11 +721,11 @@ const LoginModuleV2 = ({
   }, []);
 
   const finalizeLoadedSession = React.useCallback(async (personRec, sessionRec) => {
-    const { updatedPerson, updatedSession } = await computeAdminAccount(personRec, sessionRec);
     const patientRec = useSessionPatientRef.current
-      ? await resolvePatientFromSession(updatedPerson, updatedSession)
-      : updatedPerson;
-    const customizedSession = await loadClientCustomizations(patientRec, updatedSession);
+      ? await resolvePatientFromSession(personRec, sessionRec)
+      : personRec;
+    const customizedSession = await loadClientCustomizations(patientRec, sessionRec);
+    const { updatedPerson, updatedSession } = await computeAdminAccount(personRec, customizedSession);
 
     if (updatedSession) {
       setResolvedSession(customizedSession || updatedSession);
