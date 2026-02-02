@@ -94,6 +94,7 @@ export default ({ onClose, options = {} }) => {
   const { state } = useSession();
   const isMounted = React.useRef(false);
   const dateValidationTimeouts = React.useRef({});
+  const dialogFocusRef = React.useRef(null);
 
   const [, , removeCookie] = useCookies(['AVAuser']);
 
@@ -101,7 +102,8 @@ export default ({ onClose, options = {} }) => {
     initialized: false,
     errorList: {},
     new_account_prompts: {},
-    administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
+    administrative_account: (state?.user ? ['admin', 'support', 'master'].includes(state.user.account_class) : false),
+    client_id: state?.session?.client_id || options?.client_id || null,
     selected_account_type: '',
     selected_account_config: null,
     form_fields: {},
@@ -151,12 +153,26 @@ export default ({ onClose, options = {} }) => {
   };
 
   React.useEffect(() => {
-    function initialize() {
+    async function initialize() {
       let reactUpd = {};
 
-      // Grab the new_account_form object from state.session and store as new_account_prompts
-      if (state.session?.new_account_form) {
-        reactUpd.new_account_prompts = deepCopy(state.session.new_account_form).filter(entry => {
+      // Grab the new_account_form object from session or Customizations table
+      let newAccountForm = state.session?.new_account_form || null;
+      if (!newAccountForm && reactData.client_id) {
+        const customizationsRec = await dbClient
+          .get({
+            Key: { client_id: reactData.client_id, custom_key: 'new_account_form' },
+            TableName: 'Customizations'
+          })
+          .promise()
+          .catch(() => null);
+        if (customizationsRec?.Item?.customization_value) {
+          newAccountForm = customizationsRec.Item.customization_value;
+        }
+      }
+
+      if (newAccountForm) {
+        reactUpd.new_account_prompts = deepCopy(newAccountForm).filter(entry => {
           // If restrict_to_admin is true, only include if user is administrative account
           if (entry.restrict_to_admin && (!reactData.administrative_account || options.source === 'url_parameter')) {
             return false;
@@ -201,6 +217,12 @@ export default ({ onClose, options = {} }) => {
     };
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
+  React.useEffect(() => {
+    if (dialogFocusRef.current) {
+      dialogFocusRef.current.focus();
+    }
+  }, []);
+
   /**
    * Load an existing FamilyGroups record when adding members to an existing family
    * Reads the FamilyGroups table and stores the record for later updates
@@ -211,7 +233,7 @@ export default ({ onClose, options = {} }) => {
     try {
       const result = await getDb({
         Key: {
-          client_id: state.session.client_id,
+          client_id: reactData.client_id,
           composite_key: familyId
         },
         TableName: 'FamilyGroups'
@@ -272,7 +294,7 @@ export default ({ onClose, options = {} }) => {
       try {
         const formFieldRec = await getDb({
           Key: {
-            client_id: state.session.client_id,
+            client_id: reactData.client_id,
             field_name: fieldName
           },
           TableName: "Form_Fields"
@@ -587,34 +609,128 @@ export default ({ onClose, options = {} }) => {
       timestamp: new Date().toISOString()
     };
 
-    try {
-      familyMember.proposed_user_id = await generateUniqueUserId(familyMember);
-    } catch (error) {
-      console.error('Failed to generate user ID for member:', familyMember, error);
-      showAlert({
-        severity: 'error',
-        title: 'User ID Generation Failed',
-        message: `Failed to generate user ID for ${getFamilyMemberName(familyMember)}: ${error.message}`
-      });
-      throw error;
-    }
+    const proceedWithSave = async () => {
+      try {
+        familyMember.proposed_user_id = await generateUniqueUserId(familyMember);
+      } catch (error) {
+        console.error('Failed to generate user ID for member:', familyMember, error);
+        showAlert({
+          severity: 'error',
+          title: 'User ID Generation Failed',
+          message: `Failed to generate user ID for ${getFamilyMemberName(familyMember)}: ${error.message}`
+        });
+        throw error;
+      }
 
-    // If family_role is 'none', go directly to complete stage (skip asking for more members)
-    const nextStage = reactData.selected_account_config?.family_role === 'none' ? 'complete' : 'ask_for_more';
+      // If family_role is 'none', go directly to complete stage (skip asking for more members)
+      const nextStage = reactData.selected_account_config?.family_role === 'none' ? 'complete' : 'ask_for_more';
 
-    // if selected account config includes "on_save" key, store this.  We'll use it on exit.
-    if (reactData.selected_account_config?.on_save) {
+      // if selected account config includes "on_save" key, store this.  We'll use it on exit.
+      if (reactData.selected_account_config?.on_save) {
+        setReactData(prev => ({
+          ...prev,
+          on_save_callback: reactData.selected_account_config.on_save
+        }));
+      }
+
       setReactData(prev => ({
         ...prev,
-        on_save_callback: reactData.selected_account_config.on_save
+        family_members: [...prev.family_members, familyMember],
+        stage: nextStage
       }));
-    }
+    };
 
-    setReactData(prev => ({
-      ...prev,
-      family_members: [...prev.family_members, familyMember],
-      stage: nextStage
-    }));
+    const fieldValues = familyMember.field_values || {};
+    const firstName = (fieldValues.first_name || fieldValues.firstName || fieldValues.fname || fieldValues['first name'] || '').trim();
+    const lastName = (fieldValues.last_name || fieldValues.lastName || fieldValues.lname || fieldValues.surname || fieldValues['last name'] || '').trim();
+    const email = (fieldValues.email || fieldValues.eMail || fieldValues['e-Mail'] || fieldValues.email_address || fieldValues['email address'] || '').trim();
+    const phone = (fieldValues.phone || fieldValues.phone_number || fieldValues['phone number'] || fieldValues.cell || fieldValues.cell_phone || fieldValues['cell phone'] || '').trim();
+    const clientId = (reactData.client_id || state.session?.client_id || '').trim();
+
+    if (firstName && lastName && clientId) {
+      const nameIdentifier = `${firstName.toLowerCase()} ${lastName.toLowerCase()} ${clientId.toLowerCase()}`;
+      const emailIdentifier = email ? email.toLowerCase() : '';
+      const phoneIdentifier = phone ? phone.replace(/\D/g, '').slice(-10) : '';
+
+      const queryByIdentifier = async (identifier) => {
+        if (!identifier) return null;
+        const result = await dbClient
+          .query({
+            KeyConditionExpression: 'identifier = :i',
+            ExpressionAttributeValues: { ':i': identifier },
+            TableName: 'PeopleAccounts',
+            IndexName: 'alternate_id-index'
+          })
+          .promise()
+          .catch(() => null);
+        if (result && Array.isArray(result.Items) && result.Items.length > 0) {
+          return result.Items.map(item => item.person_id);
+        }
+        return [];
+      };
+
+      const [nameMatch, emailMatch, phoneMatch] = await Promise.all([
+        queryByIdentifier(nameIdentifier),
+        queryByIdentifier(emailIdentifier),
+        queryByIdentifier(phoneIdentifier)
+      ]);
+
+      const matchedExistingId = nameMatch.find(id => emailMatch.includes(id) || phoneMatch.includes(id));
+      if (matchedExistingId) {
+        showAlert({
+          severity: 'warning',
+          title: 'Account Found',
+          message: 'You already have an Account.  Should we use that one instead of creating a new one?',
+          autoHide: false,
+          action: [
+            {
+              text: `Use Existing Account`,
+              function: () => {
+                showAlert({
+                  severity: 'info',
+                  title: `Existing Account - ${matchedExistingId}`,
+                  message: `Your User ID is ${matchedExistingId}.\nYou may continue to create accounts for other people, or tap "Exit" and use ${matchedExistingId} to log in.`,
+                  autoHide: false
+                });
+                updateReactData({
+                  stage: 'select_account_type',
+                  selected_account_type: '',
+                  selected_account_config: null,
+                  form_fields: {},
+                  field_values: {},
+                  field_validation_errors: {},
+                  loading_fields: false
+                }, true);
+              }
+            },
+            {
+              text: `Create New Account`,
+              function: async () => {
+                updateReactData({ alert: false }, true);
+                await proceedWithSave();
+              }
+            },
+            {
+              text: `Cancel and Start Over`,
+              function: () => {
+                updateReactData({
+                  alert: false,
+                  stage: 'select_account_type',
+                  selected_account_type: '',
+                  selected_account_config: null,
+                  form_fields: {},
+                  field_values: {},
+                  field_validation_errors: {},
+                  loading_fields: false
+                }, true);
+              }
+            }
+          ]
+        });
+        return;
+      }
+    }
+    await proceedWithSave();
   };
 
   const resetForNextMember = () => {
@@ -714,7 +830,7 @@ export default ({ onClose, options = {} }) => {
       return;
     }
 
-    const validation = await validateUser(enteredName, state.session.client_id);
+    const validation = await validateUser(enteredName, reactData.client_id);
 
     setReactData(prev => ({
       ...prev,
@@ -851,12 +967,12 @@ export default ({ onClose, options = {} }) => {
           // Send verification code
           await sendMessages({
             client: matchedAccount.client_id,
-            author: state.session.user_id,
+            author: reactData.user_id,
             person_id: matchedAccount.person_id,
             preferred_method: sendMethod,
             messageText: `To verify your account, use this code: ${tempPass}`,
             recipientList: [matchedAccount.person_id],
-            subject: `Verification code from ${state.session.client_name}`
+            subject: `Verification code for your account`
           });
 
           // Show notification and switch to code verification stage
@@ -1008,7 +1124,7 @@ export default ({ onClose, options = {} }) => {
       // Build SessionsV2 record following PeopleMaintenance.js pattern
       const sessionRecord = {
         session_id: member.proposed_user_id,
-        client_id: state.session.client_id,
+        client_id: reactData.client_id,
         last_login: "password",
         method: "QuickAdd",
         patient_display_name: memberName,
@@ -1018,7 +1134,7 @@ export default ({ onClose, options = {} }) => {
         storePassword: true,
         subscription_status: "na",
         user_display_name: memberName,
-        user_homeClient: state.session.client_id,
+        user_homeClient: reactData.client_id,
         user_id: member.proposed_user_id,
         last_update: new Date().toISOString()
       };
@@ -1097,11 +1213,23 @@ export default ({ onClose, options = {} }) => {
       let preferred_methods = ['AVA'];
       let preferred_method = 'AVA';
 
-      let client_preference = state.session?.client_style?.preferred_communication || 'email';
+      let client_preference = 'email';
+      if (reactData.client_id) {
+        const clientStyleRec = await dbClient
+          .get({
+            Key: { client_id: reactData.client_id, custom_key: 'client_style' },
+            TableName: 'Customizations'
+          })
+          .promise()
+          .catch(() => null);
+        if (clientStyleRec?.Item?.customization_value?.preferred_communication) {
+          client_preference = clientStyleRec.Item.customization_value.preferred_communication;
+        }
+      }
 
       if (client_preference === 'sms' || client_preference === 'text') {
         if (cellForStorage) {
-          preferred_methods = ['sms'];  
+          preferred_methods = ['sms'];
           preferred_method = 'sms';
         }
         else if (email) {
@@ -1144,7 +1272,7 @@ export default ({ onClose, options = {} }) => {
       // Build People record following PeopleMaintenance.js pattern
       const peopleRecord = {
         person_id: member.proposed_user_id,
-        client_id: state.session.client_id,
+        client_id: reactData.client_id,
         name: {
           first: firstName,
           last: lastName
@@ -1367,7 +1495,7 @@ export default ({ onClose, options = {} }) => {
 
         // Create family record (following FamilyMaintenance.js pattern line 204-220)
         familyRecord = {
-          client_id: state.session.client_id,
+          client_id: reactData.client_id,
           composite_key: familyId,
           family_id: familyId,
           family_name: familyName,
@@ -1471,7 +1599,7 @@ export default ({ onClose, options = {} }) => {
 
     const firstInitial = firstName.charAt(0).toLowerCase();
     const cleanLastName = lastName.toLowerCase().replace(/[^a-z]/g, ''); // Remove non-alphabetic characters
-    const clientId = state.session.client_id;
+    const clientId = reactData.client_id;
 
     let counter = '';
     let proposedId = '';
@@ -1693,7 +1821,7 @@ export default ({ onClose, options = {} }) => {
           console.log('No existing Cognito session to sign out');
         }
         let jumpTo = window.location.origin;
-        window.location.replace(`${jumpTo}?client=${state.session.client_id}`);
+        window.location.replace(`${jumpTo}?client=${reactData.client_id}`);
       }
     } else {
       // Normal admin mode - just close the dialog
@@ -1719,7 +1847,9 @@ export default ({ onClose, options = {} }) => {
           height: '90vh',
           display: 'flex',
           flexDirection: 'column'
-        }
+        },
+        tabIndex: -1,
+        ref: dialogFocusRef
       }}
       onClose={async () => {
         await handleDialogClose();
@@ -1742,7 +1872,7 @@ export default ({ onClose, options = {} }) => {
       >
         <span>
           {reactData.stage === 'prompt_for_name' ?
-            (state.session?.client_name || "Let's Get Started") :
+            "Let's Get Started" :
             reactData.stage === 'ask_for_more' ?
               `${getFamilyMemberName(reactData.family_members[reactData.current_member_index])}` :
               reactData.stage === 'complete' ?

@@ -11,6 +11,7 @@ export default () => {
     serviceWorker.unregister();
 
     let jumpTo = window.location.href.replace('refresh', 'theseus');
+    jumpTo = jumpTo.split('?')[0].split('#')[0];
     if (session?.url_parameters) {
         let link = '?';
         for (let key in session.url_parameters) {

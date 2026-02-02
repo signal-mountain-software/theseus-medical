@@ -777,7 +777,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       return (m.criticalMessage);
     });
     if (reactData.testMode) {
-      marqueeData.push( { message: `--- TEST MODE ACTIVE --- User: ${state.session.user_id} Client: ${state.session.client_id} Proxy: ${state.session.patient_id}` });
+      let m = `--- TEST MODE ACTIVE --- User: ${state.session.user_id} Client: ${state.session.client_id}`
+      if (state.session.user_id !== state.session.patient_id) {
+        m += ` Proxy: ${state.session.patient_id}`;
+      }
+      marqueeData.push( { message: m });
     }
     if (urgentMessage) {
       marqueeData = [urgentMessage];
