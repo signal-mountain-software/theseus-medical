@@ -13,6 +13,7 @@ import MakeAVAMenu from '../util/MakeAVAMenu';
 import PatientDialog from '../components/dialogs/PatientDialog';
 import SelectAccount from '../components/dialogs/SelectAccount';
 import QuickAdd from '../components/sections/QuickAdd';
+import LoginModuleV2 from '../components/sections/LoginModuleV2';
 import FormFillB from '../components/forms/FormFillB';
 import PeopleMaintenance from '../components/dialogs/PeopleMaintenance';
 
@@ -81,6 +82,7 @@ export default Component => props => {
 
   const classes = useStyles();
   const [platform] = useIosCheck();
+  const isTestEnv = ['L', 'T'].includes(window.location.href.split('//')[1]?.slice(0, 1)?.toUpperCase());
 
   const AVA_default_user = process.env.REACT_APP_AVA_PU;
   const AVA_default_password = process.env.REACT_APP_AVA_PP;
@@ -117,6 +119,9 @@ export default Component => props => {
   };
 
   React.useEffect(() => {
+    if (isTestEnv) {
+      return;
+    }
     let checkUser = (
       async () => {
         // Check URL parameters first - these override any existing session
@@ -634,6 +639,16 @@ export default Component => props => {
   }
 
   if (!AVAReady && !localAVAReady) {
+    if (isTestEnv) {
+      return (
+        <LoginModuleV2
+          onReady={() => {
+            setAVAReady(true);
+            setAVAFollowUpData({ 'Completed': true });
+          }}
+        />
+      );
+    }
     return (
       <Dialog
         open={!AVAReady && !localAVAReady}
@@ -1798,8 +1813,6 @@ export default Component => props => {
         console.log(e);
       });
 
-    // localStorage.setItem('AVASessionData', JSON.stringify({ currentSession, currentProfile, currentPatient, sessionInfo }));
-    // sessionStorage.setItem('AVASessionData', JSON.stringify({ currentSession, currentProfile, currentPatient, sessionInfo }));
     bakeCookie(currentSession.session_id, currentSession.client_id, currentPatient.person_id);
 
     currentSession.url_parameters = await getParamsFromURL();
