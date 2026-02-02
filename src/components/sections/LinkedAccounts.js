@@ -132,7 +132,7 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                       alert: {
                         severity: 'info',
                         title: 'Family ID',
-                        message: `Family ID: ${this_familyRec.family_id}`                        
+                        message: `Family ID: ${this_familyRec.family_id}`
                       }
                     }, true);
                   }}
@@ -720,7 +720,8 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                 >
                   {'Done'}
                 </Button>
-                {localData.viewFamilyMember.createAccount &&
+                {localData.viewFamilyMember.createAccount
+                  ?
                   <Button
                     className={AVAClass.AVAButton}
                     style={{ marginTop: '16px', backgroundColor: 'red', color: 'white' }}
@@ -735,9 +736,40 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                   >
                     {"Don't Create"}
                   </Button>
+                  :
+                  (((localData.viewFamilyMember.other_index || (localData.viewFamilyMember.other_index === 0))
+                      ?
+                      <Button
+                        className={AVAClass.AVAButton}
+                        style={{ marginTop: '16px', backgroundColor: 'red', color: 'white' }}
+                        size='small'
+                        onClick={async () => {
+                          updateLocalData({
+                            viewFamilyMember: false,
+                            openFamilyMember: currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].id
+                          }, true);
+                        }}
+                      >
+                        {`View this Account`}
+                      </Button>
+                      :
+                      null
+                  ))
                 }
               </DialogActions>
             </Dialog>
+          }
+
+          {localData.openFamilyMember &&
+            <PeopleMaintenance
+              person_id={localData.openFamilyMember}
+              initialValues={{ color: 'turquoise' }}
+              onClose={() => {
+                updateLocalData({
+                  openFamilyMember: false
+                }, true);
+              }}
+            />
           }
 
           {reactData.alert &&
