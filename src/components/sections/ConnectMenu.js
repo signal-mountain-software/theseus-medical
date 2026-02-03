@@ -1317,11 +1317,33 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               textDecoration: 'none'
                             }}
                             onClick={async () => {
-                              updateReactData({
-                                sectionOpen: (reactData.sectionOpen && (reactData.sectionOpen.index === index))
-                                  ? false
-                                  : Object.assign({}, this_row, { index })
-                              }, true);
+                              if (this_row.isOnlyEntry) {
+                                let gad_response = await getActivityDetail(this_row, state);
+                                let reactUpdObj = {}
+                                reactUpdObj.selected = gad_response.activityRec;
+                                reactUpdObj.loading = false;
+                                if (gad_response.loadError) {
+                                  updateReactData({
+                                    alert: {
+                                      severity: 'error',
+                                      title: 'Activity error',
+                                      message: `AVA could not load ${this_row.activity_name}.  This may resolve itself after AVA's data load completes.  Wait just a moment and try again, please.  If the error persists, contact Support (activity_code=${this_row.activity_name})`
+                                    }
+                                  }, true);
+                                }
+                                else {
+                                  pause();
+                                  reactUpdObj.showNewFactDialog = index;
+                                  updateReactData(reactUpdObj, true);
+                                }
+                              }
+                              else {
+                                updateReactData({
+                                  sectionOpen: (reactData.sectionOpen && (reactData.sectionOpen.index === index))
+                                    ? false
+                                    : Object.assign({}, this_row, { index })
+                                }, true);
+                              }
                             }}
                           >
                             <CardActionArea>

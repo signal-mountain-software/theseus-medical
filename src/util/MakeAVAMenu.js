@@ -522,6 +522,17 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       };
     };
 
+    // Mark unique section entries
+    let sectionCounts = {};
+    for (let ndx = 0; ndx < returnArray.length; ndx++) {
+      let secName = returnArray[ndx].section_name || '';
+      sectionCounts[secName] = (sectionCounts[secName] || 0) + 1;
+    }
+    for (let ndx = 0; ndx < returnArray.length; ndx++) {
+      let secName = returnArray[ndx].section_name || '';
+      returnArray[ndx].isOnlyEntry = (sectionCounts[secName] === 1);
+    }
+
     // Sort by sort_key
     returnArray.sort((a, b) => {
       if (a.sort_key > b.sort_key) { return 1; }
