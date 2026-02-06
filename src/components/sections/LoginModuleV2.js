@@ -18,6 +18,7 @@ import { getAllOccurrences, v2buildCalendar, createNewOccurrences } from '../../
 import { addDays } from '../../util/AVADateTime';
 import MakeAVAMenu from '../../util/MakeAVAMenu';
 import QuickAdd from './QuickAdd';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 const LoginModuleV2 = ({
   branding = {},
@@ -67,6 +68,7 @@ const LoginModuleV2 = ({
   const useSessionPatientRef = React.useRef(false);
   const resolvedSessionRef = React.useRef(null);
   const resolvedPersonRef = React.useRef(null);
+  const isDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
 
   const namePromptActive = Array.isArray(altMatchOptions) && altMatchOptions.length > 0;
   const namePromptMode = altMatchMode === 'last' ? 'last' : 'first';
@@ -719,11 +721,11 @@ const LoginModuleV2 = ({
   }, []);
 
   const finalizeLoadedSession = React.useCallback(async (personRec, sessionRec) => {
-    const { updatedPerson, updatedSession } = await computeAdminAccount(personRec, sessionRec);
     const patientRec = useSessionPatientRef.current
-      ? await resolvePatientFromSession(updatedPerson, updatedSession)
-      : updatedPerson;
-    const customizedSession = await loadClientCustomizations(patientRec, updatedSession);
+      ? await resolvePatientFromSession(personRec, sessionRec)
+      : personRec;
+    const customizedSession = await loadClientCustomizations(patientRec, sessionRec);
+    const { updatedPerson, updatedSession } = await computeAdminAccount(personRec, customizedSession);
 
     if (updatedSession) {
       setResolvedSession(customizedSession || updatedSession);
@@ -1052,6 +1054,8 @@ const LoginModuleV2 = ({
     };
   }, [step, authCompleted, resolvedPerson, resolvedSession, resolvedUserId, userId, savedClientCookie, bakeCookies, finalizeLoadedSession]);
 
+  const urlParams = getUrlParams();
+
   return (
     <Box
       display='flex'
@@ -1069,10 +1073,20 @@ const LoginModuleV2 = ({
     >
       {showQuickAdd && (
         <QuickAdd
-          options={{ client_id: resolvedPerson?.client_id || resolvedSession?.client_id || savedClientCookie?.client || savedClientCookie?.client_id }}
-          onClose={() => {
+          options={{ client_id: urlParams?.client || urlParams?.client_id || urlParams?.create || resolvedPerson?.client_id || resolvedSession?.client_id || savedClientCookie?.client || savedClientCookie?.client_id }}
+          onClose={(createdPersonIds, onSaveCallback = null) => {
+          // QuickAdd finished - redirect to login with first created person
+          if (createdPersonIds && createdPersonIds.length > 0) {
+            const firstPersonId = createdPersonIds[0];
+            const baseUrl = window.location.href.split('?')[0];
+            let loginUrl = `${baseUrl}?user=${firstPersonId}`;
+            if (onSaveCallback) { loginUrl += `&${onSaveCallback}=true`; }
+            window.location.replace(loginUrl);
+          } else {
+            // No accounts created, restart
             restartFromBeginning();
-          }}
+          }
+        }}
         />
       )}
       {!backgroundImage && checkinImage ? (
@@ -1140,7 +1154,7 @@ const LoginModuleV2 = ({
                 minWidth='40vw'
                 maxWidth='500px'
                 className={AVAClass.AVAClientBackground}
-                style={{ backgroundColor: 'white', borderRadius: 30, padding: 16 }}
+                style={{ backgroundColor: isDarkMode ? 'darkgray' : 'white', borderRadius: 30, padding: 16 }}
               >
                 <Typography style={{ marginLeft: 8, marginBottom: 8, fontSize: '2em', fontWeight: 'bold' }} >
                   {clientName}
@@ -1241,7 +1255,7 @@ const LoginModuleV2 = ({
                 width='80%'
                 maxWidth='500px'
                 className={AVAClass.AVAClientBackground}
-                style={{ backgroundColor: 'white', borderRadius: 30, padding: 16 }}
+                style={{ backgroundColor: isDarkMode ? 'darkgray' : 'white', color: clientStyle?.textColor || 'inherit', borderRadius: 30, padding: 16 }}
               >
                 <TextField
                   label='Password'
@@ -1301,7 +1315,7 @@ const LoginModuleV2 = ({
                 width='80%'
                 maxWidth='500px'
                 className={AVAClass.AVAClientBackground}
-                style={{ backgroundColor: 'white', borderRadius: 30, padding: 16 }}
+                style={{ backgroundColor: isDarkMode ? 'darkgray' : 'white', color: clientStyle?.textColor || 'inherit', borderRadius: 30, padding: 16 }}
               >
                 {tfaMessage && (
                   <Typography style={{ marginLeft: 8, marginBottom: 8 }}>
