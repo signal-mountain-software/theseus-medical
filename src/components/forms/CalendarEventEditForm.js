@@ -2179,6 +2179,15 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                                   }
                                 }, true);
                               }
+                              else {
+                                await handleAllocateSlot({
+                                  body: {
+                                    person: `${pName}:${pPatient}`,
+                                    slot: this_item.slotData.id,
+                                    index: (index || 0),
+                                  }
+                                });
+                              }
                             }
                             if (pOccData.notes_required) {
                               setEditNoteNumber(index);
