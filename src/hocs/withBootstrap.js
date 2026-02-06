@@ -7,58 +7,21 @@ import { addDays } from '../util/AVADateTime';
 import { useSnackbar } from 'notistack';
 import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
-import { AVAclasses, AVADefaults } from '../util/AVAStyles';
-import AVAConfirm from '../components/forms/AVAConfirm';
+import { AVADefaults } from '../util/AVAStyles';
 import MakeAVAMenu from '../util/MakeAVAMenu';
-import PatientDialog from '../components/dialogs/PatientDialog';
-import SelectAccount from '../components/dialogs/SelectAccount';
 import QuickAdd from '../components/sections/QuickAdd';
 import LoginModuleV2 from '../components/sections/LoginModuleV2';
 import FormFillB from '../components/forms/FormFillB';
 import PeopleMaintenance from '../components/dialogs/PeopleMaintenance';
 
-import Box from '@material-ui/core/Box';
-import Button from '@material-ui/core/Button';
-import Typography from '@material-ui/core/Typography';
-import Dialog from '@material-ui/core/Dialog';
 
 import { useCookies } from 'react-cookie';
 import useSession from '../hooks/useSession';
 import useIosCheck from '../hooks/useIosCheck';
-import makeStyles from '@material-ui/core/styles/makeStyles';
 
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { SET_PATIENT, SET_PROFILE, SET_GROUPS, SET_ACCESSLIST, SET_CALENDAR, SET_SESSION, SET_USER } from '../contexts/Session/actions';
-import AVATextInput from '../components/forms/AVATextInput';
-
-const useStyles = makeStyles(theme => ({
-  logoSmall: {
-    maxWidth: '100px',
-    marginBottom: '15px'
-  },
-  AVAButton: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    variant: 'outlined',
-    border: '0.75px solid gray',
-    textTransform: 'none',
-    textDecoration: 'none',
-    textWrap: 'nowrap',
-    fontWeight: 'bold',
-    size: 'small',
-  },
-  notTitle: {
-    marginTop: theme.spacing(2),
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    fontSize: theme.typography.fontSize * 1.0,
-  },
-  buttonArea: {
-    marginTop: theme.spacing(4)
-  },
-}));
 
 const AWS = require('aws-sdk');
 const CognitoClient = new AWS.CognitoIdentityServiceProvider({
@@ -71,7 +34,6 @@ export default Component => props => {
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
   const { dispatch, state } = useSession();
-  const AVAClass = AVAclasses();
 
   const [cookies, setCookie, removeCookie] = useCookies(['AVAuser', 'AVAclient', 'AVAvalidated', 'AVAaction']);
 
@@ -79,8 +41,8 @@ export default Component => props => {
   const [AVAReady, setAVAReady] = React.useState(false);
   let localAVAReady = false;
   const [AVAFollowUpData, setAVAFollowUpData] = React.useState();
+  console.log(AVAFollowUpData, doneTrying);
 
-  const classes = useStyles();
   const [platform] = useIosCheck();
   const isTestEnv = ['L', 'T'].includes(window.location.href.split('//')[1]?.slice(0, 1)?.toUpperCase());
 
@@ -164,39 +126,7 @@ export default Component => props => {
 
         // Handle ?create= parameter - force logout and launch QuickAdd
         if (urlData) {
-          if (urlData.create) {
-            const clientId = urlData.create;
-            console.log('Create parameter detected:', clientId);
-
-            // Clear any existing sessions
-            sessionStorage.removeItem('AVASessionData');
-            try {
-              await Auth.signOut();
-            } catch (e) {
-              console.log('No existing Cognito session to sign out');
-            }
-
-            updateReactData({
-              urlData: Object.assign({}, urlData, {
-                client_id: clientId,
-                launch_quickadd: true,
-                quickadd_source: 'url_parameter'
-              })
-            });
-
-            // Load client customizations
-            console.log('Loading customizations for client:', clientId);
-            let cData = await getCustomizations('*all', clientId);
-            updateReactData({
-              customizationData: Object.assign({}, cData, urlData, { client_id: clientId }),
-              currentClientLogo: cData.logo
-            });
-
-            console.log('Trying user:', `ava-${clientId.toLowerCase()}`, 'for client:', clientId);
-            await tryUser(`ava-${clientId.toLowerCase()}`, clientId, 'url');
-            return;
-          }
-          else if (urlData.my_forms) {
+          if (urlData.my_forms) {
             console.log('Document parameter detected:', urlData.document_id);
             updateReactData({
               urlData: Object.assign({}, urlData, {
@@ -216,8 +146,8 @@ export default Component => props => {
         }
 
         // If a client is provided via URL, always prompt for user and ignore session/cookie
-        if (urlData && (urlData.client || urlData.client_id) && !(urlData.user || urlData.user_id)) {
-          const clientId = urlData.client || urlData.client_id;
+        if (urlData && (urlData.client || urlData.client_id || urlData.create) && !(urlData.user || urlData.user_id)) {
+          const clientId = urlData.client || urlData.client_id || urlData.create;
           updateReactData({
             urlData: Object.assign({}, urlData, {
               client_id: clientId
@@ -544,46 +474,6 @@ export default Component => props => {
       });
   }
 
-  function promptForUser() {
-    if (testModeErrorTrap()) { return false; }
-    return (AVAFollowUpData && AVAFollowUpData.NeedUser);
-  }
-
-  function promptForPassword() {
-    if (testModeErrorTrap()) { return false; }
-    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID') && !AVAFollowUpData.forceSetPassword);
-  }
-
-  function promptSetPassword() {
-    if (testModeErrorTrap()) { return false; }
-    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID') && AVAFollowUpData.forceSetPassword);
-  }
-
-  function promptConfirmPassword() {
-    if (testModeErrorTrap()) { return false; }
-    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID') && AVAFollowUpData.confirmSetPassword);
-  }
-
-  const selectFromMultipleAccounts = () => {
-    return (!!reactData.multipleAccountList);
-  };
-
-  function newSubscriptionPrompt() {
-    return (AVAFollowUpData && (AVAFollowUpData.hasOwnProperty('newSubscription') || AVAFollowUpData.hasOwnProperty('addAccount')));
-  }
-
-  function promptSignUp() {
-    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('PromptSignUp'));
-  }
-
-  function verifySubscription() {
-    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('checkSubscription'));
-  }
-
-  function verifySignUp() {
-    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('checkSignUp'));
-  }
-
   function showQuickAdd() {
     return (AVAReady && reactData?.urlData?.launch_quickadd);
   }
@@ -594,48 +484,6 @@ export default Component => props => {
 
   function showMyForms() {
     return (AVAReady && reactData?.urlData?.launch_myForms);
-  }
-
-  function testModeErrorTrap() {
-    return (
-      doneTrying
-      && (messageList.length > 0)
-      && (window.location.href.split('//')[1].slice(0, 1).toUpperCase() === 'T')
-    );
-  }
-
-  async function forgotPassword() {
-    const showWarning = new Promise((resolve, reject) => {
-      const snackAction = (
-        <React-Fragment>
-          <Button className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'green', color: 'white' }}
-            size='small'
-            onClick={() => { resolve('got_it'); }}
-          >
-            I got it!
-          </Button>
-          <Button className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'red', color: 'white' }}
-            size='small'
-            onClick={() => { resolve('need_help'); }}
-          >
-            That didn't help
-          </Button>
-        </React-Fragment>
-      );
-      closeSnackbar();
-      let lKP = AVAFollowUpData.possibleUserRecs[0].sessionRec.last_login.length;
-      let exposed = AVAFollowUpData.possibleUserRecs[0].sessionRec.last_login.slice(0, 3);
-      let hint = exposed.padEnd(lKP, '*');
-      enqueueSnackbar(
-        `Here's a hint...  your password is ${hint}`,
-        { variant: 'warning', persist: true, action: snackAction }
-      );
-    });
-    let rValue = await showWarning;
-    closeSnackbar();
-    return rValue;
   }
 
   if (!AVAReady && !localAVAReady) {
@@ -649,522 +497,6 @@ export default Component => props => {
         />
       );
     }
-    /*
-    return (
-      <Dialog
-        open={!AVAReady && !localAVAReady}
-        p={2}
-        fullScreen
-      >
-        {reactData?.customizationData?.client_style?.checkin_image
-          ?
-          <Box
-            display='flex' flexDirection='row' justifyContent='center' alignItems='center'
-            width={'100%'}
-            maxHeight={'100%'}
-            minHeight={'100%'}
-            overflow={'hidden'}
-          >
-            <Box
-              component="img"
-              m={2}
-              alt=''
-              style={{ width: '100%', height: '100%' }}
-              src={reactData?.customizationData?.client_style?.checkin_image}
-            />
-          </Box>
-          :
-          <React.Fragment>
-            <Box
-              display='flex' flexDirection='column' justifyContent='flex-start' alignItems='center'
-              key={'loadingBox'}
-            >
-              <Box
-                display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-                key={'loadingBox'}
-                ml={2} mr={2} mb={2} mt={2}
-                minWidth={100}
-                maxWidth={100}
-                minHeight={100}
-                maxHeight={100}
-                borderColor={'black'}
-                border={2}
-                style={{ borderRadius: '120px 120px 120px 120px', overflow: 'hidden', backgroundColor: 'white', textDecoration: 'none' }}
-              >
-                <Box
-                  component="img"
-                  minWidth={'80%'}
-                  minHeight={'80%'}
-                  alt=''
-                  src={reactData.currentClientLogo}
-                />
-              </Box>
-            </Box>
-          </React.Fragment>
-        }
-        {testModeErrorTrap() &&
-          <Box
-            display='flex' flexDirection='column' justifyContent='flex-start' alignItems='center'
-            flexWrap='wrap' textOverflow='ellipsis' width='100%'
-            key={'loadingBox'}
-            mb={2}
-          >
-            <Typography variant='h5' >{`AVA Assistant`}</Typography>
-            {messageList.map((pLine, index) => (
-              <Typography
-                className={classes.notTitle}
-                id='scroll-dialog-title'
-                key={'promptConfirm' + index}
-              >
-                {pLine}
-              </Typography>
-            ))}
-            <Button
-              className={classes.buttonArea}
-              aria-label='showActivities'
-              variant='contained'
-              onClick={() => {
-                let emptyList = [];
-                setMessageList(emptyList);
-              }}
-            >
-              {'Dismiss'}
-            </Button>
-          </Box>
-        }
-        {promptForUser() &&
-          <AVATextInput
-            titleText={reactData.customizationData.client_name}
-            promptText={"User ID"}
-            options={{ 'save_on_enter': true }}
-            buttonText='Sign In'
-            onCancel={() => {
-              enqueueSnackbar(`Please enter your ID`, { variant: 'info', persist: true });
-              setMessageList([]);
-            }}
-            onSave={async (enteredUserID) => {
-              if (!enteredUserID) {
-                enqueueSnackbar(`You must enter an ID`, { variant: 'info' });
-              }
-              else if (enteredUserID.toLowerCase() === 'client') {
-                if (reactData.hasOwnProperty('urlData')) {
-                  delete reactData.urlData.client_id;
-                }
-                updateReactData({
-                  urlData: reactData.urlData,
-                  customizationData: { client_name: 'AVA Sign-in' }
-                });
-                setAVAFollowUpData({
-                  NeedUser: true,
-                });
-              }
-              else {
-                setMessageList([]);
-                closeSnackbar();
-                enqueueSnackbar(`Signing in with "${enteredUserID.toLowerCase()}"`, { variant: 'info' });
-                let result = await tryUser(enteredUserID.toLowerCase(), reactData.customizationData.client_id, 'entered');
-                if ((result === 'invalid') && (enteredUserID.toLowerCase() !== enteredUserID)) {
-                  closeSnackbar();
-                  enqueueSnackbar(`Signing in with "${enteredUserID}"`, { variant: 'info' });
-                  await tryUser(enteredUserID, reactData.customizationData.client_id, 'entered');
-                }
-              }
-              setDoneTrying(true);
-            }}
-            allowCancel={false}
-          />
-        }
-        {promptForPassword() &&
-          <AVATextInput
-            titleText={reactData.customizationData.client_name}
-            promptText={"Password"}
-            options={{ 'save_on_enter': true }}
-            buttonText={['Continue', 'Cancel', 'Forgot Password']}
-            onCancel={() => {
-              setMessageList([]);
-              closeSnackbar();
-              enqueueSnackbar(`Please enter your User ID or Name`, { variant: 'info', persist: true });
-              setAVAFollowUpData({ 'NeedUser': true });
-            }}
-            onSave={async (enteredPass, whichButton) => {
-              setMessageList([]);
-              closeSnackbar();
-              if (whichButton === 2) {
-                let requestAction = await forgotPassword();
-                if (requestAction === 'need_help') {
-                  await sendMessages({
-                    client: AVAFollowUpData.possibleUserRecs[0].sessionRec.client_id,
-                    author: AVAFollowUpData.possibleUserRecs[0].sessionRec.user_id,
-                    person_id: AVAFollowUpData.possibleUserRecs[0].person_id,
-                    messageText: `Account holder ${AVAFollowUpData.possibleUserRecs[0].person_id} in client ${AVAFollowUpData.possibleUserRecs[0].sessionRec.client_id} has asked for password help.`,
-                    recipientList: ['ava-support', 'rsteele'],
-                    subject: 'Password Assistance Requested'
-                  });
-                  closeSnackbar();
-                  enqueueSnackbar(`A request was sent to the AVA Support team`, { variant: 'info' });
-                }
-                return;
-              }
-              closeSnackbar();
-              enqueueSnackbar(`AVA is verifying your information`, { variant: 'info' });
-              for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
-                let [thatWorked, ,] = await cognitoLogin(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass);
-                if (thatWorked) {
-                  let userFrom = '';
-                  if (AVAFollowUpData.possibleUserRecs.length > 1) {
-                    userFrom = `- user ID is #${p + 1} of ${AVAFollowUpData.possibleUserRecs.length} possible matches`;
-                  }
-                  await logAccessAttempt(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass, true, `Successful Log-in using entered password ${userFrom}`);
-                  launchAVA(AVAFollowUpData.possibleUserRecs[p].person_id);
-                  return;
-                }
-              }
-              // the entered data did not work as a password; perhaps as a apartment number, etc?
-              closeSnackbar();
-              for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
-                let possibility = AVAFollowUpData.possibleUserRecs[p];
-                if (AVAFollowUpData.possibleUserRecs[p].sessionRec.last_login.toLowerCase() === enteredPass.toLowerCase()) {
-                  let result = await tryUser(possibility.person_id, possibility.client_id, 'stored password match', { waiveTFA: true });
-                  if (result === 'good') {
-                    let eMessage = `Successful Login for ${possibility.person_id}`;
-                    enqueueSnackbar(eMessage, { variant: 'info', persist: false });
-                    await logAccessAttempt(possibility.person_id, '', true, eMessage);
-                    launchAVA(possibility.person_id);
-                    return;
-                  }
-                }
-                else if (enteredPass && possibility.location && possibility.location.toLowerCase().includes(enteredPass.toLowerCase())) {
-                  if (possibility.sessionRec.requirePassword) {
-                    let eMessage = `Using the information provided, AVA located account "${possibility.person_id}", but that account requires a password.  ("${enteredPass}" is not the right password.)`;
-                    await logAccessAttempt(possibility.person_id, '', false, eMessage);
-                    setDoneTrying(false);
-                    enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
-                    return;
-                  }
-                  let result = await tryUser(possibility.person_id, possibility.client_id, 'location match');
-                  if (result !== 'good') {
-                    let eMessage = `Using the information provided, AVA located account "${possibility.person_id}".  However, we can't log that account into AVA.`;
-                    await logAccessAttempt(possibility.person_id, '', false, eMessage);
-                    enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
-                    return;
-                  }
-                  else {
-                    let eMessage = `Successful Login for ${possibility.person_id} using entered location list of ${AVAFollowUpData.possibleUserRecs.length} possible matches`;
-                    enqueueSnackbar(eMessage, { variant: 'info', persist: false });
-                    await logAccessAttempt(possibility.person_id, '', true, eMessage);
-                    launchAVA(possibility.person_id);
-                    return;
-                  }
-                }
-              }
-              let eMessage = `AVA could not log you in with "${enteredPass}"`;
-              await logAccessAttempt('Text - not a UserID', '', false, eMessage);
-              enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
-              setDoneTrying(true);
-              return;
-            }}
-          />
-        }
-        {promptSetPassword() &&
-          <AVATextInput
-            titleText={reactData.customizationData.client_name}
-            promptText={"New Password"}
-            options={{ 'save_on_enter': true }}
-            buttonText={['Continue', 'Cancel']}
-            onCancel={() => {
-              setMessageList([]);
-              closeSnackbar();
-              enqueueSnackbar(`Please enter your User ID or Name`, { variant: 'info', persist: true });
-              setAVAFollowUpData({ 'NeedUser': true });
-            }}
-            onSave={async (enteredPass) => {
-              setMessageList([]);
-              closeSnackbar();
-              setAVAFollowUpData({
-                passwordRequired: true,
-                proposedPassword: enteredPass,
-                confirmSetPassword: true,
-                enteredUserID: AVAFollowUpData.enteredUserID,
-                possibleUserRecs: AVAFollowUpData.possibleUserRecs
-              });
-              return;
-            }}
-          />
-        }
-        {promptConfirmPassword() &&
-          <AVAConfirm
-            promptText={[
-              reactData.customizationData.client_name,
-              `[style={size:0.7,top:0}]Please confirm that you wish to set ${AVAFollowUpData.proposedPassword} as your new password`,
-            ]}
-            cancelText={`No, that's not right`}
-            confirmText={`Yes - set ${AVAFollowUpData.proposedPassword} as my password`}
-            onCancel={() => {
-              setMessageList([]);
-              closeSnackbar();
-              setAVAFollowUpData({
-                passwordRequired: true,
-                forceSetPassword: true,
-                enteredUserID: AVAFollowUpData.enteredUserID,
-                possibleUserRecs: AVAFollowUpData.possibleUserRecs
-              });
-              return;
-            }}
-            onConfirm={async () => {
-              setMessageList([]);
-              let this_user = AVAFollowUpData.possibleUserRecs[0];
-              // update SessionV2 with this password
-              await updateDb(
-                [
-                  {
-                    table: "SessionsV2",
-                    key: {
-                      session_id: AVAFollowUpData.enteredUserID.toLowerCase()
-                    },
-                    data: {
-                      last_login: AVAFollowUpData.proposedPassword,
-                      forceSetPassword: false,
-                      storePassword: true,
-                      password_change_date: new Date().toLocaleString()
-                    }
-                  },
-                  {
-                    table: "People",
-                    key: {
-                      person_id: AVAFollowUpData.enteredUserID.toLowerCase()
-                    },
-                    data: {
-                      newPassword: AVAFollowUpData.proposedPassword,
-                      storePassword: true,
-                      password_change_date: new Date().toLocaleString()
-                    }
-                  },
-                ]
-              );
-              closeSnackbar();
-              enqueueSnackbar(`Your new password has been set to ${AVAFollowUpData.proposedPassword} and you are being signed-in now...`, { variant: 'info' });
-              let result = await tryUser(this_user.person_id, this_user.client_id, 'stored password match', { waiveTFA: true });
-              if (result === 'good') {
-                let eMessage = `Successful Login for ${this_user.person_id}`;
-                enqueueSnackbar(eMessage, { variant: 'info', persist: false });
-                await logAccessAttempt(this_user.person_id, '', true, eMessage);
-                launchAVA(this_user.person_id);
-                return;
-              }
-              let eMessage = `Something went wrong.`;
-              await logAccessAttempt('Text - new password set, but login failed', '', false, eMessage);
-              enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
-              setDoneTrying(true);
-              return;
-            }}
-          />
-        }
-        {selectFromMultipleAccounts() &&
-          <SelectAccount
-            selectionList={reactData.multipleAccountList}
-            onCancel={() => {
-              setAVAFollowUpData({ 'NeedUser': true });
-              updateReactData({
-                multipleAccountList: false
-              }, true);
-            }}
-            onSelect={async (response) => {
-              updateReactData({
-                multipleAccountList: false
-              }, false);
-              let result = await tryUser(response.person_id, response.client_id, "selection");
-              if (result === 'good') {
-                let eMessage = `Successful Login for ${response.person_id}`;
-                await logAccessAttempt(response.person_id, '', true, eMessage);
-                launchAVA(response.person_id);
-                return;
-              }
-            }}
-          />
-        }
-        {promptSignUp() &&
-          <AVAConfirm
-            promptText={[
-              reactData.customizationData.client_name,
-              '[style={size:0.7,top:0}]Welcome!',
-              '[style={size:0.7,top:0}]That e-Mail address is not currently associated with any Account.',
-              '[style={size:0.7,top:0}]If you would like to create a new account, tap "Sign up" below.',
-              '[style={size:0.7,top:0}]Thank you!',
-              '[style={size:0.7,top:0}]'
-            ]}
-            cancelText={`Cancel`}
-            confirmText={`Sign up`}
-            onCancel={() => {
-              setMessageList([]);
-              closeSnackbar();
-              enqueueSnackbar(`Please enter your User ID`, { variant: 'info', persist: true });
-              setAVAFollowUpData({ 'NeedUser': true });
-            }}
-            onConfirm={() => {
-              setAVAFollowUpData({
-                'addAccount': true,
-                'prompt': [
-                  'Tap below to continue'
-                ],
-                pUser: AVAFollowUpData.pUser,
-                pSource: AVAFollowUpData.pSource,
-                pClient: AVAFollowUpData.pClient,
-                client_id: AVAFollowUpData.pClient
-              });
-              setDoneTrying(true);
-              return 'subscription';
-            }}
-          />
-        }
-        {newSubscriptionPrompt() &&
-          <PatientDialog
-            patient={{
-              "person_id": AVAFollowUpData.pUser,
-              "client_id": AVAFollowUpData.pClient,
-              "groups": [],
-              "name": {
-                "first": 'New',
-                "last": 'Account'
-              },
-              "clients": [
-                {
-                  "groups": [],
-                  "id": AVAFollowUpData.pClient,
-                }
-              ],
-            }}
-            groupData={{}}
-            open={true}
-            onClose={async (response) => {
-              if (response) {
-                let request = {
-                  client: AVAFollowUpData.client_id,
-                  author: AVAFollowUpData.pUser.toLowerCase(),
-                  person_id: AVAFollowUpData.pUser.toLowerCase(),
-                  messageText:
-                    `${(response.first + ' ' + response.last).trim()} has created an account in ${AVAFollowUpData.client_id} with the ID ${response.person_id}.`,
-                  recipientList: ['ava-support'],
-                  subject: `New Account for ${(response.first + ' ' + response.last).trim()}`
-                };
-                await sendMessages(request);
-                setDoneTrying(true);
-                setAVAFollowUpData({
-                  'addAccount': true,
-                  'prompt': [
-                    'Tap below to continue'
-                  ],
-                  pUser: AVAFollowUpData.pUser,
-                  pSource: AVAFollowUpData.pSource,
-                  pClient: AVAFollowUpData.pClient,
-                  client_id: AVAFollowUpData.pClient
-                });
-                setDoneTrying(true);
-                return (await genericLogin(response.person_id, AVAFollowUpData.pSource));
-              }
-              else {
-                setDoneTrying(true);
-                setAVAFollowUpData({ 'NeedUser': true });
-              }
-            }}
-          />
-        }
-        {verifySubscription() &&
-          <AVAConfirm
-            promptText={AVAFollowUpData.prompt}
-            cancelText={`I didn't subscribe this time`}
-            confirmText={`Yes! I subscribed!`}
-            onCancel={async () => {
-              return (await genericLogin(AVAFollowUpData.pUser, AVAFollowUpData.pSource));
-            }}
-            onConfirm={async () => {
-              let request = {
-                client: AVAFollowUpData.client_id,
-                author: AVAFollowUpData.pUser.toLowerCase(),
-                person_id: AVAFollowUpData.pUser.toLowerCase(),
-                messageText:
-                  `The owner of this e-Mail address indicated their intention to subscribe to AVA in the ${AVAFollowUpData.client_id} client.  Please check the Stripe reports for more information.`,
-                recipientList: ['ava-support'],
-                subject: `New Subscription for ${AVAFollowUpData.pUser.toLowerCase()}`
-              };
-              await sendMessages(request);
-              return (await genericLogin(AVAFollowUpData.pUser, AVAFollowUpData.pSource));
-            }}
-          />
-        }
-        {verifySignUp() &&
-          <AVAConfirm
-            promptText={AVAFollowUpData.prompt}
-            cancelText={`I didn't subscribe this time`}
-            confirmText={`Yes! I subscribed!`}
-            onCancel={async () => {
-              setMessageList([]);
-              closeSnackbar();
-              enqueueSnackbar(`Please enter your User ID`, { variant: 'info', persist: true });
-              setAVAFollowUpData({ 'NeedUser': true });
-            }}
-            onConfirm={async () => {
-              await updateDb(
-                [
-                  {
-                    "table": "People",
-                    "key": { "person_id": AVAFollowUpData.pUser.toLowerCase() },
-                    "data": {
-                      "client_id": AVAFollowUpData.client_id || AVAFollowUpData.client_name,
-                      "name": {
-                        "first": AVAFollowUpData.pUser,
-                        "last": "New Subscriber"
-                      },
-                      "search_data": AVAFollowUpData.pUser.toLowerCase(),
-                      "messaging": {
-                        "email": AVAFollowUpData.pUser,
-                      },
-                      "preferred_method": "email",
-                      "clients": [
-                        {
-                          "groups": [
-                            "message_only",
-                            "_TOP_"
-                          ],
-                          "id": AVAFollowUpData.client_id || AVAFollowUpData.client_name
-                        }
-                      ],
-                      "groups": [
-                        "message_only",
-                        "_TOP_"
-                      ]
-                    }
-                  },
-                  {
-                    "table": "SessionsV2",
-                    "key": { "session_id": AVAFollowUpData.pUser.toLowerCase() },
-                    "data": {
-                      "client_id": AVAFollowUpData.client_id || AVAFollowUpData.client_name,
-                      "user_id": AVAFollowUpData.pUser.toLowerCase(),
-                      "assigned_to": "message_only",
-                      "subscription_status": "inactive"
-                    }
-                  }
-                ]
-              );
-              let request = {
-                client: AVAFollowUpData.client_id || AVAFollowUpData.client_name,
-                author: AVAFollowUpData.pUser.toLowerCase(),
-                person_id: AVAFollowUpData.pUser.toLowerCase(),
-                messageText: `The owner of this e-Mail address indicated their intention to subscribe to AVA in the ${AVAFollowUpData.client_id || AVAFollowUpData.client_name} client.  Please check the Stripe reports for more information.`,
-                recipientList: ['ava-support'],
-                subject: `New Subscription for ${AVAFollowUpData.pUser.toLowerCase()}`
-              };
-              await sendMessages(request);
-              setMessageList([]);
-              closeSnackbar();
-              enqueueSnackbar(`Please enter your User ID`, { variant: 'info', persist: true });
-              setAVAFollowUpData({ 'NeedUser': true });
-            }}
-          />
-        }
-      </Dialog >
-    );
-    */
   }
   else if (showQuickAdd()) {
     return (
@@ -1525,43 +857,6 @@ export default Component => props => {
     }
     return;
   };
-
-
-  async function updateDb(pData) {
-    // pData in the form {["table": <tablename>, "key": {"key1": "keydata1", etc...}, "data": {"field_name1": "new value", "field_name2", "new value", ...}]}
-    let response = [];
-    for (let t = 0; t < pData.length; t++) {
-      let k_num = 0;
-      let aNamesObj = {};
-      let aValuesObj = {};
-      let expression = 'set';
-      for (let pKey in pData[t].data) {
-        let aKey = `n${k_num++}`;
-        aNamesObj[`#${aKey}`] = pKey;
-        aValuesObj[`:${aKey}`] = pData[t].data[pKey];
-        if (k_num > 1) {
-          expression += ', ';
-        }
-        expression += ` #${aKey} = :${aKey}`;
-      }
-      await dbClient
-        .update({
-          Key: pData[t].key,
-          UpdateExpression: expression,
-          ExpressionAttributeValues: aValuesObj,
-          ExpressionAttributeNames: aNamesObj,
-          TableName: pData[t].table,
-        })
-        .promise()
-        .catch(error => {
-          console.log(`caught error updating ${pData[t].table}; error is:`, error);
-          response.push(error);
-        });
-      response.push('OK');
-    }
-    return response;
-  }
-
 
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage, pSessionInfo) {
     let attributeValues = {
