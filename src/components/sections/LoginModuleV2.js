@@ -1154,7 +1154,7 @@ const LoginModuleV2 = ({
                 minWidth='40vw'
                 maxWidth='500px'
                 className={AVAClass.AVAClientBackground}
-                style={{ backgroundColor: isDarkMode ? 'darkgray' : 'white', borderRadius: 30, padding: 16 }}
+                style={{ backgroundColor: isDarkMode ? 'darkgreen' : 'white', borderRadius: 30, padding: 16 }}
               >
                 <Typography style={{ marginLeft: 8, marginBottom: 8, fontSize: '2em', fontWeight: 'bold' }} >
                   {clientName}
@@ -1255,7 +1255,7 @@ const LoginModuleV2 = ({
                 width='80%'
                 maxWidth='500px'
                 className={AVAClass.AVAClientBackground}
-                style={{ backgroundColor: isDarkMode ? 'darkgray' : 'white', color: clientStyle?.textColor || 'inherit', borderRadius: 30, padding: 16 }}
+                style={{ backgroundColor: isDarkMode ? 'darkgreen' : 'white', color: clientStyle?.textColor || 'inherit', borderRadius: 30, padding: 16 }}
               >
                 <TextField
                   label='Password'
@@ -1315,7 +1315,7 @@ const LoginModuleV2 = ({
                 width='80%'
                 maxWidth='500px'
                 className={AVAClass.AVAClientBackground}
-                style={{ backgroundColor: isDarkMode ? 'darkgray' : 'white', color: clientStyle?.textColor || 'inherit', borderRadius: 30, padding: 16 }}
+                style={{ backgroundColor: isDarkMode ? 'darkgreen' : 'white', color: clientStyle?.textColor || 'inherit', borderRadius: 30, padding: 16 }}
               >
                 {tfaMessage && (
                   <Typography style={{ marginLeft: 8, marginBottom: 8 }}>
