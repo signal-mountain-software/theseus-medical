@@ -639,7 +639,7 @@ export default Component => props => {
   }
 
   if (!AVAReady && !localAVAReady) {
-    if (isTestEnv) {
+    if (isTestEnv || true) {
       return (
         <LoginModuleV2
           onReady={() => {
@@ -649,6 +649,7 @@ export default Component => props => {
         />
       );
     }
+    /*
     return (
       <Dialog
         open={!AVAReady && !localAVAReady}
@@ -1163,6 +1164,7 @@ export default Component => props => {
         }
       </Dialog >
     );
+    */
   }
   else if (showQuickAdd()) {
     return (
