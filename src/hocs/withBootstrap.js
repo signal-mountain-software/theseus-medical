@@ -7,58 +7,21 @@ import { addDays } from '../util/AVADateTime';
 import { useSnackbar } from 'notistack';
 import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
-import { AVAclasses, AVADefaults } from '../util/AVAStyles';
-import AVAConfirm from '../components/forms/AVAConfirm';
+import { AVADefaults } from '../util/AVAStyles';
 import MakeAVAMenu from '../util/MakeAVAMenu';
-import PatientDialog from '../components/dialogs/PatientDialog';
-import SelectAccount from '../components/dialogs/SelectAccount';
 import QuickAdd from '../components/sections/QuickAdd';
 import LoginModuleV2 from '../components/sections/LoginModuleV2';
 import FormFillB from '../components/forms/FormFillB';
 import PeopleMaintenance from '../components/dialogs/PeopleMaintenance';
 
-import Box from '@material-ui/core/Box';
-import Button from '@material-ui/core/Button';
-import Typography from '@material-ui/core/Typography';
-import Dialog from '@material-ui/core/Dialog';
 
 import { useCookies } from 'react-cookie';
 import useSession from '../hooks/useSession';
 import useIosCheck from '../hooks/useIosCheck';
-import makeStyles from '@material-ui/core/styles/makeStyles';
 
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { SET_PATIENT, SET_PROFILE, SET_GROUPS, SET_ACCESSLIST, SET_CALENDAR, SET_SESSION, SET_USER } from '../contexts/Session/actions';
-import AVATextInput from '../components/forms/AVATextInput';
-
-const useStyles = makeStyles(theme => ({
-  logoSmall: {
-    maxWidth: '100px',
-    marginBottom: '15px'
-  },
-  AVAButton: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    variant: 'outlined',
-    border: '0.75px solid gray',
-    textTransform: 'none',
-    textDecoration: 'none',
-    textWrap: 'nowrap',
-    fontWeight: 'bold',
-    size: 'small',
-  },
-  notTitle: {
-    marginTop: theme.spacing(2),
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    fontSize: theme.typography.fontSize * 1.0,
-  },
-  buttonArea: {
-    marginTop: theme.spacing(4)
-  },
-}));
 
 const AWS = require('aws-sdk');
 const CognitoClient = new AWS.CognitoIdentityServiceProvider({
@@ -71,7 +34,6 @@ export default Component => props => {
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
   const { dispatch, state } = useSession();
-  const AVAClass = AVAclasses();
 
   const [cookies, setCookie, removeCookie] = useCookies(['AVAuser', 'AVAclient', 'AVAvalidated', 'AVAaction']);
 
@@ -79,8 +41,8 @@ export default Component => props => {
   const [AVAReady, setAVAReady] = React.useState(false);
   let localAVAReady = false;
   const [AVAFollowUpData, setAVAFollowUpData] = React.useState();
+  console.log(AVAFollowUpData, doneTrying);
 
-  const classes = useStyles();
   const [platform] = useIosCheck();
   const isTestEnv = ['L', 'T'].includes(window.location.href.split('//')[1]?.slice(0, 1)?.toUpperCase());
 
@@ -544,46 +506,6 @@ export default Component => props => {
       });
   }
 
-  function promptForUser() {
-    if (testModeErrorTrap()) { return false; }
-    return (AVAFollowUpData && AVAFollowUpData.NeedUser);
-  }
-
-  function promptForPassword() {
-    if (testModeErrorTrap()) { return false; }
-    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID') && !AVAFollowUpData.forceSetPassword);
-  }
-
-  function promptSetPassword() {
-    if (testModeErrorTrap()) { return false; }
-    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID') && AVAFollowUpData.forceSetPassword);
-  }
-
-  function promptConfirmPassword() {
-    if (testModeErrorTrap()) { return false; }
-    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID') && AVAFollowUpData.confirmSetPassword);
-  }
-
-  const selectFromMultipleAccounts = () => {
-    return (!!reactData.multipleAccountList);
-  };
-
-  function newSubscriptionPrompt() {
-    return (AVAFollowUpData && (AVAFollowUpData.hasOwnProperty('newSubscription') || AVAFollowUpData.hasOwnProperty('addAccount')));
-  }
-
-  function promptSignUp() {
-    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('PromptSignUp'));
-  }
-
-  function verifySubscription() {
-    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('checkSubscription'));
-  }
-
-  function verifySignUp() {
-    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('checkSignUp'));
-  }
-
   function showQuickAdd() {
     return (AVAReady && reactData?.urlData?.launch_quickadd);
   }
@@ -594,48 +516,6 @@ export default Component => props => {
 
   function showMyForms() {
     return (AVAReady && reactData?.urlData?.launch_myForms);
-  }
-
-  function testModeErrorTrap() {
-    return (
-      doneTrying
-      && (messageList.length > 0)
-      && (window.location.href.split('//')[1].slice(0, 1).toUpperCase() === 'T')
-    );
-  }
-
-  async function forgotPassword() {
-    const showWarning = new Promise((resolve, reject) => {
-      const snackAction = (
-        <React-Fragment>
-          <Button className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'green', color: 'white' }}
-            size='small'
-            onClick={() => { resolve('got_it'); }}
-          >
-            I got it!
-          </Button>
-          <Button className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'red', color: 'white' }}
-            size='small'
-            onClick={() => { resolve('need_help'); }}
-          >
-            That didn't help
-          </Button>
-        </React-Fragment>
-      );
-      closeSnackbar();
-      let lKP = AVAFollowUpData.possibleUserRecs[0].sessionRec.last_login.length;
-      let exposed = AVAFollowUpData.possibleUserRecs[0].sessionRec.last_login.slice(0, 3);
-      let hint = exposed.padEnd(lKP, '*');
-      enqueueSnackbar(
-        `Here's a hint...  your password is ${hint}`,
-        { variant: 'warning', persist: true, action: snackAction }
-      );
-    });
-    let rValue = await showWarning;
-    closeSnackbar();
-    return rValue;
   }
 
   if (!AVAReady && !localAVAReady) {
@@ -1525,43 +1405,6 @@ export default Component => props => {
     }
     return;
   };
-
-
-  async function updateDb(pData) {
-    // pData in the form {["table": <tablename>, "key": {"key1": "keydata1", etc...}, "data": {"field_name1": "new value", "field_name2", "new value", ...}]}
-    let response = [];
-    for (let t = 0; t < pData.length; t++) {
-      let k_num = 0;
-      let aNamesObj = {};
-      let aValuesObj = {};
-      let expression = 'set';
-      for (let pKey in pData[t].data) {
-        let aKey = `n${k_num++}`;
-        aNamesObj[`#${aKey}`] = pKey;
-        aValuesObj[`:${aKey}`] = pData[t].data[pKey];
-        if (k_num > 1) {
-          expression += ', ';
-        }
-        expression += ` #${aKey} = :${aKey}`;
-      }
-      await dbClient
-        .update({
-          Key: pData[t].key,
-          UpdateExpression: expression,
-          ExpressionAttributeValues: aValuesObj,
-          ExpressionAttributeNames: aNamesObj,
-          TableName: pData[t].table,
-        })
-        .promise()
-        .catch(error => {
-          console.log(`caught error updating ${pData[t].table}; error is:`, error);
-          response.push(error);
-        });
-      response.push('OK');
-    }
-    return response;
-  }
-
 
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage, pSessionInfo) {
     let attributeValues = {
