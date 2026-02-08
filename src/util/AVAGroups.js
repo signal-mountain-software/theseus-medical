@@ -45,7 +45,7 @@ let loadedPerson = null;
 
 // Functions
 
-export async function accountAccess(person_id, pClient_id, dispatch) {
+export async function accountAccess(person_id, pClient_id) {
   // Does my person account designate an account_class?
   let myPeopleRec = await getPerson(person_id);
   let myClass;
@@ -80,6 +80,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
   }
   // Now get a list of people that I can access
   let myGroupAccessLevel = [];
+  let groups_person_belongsTo, rejectObject;
   if (myClass !== 'inactive') {
     if (!session || (session.session_id !== person_id)) {
       session = await getSession(person_id);
@@ -114,7 +115,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
 
     const client_id = pClient_id;
     // establish my authority to each group in this client; we'll use this later to determine my access level to each person in the client based on their group membership  
-    let [groups_person_belongsTo, rejectObject,] = await getGroupAccess(client_id, person_id);
+    [groups_person_belongsTo, rejectObject,] = await getGroupAccess(client_id, person_id);
     const accessibleGroups = [];
     for (const [key, value] of Object.entries(Object.assign({}, groups_person_belongsTo, rejectObject))) {
       if (value.is_accessible) {
@@ -261,6 +262,10 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
       }
     }
   }
+  accessList.belongs_to = [];
+  for (const b2 in groups_person_belongsTo) {
+    if (groups_person_belongsTo[b2].belongs_to) { accessList.belongs_to.push(groups_person_belongsTo[b2].group_id); }
+  };
   accessList.birthdayList = deepCopy(birthdayList);
   return accessList;
 }

@@ -480,7 +480,7 @@ const LoginModuleV2 = ({
       .catch(() => ({}));
     dispatch({ type: SET_GROUPS, payload: Object.assign({}, groupStructure, { belongsTo }) });
 
-    const accessPromise = accountAccess(pSession.user_id, pSession.client_id, dispatch)
+    const accessPromise = accountAccess(pSession.user_id, pSession.client_id)
       .then(accessList => {
         dispatch({ type: SET_ACCESSLIST, payload: accessList });
         bootStateRef.current.accessList = accessList;
