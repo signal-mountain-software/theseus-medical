@@ -1003,7 +1003,8 @@ export async function switchActiveAccount(session, newClient, newPatient, option
   else {
     sessionStorage.removeItem('AVASessionData');
   }
-  let jumpTo = window.location.href.replace('refresh', 'theseus').split('?')[0];
+  let jumpTo = `${window.location.href.replace('refresh', 'theseus').split('?')[0]}`;
+  if (options.resetUser) { jumpTo += `?user=${newPatient.id}`; }
   window.location.replace(jumpTo);
 };
 
