@@ -804,7 +804,7 @@ export default ({ defaults, onClose }) => {
 
     // INITIALIZE FILTERED LIST: Start with all people (no filter applied yet)
     reactData.masterFormList[this_form].filteredMemberIds = reactData.masterFormList[this_form].sortedMemberIds;
-
+    applyFilterToForm(this_form);
 
     reactData.masterFormList[this_form].build_complete = true;
     console.time('⏱️ Final UI update');
@@ -1862,20 +1862,10 @@ export default ({ defaults, onClose }) => {
                               person_name: `${reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.person_name || makeName(this_person).display}`,
                               reason: 'form'
                             })}
-                            onClick={async () => {
+                            onClick={() => {
                               updateReactData({
-                                selectedForm_id: false,
-                                selectedFormRec: false,
-                                selectedFormMembers: false,
-                                selectedPerson_id: this_person,
-                                selectedPersonRec: await getPerson(this_person),
-                                activity_filter: '',
-                                lower_activity_filter: '',
-                                filterComplete: false,
-                                filterNotStarted: false,
-                                filterInProcess: false
+                                viewPeopleMaintenance: this_person
                               }, true);
-                              await personForms(this_person);
                             }}
                           >
                             {`${reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.person_name || makeName(this_person).display}`}
