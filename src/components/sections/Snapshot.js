@@ -31,6 +31,17 @@ export default ({ currentValues, reactData, updateReactData }) => {
       .replace(/^[\s,;:]+|[\s,;:]+$/g, '');
   };
 
+  const makeName = (person_id) => {
+    let peopleList = state.accessList?.[state.session.client_id].list;
+    let foundPerson = peopleList?.find(p => p.person_id === person_id);
+    if (foundPerson) {
+      return `${foundPerson.name.first} ${foundPerson.name.last}`;
+    }
+    else {
+      return null;
+    }
+  }
+
   const makeLocation = () => {
     if (currentValues.peopleRec.hasOwnProperty('address') && currentValues.peopleRec.address) {
       if (currentValues.peopleRec.address.street) {
@@ -352,7 +363,8 @@ export default ({ currentValues, reactData, updateReactData }) => {
               return ((p1.name > p2.name) ? 1 : -1);
             }
           }).map((this_member, memberNdx) => (
-            (this_member.id !== currentValues.peopleRec.person_id) && <Box
+            (this_member.id !== currentValues.peopleRec.person_id) &&
+            <Box
               display='flex'
               flexDirection='row'
               alignItems={'flex-start'}
@@ -367,7 +379,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                   }, true);
                 }}
               >
-                {`${this_member?.name.trim() || this_member?.id || 'Unknown Person'}`}
+                {`${makeName(this_member?.id) || this_member?.name.trim() || this_member?.id || 'Unknown Person'}`}
               </Typography>
               <Typography style={AVATextStyle({ margin: { top: 0, left: 0.5, right: -0.8 }, bold: true })}>
                 {this_member.role && this_member.role === 'primary' ? '- Primary' : (this_member.relationship ? ('- ' + this_member.relationship) : '')}
