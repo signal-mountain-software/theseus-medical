@@ -2064,26 +2064,29 @@ export default ({ request = {}, onClose }) => {
         let groupInstructions_onStageExit = reactData.formRec.stages[previous_stageIndex].on_complete_groups;
         if (groupInstructions_onStageExit) {
           reactData.peopleRec[reactData.pertains_to].groups = update_stageGroups(groupInstructions_onStageExit);
+          needsUpdate.peopleRec = true;
         }
-      }
-
-      //check stage entry
-      let this_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.current_formStage);
-      if (this_stageIndex >= 0) {
-        // send message on stage entry
-        let messageInstructions_onStageEntry = reactData.formRec.stages[this_stageIndex].on_entry_message;
-        if (messageInstructions_onStageEntry) {
-          await send_stageMessage(messageInstructions_onStageEntry); // send stage entered message
-        }
-        // remove and add groups from pertains_to account's group list if any
-        let groupInstructions_onStageEntry = reactData.formRec.stages[this_stageIndex].on_entry_groups;
-        if (groupInstructions_onStageEntry) {
-          reactData.peopleRec[reactData.pertains_to].groups = update_stageGroups(groupInstructions_onStageEntry);
-        }
-        // lock the form?
-        if (reactData.formRec.stages[this_stageIndex].on_entry_lock) { formLocked = true; }
       }
     }
+
+    //check stage entry
+    let this_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.current_formStage);
+    if (this_stageIndex >= 0) {
+      // send message on stage entry
+      let messageInstructions_onStageEntry = reactData.formRec.stages[this_stageIndex].on_entry_message;
+      if (messageInstructions_onStageEntry) {
+        await send_stageMessage(messageInstructions_onStageEntry); // send stage entered message
+      }
+      // remove and add groups from pertains_to account's group list if any
+      let groupInstructions_onStageEntry = reactData.formRec.stages[this_stageIndex].on_entry_groups;
+      if (groupInstructions_onStageEntry) {
+        reactData.peopleRec[reactData.pertains_to].groups = update_stageGroups(groupInstructions_onStageEntry);
+        needsUpdate.peopleRec = true;
+      }
+      // lock the form?
+      if (reactData.formRec.stages[this_stageIndex].on_entry_lock) { formLocked = true; }
+    }
+
 
 
     let response = { goodPut: true };
@@ -2872,7 +2875,7 @@ export default ({ request = {}, onClose }) => {
                                   </Box>
                                   <Box
                                     display='flex'
-                                    mb={0}                                    
+                                    mb={0}
                                     flexDirection='row'
                                     justifyContent='center'
                                     alignItems='center'
