@@ -294,8 +294,10 @@ export default ({ defaults, onCancel }) => {
     let selectOpen = pGroupList.includes('*all_open') || pGroupList.includes('*all_public');
     let selectPrivate = pGroupList.includes('*all_closed') || pGroupList.includes('*all_private');
     const selectMine = !pGroupList || (pGroupList.length === 0) || (pGroupList.includes('*user'));
+    const authorized_groups = state.accessList?.[state.session.client_id]?.groups || [];
+    let gList = state.groups.adminHierarchy.filter(g => authorized_groups.includes(g.id));
     let response = {};
-    for (let g of state.groups.adminHierarchy) {
+    for (let g of gList) {
       if ((g.level > 0)
         && (selectAll
           || selectMine
@@ -315,7 +317,7 @@ export default ({ defaults, onCancel }) => {
       }
     };
     for (let gID in state.groups.publicGroups) {
-      if (selectAll || pGroupList.includes(gID) || selectOpen) {
+      if (!response[gID] && (authorized_groups.includes(gID)) && (selectAll || pGroupList.includes(gID) || selectOpen)) {
         response[gID] = {
           group_name: state.groups.publicGroups[gID].group_name,
           group_id: gID,
@@ -325,7 +327,7 @@ export default ({ defaults, onCancel }) => {
       }
     };
     for (let gID in state.groups.privateGroups) {
-      if (selectAll || pGroupList.includes(gID) || selectPrivate) {
+      if (!response[gID] && (authorized_groups.includes(gID)) && (selectAll || pGroupList.includes(gID) || selectPrivate)) {
         response[gID] = {
           group_name: state.groups.privateGroups[gID].group_name,
           group_id: gID,
@@ -894,7 +896,7 @@ export default ({ defaults, onCancel }) => {
                               onClick={async () => {
                                 updateReactData({
                                   personMessages: this_person,
-                                  personMessages_inOutFilter: (reactData.received_mode ? 'in' : 'out') ,
+                                  personMessages_inOutFilter: (reactData.received_mode ? 'in' : 'out'),
                                   personMessages_statusFilter: ((this_key === 'count') ? false : this_key)
                                 }, true);
                               }}
