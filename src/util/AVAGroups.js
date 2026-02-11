@@ -103,6 +103,7 @@ export async function accountAccess(person_id, pClient_id) {
       // for each client that I have access to, get the client name and logo for display purposes
       let clientName = await getCustomizations('client_name', client_id);
       let clientLogo = await getCustomizations('logo', client_id);
+      console.log({ check_access: { client_id, clientName } });
 
       accessList[client_id] = {
         name: clientName.customization_value,
@@ -111,142 +112,114 @@ export async function accountAccess(person_id, pClient_id) {
         list: [],
         groups: {}
       };
-    }
 
-    const client_id = pClient_id;
-    // establish my authority to each group in this client; we'll use this later to determine my access level to each person in the client based on their group membership  
-    [groups_person_belongsTo, rejectObject,] = await getGroupAccess(client_id, person_id);
-    const accessibleGroups = [];
-    for (const [key, value] of Object.entries(Object.assign({}, groups_person_belongsTo, rejectObject))) {
-      if (value.is_accessible) {
-        accessibleGroups.push(key);
+      // establish my authority to each group in this client; we'll use this later to determine my access level to each person in the client based on their group membership  
+      [groups_person_belongsTo, rejectObject,] = await getGroupAccess(client_id, person_id);
+      const accessibleGroups = [];
+      for (const [key, value] of Object.entries(Object.assign({}, groups_person_belongsTo, rejectObject))) {
+        if (value.is_accessible) {
+          accessibleGroups.push(key);
+        }
+      };
+      myGroupAccessLevel = accessibleGroups;
+
+      respList[client_id] = {
+        name: clientName.customization_value,
+        logo: clientLogo.icon,
+        count: {},
+        list: []
+      };
+      let options = {};
+      accessLevelTable.forEach(a => { accessList[client_id].count[a] = 0; });
+      if (['master', 'support', 'admin'].includes(myClass)) {
+        // options = { withSession: true };
       }
-    };
-    myGroupAccessLevel = accessibleGroups;
-
-    /* Retired
-    let clientGroupAssignments = await getCustomizations('group_assignments', client_id);
-    // for every group in this client, classify that group by its type (admin, staff, resident, etc...)
-    // then establish where in the hierarchy of groups this one belongs
-    // store that in an object (groupFlavor) for easy retrieval later
-    let groupFlavor = {};
-    let groupHierarchy = ['admin', 'staff', 'resident', 'family', 'inactive', 'guest', 'vendor', 'unassigned'];
-    if (clientGroupAssignments && clientGroupAssignments.customization_value) {
-      Object.keys(clientGroupAssignments.customization_value).forEach(t => {
-        let groups = makeArray(clientGroupAssignments.customization_value[t]);
-        let foundAt = groupHierarchy.indexOf(t);
-        if (foundAt < 0) { foundAt = groupHierarchy.length - 1; }
-        groups.forEach(g => {
-          if (!groupFlavor.hasOwnProperty(g)) { groupFlavor[g] = foundAt; }
-          else { groupFlavor[g] = Math.min(foundAt, groupFlavor[g]); }
-        });
-      });
-    }
-    */
-
-
-
-
-    let clientName = await getCustomizations('client_name', client_id);
-    let clientLogo = await getCustomizations('logo', client_id);
-
-    respList[client_id] = {
-      name: clientName.customization_value,
-      logo: clientLogo.icon,
-      count: {},
-      list: []
-    };
-    let options = {};
-    accessLevelTable.forEach(a => { accessList[client_id].count[a] = 0; });
-    if (['master', 'support', 'admin'].includes(myClass)) {
-      // options = { withSession: true };
-    }
-    if (client_id !== session.client_id) {
-      options = { nameOnly: true };
-    }
-    let allPeople = await getMemberList('*all', client_id, options);
-    // get all the people in the client
-    for (let this_person of allPeople.peopleList) {
-      // for each person...  I am allowed access to them or not?
-      let accessLevel = 'none';
-      if (['support', 'master', 'admin'].includes(myClass)   // if I am a support or master class user
-        || (this_person.may_proxy_to && this_person.may_proxy_to.hasOwnProperty(person_id))  // or the person record we're looking at granted permission for me to proxy to them
-        || (session.responsible_for.includes(this_person.person_id))
-        || (this_person.person_id === person_id)  // the person is ME
-      ) {
-        accessLevel = 'proxy';    // then I get FULL (level 3) access to this person
+      if (client_id !== session.client_id) {
+        options = { nameOnly: true };
       }
-      else if (this_person.groups.some(g => accessibleGroups.includes(g))) {
-        // my access is dependent on what groups this person belongs to and what access I have to those groups based on the accessibleGroups array built above
-        // accessLevelTable = ['none', 'restricted', 'view', 'proxy', 'full'];
-        accessLevel = 'view';   // at least view (level 2) access to this person because I have access to at least one of their groups
-      }
-      if (accessLevel !== 'none') {
-        if (this_person?.local_data?.['date of birth']) {
-          let dob = makeDate(this_person.local_data['date of birth'], { forceForward: true });
-          if (!birthdayList.hasOwnProperty(dob.numeric$)) {
-            birthdayList[dob.numeric$] = [];
+      let allPeople = await getMemberList('*all', client_id, options);
+      // get all the people in the client
+      for (let this_person of allPeople.peopleList) {
+        // for each person...  I am allowed access to them or not?
+        let accessLevel = 'none';
+        if (['support', 'master', 'admin'].includes(myClass)   // if I am a support or master class user
+          || (this_person.may_proxy_to && this_person.may_proxy_to.hasOwnProperty(person_id))  // or the person record we're looking at granted permission for me to proxy to them
+          || (session.responsible_for.includes(this_person.person_id))
+          || (this_person.person_id === person_id)  // the person is ME
+        ) {
+          accessLevel = 'proxy';    // then I get FULL (level 3) access to this person
+        }
+        else if (this_person.groups.some(g => accessibleGroups.includes(g))) {
+          // my access is dependent on what groups this person belongs to and what access I have to those groups based on the accessibleGroups array built above
+          // accessLevelTable = ['none', 'restricted', 'view', 'proxy', 'full'];
+          accessLevel = 'view';   // at least view (level 2) access to this person because I have access to at least one of their groups
+        }
+        if (accessLevel !== 'none') {
+          if (this_person?.local_data?.['date of birth']) {
+            let dob = makeDate(this_person.local_data['date of birth'], { forceForward: true });
+            if (!birthdayList.hasOwnProperty(dob.numeric$)) {
+              birthdayList[dob.numeric$] = [];
+            }
+            birthdayList[dob.numeric$].push({
+              person_id: this_person.person_id,
+              display_name: `${this_person.name.first} ${this_person.name.last}`,
+            });
           }
-          birthdayList[dob.numeric$].push({
+          if ((accessLevel === 'proxy') || (accessLevel === 'full')) {
+            proxyList.push(this_person.person_id);
+          };
+          let pRec2Push = {
             person_id: this_person.person_id,
+            name: this_person.name,
+            first: this_person.name.first,
+            last: this_person.name.last,
             display_name: `${this_person.name.first} ${this_person.name.last}`,
-          });
+            preferred_method: this_person.preferred_method,
+            id: this_person.person_id,
+            access: accessLevel,
+          };
+          if (client_id === session.client_id) {
+            pRec2Push.directory_option = this_person.directory_option;
+            pRec2Push.groups = this_person.groups;
+            pRec2Push.location = this_person.location;
+            pRec2Push.messaging = this_person.messaging;
+            pRec2Push.member_of = this_person.account_class;
+            pRec2Push.search_data = this_person.search_data;
+            pRec2Push.session = this_person.session;
+          };
+          if (session.responsible_for.includes(this_person.person_id) || (this_person.person_id === person_id)) {
+            respList[client_id].list.push(pRec2Push);
+          }
+          else {
+            accessList[client_id].list.push(pRec2Push);
+          }
         }
-        if ((accessLevel === 'proxy') || (accessLevel === 'full')) {
-          proxyList.push(this_person.person_id);
-        };
-        let pRec2Push = {
-          person_id: this_person.person_id,
-          name: this_person.name,
-          first: this_person.name.first,
-          last: this_person.name.last,
-          display_name: `${this_person.name.first} ${this_person.name.last}`,
-          preferred_method: this_person.preferred_method,
-          id: this_person.person_id,
-          access: accessLevel,
-        };
-        if (client_id === session.client_id) {
-          pRec2Push.directory_option = this_person.directory_option;
-          pRec2Push.groups = this_person.groups;
-          pRec2Push.location = this_person.location;
-          pRec2Push.messaging = this_person.messaging;
-          pRec2Push.member_of = this_person.account_class;
-          pRec2Push.search_data = this_person.search_data;
-          pRec2Push.session = this_person.session;
-        };
-        if (session.responsible_for.includes(this_person.person_id) || (this_person.person_id === person_id)) {
-          respList[client_id].list.push(pRec2Push);
-        }
-        else {
-          accessList[client_id].list.push(pRec2Push);
-        }
-      }
-    };
-    // sort names within this client
-    respList[client_id].list.sort((a, b) => {
-      if (a.last > b.last) { return 1; }
-      else if (a.last < b.last) { return -1; }
-      else if (a.first > b.first) { return 1; }
-      else if (a.first < b.first) { return -1; }
-      else { return 0; }
-    });
-    accessList[client_id].list.unshift(...respList[client_id].list);
-    accessList[client_id].list.sort((a, b) => {
-      if (a.last > b.last) { return 1; }
-      else if (a.last < b.last) { return -1; }
-      else if (a.first > b.first) { return 1; }
-      else if (a.first < b.first) { return -1; }
-      else { return 0; }
-    });
-    accessList[client_id].shortList = accessList[client_id].list.map(p => {
-      accessList[client_id].count[p.access]++;
-      let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
-      if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
-      // list is of the form <name>:<id>:<search_string>
-      return `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
-    });
-    accessList[client_id].groups = myGroupAccessLevel;
-
+      };
+      // sort names within this client
+      respList[client_id].list.sort((a, b) => {
+        if (a.last > b.last) { return 1; }
+        else if (a.last < b.last) { return -1; }
+        else if (a.first > b.first) { return 1; }
+        else if (a.first < b.first) { return -1; }
+        else { return 0; }
+      });
+      accessList[client_id].list.unshift(...respList[client_id].list);
+      accessList[client_id].list.sort((a, b) => {
+        if (a.last > b.last) { return 1; }
+        else if (a.last < b.last) { return -1; }
+        else if (a.first > b.first) { return 1; }
+        else if (a.first < b.first) { return -1; }
+        else { return 0; }
+      });
+      accessList[client_id].shortList = accessList[client_id].list.map(p => {
+        accessList[client_id].count[p.access]++;
+        let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
+        if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
+        // list is of the form <name>:<id>:<search_string>
+        return `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
+      });
+      accessList[client_id].groups = myGroupAccessLevel;
+    }
     if (myClass === 'family') {
       if (['none', 'na', 'cancelled', 'inactive'].includes(session.subscription_status)) {
         accessList.subscription = {
@@ -330,28 +303,6 @@ export async function getGroupAccess(client_id, person_id, options) {
     return [groups_person_belongsTo, rejectObject];
   }
 
-  /* Responsible people used to come from the sessionRec, but now will only be set if the group itself declares the person in its admin_list property
-  let my_session = ((!!session && (session.session_id === person_id)) ? session : await getSession(person_id));
-  let my_session_groups_managed = [];
-  if (my_session.hasOwnProperty('groups_managed')) {
-    my_session_groups_managed = makeArray(my_session.groups_managed).map(g => {
-      return g.split('~').shift().trim();
-    });
-  }
-  let my_session_responsibleList = [];
-  if (my_session.hasOwnProperty('responsible_for')) {
-    if (Array.isArray(my_session.responsible_for)) {
-      my_session_responsibleList = deepCopy(my_session.responsible_for);
-    }
-    else if (my_session.responsible_for.startsWith('[')) {
-      my_session_responsibleList = my_session.responsible_for.replace(/[[\s\]]/g, '').split(',');
-    }
-    else {
-      my_session_responsibleList = makeArray(my_session.responsible_for);
-    }
-  }
-  */
-
   let classList = [];
   let my_personRec = await getPerson(person_id);
   const is_admin = ['master', 'admin'].includes(my_personRec.account_class);
@@ -360,7 +311,8 @@ export async function getGroupAccess(client_id, person_id, options) {
   // first pass evaluates what each group has declared that its own members may do; 
   // may_access will be a list of groups that the person_id is granted access to by virtue of their membership in specific groups
   // example - members of the "independent_living" group may access "all_assisted_living" 
-  everyGroup.Items.forEach(this_group => {
+  // everyGroup.Items.forEach(this_group => {
+  for (let this_group of everyGroup.Items) {
     if (my_personRec.groups.includes(this_group.group_id)) {
       // I am a member of the group, we're going to note may ability to access them in the may_access object, which will be used later when we evaluate my access to each person in the client based on their group membership
       if (this_group.may_access) {
@@ -374,11 +326,11 @@ export async function getGroupAccess(client_id, person_id, options) {
         }
       }
     }
-  });
+  }
 
   // second pass evaluates what each group has declared about granting access to itself
   // example - the "bridge_club" group declares that any member of "independent_living" may access their group
-  everyGroup.Items.forEach(this_group => {
+  for (let this_group of everyGroup.Items) {
     let is_accessible = false;
     if (is_admin) { is_accessible = true; }
     else if (this_group.accessible_to) {
@@ -412,12 +364,13 @@ export async function getGroupAccess(client_id, person_id, options) {
       };
       findChildren(this_group.group_id);
     }
-  });
+  }
 
   // fourth pass prepares the response
-  everyGroup.Items.forEach(this_group => {
+  for (let this_group of everyGroup.Items) {
+    // console.log(`evaluating_group: ${this_group.group_id}`);
     let is_accessible = may_access.has(this_group.group_id);
-    let is_responsible = this_group.admin_list.includes(person_id);
+    let is_responsible = this_group?.admin_list?.includes(person_id);
     const belongs_to = my_personRec.groups.includes(this_group.group_id);
     const resultObj = {
       group_name: this_group.name,
@@ -434,7 +387,7 @@ export async function getGroupAccess(client_id, person_id, options) {
     else {
       groups_person_belongsTo[this_group.group_id] = resultObj;
     }
-  });
+  }
 
   loadedPerson = person_id;
   return [groups_person_belongsTo, rejectObject, classList];
@@ -841,26 +794,28 @@ export async function getMemberList(pGroups, pClient_id, options = {}) {
       // Check if person belongs to any of the requested groups or is the person_id itself
       let matches = gList.includes('*all') ||
         gList.some(grp => {
-          return (person.groups && person.groups.includes(grp)) || person.person_id === grp;
+          return (person?.groups?.includes(grp)) || person.person_id === grp;
         });
 
       if (matches) {
         foundIDs.push(person.person_id);
-        if (!checkExclude || (person.directory_option !== 'exclude')) {
-          let i = deepCopy(person);
-          if (!i.name) { i.name = { last: `Unknown ${i.person_id}` }; }
-          if (!i.messaging) { i.messaging = { ava_only: `AVA` }; }
-          if (!i.display_name) { i.display_name = AVAname(i); }
-
-          if (options.nameOnly) {
-            returnArray.push({
-              person_id: i.person_id,
-              name: i.name,
-              display_name: i.display_name
-            });
-          } else {
-            returnArray.push(i);
-          }
+        if (options.name_and_search) {
+          returnArray.push({
+            person_id: person.person_id,
+            name: person.name ?? { last: `Unknown ${person.person_id}` },
+            display_name: person.display_name ?? AVAname(person),
+            search_data: person.search_data ?? `${person.name?.first || ''} ${person.name?.last || ''} ${person.location || ''} ${(person.messaging) ? Object.values(person.messaging).join(' ') : ''}`.trim(),
+          });
+        }
+        else if (options.nameOnly) {
+          returnArray.push({
+            person_id: person.person_id,
+            name: person.name ?? { last: `Unknown ${person.person_id}` },
+            display_name: person.display_name ?? AVAname(person),
+          });
+        }
+        else {
+          returnArray.push(deepCopy(person));
         }
       }
     }
