@@ -105,7 +105,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, onSelect, onRefresh }) => {
+export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, onSelect, onRefresh, renderAsDialog = true }) => {
 
   const { dispatch, state } = useSession();
 
@@ -773,17 +773,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
 
   // **************************
 
-  return (
-    <Dialog
-      open={true || refreshTrigger}
-      maxWidth={false}
-      classes={{
-        paper: classes.paperPallette
-      }}
-      style={{
-        borderRadius: ('25px 25px 25px 25px'),
-      }}
-    >
+  const dialogContent = (
+    <React.Fragment>
       {Object.keys(groupsManagedObject).length === 0
         ?
         <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
@@ -880,7 +871,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                   >
                     {Object.keys(groupsManagedObject).map((listEntry, listIndex) => (
                       <React.Fragment key={`frag_${listIndex}`}>
-                        {((groupsManagedObject[listEntry].level < 3) ||
+                        {(((groupsManagedObject[listEntry].level - minimumGroupLevel) < 3) ||
                           !(reactData.levelHidden[listIndex] ?? reactData.defaultCollapsed)) &&
                           <Box
                             display='flex' flexDirection='row'
@@ -942,7 +933,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                               })}>
                               {groupsManagedObject[listEntry].group_name}
                             </Typography>
-                            {(groupsManagedObject[listEntry].level > 1) && hasChildren(listIndex) && (
+                            {(groupsManagedObject[listEntry].level - minimumGroupLevel > 1) && hasChildren(listIndex) && (
                               (reactData.levelHidden[listIndex + 1] ?? reactData.defaultCollapsed) ? (
                                 <ExpandMoreIcon
                                   style={{ size: 8, fontSize: '1rem' }}
@@ -1277,6 +1268,25 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
           </Alert>
         </Snackbar >
       }
+    </React.Fragment>
+  );
+
+  if (!renderAsDialog) {
+    return dialogContent;
+  }
+
+  return (
+    <Dialog
+      open={true || refreshTrigger}
+      maxWidth={false}
+      classes={{
+        paper: classes.paperPallette
+      }}
+      style={{
+        borderRadius: ('25px 25px 25px 25px'),
+      }}
+    >
+      {dialogContent}
     </Dialog>
   );
 };

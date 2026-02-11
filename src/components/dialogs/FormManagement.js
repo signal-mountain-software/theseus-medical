@@ -24,8 +24,8 @@ import CloseIcon from '@material-ui/icons/ExitToApp';
 import PeopleIcon from '@material-ui/icons/People';
 import SettingsIcon from '@material-ui/icons/Settings';
 import SendIcon from '@material-ui/icons/Send';
-import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
+import SwapVertIcon from '@material-ui/icons/SwapVert';
 import EditIcon from '@material-ui/icons/Edit';
 import VisibilityIcon from '@material-ui/icons/Visibility';
 import LockIcon from '@material-ui/icons/Lock';
@@ -266,13 +266,37 @@ export default ({ defaults, onClose }) => {
       const personData = reactData.masterFormList[form_id].memberList[person_id];
       const status = personData.overall_status || 'not_started';
 
-      if (activeFilters.filterComplete && status.startsWith('complete')) return true;
+      if (activeFilters.filterComplete && status.startsWith('complete')) { return true; }
       if (activeFilters.filterInProcess && status === 'in_process') return true;
       if (activeFilters.filterPending && status === 'pending') return true;
       if (activeFilters.filterNotStarted && status === 'not_started') return true;
 
       return false;
     });
+
+    // Now re-sort the memberList by last_update descending (most recent at the top)
+    // sortfilteredIds(form_id, reactData.activity_sort_order);
+    reactData.masterFormList[form_id].filteredMemberIds.sort((a, b) => {
+      return (reactData.masterPeopleList[a]?.[form_id]?.last_update > reactData.masterPeopleList[b]?.[form_id]?.last_update ? -1 : 1);
+    });
+
+    return;
+  }
+
+  function sortfilteredIds(form_id, direction = 'desc') {
+    if (direction === 'desc') {
+      reactData.masterFormList[form_id].filteredMemberIds.sort((a, b) => {
+        return (reactData.masterPeopleList[a]?.[form_id]?.last_update > reactData.masterPeopleList[b]?.[form_id]?.last_update ? -1 : 1);
+      });
+    }
+    else {
+      reactData.masterFormList[form_id].filteredMemberIds.sort((a, b) => {
+        return (reactData.masterPeopleList[a]?.[form_id]?.last_update > reactData.masterPeopleList[b]?.[form_id]?.last_update ? 1 : -1);
+      });
+    }
+    updateReactData({
+      activity_sort_order: direction
+    }, true);
   }
 
   function OKtoShow(this_person, this_form, display_data) {
@@ -319,24 +343,6 @@ export default ({ defaults, onClose }) => {
     }
     return (display_data.toLowerCase().includes(reactData.lower_activity_filter));
   };
-
-
-  function OKtoShowDatedDoc(checkStatus) {
-    if (reactData.filterComplete) {
-      return (checkStatus && checkStatus.startsWith('complete'));
-    }
-    else if (reactData.filterInProcess) {
-      return (checkStatus && (checkStatus === 'in_process'));
-    }
-    else if (reactData.filterPending) {
-      return (checkStatus && (checkStatus === 'pending'));
-    }
-    else if (reactData.filterNotStarted) {
-      return (!checkStatus || (checkStatus === 'not_started'));
-    }
-    else { return true; }
-  };
-
 
   async function personForms(this_person) {
     reactData.masterPeopleList[this_person] = {};
@@ -611,223 +617,194 @@ export default ({ defaults, onClose }) => {
 
     // ALWAYS refresh filteredMemberIds when form is clicked (not just first time)
     applyFilterToForm(this_form);
-    /*
-    if (reactData.masterFormList[this_form].build_complete && reactData.masterFormList[this_form].sortedMemberIds) {
-      reactData.masterFormList[this_form].filteredMemberIds = reactData.masterFormList[this_form].sortedMemberIds.filter(person_id => {
-        const personData = reactData.masterFormList[this_form].memberList[person_id];
-        const status = personData.overall_status || 'not_started';
-
-        if (activeFilters.filterComplete && status.startsWith('complete')) return true;
-        if (activeFilters.filterInProcess && status === 'in_process') return true;
-        if (activeFilters.filterPending && status === 'pending') return true;
-        if (activeFilters.filterNotStarted && status === 'not_started') return true;
-
-        return false;
-      });
-
-      updateReactData({
-        masterFormList: reactData.masterFormList
-      }, true);
-    }
-    */
     if (!reactData.masterFormList[this_form].build_complete) {
-      console.time('⏱️ Setup and initialization');
-      let this_date = makeDate(new Date());
-      let today_ymd = this_date.numeric;
-      let oldest_date = makeDate(addDays(this_date.date, -(reactData.rowLimit || 7))).numeric;
-      reactData.masterFormList[this_form].memberList = {};
-      reactData.masterPeopleList = {};
-      console.timeEnd('⏱️ Setup and initialization');
+      delete reactData.masterFormList[this_form].build_complete;
+      delete reactData.masterFormList[this_form].sortedMemberIds;
+      delete reactData.masterFormList[this_form].filteredMemberIds;
+    }
+    console.time('⏱️ Setup and initialization');
+    let this_date = makeDate(new Date());
+    let today_ymd = this_date.numeric;
+    let oldest_date = makeDate(addDays(this_date.date, -(reactData.rowLimit || 7))).numeric;
+    reactData.masterFormList[this_form].memberList = {};
+    reactData.masterPeopleList = {};
+    console.timeEnd('⏱️ Setup and initialization');
 
-      // Collect all members from all groups IN PARALLEL
-      console.time('⏱️ getMemberList calls');
-      console.log(`📊 Fetching ${reactData.masterFormList[this_form].groupList.length} groups...`);
-      const groupPromises = reactData.masterFormList[this_form].groupList.map(this_group =>
-        getMemberList(this_group, state.session.client_id, { "exclude": false, state })
-      );
+    // Collect all members from all groups IN PARALLEL
+    console.time('⏱️ getMemberList calls');
+    console.log(`📊 Fetching ${reactData.masterFormList[this_form].groupList.length} groups...`);
+    const groupPromises = reactData.masterFormList[this_form].groupList.map(this_group =>
+      getMemberList(this_group, state.session.client_id, { "exclude": false, state })
+    );
 
-      const groupResponses = await Promise.all(groupPromises);
-      console.timeEnd('⏱️ getMemberList calls');
+    const groupResponses = await Promise.all(groupPromises);
+    console.timeEnd('⏱️ getMemberList calls');
 
-      // Process all members from all groups
-      console.time('⏱️ Processing members');
-      let memberCount = 0;
-      for (let response of groupResponses) {
-        memberCount += response.peopleList.length;
-        for (let this_member of response.peopleList) {
-          reactData.masterFormList[this_form].memberList[this_member.person_id] = {
-            person_id: this_member.person_id,
-            person_name: `${this_member.name.first} ${this_member.name.last}`,
-            person_first: this_member.name.first,
-            person_last: this_member.name.last,
-            sort_order: state.session.client_style.sort_order === 'last_first' ?
-              `${this_member.name.last}, ${this_member.name.first}` :
-              `${this_member.name.first} ${this_member.name.last}`,
-            wipDocs: [],
-            dated_docs: false,
-            assignedDocs: [],
-            completedDocs: [],
-          };
-          reactData.masterPeopleList[this_member.person_id] = {
-            [this_form]: {
-              status: 'not_started',
-              last_update: 0
-            }
-          };
-        }
-      }
-      console.log(`📊 Processed ${memberCount} members`);
-      console.timeEnd('⏱️ Processing members');
-
-      // PRE-SORT: Create sorted list of person IDs once, not on every render
-      console.time('⏱️ Sorting members');
-      reactData.masterFormList[this_form].sortedMemberIds = Object.keys(reactData.masterFormList[this_form].memberList).sort((a, b) => {
-        return (reactData.masterFormList[this_form].memberList[a].sort_order > reactData.masterFormList[this_form].memberList[b].sort_order) ? 1 : -1;
-      });
-      console.timeEnd('⏱️ Sorting members');
-
-      // PROGRESSIVE RENDERING: Update UI with initial member list (now sorted!)
-      console.time('⏱️ First UI update');
-      console.log(`📊 Rendering ${Math.min(reactData.maxPeopleToRender, reactData.masterFormList[this_form].sortedMemberIds.length)} of ${reactData.masterFormList[this_form].sortedMemberIds.length} people`);
-      updateReactData({
-        masterPeopleList: reactData.masterPeopleList,
-        masterFormList: reactData.masterFormList,
-        progressMessage: `Loading documents for ${reactData.masterFormList[this_form].sortedMemberIds.length} people...`
-      }, true);
-      console.timeEnd('⏱️ First UI update');
-
-      // Batch processing variables
-      let eventCache = {}; // Cache calendar events to avoid duplicate DB calls
-      let batchSize = 20; // Process documents in batches
-      let processedCount = 0;
-
-      // get all Documents for this form type
-      let docList = [];
-      let workingOn = null;
-      let loopCount = 0;
-      let queryObj = {
-        KeyConditionExpression: 'client_id_form_type = :p',
-        IndexName: 'client_form_person-index',
-        TableName: 'DocumentMaster',
-        ExpressionAttributeValues: {
-          ':p': `${state.session.client_id}%%${this_form}`
-        }
-      };
-
-      do {
-        let allDocs = await dbClient
-          .query(queryObj)
-          .promise()
-          .catch(error => {
-            if (error.code === 'NetworkingError') {
-              cl(`Security Violation or no Internet Connection`);
-            }
-            cl(`Error reading CompletedDocuments; error is ${error}`);
-          });
-        if (recordExists(allDocs)) {
-          if (!allDocs.LastEvaluatedKey) {
-            allDocs.Items.push({
-              client_id: state.session.client_id,
-              last_record: true
-            });
+    // Process all members from all groups
+    console.time('⏱️ Processing members');
+    let memberCount = 0;
+    for (let response of groupResponses) {
+      memberCount += response.peopleList.length;
+      for (let this_member of response.peopleList) {
+        reactData.masterFormList[this_form].memberList[this_member.person_id] = {
+          person_id: this_member.person_id,
+          person_name: `${this_member.name.first} ${this_member.name.last}`,
+          person_first: this_member.name.first,
+          person_last: this_member.name.last,
+          sort_order: state.session.client_style.sort_order === 'last_first' ?
+            `${this_member.name.last}, ${this_member.name.first}` :
+            `${this_member.name.first} ${this_member.name.last}`,
+          wipDocs: [],
+          dated_docs: false,
+          assignedDocs: [],
+          completedDocs: [],
+        };
+        reactData.masterPeopleList[this_member.person_id] = {
+          [this_form]: {
+            status: 'not_started',
+            last_update: 0
           }
-          for (const this_doc of allDocs.Items) {
-            if (this_doc.client_id !== state.session.client_id) {
+        };
+      }
+    }
+    console.log(`📊 Processed ${memberCount} members`);
+    console.timeEnd('⏱️ Processing members');
+
+    // PRE-SORT: Create sorted list of person IDs once, not on every render
+    console.time('⏱️ Sorting members');
+    reactData.masterFormList[this_form].sortedMemberIds = Object.keys(reactData.masterFormList[this_form].memberList).sort((a, b) => {
+      return (reactData.masterFormList[this_form].memberList[a].sort_order > reactData.masterFormList[this_form].memberList[b].sort_order) ? 1 : -1;
+    });
+    console.timeEnd('⏱️ Sorting members');
+
+    // PROGRESSIVE RENDERING: Update UI with initial member list (now sorted!)
+    console.time('⏱️ First UI update');
+    console.log(`📊 Rendering ${Math.min(reactData.maxPeopleToRender, reactData.masterFormList[this_form].sortedMemberIds.length)} of ${reactData.masterFormList[this_form].sortedMemberIds.length} people`);
+    updateReactData({
+      masterPeopleList: reactData.masterPeopleList,
+      masterFormList: reactData.masterFormList,
+      progressMessage: `Loading documents for ${reactData.masterFormList[this_form].sortedMemberIds.length} people...`
+    }, true);
+    console.timeEnd('⏱️ First UI update');
+
+    // Event cache to avoid duplicate DB calls
+    let eventCache = {};
+
+    // get all Documents for this form type
+    let docList = [];
+    let workingOn = null;
+    let loopCount = 0;
+    let queryObj = {
+      KeyConditionExpression: 'client_id_form_type = :p',
+      IndexName: 'client_form_person-index',
+      TableName: 'DocumentMaster',
+      ExpressionAttributeValues: {
+        ':p': `${state.session.client_id}%%${this_form}`
+      }
+    };
+
+    do {
+      let allDocs = await dbClient
+        .query(queryObj)
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            cl(`Security Violation or no Internet Connection`);
+          }
+          cl(`Error reading CompletedDocuments; error is ${error}`);
+        });
+      if (recordExists(allDocs)) {
+        if (!allDocs.LastEvaluatedKey) {
+          allDocs.Items.push({
+            client_id: state.session.client_id,
+            last_record: true
+          });
+        }
+        for (const this_doc of allDocs.Items) {
+          if (this_doc.client_id !== state.session.client_id) {
+            continue;
+          }
+          if ((workingOn !== this_doc.pertains_to) || this_doc.last_record) {
+            if (docList.length > 0) {
+              docList.sort((a, b) => { return ((a.occDate > b.occDate) ? -1 : 1); });
+
+              // Process documents directly (typically just 1 document per person)
+              for (const doc of docList) {
+                await buildMasters(doc, eventCache);
+              }
+            };
+            if (this_doc.last_record) {
               continue;
             }
-            if ((workingOn !== this_doc.pertains_to) || this_doc.last_record) {
-              if (docList.length > 0) {
-                docList.sort((a, b) => { return ((a.occDate > b.occDate) ? -1 : 1); });
-
-                // BATCH PROCESSING: Process documents in chunks
-                for (let i = 0; i < docList.length; i += batchSize) {
-                  const batch = docList.slice(i, i + batchSize);
-
-                  // Process batch with event caching
-                  await Promise.all(batch.map(doc => buildMasters(doc, eventCache)));
-
-                  processedCount += batch.length;
-
-                  // PROGRESSIVE RENDERING: Update UI after each batch
-                  updateReactData({
-                    masterPeopleList: reactData.masterPeopleList,
-                    masterFormList: reactData.masterFormList,
-                    progressMessage: `Processed ${processedCount} documents...`
-                  }, true);
-                }
-              };
-              if (this_doc.last_record) {
-                continue;
-              }
-              docList = [];
-              workingOn = this_doc.pertains_to;
-            }
-            if (reactData.masterFormList[this_form].dated_docs) {
-              let occDate = 0;
-              if (this_doc.occurrence) {
-                occDate = Number(this_doc.occurrence);
-              }
-              else {
-                let splitter = this_doc.document_id.split(/%|#/);
-                for (const [sX, this_part] of Object.entries(splitter)) {
-                  let candidate = Number(this_part);
-                  if (candidate && !isNaN(candidate) && (candidate > 0)) {
-                    occDate = candidate;
-                    if (!this_doc.event_key) {
-                      this_doc.event_id = (splitter[sX - 1] || splitter[sX - 2]);
-                    }
-                    break;
-                  }
-                }
-              }
-              if ((occDate <= today_ymd) && (occDate >= oldest_date)) {
-                this_doc.occDate = occDate;
-                docList.push(this_doc);
-              }
+            docList = [];
+            workingOn = this_doc.pertains_to;
+          }
+          if (reactData.masterFormList[this_form].dated_docs) {
+            let occDate = 0;
+            if (this_doc.occurrence) {
+              occDate = Number(this_doc.occurrence);
             }
             else {
+              let splitter = this_doc.document_id.split(/%|#/);
+              for (const [sX, this_part] of Object.entries(splitter)) {
+                let candidate = Number(this_part);
+                if (candidate && !isNaN(candidate) && (candidate > 0)) {
+                  occDate = candidate;
+                  if (!this_doc.event_key) {
+                    this_doc.event_id = (splitter[sX - 1] || splitter[sX - 2]);
+                  }
+                  break;
+                }
+              }
+            }
+            if ((occDate <= today_ymd) && (occDate >= oldest_date)) {
+              this_doc.occDate = occDate;
               docList.push(this_doc);
             }
           }
-          if (allDocs.LastEvaluatedKey) {
-            queryObj.ExclusiveStartKey = allDocs.LastEvaluatedKey;
-          }
           else {
-            delete queryObj.ExclusiveStartKey;
+            docList.push(this_doc);
           }
         }
-        loopCount++;
-      } while (queryObj.ExclusiveStartKey && (loopCount < 10));
-
-      // COMPUTE STATUS: Calculate overall status for each person for filtering
-      console.time('⏱️ Computing person statuses');
-      for (let person_id in reactData.masterFormList[this_form].memberList) {
-        let personData = reactData.masterFormList[this_form].memberList[person_id];
-
-        // Calculate overall status based on dated_docs or regular status
-        if (reactData.masterFormList[this_form].dated_docs && personData.dated_status) {
-          // For dated docs, compute an overall status from all dated statuses
-          if (personData.dated_status.complete) {
-            personData.overall_status = 'complete';
-          } else if (personData.dated_status.in_process) {
-            personData.overall_status = 'in_process';
-          } else if (personData.dated_status.pending) {
-            personData.overall_status = 'pending';
-          } else if (personData.dated_status.not_started) {
-            personData.overall_status = 'not_started';
-          } else {
-            personData.overall_status = 'not_started';
-          }
-        } else {
-          // For regular forms, use the masterPeopleList status
-          personData.overall_status = reactData.masterPeopleList[person_id]?.[this_form]?.status || 'not_started';
+        if (allDocs.LastEvaluatedKey) {
+          queryObj.ExclusiveStartKey = allDocs.LastEvaluatedKey;
+        }
+        else {
+          delete queryObj.ExclusiveStartKey;
         }
       }
-      console.timeEnd('⏱️ Computing person statuses');
+      loopCount++;
+    } while (queryObj.ExclusiveStartKey && (loopCount < 10));
 
-      // INITIALIZE FILTERED LIST: Start with all people (no filter applied yet)
-      reactData.masterFormList[this_form].filteredMemberIds = reactData.masterFormList[this_form].sortedMemberIds;
+    // COMPUTE STATUS: Calculate overall status for each person for filtering
+    console.time('⏱️ Computing person statuses');
+    for (let person_id in reactData.masterFormList[this_form].memberList) {
+      let personData = reactData.masterFormList[this_form].memberList[person_id];
+
+      // Calculate overall status based on dated_docs or regular status
+      if (reactData.masterFormList[this_form].dated_docs && personData.dated_status) {
+        // For dated docs, compute an overall status from all dated statuses
+        if (personData.dated_status.complete) {
+          personData.overall_status = 'complete';
+        } else if (personData.dated_status.in_process) {
+          personData.overall_status = 'in_process';
+        } else if (personData.dated_status.pending) {
+          personData.overall_status = 'pending';
+        } else if (personData.dated_status.not_started) {
+          personData.overall_status = 'not_started';
+        } else {
+          personData.overall_status = 'not_started';
+        }
+      } else {
+        // For regular forms, use the masterPeopleList status
+        personData.overall_status = reactData.masterPeopleList[person_id]?.[this_form]?.status || 'not_started';
+      }
     }
+    console.timeEnd('⏱️ Computing person statuses');
+
+    // INITIALIZE FILTERED LIST: Start with all people (no filter applied yet)
+    reactData.masterFormList[this_form].filteredMemberIds = reactData.masterFormList[this_form].sortedMemberIds;
+    applyFilterToForm(this_form);
 
     reactData.masterFormList[this_form].build_complete = true;
     console.time('⏱️ Final UI update');
@@ -1289,8 +1266,6 @@ export default ({ defaults, onClose }) => {
                               console.timeEnd('⏱️ updateReactData (initial)');
                               console.time('⏱️ formPeople execution');
                               await formPeople(this_formID);
-                              // Apply any active filter to the newly loaded form
-                              applyFilterToForm(this_formID);
                               console.timeEnd('⏱️ formPeople execution');
                               console.timeEnd('⏱️ TOTAL onClick to UI update');
                             }}
@@ -1669,12 +1644,13 @@ export default ({ defaults, onClose }) => {
 
                 {/* Show rendering info or empty state */}
                 {reactData.selectedForm_id && (
-                  <Box display='flex' flexDirection='row'
-                    justifyContent='flex-start'
-                    alignItems='center'
+                  <Box display='flex' flexDirection='column'
+                    justifyContent='center'
+                    alignItems='flex-start'
                     style={{ marginBottom: '8px' }}
                   >
-                    {reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds?.length === 0 ? (
+                    {reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds?.length === 0
+                      ?
                       <Typography
                         style={AVATextStyle({
                           size: 1.0,
@@ -1686,17 +1662,54 @@ export default ({ defaults, onClose }) => {
                           ? 'No people match the selected filter'
                           : 'No people assigned to this form'}
                       </Typography>
-                    ) : reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds?.length > reactData.maxPeopleToRender ? (
-                      <Typography
-                        style={AVATextStyle({
-                          size: 0.9,
-                          margin: { top: 0, bottom: 0.5 },
-                          color: 'textSecondary'
-                        })}
-                      >
-                        {`Showing ${reactData.maxPeopleToRender} of ${reactData.masterFormList[reactData.selectedForm_id].filteredMemberIds.length} people (scroll for more)`}
-                      </Typography>
-                    ) : null}
+                      :
+                      (reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds?.length > 0 &&
+                        <React.Fragment>
+                          <Typography
+                            style={AVATextStyle({
+                              size: 0.9,
+                              margin: { top: 0, bottom: 0 },
+                              color: 'textSecondary'
+                            })}
+                          >
+                            {`${reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds?.length} people${reactData.lower_activity_filter ? ' match the filter' : ''}.`}
+                          </Typography>
+                          {(reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds?.length > reactData.maxPeopleToRender) &&
+                            <Typography
+                              style={AVATextStyle({
+                                size: 0.9,
+                                margin: { top: 0, bottom: 0 },
+                                color: 'textSecondary'
+                              })}
+                            >
+                              {`Showing first ${reactData.maxPeopleToRender} people (scroll for more)`}
+                            </Typography>
+                          }
+                          {reactData.lower_activity_filter && !reactData.filterNotStarted &&
+                            <Box display='flex' flexDirection='row'
+                              justifyContent='flex-start'
+                              alignItems='center'
+                              style={{ marginBottom: 0, marginTop: 0 }}
+                              onClick={() => {
+                                let newSortOrder = reactData.activity_sort_order === 'asc' ? 'desc' : 'asc';
+                                sortfilteredIds(reactData.selectedForm_id, newSortOrder);
+                              }}
+                            >
+                              <Typography
+                                style={AVATextStyle({
+                                  size: 0.9,
+                                  margin: { top: 0, bottom: 0, right: 1 },
+                                  color: 'textSecondary'
+                                })}
+                              >
+                                {`Sorted by date - ${reactData.activity_sort_order === 'asc' ? 'Oldest' : 'Most recent'} at the top `}
+                              </Typography>
+                              <SwapVertIcon />
+                            </Box>
+                          }
+                        </React.Fragment>
+                      )
+                    }
                   </Box>
                 )}
 
@@ -1724,44 +1737,38 @@ export default ({ defaults, onClose }) => {
                     }
                   }}
                 >
-                  <Box display='flex' flexDirection='column'
+                  <Box display='flex' flexDirection='column'  // Box to stack all the rows for all the people
                     key={`person_column`}
                     justifyContent='flex-start'
                     alignItems='flex-start'
                   >
                     {reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds?.slice(0, reactData.maxPeopleToRender)
-                      .filter(this_person => reactData.masterFormList[reactData.selectedForm_id]?.memberList?.[this_person]) // Skip people not in memberList
                       .map((this_person, cX) => (
-                        <Box display='flex' flexDirection='column'
-                          key={`formperson_column_list_${cX}`}
-                          style={{ marginBottom: '6px' }}
+                        <Box display='flex' flexDirection='row'   // Box for row icon, person name, and (optional) trailing icon
+                          key={`formperson_row_list_${cX}`}
                           justifyContent='flex-start'
-                          alignItems='flex-start'
+                          alignItems='center'
+                          onContextMenu={async (e) => {
+                            e.preventDefault();
+                            updateReactData({
+                              alert: {
+                                severity: 'info',
+                                title: `${reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.person_name || makeName(this_person).display}`,
+                                message: <div>
+                                  Person ID: <strong>{this_person}</strong><br />
+                                  Form Type: <strong>{reactData.selectedForm_id}</strong><br />
+                                  Status: {reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status}<br />
+                                  WIP Doc ID: {(reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'n/a')}<br />
+                                  Completed Doc ID: {(reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.document_id || 'n/a')}</div>
+                              }
+                            }, true);
+                          }}
                         >
-                          <Box display='flex' flexDirection='row'
-                            key={`formperson_row_list_${cX}`}
-                            justifyContent='flex-start'
-                            alignItems='center'
-                            onContextMenu={async (e) => {
-                              e.preventDefault();
-                              updateReactData({
-                                alert: {
-                                  severity: 'info',
-                                  title: `${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`,
-                                  message: <div>
-                                    Person ID: <strong>{this_person}</strong><br />
-                                    Form Type: <strong>{reactData.selectedForm_id}</strong><br />
-                                    Status: {reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status}<br />
-                                    WIP Doc ID: {(reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'n/a')}<br />
-                                    Completed Doc ID: {(reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.document_id || 'n/a')}</div>
-                                }
-                              }, true);
-                            }}
-                          >
-                            {(reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.formLocked
-                              || reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.formLocked)
+                          {reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.overall_status?.startsWith('compl')
+                            ?
+                            (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.formLocked
                               ?
-                              <LockIcon
+                              <LockIcon   // if overall status for this person/form is complete, show lock if form is locked
                                 key={`radio-button_person${cX}lock`}
                                 id={`radio-button_person${cX}lock`}
                                 onClick={() => {
@@ -1784,151 +1791,9 @@ export default ({ defaults, onClose }) => {
                                 size='small'
                               />
                               :
-                              !reactData.masterFormList[reactData.selectedForm_id].dated_docs &&
-                              (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status === 'pending')
-                              &&
-                              <CheckCircleIcon
+                              <CheckCircleIcon  // if overall status for this person/form is complete, show checkCircle if form is not locked
                                 key={`radio-button_person${cX}edit`}
                                 id={`radio-button_person${cX}edit`}
-                                onClick={() => {
-                                  updateReactData({
-                                    isEditing: {
-                                      calledFrom: 'forms',
-                                      person_id: this_person,
-                                      form_id: reactData.selectedForm_id,
-                                      document_id: ((reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status.startsWith('complete')) ? 'new' : (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'new'))
-                                    }
-                                  }, true);
-                                }}
-                                style={AVATextStyle({
-                                  size: 1.5,
-                                  margin: { right: 0.5 },
-                                  color: 'orange'
-                                })}
-                                size='small'
-                              />
-                            }
-                            {!(reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.formLocked
-                              || reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.formLocked) &&
-                              !reactData.masterFormList[reactData.selectedForm_id].dated_docs &&
-                              (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status !== 'pending')
-                              &&
-                              <EditIcon
-                                key={`radio-button_person${cX}edit`}
-                                id={`radio-button_person${cX}edit`}
-                                onContextMenu={() => {
-                                  updateReactData({
-                                    isEditing: {
-                                      calledFrom: 'forms',
-                                      person_id: this_person,
-                                      form_id: reactData.selectedForm_id,
-                                      document_id: ((reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status.startsWith('complete')) ? 'new' : (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'new'))
-                                    }
-                                  }, true);
-                                }}
-
-                                onClick={() => {
-                                  updateReactData({
-                                    isEditing: {
-                                      calledFrom: 'forms',
-                                      open_complete: !reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id,
-                                      person_id: this_person,
-                                      form_id: reactData.selectedForm_id,
-                                      document_id: (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id
-                                        || (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.document_id
-                                          || 'new'))
-                                    }
-                                  }, true);
-                                  console.log(reactData.isEditing);
-                                }}
-                                style={AVATextStyle({
-                                  size: 1.5,
-                                  margin: { right: 0.5 },
-                                  color: makeColor(reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status || 'not_started')
-                                })}
-                                size='small'
-                              />
-                            }
-                            {(!reactData.masterFormList[reactData.selectedForm_id].dated_docs ||
-                              (reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status.startsWith('complete')
-                                && !reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.dated_docs) ||
-                              (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.assignedDocs.length > 0)
-                            ) ?
-                              <Typography
-                                key={`g_textpeople-${cX}`}
-                                style={AVATextStyle({
-                                  overflow: 'visible',
-                                  size: 1.2,
-                                  margin: { top: 0 },
-                                  color: (reactData.masterFormList[reactData.selectedForm_id].dated_docs
-                                    ? 'black'
-                                    : (
-                                      ((!reactData.masterPeopleList.hasOwnProperty(this_person))
-                                        ? 'red'
-                                        : (!reactData.masterPeopleList[this_person].hasOwnProperty(reactData.selectedForm_id)
-                                          ? 'red'
-                                          : ((reactData.masterPeopleList[this_person][reactData.selectedForm_id].status.startsWith('complete'))
-                                            ? 'green'
-                                            : ((reactData.masterPeopleList[this_person][reactData.selectedForm_id].status === 'not_started')
-                                              ? 'red'
-                                              : 'orange')
-                                          )))
-                                    ))
-                                })}
-                                draggable={true}
-                                onDragStart={(e) => handleDragStart(e, {
-                                  person_id: this_person,
-                                  person_name: `${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`,
-                                  reason: 'form'
-                                })}
-                                onClick={async () => {
-                                  updateReactData({
-                                    selectedForm_id: false,
-                                    selectedFormRec: false,
-                                    selectedFormMembers: false,
-                                    selectedPerson_id: this_person,
-                                    selectedPersonRec: await getPerson(this_person),
-                                    activity_filter: '',
-                                    lower_activity_filter: '',
-                                    filterComplete: false,
-                                    filterNotStarted: false,
-                                    filterInProcess: false
-                                  }, true);
-                                  await personForms(this_person);
-                                }}
-                              >
-                                {`${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`}
-                              </Typography>
-                              :
-                              <Typography
-                                key={`g_textpeople-${cX}`}
-                                style={AVATextStyle({
-                                  overflow: 'visible',
-                                  size: 1.2,
-                                  margin: { top: 0 },
-                                  color: 'lightgray'
-                                })}
-                                draggable={true}
-                                onDragStart={(e) => handleDragStart(e, {
-                                  person_id: this_person,
-                                  person_name: `${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`,
-                                  reason: 'form'
-                                })}
-                              >
-                                {`${reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].person_name}`}
-                              </Typography>
-                            }
-                            {(reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status.startsWith('complete'))
-                              && !reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.dated_docs
-                              &&
-                              <CheckCircleIcon
-                                key={`radio-button_person${cX}off`}
-                                id={`radio-button_person${cX}off`}
-                                style={AVATextStyle({
-                                  color: 'green',
-                                  size: 1,
-                                  margin: { left: 0.5, right: 0.5 },
-                                })}
                                 onClick={() => {
                                   updateReactData({
                                     isEditing: {
@@ -1939,122 +1804,105 @@ export default ({ defaults, onClose }) => {
                                     }
                                   }, true);
                                 }}
+                                style={AVATextStyle({
+                                  size: 1.5,
+                                  margin: { right: 0.5 },
+                                  color: 'green'
+                                })}
                                 size='small'
                               />
-                            }
-                          </Box>
-                          {reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.dated_docs &&
-                            reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.assignedDocs.sort((a, b) => {
-                              return (a.event_date < b.event_date) ? 1 : -1;
-                            }).map((this_assignedDoc, aX) => (
-                              OKtoShowDatedDoc(this_assignedDoc.status) &&
-                              <Box display='flex' flexDirection='row'
-                                key={`formdoc_row_list_${cX}_${aX}`}
-                                justifyContent='flex-start'
-                                alignItems='center'
-                                style={{ marginLeft: '30px' }}
-                                onContextMenu={async (e) => {
-                                  e.preventDefault();
-                                  updateReactData({
-                                    alert: {
-                                      severity: 'info',
-                                      title: `${this_assignedDoc.title}`,
-                                      message: <div>
-                                        Person ID: <strong>{this_person}</strong><br />
-                                        Form Type: <strong>{reactData.selectedForm_id}</strong><br />
-                                        Status: {this_assignedDoc.status}<br />
-                                        Doc ID: {this_assignedDoc.document_id}<br />
-                                      </div>
-                                    }
-                                  }, true);
-                                }}
-                              >
-                                {!(this_assignedDoc.status.startsWith('complete'))
-                                  ?
-                                  <React.Fragment>
-                                    <EditIcon
-                                      key={`radio-button_person${cX}_${aX}edit`}
-                                      id={`radio-button_person${cX}_${aX}edit`}
-                                      style={AVATextStyle({
-                                        size: 1,
-                                        margin: { right: 0.5 },
-                                        color: makeColor(this_assignedDoc.status)
-                                      })}
-                                      size='small'
-                                      onClick={async () => {
-                                        updateReactData({
-                                          isEditing: {
-                                            calledFrom: 'forms',
-                                            person_id: this_person,
-                                            form_id: reactData.selectedForm_id,
-                                            document_id: this_assignedDoc.document_id
-                                          }
-                                        }, true);
-                                      }}
-                                    />
-                                    <CloudUploadIcon
-                                      key={`radio-button_upload${cX}_${aX}`}
-                                      style={AVATextStyle({
-                                        size: 1,
-                                        margin: { right: 0.5 },
-                                        color: ((this_assignedDoc.status === 'not_started') ? 'red' : 'orange')
-                                      })}
-                                      size='small'
-                                      onClick={async () => {
-                                        updateReactData({
-                                          isUploading: Object.assign({}, this_assignedDoc, {
-                                            calledFrom: 'forms',
-                                            person_id: this_person,
-                                            form_id: reactData.selectedForm_id,
-                                          })
-                                        }, true);
-                                      }}
-                                    />
-                                  </React.Fragment>
-                                  :
-                                  <CheckCircleIcon
-                                    key={`radio-button_person${cX}off`}
-                                    id={`radio-button_person${cX}off`}
-                                    style={AVATextStyle({
-                                      color: 'green',
-                                      size: 1,
-                                      margin: { right: 0.5 },
-                                    })}
-                                    size='small'
-                                    onClick={async () => {
-
-                                      updateReactData({
-                                        isEditing: {
-                                          calledFrom: 'forms',
-                                          person_id: this_person,
-                                          form_id: reactData.selectedForm_id,
-                                          document_id: reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].completedDocs[0].document_id
-                                        }
-                                      }, true);
-                                    }}
-                                  />
-                                }
-                                <Typography
-                                  key={`g_docdate-${cX}_${aX}`}
-                                  style={AVATextStyle({
-                                    overflow: 'visible',
-                                    size: 1,
-                                    color: ((this_assignedDoc.status.startsWith('complete'))
-                                      ? 'green'
-                                      : (this_assignedDoc.status === 'not_started')
-                                        ? 'red'
-                                        : 'orange')
-                                  })}
-                                >
-                                  {`${this_assignedDoc.event_displayDate}${this_assignedDoc.event_time}`}
-                                </Typography>
-                              </Box>
-                            ))
+                            )
+                            :
+                            <EditIcon   // if overall status for this person/form is NOT complete, show edit icon
+                              key={`radio-button_person${cX}edit`}
+                              id={`radio-button_person${cX}edit`}
+                              onContextMenu={() => {
+                                updateReactData({
+                                  isEditing: {
+                                    calledFrom: 'forms',
+                                    person_id: this_person,
+                                    form_id: reactData.selectedForm_id,
+                                    document_id: ((reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status.startsWith('complete')) ? 'new' : (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'new'))
+                                  }
+                                }, true);
+                              }}
+                              onClick={() => {
+                                updateReactData({
+                                  isEditing: {
+                                    calledFrom: 'forms',
+                                    open_complete: !reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id,
+                                    person_id: this_person,
+                                    form_id: reactData.selectedForm_id,
+                                    document_id: (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id
+                                      || (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.document_id
+                                        || 'new'))
+                                  }
+                                }, true);
+                                console.log(reactData.isEditing);
+                              }}
+                              style={AVATextStyle({
+                                size: 1.5,
+                                margin: { right: 0.5 },
+                                color: makeColor(reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status || 'not_started')
+                              })}
+                              size='small'
+                            />
+                          }
+                          <Typography  // Always show person's name, with color based on status of their form completion
+                            key={`g_textpeople-${cX}`}
+                            style={AVATextStyle({
+                              overflow: 'visible',
+                              size: 1.2,
+                              margin: { top: 0 },
+                              color: makeColor(reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status || 'not_started')
+                            })}
+                            draggable={true}
+                            onDragStart={(e) => handleDragStart(e, {
+                              person_id: this_person,
+                              person_name: `${reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.person_name || makeName(this_person).display}`,
+                              reason: 'form'
+                            })}
+                            onClick={() => {
+                              updateReactData({
+                                viewPeopleMaintenance: this_person
+                              }, true);
+                            }}
+                          >
+                            {`${reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.person_name || makeName(this_person).display}`}
+                          </Typography>
+                          {!reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.overall_status?.startsWith('compl') &&
+                            reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs &&
+                            (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs.length > 0) &&
+                            <CheckCircleIcon  // if overall status for this person/form is NOT complete, BUT there IS at least one complete form of this type, show checkCircle
+                              key={`radio-button_person${cX}off`}
+                              id={`radio-button_person${cX}off`}
+                              style={AVATextStyle({
+                                color: 'green',
+                                size: 1,
+                                margin: { left: 0.5, right: 0.5 },
+                              })}
+                              onClick={() => {
+                                updateReactData({
+                                  isEditing: {
+                                    calledFrom: 'forms',
+                                    person_id: this_person,
+                                    form_id: reactData.selectedForm_id,
+                                    document_id: reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].completedDocs[0].document_id
+                                  }
+                                }, true);
+                              }}
+                              size='small'
+                            />
                           }
                         </Box>
-                      ))}
+                      ))
+                      // end of loop through all filtered people for this form  
+                    }
                   </Box>
                 </Paper>
+
+
+
                 <SendIcon
                   classes={{ root: classes.rowButton }}
                   size='medium'

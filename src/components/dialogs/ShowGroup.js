@@ -198,45 +198,45 @@ export default ({ options, defaults, onClose, onAbort }) => {
     let selectPrivate = pGroupList.includes('*all_closed') || pGroupList.includes('*all_private');
     const selectMine = !pGroupList || (pGroupList.length === 0) || (pGroupList.includes('*user'));
     let allGroups = await getAllGroups(state.session.person_id || state.session.patient_id, state.session.client_id);
-    let gList = allGroups.adminHierarchy;
+    const authorized_groups = state.accessList?.[state.session.client_id]?.groups || [];
+    let gList = allGroups.adminHierarchy.filter(g => authorized_groups.includes(g.id));
     let response = {};
-    for (let x = 0; x < gList.length; x++) {
-      let g = gList[x];
-      if ((g.level > 0)
+    for (let this_group of gList) {
+      if ((this_group.level > 0)
         && (selectAll
           || selectMine
-          || pGroupList.includes(g.id)
-          || pGroupList.includes(g.belongs_to)
+          || pGroupList.includes(this_group.id)
+          || pGroupList.includes(this_group.belongs_to)
           || pGroupList.includes('*responsible'))
       ) {
-        const foundGroup = state.groups.belongsTo[g.id];
+        const foundGroup = state.groups.belongsTo[this_group.id];
         let my_role;
         if (foundGroup) {
           my_role = foundGroup.role;
         }
         else {
-          my_role = await getRole(g.id, state.session.person_id || state.session.patient_id);
+          my_role = await getRole(this_group.id, state.session.person_id || state.session.patient_id);
         }
         if (pGroupList.includes('*responsible') && (my_role !== 'responsible')) {
           continue;
         }
         if (!selectMine || (my_role !== 'non-member')) {
-          response[g.id] = {
-            group_name: g.name,
+          response[this_group.id] = {
+            group_name: this_group.name,
             group_type: 'admin',
-            group_id: g.id,
+            group_id: this_group.id,
             role: my_role,
-            level: g.level
+            level: this_group.level
           };
-          if (!pGroupList.includes(g.id)) {
-            pGroupList.push(g.id);
+          if (!pGroupList.includes(this_group.id)) {
+            pGroupList.push(this_group.id);
           }
         }
       }
     };
     let otherGroups = [];
     for (let gID in state.groups.publicGroups) {
-      if (selectAll || pGroupList.includes(gID) || selectOpen) {
+      if (!response[gID] && (authorized_groups.includes(gID)) && (selectAll || pGroupList.includes(gID) || selectOpen)) {
         otherGroups.push({
           group_name: state.groups.publicGroups[gID].group_name,
           group_id: gID,
@@ -244,17 +244,10 @@ export default ({ options, defaults, onClose, onAbort }) => {
           role: state.groups.publicGroups[gID].role,
           level: 0
         })
-  /*      response[gID] = {
-          group_name: state.groups.publicGroups[gID].group_name,
-          group_id: gID,
-          group_type: 'public',
-          role: state.groups.publicGroups[gID].role,
-          level: 0
-        };  */
       }
     };
     for (let gID in state.groups.privateGroups) {
-      if (selectAll || pGroupList.includes(gID) || selectPrivate) {
+      if (!response[gID] && (authorized_groups.includes(gID)) && (selectAll || pGroupList.includes(gID) || selectPrivate)) {
         otherGroups.push({
           group_name: state.groups.privateGroups[gID].group_name,
           group_id: gID,
@@ -262,13 +255,6 @@ export default ({ options, defaults, onClose, onAbort }) => {
           role: state.groups.privateGroups[gID].role,
           level: 0
         })
- /*       response[gID] = {
-          group_name: state.groups.privateGroups[gID].group_name,
-          group_id: gID,
-          group_type: 'private',
-          role: state.groups.privateGroups[gID].role,
-          level: 0
-        };  */
       }
     };
     otherGroups.sort((a, b) => {
@@ -284,7 +270,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
     onClose(updatesMade);
   };
 
-  async function prepare() {
+  async function initialize() {
     let reactUpdater = {};
     let groupList = makeArray(pGroup_id, /[~,;]/);
     if (groupList && groupList.length > 0) {
@@ -326,7 +312,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
   // **************************
 
   React.useEffect(() => {
-    prepare();
+    initialize();
   }, [pSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
@@ -341,75 +327,79 @@ export default ({ options, defaults, onClose, onAbort }) => {
         className={classes.pageHead}
         fullScreen
       >
-        <Box
-          display='flex'
-          grow={1}
-          style={{ width: '90%' }}
-          mb={0}
-          flexDirection='column'
-          justifyContent='center'
-          alignItems='flex-start'
-        >
-          <Typography className={classes.formControl} variant='h5' >
-            {reactData.groupName || 'Group Maintenance'}
-          </Typography>
-        </Box>
-        <DialogContent dividers={true} className={classes.dialogBox}>
-          {!reactData.showGroupSelect && (reactData.building === 'done') &&
-            <GroupForm
-              options={Object.assign(options, {
-                groupMemberList: reactData.groupMemberList,
-                peopleList: peopleList,
-                pPatient: pSession.patient_id,
-                pPatientName: pSession.patient_display_name,
-                pClient: pSession.client_id,
-                pGroup: reactData.groupID,
-                pGroupRec: reactData.groupRec,
-                pGroupName: reactData.groupName,
-                pRole: reactData.groupRole,
-                pStyle: showList
-              })}
-              onReset={async ({ updatesMade, newGroupID, newGroupName, newMemberList }) => {
-                if (pGroup_id && (showList !== 'select')) {
-                  handleAbort(updatesMade);
-                }
-                else {
-                  let reactUpdater = {
-                    showGroupSelect: true,
-                    groupMemberList: [],
-                  };
-                  if (updatesMade) {
-                    reactUpdater.updatesMade = true;
-                    if (newGroupID) {
-                      reactData.newGroups[newGroupID] = newMemberList;
-                      let foundIndex = state.groups.adminHierarchy.findIndex(soughtGroup => {
-                        return (soughtGroup.id === reactData.groupID);
-                      });
-                      let this_index = foundIndex + 1;
-                      state.groups.adminHierarchy.splice(this_index, 0, {
-                        belongs_to: reactData.groupID,
-                        id: newGroupID,
-                        level: state.groups.adminHierarchy[foundIndex].level + 1,
-                        name: newGroupName,
-                        selectable: false
-                      });
-                      let groupList = makeArray(pGroup_id, /[~,;]/);
-                      groupList.push(newGroupID);
-                      let gMObj = await prepareGroupObject(groupList);
-                      updateReactData({
-                        groupsManagedObject: gMObj,
-                        showGroupSelect: true,
-                        selectedIndex: foundIndex
-                      }, true);
-                    }
-                    setForceRedisplay(!forceRedisplay);
+        {!reactData.showGroupSelect &&
+          <Box
+            display='flex'
+            grow={1}
+            style={{ width: '90%' }}
+            mb={0}
+            flexDirection='column'
+            justifyContent='center'
+            alignItems='flex-start'
+          >
+            <Typography className={classes.formControl} variant='h5' >
+              {reactData.groupName || 'Group Maintenance'}
+            </Typography>
+          </Box>
+        }
+        {!reactData.showGroupSelect &&
+          <DialogContent dividers={true} className={classes.dialogBox}>
+            {(reactData.building === 'done') &&
+              <GroupForm
+                options={Object.assign(options, {
+                  groupMemberList: reactData.groupMemberList,
+                  peopleList: peopleList,
+                  pPatient: pSession.patient_id,
+                  pPatientName: pSession.patient_display_name,
+                  pClient: pSession.client_id,
+                  pGroup: reactData.groupID,
+                  pGroupRec: reactData.groupRec,
+                  pGroupName: reactData.groupName,
+                  pRole: reactData.groupRole,
+                  pStyle: showList
+                })}
+                onReset={async ({ updatesMade, newGroupID, newGroupName, newMemberList }) => {
+                  if (pGroup_id && (showList !== 'select')) {
+                    handleAbort(updatesMade);
                   }
-                  updateReactData(reactUpdater, true);
-                }
-              }}
-            />
-          }
-        </DialogContent>
+                  else {
+                    let reactUpdater = {
+                      showGroupSelect: true,
+                      groupMemberList: [],
+                    };
+                    if (updatesMade) {
+                      reactUpdater.updatesMade = true;
+                      if (newGroupID) {
+                        reactData.newGroups[newGroupID] = newMemberList;
+                        let foundIndex = state.groups.adminHierarchy.findIndex(soughtGroup => {
+                          return (soughtGroup.id === reactData.groupID);
+                        });
+                        let this_index = foundIndex + 1;
+                        state.groups.adminHierarchy.splice(this_index, 0, {
+                          belongs_to: reactData.groupID,
+                          id: newGroupID,
+                          level: state.groups.adminHierarchy[foundIndex].level + 1,
+                          name: newGroupName,
+                          selectable: false
+                        });
+                        let groupList = makeArray(pGroup_id, /[~,;]/);
+                        groupList.push(newGroupID);
+                        let gMObj = await prepareGroupObject(groupList);
+                        updateReactData({
+                          groupsManagedObject: gMObj,
+                          showGroupSelect: true,
+                          selectedIndex: foundIndex
+                        }, true);
+                      }
+                      setForceRedisplay(!forceRedisplay);
+                    }
+                    updateReactData(reactUpdater, true);
+                  }
+                }}
+              />
+            }
+          </DialogContent>
+        }
         {reactData.showGroupSelect && !options.groupManagement && (reactData.building === 'done') &&
           <GroupFilter
             defaults={defaults}
@@ -461,6 +451,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
             pSession={pSession}
             groupsManagedObject={reactData.groupsManagedObject}
             focusAt={reactData.selectedIndex || 0}
+            renderAsDialog={false}
             onCancel={() => {
               updateReactData({
                 showGroupSelect: false

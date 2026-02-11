@@ -45,7 +45,7 @@ let loadedPerson = null;
 
 // Functions
 
-export async function accountAccess(person_id, pClient_id, dispatch) {
+export async function accountAccess(person_id, pClient_id) {
   // Does my person account designate an account_class?
   let myPeopleRec = await getPerson(person_id);
   let myClass;
@@ -79,7 +79,8 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
     }
   }
   // Now get a list of people that I can access
-  let myGroupAccessLevel = {};
+  let myGroupAccessLevel = [];
+  let groups_person_belongsTo, rejectObject;
   if (myClass !== 'inactive') {
     if (!session || (session.session_id !== person_id)) {
       session = await getSession(person_id);
@@ -98,213 +99,154 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
     else if (myClass === 'master') {
       clientList = await getAllClients();
     };
-    for (let c = 0; c < clientList.length; c++) {
-      let client_id = clientList[c];
-      // let client_id = pClient_id;
+    for (let client_id of clientList) {
+      // for each client that I have access to, get the client name and logo for display purposes
       let clientName = await getCustomizations('client_name', client_id);
       let clientLogo = await getCustomizations('logo', client_id);
-      let clientGroupAssignments = await getCustomizations('group_assignments', client_id);
-      // for every group in this client, classify that group by its type (admin, staff, resident, etc...)
-      // then establish where in the hierarchy of groups this one belongs
-      // store that in an object (groupFlavor) for easy retrieval later
-      let groupFlavor = {};
-      let groupHierarchy = ['admin', 'staff', 'resident', 'family', 'inactive', 'guest', 'vendor', 'unassigned'];
-      if (clientGroupAssignments && clientGroupAssignments.customization_value) {
-        Object.keys(clientGroupAssignments.customization_value).forEach(t => {
-          let groups = makeArray(clientGroupAssignments.customization_value[t]);
-          let foundAt = groupHierarchy.indexOf(t);
-          if (foundAt < 0) { foundAt = groupHierarchy.length - 1; }
-          groups.forEach(g => {
-            if (!groupFlavor.hasOwnProperty(g)) { groupFlavor[g] = foundAt; }
-            else { groupFlavor[g] = Math.min(foundAt, groupFlavor[g]); }
-          });
-        });
-      }
+
       accessList[client_id] = {
         name: clientName.customization_value,
         logo: clientLogo.icon,
         count: {},
-        list: []
+        list: [],
+        groups: {}
       };
-      respList[client_id] = {
-        name: clientName.customization_value,
-        logo: clientLogo.icon,
-        count: {},
-        list: []
-      };
-      let options = {};
-      accessLevelTable.forEach(a => { accessList[client_id].count[a] = 0; });
-      if (['master', 'support', 'admin'].includes(myClass)) {
-        // options = { withSession: true };
+    }
+
+    const client_id = pClient_id;
+    // establish my authority to each group in this client; we'll use this later to determine my access level to each person in the client based on their group membership  
+    [groups_person_belongsTo, rejectObject,] = await getGroupAccess(client_id, person_id);
+    const accessibleGroups = [];
+    for (const [key, value] of Object.entries(Object.assign({}, groups_person_belongsTo, rejectObject))) {
+      if (value.is_accessible) {
+        accessibleGroups.push(key);
       }
-      if (client_id !== session.client_id) {
-        options = { nameOnly: true };
+    };
+    myGroupAccessLevel = accessibleGroups;
+
+    /* Retired
+    let clientGroupAssignments = await getCustomizations('group_assignments', client_id);
+    // for every group in this client, classify that group by its type (admin, staff, resident, etc...)
+    // then establish where in the hierarchy of groups this one belongs
+    // store that in an object (groupFlavor) for easy retrieval later
+    let groupFlavor = {};
+    let groupHierarchy = ['admin', 'staff', 'resident', 'family', 'inactive', 'guest', 'vendor', 'unassigned'];
+    if (clientGroupAssignments && clientGroupAssignments.customization_value) {
+      Object.keys(clientGroupAssignments.customization_value).forEach(t => {
+        let groups = makeArray(clientGroupAssignments.customization_value[t]);
+        let foundAt = groupHierarchy.indexOf(t);
+        if (foundAt < 0) { foundAt = groupHierarchy.length - 1; }
+        groups.forEach(g => {
+          if (!groupFlavor.hasOwnProperty(g)) { groupFlavor[g] = foundAt; }
+          else { groupFlavor[g] = Math.min(foundAt, groupFlavor[g]); }
+        });
+      });
+    }
+    */
+
+
+
+
+    let clientName = await getCustomizations('client_name', client_id);
+    let clientLogo = await getCustomizations('logo', client_id);
+
+    respList[client_id] = {
+      name: clientName.customization_value,
+      logo: clientLogo.icon,
+      count: {},
+      list: []
+    };
+    let options = {};
+    accessLevelTable.forEach(a => { accessList[client_id].count[a] = 0; });
+    if (['master', 'support', 'admin'].includes(myClass)) {
+      // options = { withSession: true };
+    }
+    if (client_id !== session.client_id) {
+      options = { nameOnly: true };
+    }
+    let allPeople = await getMemberList('*all', client_id, options);
+    // get all the people in the client
+    for (let this_person of allPeople.peopleList) {
+      // for each person...  I am allowed access to them or not?
+      let accessLevel = 'none';
+      if (['support', 'master', 'admin'].includes(myClass)   // if I am a support or master class user
+        || (this_person.may_proxy_to && this_person.may_proxy_to.hasOwnProperty(person_id))  // or the person record we're looking at granted permission for me to proxy to them
+        || (session.responsible_for.includes(this_person.person_id))
+        || (this_person.person_id === person_id)  // the person is ME
+      ) {
+        accessLevel = 'proxy';    // then I get FULL (level 3) access to this person
       }
-      let allPeople = await getMemberList('*all', client_id, options);
-      // get all the people in the client
-      let pxL = allPeople.peopleList.length;
-      for (let pX = 0; pX < pxL; pX++) {
-        let p = allPeople.peopleList[pX];
-        // for each person...  I am allowed access to them or not?
-        let accessLevel = 'none';
-        let myMaxAccessLevelToThisPerson = -1;
-        let personFlavor = 99;
-        // if I am a support or master class user, I get FULL (level 3) access to all users in this client
-        if (['support', 'master', 'admin'].includes(myClass)) {
-          myMaxAccessLevelToThisPerson = 3;
+      else if (this_person.groups.some(g => accessibleGroups.includes(g))) {
+        // my access is dependent on what groups this person belongs to and what access I have to those groups based on the accessibleGroups array built above
+        // accessLevelTable = ['none', 'restricted', 'view', 'proxy', 'full'];
+        accessLevel = 'view';   // at least view (level 2) access to this person because I have access to at least one of their groups
+      }
+      if (accessLevel !== 'none') {
+        if (this_person?.local_data?.['date of birth']) {
+          let dob = makeDate(this_person.local_data['date of birth'], { forceForward: true });
+          if (!birthdayList.hasOwnProperty(dob.numeric$)) {
+            birthdayList[dob.numeric$] = [];
+          }
+          birthdayList[dob.numeric$].push({
+            person_id: this_person.person_id,
+            display_name: `${this_person.name.first} ${this_person.name.last}`,
+          });
         }
-        else if (p.may_proxy_to && p.may_proxy_to.hasOwnProperty(person_id)) {
-          myMaxAccessLevelToThisPerson = 3;     // the person record we're looking at granted permission for me to proxy to them
+        if ((accessLevel === 'proxy') || (accessLevel === 'full')) {
+          proxyList.push(this_person.person_id);
+        };
+        let pRec2Push = {
+          person_id: this_person.person_id,
+          name: this_person.name,
+          first: this_person.name.first,
+          last: this_person.name.last,
+          display_name: `${this_person.name.first} ${this_person.name.last}`,
+          preferred_method: this_person.preferred_method,
+          id: this_person.person_id,
+          access: accessLevel,
+        };
+        if (client_id === session.client_id) {
+          pRec2Push.directory_option = this_person.directory_option;
+          pRec2Push.groups = this_person.groups;
+          pRec2Push.location = this_person.location;
+          pRec2Push.messaging = this_person.messaging;
+          pRec2Push.member_of = this_person.account_class;
+          pRec2Push.search_data = this_person.search_data;
+          pRec2Push.session = this_person.session;
+        };
+        if (session.responsible_for.includes(this_person.person_id) || (this_person.person_id === person_id)) {
+          respList[client_id].list.push(pRec2Push);
         }
         else {
-          // also... determine my role in all of the groups in this client
-          if (p.groups) {
-            let gL = p.groups.length;
-            for (let x = 0; x < gL; x++) {
-              let g = p.groups[x];
-              if ((g === 'ALL') || (g === "__TOP__") || (g === "_TOP_")) {
-                continue;
-              }
-              // am I specificaly responsible for this person?
-              if (session.responsible_for.includes(p.person_id)
-                && ((myClass !== 'family') || !(['none', 'na', 'cancelled', 'inactive'].includes(session.subscription_status)))
-              ) {
-                myMaxAccessLevelToThisPerson = 3;
-                continue;
-              }
-              // this person may belong to multiple groups; each group is assigned a type (flavor) earlier
-              // which describes where that group lands in the client's hierarchy of groups
-              // a person is given a flavor based on the most significant (lowest hierarchy number) group
-              // that this person is a member of
-              // 
-              // your class (set in your people rec or defaulted above in this code) determines
-              // how you are allowed to interact with people of a particular hierarchy
-              if (groupFlavor.hasOwnProperty(g)) {
-                personFlavor = Math.min(personFlavor, groupFlavor[g]);
-              }
-              // We're going to remember the access level for each group, so we don't
-              // have to recalculate it for each person in the client
-              // if we've already calculated my level of access to members of this group, it will be saved 
-              // in the myGroupAccessLevel object;  if not, calculate it and save it there
-              if (!myGroupAccessLevel.hasOwnProperty(g) && (myMaxAccessLevelToThisPerson < 3)) {
-                let myRole = await getRole(g, person_id);
-                if (myRole === 'responsible') { myGroupAccessLevel[g] = accessLevelTable.indexOf('full'); }
-                else {
-                  // the Group table record for a group MAY contain a view_group attribute
-                  // if it does, this attribute will contain an object
-                  // that object is keyed by class of user
-                  // each key should have a single value with the word (see accessLevelTable above) indicating
-                  // the level of access granted to users of this class
-                  // example... the staff group may have a view_group = {'local': 'view'} which would allow 
-                  //       local users to see (but not proxy to) its members
-                  let this_group = await getGroup(g, client_id);
+          accessList[client_id].list.push(pRec2Push);
+        }
+      }
+    };
+    // sort names within this client
+    respList[client_id].list.sort((a, b) => {
+      if (a.last > b.last) { return 1; }
+      else if (a.last < b.last) { return -1; }
+      else if (a.first > b.first) { return 1; }
+      else if (a.first < b.first) { return -1; }
+      else { return 0; }
+    });
+    accessList[client_id].list.unshift(...respList[client_id].list);
+    accessList[client_id].list.sort((a, b) => {
+      if (a.last > b.last) { return 1; }
+      else if (a.last < b.last) { return -1; }
+      else if (a.first > b.first) { return 1; }
+      else if (a.first < b.first) { return -1; }
+      else { return 0; }
+    });
+    accessList[client_id].shortList = accessList[client_id].list.map(p => {
+      accessList[client_id].count[p.access]++;
+      let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
+      if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
+      // list is of the form <name>:<id>:<search_string>
+      return `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
+    });
+    accessList[client_id].groups = myGroupAccessLevel;
 
-                  if (this_group.view_group && this_group.view_group.hasOwnProperty(myClass)) {
-                    myGroupAccessLevel[g] = accessLevelTable.indexOf(this_group['view_group'][myClass]);
-                  }
-                  else {
-                    myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
-                    if ((myRole === 'member')
-                      && (['local', 'resident', 'staff', 'admin'].includes(myClass))
-                      //  if I am a member of a group and not a guest, vendor, or family
-                      //    ... I may(at least) view other members of my group
-                    ) {
-                      myGroupAccessLevel[g] = Math.max(accessLevelTable.indexOf('view'), myGroupAccessLevel[g]);
-                    }
-                  }
-                  /*
-                                    if (!this_group.hasOwnProperty('view_group')) {
-                                      myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
-                                    }
-                                    else if (this_group['view_group'].hasOwnProperty(myClass)) {
-                                      myGroupAccessLevel[g] = accessLevelTable.indexOf(this_group['view_group'][myClass]);
-                                    }
-                                    else {
-                                      myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
-                                    }
-                                    if ((myRole === 'member')
-                                      && (['local', 'resident', 'staff', 'admin'].includes(myClass))
-                                      //  if I am a member of a group and not a guest, vendor, or family
-                                      //    ... I may(at least) view other members of my group
-                                    ) {
-                                      myGroupAccessLevel[g] = Math.max(accessLevelTable.indexOf('view'), myGroupAccessLevel[g]);
-                                    }
-                    */
-                }
-              }
-              if (myGroupAccessLevel[g] > myMaxAccessLevelToThisPerson) {
-                myMaxAccessLevelToThisPerson = myGroupAccessLevel[g];
-              }
-            }
-          }
-        }
-        if (myMaxAccessLevelToThisPerson > 0) { accessLevel = accessLevelTable[myMaxAccessLevelToThisPerson]; }
-        if (accessLevel !== 'none') {
-          if (p?.local_data?.['date of birth']) {
-            let dob = makeDate(p.local_data['date of birth'], { forceForward: true });
-            if (!birthdayList.hasOwnProperty(dob.numeric$)) {
-              birthdayList[dob.numeric$] = [];
-            }
-            birthdayList[dob.numeric$].push({
-              person_id: p.person_id,
-              display_name: `${p.name.first} ${p.name.last}`,
-            });
-          }
-          if ((accessLevel === 'proxy') || (accessLevel === 'full')) {
-            proxyList.push(p.person_id);
-          };
-          let pRec2Push = {
-            person_id: p.person_id,
-            name: p.name,
-            first: p.name.first,
-            last: p.name.last,
-            display_name: `${p.name.first} ${p.name.last}`,
-            preferred_method: p.preferred_method,
-            id: p.person_id,
-            access: accessLevel,
-          };
-          if (client_id === session.client_id) {
-            pRec2Push.directory_option = p.directory_option;
-            pRec2Push.groups = p.groups;
-            pRec2Push.location = p.location;
-            pRec2Push.messaging = p.messaging;
-            pRec2Push.member_of = ((personFlavor < 99) ? groupHierarchy[personFlavor] : null);
-            pRec2Push.search_data = p.search_data;
-            pRec2Push.session = p.session;
-          };
-          if (session.responsible_for.includes(p.person_id) || (p.person_id === person_id)) {
-            respList[client_id].list.push(pRec2Push);
-          }
-          else {
-            accessList[client_id].list.push(pRec2Push);
-          }
-        }
-      };
-      // sort names within this client
-      respList[client_id].list.sort((a, b) => {
-        if (a.last > b.last) { return 1; }
-        else if (a.last < b.last) { return -1; }
-        else if (a.first > b.first) { return 1; }
-        else if (a.first < b.first) { return -1; }
-        else { return 0; }
-      });
-      accessList[client_id].list.unshift(...respList[client_id].list);
-      accessList[client_id].list.sort((a, b) => {
-        if (a.last > b.last) { return 1; }
-        else if (a.last < b.last) { return -1; }
-        else if (a.first > b.first) { return 1; }
-        else if (a.first < b.first) { return -1; }
-        else { return 0; }
-      });
-      accessList[client_id].shortList = accessList[client_id].list.map(p => {
-        accessList[client_id].count[p.access]++;
-        let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
-        if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
-        // list is of the form <name>:<id>:<search_string>
-        return `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
-      });
-      accessList[client_id].groups = myGroupAccessLevel;
-    }
     if (myClass === 'family') {
       if (['none', 'na', 'cancelled', 'inactive'].includes(session.subscription_status)) {
         accessList.subscription = {
@@ -320,6 +262,10 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
       }
     }
   }
+  accessList.belongs_to = [];
+  for (const b2 in groups_person_belongsTo) {
+    if (groups_person_belongsTo[b2].belongs_to) { accessList.belongs_to.push(groups_person_belongsTo[b2].group_id); }
+  };
   accessList.birthdayList = deepCopy(birthdayList);
   return accessList;
 }
@@ -359,8 +305,8 @@ export async function isMemberOf(client_id, person_id, pGroup_id) {
   return (Object.keys(loadedGroupObj).includes(pGroup_id));
 };
 
-export async function getGroupsResponsibleFor(client_id, person_id, options) {
-  var returnObject = {};
+export async function getGroupAccess(client_id, person_id, options) {
+  var groups_person_belongsTo = {};
   var rejectObject = {};
   // first, get a list of every group in this client
   if (!client_id && session) {
@@ -381,10 +327,10 @@ export async function getGroupsResponsibleFor(client_id, person_id, options) {
       });
     });
   if (!recordExists(everyGroup)) {
-    return [returnObject, rejectObject];
+    return [groups_person_belongsTo, rejectObject];
   }
-  // one at a time, determine if you are responsible for this group or not
-  // to do this, we'll need the session record for this person
+
+  /* Responsible people used to come from the sessionRec, but now will only be set if the group itself declares the person in its admin_list property
   let my_session = ((!!session && (session.session_id === person_id)) ? session : await getSession(person_id));
   let my_session_groups_managed = [];
   if (my_session.hasOwnProperty('groups_managed')) {
@@ -398,38 +344,100 @@ export async function getGroupsResponsibleFor(client_id, person_id, options) {
       my_session_responsibleList = deepCopy(my_session.responsible_for);
     }
     else if (my_session.responsible_for.startsWith('[')) {
-      my_session_responsibleList = session.responsible_for.replace(/[[\s\]]/g, '').split(',');
+      my_session_responsibleList = my_session.responsible_for.replace(/[[\s\]]/g, '').split(',');
     }
     else {
       my_session_responsibleList = makeArray(my_session.responsible_for);
     }
   }
+  */
+
   let classList = [];
+  let my_personRec = await getPerson(person_id);
+  const is_admin = ['master', 'admin'].includes(my_personRec.account_class);
+
+  let may_access = new Set();
+  // first pass evaluates what each group has declared that its own members may do; 
+  // may_access will be a list of groups that the person_id is granted access to by virtue of their membership in specific groups
+  // example - members of the "independent_living" group may access "all_assisted_living" 
   everyGroup.Items.forEach(this_group => {
-    if ((this_group.hasOwnProperty('admin_list') && this_group.admin_list.includes(person_id))
-      || (options && options.account_class && (['master', 'support', 'admin'].includes(options.account_class)))
-      || (my_session_groups_managed.includes(this_group))
-      || (my_session_responsibleList.includes(this_group))) {
-      returnObject[this_group.group_id] = {
-        group_name: this_group.name,
-        group_id: this_group.group_id,
-        role: 'responsible',
-        admin_class: this_group.admin_class
-      };
-      if (!classList.includes(this_group.admin_class)) {
-        classList.push(this_group.admin_class);
+    if (my_personRec.groups.includes(this_group.group_id)) {
+      // I am a member of the group, we're going to note may ability to access them in the may_access object, which will be used later when we evaluate my access to each person in the client based on their group membership
+      if (this_group.may_access) {
+        let mayAccessList = makeArray(this_group.may_access);
+        if (mayAccessList.includes('*self')) {
+          may_access.add(this_group.group_id);
+          mayAccessList = mayAccessList.filter(id => id !== '*self');
+        }
+        for (const id of mayAccessList) {
+          may_access.add(id);
+        }
       }
     }
-    else {
-      rejectObject[this_group.group_id] = {
-        group_name: this_group.name,
-        group_id: this_group.group_id,
-        admin_class: this_group.admin_class
+  });
+
+  // second pass evaluates what each group has declared about granting access to itself
+  // example - the "bridge_club" group declares that any member of "independent_living" may access their group
+  everyGroup.Items.forEach(this_group => {
+    let is_accessible = false;
+    if (is_admin) { is_accessible = true; }
+    else if (this_group.accessible_to) {
+      for (let this_access_rule of this_group.accessible_to) {
+        switch (this_access_rule.split(':')[0].trim()) {
+          case '*all': { is_accessible = true; break; }
+          case '*admin': { if (is_admin) { is_accessible = true; } break; }  // redundant since we check is_admin at the top of the loop, but we'll leave it in case we want to add other admin-like classes in the future
+          case '*support': { if (['master', 'support', 'admin'].includes(my_personRec.account_class)) { is_accessible = true; } break; }
+          case 'person': { if (this_access_rule.split(':')[1].trim() === person_id) { is_accessible = true; } break; }
+          case 'group': { if (my_personRec.groups.includes(this_access_rule.split(':')[1].trim())) { is_accessible = true; } break; }
+          case 'class': { if (this_access_rule.split(':')[1].trim() === my_personRec.account_class) { is_accessible = true; } break; }
+          case 'group_type': { if (this_access_rule.split(':')[1].trim() === this_group.group_type) { is_accessible = true; } break; }
+          default: { cl({ 'Unrecognized access rule type': this_access_rule.split(':')[0].trim() }); }
+        }
+      }
+    }
+    else if (may_access.has(this_group.group_id)) {  // redundant but included for clarity
+      is_accessible = true;
+    }
+    if (is_accessible) {
+      may_access.add(this_group.group_id);
+      // find all children, grandchildren, ... ; they are also accessible
+      let findChildren = (parent_id) => {
+        everyGroup.Items.forEach(g => {
+          if (g.belongs_to === parent_id) {
+            may_access.add(g.group_id);
+            my_personRec.groups.push(g.group_id);  // this will trick the fourth pass into marking me as a member of descendant groups
+            findChildren(g.group_id);
+          }
+        });
       };
+      findChildren(this_group.group_id);
     }
   });
+
+  // fourth pass prepares the response
+  everyGroup.Items.forEach(this_group => {
+    let is_accessible = may_access.has(this_group.group_id);
+    let is_responsible = this_group.admin_list.includes(person_id);
+    const belongs_to = my_personRec.groups.includes(this_group.group_id);
+    const resultObj = {
+      group_name: this_group.name,
+      group_id: this_group.group_id,
+      role: is_responsible ? 'responsible' : (belongs_to ? 'member' : 'non-member'),
+      admin_class: this_group.admin_class,
+      is_accessible,
+      is_responsible,
+      belongs_to
+    };
+    if (resultObj.role === 'non-member') {
+      rejectObject[this_group.group_id] = resultObj;
+    }
+    else {
+      groups_person_belongsTo[this_group.group_id] = resultObj;
+    }
+  });
+
   loadedPerson = person_id;
-  return [returnObject, rejectObject, classList];
+  return [groups_person_belongsTo, rejectObject, classList];
 }
 
 export async function getPeopleResponsibleFor(person_id) {
@@ -460,35 +468,14 @@ export async function getPeopleResponsibleFor(person_id) {
 }
 
 export async function getGroupsBelongTo(client_id, person_id, options = {}) {
-  if (options.hasOwnProperty('groups')) {
+  let [groups_person_belongsTo, ,] = await getGroupAccess(client_id, person_id, options);
 
-  }
-  // You belong to all groups that you are responsible for
-  let [returnObject, rejectObject, classList] = await getGroupsResponsibleFor(client_id, person_id, options);
-  // Next, get any other Groups that this person belongs to (but aren't responsible for)
-  if (!profile || (profile.person_id !== person_id)) {
-    profile = await getPerson(person_id);
-  }
-  if (profile && profile.groups) {
-    for (let rejectGroup in rejectObject) {
-      if (profile.groups.includes(rejectGroup)) {
-        returnObject[rejectGroup] = {
-          group_name: rejectObject[rejectGroup].group_name,
-          group_id: rejectObject[rejectGroup].group_id,
-          role: 'member'
-        };
-        if (!classList.includes(rejectObject.admin_class)) {
-          classList.push(rejectObject.admin_class);
-        }
-      }
-    }
-  }
   loadedPerson = person_id;
-  loadedGroupObj = returnObject;
+  loadedGroupObj = groups_person_belongsTo;
   if (options && options.sort) {
     // put each object in an array of objects, then sort that array and return an object sequenced by the sort
     let gArray = [];
-    for (let gID in returnObject) { gArray.push(returnObject[gID]); }
+    for (let gID in groups_person_belongsTo) { gArray.push(groups_person_belongsTo[gID]); }
     gArray.sort((a, b) => {
       if (a.group_name > b.group_name) { return 1; }
       else { return -1; }
@@ -497,7 +484,7 @@ export async function getGroupsBelongTo(client_id, person_id, options = {}) {
     gArray.forEach(g => { newObject[g.group_id] = g; });
     return newObject;
   }
-  else { return returnObject; }
+  else { return groups_person_belongsTo; }
 };
 
 export async function getAuthObject(request) {
@@ -689,6 +676,8 @@ export async function getGroup(pGroup_id, pClient_id) {
 };
 
 export async function getRole(pGroup, pPerson) {
+  // will return 'responsible' if you are responsible for this group, 'member' if you are a member of this group, and 'non-member' if you are not a member of this group
+  // if pGroup is an array of group_ids, will return 'member' if you are a member of all of the groups in the array, and 'non-member' if you are not a member of at least one of the groups in the array 
   let pSession = await getSession(pPerson);
   if (!Array.isArray(pGroup)) {
     if ((('responsible_for' in pSession) && (pSession.responsible_for.some(g => g.split('~')[0].trim() === pGroup)))
@@ -1753,9 +1742,10 @@ export async function getPrivateGroupList(pClient_id, person_id, options) {
  * Returns { publicGroups, privateGroups, dynamicGroups } for use in state.groups.
  */
 export async function getAllGroupTypes(pClient_id, person_id) {
+  session = await getSession(person_id);
   if (!pClient_id) {
     if (session) { pClient_id = session.client_id; }
-    else return { publicGroups: {}, privateGroups: {}, dynamicGroups: [] };
+    else { return { publicGroups: {}, privateGroups: {}, dynamicGroups: [] }; }
   }
   // Query all groups for this client
   let qParm = {
@@ -1775,21 +1765,17 @@ export async function getAllGroupTypes(pClient_id, person_id) {
   let publicGroups = {};
   let privateGroups = {};
   let dynamicGroups = [];
-  for (let g = 0; g < groupRec.Items.length; g++) {
-    let thisGroup = groupRec.Items[g];
-    // Public: group_type is 'open' or 'public'
-    if (["open", "public"].includes(thisGroup.group_type)) {
-      let role = await getRole(thisGroup.group_id, person_id);
-      publicGroups[thisGroup.group_id] = {
+  for (let thisGroup of groupRec.Items) {
+    let role = await getRole(thisGroup.group_id, person_id);
+    if (thisGroup.group_type === "private") {
+      privateGroups[thisGroup.group_id] = {
         group_name: thisGroup.name,
         group_id: thisGroup.group_id,
         role
       };
     }
-    // Private: group_type is 'private'
-    if (thisGroup.group_type === "private") {
-      let role = await getRole(thisGroup.group_id, person_id);
-      privateGroups[thisGroup.group_id] = {
+    else {
+      publicGroups[thisGroup.group_id] = {
         group_name: thisGroup.name,
         group_id: thisGroup.group_id,
         role

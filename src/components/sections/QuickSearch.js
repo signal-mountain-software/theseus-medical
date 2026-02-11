@@ -50,7 +50,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   const { state } = useSession();
   const isMounted = React.useRef(false);
   const optionsRef = React.useRef(options);
-  const administrative_account = (['admin', 'support', 'master'].includes(state.user.account_class));
+  const administrative_account = (['admin', 'master'].includes(state.user.account_class));
 
   // Virtual scrolling state
   const [maxPeopleToRender, setMaxPeopleToRender] = React.useState(100);
@@ -66,14 +66,16 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
       console.log('QuickSearch initialize() called with options:', options);
       let reactUpd = {};
       reactUpd.preferred_recipients = [];
-      for (let this_group in state.groups.preferred_recipients) {
-        if (state.groups.preferred_recipients[this_group].length > 0) {
-          for (const this_pref of state.groups.preferred_recipients[this_group]) {
-            reactUpd.preferred_recipients.push({
-              objText: titleCase((this_pref.objText.toLowerCase().split('message to')).pop()),
-              personList: this_pref.personList,
-              personNames: this_pref.personNames
-            });
+      if (state.hasOwnProperty('groups') && state.groups.hasOwnProperty('preferred_recipients')) {
+        for (let this_group in state.groups.preferred_recipients) {
+          if (state.groups.preferred_recipients[this_group].length > 0) {
+            for (const this_pref of state.groups.preferred_recipients[this_group]) {
+              reactUpd.preferred_recipients.push({
+                objText: titleCase((this_pref.objText.toLowerCase().split('message to')).pop()),
+                personList: this_pref.personList,
+                personNames: this_pref.personNames
+              });
+            }
           }
         }
       }
@@ -93,7 +95,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
             */
             if (administrative_account ||
               (
-                state?.accessList?.[state.session?.client_id]?.groups?.[this_item] >= 2 &&
+                (state?.accessList?.[state.session?.client_id]?.groups && state?.accessList?.[state.session?.client_id]?.groups.includes(this_item)) &&
                 (!options.restrictGroups || (state?.patient?.groups?.includes(this_item) && isEmpty(my_children)))
               )
             ) {
@@ -230,9 +232,9 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
     if (options.restrictGroups) {
       return true;
     }
-    if (this_group.level === 0) {
-      return false;
-    }
+ //   if (this_group.level === 0) {
+ //     return false;
+ //   }
 
     // If showOnlySelected is true, only show selected groups
     if (showOnlySelected) {
