@@ -77,6 +77,9 @@ const useStyles = makeStyles(theme => ({
   media: {
     height: 20,
   },
+  wholeCard: {
+    height: 100,
+  },
   page: {
     height: 950,
     maxWidth: 1000
@@ -922,8 +925,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   }
 
   function proxyAuthority() {
+    // You are always in your own proxy list.  You shuld only have proxy authority here if there is someone else in yourlist too
     if (state.accessList && state.accessList.hasOwnProperty(session.client_id) && state.accessList[session.client_id].hasOwnProperty('count')) {
-      if ((state.accessList[session.client_id].count.proxy > 0) || (state.accessList[session.client_id].count.full > 0)) {
+      if ((state.accessList[session.client_id].count.proxy > 1) || (state.accessList[session.client_id].count.full > 1)) {
         return true;
       }
     }
@@ -1346,13 +1350,15 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               }
                             }}
                           >
-                            <CardActionArea>
-                              <CardMedia
-                                className={classes.media}
-                                key={`master_card_media_${index}`}
-                                image={this_row.section_icon}
-                                title="Menu Media"
-                              />
+                            <CardActionArea className={classes.wholeCard} key={`master_card_action_${index}`}>
+                              {!state.session.client_style?.suppress_card_image &&
+                                <CardMedia
+                                  className={classes.media}
+                                  key={`master_card_media_${index}`}
+                                  image={this_row.section_icon}
+                                  title="Menu Media"
+                                />
+                              }
                               <CardContent className={classes.cardcontent}>
                                 <Box
                                   display='flex' flexDirection='column'

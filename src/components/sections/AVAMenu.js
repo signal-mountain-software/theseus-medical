@@ -918,7 +918,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   function proxyAuthority() {
     if (state.accessList && state.accessList.hasOwnProperty(session.client_id) && state.accessList[session.client_id].hasOwnProperty('count')) {
-      if ((state.accessList[session.client_id].count.proxy > 0) || (state.accessList[session.client_id].count.full > 0)) {
+      if ((state.accessList[session.client_id].count.proxy > 1) || (state.accessList[session.client_id].count.full > 1)) {
         return true;
       }
     }

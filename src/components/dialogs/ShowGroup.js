@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { getAllGroups, getGroup, getRole } from '../../util/AVAGroups';
+import { getAllGroups, getGroup, getRole, getMemberList } from '../../util/AVAGroups';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -122,32 +122,38 @@ export default ({ options, defaults, onClose, onAbort }) => {
       }
       groupList[tClient].push(tGroup);
     });
-    if ((state.hasOwnProperty('accessList') && state.accessList[state.session.client_id])) {
-      Object.keys(groupList).forEach(this_client => {
-        if (groupList[this_client].includes('*all') || (this_client !== state.session.client_id)) {
-          let thisList = state.accessList?.[this_client]?.list || ((this_client === state.session.client_id) ? state.session.last_state.list : []);
-          peopleList = peopleList.concat(thisList);
-        }
-        else {
-          let newPeople = [];
-          if (reactData.newGroups) {
-            for (const this_group of groupList[this_client]) {
-              if (reactData.newGroups.hasOwnProperty(this_group)) {
-                newPeople.push(...reactData.newGroups[this_group]);
-              }
-            }
-          }
-          peopleList = peopleList
-            .concat(state.accessList?.[this_client]?.list || ((this_client === state.session.client_id)
-              ? state.session.last_state.list
-              : [])).filter((p, pX) => {
-                return makeArray(p.groups).some(g => {
-                  return groupList[this_client].includes(g) || newPeople.includes(p.person_id);
-                });
-              });
-        }
-      });
+
+    // If groupList includes '*all', then we will present whatever accoutns you are authorized to view in this client
+    // That list will be in state.accessList[state.session.client_id].list
+    const this_client = state.session.client_id;
+    if (groupList[this_client].includes('*all') && state.accessList?.[this_client]) {
+      let thisList = state.accessList?.[this_client]?.list || ((this_client === state.session.client_id) ? state.session.last_state.list : []);
+      peopleList = peopleList.concat(thisList);
       memberInfo = { peopleList };
+    }
+    else if (groupList[this_client].length > 0) {
+      const groupPromises = groupList[this_client].map(this_group =>
+        getMemberList(this_group, state.session.client_id, { "exclude": false })
+      );
+      const groupResponses = await Promise.all(groupPromises);
+
+      const peopleById = new Map();
+      groupResponses.forEach(resp => {
+        (resp?.peopleList || []).forEach(person => {
+          peopleById.set(person.person_id, person);
+        });
+      });
+
+      const dedupedPeopleList = Array.from(peopleById.values()).sort((a, b) => {
+        const lastA = a?.name?.last || '';
+        const lastB = b?.name?.last || '';
+        const lastCompare = lastA.localeCompare(lastB);
+        if (lastCompare !== 0) return lastCompare;
+        const firstA = a?.name?.first || '';
+        const firstB = b?.name?.first || '';
+        return firstA.localeCompare(firstB);
+      });
+      memberInfo = { peopleList: dedupedPeopleList };
     }
     else {
       enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
@@ -243,7 +249,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
           group_type: 'public',
           role: state.groups.publicGroups[gID].role,
           level: 0
-        })
+        });
       }
     };
     for (let gID in state.groups.privateGroups) {
@@ -254,14 +260,14 @@ export default ({ options, defaults, onClose, onAbort }) => {
           group_type: 'private',
           role: state.groups.privateGroups[gID].role,
           level: 0
-        })
+        });
       }
     };
     otherGroups.sort((a, b) => {
       return (a.group_name < b.group_name) ? -1 : 1;
-    })
+    });
     for (let this_otherGroup of otherGroups) {
-      response[this_otherGroup.group_id] = this_otherGroup
+      response[this_otherGroup.group_id] = this_otherGroup;
     }
     return response;
   };
@@ -276,7 +282,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
     if (groupList && groupList.length > 0) {
       reactUpdater.groupList = groupList;
       if (showList === 'select') {
-        if (!state.groups || !state.groups.adminHierarchy || !state.groups.belongsTo) {
+        if (!state.groups || !state.groups.adminHierarchy || !state.groups.belongsTo || !state.accessList || !state.accessList.hasOwnProperty(state.session.client_id)) {
           enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
           onAbort();
           return;

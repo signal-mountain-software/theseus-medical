@@ -217,6 +217,52 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
 
 
+      {currentValues.customizationRecs.client_style.customization_value?.ui_tiles &&
+        <React.Fragment>
+          <Typography
+            style={AVATextStyle({ margin: { top: 1 } })}
+          >
+            {'Show Image Thumbnails on Tiles'}
+          </Typography>
+          <Box flexGrow={2} display='flex' alignItems='center'
+            justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+            <Typography
+              style={AVATextStyle({
+                size: 0.8, margin: { right: 0.8 },
+                bold: !currentValues.customizationRecs.client_style.customization_value.suppress_card_image
+              })}
+            >
+              {'Show Images'}
+            </Typography>
+            <Switch
+              checked={currentValues.customizationRecs.client_style.customization_value?.suppress_card_image || false}
+              onClick={async (event) => {
+                await updateField({
+                  updateList:
+                    [{
+                      tableName: 'customizationRecs',
+                      fieldName: 'client_style.customization_value.suppress_card_image',
+                      newData: !currentValues.customizationRecs.client_style.customization_value.suppress_card_image
+                    }]
+                });
+              }}
+              name="UIStyle"
+              color="primary"
+            />
+            <Typography
+              style={AVATextStyle({
+                size: 0.8, margin: { left: 0.8 },
+                bold: currentValues.customizationRecs.client_style.customization_value.suppress_card_image
+              })}
+            >
+              {'Hide Images'}
+            </Typography>
+          </Box>
+        </React.Fragment>
+      }
+
+
+
 
       <Typography
         style={AVATextStyle({ margin: { top: 1 } })}

@@ -161,6 +161,7 @@ export default ({ open, roles, onClose }) => {
     if (pLine.access === 'none') { return false; }
     if (pLine.access === 'view') { return false; }
     if (pLine.inactive_account) { return false; }
+    if (pLine.person_id === state.session.patient_id) { return false; }
     if (array_in_array(state?.session?.group_assignments?.inactive, pLine.groups)) { return false; }
     if (!person_filter) { return true; }
     return Object.values(pLine).toString().toLowerCase().includes(person_filter);
@@ -250,8 +251,8 @@ export default ({ open, roles, onClose }) => {
             <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
               {rowsWritten = 0}
             </Typography>
-            {accessList[selectedClient].list.map((listEntry, x) => (
-              ((rowsWritten <= rowLimit) && okToShow(listEntry) &&
+            {accessList[selectedClient].list.filter(p => okToShow(p)).map((listEntry, x) => (
+              ((rowsWritten <= rowLimit) &&
                 <ListItem
                   key={'person-list_' + x}
                   onClick={async () => {
