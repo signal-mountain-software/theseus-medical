@@ -925,8 +925,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   }
 
   function proxyAuthority() {
+    // You are always in your own proxy list.  You shuld only have proxy authority here if there is someone else in yourlist too
     if (state.accessList && state.accessList.hasOwnProperty(session.client_id) && state.accessList[session.client_id].hasOwnProperty('count')) {
-      if ((state.accessList[session.client_id].count.proxy > 0) || (state.accessList[session.client_id].count.full > 0)) {
+      if ((state.accessList[session.client_id].count.proxy > 1) || (state.accessList[session.client_id].count.full > 1)) {
         return true;
       }
     }
