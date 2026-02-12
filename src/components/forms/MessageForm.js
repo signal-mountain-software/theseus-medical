@@ -232,8 +232,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     options,
     preferred_recipients: [],
     replyToList: [],
-    selectedPeople_count: 0,
-    selectedPeople_list: [],
+    selectedPeople_count: ((options && options.newMessage && options.recipients) ? options.recipients.length : 0),
+    selectedPeople_list: ((options && options.newMessage && options.recipients) ? options.recipients.map(r => r.person_id ) : []),
     showSelectSender: false,
     selections: [], // wip selections from quick search
     showDeleted: (options && options.showDeleted) || false,

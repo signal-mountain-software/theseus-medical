@@ -1909,6 +1909,18 @@ export default ({ defaults, onClose }) => {
                   style={{ alignSelf: 'center' }}
                   aria-label="trash_icon"
                   onDragOver={(e) => handleDragOver(e)}
+                  onClick={async (e) => {
+                    let sendMessage = reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds.map(p => {
+                      return {
+                        person_id: reactData.masterFormList[reactData.selectedForm_id]?.memberList[p].person_id,
+                        person_name: reactData.masterFormList[reactData.selectedForm_id]?.memberList[p].person_name,
+                        subject: `Your ${state.session.client_name} forms`
+                      };
+                    });
+                    updateReactData({
+                      sendMessage
+                    }, true);
+                  }}
                   onDrop={async (e) => {
                     e.preventDefault();
                     let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
@@ -2136,10 +2148,7 @@ export default ({ defaults, onClose }) => {
               };
             }),
             subject: reactData.sendMessage[0].subject,
-            messageText: reactData.sendMessage[0].messageText,
-            attachmentList: reactData.sendMessage.map(a => {
-              return a.attachmentList;
-            }).flat(),
+            messageText: reactData.sendMessage[0].messageText || ''
           }}
         />
       }
