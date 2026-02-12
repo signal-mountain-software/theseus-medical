@@ -276,7 +276,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
     if (groupList && groupList.length > 0) {
       reactUpdater.groupList = groupList;
       if (showList === 'select') {
-        if (!state.groups || !state.groups.adminHierarchy || !state.groups.belongsTo) {
+        if (!state.groups || !state.groups.adminHierarchy || !state.groups.belongsTo || !state.accessList || !state.accessList.hasOwnProperty(state.session.client_id)) {
           enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
           onAbort();
           return;
