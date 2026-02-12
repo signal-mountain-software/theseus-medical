@@ -142,7 +142,7 @@ export async function accountAccess(person_id, pClient_id) {
       for (let this_person of allPeople.peopleList) {
         // for each person...  I am allowed access to them or not?
         let accessLevel = 'none';
-        if (['support', 'master', 'admin'].includes(myClass)   // if I am a support or master class user
+        if (['master', 'admin'].includes(myClass)   // if I am a support or master class user
           || (this_person.may_proxy_to && this_person.may_proxy_to.hasOwnProperty(person_id))  // or the person record we're looking at granted permission for me to proxy to them
           || (session.responsible_for.includes(this_person.person_id))
           || (this_person.person_id === person_id)  // the person is ME
