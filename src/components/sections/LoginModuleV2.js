@@ -485,7 +485,7 @@ const LoginModuleV2 = ({
         dispatch({ type: SET_ACCESSLIST, payload: accessList });
         bootStateRef.current.accessList = accessList;
       })
-      .catch(() => null);
+      .catch((e) => { console.log('accountAccess threw error', e)});
 
     const rightNow = new Date();
     const calendarPromise = getAllOccurrences(
@@ -500,7 +500,7 @@ const LoginModuleV2 = ({
       dispatch({ type: SET_CALENDAR, payload: occList });
       bootStateRef.current.calendar = occList;
     })
-      .catch(() => null);
+      .catch((e) => { console.log({ 'getAllOccurrences threw error': e })});
 
     await createNewOccurrences({ client: pSession.client_id }).catch(() => null);
 

@@ -149,7 +149,7 @@ export async function accountAccess(person_id, pClient_id) {
         ) {
           accessLevel = 'proxy';    // then I get FULL (level 3) access to this person
         }
-        else if (this_person.groups.some(g => accessibleGroups.includes(g))) {
+        else if (this_person.groups?.some(g => accessibleGroups.includes(g))) {
           // my access is dependent on what groups this person belongs to and what access I have to those groups based on the accessibleGroups array built above
           // accessLevelTable = ['none', 'restricted', 'view', 'proxy', 'full'];
           accessLevel = 'view';   // at least view (level 2) access to this person because I have access to at least one of their groups
