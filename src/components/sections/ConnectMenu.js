@@ -77,6 +77,9 @@ const useStyles = makeStyles(theme => ({
   media: {
     height: 20,
   },
+  wholeCard: {
+    height: 100,
+  },
   page: {
     height: 950,
     maxWidth: 1000
@@ -1346,13 +1349,15 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               }
                             }}
                           >
-                            <CardActionArea>
-                              <CardMedia
-                                className={classes.media}
-                                key={`master_card_media_${index}`}
-                                image={this_row.section_icon}
-                                title="Menu Media"
-                              />
+                            <CardActionArea className={classes.wholeCard} key={`master_card_action_${index}`}>
+                              {!state.session.client_style?.suppress_card_image &&
+                                <CardMedia
+                                  className={classes.media}
+                                  key={`master_card_media_${index}`}
+                                  image={this_row.section_icon}
+                                  title="Menu Media"
+                                />
+                              }
                               <CardContent className={classes.cardcontent}>
                                 <Box
                                   display='flex' flexDirection='column'
