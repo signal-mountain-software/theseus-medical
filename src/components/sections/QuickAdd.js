@@ -675,8 +675,9 @@ export default ({ onClose, options = {} }) => {
         queryByIdentifier(phoneIdentifier)
       ]);
 
-      const matchedExistingId = nameMatch.find(id => emailMatch.includes(id) || phoneMatch.includes(id));
-      if (matchedExistingId) {
+      if (emailMatch || phoneMatch) {
+        const matchedExistingId = nameMatch.find(id => emailMatch?.includes(id) || phoneMatch?.includes(id));
+        if (matchedExistingId) {
         showAlert({
           severity: 'warning',
           title: 'Account Found',
@@ -729,6 +730,7 @@ export default ({ onClose, options = {} }) => {
         });
         return;
       }
+     }
     }
     await proceedWithSave();
   };
