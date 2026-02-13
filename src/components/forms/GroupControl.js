@@ -787,7 +787,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
               paddingTop: 3,
             }}
           >
-            {`No Groups to show for ${pSession.user_display_name}`}
+            {`No Groups to show for ${pSession.patient_display_name|| 'your account'}`}
           </Typography>
         </Box>
         :
