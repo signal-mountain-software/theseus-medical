@@ -307,6 +307,24 @@ export async function getGroupAccess(client_id, person_id, options) {
   let my_personRec = await getPerson(person_id);
   const is_admin = ['master', 'admin'].includes(my_personRec.account_class);
 
+  // Pass zero - assure that my group list is correct.
+  // If I am a member of a group, I am also a member of its parent
+  for (let this_group of my_personRec.groups) { 
+    let findParent = (child_id) => {
+      everyGroup.Items.forEach(g => {
+        if (g.group_id === child_id) {
+          if (g.belongs_to) {
+            if (!my_personRec.groups.includes(g.belongs_to)) {
+              my_personRec.groups.push(g.belongs_to);
+            }
+            findParent(g.belongs_to);
+          }
+        }
+      });
+    };
+    findParent(this_group);
+  }
+
   let may_access = new Set();
   // first pass evaluates what each group has declared that its own members may do; 
   // may_access will be a list of groups that the person_id is granted access to by virtue of their membership in specific groups
@@ -341,6 +359,7 @@ export async function getGroupAccess(client_id, person_id, options) {
           case '*support': { if (['master', 'support', 'admin'].includes(my_personRec.account_class)) { is_accessible = true; } break; }
           case 'person': { if (this_access_rule.split(':')[1].trim() === person_id) { is_accessible = true; } break; }
           case 'group': { if (my_personRec.groups.includes(this_access_rule.split(':')[1].trim())) { is_accessible = true; } break; }
+          case '*members': { if (my_personRec.groups.includes(this_group.group_id)) { is_accessible = true; } break; }
           case 'class': { if (this_access_rule.split(':')[1].trim() === my_personRec.account_class) { is_accessible = true; } break; }
           case 'group_type': { if (this_access_rule.split(':')[1].trim() === this_group.group_type) { is_accessible = true; } break; }
           default: { cl({ 'Unrecognized access rule type': this_access_rule.split(':')[0].trim() }); }
@@ -352,19 +371,23 @@ export async function getGroupAccess(client_id, person_id, options) {
     }
     if (is_accessible) {
       may_access.add(this_group.group_id);
-      // find all children, grandchildren, ... ; they are also accessible
-      let findChildren = (parent_id) => {
-        everyGroup.Items.forEach(g => {
-          if (g.belongs_to === parent_id) {
-            may_access.add(g.group_id);
-            my_personRec.groups.push(g.group_id);  // this will trick the fourth pass into marking me as a member of descendant groups
-            findChildren(g.group_id);
-          }
-        });
-      };
-      findChildren(this_group.group_id);
     }
   }
+
+  // third pass finds children and grandchildren of groups I belong to and marks me as belonging to them as well; this will allow the fourth pass to recognize that I have access to those descendant groups by virtue of my membership in the parent group
+  for (const good_group of may_access) { 
+    let findChildren = (parent_id) => {
+      everyGroup.Items.forEach(g => {
+        if (g.belongs_to === parent_id) {
+          may_access.add(g.group_id);
+          my_personRec.groups.push(g.group_id);  // this will trick the fourth pass into marking me as a member of descendant groups
+          findChildren(g.group_id);
+        }
+      });
+    };
+    findChildren(good_group);
+  }
+
 
   // fourth pass prepares the response
   for (let this_group of everyGroup.Items) {
