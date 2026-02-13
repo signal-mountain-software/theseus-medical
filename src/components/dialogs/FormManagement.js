@@ -29,6 +29,7 @@ import SwapVertIcon from '@material-ui/icons/SwapVert';
 import EditIcon from '@material-ui/icons/Edit';
 import VisibilityIcon from '@material-ui/icons/Visibility';
 import LockIcon from '@material-ui/icons/Lock';
+import GetAppIcon from '@material-ui/icons/GetApp';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
 
@@ -297,6 +298,63 @@ export default ({ defaults, onClose }) => {
     updateReactData({
       activity_sort_order: direction
     }, true);
+  }
+
+  function csvSafe(value) {
+    if ((value === null) || (value === undefined)) {
+      return '';
+    }
+    const stringValue = `${value}`.replace(/"/g, '""');
+    return `"${stringValue}"`;
+  }
+
+  function downloadCurrentPeopleListCsv() {
+    if (!reactData.selectedForm_id) {
+      return;
+    }
+
+    const selectedForm = reactData.masterFormList?.[reactData.selectedForm_id];
+    const filteredMemberIds = selectedForm?.filteredMemberIds || [];
+
+    if (filteredMemberIds.length === 0) {
+      updateReactData({
+        alert: {
+          severity: 'info',
+          title: 'No people to export',
+          message: 'There are no people in the current list to export.'
+        }
+      }, true);
+      return;
+    }
+
+    const header = ['Name', 'Person ID', 'Status'];
+    const rows = filteredMemberIds.map(person_id => {
+      const memberData = selectedForm?.memberList?.[person_id] || {};
+      const personName = memberData.person_name || makeName(person_id).display;
+      const status = reactData.masterPeopleList?.[person_id]?.[reactData.selectedForm_id]?.status || 'not_started';
+
+      return [personName, person_id, status];
+    });
+
+    const csvContent = [header, ...rows]
+      .map(row => row.map(csvSafe).join(','))
+      .join('\n');
+
+    const safeFormName = (selectedForm?.form_name || reactData.selectedForm_id)
+      .replace(/[^a-z0-9]+/gi, '_')
+      .replace(/^_+|_+$/g, '')
+      .toLowerCase();
+    const fileName = `${safeFormName || 'form'}_people_list.csv`;
+
+    const csvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const csvUrl = URL.createObjectURL(csvBlob);
+    const downloadLink = document.createElement('a');
+    downloadLink.href = csvUrl;
+    downloadLink.setAttribute('download', fileName);
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+    URL.revokeObjectURL(csvUrl);
   }
 
   function OKtoShow(this_person, this_form, display_data) {
@@ -1105,32 +1163,6 @@ export default ({ defaults, onClose }) => {
                   })}>
                   {`${state.session.client_name} Forms`}
                 </Typography>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="small"
-                  style={{
-                    borderRadius: '20px',
-                    textTransform: 'none',
-                    marginRight: '16px'
-                  }}
-                  onClick={() => {
-                    const newForm = {
-                      client_id: state.session.client_id,
-                      form_id: `form_${Date.now()}`,
-                      form_name: 'New Form',
-                      category: '',
-                      sections: [],
-                      fields: {}
-                    };
-                    updateReactData({
-                      showFormEditor: true,
-                      formEditorRecord: newForm
-                    }, true);
-                  }}
-                >
-                  + New Form
-                </Button>
               </Box>
               <Paper component={Box} elevation={0} overflow='auto' square
                 style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
@@ -1903,53 +1935,72 @@ export default ({ defaults, onClose }) => {
 
 
 
-                <SendIcon
-                  classes={{ root: classes.rowButton }}
-                  size='medium'
-                  style={{ alignSelf: 'center' }}
-                  aria-label="trash_icon"
-                  onDragOver={(e) => handleDragOver(e)}
-                  onClick={async (e) => {
-                    let sendMessage = reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds.map(p => {
-                      return {
-                        person_id: reactData.masterFormList[reactData.selectedForm_id]?.memberList[p].person_id,
-                        person_name: reactData.masterFormList[reactData.selectedForm_id]?.memberList[p].person_name,
-                        subject: `Your ${state.session.client_name} forms`
-                      };
-                    });
-                    updateReactData({
-                      sendMessage
-                    }, true);
-                  }}
-                  onDrop={async (e) => {
-                    e.preventDefault();
-                    let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
-                    let sendMessage = [];
-                    if (draggedFrom.reason === 'form') {
-                      let jumpTo = window.location.href.replace('refresh', 'theseus');
-                      if (jumpTo.includes('?')) {
-                        jumpTo = jumpTo.split('?')[0];
+                <Box
+                  display='flex'
+                  flexDirection='row'
+                  justifyContent='center'
+                  alignItems='center'
+                  style={{ alignSelf: 'center', marginTop: '6px' }}
+                >
+                  <GetAppIcon
+                    classes={{ root: classes.rowButton }}
+                    size='medium'
+                    style={{ marginRight: '16px', opacity: (reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds?.length > 0) ? 1 : 0.4 }}
+                    aria-label="download_csv_icon"
+                    onClick={() => {
+                      if (reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds?.length > 0) {
+                        downloadCurrentPeopleListCsv();
                       }
-                      sendMessage.push({
-                        person_id: draggedFrom.person_id,
-                        person_name: draggedFrom.person_name,
-                        subject: `Your ${state.session.client_name} forms`,
-                        messageText: `To access your ${state.session.client_name} forms, click the attached link!`,
-                        attachmentList: [`${jumpTo}?user=${draggedFrom.person_id}&forms=true`]
+                    }}
+                  />
+                  <SendIcon
+                    classes={{ root: classes.rowButton }}
+                    size='medium'
+                    style={{ alignSelf: 'center' }}
+                    aria-label="trash_icon"
+                    onDragOver={(e) => handleDragOver(e)}
+                    onClick={async (e) => {
+                      let sendMessage = reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds.map(p => {
+                        return {
+                          person_id: reactData.masterFormList[reactData.selectedForm_id]?.memberList[p].person_id,
+                          person_name: reactData.masterFormList[reactData.selectedForm_id]?.memberList[p].person_name,
+                          subject: `Your ${state.session.client_name} forms`
+                        };
                       });
-                    }
-                    else if (draggedFrom.hasOwnProperty('person_id')) {
-                      sendMessage.push({
-                        person_id: draggedFrom.person_id,
-                        person_name: draggedFrom.person_name
-                      });
-                    }
-                    updateReactData({
-                      sendMessage
-                    }, true);
-                  }}
-                  edge="start"
-                />
+                      updateReactData({
+                        sendMessage
+                      }, true);
+                    }}
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
+                      let sendMessage = [];
+                      if (draggedFrom.reason === 'form') {
+                        let jumpTo = window.location.href.replace('refresh', 'theseus');
+                        if (jumpTo.includes('?')) {
+                          jumpTo = jumpTo.split('?')[0];
+                        }
+                        sendMessage.push({
+                          person_id: draggedFrom.person_id,
+                          person_name: draggedFrom.person_name,
+                          subject: `Your ${state.session.client_name} forms`,
+                          messageText: `To access your ${state.session.client_name} forms, click the attached link!`,
+                          attachmentList: [`${jumpTo}?user=${draggedFrom.person_id}&forms=true`]
+                        });
+                      }
+                      else if (draggedFrom.hasOwnProperty('person_id')) {
+                        sendMessage.push({
+                          person_id: draggedFrom.person_id,
+                          person_name: draggedFrom.person_name
+                        });
+                      }
+                      updateReactData({
+                        sendMessage
+                      }, true);
+                    }}
+                    edge="start"
+                  />
+                </Box>
               </Box>
             }
           </Box>
@@ -2543,6 +2594,34 @@ export default ({ defaults, onClose }) => {
         >
           {'Done'}
         </Button>
+        {false &&
+          <Button
+            variant="contained"
+            color="primary"
+            size="small"
+            style={{
+              borderRadius: '20px',
+              textTransform: 'none',
+              marginRight: '16px'
+            }}
+            onClick={() => {
+              const newForm = {
+                client_id: state.session.client_id,
+                form_id: `form_${Date.now()}`,
+                form_name: 'New Form',
+                category: '',
+                sections: [],
+                fields: {}
+              };
+              updateReactData({
+                showFormEditor: true,
+                formEditorRecord: newForm
+              }, true);
+            }}
+          >
+            + New Form
+          </Button>
+        }
       </DialogActions>
       {reactData.showFormEditor && (
         <Dialog
