@@ -85,19 +85,22 @@ class ErrorBoundary extends React.Component {
         .catch(putError => {
           console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
         });
-      try {
-        let messageObj = {
-          client: cookieValues.AVAuser.client,
-          author: cookieValues.AVAuser.user_id,
-          messageText: `AVA ERROR ${errorInfo.message} in ${errorInfo.fileName} at ${errorInfo.location || 'n/a'}.  See Activity Log for User ${cookieValues.AVAuser.user_id || 'error-no_cookie'} at ${timestamp}`,
-          thread_id: `error_thread_${timestamp}`,
-          recipientList: 'rsteele',
-          subject: `AVA ERROR at ${cookieValues.AVAuser.client} for ${cookieValues.AVAuser.user_id}`
-        };
-        sendMessages(messageObj);
-      }
-      catch {
-        console.log(`Unable to send message.`);
+      const env = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
+      if (env === 'L') {
+        try {
+          let messageObj = {
+            client: cookieValues.AVAuser.client,
+            author: cookieValues.AVAuser.user_id,
+            messageText: `AVA ERROR ${errorInfo.message} in ${errorInfo.fileName} at ${errorInfo.location || 'n/a'}.  See Activity Log for User ${cookieValues.AVAuser.user_id || 'error-no_cookie'} at ${timestamp}`,
+            thread_id: `error_thread_${timestamp}`,
+            recipientList: 'rsteele',
+            subject: `AVA ERROR at ${cookieValues.AVAuser.client} for ${cookieValues.AVAuser.user_id} in ${env}`
+          };
+          sendMessages(messageObj);
+        }
+        catch {
+          console.log(`Unable to send message.`);
+        }
       }
       return (
         <Box
