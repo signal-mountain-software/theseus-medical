@@ -38,6 +38,26 @@
   <div id="c" style="width:100%; margin:auto; margin-top:64px; text-align:center;">Please tap 
         <a href="%PUBLIC_URL%/refresh">here</a>
     to launch AVA.</div>
+  <script>
+    (function () {
+      var root = document.getElementById('root');
+      var fallback = document.getElementById('c');
+
+      if (!root || !fallback) {
+        return;
+      }
+
+      var syncFallbackVisibility = function () {
+        var hasAppContent = root.childElementCount > 0;
+        fallback.style.display = hasAppContent ? 'none' : 'block';
+      };
+
+      syncFallbackVisibility();
+
+      var observer = new MutationObserver(syncFallbackVisibility);
+      observer.observe(root, { childList: true, subtree: true });
+    })();
+  </script>
   <!--
       This HTML file is a template.
       If you open it directly in the browser, you will see an empty page.
