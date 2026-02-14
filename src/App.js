@@ -86,7 +86,7 @@ class ErrorBoundary extends React.Component {
           console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
         });
       const env = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
-      if (env === 'L') {
+      if (env !== 'L') {
         try {
           let messageObj = {
             client: cookieValues.AVAuser.client,
