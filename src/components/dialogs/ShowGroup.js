@@ -72,6 +72,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
     groupMemberList: [],
     groupsManagedObject: [],
     showGroupSelect: false,
+    groupControlKey: 0,
     safeMode: safeMode || false,
     groupName: pGroup_name,
     groupID: '',
@@ -453,6 +454,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
         }
         {reactData.showGroupSelect && options.groupManagement && (reactData.building === 'done') &&
           <GroupControl
+            key={`group_control_${reactData.groupControlKey}`}
             defaults={defaults}
             pSession={pSession}
             groupsManagedObject={reactData.groupsManagedObject}
@@ -464,20 +466,12 @@ export default ({ options, defaults, onClose, onAbort }) => {
               }, true);
               onClose(reactData.updatesMade);
             }}
-            onSelect={async (selectedGroup, selectedIndex) => {
-              updateReactData({
-                selectedIndex: selectedIndex,
-                showGroupSelect: false,
-                groupName: reactData.groupsManagedObject[selectedGroup].group_name,
-                groupID: reactData.groupsManagedObject[selectedGroup].group_id,
-                groupRole: reactData.groupsManagedObject[selectedGroup].role
-              }, false);
-              await getGroupMemberList([reactData.groupsManagedObject[selectedGroup].group_id]);
-              setForceRedisplay(!forceRedisplay);
-            }}
             onRefresh={async (responseObj) => {
               let { newGroupID, newGroupName } = responseObj || { newGroupID: false, newGroupName: false };
-              let reactUpdObj = { showGroupSelect: true };
+              let reactUpdObj = {
+                showGroupSelect: true,
+                groupControlKey: reactData.groupControlKey + 1
+              };
               let groupList = makeArray(pGroup_id, /[~,;]/);
               if (newGroupID) {
                 let newGroupObj = {

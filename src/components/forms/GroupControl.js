@@ -6,6 +6,7 @@ import { createNewGroup, getGroupMembers, getMemberList } from '../../util/AVAGr
 import { dbClient, sentenceCase, isObject, recordExists, deepCopy, listFromArray, cl } from '../../util/AVAUtilities';
 import AVATextInput from '../forms/AVATextInput';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
+import GroupMaintenance from '../dialogs/GroupMaintenance';
 import { getPerson } from '../../util/AVAPeople';
 
 import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography } from '@material-ui/core';
@@ -21,6 +22,7 @@ import SendIcon from '@material-ui/icons/Send';
 import ExpandMoreIcon from '@material-ui/icons/Visibility';
 import ExpandLessIcon from '@material-ui/icons/VisibilityOff';
 import ArrowBackIcon from '@material-ui/icons/ArrowBack';
+import HighlightOffIcon from '@material-ui/icons/HighlightOff';
 
 import { SET_GROUPS } from '../../contexts/Session/actions';
 
@@ -105,7 +107,11 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, onSelect, onRefresh, renderAsDialog = true }) => {
+export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = () => { }, onRefresh = () => { }, renderAsDialog = true }) => {
+
+  const isMounted = React.useRef(false);
+  const isExiting = React.useRef(false);
+  const filterTimeoutRef = React.useRef(null);
 
   const { dispatch, state } = useSession();
 
@@ -146,6 +152,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     newGroups: {},
     people_filter: null,
     lower_people_filter: null,
+    minimumGroupLevel: calcMinimumGroupLevel() - 1,
+    people_filter_reset: 0,
     popUpOpen: false,
     progressMessage: 'Building Group List',
     pWidth: 60,
@@ -162,26 +170,48 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     selectedGroupMembers: false,
     sortedGroupMembers: [],
     updatesMade: false,
-    viewPeopleMaintenance: false
+    viewPeopleMaintenance: false,
+    viewGroupMaintenance: false
   });
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
   const updateReactData = (newData, force = false) => {
-    setReactData((prevValues) => (Object.assign(
-      prevValues,
-      newData
-    )));
-    if (force) { setRefreshTrigger(refreshTrigger => !refreshTrigger); }
+    if (isMounted.current) {
+      setReactData((prevValues) => (Object.assign(
+        prevValues,
+        newData
+      )));
+      if (force) { setRefreshTrigger(refreshTrigger => !refreshTrigger); }
+    }
   };
+
+  function exitGroupControl({ mode = 'cancel', reason = 'done', payload = {} } = {}) {
+    if (isExiting.current) {
+      return;
+    }
+    isExiting.current = true;
+    clearTimeout(filterTimeoutRef.current);
+
+    const responseObj = {
+      reason,
+      ...payload
+    };
+
+    if (mode === 'refresh') {
+      onRefresh(responseObj);
+    }
+    else {
+      onCancel(responseObj);
+    }
+  }
 
   const isSmallScreen = () => {
     return (reactData.window_width < 800);
   };
 
-  let filterTimeOut;
   async function handleChangePersonFilter(vCheck) {
-    clearTimeout(filterTimeOut);
+    clearTimeout(filterTimeoutRef.current);
     cl(`set timeout with ${vCheck} at ${new Date().getTime()}`);
-    filterTimeOut = setTimeout(async () => {
+    filterTimeoutRef.current = setTimeout(async () => {
       cl(`timeout ended ${vCheck} at ${new Date().getTime()}`);
       let reactUpdObj = {
         people_filter: vCheck,
@@ -200,6 +230,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
         reactUpdObj.selectedGroupMembers = memberList;
         reactUpdObj.sortedGroupMembers = sortGroupMembers(memberList);
       };
+      if (!vCheck || vCheck === '') {
+        reactUpdObj.people_filter_reset = reactData.people_filter_reset + 1;
+      }
       updateReactData(reactUpdObj, true);
     }, 500);
   };
@@ -219,7 +252,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     });
     return response;
   }
-  const [minimumGroupLevel,] = React.useState(calcMinimumGroupLevel() - 1);
 
   function hasChildren(this_index) {
     try {
@@ -499,6 +531,18 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     }
   }
 
+  const OKtoShow = (this_person) => {
+    if (!reactData.lower_people_filter) { return true; }
+
+    const person = reactData.selectedGroupMembers[this_person];
+    const allValues = Object.values(person).flatMap(value =>
+      (typeof value === 'object' && value !== null) ? Object.values(value) : value
+    );
+    const searchString = allValues.filter(v => v != null).join(' ').toLowerCase();
+
+    return searchString.includes(reactData.lower_people_filter);
+  };
+
   function removeChildren(this_group, newGroupList) {
     if (!state.groups.parent_of.hasOwnProperty(this_group)) {
       return newGroupList;
@@ -720,7 +764,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
 
   async function selectMembers(this_group) {
     let response = {};
-    let memberList = await getMemberList(this_group, state.session.client_id, { "exclude": false });
+    let memberList = await getMemberList(this_group, state.session.client_id, { "name_and_search": true, state });
     for (const this_member of memberList.peopleList) {
       response[this_member.person_id] = this_member;
     }
@@ -765,9 +809,15 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
   }
 
   React.useEffect(() => {
+    isMounted.current = true;
+    isExiting.current = false;
     initialize();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      isMounted.current = false;
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(filterTimeoutRef.current);
+    };
   }, [pSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
@@ -787,7 +837,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
               paddingTop: 3,
             }}
           >
-            {`No Groups to show for ${pSession.patient_display_name|| 'your account'}`}
+            {`No Groups to show for ${pSession.patient_display_name || 'your account'}`}
           </Typography>
         </Box>
         :
@@ -821,7 +871,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                   minHeight: 2.8,
                 }}
                 id='List Filter'
+                key={`filter_${reactData.people_filter_reset}`}
                 className={classes.freeInput}
+                defaultValue={reactData.lower_people_filter || null}
                 onChange={event => (handleChangePersonFilter(event.target.value))}
                 helperText={'Filter People'}
                 inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
@@ -871,7 +923,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                   >
                     {Object.keys(groupsManagedObject).map((listEntry, listIndex) => (
                       <React.Fragment key={`frag_${listIndex}`}>
-                        {(((groupsManagedObject[listEntry].level - minimumGroupLevel) < 3) ||
+                        {(((groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) < 3) ||
                           !(reactData.levelHidden[listIndex] ?? reactData.defaultCollapsed)) &&
                           <Box
                             display='flex' flexDirection='row'
@@ -898,12 +950,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                             onContextMenu={async (e) => {
                               e.preventDefault();
                               updateReactData({
-                                alert: {
-                                  severity: 'info',
-                                  title: groupsManagedObject[listEntry].group_name,
-                                  message: <div>
-                                    Group ID: <strong>{listEntry}</strong></div>
-                                }
+                                viewGroupMaintenance: listEntry
                               }, true);
                             }}
                           >
@@ -929,11 +976,11 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                                   : null
                                 ),
                                 weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry)) || (reactData.selectedGroup_id === listEntry)) ? 'bold' : null),
-                                margin: { left: (groupsManagedObject[listEntry].level ? ((groupsManagedObject[listEntry].level - minimumGroupLevel) - 1) * 1.5 : 0), top: 0.35, bottom: 0.65, right: 0.8 },
+                                margin: { left: (groupsManagedObject[listEntry].level ? ((groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) - 1) * 1.5 : 0), top: 0.35, bottom: 0.65, right: 0.8 },
                               })}>
                               {groupsManagedObject[listEntry].group_name}
                             </Typography>
-                            {(groupsManagedObject[listEntry].level - minimumGroupLevel > 1) && hasChildren(listIndex) && (
+                            {(groupsManagedObject[listEntry].level - reactData.minimumGroupLevel > 1) && hasChildren(listIndex) && (
                               (reactData.levelHidden[listIndex + 1] ?? reactData.defaultCollapsed) ? (
                                 <ExpandMoreIcon
                                   style={{ size: 8, fontSize: '1rem' }}
@@ -1013,14 +1060,51 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
               >
                 <Typography
                   key={`g_name`}
+                  onClick={() => {
+                    updateReactData({
+                      viewGroupMaintenance: reactData.selectedGroupRec.group_id
+                    }, true);
+                  }}
                   style={AVATextStyle({
                     size: 1.5,
                     overflow: 'visible',
                     bold: true,
-                    margin: { top: 1, bottom: 1 },
+                    margin: { top: 1, bottom: 0 },
                   })}>
-                  {`${reactData.selectedGroupRec.group_name} (${reactData.sortedGroupMembers?.length || 0})`}
+                  {reactData.selectedGroupRec.group_name}
                 </Typography>
+                <Typography
+                  style={AVATextStyle({
+                    size: 0.9,
+                    margin: { top: 0, bottom: (reactData.lower_people_filter ? 0 : 1.2) },
+                    color: 'textSecondary',
+                    overflow: 'visible'
+                  })}
+                >
+                  {`${reactData.sortedGroupMembers?.length || 0} people in the group`}
+                </Typography>
+                {reactData.lower_people_filter &&
+                  <Box display='flex' flexDirection='row'
+                    justifyContent='flex-start'
+                    alignItems='center'
+                    style={{ marginBottom: 1.2, marginTop: 0 }}
+                    onClick={() => {
+                      handleChangePersonFilter('');
+                    }}
+                  >
+                    <Typography
+                      style={AVATextStyle({
+                        size: 0.9,
+                        margin: { top: 0, bottom: 0, right: 1 },
+                        color: 'textSecondary',
+                        overflow: 'visible'
+                      })}
+                    >
+                      {'This is a filtered subset.  Tap to remove the filter'}
+                    </Typography>
+                    <HighlightOffIcon />
+                  </Box>
+                }
                 <Paper component={Box} width='100%' elevation={0} overflow='auto' square
                   style={{ scrollbarWidth: 'thin', flexGrow: 1, display: 'flex' }}
                 >
@@ -1028,23 +1112,16 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                     justifyContent='flex-start'
                     alignItems='flex-start'
                   >
-                    {reactData.sortedGroupMembers && reactData.sortedGroupMembers.map((this_person, cX) => (
-                      (!reactData.lower_people_filter
-                        || (`${reactData.selectedGroupMembers[this_person].name.first} ${reactData.selectedGroupMembers[this_person].name.last}`).toLowerCase().includes(reactData.lower_people_filter)) &&
+                    {(reactData.lower_people_filter
+                      ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
+                      : reactData.sortedGroupMembers
+                    )?.map((this_person, cX) => (
                       <Typography
                         key={`g_textpeople-${cX}`}
                         style={AVATextStyle({
                           overflow: 'visible',
                           size: 1.2,
                           margin: { top: 0, bottom: 0.8 },
-                          weight: (reactData.selectedPerson_id === reactData.selectedGroupMembers[this_person].person_id
-                            ? 'bold'
-                            : null
-                          ),
-                          color: (reactData.selectedPerson_id === reactData.selectedGroupMembers[this_person].person_id
-                            ? 'orange'
-                            : null
-                          ),
                         })}
                         onClick={async () => {
                           updateReactData({
@@ -1135,6 +1212,52 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
           }}
         />
       }
+      {reactData.viewGroupMaintenance &&
+        <GroupMaintenance
+          pK={reactData.viewGroupMaintenance}
+          client_id={state.session.client_id}
+          overrideValues={null}
+          tableName='Groups'
+          pKName='group_id'
+          options={{
+            sectionToShow: null,
+            color: 'blue',
+            groupsManagedObject,
+            minimumGroupLevel: reactData.minimumGroupLevel,
+
+          }}
+          onModuleClose={async ({ response = {}, reason }) => {
+            console.log(`Exit from GroupMaintenance with reason: `, reason);
+            let reactUpd = {};
+            if (response.reload) {
+              let jumpTo = `${window.location.href.replace('refresh', 'theseus')}?goto=group_management`;
+              window.location.replace(jumpTo);
+            }
+            if (response.refresh) {
+              exitGroupControl({
+                mode: 'refresh',
+                reason: reason || 'group_maintenance_reload',
+                payload: {
+                  source: 'group_maintenance',
+                  restart: true
+                }
+              });
+              return;
+            }
+            else {
+              if (response.rename) {
+                groupsManagedObject[reactData.viewGroupMaintenance].group_name = response.rename;
+              }
+              if (response.membership) {
+                reactUpd.selectedGroupMembers = await selectMembers(reactData.viewGroupMaintenance);
+                reactUpd.sortedGroupMembers = sortGroupMembers(reactUpd.selectedGroupMembers);
+              }
+            }
+            reactUpd.viewGroupMaintenance = false;
+            updateReactData(reactUpd, true);
+          }}
+        />
+      }
       {promptForName &&
         <AVATextInput
           promptText="Enter a Name for the Group you're creating"
@@ -1196,7 +1319,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
           size='small'
           startIcon={<CloseIcon fontSize="small" />}
           onClick={() => {
-            onCancel();
+            exitGroupControl({
+              mode: 'cancel',
+              reason: 'done'
+            });
           }}
         >
           {'Done'}

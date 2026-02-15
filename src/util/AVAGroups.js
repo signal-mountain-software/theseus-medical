@@ -304,8 +304,14 @@ export async function getGroupAccess(client_id, person_id, options) {
   }
 
   let classList = [];
-  let my_personRec = await getPerson(person_id);
-  const is_admin = ['master', 'admin'].includes(my_personRec.account_class);
+  let my_personRec = {};
+  if (options && options.personRec) { 
+    my_personRec = options.personRec;
+  }
+  else {
+    my_personRec = await getPerson(person_id);
+  }
+  const is_admin = ['master', 'admin'].includes(my_personRec?.account_class || 'local');
 
   // Pass zero - assure that my group list is correct.
   // If I am a member of a group, I am also a member of its parent
