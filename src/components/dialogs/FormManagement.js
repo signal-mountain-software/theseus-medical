@@ -111,6 +111,26 @@ const useStyles = makeStyles(theme => ({
     display: 'none',
     visibility: 'hidden'
   },
+  filterSelect: {
+    color: '#111111',
+    '& .react-dropdown-select-content': {
+      color: '#111111'
+    },
+    '& .react-dropdown-select-input': {
+      color: '#111111'
+    },
+    '& .react-dropdown-select-dropdown': {
+      backgroundColor: '#ffffff',
+      color: '#111111'
+    },
+    '& .react-dropdown-select-item': {
+      color: '#111111'
+    },
+    '& .react-dropdown-select-item-selected': {
+      backgroundColor: '#e6f0ff',
+      color: '#111111'
+    }
+  },
 }));
 
 export default ({ defaults, onClose }) => {
@@ -1072,6 +1092,7 @@ export default ({ defaults, onClose }) => {
                       <Select
                         options={reactData.default_filters}
                         searchBy={'label'}
+                        className={classes.filterSelect}
                         style={{
                           fontSize: '0.8rem',
                           marginLeft: -5,
