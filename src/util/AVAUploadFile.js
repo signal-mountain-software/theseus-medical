@@ -103,14 +103,30 @@ export default ({ onCancel, onLoad, options = {} }) => {
     }
   }
 
-  let upload;
+  const progressTickRef = React.useRef(0);
+  const getUploadSettings = (fileSize) => {
+    const basePartSize = options.partSize || 10 * 1024 * 1024;
+    const baseQueueSize = options.queueSize || 4;
+    if (!fileSize) {
+      return { partSize: basePartSize, queueSize: baseQueueSize };
+    }
+    if (fileSize >= 1024 * 1024 * 1024) {
+      return { partSize: Math.max(basePartSize, 50 * 1024 * 1024), queueSize: Math.max(baseQueueSize, 8) };
+    }
+    if (fileSize >= 200 * 1024 * 1024) {
+      return { partSize: Math.max(basePartSize, 20 * 1024 * 1024), queueSize: Math.max(baseQueueSize, 6) };
+    }
+    return { partSize: basePartSize, queueSize: baseQueueSize };
+  };
+
   async function handleSaveFile(pTarget) {
     let pType = pTarget.type;
     let now_time = new Date().getTime();
     let newKey = pTarget.name.replace('.', `_${now_time}.`);
-    upload = s3.upload({
-      partSize: 10 * 1024 * 1024,
-      queueSize: 4,
+    const uploadSettings = getUploadSettings(pTarget?.size);
+    const upload = s3.upload({
+      partSize: uploadSettings.partSize,
+      queueSize: uploadSettings.queueSize,
       Bucket: 'theseus-medical-storage',
       Key: newKey,
       Body: pTarget,
@@ -272,6 +288,11 @@ export default ({ onCancel, onLoad, options = {} }) => {
             reactData.loadProgress.splice(reactData_index, 1);
           }
           else {
+            const now = Date.now();
+            if (now - progressTickRef.current < 100 && progress.loaded !== progress.total) {
+              return;
+            }
+            progressTickRef.current = now;
             let pFactor = 1000;
             do {
               pFactor *= 10;
