@@ -8,6 +8,7 @@ import useSession from '../../hooks/useSession';
 
 import GroupProfileSection from '../sections/GroupProfileSection';
 import GroupSecuritySection from '../sections/GroupSecuritySection';
+import GroupHierarchySection from '../sections/GroupHierarchySection';
 
 import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -56,7 +57,7 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
     formHistoryMode: false,
     recentlyCompletedDocs: [],
     addAccountList: [],
-    groupsManagedObject: options.groupsManagedObject || {},
+    groupsManagedObject: deepCopy(options.groupsManagedObject || {}),
     familyFormsObj: {},
     user_class: state.user.account_class,
     administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
@@ -102,6 +103,9 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
       },
       GroupSecuritySection: {
         component_id: GroupSecuritySection,
+      },
+      GroupHierarchySection: {
+        component_id: GroupHierarchySection,
       }
     },
     og: {
@@ -138,13 +142,21 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
           version_id: 0,
           component_name: 'GroupProfileSection'
         },
-      {
+        {
           section_name: 'Group Security',
           color: options?.color || 'orange',
           isOpen: false,
           isAuthorized: true,
           version_id: 0,
           component_name: 'GroupSecuritySection'
+        },
+        {
+          section_name: 'Parent & Children',
+          color: options?.color || 'orange',
+          isOpen: false,
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'GroupHierarchySection'
         }]
       };
 
@@ -268,7 +280,7 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
             let reactUpdObj = {
               unsavedChanges: true,
               current: reactData.current,
-            };            
+            };
             if (reactUpd) {
               Object.assign(reactUpdObj, reactUpd);
             };
@@ -613,7 +625,7 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
                 onClick={async () => {
                   let goodSave = await saveChanges();
                   if (goodSave) {
-                   handleGoodExit({ reason: 'save_finish' });
+                    handleGoodExit({ reason: 'save_finish' });
                   }
                   else {
                     updateReactData({
