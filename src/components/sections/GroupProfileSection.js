@@ -6,7 +6,9 @@ import { Box, Typography, TextField, Button, Avatar, Switch } from '@material-ui
 import { AVATextStyle } from '../../util/AVAStyles';
 import { AVAclasses } from '../../util/AVAStyles';
 import AVAUploadFile from '../../util/AVAUploadFile';
+import { listFromArray } from '../../util/AVAUtilities';
 
+import QuickSearch from '../sections/QuickSearch';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 
 export default ({ currentValues, reactData, updateReactData, updateField }) => {
@@ -80,7 +82,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
           id='GroupName'
           autoComplete='off'
           style={{ width: '500px' }}
-          onBlur={async (event) => {
+          onChange={async (event) => {
             await updateField({
               updateList:
                 [{
@@ -101,7 +103,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         marginTop={4}
       >
         <Typography
-          style={AVATextStyle({ margin: { right: 0.5 } })}
+          style={AVATextStyle({ margin: { right: 0.5, bottom: 0.5 } })}
         >
           {'Logo / Image'}
         </Typography>
@@ -110,6 +112,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
           marginTop={0}
           key={'logo_area'}
         >
+          <Avatar className={AVAClass.AVAAvatar} src={currentValues.Groups?.group_style?.logo} />
           <Button
             className={AVAClass.AVAButton}
             style={{ width: 'fit-content', marginTop: '8px', marginBottom: '8px', marginLeft: '4px', marginRight: '16px' }}
@@ -124,12 +127,41 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
             <Typography
               style={AVATextStyle({ size: 0.8, margin: { left: 0.5, right: 0.5 } })}
             >
-              {'Upload an Image for the Group'}
+              {'New Image'}
             </Typography>
           </Button>
-          <Avatar className={AVAClass.AVAAvatar} src={currentValues.Groups?.group_style?.logo} />
         </Box>
       </Box>
+
+
+      <Box display='flex' alignItems='center'
+        flexDirection='row'
+        marginTop={4}
+      >
+        <Typography
+          style={AVATextStyle({ margin: { right: 0.5 } })}
+        >
+          <div><p>Owners/Administrators of this group<br />
+            <strong>{listFromArray(reactData.admin_names) || 'None'}</strong></p></div>
+        </Typography>
+        <Button
+          className={AVAClass.AVAButton}
+          style={{ width: 'fit-content', marginTop: '8px', marginBottom: '8px', marginLeft: '4px', marginRight: '16px' }}
+          size='small'
+          onClick={() => {
+            updateReactData({
+              showQuickSearch: true
+            }, true);
+          }}
+        >
+          <Typography
+            style={AVATextStyle({ size: 0.8, margin: { left: 0, right: 0 } })}
+          >
+            {'Update'}
+          </Typography>
+        </Button>
+      </Box>
+
 
       {propList.map((this_prop, listIndex) => (
         <React.Fragment key={listIndex}>
@@ -184,13 +216,12 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({ opacity: '40%', margin: { top: 1, right: 0.5 } })}
         >
-          <div><p>Items in red are the default settings for {state.session.client_name}<br/>
-          This is Group Code {currentValues.Groups?.group_id || 'unknown'}</p></div>
+          <div><p>Items in red are the default settings for {state.session.client_name}<br />
+            <strong>{currentValues.Groups?.group_id}</strong></p></div>
         </Typography>
       </Box>
 
-      {
-        reactData.getLogo &&
+      {reactData.getLogo &&
         <AVAUploadFile
           options={{
             buttonText: ['Choose', 'Save & Continue'],
@@ -212,6 +243,37 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
                 }],
               reactUpd: {
                 getLogo: false
+              }
+            });
+          }}
+        />
+      }
+      {reactData.showQuickSearch &&
+        <QuickSearch
+          reactData={reactData}
+          updateReactData={updateReactData}
+          options={{
+            keepSelections: true,
+            withGroups: false,
+            withPreferred: false,
+            hidePeople: false,
+            pickAndGo: true,
+            buttonColor: (reactData.selections.length === 0) ? 'red' : 'green',
+            buttonText: 'Select',
+            showAll: true,
+            title: 'Select Owners/Administrators for this Group'
+          }}
+          onClose={async (selections) => {
+            await updateField({
+              updateList:
+                [{
+                  tableName: 'Groups',
+                  fieldName: 'admin_list',
+                  newData: selections.map(s => s.person_id) || [state.session.person_id]
+                }],
+              reactUpd: {
+                showQuickSearch: false,
+                admin_names: selections.map(s => s.person_name) || [state.session.person_display_name]
               }
             });
           }}

@@ -144,13 +144,18 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
       <Box display='flex' alignItems='flex-start'
         justifyContent='flex-start' flexDirection='row'>
         <Typography
-          style={AVATextStyle({ margin: { top: 1, right: 0.5 } })}
+          style={AVATextStyle({ margin: { top: 0, right: 0.5 } })}
         >
           <div>
-            <p>Use the orange boxes to grant or deny permissions for others to access this group<br /><br />
+            <p style={{ fontSize: '1.3em' }}><strong>This screen sets permissions for access to the {currentValues.Groups.name} group</strong>.</p>
+            <p>Use the orange check boxes to grant or deny permission to members of specific groups.<br /><br />
               Administrators will always have access to all groups<br /><br />
-              Groups in <strong>bold</strong> indicate that the group has granted access to members of {state.session.client_name}</p>
+              If a group's name appears <strong style={{ color: 'orange' }}>this way</strong>, the owner of that group has granted access to members of the {currentValues.Groups.name} group.</p>
           </div>
+          {currentValues.Groups.may_access &&
+            <div><p style={{ color: 'red' }}>NOTE: There are aditional permissions granted to members of the {currentValues.Groups.name} group through a special "may_access" code.<br />
+              Contact AVA Support to update this setting.</p></div>
+          }
         </Typography>
       </Box>
 

@@ -2,6 +2,7 @@ import React from 'react';
 
 import { deepCopy, isEmpty, dbClient, cl, recordExists } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle, isDark } from '../../util/AVAStyles';
+import { makeName } from '../../util/AVAPeople';
 
 import useSession from '../../hooks/useSession';
 
@@ -175,6 +176,12 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
               overrideValues  // any incoming values that should override the DB record
             ))
         };
+        // We need to get the names that go with the Group Admins - store in reactData.admin_names for use in the GroupProfileSection
+        let admin_names = [];
+        for (let this_adminID of gRecs.Item.admin_list || []) {
+          admin_names.push(await makeName(this_adminID) || this_adminID);
+        }
+        reactUpdObj.admin_names = admin_names;
       }
       else {
         return {
