@@ -53,14 +53,15 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
     addFamilyMember: false,
     viewFamilyMember: false,
     levelHidden: [],
-    user_id: state.user.user_id,
+    user_id: state.session.user_id,
+    person_id: state.session.patient_id,
     formHistoryMode: false,
     recentlyCompletedDocs: [],
     addAccountList: [],
     groupsManagedObject: deepCopy(options.groupsManagedObject || {}),
     familyFormsObj: {},
-    user_class: state.user.account_class,
-    administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
+    user_class: state.session.account_class,
+    administrative_account: (['admin', 'support', 'master'].includes(state.session.account_class)),
     unsavedChanges: false,
     alert: false,
     myFormListObj: {},
@@ -94,6 +95,8 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
     addAttachment: false,
     isError: false,
     showQuickSearch: false,
+    groupsToAdd: [],
+    pendingAddIconGroups: [],
     addLink: false,
     needsHeader: false,
     changesMade: false,
@@ -226,11 +229,11 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
 
   function buildExitResponse() {
     let responseObj = { response: {} };
-    if (reactData.refresh_onExit) {
-      responseObj.response = { refresh: true };
-    }
-    else if (reactData.reload_onExit) {
+   if (reactData.reload_onExit) {
       responseObj.response = { reload: true };
+    }
+    else if (reactData.refresh_onExit) {
+      responseObj.response = { refresh: true };
     }
     else {
       if (reactData.keyChange) {
@@ -388,13 +391,31 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
             return false;
           });
         reactData.og[tableName] = deepCopy(reactData.current[tableName]);
-        updateReactData({
-          unsavedChanges: false,
-          og: reactData.og,
-          current: reactData.current
-        }, true);
       }
     }
+    // add any new groups to the database
+    for (let newGroup of reactData.groupsToAdd) {
+      reactData.reload_onExit = true;  // if we are adding new groups, we need to do a full reload on exit to update the group list in the GroupHierarchySection
+      await dbClient.put({
+        TableName: 'Groups',
+        Item: newGroup
+      })
+        .promise()
+        .catch(error => {
+          console.log(`caught error putting to Groups; error is:`, error);
+          return false;
+        });
+    }
+
+    updateReactData({
+      unsavedChanges: false,
+      groupsToAdd: [],
+      pendingAddIconGroups: [],
+      reload_onExit: reactData.reload_onExit,
+      og: reactData.og,
+      current: reactData.current
+    }, true);
+
     return true;
   };
 

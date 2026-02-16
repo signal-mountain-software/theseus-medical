@@ -141,22 +141,34 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
       key={`profileSection_masterBox`}
       flexGrow={2} px={2} py={4} display='flex' flexDirection='column'
     >
-      <Box display='flex' alignItems='flex-start'
-        justifyContent='flex-start' flexDirection='row'>
+      <Box display='flex' alignItems='flex-start' marginBottom={2}
+        justifyContent='flex-start' flexDirection='column'>
+        <Typography
+          style={AVATextStyle({ bold: true, size: 1.2, margin: { top: 0, right: 0.5 } })}
+        >
+          This screen sets permissions for access to the {currentValues.Groups.name} group.<br /><br />
+        </Typography>
         <Typography
           style={AVATextStyle({ margin: { top: 0, right: 0.5 } })}
         >
-          <div>
-            <p style={{ fontSize: '1.3em' }}><strong>This screen sets permissions for access to the {currentValues.Groups.name} group</strong>.</p>
-            <p>Use the orange check boxes to grant or deny permission to members of specific groups.<br /><br />
-              Administrators will always have access to all groups<br /><br />
-              If a group's name appears <strong style={{ color: 'orange' }}>this way</strong>, the owner of that group has granted access to members of the {currentValues.Groups.name} group.</p>
-          </div>
-          {currentValues.Groups.may_access &&
-            <div><p style={{ color: 'red' }}>NOTE: There are aditional permissions granted to members of the {currentValues.Groups.name} group through a special "may_access" code.<br />
-              Contact AVA Support to update this setting.</p></div>
-          }
+          Use the orange check boxes to grant or deny permission to members of specific groups.<br /><br />
         </Typography>
+        <Typography
+          style={AVATextStyle({ margin: { top: 0, right: 0.5 } })}
+        >
+          Administrators will always have access to all groups<br /><br />
+        </Typography>
+        <Typography
+          style={AVATextStyle({ margin: { top: 0, right: 0.5 } })}
+        >
+          If a group's name appears <strong style={{ color: 'orange' }}>this way</strong>, the owner of that group has granted access to members of the {currentValues.Groups.name} group.
+        </Typography>
+        {currentValues.Groups.may_access &&
+          <Typography style={AVATextStyle({ margin: { top: 0.5, right: 0.5 }, color: 'red' })}>
+            NOTE: There are aditional permissions granted to members of the {currentValues.Groups.name} group through a special "may_access" code.<br />
+            Contact AVA Support to update this setting.
+          </Typography>
+        }
       </Box>
 
       <Paper component={Box} elevation={0} overflow='auto' square
@@ -181,13 +193,13 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
                   }}
                   key={`group-list_${listIndex}`}
                 >
-                  <Checkbox                   
+                  <Checkbox
                     checked={reactData.may_access
                       ? reactData.may_access.includes(reactData.groupsManagedObject[listEntry].group_id)
                       : false
                     }
                     name={`cbox1_${listIndex}`}
-                    style={{color: 'orange'}}
+                    style={{ color: 'orange' }}
                     disableRipple
                     onChange={async () => {
                       const this_group = reactData.groupsManagedObject[listEntry].group_id;

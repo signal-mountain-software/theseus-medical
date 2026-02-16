@@ -1,13 +1,17 @@
 import React from 'react';
 
-import { Box, Typography, Paper } from '@material-ui/core/';
+import { Box, Typography, Paper, TextField } from '@material-ui/core/';
 
 import { AVATextStyle } from '../../util/AVAStyles';
 
-import ExpandMoreIcon from '@material-ui/icons/Visibility';
-import ExpandLessIcon from '@material-ui/icons/VisibilityOff';
+import SaveIcon from '@material-ui/icons/Save';
+import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
+import HighlightOffIcon from '@material-ui/icons/HighlightOff';
 
 export default ({ currentValues, reactData, updateReactData, updateField }) => {
+
+  const [tempName, setTempName] = React.useState("");
+  const [tempBelongsTo, setTempBelongsTo] = React.useState(null);
 
   React.useEffect(() => {
 
@@ -21,7 +25,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
     };
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  function rebuildGroupsManagedObject(source, target) {
+  function rebuildGroupsManagedObject({ source, target }) {
 
     let OGGroupList = Object.keys(reactData.groupsManagedObject);
     let sourceAt = OGGroupList.indexOf(source);
@@ -57,7 +61,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
     let newGroupList = [];
     if (targetAt < sourceAt) {
       let upToTarget = beforeSourceHierarchy.slice(0, targetAt + 1);
-      let afterTarget = beforeSourceHierarchy.slice(targetAt +1);
+      let afterTarget = beforeSourceHierarchy.slice(targetAt + 1);
       // new list is upToTarget + sourceHierarchy + afterTarget + afterSourceHierarchy
       newGroupList = upToTarget.concat(sourceHierarchy).concat(afterTarget).concat(afterSourceHierarchy);
     }
@@ -77,35 +81,17 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
   }
 
-  function hasChildren(this_index) {
-    try {
-      return (reactData.groupsManagedObject[reactData.groupsManagedObject[this_index + 1]].level > reactData.groupsManagedObject[reactData.groupsManagedObject[this_index]].level);
-    }
-    catch {
-      return false;
-    }
-  }
-
   return (
     <Box
       key={`profileSection_masterBox`}
       flexGrow={2} px={2} py={4} display='flex' flexDirection='column'
     >
-      <Box display='flex' alignItems='flex-start'
-        justifyContent='flex-start' flexDirection='row'>
+      <Box display='flex' alignItems='flex-start' marginBottom={2}
+        justifyContent='flex-start' flexDirection='column'>
         <Typography
-          style={AVATextStyle({ margin: { top: 0, right: 0.5 } })}
+          style={AVATextStyle({ bold: true, size: 1.2, margin: { top: 0, right: 0.5 } })}
         >
-          <div>
-            <p style={{ fontSize: '1.3em' }}><strong>This screen sets permissions for access to the {currentValues.Groups.name} group</strong>.</p>
-            <p>Use the orange check boxes to grant or deny permission to members of specific groups.<br /><br />
-              Administrators will always have access to all groups<br /><br />
-              If a group's name appears <strong style={{ color: 'orange' }}>this way</strong>, the owner of that group has granted access to members of the {currentValues.Groups.name} group.</p>
-          </div>
-          {currentValues.Groups.may_access &&
-            <div><p style={{ color: 'red' }}>NOTE: There are aditional permissions granted to members of the {currentValues.Groups.name} group through a special "may_access" code.<br />
-              Contact AVA Support to update this setting.</p></div>
-          }
+          Use this screen to change {currentValues.Groups.name}'s parent group and to add new children<br /><br />
         </Typography>
       </Box>
 
@@ -122,92 +108,156 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
               {(((reactData.groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) < 3) ||
                 !(reactData.levelHidden?.[listIndex] ?? false)) &&
                 <Box
-                  display='flex' flexDirection='row'
-                  justifyContent='flex-start'
-                  alignItems='center'
+                  display='flex' flexDirection='column'
+                  justifyContent='center'
+                  alignItems='flex-start'
                   style={{
                     marginLeft: (reactData.groupsManagedObject[listEntry].level ? ((reactData.groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) - 1) * 1.5 : 0) + 'rem',
                     marginTop: 0.5, marginBottom: 0.5,
                   }}
                   key={`group-list_${listIndex}`}
                 >
-                  <Typography
-                    key={`g_text_${listIndex}`}
-                    onClick={async () => {
-                      // Tapping the group name will make that group the parent of the current group
-                      let newGroupObject = rebuildGroupsManagedObject(currentValues.Groups.group_id, listEntry);
-                      if (!newGroupObject) {
-                        // This means the user attempted to move a group to become a child of itself, which is not allowed.  Do not update the group hierarchy and instead just return.
-                        await updateField({
-                          reactUpd: {
-                            alert: {
-                              severity: 'warning',
-                              title: 'Circular Reference',
-                              message: `A group cannot be a child of itself.`,
+                  <Box display='flex' flexDirection='row' alignItems='center'>
+                    <Typography
+                      key={`g_text_${listIndex}`}
+                      onClick={async () => {
+                        if (tempBelongsTo !== null) {
+                          return;
+                        }
+                        // Tapping the group name will make that group the parent of the current group
+                        let newGroupObject = rebuildGroupsManagedObject({ source: currentValues.Groups.group_id, target: listEntry });
+                        if (!newGroupObject) {
+                          // This means the user attempted to move a group to become a child of itself, which is not allowed.  Do not update the group hierarchy and instead just return.
+                          await updateField({
+                            reactUpd: {
+                              alert: {
+                                severity: 'warning',
+                                title: 'Circular Reference',
+                                message: `A group cannot be a child of itself.`,
+                              }
                             }
-                          }
-                        });
-                      }
-                      else {
-                        await updateField({
-                          updateList:
-                            [{
-                              tableName: 'Groups',
-                              fieldName: 'belongs_to',
-                              newData: listEntry,
-                              refresh_onExit: true
-                            }],
-                          reactUpd: {
-                            groupsManagedObject: newGroupObject
-                          }
-                        });
-                      }
-
-
-                    }}
-                    style={AVATextStyle({
-                      size: 1.2,
-                      margin: { top: 0.2 },
-                      ...(currentValues.Groups.belongs_to === listEntry
-                        ? { color: 'orange', bold: true }
-                        : (currentValues.Groups.group_id === listEntry ? { color: 'blue' } : {})),
-                    })}
-                  >
-                    {reactData.groupsManagedObject[listEntry].group_name}
-                  </Typography>
-                  {(reactData.groupsManagedObject[listEntry].level - reactData.minimumGroupLevel > 1) && hasChildren(listIndex) && (
-                    (reactData.levelHidden[listIndex + 1] ?? true) ? (
-                      <ExpandMoreIcon
-                        style={{ size: 8, fontSize: '1rem', }}
-                        onClick={async () => {
-                          let keyList = Object.keys(reactData.groupsManagedObject);
-                          let kLL = keyList.length;
-                          for (let i = listIndex + 1; ((i < kLL) && (reactData.groupsManagedObject[keyList[i]].level > reactData.groupsManagedObject[listEntry].level)); i++) {
-                            if (reactData.groupsManagedObject[keyList[i]].level === (reactData.groupsManagedObject[listEntry].level + 1)) {
-                              reactData.levelHidden[i] = false;
+                          });
+                        }
+                        else {
+                          await updateField({
+                            updateList:
+                              [{
+                                tableName: 'Groups',
+                                fieldName: 'belongs_to',
+                                newData: listEntry,
+                                refresh_onExit: true
+                              }],
+                            reactUpd: {
+                              groupsManagedObject: newGroupObject
                             }
+                          });
+                        }
+                      }}
+                      style={AVATextStyle({
+                        size: 1.2,
+                        margin: { top: 0.2 },
+                        ...(currentValues.Groups.belongs_to === listEntry
+                          ? { color: 'orange', bold: true }
+                          : (currentValues.Groups.group_id === listEntry ? { color: 'blue' } : {})),
+                      })}
+                    >
+                      {reactData.groupsManagedObject[listEntry].group_name}
+                    </Typography>
+                    {((listEntry === currentValues.Groups.group_id)
+                      || (reactData.pendingAddIconGroups || []).includes(listEntry)
+                      || ((reactData.groupsToAdd || []).some((groupObj) => (groupObj.group_id === listEntry))))
+                      && (tempBelongsTo !== listEntry) &&
+                      <AddCircleOutlineIcon
+                        style={{ fontSize: '1rem', marginLeft: '0.4rem', marginTop: '0.25rem', cursor: 'pointer' }}
+                        onClick={(e) => {
+                          if (tempBelongsTo !== null) {
+                            return;
                           }
-                          updateReactData({
-                            levelHidden: reactData.levelHidden
-                          }, true);
+                          e.stopPropagation();
+                          setTempBelongsTo(listEntry);
                         }}
                       />
-                    ) : (
-                      <ExpandLessIcon
-                        style={{ size: 8, fontSize: '1rem' }}
-                        onClick={async () => {
-                          let keyList = Object.keys(reactData.groupsManagedObject);
-                          let kLL = keyList.length;
-                          for (let i = listIndex + 1; ((i < kLL) && (reactData.groupsManagedObject[keyList[i]].level > reactData.groupsManagedObject[listEntry].level)); i++) {
-                            reactData.levelHidden[i] = true;
+                    }
+                  </Box>
+                  {tempBelongsTo === listEntry &&
+                    <Box
+                      display='flex' flexDirection='row'
+                      justifyContent='flex-start'
+                      alignItems='center'
+                      style={{
+                        marginLeft: '1.5rem',
+                        marginTop: 0.5, marginBottom: 0.5,
+                      }}
+                      key={`group-list_${listIndex}`}
+                    >
+                      <TextField
+                        key={`g_input_${listIndex}`}
+                        defaultValue={""}
+                        onChange={(e) => {
+                          setTempName(e.target.value);
+                        }}
+                        style={AVATextStyle({ size: 1.0, margin: { top: -0.2, bottom: 0 } })}
+                      />
+                      <SaveIcon
+                        style={{ fontSize: '0.9rem', marginLeft: '0.5rem', cursor: 'pointer' }}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          // We will save the new name for the current group, but only if the tempName is not empty and is different from the current name.  If those conditions are not met, we will not make the update and instead just return.
+                          if (tempName && tempName.trim() !== '') {
+                            let timestamp = new Date().getTime();
+                            const new_GroupID = `${tempName.toLowerCase().replace(/\s/g, '_')}_${timestamp}`;  // create a new group_id by taking the tempName, converting to lowercase, and replacing spaces with underscores
+                            const newAdminSet = new Set(reactData.groupsManagedObject[listEntry].admin_list || []);
+                            newAdminSet.add(reactData.user_id);  // add the current user to the admin list for the new group, since they are creating the new group and should have admin permissions for it 
+                            newAdminSet.add(reactData.person_id);  // also add the current person to the admin list for the new group, since they are creating the new group and should have admin permissions for it
+                            const newGroupObject = {
+                              group_id: new_GroupID,
+                              "name": tempName,
+                              group_name: tempName,
+                              client_id: reactData.client_id,
+                              belongs_to: listEntry,
+                              group_type: 'admin',
+                              admin_list: Array.from(newAdminSet),
+                              level: reactData.groupsManagedObject[listEntry].level + 1,
+                            };
+                            reactData.groupsToAdd.push(newGroupObject);  // we need to add a new entry to the groupsToAdd array for the new group we are creating, which will be added to the database when the user clicks "Save Changes".  We can just push an empty object here because the group_id and name will be the same as the current group, which is being updated rather than a new group being created.  The important thing is that we are adding an entry to the groupsToAdd array so that the backend knows to update the group hierarchy for this group when we save changes.
+                            const pendingAddIconGroups = [
+                              ...(reactData.pendingAddIconGroups || []),
+                              new_GroupID
+                            ].filter((groupID, idx, arr) => arr.indexOf(groupID) === idx);
+                            // Now, insert this group into the groupsManagedObject in the correct location based on its level number, which is one level below the current group.  To do this, we can loop through the groupsManagedObject and find the correct location to insert the new group based on its level number.  We want to insert it after the last group that has a level number less than or equal to the new group's level number.
+                            // now, we need to full replace the groupsManagedObject with a new object that has the same items but in the new order and with the updated level numbers for the source hierarchy.
+                            let newGroupManagedObject = {};
+                            for (let i = 0; i <= listIndex; i++) {
+                              let this_groupID = Object.keys(reactData.groupsManagedObject)[i];
+                              newGroupManagedObject[this_groupID] = reactData.groupsManagedObject[this_groupID];
+                            }
+                            newGroupManagedObject[new_GroupID] = newGroupObject;
+                            for (let i = listIndex + 1; i < Object.keys(reactData.groupsManagedObject).length; i++) {
+                              let this_groupID = Object.keys(reactData.groupsManagedObject)[i];
+                              newGroupManagedObject[this_groupID] = reactData.groupsManagedObject[this_groupID];
+                            }
+                            setTempBelongsTo(null);
+                            setTempName("");
+                            await updateField({
+                              reactUpd: {
+                                groupsManagedObject: newGroupManagedObject,
+                                groupsToAdd: reactData.groupsToAdd,
+                                pendingAddIconGroups,
+                              }
+                            });
                           }
-                          updateReactData({
-                            levelHidden: reactData.levelHidden
-                          }, true);
                         }}
                       />
-                    )
-                  )}
+                      <HighlightOffIcon
+                        style={{ fontSize: '0.9rem', marginLeft: '0.4rem', cursor: 'pointer' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTempBelongsTo(null);
+                          setTempName("");
+                        }}
+                      />
+                    </Box>
+                  }
                 </Box>
               }
             </React.Fragment>

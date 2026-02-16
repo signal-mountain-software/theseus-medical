@@ -211,13 +211,17 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         </React.Fragment>
       ))}
 
-      <Box display='flex' alignItems='center'
-        justifyContent='flex-end' flexDirection='row'>
+      <Box display='flex' alignItems='flex-end'
+        justifyContent='flex-end' flexDirection='column'>
         <Typography
           style={AVATextStyle({ opacity: '40%', margin: { top: 1, right: 0.5 } })}
         >
-          <div><p>Items in red are the default settings for {state.session.client_name}<br />
-            <strong>{currentValues.Groups?.group_id}</strong></p></div>
+          Items in red are the default settings for {state.session.client_name}
+        </Typography>
+        <Typography
+          style={AVATextStyle({ opacity: '40%', margin: { top: 0, right: 0.5 } })}
+        >
+          ID: <strong>{currentValues.Groups?.group_id}</strong>
         </Typography>
       </Box>
 
