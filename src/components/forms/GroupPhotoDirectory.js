@@ -20,6 +20,7 @@ import PictureAsPdfIcon from '@material-ui/icons/PictureAsPdf';
 import useSession from '../../hooks/useSession';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
 import { isEmpty } from '../../util/AVAUtilities';
+import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 
 const INITIAL_RENDER_COUNT = 30;
 const RENDER_BATCH_COUNT = 30;
@@ -38,6 +39,13 @@ const useStyles = makeStyles(theme => ({
     },
     fixedHeader: {
         flexShrink: 0,
+        position: 'sticky',
+        marginLeft: theme.spacing(2),
+        marginRight: theme.spacing(2),
+        marginTop: theme.spacing(2),
+    
+        zIndex: 2,
+        backgroundColor: theme.palette.background.paper,
     },
     titleRow: {
         display: 'flex',
@@ -190,6 +198,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
     const [hiddenImagePeople, setHiddenImagePeople] = React.useState({});
     const [renderCount, setRenderCount] = React.useState(INITIAL_RENDER_COUNT);
     const [downloadingPdf, setDownloadingPdf] = React.useState(false);
+    const [viewPeopleMaintenance, setViewPeopleMaintenance] = React.useState(false);
 
     const rawMembers = React.useMemo(() => {
         return normalizeList({ groupMemberList, pClient });
@@ -530,7 +539,9 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                         if (pStyle === 'select' && typeof options?.onSelectPerson === 'function') {
                                             options.onSelectPerson(person);
                                             onReset({ updatesMade: false });
+                                            return;
                                         }
+                                        setViewPeopleMaintenance(person?.person_id || false);
                                     }}
                                 >
                                     {showPortraitImage &&
@@ -587,6 +598,19 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                     })}
                 </Grid>
             </Box>
+            {viewPeopleMaintenance &&
+                <PeopleMaintenance
+                    person_id={viewPeopleMaintenance}
+                    key={`goForPeople_${viewPeopleMaintenance}`}
+                    initialValues={{ color: 'green' }}
+                    options={{
+                        sectionToShow: ['snapshot']
+                    }}
+                    onClose={() => {
+                        setViewPeopleMaintenance(false);
+                    }}
+                />
+            }
         </Box>
     );
 }

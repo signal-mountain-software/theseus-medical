@@ -1654,10 +1654,18 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
               photoDirectoryPeople: []
             }, true);
           }}
-          maxWidth='lg'
-          fullWidth
+          fullScreen
+          scroll='paper'
+          PaperProps={{
+            style: {
+              margin: 0,
+              height: '100%',
+              maxHeight: '100%',
+              overflow: 'hidden'
+            }
+          }}
         >
-          <Box p={2}>
+          <Box style={{ height: '100%', minHeight: 0, overflow: 'hidden' }}>
             <GroupPhotoDirectory
               options={{
                 groupMemberList: reactData.photoDirectoryPeople,

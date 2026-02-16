@@ -52,6 +52,15 @@ const useStyles = makeStyles(theme => ({
   dialogBox: {
     minWidth: '100%',
   },
+  dialogBoxDirectory: {
+    minWidth: '100%',
+    height: '100%',
+    minHeight: 0,
+    padding: 0,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+  },
   reject: {
     backgroundColor: theme.palette.reject[theme.palette.type],
   },
@@ -352,7 +361,10 @@ export default ({ options, defaults, onClose, onAbort }) => {
           </Box>
         }
         {!reactData.showGroupSelect &&
-          <DialogContent dividers={true} className={classes.dialogBox}>
+          <DialogContent
+            dividers={options.useLegacyGroupForm}
+            className={options.useLegacyGroupForm ? classes.dialogBox : classes.dialogBoxDirectory}
+          >
             {(reactData.building === 'done') &&
               <ActiveGroupForm
                 options={Object.assign(options, {
