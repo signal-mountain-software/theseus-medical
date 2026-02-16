@@ -136,7 +136,6 @@ const LoginModuleV2 = ({
       .catch(() => null);
 
     if (clientRec && clientRec.Item && clientRec.Item.customization_value) {
-      setClientStyle(clientRec.Item.customization_value);
       return clientRec.Item.customization_value;
     }
     return null;
@@ -174,6 +173,7 @@ const LoginModuleV2 = ({
         getClientLogoForId(clientId)
       ]);
       if (!isActive) return;
+      setClientStyle(clientStyle || {});
       setBackgroundImageUrl(clientStyle?.checkin_image || null);
       setClientNameOverride(fetchedClientName || '');
       setClientLogoOverride(fetchedClientLogo || '');
