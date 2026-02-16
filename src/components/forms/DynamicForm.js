@@ -858,7 +858,7 @@ export default ({
           options={{
             pSession: session,
             pGroup_id: (defaultObject?.groups || defaultValue),
-            pGroup_name: message,
+            pGroup_name: (message && message.trim().length > 0) ? message : (factName || 'Group'),
             peopleList: values,
             showList: (defaultObject?.mode || 'full'),
             safeMode: defaultObject.safeMode
@@ -881,7 +881,7 @@ export default ({
           options={{
             pSession: session,
             pGroup_id: (defaultObject?.groups || defaultValue),
-            pGroup_name: message,
+            pGroup_name: (message && message.trim().length > 0) ? message : (factName || 'Group'),
             peopleList: values,
             showList: (defaultObject?.mode || 'full'),
             safeMode: defaultObject.safeMode,

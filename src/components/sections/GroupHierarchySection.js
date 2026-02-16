@@ -3,6 +3,7 @@ import React from 'react';
 import { Box, Typography, Paper, TextField } from '@material-ui/core/';
 
 import { AVATextStyle } from '../../util/AVAStyles';
+import AVAConfirm from '../forms/AVAConfirm';
 
 import SaveIcon from '@material-ui/icons/Save';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
@@ -12,6 +13,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
   const [tempName, setTempName] = React.useState("");
   const [tempBelongsTo, setTempBelongsTo] = React.useState(null);
+  const [confirmParentTarget, setConfirmParentTarget] = React.useState(null);
 
   React.useEffect(() => {
 
@@ -81,6 +83,37 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
   }
 
+  async function reassignParentGroup(targetGroupID) {
+    // Tapping the group name will make that group the parent of the current group
+    let newGroupObject = rebuildGroupsManagedObject({ source: currentValues.Groups.group_id, target: targetGroupID });
+    if (!newGroupObject) {
+      // This means the user attempted to move a group to become a child of itself, which is not allowed.  Do not update the group hierarchy and instead just return.
+      await updateField({
+        reactUpd: {
+          alert: {
+            severity: 'warning',
+            title: 'Circular Reference',
+            message: `A group cannot be a child of itself.`,
+          }
+        }
+      });
+    }
+    else {
+      await updateField({
+        updateList:
+          [{
+            tableName: 'Groups',
+            fieldName: 'belongs_to',
+            newData: targetGroupID,
+            refresh_onExit: true
+          }],
+        reactUpd: {
+          groupsManagedObject: newGroupObject
+        }
+      });
+    }
+  }
+
   return (
     <Box
       key={`profileSection_masterBox`}
@@ -92,6 +125,20 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
           style={AVATextStyle({ bold: true, size: 1.2, margin: { top: 0, right: 0.5 } })}
         >
           Use this screen to change {currentValues.Groups.name}'s parent group and to add new children<br /><br />
+        </Typography>
+        <Typography
+          style={AVATextStyle({ margin: { top: 0, right: 0.5 } })}
+        >
+          Tap on the
+          <AddCircleOutlineIcon style={{ fontSize: '1rem', verticalAlign: 'text-bottom', marginBottom: '0.1rem', marginLeft: '0.2rem', marginRight: '0.2rem' }} />
+          to add a new child below {currentValues.Groups.name}.<br /><br />
+        </Typography>        
+        <Typography
+          style={AVATextStyle({ margin: { top: 0, right: 0.5 } })}
+        >
+          The group you are viewing ({currentValues.Groups.name}) is highlighted in <strong style={{ color: 'blue' }}>blue</strong>.<br />
+          {currentValues.Groups.name}'s parent is highlighted in <strong style={{ color: 'orange' }}>orange</strong>.<br />
+          Newly added groups will be highlighted in <strong style={{ color: 'green' }}>green</strong> until you save changes.<br /><br />
         </Typography>
       </Box>
 
@@ -124,41 +171,21 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
                         if (tempBelongsTo !== null) {
                           return;
                         }
-                        // Tapping the group name will make that group the parent of the current group
-                        let newGroupObject = rebuildGroupsManagedObject({ source: currentValues.Groups.group_id, target: listEntry });
-                        if (!newGroupObject) {
-                          // This means the user attempted to move a group to become a child of itself, which is not allowed.  Do not update the group hierarchy and instead just return.
-                          await updateField({
-                            reactUpd: {
-                              alert: {
-                                severity: 'warning',
-                                title: 'Circular Reference',
-                                message: `A group cannot be a child of itself.`,
-                              }
-                            }
-                          });
-                        }
-                        else {
-                          await updateField({
-                            updateList:
-                              [{
-                                tableName: 'Groups',
-                                fieldName: 'belongs_to',
-                                newData: listEntry,
-                                refresh_onExit: true
-                              }],
-                            reactUpd: {
-                              groupsManagedObject: newGroupObject
-                            }
-                          });
-                        }
+                        setConfirmParentTarget(listEntry);
                       }}
                       style={AVATextStyle({
                         size: 1.2,
                         margin: { top: 0.2 },
                         ...(currentValues.Groups.belongs_to === listEntry
                           ? { color: 'orange', bold: true }
-                          : (currentValues.Groups.group_id === listEntry ? { color: 'blue' } : {})),
+                          : (currentValues.Groups.group_id === listEntry
+                            ? { color: 'blue', bold: true }
+                            : (((reactData.groupsToAdd || []).some((groupObj) => (groupObj.group_id === listEntry)))
+                              ? { color: 'green', bold: true }
+                              : {}
+                            )
+                          )
+                        ),
                       })}
                     >
                       {reactData.groupsManagedObject[listEntry].group_name}
@@ -264,6 +291,25 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
           ))}
         </Box>
       </Paper >
+
+      {(confirmParentTarget !== null) &&
+        <AVAConfirm
+          promptText={[
+            'Are you sure?',
+            `Set ${currentValues.Groups.name}'s parent to ${(reactData.groupsManagedObject?.[confirmParentTarget]?.group_name || 'this group')}?`
+          ]}
+          cancelText={'Cancel'}
+          confirmText={'Proceed'}
+          onCancel={() => {
+            setConfirmParentTarget(null);
+          }}
+          onConfirm={async () => {
+            const targetGroupID = confirmParentTarget;
+            setConfirmParentTarget(null);
+            await reassignParentGroup(targetGroupID);
+          }}
+        />
+      }
 
     </Box >
   );

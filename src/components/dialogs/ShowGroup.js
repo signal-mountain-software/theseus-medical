@@ -11,6 +11,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import Typography from '@material-ui/core/Typography';
 
 import GroupForm from '../forms/GroupForm';
+import GroupPhotoDirectory from '../forms/GroupPhotoDirectory';
 import GroupFilter from '../forms/GroupFilter';
 import GroupControl from '../forms/GroupControl';
 import { makeArray, deepCopy } from '../../util/AVAUtilities';
@@ -67,6 +68,7 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 export default ({ options, defaults, onClose, onAbort }) => {
 
   let { pSession, pGroup_id, pGroup_name, peopleList, showList, safeMode } = options;
+  const ActiveGroupForm = options.useLegacyGroupForm ? GroupForm : GroupPhotoDirectory;
 
   const [reactData, setReactData] = React.useState({
     groupMemberList: [],
@@ -74,7 +76,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
     showGroupSelect: false,
     groupControlKey: 0,
     safeMode: safeMode || false,
-    groupName: pGroup_name,
+    groupName: pGroup_name?.trim() || 'Directory',
     groupID: '',
     groupRole: '',
     groupRec: {},
@@ -334,7 +336,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
         className={classes.pageHead}
         fullScreen
       >
-        {!reactData.showGroupSelect &&
+        {!reactData.showGroupSelect && options.useLegacyGroupForm &&
           <Box
             display='flex'
             grow={1}
@@ -352,7 +354,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
         {!reactData.showGroupSelect &&
           <DialogContent dividers={true} className={classes.dialogBox}>
             {(reactData.building === 'done') &&
-              <GroupForm
+              <ActiveGroupForm
                 options={Object.assign(options, {
                   groupMemberList: reactData.groupMemberList,
                   peopleList: peopleList,
