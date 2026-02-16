@@ -199,6 +199,10 @@ export default ({ defaults, onClose }) => {
     selectedGroup_id: null,
     selectedGroupRec: false,
     selectedGroupMembers: false,
+    showFieldPicker: false,
+    loadingExportFields: false,
+    exportFieldOptions: [],
+    selectedExportFieldNames: [],
     updatesMade: false,
     viewPeopleMaintenance: false
   });
@@ -328,7 +332,80 @@ export default ({ defaults, onClose }) => {
     return `"${stringValue}"`;
   }
 
-  function downloadCurrentPeopleListCsv() {
+  async function getSavedExportFieldSelections() {
+    const session_id = state?.session?.user_id;
+    const client_id = state?.session?.client_id;
+    if (!session_id || !client_id) {
+      return [];
+    }
+
+    const sessionRec = await dbClient
+      .get({
+        TableName: 'SessionsV2',
+        Key: { session_id }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error reading SessionsV2 for form export selections': error });
+      });
+
+    if (!recordExists(sessionRec)) {
+      return [];
+    }
+
+    return [sessionRec.Item?.customizations?.csv_export?.form_management?.[client_id]?.selected_fields]
+      .flat()
+      .filter((field_name) => (typeof field_name === 'string') && (field_name.trim() !== ''));
+  }
+
+  async function saveExportFieldSelections(selectedFieldNames = []) {
+    const session_id = state?.session?.user_id;
+    const client_id = state?.session?.client_id;
+    if (!session_id || !client_id) {
+      return;
+    }
+
+    const sessionRec = await dbClient
+      .get({
+        TableName: 'SessionsV2',
+        Key: { session_id }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error reading SessionsV2 before save form export selections': error });
+      });
+
+    let customizations = deepCopy(sessionRec?.Item?.customizations || {});
+    if (!customizations.csv_export) {
+      customizations.csv_export = {};
+    }
+    if (!customizations.csv_export.form_management) {
+      customizations.csv_export.form_management = {};
+    }
+    customizations.csv_export.form_management[client_id] = {
+      selected_fields: [...selectedFieldNames],
+      updated_at: new Date().toISOString(),
+    };
+
+    await dbClient
+      .update({
+        TableName: 'SessionsV2',
+        Key: { session_id },
+        UpdateExpression: 'set #c = :c',
+        ExpressionAttributeNames: {
+          '#c': 'customizations'
+        },
+        ExpressionAttributeValues: {
+          ':c': customizations
+        }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error saving SessionsV2 form export selections': error });
+      });
+  }
+
+  async function openFieldPicker() {
     if (!reactData.selectedForm_id) {
       return;
     }
@@ -347,13 +424,186 @@ export default ({ defaults, onClose }) => {
       return;
     }
 
-    const header = ['Name', 'Person ID', 'Status'];
+    updateReactData({
+      showFieldPicker: true,
+      loadingExportFields: true,
+    }, true);
+
+    const formFieldsRec = await dbClient
+      .query({
+        KeyConditionExpression: 'client_id = :c',
+        TableName: 'Form_Fields',
+        ExpressionAttributeValues: {
+          ':c': state.session.client_id
+        }
+      })
+      .promise()
+      .catch(error => {
+        cl({ 'Error reading Form_Fields for form management csv export': error });
+      });
+
+    let exportFieldOptions = [];
+    if (recordExists(formFieldsRec)) {
+      exportFieldOptions = formFieldsRec.Items
+        .filter((fieldRec) => {
+          const promptValue = fieldRec?.prompt?.value;
+          const saveAs = fieldRec?.value?.saveAs;
+          return (!!promptValue && !!saveAs && !saveAs.includes('name.'));
+        })
+        .map((fieldRec) => ({
+          field_name: fieldRec.field_name,
+          prompt: fieldRec.prompt.value,
+          saveAs: [fieldRec.value.saveAs, ...(fieldRec.value.alt_saveAs ? [fieldRec.value.alt_saveAs].flat() : [])],
+          value_type: fieldRec?.value?.type,
+        }))
+        .sort((a, b) => a.prompt.localeCompare(b.prompt));
+    }
+
+    const savedSelectionList = await getSavedExportFieldSelections();
+    const selectedExportFieldNames = exportFieldOptions
+      .map((fieldRec) => fieldRec.field_name)
+      .filter((field_name) => savedSelectionList.includes(field_name));
+
+    updateReactData({
+      loadingExportFields: false,
+      exportFieldOptions,
+      selectedExportFieldNames
+    }, true);
+  }
+
+  function toggleExportFieldSelection(field_name) {
+    const selectedExportFieldNames = reactData.selectedExportFieldNames.includes(field_name)
+      ? reactData.selectedExportFieldNames.filter((this_field) => this_field !== field_name)
+      : [...reactData.selectedExportFieldNames, field_name];
+    updateReactData({
+      selectedExportFieldNames
+    }, true);
+  }
+
+  function getSaveAsPathParts(saveAs = '') {
+    let savePath = `${saveAs}`.split('.').filter(Boolean);
+    while ((savePath[0] === 'peopleRec') || (savePath[0] === 'personRec')) {
+      savePath.shift();
+    }
+    return savePath;
+  }
+
+  function getSaveAsPathCandidates(saveAs) {
+    return [saveAs]
+      .flat()
+      .filter((pathValue) => typeof pathValue === 'string' && pathValue.trim() !== '')
+      .map((pathValue) => getSaveAsPathParts(pathValue));
+  }
+
+  function readRawValueAtPath(sourceObj, pathParts = []) {
+    let target = sourceObj;
+    for (const this_key of pathParts) {
+      if ((target === null) || (target === undefined)) {
+        return undefined;
+      }
+      target = target[this_key];
+    }
+    return target;
+  }
+
+  function formatExportValue(value) {
+    if ((value === null) || (value === undefined)) {
+      return '';
+    }
+    if (Array.isArray(value)) {
+      return value.join('; ');
+    }
+    if (typeof value === 'object') {
+      try {
+        return JSON.stringify(value);
+      }
+      catch {
+        return '';
+      }
+    }
+    return value;
+  }
+
+  function formatPhoneValue(value) {
+    if ((value === null) || (value === undefined)) {
+      return '';
+    }
+    if (Array.isArray(value)) {
+      return value.map((this_value) => formatPhoneValue(this_value)).filter(Boolean).join('; ');
+    }
+    const digitString = `${value}`.replace(/\D/g, '');
+    if (digitString.length < 10) {
+      return `${value}`;
+    }
+    const lastTenDigits = digitString.slice(-10);
+    const areaCode = lastTenDigits.slice(0, 3);
+    const prefix = lastTenDigits.slice(3, 6);
+    const lineNumber = lastTenDigits.slice(6);
+    return `(${areaCode}) ${prefix}-${lineNumber}`;
+  }
+
+  async function downloadCurrentPeopleListCsv() {
+    if (!reactData.selectedForm_id) {
+      return false;
+    }
+
+    const selectedForm = reactData.masterFormList?.[reactData.selectedForm_id];
+    const filteredMemberIds = selectedForm?.filteredMemberIds || [];
+
+    if (filteredMemberIds.length === 0) {
+      updateReactData({
+        alert: {
+          severity: 'info',
+          title: 'No people to export',
+          message: 'There are no people in the current list to export.'
+        }
+      }, true);
+      return false;
+    }
+
+    const selectedFieldOptions = reactData.exportFieldOptions.filter((fieldRec) => {
+      return reactData.selectedExportFieldNames.includes(fieldRec.field_name);
+    });
+
+    const peopleRecById = {};
+    if (selectedFieldOptions.length > 0) {
+      await Promise.all(filteredMemberIds.map(async (person_id) => {
+        const peopleRec = await dbClient
+          .get({
+            TableName: 'People',
+            Key: { person_id }
+          })
+          .promise()
+          .catch(error => {
+            console.log(`caught error reading People for form csv export; error is: `, error);
+          });
+        if (recordExists(peopleRec)) {
+          peopleRecById[person_id] = peopleRec.Item;
+        }
+      }));
+    }
+
+    const header = ['Name', 'Person ID', 'Status', ...selectedFieldOptions.map((fieldRec) => fieldRec.prompt)];
     const rows = filteredMemberIds.map(person_id => {
       const memberData = selectedForm?.memberList?.[person_id] || {};
       const personName = memberData.person_name || makeName(person_id).display;
       const status = reactData.masterPeopleList?.[person_id]?.[reactData.selectedForm_id]?.status || 'not_started';
+      const sourcePeopleRec = peopleRecById[person_id] || memberData;
+      const selectedFieldValues = selectedFieldOptions.map((fieldRec) => {
+        const candidatePaths = getSaveAsPathCandidates(fieldRec.saveAs);
+        for (const pathParts of candidatePaths) {
+          const rawValue = readRawValueAtPath(sourcePeopleRec, pathParts);
+          if ((rawValue !== null) && (rawValue !== undefined)) {
+            if (fieldRec.value_type === 'phone') {
+              return formatPhoneValue(rawValue);
+            }
+            return formatExportValue(rawValue);
+          }
+        }
+        return '';
+      });
 
-      return [personName, person_id, status];
+      return [personName, person_id, status, ...selectedFieldValues];
     });
 
     const csvContent = [header, ...rows]
@@ -375,6 +625,8 @@ export default ({ defaults, onClose }) => {
     downloadLink.click();
     document.body.removeChild(downloadLink);
     URL.revokeObjectURL(csvUrl);
+    await saveExportFieldSelections(reactData.selectedExportFieldNames || []);
+    return true;
   }
 
   function OKtoShow(this_person, this_form, display_data) {
@@ -1970,7 +2222,7 @@ export default ({ defaults, onClose }) => {
                     aria-label="download_csv_icon"
                     onClick={() => {
                       if (reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds?.length > 0) {
-                        downloadCurrentPeopleListCsv();
+                        openFieldPicker();
                       }
                     }}
                   />
@@ -2027,6 +2279,99 @@ export default ({ defaults, onClose }) => {
           </Box>
 
         </React.Fragment >
+      }
+      {reactData.showFieldPicker &&
+        <Dialog
+          open={reactData.showFieldPicker}
+          PaperProps={{ style: { padding: '20px', borderRadius: '30px' } }}
+          onClose={() => {
+            updateReactData({
+              showFieldPicker: false
+            }, true);
+          }}
+          maxWidth='sm'
+          fullWidth
+        >
+          <Box p={2}>
+            <Typography
+              style={AVATextStyle({ size: 1.3, bold: true, margin: { bottom: 0.5 } })}
+            >
+              {'Choose fields to include in the output file'}
+            </Typography>
+            <Typography
+              style={AVATextStyle({ size: 0.9, color: 'textSecondary', margin: { bottom: 1 } })}
+            >
+              Select data to include in export columns.<br />(Report always includes Name, Person ID, and Status.)
+            </Typography>
+
+            {reactData.loadingExportFields
+              ?
+              <Typography style={AVATextStyle({ size: 1 })}>
+                {'Loading field list...'}
+              </Typography>
+              :
+              <Box
+                display='flex'
+                flexDirection='column'
+                style={{ maxHeight: '360px', overflowY: 'auto' }}
+              >
+                {reactData.exportFieldOptions.length === 0
+                  ?
+                  <Typography style={AVATextStyle({ size: 1 })}>
+                    {'No valid Form_Fields were found for this client.'}
+                  </Typography>
+                  :
+                  reactData.exportFieldOptions.map((fieldRec) => (
+                    <FormControlLabel
+                      key={`csv_field_${fieldRec.field_name}`}
+                      control={
+                        <Checkbox
+                          color='primary'
+                          style={{ marginLeft: '1rem' }}
+                          checked={reactData.selectedExportFieldNames.includes(fieldRec.field_name)}
+                          onChange={() => {
+                            toggleExportFieldSelection(fieldRec.field_name);
+                          }}
+                        />
+                      }
+                      label={fieldRec.prompt}
+                    />
+                  ))
+                }
+              </Box>
+            }
+          </Box>
+          <DialogActions className={classes.buttonArea} style={{ marginBottom: '0' }} >
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'green', color: 'white' }}
+              size='small'
+              onClick={async () => {
+                const result = await downloadCurrentPeopleListCsv();
+                if (result) {
+                  updateReactData({
+                    showFieldPicker: false
+                  }, true);
+                }
+              }}
+              disabled={reactData.loadingExportFields}
+            >
+              {'Download CSV'}
+            </Button>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'red', color: 'white' }}
+              size='small'
+              onClick={() => {
+                updateReactData({
+                  showFieldPicker: false
+                }, true);
+              }}
+            >
+              {'Close'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       }
       {reactData.isUploading &&
         <AVAUploadFile
