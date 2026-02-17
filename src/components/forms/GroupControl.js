@@ -115,6 +115,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
   const isMounted = React.useRef(false);
   const isExiting = React.useRef(false);
   const filterTimeoutRef = React.useRef(null);
+  const personRowDragActiveRef = React.useRef(false);
+  const personRowDragResetRef = React.useRef(null);
 
   const { dispatch, state } = useSession();
 
@@ -272,6 +274,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
   }
 
   const handleDragStart = (ev, id) => {
+    ev.dataTransfer.effectAllowed = 'move';
     ev.dataTransfer.setData('id', JSON.stringify(id));
   };
 
@@ -508,7 +511,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
       if (reactData.selectedGroupRec) {
         if (newGroupList.includes(reactData.selectedGroup_id)) {
           if (!reactData.selectedGroupMembers.hasOwnProperty(draggedFrom.personObj.person_id)) {
-            reactData.selectedGroupMembers[draggedFrom.personObj.AVAclassesperson_id] = peopleRec.Item;
+            reactData.selectedGroupMembers[draggedFrom.personObj.person_id] = peopleRec.Item;
           };
           reactUpdObj.selectedGroupMembers = reactData.selectedGroupMembers;
           reactUpdObj.sortedGroupMembers = sortGroupMembers(reactData.selectedGroupMembers);
@@ -1104,6 +1107,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
 
   var rowsDisplayed;
 
+  const canDragManage = !!(pSession?.adminAccount || reactData.administrative_account);
+
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
@@ -1164,6 +1169,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
       isMounted.current = false;
       window.removeEventListener('resize', handleResize);
       clearTimeout(filterTimeoutRef.current);
+      clearTimeout(personRowDragResetRef.current);
     };
   }, [pSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1245,12 +1251,13 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                   key={`g_client_name_header`}
                   onDragOver={(e) => handleDragOver(e)}
                   onDrop={async (e) => {
+                    // Keep GroupControl state in place after drag/drop.
+                    // Full refresh here clears selectedGroup and right-side list context.
                     await handleDrop(e, {
                       droppedOn: {
                         levelZero: true
                       }
                     });
-                    onRefresh();
                   }}
                   style={AVATextStyle({
                     size: 1.5,
@@ -1277,7 +1284,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                             justifyContent='flex-start'
                             alignItems='center'
                             key={`activity-list_${listIndex}_${((listIndex === focusAt) ? 'selected' : '')}`}
-                            draggable={pSession?.adminAccount}
+                            draggable={canDragManage}
                             onDragStart={(e) => handleDragStart(e, {
                               group_id: listEntry,
                               groupObj: groupsManagedObject[listEntry],
@@ -1285,6 +1292,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                             })}
                             onDragOver={(e) => handleDragOver(e)}
                             onDrop={async (e) => {
+                              // Intentionally avoid onRefresh() here so the current
+                              // right-side selection/member view does not reset.
                               await handleDrop(e, {
                                 droppedOn: {
                                   group_id: listEntry,
@@ -1292,7 +1301,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                                   listIndex
                                 }
                               });
-                              onRefresh();
                             }}
                             onContextMenu={async (e) => {
                               e.preventDefault();
@@ -1323,6 +1331,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                                   : null
                                 ),
                                 weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry)) || (reactData.selectedGroup_id === listEntry)) ? 'bold' : null),
+                                cursor: canDragManage ? 'grab' : null,
+                                userSelect: 'none',
                                 margin: { left: (groupsManagedObject[listEntry].level ? ((groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) - 1) * 1.5 : 0), top: 0.35, bottom: 0.65, right: 0.8 },
                               })}>
                               {groupsManagedObject[listEntry].group_name}
@@ -1468,9 +1478,14 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                         style={AVATextStyle({
                           overflow: 'visible',
                           size: 1.2,
+                          cursor: canDragManage ? 'grab' : null,
+                          userSelect: 'none',
                           margin: { top: 0, bottom: 0.8 },
                         })}
                         onClick={async () => {
+                          if (personRowDragActiveRef.current) {
+                            return;
+                          }
                           updateReactData({
                             viewPeopleMaintenance: this_person
                           }, true);
@@ -1490,12 +1505,22 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                             }
                           }, true);
                         }}
-                        draggable={pSession?.adminAccount}
-                        onDragStart={(e) => handleDragStart(e, {
-                          personGroup: reactData.selectedGroup_id,
-                          personObj: reactData.selectedGroupMembers[this_person],
-                          intent: 'person'
-                        })}
+                        draggable={canDragManage}
+                        onDragStart={(e) => {
+                          personRowDragActiveRef.current = true;
+                          clearTimeout(personRowDragResetRef.current);
+                          handleDragStart(e, {
+                            personGroup: reactData.selectedGroup_id,
+                            personObj: reactData.selectedGroupMembers[this_person],
+                            intent: 'person'
+                          });
+                        }}
+                        onDragEnd={() => {
+                          clearTimeout(personRowDragResetRef.current);
+                          personRowDragResetRef.current = setTimeout(() => {
+                            personRowDragActiveRef.current = false;
+                          }, 150);
+                        }}
                       >
                         {`${reactData.selectedGroupMembers[this_person].name.first} ${reactData.selectedGroupMembers[this_person].name.last}`}
                       </Typography>
@@ -1539,8 +1564,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                       aria-label="trash_icon"
                       onDragOver={(e) => handleDragOver(e)}
                       onDrop={async (e) => {
+                        // Same rule for removals: apply local updates only,
+                        // do not force a full dialog refresh.
                         await handleDrop_removePerson(e);
-                        onRefresh();
                       }}
                       edge="start"
                     />
