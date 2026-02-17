@@ -748,7 +748,7 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
             marginTop={-0}
             flexWrap={'wrap'}
           >
-            {state.accessList[state.session.client_id].list.map((this_candidate, tIndex) => (
+            {state.accessList?.[state.session.client_id]?.list?.map((this_candidate, tIndex) => (
               filteredPerson(this_candidate.person_id, this_candidate.name) &&
               <Box
                 display='flex'
