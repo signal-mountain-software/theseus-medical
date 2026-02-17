@@ -516,14 +516,20 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                         const imageSrc = getImage(person.person_id);
                         const showPortraitImage = Boolean(imageSrc) && !hiddenImagePeople[person?.person_id];
                         if (!isEmpty(person.address)) {
-                            let returnValue;
-                            [returnValue, imbeddedTitle] = person.address.address?.split('~');
-                            if (person.address.address2) { returnValue += `; ${person.address.address2}`; }
-                            if (person.address.city) { returnValue += `<br/ >${person.address.city}`; }
+                            let returnValue = '';
+                            let splitAddress = person.address?.address?.split('~') || [''];
+                            if (splitAddress) {
+                                returnValue = splitAddress[0];
+                                if (splitAddress.length > 1) {
+                                    imbeddedTitle = splitAddress[1];
+                                };
+                            }
+                            if (person.address?.address2) { returnValue += `; ${person.address.address2}`; }
+                            if (person.address?.city) { returnValue += `<br/ >${person.address.city}`; }
                             else if (person.city) { returnValue += `<br />${person.city}`; }
-                            if (person.address.state) { returnValue += `, ${person.address.state}`; }
+                            if (person.address?.state) { returnValue += `, ${person.address.state}`; }
                             else if (person.state) { returnValue += `, ${person.state}`; }
-                            if (person.address.zip) { returnValue += ` ${person.address.zip}`; }
+                            if (person.address?.zip) { returnValue += ` ${person.address.zip}`; }
                             else if (person.zip) { returnValue += ` ${person.zip}`; }
                             addressValue = returnValue;
                         }
