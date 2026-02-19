@@ -306,78 +306,96 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                 />
               }
               {((reactData.user_id === this_familyRec.primary_contact.id) || (reactData.administrative_account)) &&
-                <Button
-                  onClick={async () => {
-                    updateLocalData({
-                      showQuickAdd: this_familyRec.family_id
-                    }, true);
-                  }}
-                  className={AVAClass.AVAButton}
-                  style={{ marginLeft: '8px', marginTop: '24px', backgroundColor: 'white', color: 'black' }}
-                  size='small'
-                >
-                  {isSmallScreen() ? `Create new` : `Create a new account for ${currentValues.familyRecs[fNdx].family_name}`}
-                </Button>
-              }
-              {(reactData.administrative_account) &&
-                <Button
-                  onClick={async () => {
-                    let updateObj = {};
-                    updateObj.reactUpd = {
-                      showQuickSearch: currentValues.familyRecs[fNdx].family_id
-                    };
-                    await updateField(updateObj);
-                  }}
-                  className={AVAClass.AVAButton}
-                  style={{ marginLeft: '8px', marginTop: '16px', backgroundColor: 'white', color: 'black' }}
-                  size='small'
-                >
-                  {isSmallScreen() ? `Add existing` : `Find an existing account to add to ${currentValues.familyRecs[fNdx].family_name}`}
-                </Button>
+                <React.Fragment>
+                  <Typography
+                    style={AVATextStyle({ margin: { top: 1, left: 0 } })}
+                  >
+                    {`You may add members to ${currentValues.familyRecs[fNdx].family_name} by tapping below.`}
+                  </Typography>
+                  <Box
+                    display='flex'
+                    flexDirection='row'
+                    alignItems={'center'}
+                    key={`familyButtons_${fNdx}`}
+                    style={AVATextStyle({ margin: { bottom: 1 } })}
+                  >
+                    {((reactData.user_id === this_familyRec.primary_contact.id) || (reactData.administrative_account)) &&
+                      <Button
+                        onClick={async () => {
+                          updateLocalData({
+                            showQuickAdd: this_familyRec.family_id
+                          }, true);
+                        }}
+                        className={AVAClass.AVAButton}
+                        style={{ marginLeft: '8px', marginTop: '8px', backgroundColor: 'white', color: 'black' }}
+                        size='small'
+                      >
+                        Add new
+                      </Button>
+                    }
+                    {reactData.administrative_account &&
+                      <Button
+                        onClick={async () => {
+                          let updateObj = {};
+                          updateObj.reactUpd = {
+                            showQuickSearch: currentValues.familyRecs[fNdx].family_id
+                          };
+                          await updateField(updateObj);
+                        }}
+                        className={AVAClass.AVAButton}
+                        style={{ marginLeft: '8px', marginTop: '8px', backgroundColor: 'white', color: 'black' }}
+                        size='small'
+                      >
+                        Find existing
+                      </Button>
+                    }
+                  </Box>
+                </React.Fragment>
               }
             </React.Fragment>
           ))}
 
-
-          <Button
-            onClick={async () => {
-              let timestamp = new Date().getTime();
-              if (!currentValues.familyRecs || (currentValues.familyRecs.length === 0)) {
-                currentValues.familyRecs = [];
-              }
-              currentValues.familyRecs.push({
-                client_id: currentValues.peopleRec.client_id,
-                composite_key: `family_${timestamp}`,
-                family_id: `family_${timestamp}`,
-                family_name: `The ${currentValues.peopleRec.name.last} Family`,
-                primary_contact: {
+          {(!currentValues.familyRecs || (currentValues.familyRecs.length === 0)) &&
+            <Button
+              onClick={async () => {
+                let timestamp = new Date().getTime();
+                if (!currentValues.familyRecs || (currentValues.familyRecs.length === 0)) {
+                  currentValues.familyRecs = [];
+                }
+                currentValues.familyRecs.push({
+                  client_id: currentValues.peopleRec.client_id,
+                  composite_key: `family_${timestamp}`,
+                  family_id: `family_${timestamp}`,
+                  family_name: `The ${currentValues.peopleRec.name.last} Family`,
+                  primary_contact: {
+                    id: currentValues.peopleRec.person_id,
+                    name: `${currentValues.peopleRec.name.first} ${currentValues.peopleRec.name.last}`,
+                    nickname: currentValues.peopleRec.name.first,
+                    relationship: ''
+                  }
+                });
+                if (!reactData.myFamilyData || (reactData.myFamilyData.length === 0)) {
+                  reactData.myFamilyData = [];
+                }
+                reactData.myFamilyData.push({
                   id: currentValues.peopleRec.person_id,
                   name: `${currentValues.peopleRec.name.first} ${currentValues.peopleRec.name.last}`,
                   nickname: currentValues.peopleRec.name.first,
-                  relationship: ''
-                }
-              });
-              if (!reactData.myFamilyData || (reactData.myFamilyData.length === 0)) {
-                reactData.myFamilyData = [];
-              }
-              reactData.myFamilyData.push({
-                id: currentValues.peopleRec.person_id,
-                name: `${currentValues.peopleRec.name.first} ${currentValues.peopleRec.name.last}`,
-                nickname: currentValues.peopleRec.name.first,
-                primary: true
-              });
-              updateReactData({
-                current: currentValues,
-                myFamilyData: reactData.myFamilyData,
-                OKtoSave: true
-              }, true);
-            }}
-            className={AVAClass.AVAButton}
-            style={{ marginLeft: '8px', marginTop: '32px', backgroundColor: 'green', color: 'white' }}
-            size='small'
-          >
-            {'Create a new Family Group'}
-          </Button>
+                  primary: true
+                });
+                updateReactData({
+                  current: currentValues,
+                  myFamilyData: reactData.myFamilyData,
+                  OKtoSave: true
+                }, true);
+              }}
+              className={AVAClass.AVAButton}
+              style={{ marginLeft: '8px', marginTop: '32px', backgroundColor: 'green', color: 'white' }}
+              size='small'
+            >
+              {'Create a new Family Group'}
+            </Button>
+          }
 
           {(reactData.addFamilyMember) &&
             <PeopleMaintenance
@@ -738,22 +756,22 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                   </Button>
                   :
                   (((localData.viewFamilyMember.other_index || (localData.viewFamilyMember.other_index === 0))
-                      ?
-                      <Button
-                        className={AVAClass.AVAButton}
-                        style={{ marginTop: '16px', backgroundColor: 'red', color: 'white' }}
-                        size='small'
-                        onClick={async () => {
-                          updateLocalData({
-                            viewFamilyMember: false,
-                            openFamilyMember: currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].id
-                          }, true);
-                        }}
-                      >
-                        {`View this Account`}
-                      </Button>
-                      :
-                      null
+                    ?
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ marginTop: '16px', backgroundColor: 'red', color: 'white' }}
+                      size='small'
+                      onClick={async () => {
+                        updateLocalData({
+                          viewFamilyMember: false,
+                          openFamilyMember: currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].id
+                        }, true);
+                      }}
+                    >
+                      {`View this Account`}
+                    </Button>
+                    :
+                    null
                   ))
                 }
               </DialogActions>
