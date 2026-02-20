@@ -223,6 +223,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                 location: this_doc.history[0].url,
                 last_update: this_doc.history[0].last_update,
                 date_completed: makeDate(this_doc.history[0].last_update, { timeZone: state.session.client_timezone }).absolute,
+                date_firstUpdate: makeDate(this_doc.history[this_doc.history.length - 1].last_update, { timeZone: state.session.client_timezone }).absolute,
                 title: this_doc.title,
                 amendments: this_doc.amendments,
                 occDate: occDate,
@@ -627,15 +628,6 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                                   }
                                                 }, true);
                                               }}
-
-
-
-
-
-
-
-
-
                                               style={AVATextStyle({
                                                 size: 1.5,
                                                 margin: { left: 0 },
@@ -680,7 +672,16 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                                     margin: { top: 0, left: 0 },
                                                   })}
                                                 >
-                                                  {`${((myDocs.dueDate || (myDocs.wipDocs.length > 0)) ? 'Previously c' : 'C')}ompleted ${makeDate(myDocs.completedDocs[0].last_update, { timeZone: state.session.client_timezone }).absolute}`}
+                                                  {`Last Update ${makeDate(myDocs.completedDocs[0].last_update, { timeZone: state.session.client_timezone }).absolute}`}
+                                                </Typography>
+                                                <Typography
+                                                  key={`duedate-col_form${form_index}t3`}
+                                                  style={AVATextStyle({
+                                                    size: 0.8,
+                                                    margin: { top: 0, left: 0 },
+                                                  })}
+                                                >
+                                                  {`First Saved ${myDocs.completedDocs[0].date_firstUpdate}`}
                                                 </Typography>
                                               </React.Fragment>
                                             }
@@ -906,7 +907,16 @@ export default ({ currentValues, reactData, updateReactData }) => {
                       margin: { top: 0, left: 0 },
                     })}
                   >
-                    {`Completed ${this_doc.date_completed}`}
+                    {`Last Update ${this_doc.date_completed}`}
+                  </Typography>
+                  <Typography
+                    key={`firstupdate-col_form${this_doc.document_id}_${docNdx}`}
+                    style={AVATextStyle({
+                      size: 0.8,
+                      margin: { top: 0, left: 0 },
+                    })}
+                  >
+                    {`First Saved ${this_doc.date_firstUpdate}`}
                   </Typography>
                 </Box>
                 <Box display='flex' alignItems='center'
