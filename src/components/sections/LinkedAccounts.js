@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { deepCopy, isSmallScreen } from '../../util/AVAUtilities';
+import { deepCopy } from '../../util/AVAUtilities';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import QuickSearch from '../sections/QuickSearch';
