@@ -3,7 +3,7 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 
 import { getMemberList } from '../../util/AVAGroups';
-import { dbClient, recordExists, cl, titleCase, getDb, putDb, deepCopy } from '../../util/AVAUtilities';
+import { dbClient, recordExists, cl, titleCase, getDb, putDb, deepCopy, resolveData } from '../../util/AVAUtilities';
 import QuickSearch from '../sections/QuickSearch';
 import { getPerson, getImage } from '../../util/AVAPeople';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
@@ -16,6 +16,7 @@ import FormEditor from '../forms/FormEditor';
 import { Snackbar, Paper, Box, Dialog, DialogActions, DialogContent, DialogContentText, Button, Typography, Checkbox, FormControlLabel } from '@material-ui/core';
 import Select from "react-dropdown-select";
 import { Alert, AlertTitle } from '@material-ui/lab/';
+import * as XLSX from 'xlsx';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -432,36 +433,38 @@ export default ({ defaults, onClose }) => {
     const formFieldsRec = await dbClient
       .query({
         KeyConditionExpression: 'client_id = :c',
-        TableName: 'Form_Fields',
+        TableName: 'DataDictionaryV3',
         ExpressionAttributeValues: {
           ':c': state.session.client_id
         }
       })
       .promise()
       .catch(error => {
-        cl({ 'Error reading Form_Fields for form management csv export': error });
+        cl({ 'Error reading DataDictionaryV3 for form management csv export': error });
       });
 
     let exportFieldOptions = [];
     if (recordExists(formFieldsRec)) {
       exportFieldOptions = formFieldsRec.Items
-        .filter((fieldRec) => {
-          const promptValue = fieldRec?.prompt?.value;
-          const saveAs = fieldRec?.value?.saveAs;
-          return (!!promptValue && !!saveAs && !saveAs.includes('name.'));
-        })
+        .filter((fieldRec) => !!fieldRec?.field_key)
         .map((fieldRec) => ({
-          field_name: fieldRec.field_name,
-          prompt: fieldRec.prompt.value,
-          saveAs: [fieldRec.value.saveAs, ...(fieldRec.value.alt_saveAs ? [fieldRec.value.alt_saveAs].flat() : [])],
-          value_type: fieldRec?.value?.type,
+          field_key: fieldRec.field_key,
+          description: fieldRec.description || fieldRec.field_key,
+          category: fieldRec.category || 'Other',
+          value_type: fieldRec?.type,
         }))
-        .sort((a, b) => a.prompt.localeCompare(b.prompt));
+        .sort((a, b) => {
+          const catCompare = (a.category || '').localeCompare(b.category || '');
+          if (catCompare !== 0) {
+            return catCompare;
+          }
+          return (a.description || '').localeCompare(b.description || '');
+        });
     }
 
     const savedSelectionList = await getSavedExportFieldSelections();
     const selectedExportFieldNames = exportFieldOptions
-      .map((fieldRec) => fieldRec.field_name)
+      .map((fieldRec) => fieldRec.field_key)
       .filter((field_name) => savedSelectionList.includes(field_name));
 
     updateReactData({
@@ -480,131 +483,17 @@ export default ({ defaults, onClose }) => {
     }, true);
   }
 
-  function getSaveAsPathParts(saveAs = '') {
-    let savePath = `${saveAs}`.split('.').filter(Boolean);
-    while ((savePath[0] === 'peopleRec') || (savePath[0] === 'personRec')) {
-      savePath.shift();
-    }
-    return savePath;
-  }
-
-  function getSaveAsPathCandidates(saveAs) {
-    return [saveAs]
-      .flat()
-      .filter((pathValue) => typeof pathValue === 'string' && pathValue.trim() !== '')
-      .map((pathValue) => getSaveAsPathParts(pathValue));
-  }
-
-  function readRawValueAtPath(sourceObj, pathParts = []) {
-    let target = sourceObj;
-    for (const this_key of pathParts) {
-      if ((target === null) || (target === undefined)) {
-        return undefined;
-      }
-      target = target[this_key];
-    }
-    return target;
-  }
-
-  function formatExportValue(value) {
-    if ((value === null) || (value === undefined)) {
-      return '';
-    }
-    if (Array.isArray(value)) {
-      return value.join('; ');
-    }
-    if (typeof value === 'object') {
-      try {
-        return JSON.stringify(value);
-      }
-      catch {
-        return '';
-      }
-    }
-    return value;
-  }
-
-  function formatPhoneValue(value) {
-    if ((value === null) || (value === undefined)) {
-      return '';
-    }
-    if (Array.isArray(value)) {
-      return value.map((this_value) => formatPhoneValue(this_value)).filter(Boolean).join('; ');
-    }
-    const digitString = `${value}`.replace(/\D/g, '');
-    if (digitString.length < 10) {
-      return `${value}`;
-    }
-    const lastTenDigits = digitString.slice(-10);
-    const areaCode = lastTenDigits.slice(0, 3);
-    const prefix = lastTenDigits.slice(3, 6);
-    const lineNumber = lastTenDigits.slice(6);
-    return `(${areaCode}) ${prefix}-${lineNumber}`;
-  }
-
   async function downloadCurrentPeopleListCsv() {
-    if (!reactData.selectedForm_id) {
+    const exportData = await buildCurrentPeopleListExportData();
+    if (!exportData) {
       return false;
     }
 
-    const selectedForm = reactData.masterFormList?.[reactData.selectedForm_id];
-    const filteredMemberIds = selectedForm?.filteredMemberIds || [];
-
-    if (filteredMemberIds.length === 0) {
-      updateReactData({
-        alert: {
-          severity: 'info',
-          title: 'No people to export',
-          message: 'There are no people in the current list to export.'
-        }
-      }, true);
-      return false;
-    }
-
-    const selectedFieldOptions = reactData.exportFieldOptions.filter((fieldRec) => {
-      return reactData.selectedExportFieldNames.includes(fieldRec.field_name);
-    });
-
-    const peopleRecById = {};
-    if (selectedFieldOptions.length > 0) {
-      await Promise.all(filteredMemberIds.map(async (person_id) => {
-        const peopleRec = await dbClient
-          .get({
-            TableName: 'People',
-            Key: { person_id }
-          })
-          .promise()
-          .catch(error => {
-            console.log(`caught error reading People for form csv export; error is: `, error);
-          });
-        if (recordExists(peopleRec)) {
-          peopleRecById[person_id] = peopleRec.Item;
-        }
-      }));
-    }
-
-    const header = ['Name', 'Person ID', 'Status', ...selectedFieldOptions.map((fieldRec) => fieldRec.prompt)];
-    const rows = filteredMemberIds.map(person_id => {
-      const memberData = selectedForm?.memberList?.[person_id] || {};
-      const personName = memberData.person_name || makeName(person_id).display;
-      const status = reactData.masterPeopleList?.[person_id]?.[reactData.selectedForm_id]?.status || 'not_started';
-      const sourcePeopleRec = peopleRecById[person_id] || memberData;
-      const selectedFieldValues = selectedFieldOptions.map((fieldRec) => {
-        const candidatePaths = getSaveAsPathCandidates(fieldRec.saveAs);
-        for (const pathParts of candidatePaths) {
-          const rawValue = readRawValueAtPath(sourcePeopleRec, pathParts);
-          if ((rawValue !== null) && (rawValue !== undefined)) {
-            if (fieldRec.value_type === 'phone') {
-              return formatPhoneValue(rawValue);
-            }
-            return formatExportValue(rawValue);
-          }
-        }
-        return '';
-      });
-
-      return [personName, person_id, status, ...selectedFieldValues];
-    });
+    const {
+      selectedForm,
+      header,
+      rows
+    } = exportData;
 
     const csvContent = [header, ...rows]
       .map(row => row.map(csvSafe).join(','))
@@ -627,6 +516,130 @@ export default ({ defaults, onClose }) => {
     URL.revokeObjectURL(csvUrl);
     await saveExportFieldSelections(reactData.selectedExportFieldNames || []);
     return true;
+  }
+
+  async function downloadCurrentPeopleListXlsx() {
+    const exportData = await buildCurrentPeopleListExportData();
+    if (!exportData) {
+      return false;
+    }
+
+    const {
+      selectedForm,
+      header,
+      rows
+    } = exportData;
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
+
+    const maxColumnWidth = 60;
+    worksheet['!cols'] = header.map((headerLabel, columnIndex) => {
+      const maxValueLength = rows.reduce((longest, row) => {
+        const value = row[columnIndex];
+        const length = `${value ?? ''}`.length;
+        return Math.max(longest, length);
+      }, `${headerLabel ?? ''}`.length);
+
+      return {
+        wch: Math.min(Math.max(maxValueLength + 2, 10), maxColumnWidth)
+      };
+    });
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'People List');
+
+    const safeFormName = (selectedForm?.form_name || reactData.selectedForm_id)
+      .replace(/[^a-z0-9]+/gi, '_')
+      .replace(/^_+|_+$/g, '')
+      .toLowerCase();
+    const fileName = `${safeFormName || 'form'}_people_list.xlsx`;
+
+    XLSX.writeFile(workbook, fileName);
+    await saveExportFieldSelections(reactData.selectedExportFieldNames || []);
+    return true;
+  }
+
+  async function buildCurrentPeopleListExportData() {
+    if (!reactData.selectedForm_id) {
+      return false;
+    }
+
+    const selectedForm = reactData.masterFormList?.[reactData.selectedForm_id];
+    const filteredMemberIds = selectedForm?.filteredMemberIds || [];
+
+    if (filteredMemberIds.length === 0) {
+      updateReactData({
+        alert: {
+          severity: 'info',
+          title: 'No people to export',
+          message: 'There are no people in the current list to export.'
+        }
+      }, true);
+      return false;
+    }
+
+    const selectedFieldOptions = reactData.exportFieldOptions.filter((fieldRec) => {
+      return reactData.selectedExportFieldNames.includes(fieldRec.field_key);
+    });
+
+    const selectedFieldKeys = selectedFieldOptions.map((fieldRec) => fieldRec.field_key);
+    const dictionaryCache = {};
+
+    const header = ['Name', 'Person ID', 'Status', ...selectedFieldOptions.map((fieldRec) => fieldRec.description)];
+    const rows = filteredMemberIds.map(person_id => {
+      const memberData = selectedForm?.memberList?.[person_id] || {};
+      const personName = memberData.person_name || makeName(person_id).display;
+      const status = reactData.masterPeopleList?.[person_id]?.[reactData.selectedForm_id]?.status || 'not_started';
+      return [personName, person_id, status, selectedFieldKeys];
+    });
+
+    if (selectedFieldKeys.length > 0) {
+      await Promise.all(rows.map(async (rowObj, rowIndex) => {
+        const person_id = rowObj[1];
+        const resolvedFieldList = await resolveData(
+          state.session.client_id,
+          person_id,
+          selectedFieldKeys,
+          {
+            dictionaryCache,
+            address_lookup: false,
+            resolve_address: false
+          }
+        );
+
+        const selectedFieldValues = selectedFieldKeys.map((field_key, fieldIndex) => {
+          const resolvedField = resolvedFieldList[fieldIndex];
+          const formattedValue = resolvedField?.formatted;
+          if ((formattedValue === null) || (formattedValue === undefined)) {
+            return '';
+          }
+          if (Array.isArray(formattedValue)) {
+            return formattedValue.join('; ');
+          }
+          if (typeof formattedValue === 'object') {
+            try {
+              return JSON.stringify(formattedValue);
+            }
+            catch {
+              return '';
+            }
+          }
+          return `${formattedValue}`;
+        });
+
+        rows[rowIndex] = [rowObj[0], rowObj[1], rowObj[2], ...selectedFieldValues];
+      }));
+    } else {
+      rows.forEach((rowObj, rowIndex) => {
+        rows[rowIndex] = [rowObj[0], rowObj[1], rowObj[2]];
+      });
+    }
+
+    return {
+      selectedForm,
+      header,
+      rows
+    };
   }
 
   function OKtoShow(this_person, this_form, display_data) {
@@ -755,6 +768,29 @@ export default ({ defaults, onClose }) => {
     }
   }
 
+  function getDocumentFirstSaveUpdate(this_doc) {
+    const historyList = Array.isArray(this_doc?.history) ? [...this_doc.history] : [];
+    const validHistory = historyList.filter((historyEntry) => {
+      const candidate = Number(historyEntry?.update_date ?? historyEntry?.last_update);
+      return Number.isFinite(candidate) && (candidate > 0);
+    });
+
+    if (validHistory.length > 0) {
+      validHistory.sort((a, b) => {
+        const aTime = Number(a?.update_date ?? a?.last_update);
+        const bTime = Number(b?.update_date ?? b?.last_update);
+        return aTime - bTime;
+      });
+
+      const firstSaveEntry = validHistory[0];
+      return Number(firstSaveEntry?.update_date ?? firstSaveEntry?.last_update);
+    }
+
+    const splitter = `${this_doc?.document_id || ''}`.split('#');
+    const fallbackTime = Number(splitter[splitter.length - 1]);
+    return Number.isFinite(fallbackTime) && (fallbackTime > 0) ? fallbackTime : 0;
+  }
+
   async function buildMasters(this_doc, eventCache = {}) {
     if ((this_doc.restricted_access === 'admin_only') && (!reactData.administrative_account)) {
       return;    // skip this document
@@ -789,12 +825,9 @@ export default ({ defaults, onClose }) => {
       reactData.masterPeopleList[this_doc.pertains_to] = {};
     }
     if (!Array.isArray(this_doc.history)) {
-      this_doc.history = [{ last_update: 0 }];
+      this_doc.history = [];
     }
-    if (this_doc.history[0].last_update === 0) {
-      let splitter = this_doc.document_id.split('#');
-      this_doc.history[0].last_update = splitter[splitter.length - 1];
-    }
+    const firstSaveUpdate = getDocumentFirstSaveUpdate(this_doc);
     if (reactData.masterFormList[this_doc.form_type].dated_docs) {
       // get the event
       if (!this_doc.event_id) {
@@ -843,14 +876,14 @@ export default ({ defaults, onClose }) => {
       if (!eventDate.error) {
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].assignedDocs.push({
           document_id: this_doc.document_id,
-          last_update: this_doc.history[0].last_update,
+          last_update: firstSaveUpdate,
           due_date: this_doc.due_date || reactData.masterFormList[this_doc.form_type].dueDate,
           title: this_doc.title,
           event_date: eventDate.numeric,
           event_displayDate: eventDate.dateOnly,
           event_time: eventTime,
           event_key: this_doc.event_key,
-          location: this_doc.history[0].url,
+          location: this_doc.history?.[0]?.url,
           status: this_doc.status,
           formLocked: this_doc.formLocked || false
         });
@@ -883,43 +916,43 @@ export default ({ defaults, onClose }) => {
       const completed_count = reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.length;
       const cObj = {
         document_id: this_doc.document_id,
-        location: this_doc.history[0].url,
-        last_update: this_doc.history[0].last_update,
-        date_completed: makeDate(this_doc.history[0].last_update).relative,
+        location: this_doc.history?.[0]?.url,
+        last_update: firstSaveUpdate,
+        date_completed: makeDate(firstSaveUpdate).relative,
         title: this_doc.title,
         amendments: this_doc.amendments,
         formLocked: this_doc.formLocked || false
       };
-      if ((completed_count === 0) || (this_doc.history[0].last_update > reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs[0].last_update)) {
+      if ((completed_count === 0) || (firstSaveUpdate > reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs[0].last_update)) {
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.unshift(cObj);
-        if (!reactData.masterPeopleList[this_doc.pertains_to].hasOwnProperty(this_doc.form_type) || (this_doc.history[0].last_update > reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type].last_update)) {
+        if (!reactData.masterPeopleList[this_doc.pertains_to].hasOwnProperty(this_doc.form_type) || (firstSaveUpdate > reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type].last_update)) {
           reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type] = {
             status: 'completed',
-            last_update: this_doc.history[0].last_update
+            last_update: firstSaveUpdate
           };
         }
       }
-      else if (this_doc.history[0].last_update < reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs[completed_count - 1].last_update) {
+      else if (firstSaveUpdate < reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs[completed_count - 1].last_update) {
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.push(cObj);
       }
       else {
         const foundAt = reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.findIndex(d => {
-          return (d.last_update < this_doc.history[0].last_update);
+          return (d.last_update < firstSaveUpdate);
         });
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.splice(foundAt, 0, cObj);
       }
     }
     else if ((this_doc.status === 'in_process') || (this_doc.status === 'pending')) {
-      if (!reactData.masterPeopleList[this_doc.pertains_to].hasOwnProperty(this_doc.form_type) || (this_doc.history[0].last_update > reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type].last_update)) {
+      if (!reactData.masterPeopleList[this_doc.pertains_to].hasOwnProperty(this_doc.form_type) || (firstSaveUpdate > reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type].last_update)) {
         reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type] = {
           status: this_doc.status,
-          last_update: this_doc.history[0].last_update
+          last_update: firstSaveUpdate
         };
       }
-      if ((reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].wipDocs.length > 0) && (reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].wipDocs[0].last_update < this_doc.history[0].last_update)) {
+      if ((reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].wipDocs.length > 0) && (reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].wipDocs[0].last_update < firstSaveUpdate)) {
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].wipDocs.unshift({
           document_id: this_doc.document_id,
-          last_update: this_doc.history[0].last_update,
+          last_update: firstSaveUpdate,
           doc_status: this_doc.status,
           due_date: this_doc.due_date || reactData.masterFormList[this_doc.form_type].dueDate,
           title: this_doc.title,
@@ -929,7 +962,7 @@ export default ({ defaults, onClose }) => {
       else {
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].wipDocs.push({
           document_id: this_doc.document_id,
-          last_update: this_doc.history[0].last_update,
+          last_update: firstSaveUpdate,
           doc_status: this_doc.status,
           due_date: this_doc.due_date || reactData.masterFormList[this_doc.form_type].dueDate,
           title: this_doc.title,
@@ -2318,25 +2351,46 @@ export default ({ defaults, onClose }) => {
                 {reactData.exportFieldOptions.length === 0
                   ?
                   <Typography style={AVATextStyle({ size: 1 })}>
-                    {'No valid Form_Fields were found for this client.'}
+                    {'No DataDictionary fields were found for this client.'}
                   </Typography>
                   :
-                  reactData.exportFieldOptions.map((fieldRec) => (
-                    <FormControlLabel
-                      key={`csv_field_${fieldRec.field_name}`}
-                      control={
-                        <Checkbox
-                          color='primary'
-                          style={{ marginLeft: '1rem' }}
-                          checked={reactData.selectedExportFieldNames.includes(fieldRec.field_name)}
-                          onChange={() => {
-                            toggleExportFieldSelection(fieldRec.field_name);
-                          }}
-                        />
-                      }
-                      label={fieldRec.prompt}
-                    />
-                  ))
+                  Object.keys(reactData.exportFieldOptions.reduce((acc, fieldRec) => {
+                    const category = fieldRec.category || 'Other';
+                    if (!acc[category]) {
+                      acc[category] = [];
+                    }
+                    acc[category].push(fieldRec);
+                    return acc;
+                  }, {})).sort((a, b) => a.localeCompare(b)).map((categoryKey) => {
+                    const groupedFields = reactData.exportFieldOptions.filter((fieldRec) => {
+                      return (fieldRec.category || 'Other') === categoryKey;
+                    });
+                    return (
+                      <Box key={`csv_field_group_${categoryKey}`} mb={1}>
+                        <Typography
+                          style={AVATextStyle({ size: 1, bold: true, margin: { left: 1, top: 0.5, bottom: 0.2 } })}
+                        >
+                          {categoryKey}
+                        </Typography>
+                        {groupedFields.map((fieldRec) => (
+                          <FormControlLabel
+                            key={`csv_field_${fieldRec.field_key}`}
+                            control={
+                              <Checkbox
+                                color='primary'
+                                style={{ marginLeft: '1rem' }}
+                                checked={reactData.selectedExportFieldNames.includes(fieldRec.field_key)}
+                                onChange={() => {
+                                  toggleExportFieldSelection(fieldRec.field_key);
+                                }}
+                              />
+                            }
+                            label={fieldRec.description}
+                          />
+                        ))}
+                      </Box>
+                    );
+                  })
                 }
               </Box>
             }
@@ -2357,6 +2411,22 @@ export default ({ defaults, onClose }) => {
               disabled={reactData.loadingExportFields}
             >
               {'Download CSV'}
+            </Button>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'green', color: 'white' }}
+              size='small'
+              onClick={async () => {
+                const result = await downloadCurrentPeopleListXlsx();
+                if (result) {
+                  updateReactData({
+                    showFieldPicker: false
+                  }, true);
+                }
+              }}
+              disabled={reactData.loadingExportFields}
+            >
+              {'Download Excel'}
             </Button>
             <Button
               className={AVAClass.AVAButton}
