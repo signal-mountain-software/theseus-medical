@@ -190,13 +190,17 @@ export default ({ start_at }) => {
     alert: false,
     testMode: ["T", "L"].includes(window.location.href.split('//')[1].slice(0, 1).toUpperCase())
   });
+
+  const [forceRedisplay, setForce] = React.useState(false);
   const updateReactData = (newData, force = false) => {
     newData.current_time = new Date();
     setReactData((prevValues) => (Object.assign(
       prevValues,
       newData
     )));
-    void force;
+    if (force) {
+      setForce(!forceRedisplay);
+    }
   };
 
   const oneMinute = 1000 * 60;
@@ -216,16 +220,18 @@ export default ({ start_at }) => {
       }, true);
     }
     reactData.menu_hierarchy = [];
-    const [new_menuHierarchy, favoriteList] = await Promise.all([
-      getMenuItem(reactData.start_at, 0),
-      loadFavorites()
-    ]);
-    const menuWithFavorites = applyFavoritesCardToHierarchy(new_menuHierarchy, favoriteList);
-    updateReactData({
-      menu_hierarchy: menuWithFavorites,
-      v3_favorites: favoriteList,
+    const new_menuHierarchy = await getMenuItem(reactData.start_at, 0);
+    let reactUpd = {
+      menu_hierarchy: new_menuHierarchy,
       loading: false
-    }, true);
+    };
+    const favoriteList = normalizeFavorites(state.patient?.v3_favorites || []);
+    if (favoriteList && favoriteList.length > 0) {
+      const menuWithFavorites = applyFavoritesCardToHierarchy(new_menuHierarchy, favoriteList);
+      reactUpd.menu_hierarchy = menuWithFavorites;
+      reactUpd.v3_favorites = favoriteList;
+    }
+    updateReactData(reactUpd, true);
   };
 
   const onIdle = async () => {
@@ -296,7 +302,7 @@ export default ({ start_at }) => {
     if ((reactData.idleState) || ((now.getTime() - reactData.lastActiveTime.getTime()) > oneMinute)) {
       cl(`Action/Update at ${now.toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}`);
       await updateMarquee();
-      await rebuildMenuHierarchy();
+      // await rebuildMenuHierarchy();
       updateReactData({
         lastActiveTime: now,
         idleState: false,
@@ -438,25 +444,6 @@ export default ({ start_at }) => {
       })
       .promise();
     return true;
-  };
-
-  const loadFavorites = async () => {
-    if (!activePersonId) {
-      return [];
-    }
-    const personRec = await dbClient
-      .get({
-        Key: { person_id: activePersonId },
-        TableName: 'People'
-      })
-      .promise()
-      .catch((error) => {
-        cl({ 'Error reading People for favorites': error });
-      });
-    if (!recordExists(personRec)) {
-      return [];
-    }
-    return normalizeFavorites(personRec.Item?.v3_favorites || []);
   };
 
   const toggleFavoriteMenuItem = async (menuId) => {
@@ -999,7 +986,7 @@ export default ({ start_at }) => {
   return (
     <React.Fragment>
       <Dialog
-        open={true}
+        open={true || forceRedisplay}
         p={2}
         classes={{ paper: classes.clientBackground }}
         fullScreen
@@ -1392,7 +1379,7 @@ export default ({ start_at }) => {
                           key={`menuLevel${level_index}`}
                           flexWrap={'wrap'}
                           mt={2} mb={2} ml={1} mr={1}
-                          style={{ flexGrow: 1 }}
+                          style={{ flexGrow: 1, rowGap: '16px' }}
                         >
                           {this_level.filter(c => !c.menuItemRec.hidden).map((this_cell, item_index) => {
                             const this_item = this_cell.menuItemRec;
