@@ -3440,7 +3440,7 @@ export default ({ request = {}, onClose }) => {
             options={{
               buttonText: ['Choose', 'Save & Continue'],
               title: [reactData.document_title, 'Tap "Choose a File" to select the content to upload'],
-              oneOnly: true
+              oneOnly: reactData.hasOwnProperty('oneOnly') ? reactData.oneOnly : true,
             }}
             onCancel={() => {
               updateReactData({
