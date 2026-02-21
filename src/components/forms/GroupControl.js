@@ -3,7 +3,7 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 
 import { createNewGroup, getGroupMembers, getMemberList } from '../../util/AVAGroups';
-import { dbClient, sentenceCase, isObject, recordExists, deepCopy, listFromArray, cl } from '../../util/AVAUtilities';
+import { dbClient, sentenceCase, isObject, recordExists, deepCopy, listFromArray, cl, resolveData } from '../../util/AVAUtilities';
 import AVATextInput from '../forms/AVATextInput';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import GroupMaintenance from '../dialogs/GroupMaintenance';
@@ -11,6 +11,7 @@ import { getPerson } from '../../util/AVAPeople';
 
 import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Checkbox, FormControlLabel } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
+import * as XLSX from 'xlsx';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -649,36 +650,38 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
     const formFieldsRec = await dbClient
       .query({
         KeyConditionExpression: 'client_id = :c',
-        TableName: 'Form_Fields',
+        TableName: 'DataDictionaryV3',
         ExpressionAttributeValues: {
           ':c': pSession.client_id
         }
       })
       .promise()
       .catch(error => {
-        cl({ 'Error reading Form_Fields for csv export': error });
+        cl({ 'Error reading DataDictionaryV3 for group csv export': error });
       });
 
     let exportFieldOptions = [];
     if (recordExists(formFieldsRec)) {
       exportFieldOptions = formFieldsRec.Items
-        .filter((fieldRec) => {
-          const promptValue = fieldRec?.prompt?.value;
-          const saveAs = fieldRec?.value?.saveAs;       
-          return (!!promptValue && !!saveAs && !saveAs.includes('name.'));
-        })
+        .filter((fieldRec) => !!fieldRec?.field_key)
         .map((fieldRec) => ({
-          field_name: fieldRec.field_name,
-          prompt: fieldRec.prompt.value,
-          saveAs: [fieldRec.value.saveAs, ...(fieldRec.value.alt_saveAs ? [fieldRec.value.alt_saveAs].flat() : [])],
-          value_type: fieldRec?.value?.type,
+          field_key: fieldRec.field_key,
+          description: fieldRec.description || fieldRec.field_key,
+          category: fieldRec.category || 'Other',
+          value_type: fieldRec?.type,
         }))
-        .sort((a, b) => a.prompt.localeCompare(b.prompt));
+        .sort((a, b) => {
+          const catCompare = (a.category || '').localeCompare(b.category || '');
+          if (catCompare !== 0) {
+            return catCompare;
+          }
+          return (a.description || '').localeCompare(b.description || '');
+        });
     }
 
     const savedSelectionList = await getSavedExportFieldSelections();
     const selectedExportFieldNames = exportFieldOptions
-      .map((fieldRec) => fieldRec.field_name)
+      .map((fieldRec) => fieldRec.field_key)
       .filter((field_name) => savedSelectionList.includes(field_name));
 
     updateReactData({
@@ -726,32 +729,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
     }, true);
   }
 
-  function getSaveAsPathParts(saveAs = '') {
-    let savePath = `${saveAs}`.split('.').filter(Boolean);
-    while ((savePath[0] === 'peopleRec') || (savePath[0] === 'personRec')) {
-      savePath.shift();
-    }
-    return savePath;
-  }
-
-  function getSaveAsPathCandidates(saveAs) {
-    return [saveAs]
-      .flat()
-      .filter((pathValue) => typeof pathValue === 'string' && pathValue.trim() !== '')
-      .map((pathValue) => getSaveAsPathParts(pathValue));
-  }
-
-  function readRawValueAtPath(sourceObj, pathParts = []) {
-    let target = sourceObj;
-    for (const this_key of pathParts) {
-      if ((target === null) || (target === undefined)) {
-        return undefined;
-      }
-      target = target[this_key];
-    }
-    return target;
-  }
-
   function formatExportValue(value) {
     if ((value === null) || (value === undefined)) {
       return '';
@@ -770,25 +747,74 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
     return value;
   }
 
-  function formatPhoneValue(value) {
-    if ((value === null) || (value === undefined)) {
-      return '';
+  async function downloadCurrentPeopleListCsv() {
+    const exportData = await buildCurrentPeopleListExportData();
+    if (!exportData) {
+      return false;
     }
-    if (Array.isArray(value)) {
-      return value.map((this_value) => formatPhoneValue(this_value)).filter(Boolean).join('; ');
-    }
-    const digitString = `${value}`.replace(/\D/g, '');
-    if (digitString.length < 10) {
-      return `${value}`;
-    }
-    const lastTenDigits = digitString.slice(-10);
-    const areaCode = lastTenDigits.slice(0, 3);
-    const prefix = lastTenDigits.slice(3, 6);
-    const lineNumber = lastTenDigits.slice(6);
-    return `(${areaCode}) ${prefix}-${lineNumber}`;
+
+    const {
+      header,
+      rows,
+      safeGroupName
+    } = exportData;
+
+    const csvContent = [header, ...rows]
+      .map(row => row.map(csvSafe).join(','))
+      .join('\n');
+
+    const fileName = `${safeGroupName || 'group'}_people_list.csv`;
+
+    const csvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const csvUrl = URL.createObjectURL(csvBlob);
+    const downloadLink = document.createElement('a');
+    downloadLink.href = csvUrl;
+    downloadLink.setAttribute('download', fileName);
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+    URL.revokeObjectURL(csvUrl);
+    await saveExportFieldSelections(reactData.selectedExportFieldNames || []);
+    return true;
   }
 
-  async function downloadCurrentPeopleListCsv() {
+  async function downloadCurrentPeopleListXlsx() {
+    const exportData = await buildCurrentPeopleListExportData();
+    if (!exportData) {
+      return false;
+    }
+
+    const {
+      header,
+      rows,
+      safeGroupName
+    } = exportData;
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
+
+    const maxColumnWidth = 60;
+    worksheet['!cols'] = header.map((headerLabel, columnIndex) => {
+      const maxValueLength = rows.reduce((longest, row) => {
+        const value = row[columnIndex];
+        const length = `${value ?? ''}`.length;
+        return Math.max(longest, length);
+      }, `${headerLabel ?? ''}`.length);
+
+      return {
+        wch: Math.min(Math.max(maxValueLength + 2, 10), maxColumnWidth)
+      };
+    });
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'People List');
+
+    const fileName = `${safeGroupName || 'group'}_people_list.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+    await saveExportFieldSelections(reactData.selectedExportFieldNames || []);
+    return true;
+  }
+
+  async function buildCurrentPeopleListExportData() {
     const visibleMemberIds = (reactData.lower_people_filter
       ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
       : reactData.sortedGroupMembers
@@ -806,79 +832,67 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
     }
 
     const selectedFieldOptions = reactData.exportFieldOptions.filter((fieldRec) => {
-      return reactData.selectedExportFieldNames.includes(fieldRec.field_name);
+      return reactData.selectedExportFieldNames.includes(fieldRec.field_key);
     });
 
-    const peopleRecById = {};
-    if (selectedFieldOptions.length > 0) {
-      await Promise.all(visibleMemberIds.map(async (person_id) => {
-        const peopleRec = await dbClient
-          .get({
-            TableName: 'People',
-            Key: { person_id }
-          })
-          .promise()
-          .catch(error => {
-            console.log(`caught error reading People for csv export; error is: `, error);
-          });
-        if (recordExists(peopleRec)) {
-          peopleRecById[person_id] = peopleRec.Item;
-        }
-      }));
-    }
+    const selectedFieldKeys = selectedFieldOptions.map((fieldRec) => fieldRec.field_key);
+    const dictionaryCache = {};
 
     const header = [
       'ID',
       'First Name',
       'Last Name',
       'Full Name',
-      ...selectedFieldOptions.map((fieldRec) => fieldRec.prompt)
+      ...selectedFieldOptions.map((fieldRec) => fieldRec.description)
     ];
 
-    const rows = visibleMemberIds.map(this_person => {
+    const rows = visibleMemberIds.map((this_person) => {
       const personRec = reactData.selectedGroupMembers?.[this_person] || {};
       const person_id = personRec.person_id || '';
       const firstName = personRec.name?.first || '';
       const lastName = personRec.name?.last || '';
       const fullName = `${firstName} ${lastName}`.trim();
-      const sourcePeopleRec = peopleRecById[person_id] || personRec;
-      const selectedFieldValues = selectedFieldOptions.map((fieldRec) => {
-        const candidatePaths = getSaveAsPathCandidates(fieldRec.saveAs);
-        for (const pathParts of candidatePaths) {
-          const rawValue = readRawValueAtPath(sourcePeopleRec, pathParts);
-          if ((rawValue !== null) && (rawValue !== undefined)) {
-            if (fieldRec.value_type === 'phone') {
-              return formatPhoneValue(rawValue);
-            }
-            return formatExportValue(rawValue);
-          }
-        }
-        return '';
-      });
-      return [person_id, firstName, lastName, fullName, ...selectedFieldValues];
+      return [person_id, firstName, lastName, fullName, selectedFieldKeys];
     });
 
-    const csvContent = [header, ...rows]
-      .map(row => row.map(csvSafe).join(','))
-      .join('\n');
+    if (selectedFieldKeys.length > 0) {
+      await Promise.all(rows.map(async (rowObj, rowIndex) => {
+        const person_id = rowObj[0];
+        const resolvedFieldList = await resolveData(
+          pSession.client_id,
+          person_id,
+          selectedFieldKeys,
+          {
+            dictionaryCache,
+            address_lookup: false,
+            resolve_address: false
+          }
+        );
+
+        const selectedFieldValues = selectedFieldKeys.map((field_key, fieldIndex) => {
+          const resolvedField = resolvedFieldList[fieldIndex];
+          const formattedValue = resolvedField?.formatted;
+          return formatExportValue(formattedValue);
+        });
+
+        rows[rowIndex] = [rowObj[0], rowObj[1], rowObj[2], rowObj[3], ...selectedFieldValues];
+      }));
+    } else {
+      rows.forEach((rowObj, rowIndex) => {
+        rows[rowIndex] = [rowObj[0], rowObj[1], rowObj[2], rowObj[3]];
+      });
+    }
 
     const safeGroupName = (reactData.selectedGroupRec?.group_name || reactData.selectedGroup_id || 'group')
       .replace(/[^a-z0-9]+/gi, '_')
       .replace(/^_+|_+$/g, '')
       .toLowerCase();
-    const fileName = `${safeGroupName || 'group'}_people_list.csv`;
 
-    const csvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const csvUrl = URL.createObjectURL(csvBlob);
-    const downloadLink = document.createElement('a');
-    downloadLink.href = csvUrl;
-    downloadLink.setAttribute('download', fileName);
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    URL.revokeObjectURL(csvUrl);
-    await saveExportFieldSelections(reactData.selectedExportFieldNames || []);
-    return true;
+    return {
+      header,
+      rows,
+      safeGroupName
+    };
   }
 
   const OKtoShow = (this_person) => {
@@ -1616,25 +1630,46 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                 {reactData.exportFieldOptions.length === 0
                   ?
                   <Typography style={AVATextStyle({ size: 1 })}>
-                    {'No valid Form_Fields were found for this client.'}
+                    {'No DataDictionary fields were found for this client.'}
                   </Typography>
                   :
-                  reactData.exportFieldOptions.map((fieldRec) => (
-                    <FormControlLabel
-                      key={`csv_field_${fieldRec.field_name}`}
-                      control={
-                        <Checkbox
-                          color='primary'
-                          style={{ marginLeft: '1rem' }}
-                          checked={reactData.selectedExportFieldNames.includes(fieldRec.field_name)}
-                          onChange={() => {
-                            toggleExportFieldSelection(fieldRec.field_name);
-                          }}
-                        />
-                      }
-                      label={fieldRec.prompt}
-                    />
-                  ))
+                  Object.keys(reactData.exportFieldOptions.reduce((acc, fieldRec) => {
+                    const category = fieldRec.category || 'Other';
+                    if (!acc[category]) {
+                      acc[category] = [];
+                    }
+                    acc[category].push(fieldRec);
+                    return acc;
+                  }, {})).sort((a, b) => a.localeCompare(b)).map((categoryKey) => {
+                    const groupedFields = reactData.exportFieldOptions.filter((fieldRec) => {
+                      return (fieldRec.category || 'Other') === categoryKey;
+                    });
+                    return (
+                      <Box key={`csv_field_group_${categoryKey}`} mb={1}>
+                        <Typography
+                          style={AVATextStyle({ size: 1, bold: true, margin: { left: 1, top: 0.5, bottom: 0.2 } })}
+                        >
+                          {categoryKey}
+                        </Typography>
+                        {groupedFields.map((fieldRec) => (
+                          <FormControlLabel
+                            key={`csv_field_${fieldRec.field_key}`}
+                            control={
+                              <Checkbox
+                                color='primary'
+                                style={{ marginLeft: '1rem' }}
+                                checked={reactData.selectedExportFieldNames.includes(fieldRec.field_key)}
+                                onChange={() => {
+                                  toggleExportFieldSelection(fieldRec.field_key);
+                                }}
+                              />
+                            }
+                            label={fieldRec.description}
+                          />
+                        ))}
+                      </Box>
+                    );
+                  })
                 }
               </Box>
             }
@@ -1655,6 +1690,22 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
               disabled={reactData.loadingExportFields}
             >
               {'Download CSV'}
+            </Button>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'green', color: 'white' }}
+              size='small'
+              onClick={async () => {
+                const result = await downloadCurrentPeopleListXlsx();
+                if (result) {
+                  updateReactData({
+                    showFieldPicker: false
+                  }, true);
+                }
+              }}
+              disabled={reactData.loadingExportFields}
+            >
+              {'Download Excel'}
             </Button>
             <Button
               className={AVAClass.AVAButton}
