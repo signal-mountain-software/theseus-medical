@@ -1,6 +1,6 @@
 import React from 'react';
 import { Auth } from '@aws-amplify/auth';
-import { recordExists, cl, switchActiveAccount, dbClient, lambda, getMarqueeMessage } from '../../util/AVAUtilities';
+import { recordExists, cl, switchActiveAccount, dbClient, lambda, getMarqueeMessage, deepCopy } from '../../util/AVAUtilities';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { AVATextStyle, AVAclasses, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
@@ -146,6 +146,8 @@ export default ({ start_at }) => {
 
   const { state } = useSession();
   const { roles, session } = state;
+  const clientUseTileUI = (state.session?.client_style?.ui_tiles === true);
+  const canToggleUiMode = !clientUseTileUI;
 
   const [, , removeCookie] = useCookies(['AVAuser']);
 
@@ -187,9 +189,15 @@ export default ({ start_at }) => {
     addMenuDialogUploadFileName: '',
     addMenuDialogUploadProgress: 0,
     addMenuDialogSaving: false,
+    uiTilesOverrideLoaded: false,
+    uiTilesOverride: null,
     alert: false,
     testMode: ["T", "L"].includes(window.location.href.split('//')[1].slice(0, 1).toUpperCase())
   });
+
+  const useTileUI = ((reactData.uiTilesOverride === null) || (reactData.uiTilesOverride === undefined))
+    ? clientUseTileUI
+    : !!reactData.uiTilesOverride;
 
   const [forceRedisplay, setForce] = React.useState(false);
   const updateReactData = (newData, force = false) => {
@@ -209,6 +217,80 @@ export default ({ start_at }) => {
 
   const addMenuUploadInputRef = React.useRef(null);
   const activePersonId = state.session?.patient_id || state.session?.person_id;
+
+  const loadUserUiTilesOverride = async () => {
+    const session_id = state.session?.patient_id;
+    const client_id = state.session?.client_id;
+    if (!session_id || !client_id) {
+      return null;
+    }
+
+    const sessionRec = await dbClient
+      .get({
+        TableName: 'SessionsV2',
+        Key: { session_id }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error reading SessionsV2 for user UI mode': error });
+      });
+
+    if (!recordExists(sessionRec)) {
+      return null;
+    }
+
+    const savedOverride = sessionRec.Item?.customizations?.menu_v3_mode?.[client_id]?.ui_tiles;
+    if (typeof savedOverride === 'boolean') {
+      return savedOverride;
+    }
+    return null;
+  };
+
+  const saveUserUiTilesOverride = async (nextUseTileUI) => {
+    const session_id = state.session?.patient_id;
+    const client_id = state.session?.client_id;
+    if (!session_id || !client_id) {
+      return;
+    }
+
+    const sessionRec = await dbClient
+      .get({
+        TableName: 'SessionsV2',
+        Key: { session_id }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error reading SessionsV2 before saving UI mode': error });
+      });
+
+    let customizations = deepCopy(sessionRec?.Item?.customizations || {});
+    if (!customizations.menu_v3_mode) {
+      customizations.menu_v3_mode = {};
+    }
+    if (!customizations.menu_v3_mode[client_id]) {
+      customizations.menu_v3_mode[client_id] = {};
+    }
+
+    customizations.menu_v3_mode[client_id].ui_tiles = !!nextUseTileUI;
+    customizations.menu_v3_mode[client_id].updated_at = new Date().toISOString();
+
+    await dbClient
+      .update({
+        TableName: 'SessionsV2',
+        Key: { session_id },
+        UpdateExpression: 'set #c = :c',
+        ExpressionAttributeNames: {
+          '#c': 'customizations'
+        },
+        ExpressionAttributeValues: {
+          ':c': customizations
+        }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error saving SessionsV2 UI mode': error });
+      });
+  };
 
   const rebuildMenuHierarchy = async ({ includeLoadingState = false } = {}) => {
     if (!state.session) {
@@ -231,6 +313,12 @@ export default ({ start_at }) => {
       reactUpd.menu_hierarchy = menuWithFavorites;
       reactUpd.v3_favorites = favoriteList;
     }
+
+    const persistedOpenMenuIds = await loadPersistedOpenMenuIds();
+    if (persistedOpenMenuIds.length > 0) {
+      reactUpd.menu_hierarchy = await applyPersistedOpenMenuIds(reactUpd.menu_hierarchy, persistedOpenMenuIds);
+    }
+
     updateReactData(reactUpd, true);
   };
 
@@ -364,11 +452,17 @@ export default ({ start_at }) => {
         }
         if (state.session.client_style?.suppress_card_image) { this_item.icon = null; }
         else if (!this_item.icon) { this_item.icon = state.session.client_logo; }
-        reactData.menu_hierarchy[menu_level].push({
-          menu_id: itemCode,
-          menuItemRec: this_item,
-          parent: parent?.menu_id || null
+        const targetParentId = parent?.menu_id || null;
+        const alreadyLoaded = reactData.menu_hierarchy[menu_level].some((existingCell) => {
+          return (existingCell.menu_id === itemCode) && (existingCell.parent === targetParentId);
         });
+        if (!alreadyLoaded) {
+          reactData.menu_hierarchy[menu_level].push({
+            menu_id: itemCode,
+            menuItemRec: this_item,
+            parent: targetParentId
+          });
+        }
         if (this_item.hidden && this_item.menu_itemType === 'menu') {  // hidden menu item? process childen immediately
           for (const childItem of this_item.children) {
             await getMenuItem(childItem, menu_level + 1, this_item);
@@ -446,6 +540,162 @@ export default ({ start_at }) => {
     return true;
   };
 
+  const getOpenMenuModeKey = () => (useTileUI ? 'ui_tiles' : 'accessible');
+
+  const getOpenMenuSessionContext = () => {
+    const session_id = state.session?.patient_id;
+    const client_id = state.session?.client_id;
+    return { session_id, client_id };
+  };
+
+  const collectOpenMenuIdsFromHierarchy = (menuHierarchy) => {
+    const hierarchy = Array.isArray(menuHierarchy) ? menuHierarchy : [];
+    const openParents = new Set();
+
+    hierarchy.forEach((levelCells, levelIndex) => {
+      if (levelIndex === 0 || !Array.isArray(levelCells)) {
+        return;
+      }
+      levelCells.forEach((cell) => {
+        if (cell?.parent) {
+          openParents.add(cell.parent);
+        }
+      });
+    });
+
+    return [...openParents];
+  };
+
+  const loadPersistedOpenMenuIds = async () => {
+    const { session_id, client_id } = getOpenMenuSessionContext();
+    if (!session_id || !client_id) {
+      return [];
+    }
+
+    const sessionRec = await dbClient
+      .get({
+        TableName: 'SessionsV2',
+        Key: { session_id }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error reading SessionsV2 for menu persistence': error });
+      });
+
+    if (!recordExists(sessionRec)) {
+      return [];
+    }
+
+    const modeKey = getOpenMenuModeKey();
+    return [sessionRec.Item?.customizations?.menu_v3_open?.[client_id]?.[modeKey]]
+      .flat()
+      .filter((menu_id) => (typeof menu_id === 'string') && (menu_id.trim() !== ''));
+  };
+
+  const persistOpenMenuIds = async (openMenuIds = []) => {
+    const { session_id, client_id } = getOpenMenuSessionContext();
+    if (!session_id || !client_id) {
+      return;
+    }
+
+    const sessionRec = await dbClient
+      .get({
+        TableName: 'SessionsV2',
+        Key: { session_id }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error reading SessionsV2 before menu persistence save': error });
+      });
+
+    let customizations = deepCopy(sessionRec?.Item?.customizations || {});
+    if (!customizations.menu_v3_open) {
+      customizations.menu_v3_open = {};
+    }
+    if (!customizations.menu_v3_open[client_id]) {
+      customizations.menu_v3_open[client_id] = {
+        ui_tiles: [],
+        accessible: []
+      };
+    }
+
+    const modeKey = getOpenMenuModeKey();
+    customizations.menu_v3_open[client_id][modeKey] = [...new Set([openMenuIds].flat().filter((menu_id) => {
+      return (typeof menu_id === 'string') && (menu_id.trim() !== '');
+    }))];
+    customizations.menu_v3_open[client_id].updated_at = new Date().toISOString();
+
+    await dbClient
+      .update({
+        TableName: 'SessionsV2',
+        Key: { session_id },
+        UpdateExpression: 'set #c = :c',
+        ExpressionAttributeNames: {
+          '#c': 'customizations'
+        },
+        ExpressionAttributeValues: {
+          ':c': customizations
+        }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error saving SessionsV2 menu persistence': error });
+      });
+  };
+
+  const findMenuCellWithLevel = (menuHierarchy, menu_id) => {
+    for (let levelIndex = 0; levelIndex < menuHierarchy.length; levelIndex++) {
+      const levelCells = menuHierarchy[levelIndex] || [];
+      const foundCell = levelCells.find((cell) => cell.menu_id === menu_id);
+      if (foundCell) {
+        return { levelIndex, cell: foundCell };
+      }
+    }
+    return null;
+  };
+
+  const applyPersistedOpenMenuIds = async (menuHierarchy, persistedOpenMenuIds = []) => {
+    const pendingMenuIds = [...new Set([persistedOpenMenuIds].flat().filter((menu_id) => {
+      return (typeof menu_id === 'string') && (menu_id.trim() !== '');
+    }))];
+    if (pendingMenuIds.length === 0) {
+      return menuHierarchy;
+    }
+
+    reactData.menu_hierarchy = menuHierarchy;
+    const pendingSet = new Set(pendingMenuIds);
+    let guardCount = 0;
+    while ((pendingSet.size > 0) && (guardCount < 20)) {
+      let progress = false;
+      for (const menu_id of [...pendingSet]) {
+        const foundObj = findMenuCellWithLevel(reactData.menu_hierarchy, menu_id);
+        if (!foundObj) {
+          continue;
+        }
+        const this_menuCell = foundObj.cell;
+        const this_menuItem = this_menuCell.menuItemRec;
+        if (this_menuItem?.menu_itemType === 'menu') {
+          for (const this_child of (this_menuItem.children || [])) {
+            await getMenuItem(this_child, foundObj.levelIndex + 1, this_menuItem);
+          }
+        }
+        pendingSet.delete(menu_id);
+        progress = true;
+      }
+      if (!progress) {
+        break;
+      }
+      guardCount += 1;
+    }
+
+    return reactData.menu_hierarchy;
+  };
+
+  const persistOpenMenusFromHierarchy = async (menuHierarchy) => {
+    const openMenuIds = collectOpenMenuIdsFromHierarchy(menuHierarchy);
+    await persistOpenMenuIds(openMenuIds);
+  };
+
   const toggleFavoriteMenuItem = async (menuId) => {
     if (!menuId || menuId === '__v3_favorites__') {
       return;
@@ -485,17 +735,26 @@ export default ({ start_at }) => {
     async function initialize() {
       if (state.session) {
         const tempName = (state.patient?.name ? state.patient.name.first : (state.session?.patient_display_name || state.session?.person_id));
+        const userUiTilesOverride = await loadUserUiTilesOverride();
         updateReactData({
           greetingName: tempName || 'AVA User',
-          greetingWords: makeGreeting()
+          greetingWords: makeGreeting(),
+          uiTilesOverrideLoaded: true,
+          uiTilesOverride: userUiTilesOverride
         }, true);
         await updateMarquee();
-        await rebuildMenuHierarchy({ includeLoadingState: true });
       }
     }
     initialize();
     return () => { };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useEffect(() => {
+    if (!reactData.uiTilesOverrideLoaded) {
+      return;
+    }
+    rebuildMenuHierarchy({ includeLoadingState: true });
+  }, [reactData.uiTilesOverrideLoaded, reactData.uiTilesOverride]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const renderSectionRegistry = {
     ClientMaintenance,
@@ -979,6 +1238,287 @@ export default ({ start_at }) => {
     return false;
   };
 
+  const firstVisibleLevelIndex = reactData.menu_hierarchy.findIndex((menuLevel) => {
+    return Array.isArray(menuLevel) && menuLevel.some((cell) => !cell.menuItemRec.hidden);
+  });
+
+  function renderAccessibleSubMenu(parentMenuId, level_index, accessibleDepth = 1) {
+    if (useTileUI) {
+      return null;
+    }
+
+    const childCells = (reactData.menu_hierarchy[level_index] || [])
+      .filter((cell) => !cell.menuItemRec.hidden && (cell.parent === parentMenuId));
+
+    if (childCells.length === 0) {
+      return null;
+    }
+
+    return (
+      <Box
+        key={`accessible_submenu_${parentMenuId}_${level_index}`}
+        display='flex'
+        flexDirection='column'
+        ml={3}
+        mr={1}
+        mt={1}
+        mb={1}
+      >
+        {childCells.map((childCell, childIndex) => {
+          return renderMenuCardCell(childCell, level_index, childIndex, `accessible_${parentMenuId}_`, accessibleDepth);
+        })}
+      </Box>
+    );
+  }
+
+  function renderMenuCardCell(this_cell, level_index, item_index, keyPrefix = 'menuLevel', accessibleDepth = 0) {
+    const this_item = this_cell.menuItemRec;
+    const menuItemType = this_item.menu_itemType;
+    const isFavoriteCard = this_item.menu_id === '__v3_favorites__';
+    const isFavorite = (reactData.v3_favorites || []).includes(this_item.menu_id);
+    const hideCardImage = (!useTileUI) && (accessibleDepth > 0);
+    const parentColor = (level_index > 0)
+      ? reactData.menu_hierarchy[level_index - 1]?.find((parentCell) => parentCell.menu_id === this_cell.parent)?.menuItemRec?.color
+      : null;
+    const tileColor = this_item.color || parentColor || stringToColor(this_item.menu_id);
+    const cardTile = (
+      <Card className={classes.root}
+        key={`${keyPrefix}${level_index}_card${item_index}`}
+        style={{
+          marginRight: useTileUI ? '8px' : '6px',
+          marginLeft: useTileUI ? '8px' : '6px',
+          borderRadius: ('30px 30px 30px 30px'),
+          backgroundColor: hexToRgb(tileColor, 1),
+          textDecoration: 'none',
+          position: 'relative',
+          width: useTileUI ? undefined : 'calc(100% - 12px)',
+          maxWidth: useTileUI ? undefined : 'calc(100% - 12px)',
+          minWidth: useTileUI ? undefined : 'calc(100% - 12px)',
+          minHeight: useTileUI ? undefined : 86,
+          maxHeight: useTileUI ? undefined : 'none',
+          marginBottom: useTileUI ? undefined : 10,
+        }}
+        onContextMenu={async (e) => {
+          e.preventDefault();
+          updateReactData({
+            alert: {
+              severity: 'info',
+              title: this_item.description?.short,
+              message: <div>
+                ID: {this_item.menu_id}<br />
+                Type: {this_item.menu_itemType}<br />
+                Security: {this_item.available_to.join(', ')}<br />
+                Location: Level {level_index} / Item {item_index}<br /></div>
+            }
+          }, true);
+        }}
+        onClick={async () => {
+          if (this_item.menu_itemType === 'menu') {
+            if (useTileUI) {
+              for (let levelToClear = level_index + 1; levelToClear < reactData.menu_hierarchy.length; levelToClear++) {
+                reactData.menu_hierarchy[levelToClear] = [];
+              }
+
+              for (let this_child of this_item.children) {
+                await getMenuItem(this_child, level_index + 1, this_item);
+              }
+            }
+            else {
+              const nextLevelCells = reactData.menu_hierarchy[level_index + 1] || [];
+              const hasLoadedChildren = nextLevelCells.some((cell) => {
+                return cell.parent === this_item.menu_id;
+              });
+
+              if (hasLoadedChildren) {
+                const collapsedIds = new Set([this_item.menu_id]);
+                for (let levelToTrim = level_index + 1; levelToTrim < reactData.menu_hierarchy.length; levelToTrim++) {
+                  const levelCells = reactData.menu_hierarchy[levelToTrim] || [];
+                  const remainingCells = [];
+
+                  for (const levelCell of levelCells) {
+                    if (collapsedIds.has(levelCell.parent)) {
+                      collapsedIds.add(levelCell.menu_id);
+                    }
+                    else {
+                      remainingCells.push(levelCell);
+                    }
+                  }
+
+                  reactData.menu_hierarchy[levelToTrim] = remainingCells;
+                }
+              }
+              else {
+                for (let this_child of this_item.children) {
+                  await getMenuItem(this_child, level_index + 1, this_item);
+                }
+              }
+            }
+
+            updateReactData({
+              menu_hierarchy: reactData.menu_hierarchy
+            }, true);
+            void persistOpenMenusFromHierarchy(reactData.menu_hierarchy);
+          }
+          else if (this_item.menu_itemType === 'function') {
+            void activityLog(this_item.menu_id, this_item.description?.long);
+            updateReactData({
+              renderFunctionCall: this_item.call || false
+            }, true);
+          }
+        }}
+      >
+        <CardActionArea className={classes.wholeCard}
+          key={`${keyPrefix}cardActionArea_card-${level_index}.${item_index}`}
+          style={{
+            flexDirection: useTileUI ? 'column' : 'row',
+            alignItems: useTileUI ? 'stretch' : 'center',
+            minHeight: useTileUI ? undefined : 86,
+          }}
+        >
+          {useTileUI && reactData.editFavorites && !isFavoriteCard &&
+            <Box
+              display='flex'
+              justifyContent='center'
+              alignItems='center'
+              width='100%'
+              style={{ minHeight: 20 }}
+            >
+              <IconButton
+                size='small'
+                onClick={async (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  await toggleFavoriteMenuItem(this_item.menu_id);
+                }}
+                style={{
+                  color: (isDark(tileColor) ? 'cornsilk' : 'black')
+                }}
+                title={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
+              >
+                {isFavorite ? <FavoriteIcon fontSize='small' /> : <FavoriteBorderIcon fontSize='small' />}
+              </IconButton>
+            </Box>
+          }
+          {this_item.icon && menuItemType !== 'link' && !reactData.editFavorites && !hideCardImage &&
+            <CardMedia
+              className={classes.media}
+              key={`${keyPrefix}cardMedia_card-${level_index}.${item_index}`}
+              image={this_item.icon}
+              title="Menu Media"
+              style={useTileUI
+                ? undefined
+                : {
+                  width: 64,
+                  minWidth: 64,
+                  maxWidth: 64,
+                  height: 64,
+                  minHeight: 64,
+                  marginLeft: 10,
+                  marginRight: 8,
+                  borderRadius: '16px'
+                }
+              }
+            />
+          }
+          <CardContent className={classes.cardcontentdetail}
+            key={`${keyPrefix}cardContent_card-${level_index}.${item_index}`}
+            style={useTileUI
+              ? undefined
+              : {
+                justifyContent: 'flex-start',
+                alignItems: 'center',
+                textAlign: 'left',
+                paddingRight: 12,
+              }
+            }
+          >
+            <Box
+              display='flex' flexDirection='column'
+              alignItems={'center'} justifyContent={'center'}
+              key={`${keyPrefix}cardContentBox-${level_index}.${item_index}`}
+            >
+              {(() => {
+                const menuLabel = useTileUI
+                  ? (this_item.description?.short || this_item.menu_id)
+                  : (this_item.description?.long || this_item.description?.short || this_item.menu_id);
+                const labelContent = (
+                  <Typography
+                    key={`${keyPrefix}cardContentLink-${level_index}.${item_index}`}
+                    style={AVATextStyle({ align: 'center', margin: { left: useTileUI ? 0 : (hideCardImage ? 2 : 1) }, size: useTileUI ? 1 : 1.8, bold: true, color: (isDark(tileColor) ? 'cornsilk' : 'black') })}
+                  >
+                    {menuLabel}
+                  </Typography>
+                );
+                if (menuItemType === 'link') {
+                  return (
+                    <a
+                      href={this_item.url + (!this_item.url?.includes('?') ? ('?a=' + new Date().getTime()) : '')}
+                      style={{ color: 'inherit', textDecoration: 'none' }}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {labelContent}
+                    </a>
+                  );
+                }
+                else {
+                  return <div>{labelContent}</div>;
+                }
+              })()}
+            </Box>
+          </CardContent>
+          {!useTileUI && reactData.editFavorites && !isFavoriteCard &&
+            <Box
+              display='flex'
+              justifyContent='flex-end'
+              alignItems='center'
+              style={{ minHeight: 20, marginRight: 8 }}
+            >
+              <IconButton
+                size='small'
+                onClick={async (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  await toggleFavoriteMenuItem(this_item.menu_id);
+                }}
+                style={{
+                  color: (isDark(tileColor) ? 'cornsilk' : 'black')
+                }}
+                title={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
+              >
+                {isFavorite ? <FavoriteIcon fontSize='small' /> : <FavoriteBorderIcon fontSize='small' />}
+              </IconButton>
+            </Box>
+          }
+        </CardActionArea>
+      </Card>
+    );
+
+    const wrappedCard = ((menuItemType === 'link') && this_item.description?.long)
+      ? (
+        <Tooltip
+          key={`${keyPrefix}${level_index}_tooltip${item_index}`}
+          title={<Typography variant='caption'>{this_item.description.long}</Typography>}
+          placement='top'
+          classes={{ tooltip: classes.linkTooltip }}
+        >
+          <div>{cardTile}</div>
+        </Tooltip>
+      )
+      : cardTile;
+
+    if (!useTileUI) {
+      return (
+        <React.Fragment key={`${keyPrefix}${level_index}_frag${item_index}`}>
+          {wrappedCard}
+          {renderAccessibleSubMenu(this_item.menu_id, level_index + 1, accessibleDepth + 1)}
+        </React.Fragment>
+      );
+    }
+
+    return wrappedCard;
+  }
+
 
 
   // ******************
@@ -1269,6 +1809,27 @@ export default ({ start_at }) => {
                     </Typography>
                   </Box>
                 </MenuItem>
+                {canToggleUiMode &&
+                  <MenuItem onClick={async () => {
+                    const nextUseTileUI = !useTileUI;
+                    void persistOpenMenusFromHierarchy(reactData.menu_hierarchy);
+                    await saveUserUiTilesOverride(nextUseTileUI);
+                    updateReactData({
+                      uiTilesOverride: nextUseTileUI,
+                      popupMenuOpen: false,
+                    }, true);
+                  }}>
+                    <Box
+                      display='flex' flexDirection='row' alignItems={'center'}
+                      key={'vRowUiMode'}
+                    >
+                      <SwapHorizIcon />
+                      <Typography className={classes.popUpMenuRow} >
+                        {useTileUI ? 'Use Accessibility Mode' : 'Use Tile Mode'}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                }
                 <MenuItem onClick={async () => {
                   await accessLog(session.user_id, `*na*`, `Manual sign-out`);
                   removeCookie("AVAuser", { path: '/' });
@@ -1353,6 +1914,9 @@ export default ({ start_at }) => {
                 mt={0} mb={2} ml={1} mr={1}
               >
                 {reactData.menu_hierarchy.map((this_level, level_index) => {
+                  if (!useTileUI && (level_index !== firstVisibleLevelIndex)) {
+                    return null;
+                  }
                   const level_visible = this_level.some(c => !c.menuItemRec.hidden);
                   const firstVisibleCell = this_level.find(c => !c.menuItemRec.hidden);
                   const parentMenuId = firstVisibleCell?.parent || reactData.start_at;
@@ -1377,154 +1941,12 @@ export default ({ start_at }) => {
                         <Box
                           display='flex' flexDirection='row'
                           key={`menuLevel${level_index}`}
-                          flexWrap={'wrap'}
+                          flexWrap={useTileUI ? 'wrap' : 'nowrap'}
                           mt={2} mb={2} ml={1} mr={1}
-                          style={{ flexGrow: 1, rowGap: '16px' }}
+                          style={{ flexGrow: 1, rowGap: '0px', flexDirection: useTileUI ? 'row' : 'column' }}
                         >
                           {this_level.filter(c => !c.menuItemRec.hidden).map((this_cell, item_index) => {
-                            const this_item = this_cell.menuItemRec;
-                            const menuItemType = this_item.menu_itemType;
-                            const isFavoriteCard = this_item.menu_id === '__v3_favorites__';
-                            const isFavorite = (reactData.v3_favorites || []).includes(this_item.menu_id);
-                            const parentColor = (level_index > 0)
-                              ? reactData.menu_hierarchy[level_index - 1]?.find((parentCell) => parentCell.menu_id === this_cell.parent)?.menuItemRec?.color
-                              : null;
-                            const tileColor = this_item.color || parentColor || stringToColor(this_item.menu_id);
-                            const cardTile = (
-                              <Card className={classes.root}
-                                key={`menuLevel${level_index}_card${item_index}`}
-                                style={{
-                                  marginRight: '8px', marginLeft: '8px',
-                                  borderRadius: ('30px 30px 30px 30px'),
-                                  backgroundColor: hexToRgb(tileColor, 1),
-                                  textDecoration: 'none',
-                                  position: 'relative'
-                                }}
-                                onContextMenu={async (e) => {
-                                  e.preventDefault();
-                                  updateReactData({
-                                    alert: {
-                                      severity: 'info',
-                                      title: this_item.description?.short,
-                                      message: <div>
-                                        ID: {this_item.menu_id}<br />
-                                        Type: {this_item.menu_itemType}<br />
-                                        Security: {this_item.available_to.join(', ')}<br />
-                                        Location: Level {level_index} / Item {item_index}<br /></div>
-                                    }
-                                  }, true);
-                                }}
-                                onClick={async () => {
-                                  // if this_item is a menu, call to open the menu
-                                  // if this item is a function, execute the call to the target
-                                  // if this item is a link, there's an <a> tag below to handle it
-                                  if (this_item.menu_itemType === 'menu') {
-                                    for (let levelToClear = level_index + 1; levelToClear < reactData.menu_hierarchy.length; levelToClear++) {
-                                      reactData.menu_hierarchy[levelToClear] = [];
-                                    }
-                                    for (let this_child of this_item.children) {
-                                      await getMenuItem(this_child, level_index + 1, this_item);
-                                    }
-                                    updateReactData({
-                                      menu_hierarchy: reactData.menu_hierarchy
-                                    }, true);
-                                  }
-                                  else if (this_item.menu_itemType === 'function') {
-                                    void activityLog(this_item.menu_id, this_item.description?.long);
-                                    updateReactData({
-                                      renderFunctionCall: this_item.call || false
-                                    }, true);
-                                  }
-                                }}
-                              >
-                                <CardActionArea className={classes.wholeCard}
-                                  key={`cardActionArea_card-${level_index}.${item_index}`}
-                                >
-                                  {reactData.editFavorites && !isFavoriteCard &&
-                                    <Box
-                                      display='flex'
-                                      justifyContent='center'
-                                      alignItems='center'
-                                      width='100%'
-                                      style={{ minHeight: 20 }}
-                                    >
-                                      <IconButton
-                                        size='small'
-                                        onClick={async (event) => {
-                                          event.preventDefault();
-                                          event.stopPropagation();
-                                          await toggleFavoriteMenuItem(this_item.menu_id);
-                                        }}
-                                        style={{
-                                          color: (isDark(tileColor) ? 'cornsilk' : 'black')
-                                        }}
-                                        title={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
-                                      >
-                                        {isFavorite ? <FavoriteIcon fontSize='small' /> : <FavoriteBorderIcon fontSize='small' />}
-                                      </IconButton>
-                                    </Box>
-                                  }
-                                  {this_item.icon && menuItemType !== 'link' && !reactData.editFavorites &&
-                                    <CardMedia
-                                      className={classes.media}
-                                      key={`cardMedia_card-${level_index}.${item_index}`}
-                                      image={this_item.icon}
-                                      title="Menu Media"
-                                    />
-                                  }
-                                  <CardContent className={classes.cardcontentdetail}
-                                    key={`cardContent_card-${level_index}.${item_index}`}
-                                  >
-                                    <Box
-                                      display='flex' flexDirection='column'
-                                      alignItems={'center'} justifyContent={'center'}
-                                      key={`cardContentBox-${level_index}.${item_index}`}
-                                    >
-                                      {(() => {
-                                        const labelContent = (
-                                          <Typography
-                                            key={`cardContentLink-${level_index}.${item_index}`}
-                                            style={AVATextStyle({ align: 'center', size: 1, bold: true, color: (isDark(tileColor) ? 'cornsilk' : 'black') })}
-                                          >
-                                            {this_item.description?.short || this_item.menu_id}
-                                          </Typography>
-                                        );
-                                        if (menuItemType === 'link') {
-                                          return (
-                                            <a
-                                              href={this_item.url + (!this_item.url?.includes('?') ? ('?a=' + new Date().getTime()) : '')}
-                                              style={{ color: 'inherit', textDecoration: 'none' }}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                            >
-                                              {labelContent}
-                                            </a>
-                                          );
-                                        }
-                                        else {
-                                          return <div>{labelContent}</div>;
-                                        }
-                                      })()}
-                                    </Box>
-                                  </CardContent>
-                                </CardActionArea>
-                              </Card>
-                            );
-
-                            if ((menuItemType === 'link') && this_item.description?.long) {
-                              return (
-                                <Tooltip
-                                  key={`menuLevel${level_index}_tooltip${item_index}`}
-                                  title={<Typography variant='caption'>{this_item.description.long}</Typography>}
-                                  placement='top'
-                                  classes={{ tooltip: classes.linkTooltip }}
-                                >
-                                  <div>{cardTile}</div>
-                                </Tooltip>
-                              );
-                            }
-
-                            return cardTile;
+                            return renderMenuCardCell(this_cell, level_index, item_index);
                           })}
                         </Box>
                         <Box
