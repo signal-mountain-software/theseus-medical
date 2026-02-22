@@ -207,7 +207,7 @@ export default ({ start_at }) => {
       newData
     )));
     if (force) {
-      setForce(!forceRedisplay);
+      setForce((prevForce) => !prevForce);
     }
   };
 
@@ -896,7 +896,7 @@ export default ({ start_at }) => {
   };
 
   async function uploadMenuLinkFile(fileToUpload) {
-    const bucketName = state.session.client_id.toLowerCase();
+    const bucketName = `125549937716-${state.session.client_id.toLowerCase().replace(/[^a-zA-Z0-9-]/g, '-')}`;
     const nowTime = new Date().getTime();
     const safeName = `${fileToUpload.name || 'upload.bin'}`.replace(/[^a-zA-Z0-9._-]/g, '_');
     const keyName = `menu_links/${nowTime}_${safeName}`;
@@ -1031,7 +1031,7 @@ export default ({ start_at }) => {
           alert: {
             severity: 'error',
             title: 'Upload failed',
-            message: `Unable to upload ${uploadFile?.name || 'selected file'} to bucket ${state.session.client_id}.`
+            message: `Unable to upload ${uploadFile?.name || 'selected file'} to bucket ${uploadFile?.bucketName}.`
           }
         }, true);
         return;
@@ -1276,6 +1276,10 @@ export default ({ start_at }) => {
     const menuItemType = this_item.menu_itemType;
     const isFavoriteCard = this_item.menu_id === '__v3_favorites__';
     const isFavorite = (reactData.v3_favorites || []).includes(this_item.menu_id);
+    const canAddFromThisRow = (!useTileUI) && (menuItemType === 'menu') && !!(
+      Object.prototype.hasOwnProperty.call(this_item, 'allow_add') &&
+      authorizedToMenuItem(this_item.allow_add)
+    );
     const hideCardImage = (!useTileUI) && (accessibleDepth > 0);
     const parentColor = (level_index > 0)
       ? reactData.menu_hierarchy[level_index - 1]?.find((parentCell) => parentCell.menu_id === this_cell.parent)?.menuItemRec?.color
@@ -1296,7 +1300,7 @@ export default ({ start_at }) => {
           minWidth: useTileUI ? undefined : 'calc(100% - 12px)',
           minHeight: useTileUI ? undefined : 86,
           maxHeight: useTileUI ? undefined : 'none',
-          marginBottom: useTileUI ? undefined : 10,
+          marginBottom: useTileUI ? 10 : 10,
         }}
         onContextMenu={async (e) => {
           e.preventDefault();
@@ -1429,6 +1433,7 @@ export default ({ start_at }) => {
                 alignItems: 'center',
                 textAlign: 'left',
                 paddingRight: 12,
+                flexGrow: 1,
               }
             }
           >
@@ -1467,6 +1472,38 @@ export default ({ start_at }) => {
               })()}
             </Box>
           </CardContent>
+          {canAddFromThisRow &&
+            <Box
+              display='flex'
+              justifyContent='flex-end'
+              alignItems='center'
+              style={{ minHeight: 20, marginRight: reactData.editFavorites ? 0 : 8 }}
+            >
+              <IconButton
+                size='small'
+                aria-label={`add_card_row_${this_item.menu_id}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  updateReactData({
+                    addMenuDialog: true,
+                    addMenuDialogLevel: level_index + 1,
+                    addMenuDialogParent: this_item.menu_id,
+                    addMenuDialogType: null,
+                    addMenuDialogLinkSource: 'url',
+                    addMenuDialogTitle: '',
+                    addMenuDialogUrl: '',
+                    addMenuDialogUploadFile: null,
+                    addMenuDialogUploadFileName: '',
+                    addMenuDialogUploadProgress: 0,
+                    addMenuDialogSaving: false,
+                  }, true);
+                }}
+              >
+                <AddCircleOutlineIcon fontSize='small' />
+              </IconButton>
+            </Box>
+          }
           {!useTileUI && reactData.editFavorites && !isFavoriteCard &&
             <Box
               display='flex'
@@ -1923,7 +1960,7 @@ export default ({ start_at }) => {
                   const parentCell = reactData.menu_hierarchy
                     .flat()
                     .find((candidateCell) => candidateCell.menu_id === parentMenuId);
-                  const level_addButton = !!(
+                  const level_addButton = useTileUI && !!(
                     parentCell?.menuItemRec &&
                     Object.prototype.hasOwnProperty.call(parentCell.menuItemRec, 'allow_add') &&
                     authorizedToMenuItem(parentCell.menuItemRec.allow_add)
@@ -1943,7 +1980,7 @@ export default ({ start_at }) => {
                           key={`menuLevel${level_index}`}
                           flexWrap={useTileUI ? 'wrap' : 'nowrap'}
                           mt={2} mb={2} ml={1} mr={1}
-                          style={{ flexGrow: 1, rowGap: '0px', flexDirection: useTileUI ? 'row' : 'column' }}
+                          style={{ flexGrow: 1, rowGap: useTileUI ? '10px' : '0px', flexDirection: useTileUI ? 'row' : 'column' }}
                         >
                           {this_level.filter(c => !c.menuItemRec.hidden).map((this_cell, item_index) => {
                             return renderMenuCardCell(this_cell, level_index, item_index);
