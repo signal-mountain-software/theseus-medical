@@ -347,23 +347,42 @@ export default ({ currentValues, reactData, updateReactData }) => {
           {currentValues.peopleRec.emergency_contact.contact2}
         </Typography>
       }
-      {(currentValues.peopleRec.myFamilyMembers &&
-        (currentValues.peopleRec.myFamilyMembers.length > 0)) &&
+      {(currentValues.familyRecs && currentValues.familyRecs.length > 0) &&
         <React.Fragment>
           <Typography
             style={AVATextStyle({ margin: { top: 1 } })}
           >
             {`${currentValues.peopleRec.name?.first}'s family:`}
           </Typography>
-          {currentValues.peopleRec.myFamilyMembers.sort((p1, p2) => {
-            if (p1.type !== p2.type) {
-              return ((p1.type > p2.type) ? 1 : -1);
+          <Box
+              display='flex'
+              flexDirection='row'
+              alignItems={'flex-start'}
+
+              key={`family_primary`}
+            >
+              <Typography
+                style={AVATextStyle({ margin: { top: 0, left: 1 }, bold: true })}
+                onClick={async () => {
+                  updateReactData({
+                    viewFamilyMember: currentValues.familyRecs[0].primary_contact.id
+                  }, true);
+                }}
+              >
+                {`${makeName(currentValues.familyRecs[0].primary_contact.id) || currentValues.familyRecs[0].primary_contact.name.trim() || currentValues.familyRecs[0].primary_contact.id || 'Unknown Person'}`}
+              </Typography>
+              <Typography style={AVATextStyle({ margin: { top: 0, left: 0.5, right: -0.8 }, bold: true })}>
+                {'- Primary'}
+              </Typography>
+            </Box>
+          {currentValues.familyRecs[0].other_members.sort((p1, p2) => {
+            if (p1.role !== p2.role) {
+              return ((p1.role > p2.role) ? 1 : -1);
             }
             else {
               return ((p1.name > p2.name) ? 1 : -1);
             }
           }).map((this_member, memberNdx) => (
-            (this_member.id !== currentValues.peopleRec.person_id) &&
             <Box
               display='flex'
               flexDirection='row'
