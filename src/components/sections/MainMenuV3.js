@@ -23,7 +23,6 @@ import { useCookies } from 'react-cookie';
 import { useIdleTimer } from 'react-idle-timer';
 import useSession from '../../hooks/useSession';
 import SwitchPatientDialog from '../dialogs/SwitchPatientDialog';
-import PatientDialog from '../dialogs/PatientDialog';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 
 import Box from '@material-ui/core/Box';
@@ -767,7 +766,6 @@ export default ({ start_at }) => {
     ShowGroup,
     ShowCalendar,
     PeopleMaintenance,
-    PatientDialog,
     SwitchPatientDialog,
     QuickAdd,
     QuickSearch,
@@ -2061,9 +2059,9 @@ export default ({ start_at }) => {
                   key={'loadingBox'}
                   id={'loadingBox'}
                 >
-                  {reactData.loading &&
+                  {(reactData.loading || !state.hasOwnProperty('groups') || !state.groups.hasOwnProperty('adminHierarchy') || !state.accessList?.[state.session.client_id]) &&
                     <React.Fragment>
-                      <Typography style={AVATextStyle({ size: 1.5, align: 'center' })}  >{`Loading AVA`}</Typography>
+                      <Typography style={AVATextStyle({ size: 1.5, align: 'center' })}  >{`Loading ${reactData.loading ? 'Your Menu' : 'AVA Data'}`}</Typography>
                       <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >
                         {`AVA version ${reactData.AVA_version}`}
                       </Typography>
@@ -2354,6 +2352,7 @@ export default ({ start_at }) => {
 
         </React.Fragment >
       </Dialog >
+
       {
         reactData.alert &&
         <Snackbar
