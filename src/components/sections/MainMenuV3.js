@@ -66,6 +66,7 @@ import FormManagement from '../dialogs/FormManagement';
 import ClientMaintenance from '../dialogs/ClientMaintenance';
 import MessageForm from '../forms/MessageForm';
 import ShowGroup from '../dialogs/ShowGroup';
+import ShowCalendar from '../dialogs/ShowCalendar';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -78,6 +79,8 @@ const useStyles = makeStyles(theme => ({
     flex: 1,
     display: 'flex',
     alignItems: 'center',
+    paddingLeft: '2px',
+    paddingRight: '2px',
     justifyContent: 'center',
     padding: 0
   },
@@ -159,6 +162,7 @@ export default ({ start_at }) => {
     is_admin: state.user?.account_class && (['master', 'admin'].includes(state.user.account_class)),
     is_support: state.user?.account_class && (['master', 'support', 'admin'].includes(state.user.account_class)),
     AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`,
+    OGpatient: state.session ? {patient_id: state.session.patient_id, patient_display_name: state.session.patient_display_name} : {},
     greetingName: '',
     greetingWords: '',
     loading: 'Initializing',
@@ -419,10 +423,10 @@ export default ({ start_at }) => {
         case '*support': { if (reactData.is_support) { return true; } break; }
         case 'group': {
           const check_group = this_rule.split(':')[1];
-          if (state.groups?.belongsTo
+          if ((state.groups?.belongsTo
             && state.groups.belongsTo.hasOwnProperty(check_group)
             && state.groups.belongsTo[check_group].belongs_to === true
-          ) { return true; } break;
+          ) || state.patient.groups.includes(check_group)) { return true; } break;
         }
         case 'person': { if (state.session?.person_id === this_rule.split(':')[1]) { return true; } break; }
         default: { }
@@ -761,6 +765,7 @@ export default ({ start_at }) => {
     FormManagement,
     MessageForm,
     ShowGroup,
+    ShowCalendar,
     PeopleMaintenance,
     PatientDialog,
     SwitchPatientDialog,
@@ -816,13 +821,19 @@ export default ({ start_at }) => {
         client={state.session.client_id}
         client_id={state.session.client_id}
         person_id={state.session.person_id}
-        pPerson={session.patient_id}
-        pClient={session.client_id}
+        pPerson={state.session.patient_id}
+        pClient={state.session.client_id}
         pSession={state.session}
         personRec={state.patient}
         pMessageList={[]}
         defaults={props.defaults || {}}
         options={props.options || {}}
+        patient={state.session}
+        OGpatient={reactData.OGpatient}
+        peopleList={props.options?.OGvaluesList}
+        defaultObject={props.defaults || []}
+        eventClient={props.options?.client_id || state.session.client_id}
+        calendarMode={props.options?.mode || 'signUp'}
         onReset={() => {
           start();
           updateReactData({
