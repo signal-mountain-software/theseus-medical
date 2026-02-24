@@ -407,7 +407,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
             </Box>
           </Box>
         }
-        {options.withPreferred && (reactData.preferred_recipients.length > 0) &&
+        {options.withPreferred && reactData.preferred_recipients && (reactData.preferred_recipients.length > 0) &&
           (() => {
             // Check if there are any visible preferred recipients
             const visiblePreferred = reactData.preferred_recipients.filter((recipient, idx) => OKtoShowPreferred(recipient, idx));

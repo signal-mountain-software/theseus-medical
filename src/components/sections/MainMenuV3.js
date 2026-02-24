@@ -192,6 +192,8 @@ export default ({ start_at }) => {
     addMenuDialogUploadFileName: '',
     addMenuDialogUploadProgress: 0,
     addMenuDialogSaving: false,
+    addMenuDialogTargets: [],
+    showAddMessageTargetSearch: false,
     uiTilesOverrideLoaded: false,
     uiTilesOverride: null,
     alert: false,
@@ -954,6 +956,29 @@ export default ({ start_at }) => {
     const linkSource = reactData.addMenuDialogLinkSource || 'url';
     const urlText = (reactData.addMenuDialogUrl || '').trim();
     const uploadFile = reactData.addMenuDialogUploadFile;
+    const messageTargets = ([reactData.addMenuDialogTargets].flat())
+      .filter((targetRec) => {
+        return !!(targetRec && (targetRec.person_id || targetRec.group_id || targetRec.rIndex !== undefined));
+      })
+      .map((targetRec) => {
+        if (targetRec.person_id) {
+          return {
+            person_id: targetRec.person_id,
+            person_name: targetRec.person_name || `${targetRec.person_firstName || ''} ${targetRec.person_lastName || ''}`.trim(),
+            person_firstName: targetRec.person_firstName,
+            person_lastName: targetRec.person_lastName
+          };
+        }
+        if (targetRec.group_id) {
+          return {
+            group_id: targetRec.group_id,
+            group_name: targetRec.group_name || targetRec.group_id
+          };
+        }
+        return {
+          rIndex: targetRec.rIndex
+        };
+      });
 
     if (!titleText) {
       updateReactData({
@@ -983,6 +1008,17 @@ export default ({ start_at }) => {
           severity: 'warning',
           title: 'Missing file',
           message: 'Please choose a file to upload when link source is Upload.'
+        }
+      }, true);
+      return;
+    }
+
+    if ((itemType === 'message_target') && (messageTargets.length === 0)) {
+      updateReactData({
+        alert: {
+          severity: 'warning',
+          title: 'Missing targets',
+          message: 'Choose one or more people or groups for this Message Target.'
         }
       }, true);
       return;
@@ -1060,6 +1096,7 @@ export default ({ start_at }) => {
     }
 
     const newMenuId = await deriveUniqueMenuId(titleText);
+    const newMenuItemType = (itemType === 'message_target') ? 'function' : itemType;
     const newMenuRec = {
       client_id: state.session.client_id,
       menu_id: newMenuId,
@@ -1068,7 +1105,7 @@ export default ({ start_at }) => {
         long: titleText,
         short: titleText,
       },
-      menu_itemType: itemType,
+      menu_itemType: newMenuItemType,
     };
 
     if (parentRec.Item.hasOwnProperty('newItem_availableTo')) {
@@ -1088,8 +1125,24 @@ export default ({ start_at }) => {
     if (itemType === 'link') {
       newMenuRec.url = finalLinkUrl;
     }
+    else if (itemType === 'message_target') {
+      const callObj = {
+        target: 'MessageForm',
+        params: {
+          options: {
+            newMessage: true,
+            recipients: deepCopy(messageTargets)
+          }
+        }
+      };
+      newMenuRec.call = callObj;
+      newMenuRec.call_instructions = callObj;
+    }
     else {
       newMenuRec.children = ['add_item_instructions'];
+      if (Object.prototype.hasOwnProperty.call(parentRec.Item, 'allow_add')) {
+        newMenuRec.allow_add = deepCopy([parentRec.Item.allow_add].flat());
+      }
     }
 
     await dbClient
@@ -1153,6 +1206,9 @@ export default ({ start_at }) => {
       addMenuDialogUploadFileName: '',
       addMenuDialogUploadProgress: 0,
       addMenuDialogSaving: false,
+      addMenuDialogTargets: [],
+      showAddMessageTargetSearch: false,
+      selections: [],
       menu_hierarchy: updatedMenuHierarchy,
       alert: {
         severity: 'success',
@@ -1506,6 +1562,9 @@ export default ({ start_at }) => {
                     addMenuDialogUploadFileName: '',
                     addMenuDialogUploadProgress: 0,
                     addMenuDialogSaving: false,
+                    addMenuDialogTargets: [],
+                    showAddMessageTargetSearch: false,
+                    selections: [],
                   }, true);
                 }}
               >
@@ -2020,6 +2079,9 @@ export default ({ start_at }) => {
                                   addMenuDialogUploadFileName: '',
                                   addMenuDialogUploadProgress: 0,
                                   addMenuDialogSaving: false,
+                                  addMenuDialogTargets: [],
+                                  showAddMessageTargetSearch: false,
+                                  selections: [],
                                 }, true);
                               }}
                             >
@@ -2166,6 +2228,35 @@ export default ({ start_at }) => {
             />
           }
 
+          {reactData.showAddMessageTargetSearch &&
+            <QuickSearch
+              reactData={reactData}
+              updateReactData={updateReactData}
+              options={{
+                title: 'Select Message Targets',
+                withGroups: true,
+                withPreferred: true,
+                showAll: true,
+                pickAndGo: true,
+                keepSelections: true,
+                buttonText: {
+                  empty: 'Done',
+                  selected: 'Use Selected Targets'
+                }
+              }}
+              onClose={(selectedTargets) => {
+                const cleanTargets = ([selectedTargets].flat()).filter((targetRec) => {
+                  return !!(targetRec && (targetRec.person_id || targetRec.group_id || targetRec.rIndex !== undefined));
+                });
+                updateReactData({
+                  showAddMessageTargetSearch: false,
+                  addMenuDialogTargets: cleanTargets,
+                  selections: cleanTargets
+                }, true);
+              }}
+            />
+          }
+
           {reactData.renderFunctionCall &&
             renderFunction(reactData.renderFunctionCall)
           }
@@ -2187,6 +2278,9 @@ export default ({ start_at }) => {
                     addMenuDialogUploadFileName: '',
                     addMenuDialogUploadProgress: 0,
                     addMenuDialogSaving: false,
+                    addMenuDialogTargets: [],
+                    showAddMessageTargetSearch: false,
+                    selections: [],
                   }, true);
                 }
               }}
@@ -2222,12 +2316,15 @@ export default ({ start_at }) => {
                   value={reactData.addMenuDialogType || ''}
                   onChange={(e) => {
                     updateReactData({
-                      addMenuDialogType: e.target.value
+                      addMenuDialogType: e.target.value,
+                      addMenuDialogTargets: (e.target.value === 'message_target') ? reactData.addMenuDialogTargets : [],
+                      selections: (e.target.value === 'message_target') ? reactData.selections : []
                     }, true);
                   }}
                 >
                   <FormControlLabel value='menu' control={<Radio color='primary' />} label='Sub-Menu' />
                   <FormControlLabel value='link' control={<Radio color='primary' />} label='Document, Video, or Link' />
+                  {reactData.is_admin && <FormControlLabel value='message_target' control={<Radio color='primary' />} label='Message Target' />}
                 </RadioGroup>
 
                 {reactData.addMenuDialogType === 'link' &&
@@ -2306,6 +2403,33 @@ export default ({ start_at }) => {
                     }
                   </React.Fragment>
                 }
+
+                {reactData.addMenuDialogType === 'message_target' &&
+                  <React.Fragment>
+                    <Typography style={AVATextStyle({ size: 0.95, margin: { top: 2, bottom: 0.25 } })}>
+                      {'Who should this message target include?'}
+                    </Typography>
+                    <Box display='flex' flexDirection='row' alignItems='center' justifyContent='space-between'>
+                      <Button
+                        className={AVAClass.AVAButton}
+                        variant='contained'
+                        color='primary'
+                        onClick={() => {
+                          updateReactData({
+                            showAddMessageTargetSearch: true,
+                            selections: deepCopy(reactData.addMenuDialogTargets || [])
+                          }, true);
+                        }}
+                        disabled={reactData.addMenuDialogSaving}
+                      >
+                        {'Choose People / Groups'}
+                      </Button>
+                      <Typography style={AVATextStyle({ size: 0.8, margin: { left: 1 } })}>
+                        {`${(reactData.addMenuDialogTargets || []).length} target${((reactData.addMenuDialogTargets || []).length === 1) ? '' : 's'} selected`}
+                      </Typography>
+                    </Box>
+                  </React.Fragment>
+                }
                 <Box display='flex' justifyContent='center' mt={2}>
                   <Button
                     className={AVAClass.AVAButton}
@@ -2338,6 +2462,9 @@ export default ({ start_at }) => {
                           addMenuDialogUploadFileName: '',
                           addMenuDialogUploadProgress: 0,
                           addMenuDialogSaving: false,
+                          addMenuDialogTargets: [],
+                          showAddMessageTargetSearch: false,
+                          selections: [],
                         }, true);
                       }
                     }}
