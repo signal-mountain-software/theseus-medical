@@ -66,6 +66,7 @@ import ClientMaintenance from '../dialogs/ClientMaintenance';
 import MessageForm from '../forms/MessageForm';
 import ShowGroup from '../dialogs/ShowGroup';
 import ShowCalendar from '../dialogs/ShowCalendar';
+import AVAConfirm from '../forms/AVAConfirm';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -193,6 +194,8 @@ export default ({ start_at }) => {
     addMenuDialogUploadProgress: 0,
     addMenuDialogSaving: false,
     addMenuDialogTargets: [],
+    deleteMenuConfirm: false,
+    deleteMenuTarget: null,
     showAddMessageTargetSearch: false,
     uiTilesOverrideLoaded: false,
     uiTilesOverride: null,
@@ -935,6 +938,192 @@ export default ({ start_at }) => {
     }, true);
   };
 
+  const handleDeleteMenuItem = async (deleteTarget) => {
+    const menuId = deleteTarget?.menu_id;
+    const parentId = deleteTarget?.parent_id;
+    const menuLabel = deleteTarget?.label || menuId;
+
+    if (!menuId || !parentId) {
+      updateReactData({
+        deleteMenuConfirm: false,
+        deleteMenuTarget: null,
+        alert: {
+          severity: 'error',
+          title: 'Delete failed',
+          message: 'Unable to determine which menu item should be deleted.'
+        }
+      }, true);
+      return;
+    }
+
+    if (['__top__', '__v3_favorites__', 'add_item_instructions'].includes(menuId)) {
+      updateReactData({
+        deleteMenuConfirm: false,
+        deleteMenuTarget: null,
+        alert: {
+          severity: 'warning',
+          title: 'Delete blocked',
+          message: 'This menu item cannot be deleted.'
+        }
+      }, true);
+      return;
+    }
+
+    const sourceParentCell = findMenuCellInHierarchy(parentId);
+    if (!canManageMenuChildren(sourceParentCell?.menuItemRec)) {
+      updateReactData({
+        deleteMenuConfirm: false,
+        deleteMenuTarget: null,
+        alert: {
+          severity: 'warning',
+          title: 'Permission denied',
+          message: 'You are not authorized to delete this item.'
+        }
+      }, true);
+      return;
+    }
+
+    const menuRec = await dbClient
+      .get({
+        TableName: 'MenuV3',
+        Key: {
+          client_id: state.session.client_id,
+          menu_id: menuId
+        }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error reading MenuV3 item during delete': error });
+      });
+
+    if (!recordExists(menuRec)) {
+      updateReactData({
+        deleteMenuConfirm: false,
+        deleteMenuTarget: null,
+        alert: {
+          severity: 'error',
+          title: 'Delete failed',
+          message: 'The selected menu item no longer exists.'
+        }
+      }, true);
+      return;
+    }
+
+    const hasVisibleChildren = (menuRec.Item.children || []).some((childId) => {
+      return childId !== 'add_item_instructions';
+    });
+
+    if ((menuRec.Item.menu_itemType === 'menu') && hasVisibleChildren) {
+      updateReactData({
+        deleteMenuConfirm: false,
+        deleteMenuTarget: null,
+        alert: {
+          severity: 'warning',
+          title: 'Delete blocked',
+          message: 'Please delete or move child items before deleting this menu.'
+        }
+      }, true);
+      return;
+    }
+
+    const parentRec = await dbClient
+      .get({
+        TableName: 'MenuV3',
+        Key: {
+          client_id: state.session.client_id,
+          menu_id: parentId
+        }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error reading parent MenuV3 during delete': error });
+      });
+
+    if (!recordExists(parentRec)) {
+      updateReactData({
+        deleteMenuConfirm: false,
+        deleteMenuTarget: null,
+        alert: {
+          severity: 'error',
+          title: 'Delete failed',
+          message: 'The parent menu could not be loaded.'
+        }
+      }, true);
+      return;
+    }
+
+    const updatedChildren = [...(parentRec.Item.children || [])].filter((childId) => childId !== menuId);
+    const parentSaved = await saveParentChildrenList(parentId, updatedChildren);
+
+    if (!parentSaved) {
+      updateReactData({
+        deleteMenuConfirm: false,
+        deleteMenuTarget: null,
+        alert: {
+          severity: 'error',
+          title: 'Delete failed',
+          message: 'Unable to update the parent menu for this deletion.'
+        }
+      }, true);
+      return;
+    }
+
+    let deleteWorked = true;
+    await dbClient
+      .delete({
+        TableName: 'MenuV3',
+        Key: {
+          client_id: state.session.client_id,
+          menu_id: menuId
+        }
+      })
+      .promise()
+      .catch((error) => {
+        deleteWorked = false;
+        cl({ 'Error deleting MenuV3 item': error });
+      });
+
+    if (!deleteWorked) {
+      updateReactData({
+        deleteMenuConfirm: false,
+        deleteMenuTarget: null,
+        alert: {
+          severity: 'error',
+          title: 'Delete failed',
+          message: 'Unable to remove this item right now. Please try again.'
+        }
+      }, true);
+      return;
+    }
+
+    const currentFavorites = normalizeFavorites(reactData.v3_favorites);
+    const nextFavorites = currentFavorites.filter((favoriteId) => favoriteId !== menuId);
+    if (nextFavorites.length !== currentFavorites.length) {
+      try {
+        await saveFavorites(nextFavorites);
+      }
+      catch (error) {
+        cl({ 'Error saving favorites during menu delete': error });
+      }
+    }
+
+    const refreshedHierarchy = await rebuildMenuHierarchy({ includeLoadingState: false });
+    const refreshedWithFavorites = applyFavoritesCardToHierarchy(refreshedHierarchy, nextFavorites);
+    void persistOpenMenusFromHierarchy(refreshedWithFavorites);
+
+    updateReactData({
+      deleteMenuConfirm: false,
+      deleteMenuTarget: null,
+      v3_favorites: nextFavorites,
+      menu_hierarchy: refreshedWithFavorites,
+      alert: {
+        severity: 'success',
+        title: 'Item deleted',
+        message: `${menuLabel} was deleted.`
+      }
+    }, true);
+  };
+
   const toggleFavoriteMenuItem = async (menuId) => {
     if (!menuId || menuId === '__v3_favorites__') {
       return;
@@ -1581,6 +1770,11 @@ export default ({ start_at }) => {
     );
     const sourceParentCell = this_cell.parent ? findMenuCellInHierarchy(this_cell.parent) : null;
     const canDragThisCard = !!(this_cell.parent && canManageMenuChildren(sourceParentCell?.menuItemRec));
+    const canDeleteThisCard = !!(
+      this_cell.parent &&
+      canManageMenuChildren(sourceParentCell?.menuItemRec) &&
+      !['__top__', '__v3_favorites__', 'add_item_instructions'].includes(this_item.menu_id)
+    );
     const canDropOnThisCard = !!((menuItemType === 'menu') && canManageMenuChildren(this_item));
     const hideCardImage = (!useTileUI) && (accessibleDepth > 0);
     const parentColor = (level_index > 0)
@@ -1612,9 +1806,35 @@ export default ({ start_at }) => {
               title: this_item.description?.short,
               message: <div>
                 ID: {this_item.menu_id}<br />
-                Type: {this_item.menu_itemType}<br />
+                Type: {this_item.menu_itemType}{this_item.url && <><br />URL: {this_item.url}</>}<br />
                 Security: {this_item.available_to.join(', ')}<br />
-                Location: Level {level_index} / Item {item_index}<br /></div>
+                Location: Level {level_index} / Item {item_index}<br />
+                {canDeleteThisCard &&
+                  <Box mt={1.5}>
+                    <Button
+                      size='small'
+                      variant='contained'
+                      color='secondary'
+                      className={AVAClass.AVAButton}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        updateReactData({
+                          alert: false,
+                          deleteMenuConfirm: true,
+                          deleteMenuTarget: {
+                            menu_id: this_item.menu_id,
+                            parent_id: this_cell.parent,
+                            label: this_item.description?.short || this_item.menu_id
+                          }
+                        }, true);
+                      }}
+                    >
+                      {'Delete Menu Item'}
+                    </Button>
+                  </Box>
+                }
+              </div>
             }
           }, true);
         }}
@@ -2763,6 +2983,30 @@ export default ({ start_at }) => {
             {reactData.alert.message}
           </Alert>
         </Snackbar>
+      }
+
+      {reactData.deleteMenuConfirm &&
+        <AVAConfirm
+          promptText={[
+            `[bold][color:red]Delete ${reactData.deleteMenuTarget?.label || 'this menu item'}?`,
+            'This action permanently removes the selected menu item.',
+            'You can only delete menu items that do not currently have children.'
+          ]}
+          cancelText='Cancel'
+          confirmText='Delete'
+          onCancel={() => {
+            updateReactData({
+              deleteMenuConfirm: false,
+              deleteMenuTarget: null
+            }, true);
+          }}
+          onConfirm={async () => {
+            await handleDeleteMenuItem(reactData.deleteMenuTarget);
+          }}
+          options={{
+            bgColor: 'white'
+          }}
+        />
       }
     </React.Fragment >
   );
