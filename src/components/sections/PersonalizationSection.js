@@ -129,8 +129,6 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
     currentValues.peopleRec.preferred_voice = currentValues.peopleRec.preferred_voice[0];
   }
 
-  let myVoiceAnswer = voicesTable.find(v => v.value === currentValues.peopleRec.preferred_voice) || voicesTable[0];
-
   const playVoiceSample = async (voiceValue) => {
     const selectedVoice = voicesTable.find(v => v.value === voiceValue);
     if (!selectedVoice || !selectedVoice.sample) {
