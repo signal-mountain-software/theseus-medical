@@ -299,7 +299,7 @@ export default ({ start_at }) => {
 
   const rebuildMenuHierarchy = async ({ includeLoadingState = false } = {}) => {
     if (!state.session) {
-      return;
+      return [];
     }
     if (includeLoadingState) {
       updateReactData({
@@ -325,6 +325,7 @@ export default ({ start_at }) => {
     }
 
     updateReactData(reactUpd, true);
+    return reactUpd.menu_hierarchy || [];
   };
 
   const onIdle = async () => {
@@ -699,6 +700,239 @@ export default ({ start_at }) => {
   const persistOpenMenusFromHierarchy = async (menuHierarchy) => {
     const openMenuIds = collectOpenMenuIdsFromHierarchy(menuHierarchy);
     await persistOpenMenuIds(openMenuIds);
+  };
+
+  const canManageMenuChildren = (menuItemRec) => {
+    return !!(
+      menuItemRec &&
+      Object.prototype.hasOwnProperty.call(menuItemRec, 'allow_add') &&
+      authorizedToMenuItem(menuItemRec.allow_add)
+    );
+  };
+
+  const findMenuCellInHierarchy = (menu_id) => {
+    if (!menu_id) {
+      return null;
+    }
+    return reactData.menu_hierarchy
+      .flat()
+      .find((candidateCell) => candidateCell.menu_id === menu_id) || null;
+  };
+
+  const isDescendantMenu = (menu_id, possibleAncestorId) => {
+    if (!menu_id || !possibleAncestorId) {
+      return false;
+    }
+    const hierarchyCells = reactData.menu_hierarchy.flat();
+    const parentById = hierarchyCells.reduce((acc, cell) => {
+      if (!acc[cell.menu_id]) {
+        acc[cell.menu_id] = cell.parent;
+      }
+      return acc;
+    }, {});
+
+    let currentParent = parentById[menu_id];
+    let guard = 0;
+    while (currentParent && guard < 50) {
+      if (currentParent === possibleAncestorId) {
+        return true;
+      }
+      currentParent = parentById[currentParent];
+      guard += 1;
+    }
+    return false;
+  };
+
+  const saveParentChildrenList = async (parentId, childrenList = []) => {
+    const parentRec = await dbClient
+      .get({
+        TableName: 'MenuV3',
+        Key: {
+          client_id: state.session.client_id,
+          menu_id: parentId
+        }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error reading parent during menu move': error });
+      });
+
+    if (!recordExists(parentRec)) {
+      return false;
+    }
+
+    const expressionNames = { '#c': 'children' };
+    const expressionValues = { ':c': childrenList };
+    let updateExpression = 'set #c = :c';
+
+    if (Object.prototype.hasOwnProperty.call(parentRec.Item, 'menu_items')) {
+      expressionNames['#m'] = 'menu_items';
+      expressionValues[':m'] = childrenList;
+      updateExpression += ', #m = :m';
+    }
+
+    await dbClient
+      .update({
+        TableName: 'MenuV3',
+        Key: {
+          client_id: state.session.client_id,
+          menu_id: parentId
+        },
+        UpdateExpression: updateExpression,
+        ExpressionAttributeNames: expressionNames,
+        ExpressionAttributeValues: expressionValues
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error saving parent children list during menu move': error });
+      });
+
+    return true;
+  };
+
+  const moveMenuItemToNewParent = async ({ draggedMenuId, sourceParentId, targetParentId }) => {
+    if (!draggedMenuId || !sourceParentId || !targetParentId) {
+      return false;
+    }
+
+    if (sourceParentId === targetParentId) {
+      return false;
+    }
+
+    const sourceParentRec = await dbClient
+      .get({
+        TableName: 'MenuV3',
+        Key: {
+          client_id: state.session.client_id,
+          menu_id: sourceParentId
+        }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error reading source parent during menu move': error });
+      });
+
+    const targetParentRec = await dbClient
+      .get({
+        TableName: 'MenuV3',
+        Key: {
+          client_id: state.session.client_id,
+          menu_id: targetParentId
+        }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error reading target parent during menu move': error });
+      });
+
+    if (!recordExists(sourceParentRec) || !recordExists(targetParentRec)) {
+      return false;
+    }
+
+    const sourceChildren = [...new Set([sourceParentRec.Item.children || []].flat())]
+      .filter((childId) => childId !== draggedMenuId);
+
+    const targetChildren = [...new Set([targetParentRec.Item.children || []].flat())];
+    if (!targetChildren.includes(draggedMenuId)) {
+      targetChildren.push(draggedMenuId);
+    }
+
+    const savedSource = await saveParentChildrenList(sourceParentId, sourceChildren);
+    if (!savedSource) {
+      return false;
+    }
+
+    const savedTarget = await saveParentChildrenList(targetParentId, targetChildren);
+    if (!savedTarget) {
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleMenuCardDrop = async (event, targetCell) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const targetMenu = targetCell?.menuItemRec;
+    if (!(targetMenu?.menu_itemType === 'menu') || !canManageMenuChildren(targetMenu)) {
+      return;
+    }
+
+    let dragPayload;
+    try {
+      dragPayload = JSON.parse(event.dataTransfer.getData('application/json') || '{}');
+    }
+    catch {
+      dragPayload = {};
+    }
+
+    const draggedMenuId = dragPayload.menu_id;
+    const sourceParentId = dragPayload.parent_id;
+    const targetParentId = targetCell.menu_id;
+
+    if (!draggedMenuId || !sourceParentId || !targetParentId) {
+      return;
+    }
+
+    if (draggedMenuId === targetParentId) {
+      updateReactData({
+        alert: {
+          severity: 'warning',
+          title: 'Invalid move',
+          message: 'A menu cannot be moved into itself.'
+        }
+      }, true);
+      return;
+    }
+
+    if (sourceParentId === targetParentId) {
+      return;
+    }
+
+    if (isDescendantMenu(targetParentId, draggedMenuId)) {
+      updateReactData({
+        alert: {
+          severity: 'warning',
+          title: 'Invalid move',
+          message: 'A menu cannot be moved into one of its descendants.'
+        }
+      }, true);
+      return;
+    }
+
+    const sourceParentCell = findMenuCellInHierarchy(sourceParentId);
+    if (!canManageMenuChildren(sourceParentCell?.menuItemRec)) {
+      return;
+    }
+
+    const moveWorked = await moveMenuItemToNewParent({
+      draggedMenuId,
+      sourceParentId,
+      targetParentId
+    });
+
+    if (!moveWorked) {
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: 'Move failed',
+          message: 'Unable to move this item right now. Please try again.'
+        }
+      }, true);
+      return;
+    }
+
+    const refreshedHierarchy = await rebuildMenuHierarchy({ includeLoadingState: false });
+    void persistOpenMenusFromHierarchy(refreshedHierarchy);
+
+    updateReactData({
+      alert: {
+        severity: 'success',
+        title: 'Item moved',
+        message: 'The menu item was moved to the selected parent.'
+      }
+    }, true);
   };
 
   const toggleFavoriteMenuItem = async (menuId) => {
@@ -1345,6 +1579,9 @@ export default ({ start_at }) => {
       Object.prototype.hasOwnProperty.call(this_item, 'allow_add') &&
       authorizedToMenuItem(this_item.allow_add)
     );
+    const sourceParentCell = this_cell.parent ? findMenuCellInHierarchy(this_cell.parent) : null;
+    const canDragThisCard = !!(this_cell.parent && canManageMenuChildren(sourceParentCell?.menuItemRec));
+    const canDropOnThisCard = !!((menuItemType === 'menu') && canManageMenuChildren(this_item));
     const hideCardImage = (!useTileUI) && (accessibleDepth > 0);
     const parentColor = (level_index > 0)
       ? reactData.menu_hierarchy[level_index - 1]?.find((parentCell) => parentCell.menu_id === this_cell.parent)?.menuItemRec?.color
@@ -1434,6 +1671,23 @@ export default ({ start_at }) => {
               renderFunctionCall: this_item.call || false
             }, true);
           }
+        }}
+        draggable={canDragThisCard}
+        onDragStart={(event) => {
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('application/json', JSON.stringify({
+            menu_id: this_cell.menu_id,
+            parent_id: this_cell.parent
+          }));
+        }}
+        onDragOver={(event) => {
+          if (canDropOnThisCard) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+          }
+        }}
+        onDrop={async (event) => {
+          await handleMenuCardDrop(event, this_cell);
         }}
       >
         <CardActionArea className={classes.wholeCard}
