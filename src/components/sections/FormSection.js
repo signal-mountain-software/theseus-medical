@@ -675,7 +675,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                                   {`Last Update ${makeDate(myDocs.completedDocs[0].last_update, { timeZone: state.session.client_timezone }).absolute}`}
                                                 </Typography>
                                                 <Typography
-                                                  key={`duedate-col_form${form_index}t3`}
+                                                  key={`duedate-col_form${form_index}t4`}
                                                   style={AVATextStyle({
                                                     size: 0.8,
                                                     margin: { top: 0, left: 0 },
