@@ -930,7 +930,7 @@ export default ({ start_at }) => {
       alert: {
         severity: 'success',
         title: 'Item moved',
-        message: 'The menu item was moved to the selected parent.'
+        message: 'The item was moved successfully.'
       }
     }, true);
   };
