@@ -1057,10 +1057,13 @@ export default ({ request = {}, onClose }) => {
 
     let complete_stage = { stage_name: 'complete' };
     // Ensure stages array is properly set up
-    if (!formRec.stages || !Array.isArray(formRec.stages) || (formRec.stages.length === 0) || formRec.stages[0].stage_name !== 'default') {
+    if (!formRec.stages || !Array.isArray(formRec.stages) || (formRec.stages.length === 0)) {
       formRec.stages = [{ stage_name: 'default' }];
     }
     else {
+      if (formRec.stages[0].stage_name !== 'default') { 
+        formRec.stages.unshift({ stage_name: 'default' });
+      }
       // Remove any 'complete' stage(s) from the stages array
       let existingCompleteStage = formRec.stages.find(stage => stage.stage_name === 'complete');
       if (existingCompleteStage) {
@@ -2215,9 +2218,7 @@ export default ({ request = {}, onClose }) => {
         }
       }
     }
-    let jumpTo = window.location.origin;
-    final_html = final_messageText + `<br><br>The document is available <a href=${jumpTo}?document=${reactData.document_id}>here</a>`;
-    final_messageText += `\r\n\nThe document is available at: ${jumpTo}?document=${reactData.document_id}`;
+    final_html = final_messageText;
     await sendMessages({
       client: state.session.client_id,
       author: state.session.user_id,
@@ -2225,7 +2226,6 @@ export default ({ request = {}, onClose }) => {
       messageText: final_messageText,
       htmlText: final_html,
       recipientList: recipientList,
-      attachments: `${jumpTo}?document=${reactData.document_id}`,
       subject: messageInstructions.subject
         ? await resolveVariables(messageInstructions.subject)
         : `A message from ${reactData.peopleRec[reactData.pertains_to].display_name || 'AVA Document Management'}`
@@ -3440,7 +3440,7 @@ export default ({ request = {}, onClose }) => {
             options={{
               buttonText: ['Choose', 'Save & Continue'],
               title: [reactData.document_title, 'Tap "Choose a File" to select the content to upload'],
-              oneOnly: true
+              oneOnly: reactData.hasOwnProperty('oneOnly') ? reactData.oneOnly : true,
             }}
             onCancel={() => {
               updateReactData({
