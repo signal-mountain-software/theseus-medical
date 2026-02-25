@@ -11,6 +11,16 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
 
   const AVAClass = AVAclasses();
   const hiddenFileInput = React.useRef(null);
+  const voiceAudioPlayer = React.useRef(new Audio());
+
+  React.useEffect(() => {
+    const audioEl = voiceAudioPlayer.current;
+    audioEl.preload = 'auto';
+    return () => {
+      audioEl.pause();
+      audioEl.src = '';
+    };
+  }, []);
 
   const languageTable = [
     { label: "English", value: "en" },
@@ -91,6 +101,14 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
     { label: "Welsh", value: "cy" }
   ];
 
+  const voicesTable = [
+    { label: "Sally", value: "Polly.Salli", sample: 'https://ava-audio.s3.us-east-1.amazonaws.com/Voice_Salli.mp3' },
+    { label: "Joanna", value: "Polly.Joanna", sample: 'https://ava-audio.s3.us-east-1.amazonaws.com/Voice_Joanna.mp3' },
+    { label: "Ruth", value: "Polly.Ruth", sample: 'https://ava-audio.s3.us-east-1.amazonaws.com/Voice_Ruth.mp3' },
+    { label: "Stephen", value: "Polly.Stephen", sample: 'https://ava-audio.s3.us-east-1.amazonaws.com/Voice_Stephen.mp3' },
+    { label: "Matthew", value: "Polly.Matthew", sample: 'https://ava-audio.s3.us-east-1.amazonaws.com/Voice_Matthew.mp3' },
+  ];
+
   if (!currentValues.peopleRec.preferred_language) {
     currentValues.peopleRec.preferred_language = 'en';
   }
@@ -102,6 +120,59 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
       return l.value === currentValues.peopleRec.preferred_language;
     }).label,
     value: currentValues.peopleRec.preferred_language
+  };
+
+  if (!currentValues.peopleRec.preferred_voice) {
+    currentValues.peopleRec.preferred_voice = voicesTable[0].value;
+  }
+  else if (Array.isArray(currentValues.peopleRec.preferred_voice)) {
+    currentValues.peopleRec.preferred_voice = currentValues.peopleRec.preferred_voice[0];
+  }
+
+  let myVoiceAnswer = voicesTable.find(v => v.value === currentValues.peopleRec.preferred_voice) || voicesTable[0];
+
+  const playVoiceSample = async (voiceValue) => {
+    const selectedVoice = voicesTable.find(v => v.value === voiceValue);
+    if (!selectedVoice || !selectedVoice.sample) {
+      return;
+    }
+
+    const audioEl = voiceAudioPlayer.current;
+    audioEl.pause();
+    audioEl.currentTime = 0;
+    if (audioEl.src !== selectedVoice.sample) {
+      audioEl.src = selectedVoice.sample;
+      audioEl.load();
+    }
+
+    if (audioEl.readyState < 3) {
+      await new Promise((resolve) => {
+        let done = false;
+        const finish = () => {
+          if (!done) {
+            done = true;
+            resolve();
+          }
+        };
+        const timeoutId = setTimeout(() => {
+          audioEl.removeEventListener('canplaythrough', onCanPlayThrough);
+          finish();
+        }, 350);
+        const onCanPlayThrough = () => {
+          clearTimeout(timeoutId);
+          audioEl.removeEventListener('canplaythrough', onCanPlayThrough);
+          finish();
+        };
+        audioEl.addEventListener('canplaythrough', onCanPlayThrough);
+      });
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    audioEl.currentTime = 0;
+    audioEl.play().catch(() => {
+      const fallbackAudio = new Audio(selectedVoice.sample);
+      fallbackAudio.play().catch(() => { });
+    });
   };
   console.log(myAnswer);
 
@@ -437,10 +508,54 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
                 {`My preferred language`}
               </Typography>
             </Box>
+
+            <Typography
+              style={AVATextStyle({ margin: { top: 2, bottom: 0.4 } })}
+            >
+              {`You can customize the voice AVA uses when we call you on the phone. Tap a voice below to preview and select.`}
+            </Typography>
+            <Box display='flex'
+              flexDirection='row'
+              justifyContent='flex-start'
+              alignItems='center'
+              marginTop={1}
+              flexWrap='wrap'
+            >
+              {voicesTable.map((voiceOption) => (
+                <Button
+                  key={`voice_sample_${voiceOption.value}`}
+                  onClick={async () => {
+                    if (currentValues.peopleRec.preferred_voice !== voiceOption.value) {
+                      await updateField({
+                        updateList:
+                          [{
+                            tableName: 'peopleRec',
+                            fieldName: 'preferred_voice',
+                            newData: voiceOption.value
+                          }]
+                      });
+                    }
+                    playVoiceSample(voiceOption.value);
+                  }}
+                  className={AVAClass.AVAButton}
+                  style={{
+                    marginLeft: 0,
+                    marginRight: 6,
+                    marginBottom: 4,
+                    backgroundColor: 'white',
+                    fontWeight: currentValues.peopleRec.preferred_voice === voiceOption.value ? 700 : 400,
+                    color: currentValues.peopleRec.preferred_voice === voiceOption.value ? 'red' : null
+                  }}
+                  size='small'
+                >
+                  {`${currentValues.peopleRec.preferred_voice === voiceOption.value ? '✓ ' : ''}${voiceOption.label}`}
+                </Button>
+              ))}
+            </Box>
           </React.Fragment>
         </Box>
         <Typography
-          style={AVATextStyle({ italic: true, margin: { top: 2, bottom: 0.4 } })}
+          style={AVATextStyle({ margin: { top: 2, bottom: 0.4 } })}
         >
           {`When someone receives a message from me via e-Mail, use this as my e-Mail name`}
         </Typography>
@@ -490,7 +605,7 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
           }}
         />
         <Typography
-          style={AVATextStyle({ italic: true, margin: { top: 2, bottom: 0.4 } })}
+          style={AVATextStyle({ margin: { top: 2, bottom: 0.4 } })}
         >
           {`If requested, use this information to identify me in messages I send`}
         </Typography>
