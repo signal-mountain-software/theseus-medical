@@ -154,6 +154,61 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
           }
 
           {(reactData.form_fields[this_formField].fieldRec.value.type === 'text') &&
+            Array.isArray(reactData.form_fields[this_formField].value) &&
+            <Box
+              key={`local_box__${cFNdx}`}
+              display='flex' flexDirection='column'
+              alignItems={'flex-start'}
+            >
+              <Typography
+                key={`local_prompt__${cFNdx}`}
+                style={AVATextStyle({ size: 1, margin: { top: 1 }, bold: true })}
+              >
+                {`${reactData.form_fields[this_formField].prompt} `}
+              </Typography>
+              <React.Fragment
+                key={`groupFrag__${this_formField}`}
+              >
+                {reactData.form_fields[this_formField].value.map((this_value, this_valueNDX) => (
+                  <Input
+                    id={`field__${this_formField}`}
+                    key={`field__${this_formField}`}
+                    variant={'outlined'}
+                    disabled={reactData.form_fields[this_formField].fieldRec.options?.viewOnly}
+                    style={AVATextStyle({
+                      lineHeight: 1,
+                      width: `${reactData.form_fields[this_formField].fieldRec.prompt.width || 200}px`,
+                      maxWidth: '90%',
+                      size: 0.95,
+                      color: 'black',
+                      margin: { top: 0.5, bottom: 0.5, left: 1.5, right: 3 }
+                    })}
+                    autoComplete='off'
+                    defaultValue={this_value || ''}
+                    onBlur={async (event) => {
+                      let newValue = event.target.value;
+                      let splitSave = reactData.form_fields[this_formField].fieldRec.value.saveAs.split('.');
+                      reactData.form_fields[this_formField].value[this_valueNDX] = newValue;
+                      await updateField({
+                        updateList:
+                          [{
+                            tableName: splitSave.shift(),
+                            fieldName: splitSave.join('.'),
+                            newData: reactData.form_fields[this_formField].value
+                          }],
+                        reactUpd: {
+                          fields: reactData.form_fields
+                        }
+                      });
+                    }}
+                  />
+                ))}
+              </React.Fragment>
+            </Box>
+          }
+
+          {(reactData.form_fields[this_formField].fieldRec.value.type === 'text') &&
+            !Array.isArray(reactData.form_fields[this_formField].value) &&
             <Box
               key={`local_box__${cFNdx}`}
               display='flex' flexDirection='row'
@@ -169,7 +224,8 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                 id={`field__${this_formField}`}
                 key={`field__${this_formField}`}
                 variant={'outlined'}
-                disabled={reactData.form_fields[this_formField].fieldRec.options?.viewOnly}
+                disabled={reactData.form_fields[this_formField].fieldRec.options?.viewOnly || Array.isArray(reactData.form_fields[this_formField].value)}
+                multiline={Array.isArray(reactData.form_fields[this_formField].value)}
                 style={AVATextStyle({
                   lineHeight: 1,
                   width: `${reactData.form_fields[this_formField].fieldRec.prompt.width || 200}px`,
@@ -179,8 +235,14 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                   margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
                 })}
                 autoComplete='off'
-                defaultValue={reactData.form_fields[this_formField].value || ''}
+                defaultValue={Array.isArray(reactData.form_fields[this_formField].value)
+                  ? reactData.form_fields[this_formField].value.join('\n')
+                  : (reactData.form_fields[this_formField].value || '')
+                }
                 onBlur={async (event) => {
+                  if (Array.isArray(reactData.form_fields[this_formField].value)) {
+                    return;
+                  }
                   let newValue = event.target.value;
                   let splitSave = reactData.form_fields[this_formField].fieldRec.value.saveAs.split('.');
                   reactData.form_fields[this_formField].value = newValue;
@@ -334,7 +396,8 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
 
           }
         </React.Fragment>
-      ))}
-    </Box>
+      ))
+      }
+    </Box >
   );
 };
