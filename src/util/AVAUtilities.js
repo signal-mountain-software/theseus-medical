@@ -1878,6 +1878,9 @@ function normalizeAddressInput(rawValue) {
 
   const line1 = firstNonBlank([
     rawValue.address,
+    rawValue.address1,
+    rawValue.street,
+    rawValue.location,
     rawValue.line1,
     rawValue.address_line1
   ]);
@@ -1887,6 +1890,10 @@ function normalizeAddressInput(rawValue) {
     rawValue.line2,
     rawValue.address_line2
   ]);
+
+  if (line2 === line1) {
+    line2 = '';
+  }
 
   const city = firstNonBlank([rawValue.city]);
   const state = firstNonBlank([rawValue.state]);
