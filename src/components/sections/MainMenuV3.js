@@ -67,6 +67,7 @@ import MessageForm from '../forms/MessageForm';
 import ShowGroup from '../dialogs/ShowGroup';
 import ShowCalendar from '../dialogs/ShowCalendar';
 import AVAConfirm from '../forms/AVAConfirm';
+import LoadSpreadsheet from '../forms/LoadSpreadsheet';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -1190,6 +1191,7 @@ export default ({ start_at }) => {
     MessageForm,
     ShowGroup,
     ShowCalendar,
+    LoadSpreadsheet,
     PeopleMaintenance,
     SwitchPatientDialog,
     QuickAdd,
