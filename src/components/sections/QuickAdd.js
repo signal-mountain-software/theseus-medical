@@ -2143,7 +2143,7 @@ export default ({ onClose, options = {} }) => {
                         key={index}
                         value={prompt.account_type}
                         control={<Radio />}
-                        label={titleCase(prompt.account_type)}
+                        label={titleCase(prompt.account_description || prompt.account_type)}
                         style={{ marginBottom: '8px' }}
                       />
                     ))}
