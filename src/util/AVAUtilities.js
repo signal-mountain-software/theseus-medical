@@ -1885,7 +1885,7 @@ function normalizeAddressInput(rawValue) {
     rawValue.address_line1
   ]);
 
-  const line2 = firstNonBlank([
+  let line2 = firstNonBlank([
     rawValue.address2,
     rawValue.line2,
     rawValue.address_line2
