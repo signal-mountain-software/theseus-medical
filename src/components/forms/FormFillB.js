@@ -986,8 +986,9 @@ export default ({ request = {}, onClose }) => {
         || (field_variables.options ? field_variables.options.resetFields : null))
     };
 
-    // gather show_if/ignore_if in response
+    // gather show_if/show_ifAll/ignore_if in response
     returnObj.show_if = field_variables.show_if || null;
+    returnObj.show_ifAll = field_variables.show_ifAll || null;
     returnObj.ignore_if = field_variables.ignore_if || null;
 
     // set signature reference number if signature type
@@ -2523,6 +2524,24 @@ export default ({ request = {}, onClose }) => {
   const okToShowSection = (this_sectionObj) => {
     if (this_sectionObj.hasOwnProperty('show_if')) {
       return (this_sectionObj.show_if.some(this_test => {
+        if (this_test.hasOwnProperty('pertainsTo_memberOf')) {
+          return reactData.peopleRec[reactData.pertains_to].groups.some(g => {
+            return [this_test.memberOf].flat().includes(g);
+          });
+        }
+        else if (this_test.hasOwnProperty('memberOf')) {
+          return state.patient.groups.some(g => {
+            return [this_test.memberOf].flat().includes(g);
+          });
+        }
+        else {
+          const this_value = reactData.fields?.[this_test.field]?.value;
+          return (array_in_array(this_test.values, this_value));
+        }
+      }));
+    }
+    else if (this_sectionObj.hasOwnProperty('show_ifAll')) {
+      return (this_sectionObj.show_ifAll.every(this_test => {
         if (this_test.hasOwnProperty('pertainsTo_memberOf')) {
           return reactData.peopleRec[reactData.pertains_to].groups.some(g => {
             return [this_test.memberOf].flat().includes(g);
