@@ -2153,7 +2153,7 @@ export default ({ start_at }) => {
                   </Typography>
                 }
                 placement='bottom-start'>
-                <Avatar src={getImage(state.session?.person_id)} alt={reactData.greetingName} />
+                <Avatar src={getImage(state.patient?.person_id)} alt={reactData.greetingName} />
               </Tooltip>
               <Box
                 flexGrow={1}

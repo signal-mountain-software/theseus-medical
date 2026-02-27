@@ -542,6 +542,7 @@ const LoginModuleV2 = ({
       updateExpression += ', last_login = :p';
     }
     if (sessionRec.patient_id) {
+      // INVESTIGATE: this might need to set pid to patientRec.person_id (not sessionRec.person_id)
       attributeValues[':pid'] = sessionRec.patient_id;
       updateExpression += ', patient_id = :pid';
     }
