@@ -1747,6 +1747,7 @@ export async function getAllGroupTypes(pClient_id, person_id) {
   // Sort by name for consistency
   groupRec.Items.sort((a, b) => (a.name > b.name ? 1 : -1));
   let publicGroups = {};
+  let adminGroups = {};
   let privateGroups = {};
   let dynamicGroups = [];
   for (let thisGroup of groupRec.Items) {
@@ -1758,8 +1759,16 @@ export async function getAllGroupTypes(pClient_id, person_id) {
         role
       };
     }
-    else {
+    else if (thisGroup.group_type === "public" || thisGroup.group_type === "open") {
       publicGroups[thisGroup.group_id] = {
+        group_name: thisGroup.name,
+        group_id: thisGroup.group_id,
+        role
+      };
+    }
+    else if (thisGroup.group_type === "admin" || thisGroup.group_type === "parent") {
+      // Admin groups are handled separately in getGroupHierarchy, so we can skip them here
+      adminGroups[thisGroup.group_id] = {
         group_name: thisGroup.name,
         group_id: thisGroup.group_id,
         role
@@ -1774,7 +1783,7 @@ export async function getAllGroupTypes(pClient_id, person_id) {
       });
     }
   }
-  return { publicGroups, privateGroups, dynamicGroups };
+  return { publicGroups, privateGroups, dynamicGroups, adminGroups };
 }
 
 export async function getAllGroups(person_id, client_id) {
@@ -1806,7 +1815,7 @@ export async function getAllGroups(person_id, client_id) {
   responseData.privateGroups = privateGroups;
   responseData.dynamicGroups = dynamicGroups;
   // Remove admin groups from privateGroups and publicGroups for consistency
-  responseData.adminHierarchy.forEach(a => { delete responseData.privateGroups[a.id]; });
+  responseData.adminHierarchy.forEach(a => { delete responseData.privateGroups[a.id]; delete responseData.publicGroups[a.id];});
   for (let gID in responseData.publicGroups) { delete responseData.privateGroups[gID]; }
   return responseData;
 };
