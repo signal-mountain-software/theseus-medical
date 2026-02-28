@@ -160,10 +160,11 @@ export default ({ start_at }) => {
     menu_hierarchy: [],
     v3_favorites: [],
     start_at: start_at || '__top__',
+    is_master: state.user?.account_class && (state.user.account_class === 'master'),
     is_admin: state.user?.account_class && (['master', 'admin'].includes(state.user.account_class)),
     is_support: state.user?.account_class && (['master', 'support', 'admin'].includes(state.user.account_class)),
     AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`,
-    OGpatient: state.session ? {patient_id: state.session.patient_id, patient_display_name: state.session.patient_display_name} : {},
+    OGpatient: state.session ? { patient_id: state.session.patient_id, patient_display_name: state.session.patient_display_name } : {},
     greetingName: '',
     greetingWords: '',
     loading: 'Initializing',
@@ -1711,6 +1712,9 @@ export default ({ start_at }) => {
 
   function proxyAuthority() {
     // You are always in your own proxy list.  You shuld only have proxy authority here if there is someone else in yourlist too
+    if (reactData.is_master) {
+      return true;
+    }
     if (state.accessList && state.accessList.hasOwnProperty(session.client_id) && state.accessList[session.client_id].hasOwnProperty('count')) {
       if ((state.accessList[session.client_id].count.proxy > 1) || (state.accessList[session.client_id].count.full > 1)) {
         return true;
