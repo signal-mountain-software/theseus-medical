@@ -246,6 +246,8 @@ export default ({ request = {}, onClose }) => {
 
     formStages: [{}],  // this loads from the Form template (FormRec.stages)
     previous_formStage: 'default',
+    current_formStage: null,
+    form_stageStatus: {}, // keyed by stage_name: 'not_started', 'in_progress', 'complete'
     number_of_errorsOnForm: 0,
     /* 
      A form can define a stages array in its form record.  
@@ -383,8 +385,7 @@ export default ({ request = {}, onClose }) => {
     };
     if (!reactData.idleState) {
       // if we weren't previously in an idle state and we are now...
-      if (!isInitializing() && valuesChanged() && !reactData.saveInProcess) {
-        cl(`Auto save at ${now.toLocaleString()}.`);
+      if (!isInitializing() && valuesChanged() && !reactData.saveInProcess && getDisplayState().hasDisplayableContent) {
         let response = await handleSave({
           document_id: reactData.document_id,
           final: false,
@@ -1139,6 +1140,46 @@ export default ({ request = {}, onClose }) => {
       };
     };
 
+    if (formRec.noData_section && Array.isArray(formRec.noData_section.fields)) {
+      formRec.noData_section = Object.assign({}, formRec.noData_section);
+      formRec.noData_section.section_name = await resolveVariables(formRec.noData_section.section_name || 'No data');
+      for (let [index, fieldEntry] of formRec.noData_section.fields.entries()) {
+        let field_name = formRec.noData_section.section_name + '_field_' + index;
+        let field_key = field_name;
+        if (isObject(fieldEntry)) {
+          if (fieldEntry.field_name) {
+            field_name = fieldEntry.field_name || fieldEntry.field_key;
+          }
+          if (fieldEntry.field_key) {
+            field_key = fieldEntry.field_key;
+          } else {
+            field_key = fieldEntry.form_field || fieldEntry.field_id || fieldEntry.field_name || field_name;
+          }
+        } else {
+          field_name = fieldEntry;
+          field_key = fieldEntry;
+        }
+
+        formRec.fields[field_name] = await processFieldForSectionField({
+          field_name,
+          field_key,
+          fieldEntry,
+          docFields,
+          index,
+          section: formRec.noData_section,
+          formRec,
+          response
+        });
+
+        reactData.fields[field_name] = Object.assign({}, formRec.fields[field_name],
+          {
+            value: formRec.fields[field_name].field_value,
+            valueText: formRec.fields[field_name].field_valueText
+          }
+        );
+      }
+    }
+
     updateReactData({
       formRec,
       fields: reactData.fields,
@@ -1775,6 +1816,30 @@ export default ({ request = {}, onClose }) => {
     });
   };
 
+  const leaveFormNow = () => {
+    if (reactData.dataSaved) {
+      onClose('docAdded',
+        {
+          document_id: reactData.document_id,
+          document_title: reactData.document_title,
+          document_status: 'work_in_process',
+          pertains_to: reactData.pertains_to,
+          recWritten: reactData.recWritten,
+          formLocked: reactData.docRec?.formLocked
+        }
+      );
+    }
+    else {
+      onClose('aborted',
+        {
+          document_id: 'n/a',
+          document_status: 'aborted',
+          formLocked: reactData.docRec?.formLocked
+        }
+      );
+    }
+  };
+
   const validateForm = () => {
     // Validates all fields in the form and returns error information
     // Used by both handleReview and handleToggleLock
@@ -1857,18 +1922,31 @@ export default ({ request = {}, onClose }) => {
       current_form_stage = 'complete';
     }
     updateReactData({
-      current_formStage: current_form_stage
+      current_formStage: current_form_stage,
+      form_stageStatus: form_stageStatus
     }, false);
 
     return {
       messageList,
       number_of_errorsOnForm,
       fields: reactData.fields,
-      current_formStage: current_form_stage
+      current_formStage: current_form_stage,
+      form_stageStatus: form_stageStatus
     };
   };
 
   const handleReview = async () => {
+    if (!getDisplayState().hasDisplayableContent) {
+      updateReactData({
+        alert: {
+          severity: 'info',
+          title: 'No data available',
+          message: 'There are no displayable sections or fields available to save for this form.'
+        }
+      }, true);
+      return;
+    }
+
     const validationResult = validateForm();
 
     if (!validationResult.number_of_errorsOnForm) {
@@ -1918,6 +1996,17 @@ export default ({ request = {}, onClose }) => {
     // We don't want to lock a form that has problems
     // Consequently, locking a form forces its status to be 'complete'
     if (!currentLockedState) {
+      if (!getDisplayState().hasDisplayableContent) {
+        updateReactData({
+          alert: {
+            severity: 'info',
+            title: 'No data available',
+            message: 'There are no displayable sections or fields available to save for this form.'
+          }
+        }, true);
+        return;
+      }
+
       // Run validation
       const validationResult = validateForm();
 
@@ -1987,6 +2076,25 @@ export default ({ request = {}, onClose }) => {
   };
 
   const handleSave = async ({ document_id, final, timeout, pending = false, formLocked }) => {
+    if (!getDisplayState().hasDisplayableContent) {
+      if (!timeout) {
+        updateReactData({
+          alert: {
+            severity: 'info',
+            title: 'No data available',
+            message: 'There are no displayable sections or fields available to save for this form.'
+          }
+        }, true);
+      }
+      return {
+        goodPut: false,
+        skippedNoData: true,
+        putError: 'No displayable sections or fields available to save for this form.',
+        document_status: 'no_data',
+        status: 'no_data',
+        document_id: document_id || reactData.document_id
+      };
+    }
 
     // assure that peopleRec and sessionRec are available
     if (!reactData.peopleRec.hasOwnProperty(reactData.pertains_to)) {
@@ -2051,21 +2159,21 @@ export default ({ request = {}, onClose }) => {
     // all field data is now prepared for saving
 
     // check for actions needed leaving or entering stages
-
+    let this_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.current_formStage);
     if ((reactData.previous_formStage !== reactData.current_formStage) && reactData.formRec.stages) {
       // log stage change
       cl(`Form ${document_id} stage changed from ${reactData.previous_formStage} to ${reactData.current_formStage}`);
 
       // check stage exit
       let previous_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.previous_formStage);
-      if (previous_stageIndex >= 0) {
+      for (let stage_we_finished = previous_stageIndex; stage_we_finished < this_stageIndex; stage_we_finished++) {
         // send message on stage exit /  complete     
-        let messageInstructions_onStageExit = reactData.formRec.stages[previous_stageIndex].on_complete_message;
+        let messageInstructions_onStageExit = reactData.formRec.stages[stage_we_finished].on_complete_message;
         if (messageInstructions_onStageExit) {
           await send_stageMessage(messageInstructions_onStageExit); // send stage complete message
         }
         // remove and add groups from pertains_to account's group list if any
-        let groupInstructions_onStageExit = reactData.formRec.stages[previous_stageIndex].on_complete_groups;
+        let groupInstructions_onStageExit = reactData.formRec.stages[stage_we_finished].on_complete_groups;
         if (groupInstructions_onStageExit) {
           reactData.peopleRec[reactData.pertains_to].groups = update_stageGroups(groupInstructions_onStageExit);
           needsUpdate.peopleRec = true;
@@ -2074,7 +2182,6 @@ export default ({ request = {}, onClose }) => {
     }
 
     //check stage entry
-    let this_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.current_formStage);
     if (this_stageIndex >= 0) {
       // send message on stage entry
       let messageInstructions_onStageEntry = reactData.formRec.stages[this_stageIndex].on_entry_message;
@@ -2236,13 +2343,19 @@ export default ({ request = {}, onClose }) => {
   function update_stageGroups(groupInstructions) {
     let groupList = reactData.peopleRec[reactData.pertains_to].groups || [];
     if (groupInstructions.remove) {
+      const removeList = (typeof groupInstructions.remove === 'string')
+        ? [groupInstructions.remove]
+        : groupInstructions.remove;
       // if i am removing a group that's a parent, you are also removing that group's children. So we need to check for that and remove those as well
-      const allGroupstoRemove = getAllChildrenOfGroups(groupInstructions.remove, reactData.groupsRec);
+      const allGroupstoRemove = getAllChildrenOfGroups(removeList, reactData.groupsRec);
       groupList = groupList.filter(g => !allGroupstoRemove.includes(g));
     }
     if (groupInstructions.add) {
+      const addList = (typeof groupInstructions.add === 'string')
+        ? [groupInstructions.add]
+        : groupInstructions.add;
       // if i am adding a group that's a child, you are also adding that group's parents. So we need to check for that and add those as well
-      const allGroupstoAdd = getAllParentsOfGroups(groupInstructions.add, reactData.groupsRec);
+      const allGroupstoAdd = getAllParentsOfGroups(addList, reactData.groupsRec);
       for (const this_group of allGroupstoAdd) {
         if (!groupList.includes(this_group)) {
           groupList.push(this_group);
@@ -2540,8 +2653,31 @@ export default ({ request = {}, onClose }) => {
         }
       }));
     }
-    else if (this_sectionObj.hasOwnProperty('show_ifAll')) {
-      return (this_sectionObj.show_ifAll.every(this_test => {
+    else if (this_sectionObj.hasOwnProperty('show_ifAll') || this_sectionObj.hasOwnProperty('ignore_ifAll')) {
+      const testList = this_sectionObj.show_ifAll || this_sectionObj.ignore_ifAll
+      const response = (testList.every(this_test => {
+        if (this_test.hasOwnProperty('pertainsTo_memberOf')) {
+          return reactData.peopleRec[reactData.pertains_to].groups.some(g => {
+            return [this_test.memberOf].flat().includes(g);
+          });
+        }
+        else if (this_test.hasOwnProperty('memberOf')) {
+          return state.patient.groups.some(g => {
+            return [this_test.memberOf].flat().includes(g);
+          });
+        }
+        else {
+          const this_value = reactData.fields?.[this_test.field]?.value;
+          return (array_in_array(this_test.values, this_value));
+        }
+      }));
+      if (this_sectionObj.hasOwnProperty('show_ifAll')) {
+        return response;
+      }
+      else { return !response; }
+    }
+    else if (this_sectionObj.hasOwnProperty('ignore_if')) {
+      return !(this_sectionObj.ignore_if.some(this_test => {
         if (this_test.hasOwnProperty('pertainsTo_memberOf')) {
           return reactData.peopleRec[reactData.pertains_to].groups.some(g => {
             return [this_test.memberOf].flat().includes(g);
@@ -2561,6 +2697,66 @@ export default ({ request = {}, onClose }) => {
     else {
       return true;
     }
+  };
+
+  const getSectionFieldName = ({ sectionObj, fieldEntry, index }) => {
+    if (isObject(fieldEntry)) {
+      return (
+        fieldEntry.field_name
+        || fieldEntry.field_key
+        || fieldEntry.form_field
+        || fieldEntry.field_id
+        || `${sectionObj.section_name}_field_${index}`
+      );
+    }
+    return fieldEntry;
+  };
+
+  const getDisplayState = () => {
+    const displaySections = [];
+
+    for (const sectionObj of (Array.isArray(reactData.sections) ? reactData.sections : [])) {
+      if (!okToShowSection(sectionObj)) {
+        continue;
+      }
+      const visibleFieldList = makeArray(sectionObj.fields)
+        .map((fieldEntry, index) => getSectionFieldName({ sectionObj, fieldEntry, index }))
+        .filter((fieldName) => (
+          !!fieldName
+          && !!reactData.fields?.[fieldName]
+          && !reactData.fields[fieldName].ignore
+        ));
+      if (visibleFieldList.length > 0) {
+        displaySections.push(Object.assign({}, sectionObj, { fields: visibleFieldList }));
+      }
+    }
+
+    if (displaySections.length > 0) {
+      return {
+        displaySections,
+        hasDisplayableContent: true,
+      };
+    }
+
+    if (reactData.formRec?.noData_section) {
+      const noDataSection = reactData.formRec.noData_section;
+      const noDataFieldList = makeArray(noDataSection.fields)
+        .map((fieldEntry, index) => getSectionFieldName({ sectionObj: noDataSection, fieldEntry, index }))
+        .filter((fieldName) => (
+          !!fieldName
+          && !!reactData.fields?.[fieldName]
+          && !reactData.fields[fieldName].ignore
+        ));
+      return {
+        displaySections: [Object.assign({}, noDataSection, { fields: noDataFieldList })],
+        hasDisplayableContent: false,
+      };
+    }
+
+    return {
+      displaySections: [],
+      hasDisplayableContent: false,
+    };
   };
 
   // **************************
@@ -2636,6 +2832,9 @@ export default ({ request = {}, onClose }) => {
 
   // **************************
 
+  const { displaySections, hasDisplayableContent } = getDisplayState();
+  const disableSaveActions = !hasDisplayableContent;
+
   return (
     <div ref={formContainerRef} id="content-to-export" className="my-form-container">
       <Dialog
@@ -2664,8 +2863,8 @@ export default ({ request = {}, onClose }) => {
               </Typography>
             </Box>
             <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
-              {reactData.sections.map((sectionObj, sectionNdx) => (
-                (okToShowSection(sectionObj) &&
+              {displaySections.length > 0
+                ? displaySections.map((sectionObj, sectionNdx) => (
                   <React.Fragment
                     key={`sectionFrag__${sectionObj.section_name}_${sectionNdx}`}
                   >
@@ -3369,8 +3568,12 @@ export default ({ request = {}, onClose }) => {
                       );
                     })}
                   </React.Fragment>
-                )
-              ))}
+                ))
+                :
+                <Typography style={AVATextStyle({ size: 0.9, margin: { top: 1, bottom: 1, left: 0.5, right: 3 } })}>
+                  No data available for this form.
+                </Typography>
+              }
             </DialogContent>
             <Box
               display='flex'
@@ -3385,71 +3588,79 @@ export default ({ request = {}, onClose }) => {
                 style={{ backgroundColor: 'red', color: 'white' }}
                 size='small'
                 onClick={() => {
-                  updateReactData({
-                    stage: 'exit'
-                  }, true);
+                  if (disableSaveActions) {
+                    leaveFormNow();
+                  }
+                  else {
+                    updateReactData({
+                      stage: 'exit'
+                    }, true);
+                  }
                 }}
               >
                 {'Exit'}
               </Button>
-              <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-                {reactData.administrative_account &&
-                  <Button
-                    onClick={handleToggleLock}
-                    className={AVAClass.AVAButton}
-                    style={{
-                      color: reactData.docRec?.formLocked ? 'green' : 'red',
-                      borderColor: reactData.docRec?.formLocked ? 'green' : 'red',
-                      borderWidth: 2,
-                      borderStyle: 'solid',
-                    }}
-                    size='small'
-                    startIcon={reactData.docRec?.formLocked ? <LockOpenIcon /> : <LockIcon />}
-                  >
-                    {reactData.docRec?.formLocked ? 'Unlock' : 'Lock/Save'}
-                  </Button>
-                }
-                {!reactData.formRec?.options?.noSaveContinue && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
-                  <Button
-                    onClick={async () => {
-                      const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
-                      await handleSave({
-                        document_id,
-                        final: false
-                      });
-                    }}
-                    className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'lightcyan', color: 'black' }}
-                    size='small'
-                  >
-                    {isMobile() ? 'Save' : 'Save/Continue'}
-                  </Button>
-                }
-                {!reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
-                  <Button
-                    onClick={async () => {
-                      await handleReview();
-                    }}
-                    className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'green', color: 'white' }}
-                    size='small'
-                  >
-                    {'Finish'}
-                  </Button>
-                }
-                {false && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
-                  <PrintIcon
-                    classes={{ root: classes.rowButton }}
-                    size='medium'
-                    aria-label="penciladd_icon"
-                    onClick={async () => {
-                      generateHtmlOutput();
-                      // await printWIP({ document_id: reactData.document_id });
-                    }}
-                    edge="start"
-                  />
-                }
-              </Box>
+              {!disableSaveActions &&
+                <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
+                  {reactData.administrative_account &&
+                    <Button
+                      onClick={handleToggleLock}
+                      disabled={!reactData.docRec?.formLocked}
+                      className={AVAClass.AVAButton}
+                      style={{
+                        color: reactData.docRec?.formLocked ? 'green' : 'red',
+                        borderColor: reactData.docRec?.formLocked ? 'green' : 'red',
+                        borderWidth: 2,
+                        borderStyle: 'solid',
+                      }}
+                      size='small'
+                      startIcon={reactData.docRec?.formLocked ? <LockOpenIcon /> : <LockIcon />}
+                    >
+                      {reactData.docRec?.formLocked ? 'Unlock' : 'Lock/Save'}
+                    </Button>
+                  }
+                  {!reactData.formRec?.options?.noSaveContinue && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
+                    <Button
+                      onClick={async () => {
+                        const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
+                        await handleSave({
+                          document_id,
+                          final: false
+                        });
+                      }}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'lightcyan', color: 'black' }}
+                      size='small'
+                    >
+                      {isMobile() ? 'Save' : 'Save/Continue'}
+                    </Button>
+                  }
+                  {!reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
+                    <Button
+                      onClick={async () => {
+                        await handleReview();
+                      }}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'green', color: 'white' }}
+                      size='small'
+                    >
+                      {'Finish'}
+                    </Button>
+                  }
+                  {false && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
+                    <PrintIcon
+                      classes={{ root: classes.rowButton }}
+                      size='medium'
+                      aria-label="penciladd_icon"
+                      onClick={async () => {
+                        generateHtmlOutput();
+                        // await printWIP({ document_id: reactData.document_id });
+                      }}
+                      edge="start"
+                    />
+                  }
+                </Box>
+              }
             </Box>
           </React.Fragment >
         }
@@ -3600,27 +3811,7 @@ export default ({ request = {}, onClose }) => {
               }, true);
             }}
             onConfirm={async () => {
-              if (reactData.dataSaved) {
-                onClose('docAdded',
-                  {
-                    document_id: reactData.document_id,
-                    document_title: reactData.document_title,
-                    document_status: 'work_in_process',
-                    pertains_to: reactData.pertains_to,
-                    recWritten: reactData.recWritten,
-                    formLocked: reactData.docRec?.formLocked
-                  }
-                );
-              }
-              else {
-                onClose('aborted',
-                  {
-                    document_id: 'n/a',
-                    document_status: 'aborted',
-                    formLocked: reactData.docRec?.formLocked
-                  }
-                );
-              }
+              leaveFormNow();
             }}
             allowCancel={true}
           />
