@@ -14,6 +14,7 @@ import Snapshot from '../sections/Snapshot';
 import FormSection from '../sections/FormSection';
 import TechInfoSection from '../sections/TechInfoSection';
 import MessagePreferencesSection from '../sections/MessagePreferencesSection';
+import PeopleDocumentsSection from '../sections/PeopleDocumentsSection';
 import PersonNotes from './PersonNotes';
 import CheckoutHistory from './CheckoutHistory';
 import LinkedAccounts from '../sections/LinkedAccounts';
@@ -122,6 +123,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       },
       TechInfoSection: {
         component_id: TechInfoSection
+      },
+      PeopleDocumentsSection: {
+        component_id: PeopleDocumentsSection
       },
       FormSection: {
         component_id: FormSection,
@@ -460,6 +464,14 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           : (state.session.client_style?.suppress_forms_in_profile ? reactData.administrative_account : true)),
         version_id: 0,
         component_name: 'FormSection'
+      },
+      {
+        section_name: 'Archived Documents',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PeopleDocumentsSection')) : false),
+        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('documents') : true)),
+        version_id: 0,
+        component_name: 'PeopleDocumentsSection'
       },
       {
         section_name: 'Notes',
