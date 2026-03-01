@@ -979,7 +979,7 @@ export default ({ request = {}, onClose }) => {
 
     // set options
     returnObj.options = {
-      required: !!returnObj.value?.required || false,
+      required: !!(field_variables.required || field_variables.value?.required || returnObj.value?.required),
       log_results: returnObj.value?.log_results || false,
       viewOnly: (returnObj.value?.edit === 'view'),
       hidden: (returnObj.value?.edit === 'hidden'),
@@ -1438,6 +1438,48 @@ export default ({ request = {}, onClose }) => {
     }, true);
   };
 
+  const getSelectionMinRequirement = (fieldRec) => {
+    if (!fieldRec || typeof fieldRec.type !== 'string') {
+      return 0;
+    }
+    if (!(fieldRec.type.startsWith('select') || fieldRec.type.startsWith('drop'))) {
+      return 0;
+    }
+    return Number(fieldRec.selectionObj?.min || 0);
+  };
+
+  const isFieldRequired = (fieldRec) => {
+    if (!fieldRec || fieldRec.options?.viewOnly) {
+      return false;
+    }
+    return !!(
+      fieldRec.required
+      || fieldRec.options?.required
+      || fieldRec.value?.required
+      || (getSelectionMinRequirement(fieldRec) > 0)
+    );
+  };
+
+  const addRequiredPromptMarker = (promptText) => {
+    if (typeof promptText !== 'string') {
+      return promptText;
+    }
+
+    const marker = '\u00A0*';
+    const trailingHtmlRegex = /(\s*(?:<br\s*\/?>|<\/[^>]+>)\s*)+$/i;
+    const trailingHtmlMatch = promptText.match(trailingHtmlRegex);
+    const trailingStart = trailingHtmlMatch
+      ? (promptText.length - trailingHtmlMatch[0].length)
+      : promptText.length;
+
+    const contentPart = promptText.slice(0, trailingStart).trimEnd();
+    if (contentPart.endsWith('*')) {
+      return promptText;
+    }
+
+    return `${promptText.slice(0, trailingStart)}${marker}${promptText.slice(trailingStart)}`;
+  };
+
   const reconcilePrompt = ({ rawValue, this_field }) => {
     let response = rawValue;
     if (!rawValue) { return this_field; }
@@ -1517,6 +1559,13 @@ export default ({ request = {}, onClose }) => {
       });
       response += ` (${logLine})`;
     }
+
+    const thisFieldRec = reactData.fields?.[this_field];
+    const isRequiredPrompt = isFieldRequired(thisFieldRec);
+    if (isRequiredPrompt && (typeof response === 'string')) {
+      response = addRequiredPromptMarker(response);
+    }
+
     if (rememberAnswer) {
       reactData.fields[this_field].prompt.value = response;
     }
@@ -1856,46 +1905,51 @@ export default ({ request = {}, onClose }) => {
       }
       if (okToShowSection(sectionObj)) {
         for (const this_field of sectionObj.fields) {
-          if (reactData.fields[this_field].ignore) {
+          const thisFieldRec = reactData.fields[this_field];
+          if (thisFieldRec.ignore) {
             continue;
           }
-          reactData.fields[this_field].isError = false;
-          if (reactData.fields[this_field]?.options?.ifEmpty && isEmpty(reactData.fields[this_field].value)) {
+          thisFieldRec.isError = false;
+          if (thisFieldRec?.options?.ifEmpty && isEmpty(thisFieldRec.value)) {
             // if there is a specific rule regarding empty value, apply it now
-            reactData.fields[this_field].value = reconcilePrompt({
-              rawValue: reactData.fields[this_field].options.ifEmpty,
+            thisFieldRec.value = reconcilePrompt({
+              rawValue: thisFieldRec.options.ifEmpty,
               this_field
             });
           }
-          if (reactData.fields[this_field]?.options?.required || reactData.fields[this_field]?.value?.required) {
+          if (isFieldRequired(thisFieldRec)) {
+            const minSelectionRequired = getSelectionMinRequirement(thisFieldRec);
+            if (minSelectionRequired > 0) {
+              const selectedValues = [thisFieldRec.value ?? []].flat().filter(v => !isEmpty(v));
+              const numberOfSelections = selectedValues.length;
+              if (numberOfSelections < minSelectionRequired) {
+                const prompt_part = reconcilePrompt({
+                  rawValue: thisFieldRec.prompt?.value,
+                  this_field
+                });
+                thisFieldRec.errorMessage = numberOfSelections === 0
+                  ? `Please make a selection for ${prompt_part}`
+                  : `You must make at least ${minSelectionRequired} selections for ${prompt_part}`;
+                thisFieldRec.isError = true;
+                messageList.push(thisFieldRec.errorMessage);
+                number_of_errorsOnForm++;
+                form_stageStatus[stage_name].errors_in_stage++;
+              }
+              continue;
+            }
+
             // this is a required field
-            const signature_ok = (reactData.fields[this_field].type === 'signature')
-              ? (signatureRef[reactData.fields[this_field].options.sigRefNumber].current
-                && (!signatureRef[reactData.fields[this_field].options.sigRefNumber].current.isEmpty()))
+            const signature_ok = (thisFieldRec.type === 'signature')
+              ? (signatureRef[thisFieldRec.options.sigRefNumber].current
+                && (!signatureRef[thisFieldRec.options.sigRefNumber].current.isEmpty()))
               : null;
-            if (!signature_ok ?? isEmpty(reactData.fields[this_field].value)) {
-              reactData.fields[this_field].errorMessage = `${reconcilePrompt({
-                rawValue: reactData.fields[this_field].prompt?.value,
+            if (!signature_ok ?? isEmpty(thisFieldRec.value)) {
+              thisFieldRec.errorMessage = `${reconcilePrompt({
+                rawValue: thisFieldRec.prompt?.value,
                 this_field
               })} is required`;
-              reactData.fields[this_field].isError = true;
-              messageList.push(reactData.fields[this_field].errorMessage);
-              number_of_errorsOnForm++;
-              form_stageStatus[stage_name].errors_in_stage++;
-            }
-          }
-          else if (reactData.fields[this_field].type.startsWith('select')) {
-            let numberOfSelections = [reactData.fields[this_field].value ?? []].flat().length;
-            if (numberOfSelections < (reactData.fields[this_field].selectionObj.min ?? 0)) {
-              const prompt_part = reconcilePrompt({
-                rawValue: reactData.fields[this_field].prompt?.value,
-                this_field
-              });
-              reactData.fields[this_field].errorMessage = numberOfSelections === 0
-                ? `Please make a selection for ${prompt_part}`
-                : `You must make at least ${reactData.fields[this_field].selectionObj.min} selections for ${prompt_part}`;
-              reactData.fields[this_field].isError = true;
-              messageList.push(reactData.fields[this_field].errorMessage);
+              thisFieldRec.isError = true;
+              messageList.push(thisFieldRec.errorMessage);
               number_of_errorsOnForm++;
               form_stageStatus[stage_name].errors_in_stage++;
             }
@@ -3614,7 +3668,7 @@ export default ({ request = {}, onClose }) => {
               </Button>
               {!disableSaveActions &&
                 <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-                  {reactData.administrative_account &&
+                  {reactData.administrative_account && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode &&
                     <Button
                       onClick={handleToggleLock}
                       disabled={!reactData.docRec?.formLocked}
