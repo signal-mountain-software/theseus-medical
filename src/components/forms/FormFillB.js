@@ -25,6 +25,7 @@ import AVA_AlertSound from '../../ava_alert.mp3';
 import useSound from 'use-sound';
 
 import useSession from '../../hooks/useSession';
+import { syncPersonToSessionCaches } from '../../util/AVASessionSync';
 import { useIdleTimer } from 'react-idle-timer';
 import { updateDocument, createDocument } from '../../util/AVADocuments';
 
@@ -127,7 +128,7 @@ export default ({ request = {}, onClose }) => {
   const AVAClass = AVAclasses();
   const signatureRef = [React.useRef(null), React.useRef(null), React.useRef(null)];
 
-  const { state } = useSession();
+  const { state, dispatch } = useSession();
 
   // This ref is to capture the entire form contents for HTML output
   const formContainerRef = React.useRef(null);
@@ -2201,6 +2202,7 @@ export default ({ request = {}, onClose }) => {
 
 
     let response = { goodPut: true };
+    let peopleUpdated = false;
     // save any changes to peopleRec and sessionRec that were indicated to be
     // done with the fields in the form
     if (needsUpdate.peopleRec || reactData.newPerson) {
@@ -2214,6 +2216,16 @@ export default ({ request = {}, onClose }) => {
           cl(`Bad put to People. Error is: ${error}`);
           response = { goodPut: false, putError: `Bad put to People. Error is: ${error}` };
         });
+      if (response.goodPut) {
+        peopleUpdated = true;
+      }
+    }
+    if (peopleUpdated) {
+      syncPersonToSessionCaches({
+        state,
+        dispatch,
+        personRec: reactData.peopleRec[reactData.pertains_to]
+      });
     }
     if (needsUpdate.sessionRec) {
       await dbClient

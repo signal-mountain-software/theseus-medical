@@ -658,61 +658,6 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
           />
         </Box>
 
-
-        <React.Fragment>
-          <Typography
-            style={AVATextStyle({ margin: { top: 1.5 } })}
-          >
-            {`Directory Option`}
-          </Typography>
-          <Box
-            display='flex'
-            flexDirection='column'
-            marginLeft={-0.5}
-            marginTop={-0}
-            flexWrap={'wrap'}
-          >
-            {[{ option: 'normal', label: 'Include my info' },
-            { option: 'exclude', label: 'Exclude me' },
-            { option: 'alone', label: `Do not print my info with anyone else's` },
-            ].map((this_option, tIndex) => (
-              <Box
-                display='flex'
-                flexDirection='row'
-                alignItems={'center'}
-                key={`Directory_option__${tIndex}`}
-                style={{ marginRight: '24px' }}
-              >
-                <Checkbox
-                  aria-label={`Directory_option__${tIndex}`}
-                  name={`Directory_option__${tIndex}`}
-                  key={`Directory_option__${tIndex}`}
-                  style={{ paddingTop: '2px', paddingBottom: '2px' }}
-                  size='small'
-                  checked={((currentValues.peopleRec.directory_option === this_option.option)
-                    || ((this_option.option === 'normal') && !currentValues.peopleRec.directory_option))
-                  }
-                  onClick={async () => {
-                    await updateField({
-                      updateList:
-                        [{
-                          tableName: 'peopleRec',
-                          fieldName: 'directory_option',
-                          newData: this_option.option
-                        }]
-                    });
-                  }}
-                  disableRipple
-                  inputProps={{ 'aria-labelledby': `message_routing_3` }}
-                />
-                <Typography style={AVATextStyle({ size: 0.8, margin: { left: -0.4 } })} >
-                  {`${this_option.label}`}
-                </Typography>
-              </Box>
-            ))}
-          </Box>
-        </React.Fragment>
-
         <React.Fragment>
           <Typography
             style={AVATextStyle({ margin: { top: 1.5 } })}

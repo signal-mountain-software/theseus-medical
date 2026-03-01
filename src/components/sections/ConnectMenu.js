@@ -1606,7 +1606,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   patient={patient}
                   person_id={state.session.patient_id}
                   onClose={(updatedPerson) => {
-                    if (updatedPerson.saveCompleted || !reactData.menu_reloaded) {
+                    if (updatedPerson?.changesMade || !reactData.menu_reloaded) {
                       sessionStorage.removeItem('AVASessionData');
                       window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
                     }

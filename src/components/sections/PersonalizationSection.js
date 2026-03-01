@@ -1,6 +1,6 @@
 import React from 'react';
 import Box from '@material-ui/core/Box';
-import { Slider, Typography, Button, Switch, TextField } from '@material-ui/core';
+import { Slider, Typography, Button, Switch, TextField, Checkbox } from '@material-ui/core';
 import { AVATextStyle, AVAclasses, AVADefaults } from '../../util/AVAStyles';
 import { s3, cloudfront, isMobile } from '../../util/AVAUtilities';
 import Select from 'react-dropdown-select';
@@ -602,6 +602,10 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
             }
           }}
         />
+
+
+
+
         <Typography
           style={AVATextStyle({ margin: { top: 2, bottom: 0.4 } })}
         >
@@ -670,6 +674,64 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
           </Box>
         </React.Fragment>
       }
+
+
+
+      
+              <React.Fragment>
+                <Typography
+                  style={AVATextStyle({ margin: { top: 1.5 } })}
+                >
+                  {`Directory Option`}
+                </Typography>
+                <Box
+                  display='flex'
+                  flexDirection='column'
+                  marginLeft={-0.5}
+                  marginTop={-0}
+                  flexWrap={'wrap'}
+                >
+                  {[{ option: 'normal', label: 'Include my info' },
+                  { option: 'exclude', label: 'Exclude me' },
+                  { option: 'no_contact', label: `Include me, but do not show my Contact Info` },
+                  ].map((this_option, tIndex) => (
+                    <Box
+                      display='flex'
+                      flexDirection='row'
+                      alignItems={'center'}
+                      key={`Directory_option__${tIndex}`}
+                      style={{ marginRight: '24px' }}
+                    >
+                      <Checkbox
+                        aria-label={`Directory_option__${tIndex}`}
+                        name={`Directory_option__${tIndex}`}
+                        key={`Directory_option__${tIndex}`}
+                        style={{ paddingTop: '2px', paddingBottom: '2px' }}
+                        size='small'
+                        checked={((currentValues.peopleRec.directory_option === this_option.option)
+                          || ((this_option.option === 'normal') && !currentValues.peopleRec.directory_option))
+                        }
+                        onClick={async () => {
+                          await updateField({
+                            updateList:
+                              [{
+                                tableName: 'peopleRec',
+                                fieldName: 'directory_option',
+                                newData: this_option.option
+                              }]
+                          });
+                        }}
+                        disableRipple
+                        inputProps={{ 'aria-labelledby': `message_routing_3` }}
+                      />
+                      <Typography style={AVATextStyle({ size: 0.8, margin: { left: -0.4 } })} >
+                        {`${this_option.label}`}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </React.Fragment>
+      
 
 
 

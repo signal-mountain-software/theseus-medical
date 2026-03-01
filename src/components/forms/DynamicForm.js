@@ -202,7 +202,7 @@ export default ({
           person_id={session.patient_id}
           options={defaultValueObj.options}
           onClose={(updatedPerson) => {
-            if (updatedPerson && updatedPerson.saveCompleted) {
+            if (updatedPerson && updatedPerson.changesMade) {
               sessionStorage.removeItem('AVASessionData');
               window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
             }

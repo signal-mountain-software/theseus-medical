@@ -4,6 +4,7 @@ import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
 import Box from '@material-ui/core/Box';
+import Button from '@material-ui/core/Button';
 import Paper from '@material-ui/core/Paper';
 import Grid from '@material-ui/core/Grid';
 import IconButton from '@material-ui/core/IconButton';
@@ -12,13 +13,14 @@ import Typography from '@material-ui/core/Typography';
 import InputAdornment from '@material-ui/core/InputAdornment';
 
 import SearchIcon from '@material-ui/icons/Search';
-import CloseIcon from '@material-ui/icons/HighlightOff';
+import CloseIcon from '@material-ui/icons/ExitToApp';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
 import SendIcon from '@material-ui/icons/Send';
 import PictureAsPdfIcon from '@material-ui/icons/PictureAsPdf';
 
 import useSession from '../../hooks/useSession';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
+import { AVAclasses } from '../../util/AVAStyles';
 import { isEmpty } from '../../util/AVAUtilities';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 
@@ -43,7 +45,7 @@ const useStyles = makeStyles(theme => ({
         marginLeft: theme.spacing(2),
         marginRight: theme.spacing(2),
         marginTop: theme.spacing(2),
-    
+
         zIndex: 2,
         backgroundColor: theme.palette.background.paper,
     },
@@ -135,9 +137,19 @@ const useStyles = makeStyles(theme => ({
         flex: 1,
         minHeight: 0,
         marginTop: theme.spacing(2),
+        marginLeft: theme.spacing(2),
         overflowY: 'auto',
         overflowX: 'hidden',
         paddingRight: theme.spacing(1),
+    },
+    bottomActionBar: {
+        flexShrink: 0,
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingTop: theme.spacing(1.5),
+        paddingBottom: theme.spacing(1.5),
+        backgroundColor: theme.palette.background.paper,
     },
 }));
 
@@ -191,10 +203,13 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
     const wrapperRef = React.useRef(null);
     const gridScrollerRef = React.useRef(null);
 
+    const AVAClass = AVAclasses();
+
     const { groupMemberList, pClient, pGroupName, pStyle } = options;
 
     const [searchValue, setSearchValue] = React.useState('');
     const [personCache, setPersonCache] = React.useState({});
+    const [memberOverrides, setMemberOverrides] = React.useState({});
     const [hiddenImagePeople, setHiddenImagePeople] = React.useState({});
     const [renderCount, setRenderCount] = React.useState(INITIAL_RENDER_COUNT);
     const [downloadingPdf, setDownloadingPdf] = React.useState(false);
@@ -294,11 +309,16 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
         const records = rawMembers
             .map(member => {
                 if (typeof member === 'string') {
-                    return personCache[member] || { person_id: member };
+                    return memberOverrides[member] || personCache[member] || { person_id: member };
+                }
+                const memberID = member?.person_id;
+                if (memberID && memberOverrides[memberID]) {
+                    return memberOverrides[memberID];
                 }
                 return member;
             })
-            .filter(Boolean);
+            .filter(Boolean)
+            .filter((personRec) => personRec?.directory_option !== 'exclude');
 
         records.sort((a, b) => {
             const aLast = (a?.name?.last || '').toLowerCase();
@@ -318,7 +338,32 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
 
         const lowerSearch = searchValue.trim().toLowerCase();
         return records.filter(person => getSearchBlob(person).includes(lowerSearch));
-    }, [rawMembers, personCache, searchValue]);
+    }, [rawMembers, personCache, memberOverrides, searchValue]);
+
+    const refreshDirectoryPerson = React.useCallback(async (personID) => {
+        if (!personID) {
+            return false;
+        }
+        try {
+            const refreshedPerson = await getPerson(personID, '*all');
+            if (!refreshedPerson) {
+                return false;
+            }
+            setPersonCache((prev) => ({
+                ...prev,
+                [personID]: refreshedPerson
+            }));
+            setMemberOverrides((prev) => ({
+                ...prev,
+                [personID]: refreshedPerson
+            }));
+            return true;
+        }
+        catch {
+            // no-op: keep existing row data if refresh fails
+            return false;
+        }
+    }, []);
 
     React.useEffect(() => {
         setRenderCount(INITIAL_RENDER_COUNT);
@@ -445,8 +490,8 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                     <Typography variant='h6' className={classes.titleText}>
                         {pGroupName || 'Photo Directory'}
                     </Typography>
-                    <Box className={classes.titleActions}>
-                        {false && <IconButton
+                    {false && <Box className={classes.titleActions}>
+                        <IconButton
                             className={classes.closeIconButton}
                             aria-label='download directory pdf'
                             onClick={downloadDirectoryPdf}
@@ -454,15 +499,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                         >
                             <PictureAsPdfIcon />
                         </IconButton>
-                        }
-                        <IconButton
-                            className={classes.closeIconButton}
-                            aria-label='close directory'
-                            onClick={() => onReset({ updatesMade: false })}
-                        >
-                            <CloseIcon />
-                        </IconButton>
-                    </Box>
+                    </Box>}
                 </Box>
 
                 <Box className={classes.topBar} display='flex' alignItems='center'>
@@ -505,14 +542,15 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                         let personLast, addressValue;
                         let imbeddedTitle;
                         [personLast, imbeddedTitle] = person.name?.last?.split('~');
-                        const rawCellPhoneValue = person.contact_info?.cell?.number || person?.messaging?.sms || '';
-                        const rawHomePhoneValue = person.contact_info?.landline?.number || person?.messaging?.voice || '';
-                        const cellPhoneValue = formatPhone(rawCellPhoneValue);
-                        const homePhoneValue = formatPhone(rawHomePhoneValue);
-                        const emailValue = person?.messaging?.email || '';
-                        const cellPhoneHref = toTelHref(rawCellPhoneValue);
-                        const homePhoneHref = toTelHref(rawHomePhoneValue);
-                        const emailHref = toMailtoHref(emailValue);
+                        const suppressContact = (person?.directory_option === 'no_contact');
+                        const rawCellPhoneValue = suppressContact ? '' : (person.contact_info?.cell?.number || person?.messaging?.sms || '');
+                        const rawHomePhoneValue = suppressContact ? '' : (person.contact_info?.landline?.number || person?.messaging?.voice || '');
+                        const emailValue = suppressContact ? '' : (person?.messaging?.email || '');
+                        const cellPhoneValue = suppressContact ? '' : formatPhone(rawCellPhoneValue);
+                        const homePhoneValue = suppressContact ? '' : formatPhone(rawHomePhoneValue);
+                        const cellPhoneHref = suppressContact ? '' : toTelHref(rawCellPhoneValue);
+                        const homePhoneHref = suppressContact ? '' : toTelHref(rawHomePhoneValue);
+                        const emailHref = suppressContact ? '' : toMailtoHref(emailValue);
                         const imageSrc = getImage(person.person_id);
                         const showPortraitImage = Boolean(imageSrc) && !hiddenImagePeople[person?.person_id];
                         if (!isEmpty(person.address)) {
@@ -604,6 +642,19 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                     })}
                 </Grid>
             </Box>
+
+            <Box className={classes.bottomActionBar}>
+                <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'red', color: 'white' }}
+                    size='small'
+                    startIcon={<CloseIcon fontSize="small" />}
+                    onClick={() => onReset({ updatesMade: false })}
+                >
+                    Exit
+                </Button>
+            </Box>
+
             {viewPeopleMaintenance &&
                 <PeopleMaintenance
                     person_id={viewPeopleMaintenance}
@@ -612,7 +663,19 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                     options={{
                         sectionToShow: ['snapshot']
                     }}
-                    onClose={() => {
+                    onClose={async (returnObj) => {
+                        if (returnObj && returnObj.changesMade) {
+                            const refreshed = await refreshDirectoryPerson(viewPeopleMaintenance);
+                            if (!refreshed && (returnObj.directory_option === 'exclude')) {
+                                setMemberOverrides((prev) => ({
+                                    ...prev,
+                                    [viewPeopleMaintenance]: {
+                                        person_id: viewPeopleMaintenance,
+                                        directory_option: 'exclude'
+                                    }
+                                }));
+                            }
+                        }
                         setViewPeopleMaintenance(false);
                     }}
                 />

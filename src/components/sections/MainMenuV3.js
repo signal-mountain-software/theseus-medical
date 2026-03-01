@@ -2642,16 +2642,10 @@ export default ({ start_at }) => {
             <PeopleMaintenance
               patient={state.patient}
               person_id={state.session.patient_id}
-              onClose={(updatedPerson) => {
-                if (updatedPerson.saveCompleted) {
-                  sessionStorage.removeItem('AVASessionData');
-                  window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
-                }
-                else {
-                  updateReactData({
-                    showProfileEdit: false
-                  }, true);
-                }
+              onClose={() => {
+                updateReactData({
+                  showProfileEdit: false
+                }, true);
               }}
             />
           }

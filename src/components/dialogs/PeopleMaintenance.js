@@ -5,6 +5,7 @@ import { getPerson, getImage } from '../../util/AVAPeople';
 import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount, titleCase } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle, isDark } from '../../util/AVAStyles';
 import { determineClass, doesPersonMatchGroupRules } from '../../util/AVAGroups';
+import { syncPersonToSessionCaches } from '../../util/AVASessionSync';
 
 import useSession from '../../hooks/useSession';
 
@@ -51,7 +52,7 @@ const useStyles = makeStyles(theme => ({
 export default ({ patient, person_id, personRec, initialValues, options = {}, onClose }) => {
 
   const isMounted = React.useRef(false);
-  const { state } = useSession();
+  const { state, dispatch } = useSession();
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
@@ -88,6 +89,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     master_account: (state.user.account_class === 'master'),
     OKtoSave: false,
     saveCompleted: false,
+    changesMade: false,
     alert: false,
     myFormListObj: {},
     formsInitialized: false,
@@ -730,6 +732,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
   };
 
   const saveChanges = async () => {
+    let updatedPeopleRecord = false;
     const person_id_blank = !reactData.current.peopleRec.person_id;
     const person_id_changed = reactData.current.peopleRec.person_id !== reactData.person_id;
     // Check for errors before moving forward with updates
@@ -914,6 +917,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         .catch(error => {
           console.log(`caught error putting to People; error is:`, error);
         });
+      updatedPeopleRecord = true;
       // update the cross-reference table PeopleAccounts
       // Note here...  we are intentionally NOT removing old records from PeopleAccounts because we want to preserve the history of all accounts that have ever been associated with this person_id
       // This means that a mis-spelled email, phone number, or name will still be a valid cross reference.
@@ -964,6 +968,13 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           });
       }
       
+    }
+    if (updatedPeopleRecord) {
+      syncPersonToSessionCaches({
+        state,
+        dispatch,
+        personRec: reactData.current.peopleRec
+      });
     }
     if (JSON.stringify(reactData.og.sessionRec) !== JSON.stringify(reactData.current.sessionRec)) {
       // **** NEED TO ADD SPECIAL HANDLING FOR CHANGE OF PRIMARY KEY ***  (likely change to inactive account?)
@@ -1158,12 +1169,16 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           if (!reactData.current.peopleRec.person_id) {
             onExit({
               saveCompleted: false,
+              changesMade: false,
+              directory_option: false,
               newID: false
             });
           }
           else {
             onExit({
               saveCompleted: reactData.saveCompleted,
+              changesMade: reactData.changesMade,
+              directory_option: reactData.current.peopleRec.directory_option || false,
               newID: reactData.current.peopleRec.person_id,
               newName: (`${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`).trim()
             });
@@ -1424,12 +1439,16 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                   if (!reactData.current.peopleRec.person_id) {
                     onExit({
                       saveCompleted: false,
+                      changesMade: false,
+                      directory_option: false,
                       newID: false
                     });
                   }
                   else {
                     onExit({
                       saveCompleted: reactData.saveCompleted,
+                      changesMade: reactData.changesMade,
+                      directory_option: reactData.current.peopleRec.directory_option || false,
                       newID: reactData.current.peopleRec.person_id,
                       newName: (`${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`).trim()
                     });
@@ -1447,8 +1466,10 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                       const result = await saveChanges();
                       if (!!result) {
                         reactData.saveCompleted = true;
+                        reactData.changesMade = true;
                       }
                       updateReactData({
+                        changesMade: reactData.changesMade,
                         saveCompleted: reactData.saveCompleted,
                         OKtoSave: !result
                       }, true);
@@ -1463,7 +1484,12 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                     onClick={async () => {
                       let result = await saveChanges();
                       if (result) {
+                        reactData.saveCompleted = true;
+                        reactData.changesMade = true;
                         onExit({
+                          saveCompleted: reactData.saveCompleted,
+                          changesMade: reactData.changesMade,
+                          directory_option: reactData.current.peopleRec.directory_option || false,
                           newID: reactData.current.peopleRec.person_id,
                           newName: (`${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`).trim()
                         });
