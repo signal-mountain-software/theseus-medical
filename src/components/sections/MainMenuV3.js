@@ -68,6 +68,7 @@ import ShowGroup from '../dialogs/ShowGroup';
 import ShowCalendar from '../dialogs/ShowCalendar';
 import AVAConfirm from '../forms/AVAConfirm';
 import LoadSpreadsheet from '../forms/LoadSpreadsheet';
+import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -1192,6 +1193,7 @@ export default ({ start_at }) => {
     MessageForm,
     ShowGroup,
     ShowCalendar,
+    NewCalendarEvent,
     LoadSpreadsheet,
     PeopleMaintenance,
     SwitchPatientDialog,
@@ -1256,10 +1258,14 @@ export default ({ start_at }) => {
         options={props.options || {}}
         patient={state.session}
         OGpatient={reactData.OGpatient}
-        peopleList={props.options?.OGvaluesList}
+        peopleList={props.options?.peopleList || props.options?.OGvaluesList}
         defaultObject={props.defaults || []}
         eventClient={props.options?.client_id || state.session.client_id}
         calendarMode={props.options?.mode || 'signUp'}
+          isAppointment={props.options?.isAppointment}
+          personalEvent={props.options?.personalEvent}
+          picture={props.options?.picture || null}
+        showNewEvent={props.options?.showNewEvent}
         onReset={() => {
           start();
           updateReactData({

@@ -28,6 +28,7 @@ import useSession from '../../hooks/useSession';
 import { syncPersonToSessionCaches } from '../../util/AVASessionSync';
 import { useIdleTimer } from 'react-idle-timer';
 import { updateDocument, createDocument } from '../../util/AVADocuments';
+import { writeSlot } from '../../util/AVACalendars';
 
 const useStyles = makeStyles(theme => ({
   dialogBox: {
@@ -1612,22 +1613,36 @@ export default ({ request = {}, onClose }) => {
 
   // **************************
 
+  const normalizeSelectionList = (selectionList) => {
+    return makeArray(selectionList).map((this_option) => {
+      if (isObject(this_option)) {
+        const optionValue = this_option.value ?? this_option.id ?? this_option.key ?? this_option.display ?? this_option.label;
+        const optionDisplay = this_option.display ?? this_option.label ?? this_option.value ?? this_option.id ?? this_option.key;
+        return {
+          value: optionValue,
+          display: optionDisplay
+        };
+      }
+      return {
+        value: this_option,
+        display: this_option
+      };
+    });
+  };
+
+  const isSelectionOptionSelected = ({ selectedValue, optionValue, optionDisplay }) => {
+    const selectedList = [selectedValue].flat().filter(v => (v !== null && v !== undefined));
+    return selectedList.some(v => (v === optionValue) || (v === optionDisplay));
+  };
+
   const AVADropDown = (props) => {
     // props should contain
     //   prop
     //   prompt
     //   text - an array of options, each can independently go true or false
-    let optionList = props.text.sort().map(this_option => {
-      if (isObject(this_option)) {
-        return this_option;
-      }
-      else {
-        return ({
-          value: this_option,
-          label: this_option
-        });
-      }
-    });
+    let optionList = normalizeSelectionList(props.text)
+      .map(this_option => ({ value: this_option.value, label: this_option.display }))
+      .sort((a, b) => `${a.label}`.localeCompare(`${b.label}`));
     const promptHTML = reconcilePrompt({
       rawValue: reactData.fields[props.prop].prompt?.value,
       this_field: props.prop
@@ -1665,9 +1680,9 @@ export default ({ request = {}, onClose }) => {
                     if (currentValue) {
                       return optionList.filter(option => option.value === currentValue);
                     }
-                    return [{ label: 'English', value: 'en' }];
+                    return [];
                   })()
-                  : [{ label: 'English', value: 'en' }]
+                  : []
                 }
                 clearable={true}
                 clearOnSelect={false}
@@ -1682,6 +1697,9 @@ export default ({ request = {}, onClose }) => {
                 keepSelectedInList={true}
                 noDataLabel={''}
                 onInputChange={async (values) => {
+                  if (!values || values.length === 0) {
+                    return;
+                  }
                   await handleMakeSelection({
                     clickText: values[0].value,
                     prop: props.prop,
@@ -1689,6 +1707,9 @@ export default ({ request = {}, onClose }) => {
                   });
                 }}
                 onChange={async (values) => {
+                  if (!values || values.length === 0) {
+                    return;
+                  }
                   await handleMakeSelection({
                     clickText: values[0].value,
                     prop: props.prop,
@@ -1724,10 +1745,10 @@ export default ({ request = {}, onClose }) => {
           <React.Fragment
             key={`groupFrag__${props.prop}`}
           >
-            {(props.text).map((text, tIndex) => (
+            {(normalizeSelectionList(props.text)).map((text, tIndex) => (
               <FormControlLabel
                 className={classes.formControlDays}
-                key={`${props.prop}_${tIndex}`}
+                key={`${props.prop}_${tIndex}_${text.value}`}
                 control={
                   <Checkbox
                     aria-label={`${props.prop}_${tIndex}`}
@@ -1735,10 +1756,14 @@ export default ({ request = {}, onClose }) => {
                     key={`CheckGroup__${props.prop}_${tIndex}`}
                     size='small'
                     disabled={reactData.fields[props.prop].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
-                    checked={reactData.fields[props.prop].value && reactData.fields[props.prop].value.includes(text)}
+                    checked={isSelectionOptionSelected({
+                      selectedValue: reactData.fields[props.prop].value,
+                      optionValue: text.value,
+                      optionDisplay: text.display
+                    })}
                     onMouseDown={async () => {
                       await handleMakeSelection({
-                        clickText: text,
+                        clickText: text.value,
                         prop: props.prop,
                         singleValue: (reactData.fields[props.prop]?.selectionObj?.max > 1) ? false : true
                       });
@@ -1747,7 +1772,7 @@ export default ({ request = {}, onClose }) => {
                     inputProps={{ 'aria-labelledby': `message_routing_3` }}
                   />
                 }
-                label={<Typography className={classes.radioDays} style={{ whiteSpace: 'nowrap' }}>{text}</Typography>}
+                label={<Typography className={classes.radioDays} style={{ whiteSpace: 'nowrap' }}>{text.display}</Typography>}
                 labelPlacement='end'
               />
             ))}
@@ -1943,11 +1968,14 @@ export default ({ request = {}, onClose }) => {
               ? (signatureRef[thisFieldRec.options.sigRefNumber].current
                 && (!signatureRef[thisFieldRec.options.sigRefNumber].current.isEmpty()))
               : null;
-            if (!signature_ok ?? isEmpty(thisFieldRec.value)) {
+            if (
+              ((thisFieldRec.type === 'signature') && !signature_ok)
+              || ((thisFieldRec.type !== 'signature') && isEmpty(thisFieldRec.value))
+            ) {
               thisFieldRec.errorMessage = `${reconcilePrompt({
                 rawValue: thisFieldRec.prompt?.value,
                 this_field
-              })} is required`;
+              }).replace("*","").trim()} is required`;
               thisFieldRec.isError = true;
               messageList.push(thisFieldRec.errorMessage);
               number_of_errorsOnForm++;
@@ -2174,6 +2202,14 @@ export default ({ request = {}, onClose }) => {
     let field_values = {};
     let signatures = [];
     let needsUpdate = { peopleRec: false, sessionRec: false };
+    const selectEventAssignments = new Set();
+    const selectEventReleases = new Set();
+    const normalizeSelectEventList = (rawValue) => {
+      return [rawValue].flat()
+        .map(v => (isObject(v) ? (v.value || v.event || v.event_id || v.id || null) : v))
+        .filter(v => !isEmpty(v))
+        .map(v => `${v}`);
+    };
     for (const this_field in reactData.fields) {
       if (reactData.fields[this_field].bonusText) {   // an extra value added to the end of a list of selections (as in "other - please specify")
         let current_value = [reactData.fields[this_field].value].flat();
@@ -2186,6 +2222,20 @@ export default ({ request = {}, onClose }) => {
         field_values[this_field] = reactData.fields[this_field].value;
       }
       if (reactData.fields[this_field].ignore) { continue; }  // load the values, but don't save them anywhere
+      if ((reactData.fields[this_field].type === 'select_event') && !reactData.fields[this_field].options?.viewOnly) {
+        const selectedEventList = normalizeSelectEventList(reactData.fields[this_field].value);
+        const previousEventList = normalizeSelectEventList(reactData.docRec?.field_values?.[this_field]);
+
+        const selectedSet = new Set(selectedEventList);
+        for (const this_event of selectedEventList) {
+          selectEventAssignments.add(this_event);
+        }
+        for (const previous_event of previousEventList) {
+          if (!selectedSet.has(previous_event)) {
+            selectEventReleases.add(previous_event);
+          }
+        }
+      }
       if (reactData.fields[this_field].saveAs) {
         const save_instructions = reactData.fields[this_field].saveAs;
         const save_file = save_instructions.shift();
@@ -2209,6 +2259,40 @@ export default ({ request = {}, onClose }) => {
       if ((reactData.fields[this_field].type === 'signature')
         && (signatureRef[reactData.fields[this_field].options.sigRefNumber].current)) {  // we have a valid signature to save
         signatures[reactData.fields[this_field].options.sigRefNumber] = signatureRef[reactData.fields[this_field].options.sigRefNumber].current.getTrimmedCanvas().toDataURL('image/png');
+      }
+    }
+
+    for (const releasedEventId of selectEventReleases) {
+      try {
+        await writeSlot({
+          client: state.session.client_id,
+          event: releasedEventId,
+          owner: state.session.patient_id,
+          slot: state.session.patient_id,
+          status: 'released',
+          show_this_slot: false,
+          no_messaging: false
+        });
+      }
+      catch (error) {
+        cl(`Error releasing select_event slot for ${releasedEventId}: ${error}`);
+      }
+    }
+
+    for (const selectedEventId of selectEventAssignments) {
+      try {
+        await writeSlot({
+          client: state.session.client_id,
+          event: selectedEventId,
+          owner: state.session.patient_id,
+          slot: state.session.patient_id,
+          show_this_slot: true,
+          no_messaging: false,
+          rejectDuplicate: true
+        });
+      }
+      catch (error) {
+        cl(`Error writing select_event slot for ${selectedEventId}: ${error}`);
       }
     }
     // all field data is now prepared for saving
