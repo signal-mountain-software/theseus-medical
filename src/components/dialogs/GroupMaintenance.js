@@ -9,6 +9,7 @@ import useSession from '../../hooks/useSession';
 import GroupProfileSection from '../sections/GroupProfileSection';
 import GroupSecuritySection from '../sections/GroupSecuritySection';
 import GroupHierarchySection from '../sections/GroupHierarchySection';
+import GroupFormsSection from '../sections/GroupFormsSection';
 
 import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -109,6 +110,9 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
       },
       GroupHierarchySection: {
         component_id: GroupHierarchySection,
+      },
+      GroupFormsSection: {
+        component_id: GroupFormsSection,
       }
     },
     og: {
@@ -160,6 +164,14 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
           isAuthorized: true,
           version_id: 0,
           component_name: 'GroupHierarchySection'
+        },
+        {
+          section_name: 'Group Forms',
+          color: options?.color || 'orange',
+          isOpen: false,
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'GroupFormsSection'
         }]
       };
 
