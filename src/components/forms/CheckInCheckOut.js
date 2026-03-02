@@ -60,6 +60,7 @@ export default ({ onSave, onClose }) => {
       adminIndex: -1,
       outList: [],
       adminView: false,
+      is_admin: state.session.adminAccount || (state.user?.account_class && (['master', 'admin'].includes(state.user.account_class))),
       initialized: false,
       alert: false
     }
@@ -545,7 +546,7 @@ export default ({ onSave, onClose }) => {
                 valueText={[
                   (!reactData.kiosk_mode ? reactData.residentName : '')
                 ]}
-                buttonText={[(!reactData.kiosk_mode ? 'Confirm' : 'Lookup'), 'Cancel', (state.session.adminAccount ? 'Admin' : null)]}
+                buttonText={[(!reactData.kiosk_mode ? 'Confirm' : 'Lookup'), 'Cancel', (reactData.is_admin ? 'Admin' : null)]}
                 onCancel={() => {
                   onClose();
                 }}
@@ -738,7 +739,7 @@ export default ({ onSave, onClose }) => {
                   }
                   await putCheckout(reactData.currentStatus.reqRec);
                   enqueueSnackbar(`Got it!  You have successfully checked out.  Thank you!`, { variant: 'success', persist: false });
-                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  if (!reactData.kiosk_mode && !reactData.is_admin) { onClose(); }
                   else { reset(); }
                 }}
                 allowCancel={true}
@@ -761,7 +762,7 @@ export default ({ onSave, onClose }) => {
                   bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
                 }}
                 onCancel={() => {
-                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  if (!reactData.kiosk_mode && !reactData.is_admin) { onClose(); }
                   else {
                     reactData.validated_user = false;
                     setReactData(reactData);
@@ -776,7 +777,7 @@ export default ({ onSave, onClose }) => {
                   reactData.currentStatus.reqRec.history.unshift(hNote);
                   await putCheckout(reactData.currentStatus.reqRec);
                   enqueueSnackbar(`You're all set!  You have successfully checked in.`, { variant: 'success', persist: false });
-                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  if (!reactData.kiosk_mode && !reactData.is_admin) { onClose(); }
                   else { reset(); }
                 }}
                 allowCancel={true}
@@ -811,7 +812,7 @@ export default ({ onSave, onClose }) => {
                   reactData.currentStatus.reqRec.history.unshift(hNote);
                   await putCheckout(reactData.currentStatus.reqRec);
                   enqueueSnackbar(`You're all set!`, { variant: 'success', persist: false });
-                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  if (!reactData.kiosk_mode && !reactData.is_admin) { onClose(); }
                   else { reset(); }
                 }}
                 allowCancel={true}
@@ -838,7 +839,7 @@ export default ({ onSave, onClose }) => {
                   reactData.currentStatus.reqRec.history.unshift(hNote);
                   await putCheckout(reactData.currentStatus.reqRec);
                   enqueueSnackbar(`You're all set!`, { variant: 'success', persist: false });
-                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  if (!reactData.kiosk_mode && !reactData.is_admin) { onClose(); }
                   else { reset(); }
                 }}
                 allowCancel={true}
@@ -876,7 +877,7 @@ export default ({ onSave, onClose }) => {
                   reactData.currentStatus.reqRec.history.unshift(hNote);
                   await putCheckout(reactData.currentStatus.reqRec);
                   enqueueSnackbar(`You're all set!`, { variant: 'success', persist: false });
-                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  if (!reactData.kiosk_mode && !reactData.is_admin) { onClose(); }
                   else { reset(); }
                 }}
                 allowCancel={true}
@@ -949,7 +950,7 @@ export default ({ onSave, onClose }) => {
                     enqueueSnackbar(`Got it!  You have successfully checked in to see ${obo}.  Thank you!`, { variant: 'success', persist: false });
                     reactData.validated_user = false;
                     reactData.add_guest_mode = false;
-                    if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                    if (!reactData.kiosk_mode && !reactData.is_admin) { onClose(); }
                     else { reset(); }
                   }
                   else {
@@ -1138,7 +1139,7 @@ export default ({ onSave, onClose }) => {
                   enqueueSnackbar(`Got it!  You have successfully checked in to see ${obo}.  Thank you!`, { variant: 'success', persist: false });
                   reactData.validated_user = false;
                   reactData.add_guest_mode = false;
-                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  if (!reactData.kiosk_mode && !reactData.is_admin) { onClose(); }
                   else { reset(); }
                 }
                 else {
