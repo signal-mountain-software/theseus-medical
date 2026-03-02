@@ -1578,6 +1578,13 @@ async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_
         details: dateObjOut
       };
     }
+    case 'age':{
+      const dateObjOut = makeDate(rawValue);      
+      return {
+        formatted: dateObjOut.age || rawValue,
+        details: dateObjOut
+      };
+    }
     case 'number': {
       const nValue = Number(rawValue);
       if (isNaN(nValue)) {

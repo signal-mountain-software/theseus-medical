@@ -53,6 +53,7 @@ export function makeDate(pInput, optionIn = {}) {
             'obs': '2099.1.1',
             'slashDate': '1/1/2025',
             'iso': '2099-01-01T00:00:00.000Z',
+            'iso_week': 9901,
             'numeric': 20990101,
             'numeric$': '20990101',
             'dayPart': 'day',   // afternoon
@@ -136,6 +137,7 @@ export function makeDate(pInput, optionIn = {}) {
                 'obs': '2099.1.1',
                 'slashDate': '1/1/2025',
                 'iso': '2099-01-01T00:00:00.000Z',
+                'iso_week': 9901,
                 'numeric': 20990101,
                 'numeric$': '20990101',
                 'dayPart': 'day',
@@ -192,6 +194,7 @@ export function makeDate(pInput, optionIn = {}) {
                 'obs': '2099.1.1',
                 'slashDate': '1/1/2025',
                 'iso': '2099-01-01T00:00:00.000Z',
+                'iso_week': 9901,
                 'numeric': 20990101,
                 'numeric$': '20990101',
                 'dayPart': 'day',
@@ -315,12 +318,14 @@ export function makeDate(pInput, optionIn = {}) {
         + '-' + (targetDate.getMonth() + 101).toString().slice(1)
         + '-' + (targetDate.getDate() + 100).toString().slice(1);
     let regEx = /\.0/g;
+    const age = calculateAge(targetDate);
     return {
         'error': false,
         'relative': titleCase(relDate),
         'absolute': titleCase(absDate),
-        'absolute_withAge': `${titleCase(absDate)} (${calculateAge(targetDate)} years old)`,
+        'absolute_withAge': `${titleCase(absDate)} (${age} years old)`,
         'absolute_full': titleCase(absFull),
+        'age': age,
         'timeOnly': targetDate.toLocaleString([], { timeZone: options.timeZone, hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }),
         'dateOnly': dateOnly,
         'oaDate': oaDate,
@@ -331,6 +336,7 @@ export function makeDate(pInput, optionIn = {}) {
         'obs': targetDateYMD.replace(regEx, '.'),
         'slashDate': `${targetDate.toLocaleDateString([], { timeZone: options.timeZone })}`,
         'iso': targetDate.toISOString(),
+        'iso_week': getWeekNumberFromDate(targetDate),
         'numeric': Number(targetDateYMD.replace(/\./g, '')),
         'numeric$': targetDateYMD.replace(/\./g, ''),
         'dayPart': dayPart,
@@ -340,6 +346,28 @@ export function makeDate(pInput, optionIn = {}) {
         'weekday': (((targetDate.getDay() % 6) === 0) ? 'weekend' : 'weekday'),
         'textOut': pInput
     };
+
+    function getWeekNumberFromDate(date) {
+
+        // Normalize to UTC date (drop time component)
+        const utcDate = new Date(Date.UTC(
+            date.getUTCFullYear(),
+            date.getUTCMonth(),
+            date.getUTCDate()
+        ));
+
+        // ISO week: move to Thursday in current ISO week
+        const isoDay = utcDate.getUTCDay() || 7; // Sunday=0 -> 7
+        utcDate.setUTCDate(utcDate.getUTCDate() + 4 - isoDay);
+
+        const isoYear = utcDate.getUTCFullYear();
+        const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+        const isoWeek = Math.ceil((((utcDate - yearStart) / 86400000) + 1) / 7);
+
+        // YYWW numeric (e.g., 2610)
+        return ((isoYear % 100) * 100) + isoWeek;
+        
+    }
 
     function calculateAge(birthdate) {
         const today = new Date();
