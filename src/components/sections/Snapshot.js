@@ -391,7 +391,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
               {'- Primary'}
             </Typography>
           </Box>
-          {currentValues.familyRecs[0].other_members.sort((p1, p2) => {
+          {currentValues.familyRecs[0]?.other_members && currentValues.familyRecs[0].other_members.sort((p1, p2) => {
             if (p1.role !== p2.role) {
               return ((p1.role > p2.role) ? 1 : -1);
             }
