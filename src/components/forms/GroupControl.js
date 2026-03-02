@@ -9,7 +9,7 @@ import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import GroupMaintenance from '../dialogs/GroupMaintenance';
 import { getPerson } from '../../util/AVAPeople';
 
-import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Checkbox, FormControlLabel } from '@material-ui/core';
+import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Checkbox, FormControlLabel, LinearProgress } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 import * as XLSX from 'xlsx';
 
@@ -179,6 +179,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
     showPhotoDirectory: false,
     photoDirectoryPeople: [],
     loadingExportFields: false,
+    exportInProgress: false,
+    exportProgressCurrent: 0,
+    exportProgressTotal: 0,
+    exportProgressLabel: '',
     exportFieldOptions: [],
     selectedExportFieldNames: [],
     updatesMade: false,
@@ -748,70 +752,90 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
   }
 
   async function downloadCurrentPeopleListCsv() {
-    const exportData = await buildCurrentPeopleListExportData();
-    if (!exportData) {
-      return false;
+    try {
+      const exportData = await buildCurrentPeopleListExportData();
+      if (!exportData) {
+        return false;
+      }
+
+      const {
+        header,
+        rows,
+        safeGroupName
+      } = exportData;
+
+      const csvContent = [header, ...rows]
+        .map(row => row.map(csvSafe).join(','))
+        .join('\n');
+
+      const fileName = `${safeGroupName || 'group'}_people_list.csv`;
+
+      const csvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const csvUrl = URL.createObjectURL(csvBlob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = csvUrl;
+      downloadLink.setAttribute('download', fileName);
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      URL.revokeObjectURL(csvUrl);
+      await saveExportFieldSelections(reactData.selectedExportFieldNames || []);
+      return true;
     }
-
-    const {
-      header,
-      rows,
-      safeGroupName
-    } = exportData;
-
-    const csvContent = [header, ...rows]
-      .map(row => row.map(csvSafe).join(','))
-      .join('\n');
-
-    const fileName = `${safeGroupName || 'group'}_people_list.csv`;
-
-    const csvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const csvUrl = URL.createObjectURL(csvBlob);
-    const downloadLink = document.createElement('a');
-    downloadLink.href = csvUrl;
-    downloadLink.setAttribute('download', fileName);
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    URL.revokeObjectURL(csvUrl);
-    await saveExportFieldSelections(reactData.selectedExportFieldNames || []);
-    return true;
+    finally {
+      updateReactData({
+        exportInProgress: false,
+        exportProgressCurrent: 0,
+        exportProgressTotal: 0,
+        exportProgressLabel: ''
+      }, true);
+    }
   }
 
   async function downloadCurrentPeopleListXlsx() {
-    const exportData = await buildCurrentPeopleListExportData();
-    if (!exportData) {
-      return false;
+    try {
+      const exportData = await buildCurrentPeopleListExportData();
+      if (!exportData) {
+        return false;
+      }
+
+      const {
+        header,
+        rows,
+        safeGroupName
+      } = exportData;
+
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
+
+      const maxColumnWidth = 60;
+      worksheet['!cols'] = header.map((headerLabel, columnIndex) => {
+        const maxValueLength = rows.reduce((longest, row) => {
+          const value = row[columnIndex];
+          const length = `${value ?? ''}`.length;
+          return Math.max(longest, length);
+        }, `${headerLabel ?? ''}`.length);
+
+        return {
+          wch: Math.min(Math.max(maxValueLength + 2, 10), maxColumnWidth)
+        };
+      });
+
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'People List');
+
+      const fileName = `${safeGroupName || 'group'}_people_list.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+      await saveExportFieldSelections(reactData.selectedExportFieldNames || []);
+      return true;
     }
-
-    const {
-      header,
-      rows,
-      safeGroupName
-    } = exportData;
-
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
-
-    const maxColumnWidth = 60;
-    worksheet['!cols'] = header.map((headerLabel, columnIndex) => {
-      const maxValueLength = rows.reduce((longest, row) => {
-        const value = row[columnIndex];
-        const length = `${value ?? ''}`.length;
-        return Math.max(longest, length);
-      }, `${headerLabel ?? ''}`.length);
-
-      return {
-        wch: Math.min(Math.max(maxValueLength + 2, 10), maxColumnWidth)
-      };
-    });
-
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'People List');
-
-    const fileName = `${safeGroupName || 'group'}_people_list.xlsx`;
-    XLSX.writeFile(workbook, fileName);
-    await saveExportFieldSelections(reactData.selectedExportFieldNames || []);
-    return true;
+    finally {
+      updateReactData({
+        exportInProgress: false,
+        exportProgressCurrent: 0,
+        exportProgressTotal: 0,
+        exportProgressLabel: ''
+      }, true);
+    }
   }
 
   async function buildCurrentPeopleListExportData() {
@@ -856,7 +880,20 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
     });
 
     if (selectedFieldKeys.length > 0) {
-      await Promise.all(rows.map(async (rowObj, rowIndex) => {
+      const progressTotal = rows.length;
+      updateReactData({
+        exportInProgress: true,
+        exportProgressCurrent: 0,
+        exportProgressTotal: progressTotal,
+        exportProgressLabel: 'Preparing export data...'
+      }, true);
+
+      const batchSize = (selectedFieldKeys.length > 20) ? 4 : 8;
+      const progressUpdateEvery = Math.max(1, Math.floor(progressTotal / 100));
+      let completedCount = 0;
+
+      const resolveRow = async (rowIndex) => {
+        const rowObj = rows[rowIndex];
         const person_id = rowObj[0];
         const resolvedFieldList = await resolveData(
           pSession.client_id,
@@ -876,7 +913,25 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
         });
 
         rows[rowIndex] = [rowObj[0], rowObj[1], rowObj[2], rowObj[3], ...selectedFieldValues];
-      }));
+
+        completedCount += 1;
+        if ((completedCount % progressUpdateEvery === 0) || (completedCount === progressTotal)) {
+          updateReactData({
+            exportProgressCurrent: completedCount,
+            exportProgressTotal: progressTotal,
+            exportProgressLabel: 'Preparing export data...'
+          }, true);
+        }
+      };
+
+      for (let startIndex = 0; startIndex < rows.length; startIndex += batchSize) {
+        const endIndex = Math.min(startIndex + batchSize, rows.length);
+        const indexBatch = [];
+        for (let rowIndex = startIndex; rowIndex < endIndex; rowIndex++) {
+          indexBatch.push(rowIndex);
+        }
+        await Promise.all(indexBatch.map(resolveRow));
+      }
     } else {
       rows.forEach((rowObj, rowIndex) => {
         rows[rowIndex] = [rowObj[0], rowObj[1], rowObj[2], rowObj[3]];
@@ -1616,6 +1671,18 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
               Select data to include in export columns.<br />(Report always includes User ID and Name.)
             </Typography>
 
+            {reactData.exportInProgress && (reactData.exportProgressTotal > 0) &&
+              <Box mb={1.5}>
+                <Typography style={AVATextStyle({ size: 0.9, margin: { bottom: 0.4 } })}>
+                  {`${reactData.exportProgressLabel || 'Preparing export data...'} ${reactData.exportProgressCurrent}/${reactData.exportProgressTotal}`}
+                </Typography>
+                <LinearProgress
+                  variant='determinate'
+                  value={Math.min(100, Math.round((reactData.exportProgressCurrent / reactData.exportProgressTotal) * 100))}
+                />
+              </Box>
+            }
+
             {reactData.loadingExportFields
               ?
               <Typography style={AVATextStyle({ size: 1 })}>
@@ -1659,6 +1726,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                                 color='primary'
                                 style={{ marginLeft: '1rem' }}
                                 checked={reactData.selectedExportFieldNames.includes(fieldRec.field_key)}
+                                disabled={reactData.exportInProgress}
                                 onChange={() => {
                                   toggleExportFieldSelection(fieldRec.field_key);
                                 }}
@@ -1687,7 +1755,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                   }, true);
                 }
               }}
-              disabled={reactData.loadingExportFields}
+              disabled={reactData.loadingExportFields || reactData.exportInProgress}
             >
               {'Download CSV'}
             </Button>
@@ -1703,7 +1771,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                   }, true);
                 }
               }}
-              disabled={reactData.loadingExportFields}
+              disabled={reactData.loadingExportFields || reactData.exportInProgress}
             >
               {'Download Excel'}
             </Button>
@@ -1716,6 +1784,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                   showFieldPicker: false
                 }, true);
               }}
+              disabled={reactData.exportInProgress}
             >
               {'Close'}
             </Button>
