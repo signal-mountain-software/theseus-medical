@@ -250,8 +250,8 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   };
 
   const OKtoShow = (this_person) => {
-    this_person.first = this_person.first || this_person.name.first;
-    this_person.last = this_person.last || this_person.name.last;
+    this_person.first = this_person.first || this_person.name?.first || '';
+    this_person.last = this_person.last || this_person.name?.last || '';
 
     // If showOnlySelected is true, only show selected people and group members
     if (showOnlySelected) {

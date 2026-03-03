@@ -69,6 +69,7 @@ import ShowCalendar from '../dialogs/ShowCalendar';
 import AVAConfirm from '../forms/AVAConfirm';
 import LoadSpreadsheet from '../forms/LoadSpreadsheet';
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
+import MessageMonitorV3 from '../forms/MessageMonitorV3';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -1197,6 +1198,7 @@ export default ({ start_at }) => {
     LoadSpreadsheet,
     PeopleMaintenance,
     SwitchPatientDialog,
+    MessageMonitorV3,
     QuickAdd,
     QuickSearch,
   };
@@ -1243,6 +1245,30 @@ export default ({ start_at }) => {
       return null;
     }
 
+    const buildAlertFromCloseResponse = (closeResponse) => {
+      if (!closeResponse || !closeResponse.message) {
+        return false;
+      }
+
+      if (typeof closeResponse.message === 'string') {
+        return {
+          severity: 'warning',
+          title: 'Notice',
+          message: closeResponse.message
+        };
+      }
+
+      if (typeof closeResponse.message === 'object') {
+        return {
+          severity: closeResponse.message.severity || 'warning',
+          title: closeResponse.message.title || 'Notice',
+          message: closeResponse.message.message || ''
+        };
+      }
+
+      return false;
+    };
+
     const props = replaceTokens(call_instructions.params || {});
     return (
       <SectionToRender
@@ -1278,11 +1304,16 @@ export default ({ start_at }) => {
             renderFunctionCall: false
           }, true);
         }}
-        onClose={() => {
+        onClose={(closeResponse) => {
+          const closeAlert = buildAlertFromCloseResponse(closeResponse);
           start();
-          updateReactData({
+          const reactUpd = {
             renderFunctionCall: false
-          }, true);
+          };
+          if (closeAlert) {
+            reactUpd.alert = closeAlert;
+          }
+          updateReactData(reactUpd, true);
         }}
       />);
   }
