@@ -159,8 +159,12 @@ export default ({ onSave, onClose }) => {
     }
     for (let p = 0; p < personRecs.length; p++) {
       personRecs[p].account_class = determineClass(personRecs[p].groups, state.session.group_assignments);
-      if (personRecs[p].messaging.voice) { personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.voice.slice(-4)}`; }
-      else if (personRecs[p].messaging.sms) { personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.sms.slice(-4)}`; }
+      let preferredPhone =
+        personRecs[p].contact_info?.cell?.number ||
+        personRecs[p].contact_info?.home?.number ||
+        personRecs[p].messaging?.sms ||
+        personRecs[p].messaging?.voice;
+      if (preferredPhone) { personRecs[p].phone_key = `(xxx) xxx-${String(preferredPhone).slice(-4)}`; }
     }
     personRecs = personRecs.filter(p => {
       if (restricted_to) {

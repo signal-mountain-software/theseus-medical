@@ -158,7 +158,79 @@ export async function getPersonByWords(pClient, pWords) {
     pWords = pWords.filter(w => w && w.length > 2);
     if (pWords.length === 0) { return []; }
     pWords = pWords.map(w => w.replace(/\W/g, '').toLowerCase());
-    
+    let normalizedClient = (pClient || '').toLowerCase().trim();
+
+    {
+        let matchedPersonIds = {};
+
+        async function findMatchesInPeopleAccounts({ accountType, requireClientMatch = false }) {
+            let lastEvaluatedKey;
+            do {
+                let qQ = { TableName: 'PeopleAccounts' };
+                qQ.IndexName = 'identifier-index';
+                qQ.KeyConditionExpression = 'account_type = :n';
+                qQ.ExpressionAttributeValues = { ':n': accountType };
+                if (lastEvaluatedKey) {
+                    qQ.ExclusiveStartKey = lastEvaluatedKey;
+                }
+                let qR = await dbClient
+                    .query(qQ)
+                    .promise()
+                    .catch(error => {
+                        if (error.code === 'NetworkingError') {
+                            console.log(`Security Violation or no Internet Connection`);
+                        }
+                        console.log({ 'Error reading People by Name': error });
+                    });
+                if (!recordExists(qR)) {
+                    return;
+                }
+                qR.Items.forEach(item => {
+                    let identifierText = (item.identifier || '').toLowerCase();
+                    let searchWords = identifierText.split(/[\W,]/).filter(Boolean);
+                    if (requireClientMatch && normalizedClient) {
+                        let idClient = searchWords[searchWords.length - 1] || '';
+                        if (idClient !== normalizedClient) {
+                            return;
+                        }
+                    }
+                    let allWordsFound = pWords.every(w => searchWords.includes(w));
+                    if (allWordsFound) {
+                        matchedPersonIds[item.person_id] = true;
+                        foundPeople[item.person_id] = item;
+                    }
+                });
+                lastEvaluatedKey = qR.LastEvaluatedKey;
+            } while (lastEvaluatedKey);
+        }
+
+       
+        if (Object.keys(matchedPersonIds).length === 0) {
+            await findMatchesInPeopleAccounts({
+                accountType: 'name',
+                requireClientMatch: true
+            });
+        }
+
+        const responseObj = await Promise.all(
+            Object.keys(matchedPersonIds).map(personId => {
+                console.log(personId);
+                return getPerson(personId, "*all", true);
+            })
+        );
+        return responseObj;
+    }
+
+
+
+
+
+
+
+
+
+
+    /*
     let qQ = { TableName: 'People' };
     qQ.IndexName = 'client_id-index';
     qQ.KeyConditionExpression = 'client_id = :c';
@@ -192,6 +264,7 @@ export async function getPersonByWords(pClient, pWords) {
         return qR.Items;
     }
     else { return []; }
+    */
 }
 
 export async function getWIPFormList({ client_id, personList }) {
