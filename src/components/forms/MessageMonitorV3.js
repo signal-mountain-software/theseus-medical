@@ -17,11 +17,12 @@ import {
 import { Alert } from '@material-ui/lab/';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import Slide from '@material-ui/core/Slide';
+import { fade } from '@material-ui/core/styles/colorManipulator';
 
 import CloseIcon from '@material-ui/icons/ExitToApp';
 
 import useSession from '../../hooks/useSession';
-import { dbClient } from '../../util/AVAUtilities';
+import { dbClient, sentenceCase } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import QuickSearch from '../sections/QuickSearch';
@@ -96,10 +97,133 @@ const useStyles = makeStyles(theme => ({
         minWidth: 'auto',
         padding: theme.spacing(0.15, 0.8),
         fontSize: '0.68rem',
+        fontWeight: 600,
         lineHeight: 1.2,
         textTransform: 'none',
         borderRadius: 999,
-        opacity: 0.8
+        opacity: 1,
+        cursor: 'default'
+    },
+    flagPillRedOutline: {
+        borderColor: `${theme.palette.type === 'dark' ? theme.palette.error.light : theme.palette.error.main} !important`,
+        color: `${theme.palette.type === 'dark' ? theme.palette.error.light : theme.palette.error.main} !important`,
+        backgroundColor: `${fade(theme.palette.error.main, theme.palette.type === 'dark' ? 0.22 : 0.08)} !important`
+    },
+    flagPillOrangeOutline: {
+        borderColor: `${theme.palette.type === 'dark' ? theme.palette.warning.light : theme.palette.warning.dark} !important`,
+        color: `${theme.palette.type === 'dark' ? theme.palette.warning.light : theme.palette.warning.dark} !important`,
+        backgroundColor: `${fade(theme.palette.warning.main, theme.palette.type === 'dark' ? 0.2 : 0.08)} !important`
+    },
+    flagPillGreenSolid: {
+        borderColor: `${theme.palette.type === 'dark' ? theme.palette.success.main : theme.palette.success.dark} !important`,
+        backgroundColor: `${theme.palette.type === 'dark' ? theme.palette.success.main : theme.palette.success.dark} !important`,
+        color: `${theme.palette.common.white} !important`
+    },
+    flagPillRedSolid: {
+        borderColor: `${theme.palette.type === 'dark' ? theme.palette.error.main : theme.palette.error.dark} !important`,
+        backgroundColor: `${theme.palette.type === 'dark' ? theme.palette.error.main : theme.palette.error.dark} !important`,
+        color: `${theme.palette.common.white} !important`
+    },
+    recipientScrollArea: {
+        flex: 1,
+        minHeight: 120,
+        maxHeight: '45vh',
+        overflowY: 'auto',
+        border: `1px solid ${theme.palette.divider}`,
+        borderRadius: theme.shape.borderRadius,
+        padding: theme.spacing(1)
+    },
+    recipientRow: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: theme.spacing(0.6),
+        paddingTop: theme.spacing(0.5),
+        paddingBottom: theme.spacing(0.7)
+    },
+    recipientHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        gap: theme.spacing(1)
+    },
+    recipientName: {
+        fontWeight: 500,
+        flex: '1 1 auto',
+        minWidth: 0
+    },
+    recipientResultText: {
+        opacity: 0.85,
+        fontSize: '0.82rem',
+        maxWidth: '70%',
+        textAlign: 'right'
+    },
+    recipientResultLine: {
+        lineHeight: 1.3,
+        marginBottom: theme.spacing(0.25)
+    },
+    recipientReplyLine: {
+        lineHeight: 1.25,
+        marginBottom: theme.spacing(0.45),
+        marginLeft: theme.spacing(0.9),
+        fontSize: '0.76rem',
+        opacity: 0.85,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        display: '-webkit-box',
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: 'vertical'
+    },
+    detailDialogContent: {
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        padding: theme.spacing(2),
+        minHeight: 0,
+        height: 'calc(100vh - 160px)',
+        maxHeight: 760
+    },
+    detailDialogBody: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: theme.spacing(1.2),
+        minHeight: 0,
+        flex: 1
+    },
+    detailDialogFooter: {
+        display: 'flex',
+        justifyContent: 'flex-end',
+        flexShrink: 0,
+        paddingTop: theme.spacing(1),
+        paddingBottom: theme.spacing(0.5)
+    },
+    messageBox: {
+        position: 'relative',
+        border: `1px solid ${theme.palette.divider}`,
+        borderRadius: theme.shape.borderRadius,
+        padding: theme.spacing(1.6, 1.2, 1.1, 1.2),
+        backgroundColor: theme.palette.background.paper
+    },
+    messageBoxLabel: {
+        position: 'absolute',
+        top: -9,
+        left: 10,
+        padding: theme.spacing(0, 0.6),
+        backgroundColor: theme.palette.background.paper,
+        fontSize: '0.75rem',
+        color: theme.palette.text.secondary
+    },
+    messageBoxMeta: {
+        fontSize: '0.76rem',
+        opacity: 0.72,
+        marginBottom: theme.spacing(0.8),
+        lineHeight: 1.35,
+        whiteSpace: 'pre-wrap'
+    },
+    messageBoxBody: {
+        fontSize: '0.9rem',
+        lineHeight: 1.42,
+        whiteSpace: 'pre-wrap',
+        overflowY: 'auto'
     }
 }));
 
@@ -180,6 +304,214 @@ function normalizeStatus(message) {
     ).toString().toLowerCase();
 }
 
+function normalizeMethod(message) {
+    const methodValue = String(
+        message?.deliver_method
+        || message?.recipient_list?.method
+        || ''
+    ).trim().toLowerCase();
+
+    if (!methodValue) {
+        return '';
+    }
+
+    if (methodValue === 'email') {
+        return 'e-Mail';
+    }
+    if (methodValue === 'sms') {
+        return 'text';
+    }
+    if (methodValue === 'voice') {
+        return 'phone call';
+    }
+    if (methodValue === 'hold') {
+        return 'held';
+    }
+    return 'AVA';
+}
+
+function makeAddressKey(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function buildRecipientNameByAddressLookup(deliveryItems = [], resolvePersonName = (id) => id) {
+    const addressRecipientMap = new Map();
+
+    deliveryItems.forEach((deliveryItem) => {
+        const receiverIds = normalizeReceivers(deliveryItem);
+
+        const addressCandidates = [
+            deliveryItem?.deliver_address,
+            deliveryItem?.recipient_address,
+            deliveryItem?.recipient_list?.address,
+            deliveryItem?.recipient_list?.deliver_address,
+            deliveryItem?.recipient_list?.recipient_address
+        ];
+
+        addressCandidates.forEach((addressValue) => {
+            const key = makeAddressKey(addressValue);
+            if (!key) {
+                return;
+            }
+
+            if (!addressRecipientMap.has(key)) {
+                addressRecipientMap.set(key, new Map());
+            }
+
+            const recipientsForAddress = addressRecipientMap.get(key);
+            receiverIds.forEach((receiverId) => {
+                const normalizedReceiverId = String(receiverId || '').trim();
+                if (!normalizedReceiverId) {
+                    return;
+                }
+                const resolvedName = String(resolvePersonName(normalizedReceiverId) || normalizedReceiverId || '').trim();
+                if (resolvedName) {
+                    recipientsForAddress.set(normalizedReceiverId, resolvedName);
+                }
+            });
+        });
+    });
+
+    return (addressValue, options = {}) => {
+        const key = makeAddressKey(addressValue);
+        if (!key) {
+            return '';
+        }
+
+        const recipientsForAddress = addressRecipientMap.get(key);
+        if (!recipientsForAddress || (recipientsForAddress.size === 0)) {
+            return '';
+        }
+
+        const excludedRecipientId = String(options?.excludeRecipientId || '').trim().toLowerCase();
+        const excludedRecipientName = String(options?.excludeRecipientName || '').trim().toLowerCase();
+
+        for (const [candidateId, candidateName] of recipientsForAddress.entries()) {
+            const candidateIdNormalized = String(candidateId || '').trim().toLowerCase();
+            const candidateNameNormalized = String(candidateName || '').trim().toLowerCase();
+            if (excludedRecipientId && (candidateIdNormalized === excludedRecipientId)) {
+                continue;
+            }
+            if (excludedRecipientName && (candidateNameNormalized === excludedRecipientName)) {
+                continue;
+            }
+            return candidateName;
+        }
+
+        return '';
+    };
+}
+
+function getReplyTextFromResultEntry(resultEntry) {
+    if (!resultEntry || (typeof resultEntry !== 'object')) {
+        return '';
+    }
+
+    const replyCandidate = [
+        resultEntry.reply,
+        resultEntry.response,
+        resultEntry.reply_text,
+        resultEntry.replyText
+    ]
+        .map((value) => String(value || '').trim())
+        .find(Boolean);
+
+    return replyCandidate || '';
+}
+
+function makeResultDisplay(message, options = {}) {
+    const otherPersonByAddress = options.otherPersonByAddress || (() => '');
+    const currentRecipientId = options.currentRecipientId || '';
+    const currentRecipientName = options.currentRecipientName || '';
+    const defaultStatus = sentenceCase(normalizeStatus(message) || 'unknown');
+    const method = normalizeMethod(message);
+    const heldRuleUsedText = [message?.recipient_list?.rule_used]
+        .flat()
+        .map((ruleValue) => String(ruleValue || '').trim())
+        .filter(Boolean)
+        .join(', ');
+    const heldMethodText = method === 'held'
+        ? `held${heldRuleUsedText ? ` (rule: ${heldRuleUsedText})` : ''}`
+        : method;
+    let methodMsg, resultText;
+    if (method && method === 'AVA') {
+        methodMsg = `via AVA`;
+        resultText = `via AVA`;
+    } 
+    else if (defaultStatus === 'Duplicate') { 
+        const otherAddress = message?.recipient_address || message?.deliver_address || message?.recipient_list?.address || '';
+        const resolvedOtherPerson = otherPersonByAddress(otherAddress, {
+            excludeRecipientId: currentRecipientId,
+            excludeRecipientName: currentRecipientName
+        }) || 'another recipient';
+        const duplicateMethodText = method ? ` of ${method}` : '';
+        return {
+            text: `Not sent - Duplicate${duplicateMethodText} to ${resolvedOtherPerson}`,
+            replyText: ''
+        };
+    }
+    else if (method === 'held') {
+        methodMsg = `held${heldRuleUsedText ? ` (rule: ${heldRuleUsedText})` : ''}`;
+        resultText = `Held${heldRuleUsedText ? ` by rule ${heldRuleUsedText} ` : ''}`;
+        resultText += makeDate(message.created_time).oaDate;
+    }
+    else {
+        methodMsg = heldMethodText ? `via ${heldMethodText} - ` : '';
+        resultText = `${methodMsg}${defaultStatus === 'Submitted' ? 'Sent' : defaultStatus}`;
+    }
+    let alreadyOpened = false;
+
+    const resultsList = [message?.results].flat().filter(Boolean);
+    for (const resultEntry of resultsList) {
+        const resultValue = String(resultEntry?.result || resultEntry || '').toLowerCase();
+        if (!resultValue) {
+            continue;
+        }
+
+        const postedText = resultEntry?.posted_time ? ` ${makeDate(resultEntry.posted_time).oaDate}` : '';
+
+        if (resultValue.startsWith('reply')) {
+            return {
+                text: `${methodMsg}Replied${postedText}`,
+                replyText: getReplyTextFromResultEntry(resultEntry)
+            };
+        }
+        if ((resultValue === 'response') || resultValue.includes('respond') || resultValue.includes('resopnd')) {
+            return {
+                text: `${methodMsg}Responded${postedText}`,
+                replyText: getReplyTextFromResultEntry(resultEntry)
+            };
+        }
+        if (alreadyOpened) {
+            continue;
+        }
+
+        if (resultValue === 'open') {
+            resultText = `${methodMsg}Opened${postedText}`;
+            alreadyOpened = true;
+            continue;
+        }
+        if (resultValue.startsWith('deliver')) {
+            const carrier = String(resultEntry?.info?.phoneCarrier || '').trim();
+            resultText = `${methodMsg}Delivery${carrier ? ` confirmed by ${carrier}` : ''}${postedText}`;
+            continue;
+        }
+        if (resultValue.includes('no answer') || resultValue.includes('busy')) {
+            resultText = `${methodMsg}No answer${postedText}`;
+            continue;
+        }
+        if (resultValue.includes('answered')) {
+            resultText = `${methodMsg}${sentenceCase(String(resultEntry?.result || resultValue))}${postedText}`;
+            alreadyOpened = true;
+        }
+    }
+
+    return {
+        text: resultText,
+        replyText: ''
+    };
+}
+
 function normalizeResultText(resultEntry) {
     if ((typeof resultEntry === 'string') || (typeof resultEntry === 'number')) {
         return String(resultEntry).toLowerCase();
@@ -204,6 +536,7 @@ function getResultFlags(message) {
     const resultsList = [message?.results].flat().filter(Boolean);
     const resultTextList = resultsList.map(normalizeResultText).filter(Boolean);
     const combinedText = resultTextList.join(' ');
+    const isDuplicate = normalizeStatus(message) === 'duplicate';
     const resultValueList = resultsList
         .map((resultEntry) => {
             if ((typeof resultEntry === 'string') || (typeof resultEntry === 'number')) {
@@ -242,6 +575,7 @@ function getResultFlags(message) {
     }) || (combinedText.includes('person') && combinedText.includes('answer'));
 
     return {
+        duplicate: isDuplicate,
         machine_answered: machineAnswered,
         person_answered: personAnswered,
         accepted_by_carrier: acceptedByCarrier,
@@ -266,8 +600,17 @@ function getRecipientFlags(message) {
     }
 
     const methodValue = String(recipientList.method || '').trim().toLowerCase();
-    const holdReasonValue = String(recipientList.hold_reason || '').trim().toLowerCase();
     const messageWasHeld = methodValue === 'hold';
+    const rawHoldReasonValue = String(recipientList.hold_reason || '').trim().toLowerCase();
+    const normalizedHoldReasonValue = (() => {
+        if (!messageWasHeld) {
+            return rawHoldReasonValue;
+        }
+        if (['hold', 'blocked', 'replaced'].includes(rawHoldReasonValue)) {
+            return rawHoldReasonValue;
+        }
+        return 'hold';
+    })();
 
     const ruleUsedValues = [recipientList.rule_used]
         .flat()
@@ -287,9 +630,9 @@ function getRecipientFlags(message) {
 
     return {
         message_was_held: messageWasHeld,
-        held_for_hold_reason: messageWasHeld && (holdReasonValue === 'hold'),
-        held_for_blocked_reason: messageWasHeld && (holdReasonValue === 'blocked'),
-        held_for_replaced_reason: messageWasHeld && (holdReasonValue === 'replaced'),
+        held_for_hold_reason: messageWasHeld && (normalizedHoldReasonValue === 'hold'),
+        held_for_blocked_reason: messageWasHeld && (normalizedHoldReasonValue === 'blocked'),
+        held_for_replaced_reason: messageWasHeld && (normalizedHoldReasonValue === 'replaced'),
         rule_used_values: Array.from(new Set(ruleUsedValues)),
         rule_used_value: ruleUsedValues[0] || null,
         has_attachment: hasAttachment
@@ -298,6 +641,7 @@ function getRecipientFlags(message) {
 
 function getEnabledFlagLabels(derivedFlags = {}) {
     const flagMap = [
+        ['duplicate', 'Duplicate'],
         ['machine_answered', 'Machine'],
         ['person_answered', 'Person'],
         ['accepted_by_carrier', 'Carrier OK'],
@@ -306,7 +650,6 @@ function getEnabledFlagLabels(derivedFlags = {}) {
         ['ava_only', 'AVA Only'],
         ['was_responded_to', 'Responded'],
         ['has_attachment', 'Attachment'],
-        ['message_was_held', 'Held'],
         ['held_for_blocked_reason', 'Blocked'],
         ['held_for_replaced_reason', 'Replaced'],
         ['held_for_hold_reason', 'Hold']
@@ -317,11 +660,31 @@ function getEnabledFlagLabels(derivedFlags = {}) {
         .map(([, label]) => label);
 }
 
+function getFlagPillVariantClass(label, classes) {
+    const redOutlineLabels = ['Hold', 'Replaced', 'Duplicate', 'Attachment', 'No Answer'];
+    const greenSolidLabels = ['Person', 'Responded', 'Opened'];
+    const orangeOutlineLabels = ['Carrier OK', 'Machine', 'AVA Only'];
+
+    if (label === 'Blocked') {
+        return classes.flagPillRedSolid;
+    }
+    if (redOutlineLabels.includes(label)) {
+        return classes.flagPillRedOutline;
+    }
+    if (greenSolidLabels.includes(label)) {
+        return classes.flagPillGreenSolid;
+    }
+    if (orangeOutlineLabels.includes(label)) {
+        return classes.flagPillOrangeOutline;
+    }
+    return '';
+}
+
 function getMessageSubject(message) {
     return message?.subject_line || message?.subject || message?.title || 'No subject';
 }
 
-function getMessageText(message) {
+function getRawMessageText(message) {
     const contentCurrent = message?.content?.current || {};
     if (contentCurrent?.en?.text != null) {
         return String(contentCurrent.en.text);
@@ -330,6 +693,103 @@ function getMessageText(message) {
         return String(contentCurrent.original.text);
     }
     return '';
+}
+
+function stripSignatureBlock(messageText, options = {}) {
+    const rawText = String(messageText || '');
+    if (!rawText.trim()) {
+        return '';
+    }
+
+    const signatureKey = String(options?.signatureKey || '').trim();
+    if (signatureKey) {
+        const sourceLower = rawText.toLowerCase();
+        const signatureLower = signatureKey.toLowerCase();
+        const signatureIndex = sourceLower.indexOf(signatureLower);
+        if (signatureIndex >= 0) {
+            return rawText.slice(0, signatureIndex).trim();
+        }
+    }
+
+    const lines = rawText.replace(/\r\n/g, '\n').split('\n');
+    const signoffPattern = /^(thanks|thank you|thx|regards|best|best regards|kind regards|warm regards|sincerely|respectfully|cheers|many thanks|all the best)[\s!,.:-]*$/i;
+    const mobileFooterPattern = /^sent from my\s+/i;
+    const signatureDividerPattern = /^[-_]{2,}\s*$/;
+    const quotedHeaderStartPattern = /^(from|sent|subject|to):\s+/i;
+    const contactLinePattern = /\b(cell|office|fax|email|website|phone|mobile|tel|direct)\b\s*[:|]/i;
+    const socialOrWebPattern = /\b(www\.|facebook|linkedin|instagram|twitter|tiktok)\b/i;
+    const emailAddressPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+    const phonePattern = /\+?\d[\d\s().-]{7,}\d/;
+    const titlePattern = /\b(realtor|manager|director|coordinator|broker|agent|sales|development)\b/i;
+
+    const isSignatureCueLine = (lineValue) => {
+        const line = String(lineValue || '').trim();
+        if (!line) {
+            return false;
+        }
+
+        return (
+            signoffPattern.test(line)
+            || mobileFooterPattern.test(line)
+            || signatureDividerPattern.test(line)
+            || contactLinePattern.test(line)
+            || socialOrWebPattern.test(line)
+            || emailAddressPattern.test(line)
+            || phonePattern.test(line)
+            || titlePattern.test(line)
+        );
+    };
+
+    let cutIndex = -1;
+
+    for (let lineIndex = 1; lineIndex < lines.length; lineIndex++) {
+        const trimmedLine = String(lines[lineIndex] || '').trim();
+        if (!trimmedLine) {
+            continue;
+        }
+
+        const remainingLineCount = lines.length - lineIndex;
+        const isNearBottom = remainingLineCount <= 8;
+        const isLikelySignoff = signoffPattern.test(trimmedLine) && (trimmedLine.length <= 30);
+        const isMobileFooter = mobileFooterPattern.test(trimmedLine);
+        const isSignatureDivider = signatureDividerPattern.test(trimmedLine);
+        const isQuotedHeader = quotedHeaderStartPattern.test(trimmedLine);
+
+        if (isQuotedHeader || isSignatureDivider) {
+            cutIndex = lineIndex;
+            break;
+        }
+
+        if (isNearBottom) {
+            const lookAheadWindow = lines.slice(lineIndex, lineIndex + 6);
+            const cueCount = lookAheadWindow.filter(isSignatureCueLine).length;
+            const hasHardContactCue = lookAheadWindow.some((lineValue) => {
+                const line = String(lineValue || '').trim();
+                return contactLinePattern.test(line) || emailAddressPattern.test(line) || phonePattern.test(line);
+            });
+
+            if ((cueCount >= 3) && hasHardContactCue) {
+                cutIndex = lineIndex;
+                break;
+            }
+        }
+
+        if ((isNearBottom && isLikelySignoff) || isMobileFooter || (isNearBottom && isSignatureDivider)) {
+            cutIndex = lineIndex;
+            break;
+        }
+    }
+
+    const keptLines = (cutIndex >= 0 ? lines.slice(0, cutIndex) : lines).slice();
+    while ((keptLines.length > 0) && !String(keptLines[keptLines.length - 1] || '').trim()) {
+        keptLines.pop();
+    }
+
+    return keptLines.join('\n').trim();
+}
+
+function getMessageText(message, options = {}) {
+    return stripSignatureBlock(getRawMessageText(message), options);
 }
 
 function normalizeDateValue(message) {
@@ -444,6 +904,245 @@ function buildMessageWeekList(dateFromInput, dateToInput) {
     return Array.from(weeks);
 }
 
+function getMessageIdentityKey(message) {
+    const compositeKey = String(message?.composite_key || '').trim();
+    if (compositeKey) {
+        const keyParts = compositeKey.split('~');
+        if (keyParts.length >= 2) {
+            return `${keyParts[0]}~${keyParts[1]}`;
+        }
+    }
+
+    const threadPart = message?.thread_id ? `T:${message.thread_id}` : 'T:unknown';
+    const messagePart = message?.message_id || message?.id || message?.created_time || 'unknown';
+    return `${threadPart}~M:${messagePart}`;
+}
+
+function getCompositeKeyIdentity(compositeKeyValue) {
+    const compositeKey = String(compositeKeyValue || '').trim();
+    if (!compositeKey) {
+        return '';
+    }
+    const keyParts = compositeKey.split('~');
+    if (keyParts.length >= 2) {
+        return `${keyParts[0]}~${keyParts[1]}`;
+    }
+    return compositeKey;
+}
+
+function getCompositeMessageSegment(compositeKeyValue) {
+    const compositeKey = String(compositeKeyValue || '').trim();
+    if (!compositeKey) {
+        return '';
+    }
+    const messageSegment = compositeKey
+        .split('~')
+        .find((segment) => String(segment || '').trim().toUpperCase().startsWith('M:'));
+    return String(messageSegment || '').trim();
+}
+
+function replaceCompositeMessageSegment(compositeKeyValue, nextMessageSegmentValue) {
+    const compositeKey = String(compositeKeyValue || '').trim();
+    const nextMessageSegment = String(nextMessageSegmentValue || '').trim();
+    if (!compositeKey || !nextMessageSegment) {
+        return compositeKey;
+    }
+
+    const segments = compositeKey.split('~');
+    const messageSegmentIndex = segments.findIndex((segment) => String(segment || '').trim().toUpperCase().startsWith('M:'));
+    if (messageSegmentIndex < 0) {
+        return compositeKey;
+    }
+
+    const nextSegments = segments.slice();
+    nextSegments[messageSegmentIndex] = nextMessageSegment;
+    return nextSegments.join('~');
+}
+
+function getMessageSequenceFromCompositeKey(compositeKeyValue) {
+    const compositeKey = String(compositeKeyValue || '').trim();
+    if (!compositeKey) {
+        return null;
+    }
+
+    const messagePart = compositeKey
+        .split('~')
+        .find((part) => String(part || '').trim().toUpperCase().startsWith('M:'));
+
+    if (!messagePart) {
+        return null;
+    }
+
+    const numericPart = String(messagePart).split(':').slice(1).join(':').trim();
+    const sequenceValue = Number(numericPart);
+    return Number.isFinite(sequenceValue) ? sequenceValue : null;
+}
+
+function isReplyMessageFromDeliveries(deliveryItems = []) {
+    return deliveryItems.some((deliveryItem) => {
+        const sequenceValue = getMessageSequenceFromCompositeKey(deliveryItem?.composite_key);
+        return (sequenceValue !== null) && (sequenceValue > 1);
+    });
+}
+
+function getThreadMessageCutoffKey(message, deliveryItems = []) {
+    const messageIdentityKey = String(message?.message_identity_key || '').trim();
+    if (messageIdentityKey) {
+        return messageIdentityKey;
+    }
+
+    for (const deliveryItem of deliveryItems) {
+        const candidateKey = getMessageIdentityKey(deliveryItem);
+        if (candidateKey) {
+            return candidateKey;
+        }
+    }
+
+    return getMessageIdentityKey(message);
+}
+
+function getUniqueReceiversFromDeliveries(deliveryItems = []) {
+    const receiverSet = new Set();
+    for (const delivery of deliveryItems) {
+        normalizeReceivers(delivery).forEach((receiverId) => {
+            const normalized = String(receiverId || '').trim();
+            if (normalized) {
+                receiverSet.add(normalized);
+            }
+        });
+    }
+    return Array.from(receiverSet);
+}
+
+function summarizeReceivers(receiverIds, getDisplayName, maxNames = 2) {
+    const names = receiverIds
+        .map((receiverId) => getDisplayName(receiverId))
+        .filter(Boolean);
+
+    if (names.length === 0) {
+        return 'Unknown receiver';
+    }
+    if (names.length <= maxNames) {
+        return names.join(', ');
+    }
+    const shownNames = names.slice(0, maxNames).join(', ');
+    return `${shownNames} +${names.length - maxNames} more`;
+}
+
+function mergeDerivedFlags(baseFlags = {}, incomingFlags = {}) {
+    const merged = { ...baseFlags };
+    Object.keys(incomingFlags).forEach((flagKey) => {
+        const incomingValue = incomingFlags[flagKey];
+        if (Array.isArray(incomingValue)) {
+            const existing = Array.isArray(merged[flagKey]) ? merged[flagKey] : [];
+            merged[flagKey] = Array.from(new Set([...existing, ...incomingValue]));
+        }
+        else if (typeof incomingValue === 'boolean') {
+            merged[flagKey] = !!merged[flagKey] || incomingValue;
+        }
+        else if ((incomingValue !== null) && (incomingValue !== undefined) && (incomingValue !== '')) {
+            merged[flagKey] = merged[flagKey] || incomingValue;
+        }
+        else if (!(flagKey in merged)) {
+            merged[flagKey] = incomingValue;
+        }
+    });
+    return merged;
+}
+
+function buildRecipientSummaries(deliveryItems = [], resolvePersonName = (id) => id) {
+    const recipientMap = new Map();
+    const otherPersonByAddress = buildRecipientNameByAddressLookup(deliveryItems, resolvePersonName);
+
+    deliveryItems.forEach((deliveryItem) => {
+        const receivers = normalizeReceivers(deliveryItem);
+        const deliveryTime = (() => {
+            const dateValue = normalizeDateValue(deliveryItem);
+            const asNumber = Number(dateValue);
+            if (!Number.isNaN(asNumber)) {
+                return asNumber;
+            }
+            const asDate = new Date(dateValue || 0).getTime();
+            return Number.isNaN(asDate) ? 0 : asDate;
+        })();
+        const deliveryFlags = deliveryItem?.derived_flags || {
+            ...getResultFlags(deliveryItem),
+            ...getRecipientFlags(deliveryItem)
+        };
+        const deliveryFlagLabels = getEnabledFlagLabels(deliveryFlags);
+
+        if (receivers.length === 0) {
+            receivers.push('Unknown receiver');
+        }
+
+        receivers.forEach((receiverId) => {
+            const normalizedReceiverId = String(receiverId || '').trim() || 'Unknown receiver';
+            if (!recipientMap.has(normalizedReceiverId)) {
+                recipientMap.set(normalizedReceiverId, {
+                    recipientId: normalizedReceiverId,
+                    recipientName: resolvePersonName(normalizedReceiverId) || normalizedReceiverId,
+                    flagSet: new Set(),
+                    resultEntries: [],
+                    resultEntryKeySet: new Set(),
+                    compositeKeySet: new Set()
+                });
+            }
+
+            const recipientSummary = recipientMap.get(normalizedReceiverId);
+            const resultDisplay = makeResultDisplay(deliveryItem, {
+                otherPersonByAddress,
+                currentRecipientId: normalizedReceiverId,
+                currentRecipientName: recipientSummary.recipientName
+            });
+            const resultText = resultDisplay.text;
+            const replyText = resultDisplay.replyText;
+
+            const compositeKey = String(deliveryItem?.composite_key || '').trim();
+            const resultEntryKey = compositeKey || `${deliveryTime}::${resultText}::${replyText}`;
+            if (resultText && !recipientSummary.resultEntryKeySet.has(resultEntryKey)) {
+                recipientSummary.resultEntries.push({
+                    text: resultText,
+                    replyText,
+                    deliveryTime,
+                    compositeKey
+                });
+                recipientSummary.resultEntryKeySet.add(resultEntryKey);
+            }
+
+            if (compositeKey) {
+                recipientSummary.compositeKeySet.add(compositeKey);
+            }
+
+            deliveryFlagLabels.forEach((flagLabel) => {
+                recipientSummary.flagSet.add(flagLabel);
+            });
+        });
+    });
+
+    return Array.from(recipientMap.values())
+        .map((recipientSummary) => ({
+            resultDisplayList: recipientSummary.resultEntries
+                .slice()
+                .sort((a, b) => (b.deliveryTime || 0) - (a.deliveryTime || 0)),
+            recipientId: recipientSummary.recipientId,
+            recipientName: recipientSummary.recipientName,
+            flagLabels: Array.from(recipientSummary.flagSet).sort(),
+            resultTextList: recipientSummary.resultEntries
+                .slice()
+                .sort((a, b) => (b.deliveryTime || 0) - (a.deliveryTime || 0))
+                .map((entry) => entry.text)
+                .filter(Boolean),
+            resultText: recipientSummary.resultEntries
+                .slice()
+                .sort((a, b) => (b.deliveryTime || 0) - (a.deliveryTime || 0))
+                .map((entry) => entry.text)
+                .find(Boolean) || '',
+            compositeKeys: Array.from(recipientSummary.compositeKeySet),
+            compositeKey: Array.from(recipientSummary.compositeKeySet)[0] || ''
+        }))
+        .sort((a, b) => a.recipientName.localeCompare(b.recipientName));
+}
+
 export default function MessageMonitorV3({ defaults = {}, onClose = () => { } }) {
     const classes = useStyles();
     const { state } = useSession();
@@ -493,6 +1192,16 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
     const [errorText, setErrorText] = React.useState('');
     const [messages, setMessages] = React.useState([]);
     const [selectedMessage, setSelectedMessage] = React.useState(null);
+    const runSearchRef = React.useRef(() => { });
+    const hasManualSearchRef = React.useRef(false);
+    const loadingRef = React.useRef(false);
+    const [signatureKeyByPersonId, setSignatureKeyByPersonId] = React.useState({});
+    const signatureKeyFetchAttemptedRef = React.useRef(new Set());
+    const [replyToContext, setReplyToContext] = React.useState({
+        loading: false,
+        errorText: '',
+        message: null
+    });
     const [showSenderQuickSearch, setShowSenderQuickSearch] = React.useState(false);
     const [showReceiverQuickSearch, setShowReceiverQuickSearch] = React.useState(false);
     const [senderQuickSearchData, setSenderQuickSearchData] = React.useState({
@@ -506,7 +1215,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         special_values: quickSearchSpecialValues,
     });
 
-    const statusOptions = ['*all', 'machine_answered', 'person_answered', 'accepted_by_carrier', 'email_opened', 'call_not_answered', 'ava_only', 'was_responded_to', 'has_attachment'];
+    const statusOptions = ['*all', 'duplicate', 'machine_answered', 'person_answered', 'accepted_by_carrier', 'email_opened', 'call_not_answered', 'ava_only', 'was_responded_to', 'has_attachment'];
 
     const updateFilter = (key, value) => {
         setFilters(prev => ({ ...prev, [key]: value }));
@@ -556,6 +1265,207 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         const full = `${first} ${last}`.trim();
         return full || found.display_name || normalizedPersonId;
     };
+
+    const getSignatureKeyFromAccessList = React.useCallback((personId) => {
+        const normalizedPersonId = String(personId || '').trim();
+        if (!normalizedPersonId) {
+            return '';
+        }
+        const found = accessList.find((person) => String(person?.person_id || '').trim() === normalizedPersonId)
+            || accessList.find((person) => String(person?.person_id || '').trim().toLowerCase() === normalizedPersonId.toLowerCase());
+        const signatureKey = String(found?.signature_key || found?.signatureKey || '').trim();
+        return signatureKey;
+    }, [accessList]);
+
+    const getSignatureKeyForPerson = React.useCallback((personId) => {
+        const normalizedPersonId = String(personId || '').trim();
+        if (!normalizedPersonId) {
+            return '';
+        }
+
+        const fromAccessList = getSignatureKeyFromAccessList(normalizedPersonId);
+        if (fromAccessList) {
+            return fromAccessList;
+        }
+
+        return String(signatureKeyByPersonId[normalizedPersonId.toLowerCase()] || '').trim();
+    }, [getSignatureKeyFromAccessList, signatureKeyByPersonId]);
+
+    React.useEffect(() => {
+        let cancelled = false;
+
+        const senderIdsToCheck = [
+            selectedMessage?.sent_from,
+            replyToContext?.message?.sent_from
+        ]
+            .map((personId) => String(personId || '').trim())
+            .filter(Boolean);
+
+        const uniqueSenderIds = Array.from(new Set(senderIdsToCheck));
+        if (uniqueSenderIds.length === 0) {
+            return undefined;
+        }
+
+        const fetchMissingSignatureKeys = async () => {
+            const idsToFetch = uniqueSenderIds.filter((personId) => {
+                const personIdLower = personId.toLowerCase();
+                if (getSignatureKeyFromAccessList(personId)) {
+                    return false;
+                }
+                if (signatureKeyByPersonId[personIdLower] !== undefined) {
+                    return false;
+                }
+                if (signatureKeyFetchAttemptedRef.current.has(personIdLower)) {
+                    return false;
+                }
+                return true;
+            });
+
+            if (idsToFetch.length === 0) {
+                return;
+            }
+
+            idsToFetch.forEach((personId) => signatureKeyFetchAttemptedRef.current.add(personId.toLowerCase()));
+
+            const fetchedEntries = await Promise.all(idsToFetch.map(async (personId) => {
+                try {
+                    const personResult = await dbClient
+                        .get({
+                            TableName: 'People',
+                            Key: { person_id: personId }
+                        })
+                        .promise();
+                    const signatureKey = String(personResult?.Item?.signature_key || personResult?.Item?.signatureKey || '').trim();
+                    return { personId: personId.toLowerCase(), signatureKey };
+                }
+                catch (error) {
+                    console.log('[MessageMonitorV3] Unable to read People signature_key', { personId, error });
+                    return { personId: personId.toLowerCase(), signatureKey: '' };
+                }
+            }));
+
+            if (cancelled) {
+                return;
+            }
+
+            setSignatureKeyByPersonId((prev) => {
+                const next = { ...prev };
+                fetchedEntries.forEach(({ personId, signatureKey }) => {
+                    if (!(personId in next)) {
+                        next[personId] = signatureKey;
+                    }
+                });
+                return next;
+            });
+        };
+
+        fetchMissingSignatureKeys();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedMessage, replyToContext, getSignatureKeyFromAccessList, signatureKeyByPersonId]);
+
+    React.useEffect(() => {
+        let cancelled = false;
+
+        const loadReplyToContext = async () => {
+            if (!selectedMessage) {
+                setReplyToContext({ loading: false, errorText: '', message: null });
+                return;
+            }
+
+            const selectedDeliveryItems = Array.isArray(selectedMessage.delivery_items)
+                ? selectedMessage.delivery_items
+                : [selectedMessage];
+            const selectedIsReplyMessage = isReplyMessageFromDeliveries(selectedDeliveryItems);
+            if (!selectedIsReplyMessage) {
+                setReplyToContext({ loading: false, errorText: '', message: null });
+                return;
+            }
+
+            const threadId = String(
+                selectedMessage?.thread_id
+                || selectedDeliveryItems.find((deliveryItem) => !!deliveryItem?.thread_id)?.thread_id
+                || ''
+            ).trim();
+            const senderId = String(selectedMessage?.sent_from || '').trim();
+            const cutoffCompositeKey = String(getThreadMessageCutoffKey(selectedMessage, selectedDeliveryItems) || '').trim();
+
+            if (!threadId || !senderId || !cutoffCompositeKey) {
+                setReplyToContext({
+                    loading: false,
+                    errorText: 'Missing thread context for reply lookup.',
+                    message: null
+                });
+                return;
+            }
+
+            setReplyToContext({ loading: true, errorText: '', message: null });
+
+            try {
+                const senderIdLower = senderId.toLowerCase();
+                let foundReplyToMessage = null;
+                let lastKey;
+                let pageGuard = 0;
+
+                do {
+                    const response = await dbClient
+                        .query({
+                            TableName: 'TheseusMessages',
+                            KeyConditionExpression: 'thread_id = :threadId AND composite_key < :cutoffKey',
+                            FilterExpression: 'record_type = :recordType AND deliver_to = :deliverTo',
+                            ExpressionAttributeValues: {
+                                ':threadId': threadId,
+                                ':cutoffKey': cutoffCompositeKey,
+                                ':recordType': 'delivery',
+                                ':deliverTo': senderId
+                            },
+                            ExclusiveStartKey: lastKey,
+                            ScanIndexForward: false,
+                            Limit: 25
+                        })
+                        .promise();
+
+                    const candidateItems = Array.isArray(response?.Items) ? response.Items : [];
+                    foundReplyToMessage = candidateItems.find((candidate) => {
+                        const receiverList = normalizeReceivers(candidate)
+                            .map((receiverId) => String(receiverId || '').trim().toLowerCase());
+                        return receiverList.includes(senderIdLower);
+                    }) || null;
+
+                    lastKey = response?.LastEvaluatedKey;
+                    pageGuard++;
+                } while (!foundReplyToMessage && lastKey && (pageGuard < 5));
+
+                if (cancelled) {
+                    return;
+                }
+
+                setReplyToContext({
+                    loading: false,
+                    errorText: '',
+                    message: foundReplyToMessage
+                });
+            }
+            catch (error) {
+                if (cancelled) {
+                    return;
+                }
+                setReplyToContext({
+                    loading: false,
+                    errorText: `Unable to load replied-to message: ${error?.message || error}`,
+                    message: null
+                });
+            }
+        };
+
+        loadReplyToContext();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedMessage]);
 
     const summarizeSelectionDisplay = (selections, personIds, type) => {
         if (!selections || selections.length === 0) {
@@ -795,6 +1705,144 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
             }
             scanResults = Object.values(dedupeMap);
 
+            const heldRecords = scanResults.filter((record) => {
+                const isDeliveryRecord = String(record?.record_type || '').trim().toLowerCase() === 'delivery';
+                const isHeldStatus = normalizeStatus(record) === 'held';
+                return isDeliveryRecord && isHeldStatus;
+            });
+
+            const heldPartnerCache = new Map();
+            const partnerIdentityByHeldComposite = new Map();
+            const heldCompositeByPartnerIdentity = new Map();
+
+            for (const heldRecord of heldRecords) {
+                const threadId = String(heldRecord?.thread_id || '').trim();
+                const heldCompositeKey = String(heldRecord?.composite_key || '').trim();
+                const heldDeliverTo = String(heldRecord?.deliver_to || '').trim();
+                const heldSentFrom = String(heldRecord?.sent_from || '').trim();
+                const heldMessageSegment = getCompositeMessageSegment(heldCompositeKey);
+
+                if (!threadId || !heldCompositeKey || !heldDeliverTo || !heldSentFrom || !heldMessageSegment) {
+                    continue;
+                }
+
+                const heldLookupKey = `${threadId}::${heldCompositeKey}::${heldDeliverTo.toLowerCase()}::${heldSentFrom.toLowerCase()}`;
+                if (!heldPartnerCache.has(heldLookupKey)) {
+                    const partnerRecords = [];
+
+                    let lastKey;
+                    let pageGuard = 0;
+                    let retryIdentityKey = '';
+                    let keepCollectingCurrentIdentity = false;
+
+                    do {
+                        const response = await dbClient
+                            .query({
+                                TableName: 'TheseusMessages',
+                                KeyConditionExpression: 'thread_id = :threadId AND composite_key > :heldCompositeKey',
+                                FilterExpression: 'record_type = :recordType AND deliver_to = :deliverTo AND sent_from = :sentFrom',
+                                ExpressionAttributeValues: {
+                                    ':threadId': threadId,
+                                    ':heldCompositeKey': heldCompositeKey,
+                                    ':recordType': 'delivery',
+                                    ':deliverTo': heldDeliverTo,
+                                    ':sentFrom': heldSentFrom
+                                },
+                                ExclusiveStartKey: lastKey,
+                                ScanIndexForward: true,
+                                Limit: 50
+                            })
+                            .promise();
+
+                        const candidateItems = Array.isArray(response?.Items) ? response.Items : [];
+
+                        for (const candidateItem of candidateItems) {
+                            const candidateIdentityKey = getMessageIdentityKey(candidateItem);
+                            if (!retryIdentityKey) {
+                                retryIdentityKey = candidateIdentityKey;
+                                keepCollectingCurrentIdentity = true;
+                            }
+
+                            if (keepCollectingCurrentIdentity && (candidateIdentityKey === retryIdentityKey)) {
+                                partnerRecords.push(candidateItem);
+                                continue;
+                            }
+
+                            if (keepCollectingCurrentIdentity && (candidateIdentityKey !== retryIdentityKey)) {
+                                keepCollectingCurrentIdentity = false;
+                                break;
+                            }
+                        }
+
+                        lastKey = response?.LastEvaluatedKey;
+                        pageGuard++;
+
+                        if (!keepCollectingCurrentIdentity && (partnerRecords.length > 0)) {
+                            break;
+                        }
+                    } while (lastKey && (pageGuard < 6));
+
+                    heldPartnerCache.set(heldLookupKey, partnerRecords);
+                }
+
+                const matchedPartnerRecords = heldPartnerCache.get(heldLookupKey) || [];
+                if (matchedPartnerRecords.length === 0) {
+                    continue;
+                }
+
+                const partnerIdentityKey = getMessageIdentityKey(matchedPartnerRecords[0]);
+                if (!partnerIdentityKey) {
+                    continue;
+                }
+
+                partnerIdentityByHeldComposite.set(heldCompositeKey, partnerIdentityKey);
+                heldCompositeByPartnerIdentity.set(partnerIdentityKey, heldCompositeKey);
+
+                matchedPartnerRecords.forEach((partnerRecord) => {
+                    const partnerCompositeKey = String(partnerRecord?.composite_key || '').trim();
+                    if (!partnerCompositeKey) {
+                        return;
+                    }
+                    const partnerDedupeKey = `${partnerRecord.thread_id || ''}::${partnerCompositeKey || partnerRecord.created_time || Math.random()}`;
+                    dedupeMap[partnerDedupeKey] = partnerRecord;
+                });
+            }
+
+            scanResults = Object.values(dedupeMap).map((record) => {
+                const currentCompositeKey = String(record?.composite_key || '').trim();
+                if (!currentCompositeKey) {
+                    return record;
+                }
+
+                const heldMessageSegment = getCompositeMessageSegment(currentCompositeKey);
+                if (!heldMessageSegment) {
+                    return record;
+                }
+
+                const explicitPartnerIdentity = partnerIdentityByHeldComposite.get(currentCompositeKey);
+                if (explicitPartnerIdentity) {
+                    heldCompositeByPartnerIdentity.set(explicitPartnerIdentity, currentCompositeKey);
+                    return record;
+                }
+
+                const currentIdentity = getCompositeKeyIdentity(currentCompositeKey);
+                const heldCompositeForIdentity = heldCompositeByPartnerIdentity.get(currentIdentity);
+                if (!heldCompositeForIdentity) {
+                    return record;
+                }
+
+                const heldSegment = getCompositeMessageSegment(heldCompositeForIdentity);
+                if (!heldSegment) {
+                    return record;
+                }
+
+                const nextCompositeKey = replaceCompositeMessageSegment(currentCompositeKey, heldSegment);
+                return {
+                    ...record,
+                    composite_key: nextCompositeKey
+                };
+            });
+
             const logFilteredOut = (reason, message, details = {}) => {
                 console.log('[MessageMonitorV3] Filtered out message', {
                     reason,
@@ -887,7 +1935,15 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                 }
 
                 const status = normalizeStatus(message);
-                if (filters.status === 'machine_answered') {
+                if (filters.status === 'duplicate') {
+                    if (!resultFlags.duplicate) {
+                        logFilteredOut('duplicate_miss', message, {
+                            resultFlags
+                        });
+                        return false;
+                    }
+                }
+                else if (filters.status === 'machine_answered') {
                     if (!resultFlags.machine_answered) {
                         logFilteredOut('machine_answered_miss', message, {
                             resultFlags
@@ -1009,7 +2065,38 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                 }
             }));
 
-            withDerivedFlags.sort((a, b) => {
+            const groupedMap = new Map();
+            withDerivedFlags.forEach((deliveryMessage) => {
+                const messageKey = getMessageIdentityKey(deliveryMessage);
+                const existingGroup = groupedMap.get(messageKey);
+
+                if (!existingGroup) {
+                    groupedMap.set(messageKey, {
+                        ...deliveryMessage,
+                        message_identity_key: messageKey,
+                        delivery_items: [deliveryMessage],
+                        derived_flags: { ...(deliveryMessage.derived_flags || {}) }
+                    });
+                    return;
+                }
+
+                existingGroup.delivery_items.push(deliveryMessage);
+                existingGroup.derived_flags = mergeDerivedFlags(existingGroup.derived_flags, deliveryMessage.derived_flags || {});
+
+                const existingTime = new Date(normalizeDateValue(existingGroup) || 0).getTime();
+                const candidateTime = new Date(normalizeDateValue(deliveryMessage) || 0).getTime();
+                if (candidateTime > existingTime) {
+                    existingGroup.created_time = deliveryMessage.created_time;
+                    existingGroup.message_date = deliveryMessage.message_date;
+                    existingGroup.created_at = deliveryMessage.created_at;
+                    existingGroup.sent_at = deliveryMessage.sent_at;
+                    existingGroup.timestamp = deliveryMessage.timestamp;
+                }
+            });
+
+            const groupedMessages = Array.from(groupedMap.values());
+
+            groupedMessages.sort((a, b) => {
                 const aValue = normalizeDateValue(a);
                 const bValue = normalizeDateValue(b);
                 const aTime = new Date(aValue || 0).getTime();
@@ -1017,7 +2104,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                 return bTime - aTime;
             });
 
-            setMessages(withDerivedFlags);
+            setMessages(groupedMessages);
         }
         catch (error) {
             setErrorText(`Unable to load messages: ${error?.message || error}`);
@@ -1025,6 +2112,30 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         }
         setLoading(false);
     };
+
+    runSearchRef.current = runSearch;
+
+    const handleManualSearch = React.useCallback(() => {
+        hasManualSearchRef.current = true;
+        runSearchRef.current();
+    }, []);
+
+    React.useEffect(() => {
+        loadingRef.current = loading;
+    }, [loading]);
+
+    React.useEffect(() => {
+        const autoRefreshId = window.setInterval(() => {
+            if (!hasManualSearchRef.current || loadingRef.current) {
+                return;
+            }
+            runSearchRef.current();
+        }, 5 * 60 * 1000);
+
+        return () => {
+            window.clearInterval(autoRefreshId);
+        };
+    }, []);
 
     return (
         <Dialog
@@ -1132,19 +2243,22 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                 <List dense>
                                     {messages.map((message, index) => {
                                         const sender = message.sent_from || 'Unknown sender';
-                                        const receivers = normalizeReceivers(message);
+                                        const deliveryItems = Array.isArray(message.delivery_items) ? message.delivery_items : [message];
+                                        const receivers = getUniqueReceiversFromDeliveries(deliveryItems);
+                                        const isReplyMessage = isReplyMessageFromDeliveries(deliveryItems);
                                         const senderText = personNameFromAccessList(sender);
-                                        const receiverText = receivers.length
-                                            ? receivers.map(receiverId => personNameFromAccessList(receiverId)).join(', ')
-                                            : 'Unknown receiver';
-                                        const status = normalizeStatus(message);
+                                        const receiverText = summarizeReceivers(receivers, personNameFromAccessList, 2);
                                         const dateText = formatMessageDate(normalizeDateValue(message));
                                         const subjectText = getMessageSubject(message);
                                         const derivedFlags = message.derived_flags || {};
                                         const flagLabels = getEnabledFlagLabels(derivedFlags);
+                                        const deliveryCount = deliveryItems.length;
                                         const primary = `${subjectText}`;
-                                        const secondary = `${dateText} • ${senderText} → ${receiverText} • ${status}`;
-                                        const itemKey = message.composite_key || message.thread_id || `${subjectText}-${index}`;
+                                        const directionText = isReplyMessage
+                                            ? `${senderText} → reply to ${receiverText}`
+                                            : `${senderText} → ${receiverText}`;
+                                        const secondary = `${dateText} • ${directionText}${deliveryCount > 1 ? ` • ${deliveryCount} deliveries` : ''}`;
+                                        const itemKey = message.message_identity_key || message.composite_key || message.thread_id || `${subjectText}-${index}`;
 
                                         return (
                                             <React.Fragment key={itemKey}>
@@ -1168,8 +2282,10 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                                                                 key={`${itemKey}_${flagLabel}`}
                                                                                 size='small'
                                                                                 variant='outlined'
-                                                                                disabled
-                                                                                className={classes.flagPill}
+                                                                                disableRipple
+                                                                                disableFocusRipple
+                                                                                onClick={(event) => event.preventDefault()}
+                                                                                className={`${classes.flagPill} ${getFlagPillVariantClass(flagLabel, classes)}`}
                                                                             >
                                                                                 {flagLabel}
                                                                             </Button>
@@ -1200,7 +2316,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                             >
                                 {'Close'}
                             </Button>
-                            <Button className={AVAClass.AVAButton} color='primary' variant='contained' onClick={runSearch} disabled={loading}>
+                            <Button className={AVAClass.AVAButton} color='primary' variant='contained' onClick={handleManualSearch} disabled={loading}>
                                 {loading ? 'Searching…' : 'Search'}
                             </Button>
                         </Box>
@@ -1266,39 +2382,166 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                     }}
                     maxWidth='md'
                     fullWidth
+                    PaperProps={{ style: { overflow: 'hidden', borderRadius: '30px', display: 'flex', flexDirection: 'column', height: '90vh', maxHeight: '90vh' } }}
                 >
-                    <DialogContent>
-                        <Box display='flex' flexDirection='column' gridGap={10}>
-                            <Typography style={AVATextStyle({ size: 1.2, bold: true })}>
-                                {getMessageSubject(selectedMessage)}
-                            </Typography>
-                            <Typography variant='body2' color='textSecondary'>
-                                {`${formatMessageDate(normalizeDateValue(selectedMessage))} • ${personNameFromAccessList(selectedMessage.sent_from || 'Unknown sender')} → ${(normalizeReceivers(selectedMessage).length ? normalizeReceivers(selectedMessage).map(receiverId => personNameFromAccessList(receiverId)).join(', ') : 'Unknown receiver')}`}
-                            </Typography>
-                            <TextField
-                                label='Message'
-                                value={getMessageText(selectedMessage)}
-                                variant='outlined'
-                                multiline
-                                minRows={8}
-                                InputProps={{ readOnly: true }}
-                            />
-                            <Box display='flex' justifyContent='flex-end'>
-                                <Button
-                                    className={AVAClass.AVAButton}
-                                    style={{ backgroundColor: 'red', color: 'white' }}
-                                    size='small'
-                                    onClick={() => {
-                                        setSelectedMessage(null);
-                                    }}
-                                >
-                                    {'Close'}
-                                </Button>
-                            </Box>
+                    <DialogContent className={classes.detailDialogContent}>
+                        <Box className={classes.detailDialogBody}>
+                            {(() => {
+                                const selectedDeliveryItems = Array.isArray(selectedMessage.delivery_items) ? selectedMessage.delivery_items : [selectedMessage];
+                                const selectedIsReplyMessage = isReplyMessageFromDeliveries(selectedDeliveryItems);
+                                const selectedReceivers = getUniqueReceiversFromDeliveries(selectedDeliveryItems);
+                                const selectedReceiverText = summarizeReceivers(selectedReceivers, personNameFromAccessList, 10);
+                                const selectedDeliveryCount = selectedDeliveryItems.length;
+                                const recipientSummaries = buildRecipientSummaries(selectedDeliveryItems, personNameFromAccessList);
+                                return (
+                                    <React.Fragment>
+                                        <Typography style={AVATextStyle({ size: 1.2, bold: true })}>
+                                            {getMessageSubject(selectedMessage)}
+                                        </Typography>
+                                        {(selectedDeliveryCount > 1) && (
+                                            <Typography variant='body2' color='textSecondary'>
+                                                {`${selectedDeliveryCount} delivery records in this message thread`}
+                                            </Typography>
+                                        )}
+                                        {selectedIsReplyMessage && (
+                                            <Box className={classes.messageBox}>
+                                                <Typography className={classes.messageBoxLabel}>
+                                                    {'Replying to'}
+                                                </Typography>
+                                                <Typography className={classes.messageBoxMeta}>
+                                                    {
+                                                        replyToContext.loading
+                                                            ? 'Loading replied-to message...'
+                                                            : (replyToContext.message
+                                                                ? `${formatMessageDate(normalizeDateValue(replyToContext.message))} • ${personNameFromAccessList(replyToContext.message.sent_from || 'Unknown sender')}`
+                                                                : (replyToContext.errorText || 'Original message not found in this thread.'))
+                                                    }
+                                                </Typography>
+                                                {!replyToContext.loading && !!replyToContext.message && (
+                                                    <Typography
+                                                        className={classes.messageBoxBody}
+                                                        style={{ minHeight: '4.6em', maxHeight: '8.6em' }}
+                                                    >
+                                                        {getMessageText(replyToContext.message, {
+                                                            signatureKey: getSignatureKeyForPerson(replyToContext.message.sent_from)
+                                                        }) || '[No message text available]'}
+                                                    </Typography>
+                                                )}
+                                            </Box>
+                                        )}
+                                        <Box className={classes.messageBox}>
+                                            <Typography className={classes.messageBoxLabel}>
+                                                {'Message'}
+                                            </Typography>
+                                            <Typography className={classes.messageBoxMeta}>
+                                                {`${formatMessageDate(normalizeDateValue(selectedMessage))} • ${personNameFromAccessList(selectedMessage.sent_from || 'Unknown sender')} → ${selectedReceiverText}`}
+                                            </Typography>
+                                            <Typography
+                                                className={classes.messageBoxBody}
+                                                style={{ minHeight: '7.2em', maxHeight: '7.2em' }}
+                                            >
+                                                {getMessageText(selectedMessage, {
+                                                    signatureKey: getSignatureKeyForPerson(selectedMessage?.sent_from)
+                                                }) || '[No message text available]'}
+                                            </Typography>
+                                        </Box>
+
+                                        <Typography variant='body2' style={AVATextStyle({ size: 0.95, bold: true })}>
+                                            {'Recipients'}
+                                        </Typography>
+                                        <Box className={classes.recipientScrollArea}>
+                                            {recipientSummaries.map((recipientSummary) => {
+                                                return (
+                                                    <Box key={`${recipientSummary.recipientId}`} className={classes.recipientRow}>
+                                                        <Box className={classes.recipientHeader}>
+                                                            <Typography
+                                                                variant='body2'
+                                                                className={classes.recipientName}
+                                                                onContextMenu={(event) => {
+                                                                    event.preventDefault();
+                                                                    const compositeKeyList = Array.isArray(recipientSummary.compositeKeys)
+                                                                        ? recipientSummary.compositeKeys.filter(Boolean)
+                                                                        : [];
+                                                                    window.alert(
+                                                                        compositeKeyList.length > 0
+                                                                            ? compositeKeyList.join('\n')
+                                                                            : 'No composite_key available for this recipient delivery.'
+                                                                    );
+                                                                }}
+                                                            >
+                                                                {recipientSummary.recipientName}
+                                                            </Typography>
+                                                            <Box className={classes.recipientResultText}>
+                                                                {((recipientSummary.resultDisplayList || []).length > 0
+                                                                    ? recipientSummary.resultDisplayList
+                                                                    : [{ text: recipientSummary.resultText || sentenceCase(normalizeStatus(selectedMessage)), replyText: '' }]
+                                                                ).map((resultItem, resultIndex) => (
+                                                                    <React.Fragment key={`${recipientSummary.recipientId}_result_${resultIndex}`}>
+                                                                        <Typography
+                                                                            variant='body2'
+                                                                            color='textSecondary'
+                                                                            className={classes.recipientResultLine}
+                                                                        >
+                                                                            {resultItem.text}
+                                                                        </Typography>
+                                                                        {resultItem.replyText && (
+                                                                            <Typography
+                                                                                variant='body2'
+                                                                                color='textSecondary'
+                                                                                className={classes.recipientReplyLine}
+                                                                                title={resultItem.replyText}
+                                                                            >
+                                                                                {`"${resultItem.replyText}"`}
+                                                                            </Typography>
+                                                                        )}
+                                                                    </React.Fragment>
+                                                                ))}
+                                                            </Box>
+                                                        </Box>
+                                                        <Box className={classes.flagRow}>
+                                                            {recipientSummary.flagLabels.map((pillLabel) => (
+                                                                <Button
+                                                                    key={`${recipientSummary.recipientId}_${pillLabel}`}
+                                                                    size='small'
+                                                                    variant='outlined'
+                                                                    disableRipple
+                                                                    disableFocusRipple
+                                                                    onClick={(event) => event.preventDefault()}
+                                                                    className={`${classes.flagPill} ${getFlagPillVariantClass(pillLabel, classes)}`}
+                                                                >
+                                                                    {pillLabel}
+                                                                </Button>
+                                                            ))}
+                                                        </Box>
+                                                        <Divider />
+                                                    </Box>
+                                                );
+                                            })}
+                                            {recipientSummaries.length === 0 && (
+                                                <Typography variant='body2' className={classes.muted}>
+                                                    {'No recipient details available.'}
+                                                </Typography>
+                                            )}
+                                        </Box>
+                                    </React.Fragment>
+                                );
+                            })()}
+                        </Box>
+                        <Box className={classes.detailDialogFooter}>
+                            <Button
+                                className={AVAClass.AVAButton}
+                                style={{ backgroundColor: 'red', color: 'white' }}
+                                size='small'
+                                onClick={() => {
+                                    setSelectedMessage(null);
+                                }}
+                            >
+                                {'Close'}
+                            </Button>
                         </Box>
                     </DialogContent>
                 </Dialog>
             )}
-        </Dialog>
+            </Dialog>
     );
 }

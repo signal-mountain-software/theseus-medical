@@ -419,6 +419,15 @@ export default ({ start_at }) => {
     throttle: 500
   });
 
+  React.useEffect(() => {
+    if (reactData.renderFunctionCall) {
+      pause();
+    }
+    else {
+      start();
+    }
+  }, [reactData.renderFunctionCall, pause, start]);
+
   let nowTime = new Date().getTime();
 
   /**** NEW V3 CODE ****/

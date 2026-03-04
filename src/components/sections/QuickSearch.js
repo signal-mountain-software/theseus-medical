@@ -50,6 +50,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   const { state } = useSession();
   const isMounted = React.useRef(false);
   const optionsRef = React.useRef(options);
+  const searchInputRef = React.useRef(null);
   const administrative_account = (['admin', 'master'].includes(state.user.account_class));
 
   // Virtual scrolling state
@@ -60,6 +61,18 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   React.useEffect(() => {
     console.log('EFFECT mounted');
   }, [administrative_account]); // should log exactly once (twice in StrictMode dev)
+
+  React.useEffect(() => {
+    const focusTimer = window.setTimeout(() => {
+      if (searchInputRef.current) {
+        searchInputRef.current.focus();
+      }
+    }, 80);
+
+    return () => {
+      window.clearTimeout(focusTimer);
+    };
+  }, []);
 
   React.useEffect(() => {
     function initialize() {
@@ -302,6 +315,8 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
         <TextField
           style={isMobile ? AVATextStyle({ width: '60%' }) : AVATextStyle({ width: '70%' })}
           key={`key_words`}
+          inputRef={searchInputRef}
+          autoFocus
           defaultValue={reactData.linkedPersonFilter?.raw || ''}
           onChange={(event) => {
             // Reset virtual scrolling limit when search changes
