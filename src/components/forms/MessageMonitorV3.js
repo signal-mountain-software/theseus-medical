@@ -6,7 +6,6 @@ import {
     Paper,
     Typography,
     TextField,
-    MenuItem,
     Button,
     List,
     ListItem,
@@ -26,6 +25,7 @@ import { dbClient, sentenceCase } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import QuickSearch from '../sections/QuickSearch';
+import MessageForm from './MessageForm';
 
 
 
@@ -62,6 +62,37 @@ const useStyles = makeStyles(theme => ({
         alignItems: 'end',
         marginTop: theme.spacing(1)
     },
+    statusPillRow: {
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: theme.spacing(1),
+        alignItems: 'flex-end',
+        marginBottom: theme.spacing(2.5)
+    },
+    statusPillItem: {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        minWidth: 74
+    },
+    statusPillCount: {
+        fontSize: '0.7rem',
+        lineHeight: 1,
+        marginBottom: theme.spacing(0.4),
+        opacity: 0.75
+    },
+    statusPillButton: {
+        minWidth: 'auto',
+        textTransform: 'none',
+        borderRadius: 999,
+        padding: theme.spacing(0.25, 1)
+    },
+    statusPillActive: {
+        outline: `6px solid ${fade(theme.palette.primary.main, 0.55)}`,
+        outlineOffset: 1,
+        boxShadow: `0 0 0 6px ${fade(theme.palette.primary.main, 0.2)}`,
+        transform: 'translateY(-1px)'
+    },
     scrollArea: {
         flex: 1,
         minHeight: 0,
@@ -70,8 +101,31 @@ const useStyles = makeStyles(theme => ({
     },
     actions: {
         display: 'flex',
+        alignItems: 'center',
         justifyContent: 'flex-end',
         gap: theme.spacing(1),
+    },
+    pendingSearchHint: {
+        fontSize: '0.78rem',
+        fontWeight: 600,
+        color: theme.palette.warning.main,
+        marginRight: theme.spacing(1)
+    },
+    searchButtonPending: {
+        animation: '$searchButtonPulse 1400ms ease-in-out infinite',
+        boxShadow: `0 0 0 0 ${fade(theme.palette.warning.main, 0.45)}`,
+        borderColor: `${theme.palette.warning.main} !important`
+    },
+    '@keyframes searchButtonPulse': {
+        '0%': {
+            boxShadow: `0 0 0 0 ${fade(theme.palette.warning.main, 0.45)}`
+        },
+        '70%': {
+            boxShadow: `0 0 0 10px ${fade(theme.palette.warning.main, 0)}`
+        },
+        '100%': {
+            boxShadow: `0 0 0 0 ${fade(theme.palette.warning.main, 0)}`
+        }
     },
     bottomBar: {
         position: 'sticky',
@@ -660,6 +714,62 @@ function getEnabledFlagLabels(derivedFlags = {}) {
         .map(([, label]) => label);
 }
 
+function getStatusPillLabel(statusKey) {
+    if (statusKey === '*all') { return 'All'; }
+    const statusToLabelMap = {
+        duplicate: 'Duplicate',
+        machine_answered: 'Machine',
+        person_answered: 'Person',
+        accepted_by_carrier: 'Carrier OK',
+        email_opened: 'Opened',
+        call_not_answered: 'No Answer',
+        ava_only: 'AVA Only',
+        was_responded_to: 'Responded',
+        has_attachment: 'Attachment'
+    };
+    return statusToLabelMap[statusKey] || sentenceCase(statusKey.replace(/_/g, ' '));
+}
+
+const STATUS_FILTER_OPTIONS = [
+    '*all',
+    'duplicate',
+    'machine_answered',
+    'person_answered',
+    'accepted_by_carrier',
+    'email_opened',
+    'call_not_answered',
+    'ava_only',
+    'was_responded_to',
+    'has_attachment'
+];
+
+function normalizeStatusFilterValue(statusValue) {
+    const normalized = String(statusValue || '*all').trim().toLowerCase();
+    return STATUS_FILTER_OPTIONS.includes(normalized) ? normalized : '*all';
+}
+
+function messageMatchesStatusKey(message, statusKey) {
+    const normalizedStatusKey = normalizeStatusFilterValue(statusKey);
+    if (normalizedStatusKey === '*all') {
+        return true;
+    }
+    const resultFlags = {
+        ...getResultFlags(message),
+        ...getRecipientFlags(message),
+        ...(message?.derived_flags || {})
+    };
+    if (normalizedStatusKey === 'duplicate') { return !!resultFlags.duplicate; }
+    if (normalizedStatusKey === 'machine_answered') { return !!resultFlags.machine_answered; }
+    if (normalizedStatusKey === 'person_answered') { return !!resultFlags.person_answered; }
+    if (normalizedStatusKey === 'accepted_by_carrier') { return !!resultFlags.accepted_by_carrier; }
+    if (normalizedStatusKey === 'email_opened') { return !!resultFlags.email_opened; }
+    if (normalizedStatusKey === 'call_not_answered') { return !!resultFlags.call_not_answered; }
+    if (normalizedStatusKey === 'ava_only') { return !!resultFlags.ava_only; }
+    if (normalizedStatusKey === 'was_responded_to') { return !!resultFlags.was_responded_to; }
+    if (normalizedStatusKey === 'has_attachment') { return !!resultFlags.has_attachment; }
+    return normalizeStatus(message) === normalizedStatusKey;
+}
+
 function getFlagPillVariantClass(label, classes) {
     const redOutlineLabels = ['Hold', 'Replaced', 'Duplicate', 'Attachment', 'No Answer'];
     const greenSolidLabels = ['Person', 'Responded', 'Opened'];
@@ -1185,16 +1295,19 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         senderDisplay: defaults.senderDisplay || defaults.sender_display || defaults.sender || '*me',
         receiverDisplay: defaults.receiverDisplay || defaults.receiver_display || defaults.receiver || '*anyone',
         dateFrom: toDateInputValue(defaults.dateFrom) || defaultDates.dateFrom,
-        dateTo: toDateInputValue(defaults.dateTo) || defaultDates.dateTo,
-        status: defaults.status || '*all'
+        dateTo: toDateInputValue(defaults.dateTo) || defaultDates.dateTo
     });
+    const [activeStatusFilter, setActiveStatusFilter] = React.useState(normalizeStatusFilterValue(defaults.status));
+    const [pendingSearchChanges, setPendingSearchChanges] = React.useState(false);
     const [loading, setLoading] = React.useState(false);
     const [errorText, setErrorText] = React.useState('');
     const [messages, setMessages] = React.useState([]);
     const [selectedMessage, setSelectedMessage] = React.useState(null);
+    const [selectedRecipientPersonId, setSelectedRecipientPersonId] = React.useState('');
     const runSearchRef = React.useRef(() => { });
     const hasManualSearchRef = React.useRef(false);
     const loadingRef = React.useRef(false);
+    const pendingSearchRef = React.useRef(false);
     const [signatureKeyByPersonId, setSignatureKeyByPersonId] = React.useState({});
     const signatureKeyFetchAttemptedRef = React.useRef(new Set());
     const [replyToContext, setReplyToContext] = React.useState({
@@ -1215,9 +1328,8 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         special_values: quickSearchSpecialValues,
     });
 
-    const statusOptions = ['*all', 'duplicate', 'machine_answered', 'person_answered', 'accepted_by_carrier', 'email_opened', 'call_not_answered', 'ava_only', 'was_responded_to', 'has_attachment'];
-
     const updateFilter = (key, value) => {
+        setPendingSearchChanges(true);
         setFilters(prev => ({ ...prev, [key]: value }));
     };
 
@@ -1510,6 +1622,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
     };
 
     const applyQuickSearchSelections = (type, selections) => {
+        setPendingSearchChanges(true);
         const personIds = extractPersonIds(selections);
         const display = summarizeSelectionDisplay(selections, personIds, type);
         if (type === 'sender') {
@@ -1856,10 +1969,6 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
             };
 
             const filtered = scanResults.filter(message => {
-                const resultFlags = {
-                    ...getResultFlags(message),
-                    ...getRecipientFlags(message)
-                };
                 const sender = message.sent_from;
                 if (!senderHasAnyone) {
                     if (senderIdMatch.length > 0) {
@@ -1932,87 +2041,6 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                             return false;
                         }
                     }
-                }
-
-                const status = normalizeStatus(message);
-                if (filters.status === 'duplicate') {
-                    if (!resultFlags.duplicate) {
-                        logFilteredOut('duplicate_miss', message, {
-                            resultFlags
-                        });
-                        return false;
-                    }
-                }
-                else if (filters.status === 'machine_answered') {
-                    if (!resultFlags.machine_answered) {
-                        logFilteredOut('machine_answered_miss', message, {
-                            resultFlags
-                        });
-                        return false;
-                    }
-                }
-                else if (filters.status === 'person_answered') {
-                    if (!resultFlags.person_answered) {
-                        logFilteredOut('person_answered_miss', message, {
-                            resultFlags
-                        });
-                        return false;
-                    }
-                }
-                else if (filters.status === 'accepted_by_carrier') {
-                    if (!resultFlags.accepted_by_carrier) {
-                        logFilteredOut('accepted_by_carrier_miss', message, {
-                            resultFlags
-                        });
-                        return false;
-                    }
-                }
-                else if (filters.status === 'email_opened') {
-                    if (!resultFlags.email_opened) {
-                        logFilteredOut('email_opened_miss', message, {
-                            resultFlags
-                        });
-                        return false;
-                    }
-                }
-                else if (filters.status === 'call_not_answered') {
-                    if (!resultFlags.call_not_answered) {
-                        logFilteredOut('call_not_answered_miss', message, {
-                            resultFlags
-                        });
-                        return false;
-                    }
-                }
-                else if (filters.status === 'ava_only') {
-                    if (!resultFlags.ava_only) {
-                        logFilteredOut('ava_only_miss', message, {
-                            resultFlags
-                        });
-                        return false;
-                    }
-                }
-                else if (filters.status === 'was_responded_to') {
-                    if (!resultFlags.was_responded_to) {
-                        logFilteredOut('was_responded_to_miss', message, {
-                            resultFlags
-                        });
-                        return false;
-                    }
-                }
-                else if (filters.status === 'has_attachment') {
-                    if (!resultFlags.has_attachment) {
-                        logFilteredOut('has_attachment_miss', message, {
-                            resultFlags
-                        });
-                        return false;
-                    }
-                }
-                else if ((filters.status !== '*all') && (status !== filters.status.toLowerCase())) {
-                    logFilteredOut('status_miss', message, {
-                        status,
-                        expectedStatus: filters.status
-                    });
-                    return false;
                 }
 
                 const dateValue = normalizeDateValue(message);
@@ -2117,6 +2145,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
 
     const handleManualSearch = React.useCallback(() => {
         hasManualSearchRef.current = true;
+        setPendingSearchChanges(false);
         runSearchRef.current();
     }, []);
 
@@ -2125,8 +2154,12 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
     }, [loading]);
 
     React.useEffect(() => {
+        pendingSearchRef.current = pendingSearchChanges;
+    }, [pendingSearchChanges]);
+
+    React.useEffect(() => {
         const autoRefreshId = window.setInterval(() => {
-            if (!hasManualSearchRef.current || loadingRef.current) {
+            if (!hasManualSearchRef.current || loadingRef.current || pendingSearchRef.current) {
                 return;
             }
             runSearchRef.current();
@@ -2136,6 +2169,29 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
             window.clearInterval(autoRefreshId);
         };
     }, []);
+
+    const statusPillCounts = React.useMemo(() => {
+        const counts = { '*all': messages.length };
+        STATUS_FILTER_OPTIONS.forEach((statusKey) => {
+            if (statusKey === '*all') { return; }
+            counts[statusKey] = messages.filter((message) => messageMatchesStatusKey(message, statusKey)).length;
+        });
+        return counts;
+    }, [messages]);
+
+    const visibleStatusPills = React.useMemo(() => {
+        return STATUS_FILTER_OPTIONS.filter((statusKey) => {
+            if (statusKey === '*all') { return true; }
+            return (statusPillCounts[statusKey] || 0) > 0;
+        });
+    }, [statusPillCounts]);
+
+    const displayedMessages = React.useMemo(() => {
+        if (activeStatusFilter === '*all') {
+            return messages;
+        }
+        return messages.filter((message) => messageMatchesStatusKey(message, activeStatusFilter));
+    }, [messages, activeStatusFilter]);
 
     return (
         <Dialog
@@ -2154,7 +2210,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                         >
                             {'Message Monitor'}
                         </Typography>
-                        <Typography variant='body2' className={classes.muted}>Filter by Sender, Receiver, Date Range, and Status.</Typography>
+                        <Typography variant='body2' className={classes.muted}>Filter by Sender, Receiver, and Date Range.</Typography>
 
                         <Box className={classes.filters}>
                             <TextField
@@ -2202,23 +2258,38 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                 onChange={event => updateFilter('dateTo', event.target.value)}
                                 InputLabelProps={{ shrink: true }}
                             />
-
-                            <TextField
-                                label='Status'
-                                variant='outlined'
-                                size='small'
-                                select
-                                value={filters.status}
-                                onChange={event => updateFilter('status', event.target.value)}
-                            >
-                                {statusOptions.map(statusValue => (
-                                    <MenuItem key={statusValue} value={statusValue}>{statusValue}</MenuItem>
-                                ))}
-                            </TextField>
                         </Box>
                     </Box>
 
                     <Box className={classes.scrollArea}>
+                        {displayedMessages.length > 0 && (
+                            <Box className={classes.statusPillRow}>
+                                {visibleStatusPills.map((statusKey) => {
+                                    const isActive = activeStatusFilter === statusKey;
+                                    const pillLabel = getStatusPillLabel(statusKey);
+                                    const pillVariantClass = statusKey === '*all' ? '' : getFlagPillVariantClass(pillLabel, classes);
+                                    return (
+                                        <Box key={statusKey} className={classes.statusPillItem}>
+                                            <Typography className={classes.statusPillCount} color='textSecondary'>
+                                                {statusPillCounts[statusKey] || 0}
+                                            </Typography>
+                                            <Button
+                                                variant='outlined'
+                                                size='small'
+                                                disableRipple
+                                                disableFocusRipple
+                                                className={`${classes.statusPillButton} ${classes.flagPill} ${pillVariantClass} ${isActive ? classes.statusPillActive : ''}`}
+                                                onClick={() => setActiveStatusFilter(statusKey)}
+                                                style={{ opacity: isActive ? 1 : 0.75 }}
+                                            >
+                                                {pillLabel}
+                                            </Button>
+                                        </Box>
+                                    );
+                                })}
+                            </Box>
+                        )}
+
                         {errorText && (
                             <Box mb={1}>
                                 <Alert severity='error'>{errorText}</Alert>
@@ -2233,15 +2304,15 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                 </Box>
                             )}
 
-                            {!loading && messages.length === 0 && (
+                            {!loading && displayedMessages.length === 0 && (
                                 <Box p={2}>
                                     <Typography variant='body2' className={classes.muted}>No messages match these filters.</Typography>
                                 </Box>
                             )}
 
-                            {!loading && messages.length > 0 && (
+                            {!loading && displayedMessages.length > 0 && (
                                 <List dense>
-                                    {messages.map((message, index) => {
+                                    {displayedMessages.map((message, index) => {
                                         const sender = message.sent_from || 'Unknown sender';
                                         const deliveryItems = Array.isArray(message.delivery_items) ? message.delivery_items : [message];
                                         const receivers = getUniqueReceiversFromDeliveries(deliveryItems);
@@ -2270,6 +2341,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                                 >
                                                     <ListItemText
                                                         primary={primary}
+                                                        secondaryTypographyProps={{ component: 'div' }}
                                                         secondary={(
                                                             <Box>
                                                                 <Typography variant='body2' color='textSecondary'>
@@ -2296,7 +2368,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                                         )}
                                                     />
                                                 </ListItem>
-                                                {index < (messages.length - 1) && <Divider component='li' />}
+                                                {index < (displayedMessages.length - 1) && <Divider component='li' />}
                                             </React.Fragment>
                                         );
                                     })}
@@ -2307,6 +2379,11 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
 
                     <Box className={classes.bottomBar}>
                         <Box className={classes.actions}>
+                            {pendingSearchChanges && !loading && (
+                                <Typography className={classes.pendingSearchHint}>
+                                    Filters changed — tap Search when ready
+                                </Typography>
+                            )}
                             <Button
                                 className={AVAClass.AVAButton}
                                 style={{ backgroundColor: 'red', color: 'white' }}
@@ -2316,7 +2393,13 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                             >
                                 {'Close'}
                             </Button>
-                            <Button className={AVAClass.AVAButton} color='primary' variant='contained' onClick={handleManualSearch} disabled={loading}>
+                            <Button
+                                className={`${AVAClass.AVAButton} ${(pendingSearchChanges && !loading) ? classes.searchButtonPending : ''}`}
+                                color='primary'
+                                variant='contained'
+                                onClick={handleManualSearch}
+                                disabled={loading}
+                            >
                                 {loading ? 'Searching…' : 'Search'}
                             </Button>
                         </Box>
@@ -2457,6 +2540,15 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                                             <Typography
                                                                 variant='body2'
                                                                 className={classes.recipientName}
+                                                                style={{ cursor: recipientSummary.recipientId ? 'pointer' : 'default' }}
+                                                                onClick={() => {
+                                                                    const recipientId = String(recipientSummary.recipientId || '').trim();
+                                                                    if (!recipientId) {
+                                                                        return;
+                                                                    }
+                                                                    setSelectedMessage(null);
+                                                                    setSelectedRecipientPersonId(recipientId);
+                                                                }}
                                                                 onContextMenu={(event) => {
                                                                     event.preventDefault();
                                                                     const compositeKeyList = Array.isArray(recipientSummary.compositeKeys)
@@ -2541,6 +2633,21 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                         </Box>
                     </DialogContent>
                 </Dialog>
+            )}
+
+            {selectedRecipientPersonId && (
+                <MessageForm
+                    pPerson={selectedRecipientPersonId}
+                    pClient={state.session.client_id}
+                    pMessageList={[]}
+                    pSession={state.session}
+                    onReset={() => {
+                        setSelectedRecipientPersonId('');
+                    }}
+                    options={{
+                        viewOnly: true
+                    }}
+                />
             )}
             </Dialog>
     );
