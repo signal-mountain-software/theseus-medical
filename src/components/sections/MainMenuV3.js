@@ -70,6 +70,9 @@ import AVAConfirm from '../forms/AVAConfirm';
 import LoadSpreadsheet from '../forms/LoadSpreadsheet';
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageMonitorV3 from '../forms/MessageMonitorV3';
+import CheckInCheckOut from '../forms/CheckInCheckOut';
+import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
+import GroupPhotoDirectory from '../forms/GroupPhotoDirectory';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -542,6 +545,42 @@ export default ({ start_at }) => {
     }
 
     return newHierarchy;
+  };
+
+  const refreshFavoritesBranchInHierarchy = async (menuHierarchy, favoriteList) => {
+    let refreshedHierarchy = applyFavoritesCardToHierarchy(menuHierarchy, favoriteList);
+    const favoritesCellObj = findMenuCellWithLevel(refreshedHierarchy, '__v3_favorites__');
+    if (!favoritesCellObj) {
+      return refreshedHierarchy;
+    }
+
+    const hasOpenFavoritesBranch = refreshedHierarchy.some((levelCells) => {
+      return Array.isArray(levelCells) && levelCells.some((cell) => cell.parent === '__v3_favorites__');
+    });
+
+    if (!hasOpenFavoritesBranch) {
+      return refreshedHierarchy;
+    }
+
+    const descendantsToRemove = new Set(['__v3_favorites__']);
+    refreshedHierarchy = refreshedHierarchy.map((levelCells) => {
+      const thisLevel = Array.isArray(levelCells) ? levelCells : [];
+      return thisLevel.filter((cell) => {
+        if (descendantsToRemove.has(cell.parent)) {
+          descendantsToRemove.add(cell.menu_id);
+          return false;
+        }
+        return true;
+      });
+    });
+
+    reactData.menu_hierarchy = refreshedHierarchy;
+    const favoritesMenuItem = favoritesCellObj.cell.menuItemRec;
+    for (const favoriteMenuId of (favoritesMenuItem.children || [])) {
+      await getMenuItem(favoriteMenuId, favoritesCellObj.levelIndex + 1, favoritesMenuItem);
+    }
+
+    return reactData.menu_hierarchy;
   };
 
   const saveFavorites = async (favoriteList) => {
@@ -1147,7 +1186,7 @@ export default ({ start_at }) => {
     const nextFavorites = isFavoriteNow
       ? currentFavorites.filter((thisId) => thisId !== menuId)
       : [menuId, ...currentFavorites.filter((thisId) => thisId !== menuId)];
-    const nextHierarchy = applyFavoritesCardToHierarchy(reactData.menu_hierarchy, nextFavorites);
+    const nextHierarchy = await refreshFavoritesBranchInHierarchy(reactData.menu_hierarchy, nextFavorites);
 
     updateReactData({
       v3_favorites: nextFavorites,
@@ -1159,7 +1198,7 @@ export default ({ start_at }) => {
     }
     catch (error) {
       cl({ 'Error writing v3_favorites': error });
-      const rollbackHierarchy = applyFavoritesCardToHierarchy(reactData.menu_hierarchy, currentFavorites);
+      const rollbackHierarchy = await refreshFavoritesBranchInHierarchy(reactData.menu_hierarchy, currentFavorites);
       updateReactData({
         v3_favorites: currentFavorites,
         menu_hierarchy: rollbackHierarchy,
@@ -1208,6 +1247,9 @@ export default ({ start_at }) => {
     PeopleMaintenance,
     SwitchPatientDialog,
     MessageMonitorV3,
+    CheckInCheckOut,
+    MarqueeMaintenance,
+    GroupPhotoDirectory,
     QuickAdd,
     QuickSearch,
   };
@@ -1297,9 +1339,9 @@ export default ({ start_at }) => {
         defaultObject={props.defaults || []}
         eventClient={props.options?.client_id || state.session.client_id}
         calendarMode={props.options?.mode || 'signUp'}
-          isAppointment={props.options?.isAppointment}
-          personalEvent={props.options?.personalEvent}
-          picture={props.options?.picture || null}
+        isAppointment={props.options?.isAppointment}
+        personalEvent={props.options?.personalEvent}
+        picture={props.options?.picture || null}
         showNewEvent={props.options?.showNewEvent}
         onReset={() => {
           start();
@@ -1801,8 +1843,8 @@ export default ({ start_at }) => {
         flexDirection='column'
         ml={3}
         mr={1}
-        mt={1}
-        mb={1}
+        mt={!useTileUI ? 0 : 1}
+        mb={!useTileUI ? 0 : 1}
       >
         {childCells.map((childCell, childIndex) => {
           return renderMenuCardCell(childCell, level_index, childIndex, `accessible_${parentMenuId}_`, accessibleDepth);
@@ -1833,6 +1875,7 @@ export default ({ start_at }) => {
       ? reactData.menu_hierarchy[level_index - 1]?.find((parentCell) => parentCell.menu_id === this_cell.parent)?.menuItemRec?.color
       : null;
     const tileColor = this_item.color || parentColor || stringToColor(this_item.menu_id);
+    const tileOpacity = Math.max(0, 1 - (level_index * 0.3));
     const cardTile = (
       <Card className={classes.root}
         key={`${keyPrefix}${level_index}_card${item_index}`}
@@ -1840,7 +1883,7 @@ export default ({ start_at }) => {
           marginRight: useTileUI ? '8px' : '6px',
           marginLeft: useTileUI ? '8px' : '6px',
           borderRadius: ('30px 30px 30px 30px'),
-          backgroundColor: hexToRgb(tileColor, 1),
+          backgroundColor: hexToRgb(tileColor, tileOpacity),
           textDecoration: 'none',
           position: 'relative',
           width: useTileUI ? undefined : 'calc(100% - 12px)',
@@ -2008,8 +2051,8 @@ export default ({ start_at }) => {
                   maxWidth: 64,
                   height: 64,
                   minHeight: 64,
-                  marginLeft: 10,
-                  marginRight: 8,
+                  marginLeft: 18,
+                  marginRight: -8,
                   borderRadius: '16px'
                 }
               }
