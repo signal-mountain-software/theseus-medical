@@ -326,15 +326,17 @@ export default ({ onSave, onClose }) => {
         nameIndex = x;
         obo = titleCase(responses[x]);
         responses[x] = obo;
+        const normalizedDestination = `${responses[x] || ''}`.trim().replace(/\s+/g, ' ').toLowerCase();
+        const normalizedPreviousDestination = `${reactData.previouslyEnteredDestination || ''}`.trim().replace(/\s+/g, ' ').toLowerCase();
         if ((state.session.guest_checkout_prompts[nameIndex].checkSensitivity === 'error')
-          || !reactData.previouslyEnteredDestination
-          || (responses[x].toLowerCase() !== reactData.previouslyEnteredDestination.toLowerCase())
+          || !normalizedPreviousDestination
+          || (normalizedDestination !== normalizedPreviousDestination)
         ) {
           let validation = await validateUser(responses[x], state.session.client_id, 'active', ['resident', 'staff', 'admin']);
           switch (validation.result) {
             case 'invalid': {
               errorText[x] = `We don't find anyone to match "${responses[x]}".  Please confirm this is correct.`;
-              reactData.previouslyEnteredDestination = responses[x];
+              reactData.previouslyEnteredDestination = normalizedDestination;
               break;
             }
             case 'match': {
