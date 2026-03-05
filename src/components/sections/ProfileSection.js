@@ -363,7 +363,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
           autoComplete='off'
           error={errorList.hasOwnProperty('email')}
           onBlur={async (event) => {
-            if (event.target.value !== '') {
+            if (event.target.value.trim() !== '') {
               let [, domain] = event.target.value.split('@');
               let valid = false;
               if (domain) {
@@ -412,12 +412,12 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
       <Box display='flex' alignItems='center'
         justifyContent='flex-start' flexDirection='row'>
         <TextField style={{ width: '400px' }}
-          id='email'
+          id='alt_email'
           key={`profileSection__alt_email__${currentValues.peopleRec.contact_info?.alt_email?.address || 0}`}
           autoComplete='off'
-          error={errorList.hasOwnProperty('email')}
+          error={errorList.hasOwnProperty('alt_email')}
           onBlur={async (event) => {
-            if (event.target.value !== '') {
+            if (event.target.value.trim() !== '') {
               let [, domain] = event.target.value.split('@');
               let valid = false;
               if (domain) {
@@ -426,7 +426,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
               if (!valid) {
                 // Invalid eMail.  This is an error.
                 setError({
-                  errorField: 'email',
+                  errorField: 'alt_email',
                   errorValue: event.target.value,
                   isError: true,
                   errorMessage: `${event.target.value} isn't a valid e-Mail address.`
@@ -459,18 +459,20 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
         />
       </Box>
       <TextField style={{ width: '550px', maxWidth: '100%' }}
-        id='email'
+        id='street1'
         multiline
         key={`profileSection__street1__${currentValues.peopleRec.address?.address || 0}`}
         autoComplete='off'
         onBlur={async (event) => {
-          currentValues.peopleRec.address.address = event.target.value;
+          const enteredAddress = event.target.value.trim();
+          // If the user cleared the address, we should clear all address fields and location 
+          currentValues.peopleRec.address.address = enteredAddress;
           let updateObj = {
             updateList:
               [{
                 tableName: 'peopleRec',
                 fieldName: 'address.address',
-                newData: event.target.value
+                newData: enteredAddress
               },
               {
                 tableName: 'peopleRec',
@@ -489,13 +491,14 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
         key={`profileSection__street2__${currentValues.peopleRec.address?.address2 || 0}`}
         autoComplete='off'
         onBlur={async (event) => {
-          currentValues.peopleRec.address.address2 = event.target.value;
+          const enteredAddress2 = event.target.value.trim();
+          currentValues.peopleRec.address.address2 = enteredAddress2;
           let updateObj = {
             updateList:
               [{
                 tableName: 'peopleRec',
                 fieldName: 'address.address2',
-                newData: event.target.value
+                newData: enteredAddress2
               },
               {
                 tableName: 'peopleRec',
