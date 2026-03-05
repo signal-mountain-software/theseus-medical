@@ -3,7 +3,7 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 
 import { getMemberList } from '../../util/AVAGroups';
-import { dbClient, recordExists, cl, titleCase, getDb, putDb, deepCopy, resolveData } from '../../util/AVAUtilities';
+import { dbClient, recordExists, cl, titleCase, getDb, putDb, deepCopy } from '../../util/AVAUtilities';
 import QuickSearch from '../sections/QuickSearch';
 import { getPerson, getImage } from '../../util/AVAPeople';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
@@ -16,7 +16,14 @@ import FormEditor from '../forms/FormEditor';
 import { Snackbar, Paper, Box, Dialog, DialogActions, DialogContent, DialogContentText, Button, Typography, Checkbox, FormControlLabel } from '@material-ui/core';
 import Select from "react-dropdown-select";
 import { Alert, AlertTitle } from '@material-ui/lab/';
-import * as XLSX from 'xlsx';
+import {
+  getExportFieldPickerData,
+  saveExportFieldSelections,
+  resolveSelectedFieldValuesForPeople,
+  downloadRowsAsCsv,
+  downloadRowsAsXlsx,
+  sanitizeExportBaseName
+} from '../../util/AVAPeopleListExport';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -48,55 +55,13 @@ const useStyles = makeStyles(theme => ({
     maxWidth: '50px',
     minHeight: '50px',
     maxHeight: '50px',
-    marginRight: theme.spacing(1),
-    borderRadius: '25px'
-  },
-  peopleBox: {
-    paddingTop: 0,
-    paddingBottom: theme.spacing(2),
-    overflowX: 'auto',
-    scrollbarWidth: 'thin',
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(2),
-    display: 'flex',
-    width: '100%',
-    flexDirection: 'column'
-  },
-  peopleBoxWithSpace: {
-    paddingTop: theme.spacing(2),
-    paddingBottom: theme.spacing(2),
-    overflowX: 'auto',
-    scrollbarWidth: 'thin',
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(2),
-    display: 'flex',
-    width: '100%',
-    flexDirection: 'row'
+    color: '#111111'
   },
   paperPallette: {
     borderRadius: '30px 30px 30px 30px',
     width: '95%',
     height: '100%',
     overflow: 'hidden'
-  },
-  dragNamesFirst: {
-    fontSize: theme.typography.fontSize * 0.8,
-    marginTop: '3px',
-    marginBottom: '-10px'
-  },
-  dragNamesLast: {
-    fontSize: theme.typography.fontSize * 0.8,
-    marginTop: '3px',
-    fontWeight: 'bold',
-    marginBottom: '-10px'
-  },
-  assignment_avatar: {
-    marginTop: 0,
-    marginBottom: 0,
-    height: 40,
-    width: 40,
-    paddingTop: 0,
-    fontSize: '1.2rem',
   },
   title: {
     marginTop: theme.spacing(3),
@@ -105,33 +70,15 @@ const useStyles = makeStyles(theme => ({
     marginBottom: 0,
     fontSize: '1.3rem',
   },
-  listItemAVA: {
-    fontSize: theme.typography.fontSize * 1.5,
-  },
-  noDisplay: {
-    display: 'none',
-    visibility: 'hidden'
-  },
   filterSelect: {
-    color: '#111111',
-    '& .react-dropdown-select-content': {
-      color: '#111111'
-    },
-    '& .react-dropdown-select-input': {
-      color: '#111111'
-    },
-    '& .react-dropdown-select-dropdown': {
-      backgroundColor: '#ffffff',
-      color: '#111111'
-    },
-    '& .react-dropdown-select-item': {
-      color: '#111111'
-    },
-    '& .react-dropdown-select-item-selected': {
-      backgroundColor: '#e6f0ff',
-      color: '#111111'
-    }
+    minWidth: 220,
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginBottom: theme.spacing(1)
   },
+  rowButton: {
+    cursor: 'pointer'
+  }
 }));
 
 export default ({ defaults, onClose }) => {
@@ -325,87 +272,6 @@ export default ({ defaults, onClose }) => {
     }, true);
   }
 
-  function csvSafe(value) {
-    if ((value === null) || (value === undefined)) {
-      return '';
-    }
-    const stringValue = `${value}`.replace(/"/g, '""');
-    return `"${stringValue}"`;
-  }
-
-  async function getSavedExportFieldSelections() {
-    const session_id = state?.session?.user_id;
-    const client_id = state?.session?.client_id;
-    if (!session_id || !client_id) {
-      return [];
-    }
-
-    const sessionRec = await dbClient
-      .get({
-        TableName: 'SessionsV2',
-        Key: { session_id }
-      })
-      .promise()
-      .catch((error) => {
-        cl({ 'Error reading SessionsV2 for form export selections': error });
-      });
-
-    if (!recordExists(sessionRec)) {
-      return [];
-    }
-
-    return [sessionRec.Item?.customizations?.csv_export?.form_management?.[client_id]?.selected_fields]
-      .flat()
-      .filter((field_name) => (typeof field_name === 'string') && (field_name.trim() !== ''));
-  }
-
-  async function saveExportFieldSelections(selectedFieldNames = []) {
-    const session_id = state?.session?.user_id;
-    const client_id = state?.session?.client_id;
-    if (!session_id || !client_id) {
-      return;
-    }
-
-    const sessionRec = await dbClient
-      .get({
-        TableName: 'SessionsV2',
-        Key: { session_id }
-      })
-      .promise()
-      .catch((error) => {
-        cl({ 'Error reading SessionsV2 before save form export selections': error });
-      });
-
-    let customizations = deepCopy(sessionRec?.Item?.customizations || {});
-    if (!customizations.csv_export) {
-      customizations.csv_export = {};
-    }
-    if (!customizations.csv_export.form_management) {
-      customizations.csv_export.form_management = {};
-    }
-    customizations.csv_export.form_management[client_id] = {
-      selected_fields: [...selectedFieldNames],
-      updated_at: new Date().toISOString(),
-    };
-
-    await dbClient
-      .update({
-        TableName: 'SessionsV2',
-        Key: { session_id },
-        UpdateExpression: 'set #c = :c',
-        ExpressionAttributeNames: {
-          '#c': 'customizations'
-        },
-        ExpressionAttributeValues: {
-          ':c': customizations
-        }
-      })
-      .promise()
-      .catch((error) => {
-        cl({ 'Error saving SessionsV2 form export selections': error });
-      });
-  }
-
   async function openFieldPicker() {
     if (!reactData.selectedForm_id) {
       return;
@@ -430,42 +296,15 @@ export default ({ defaults, onClose }) => {
       loadingExportFields: true,
     }, true);
 
-    const formFieldsRec = await dbClient
-      .query({
-        KeyConditionExpression: 'client_id = :c',
-        TableName: 'DataDictionaryV3',
-        ExpressionAttributeValues: {
-          ':c': state.session.client_id
-        }
-      })
-      .promise()
-      .catch(error => {
-        cl({ 'Error reading DataDictionaryV3 for form management csv export': error });
-      });
-
-    let exportFieldOptions = [];
-    if (recordExists(formFieldsRec)) {
-      exportFieldOptions = formFieldsRec.Items
-        .filter((fieldRec) => !!fieldRec?.field_key)
-        .map((fieldRec) => ({
-          field_key: fieldRec.field_key,
-          description: fieldRec.description || fieldRec.field_key,
-          category: fieldRec.category || 'Other',
-          value_type: fieldRec?.type,
-        }))
-        .sort((a, b) => {
-          const catCompare = (a.category || '').localeCompare(b.category || '');
-          if (catCompare !== 0) {
-            return catCompare;
-          }
-          return (a.description || '').localeCompare(b.description || '');
-        });
-    }
-
-    const savedSelectionList = await getSavedExportFieldSelections();
-    const selectedExportFieldNames = exportFieldOptions
-      .map((fieldRec) => fieldRec.field_key)
-      .filter((field_name) => savedSelectionList.includes(field_name));
+    const {
+      exportFieldOptions,
+      selectedExportFieldNames
+    } = await getExportFieldPickerData({
+      sessionId: state?.session?.user_id,
+      clientId: state?.session?.client_id,
+      exportScope: 'form_management',
+      logLabel: 'form management csv export'
+    });
 
     updateReactData({
       loadingExportFields: false,
@@ -495,26 +334,20 @@ export default ({ defaults, onClose }) => {
       rows
     } = exportData;
 
-    const csvContent = [header, ...rows]
-      .map(row => row.map(csvSafe).join(','))
-      .join('\n');
-
-    const safeFormName = (selectedForm?.form_name || reactData.selectedForm_id)
-      .replace(/[^a-z0-9]+/gi, '_')
-      .replace(/^_+|_+$/g, '')
-      .toLowerCase();
+    const safeFormName = sanitizeExportBaseName(
+      selectedForm?.form_name || reactData.selectedForm_id,
+      'form'
+    );
     const fileName = `${safeFormName || 'form'}_people_list.csv`;
 
-    const csvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const csvUrl = URL.createObjectURL(csvBlob);
-    const downloadLink = document.createElement('a');
-    downloadLink.href = csvUrl;
-    downloadLink.setAttribute('download', fileName);
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    URL.revokeObjectURL(csvUrl);
-    await saveExportFieldSelections(reactData.selectedExportFieldNames || []);
+    downloadRowsAsCsv({ header, rows, fileName });
+    await saveExportFieldSelections({
+      sessionId: state?.session?.user_id,
+      clientId: state?.session?.client_id,
+      exportScope: 'form_management',
+      selectedFieldNames: reactData.selectedExportFieldNames || [],
+      logLabel: 'form export selections'
+    });
     return true;
   }
 
@@ -530,32 +363,20 @@ export default ({ defaults, onClose }) => {
       rows
     } = exportData;
 
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
-
-    const maxColumnWidth = 60;
-    worksheet['!cols'] = header.map((headerLabel, columnIndex) => {
-      const maxValueLength = rows.reduce((longest, row) => {
-        const value = row[columnIndex];
-        const length = `${value ?? ''}`.length;
-        return Math.max(longest, length);
-      }, `${headerLabel ?? ''}`.length);
-
-      return {
-        wch: Math.min(Math.max(maxValueLength + 2, 10), maxColumnWidth)
-      };
-    });
-
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'People List');
-
-    const safeFormName = (selectedForm?.form_name || reactData.selectedForm_id)
-      .replace(/[^a-z0-9]+/gi, '_')
-      .replace(/^_+|_+$/g, '')
-      .toLowerCase();
+    const safeFormName = sanitizeExportBaseName(
+      selectedForm?.form_name || reactData.selectedForm_id,
+      'form'
+    );
     const fileName = `${safeFormName || 'form'}_people_list.xlsx`;
 
-    XLSX.writeFile(workbook, fileName);
-    await saveExportFieldSelections(reactData.selectedExportFieldNames || []);
+    downloadRowsAsXlsx({ header, rows, fileName });
+    await saveExportFieldSelections({
+      sessionId: state?.session?.user_id,
+      clientId: state?.session?.client_id,
+      exportScope: 'form_management',
+      selectedFieldNames: reactData.selectedExportFieldNames || [],
+      logLabel: 'form export selections'
+    });
     return true;
   }
 
@@ -583,52 +404,28 @@ export default ({ defaults, onClose }) => {
     });
 
     const selectedFieldKeys = selectedFieldOptions.map((fieldRec) => fieldRec.field_key);
-    const dictionaryCache = {};
 
     const header = ['Name', 'Person ID', 'Status', ...selectedFieldOptions.map((fieldRec) => fieldRec.description)];
     const rows = filteredMemberIds.map(person_id => {
       const memberData = selectedForm?.memberList?.[person_id] || {};
       const personName = memberData.person_name || makeName(person_id).display;
       const status = reactData.masterPeopleList?.[person_id]?.[reactData.selectedForm_id]?.status || 'not_started';
-      return [personName, person_id, status, selectedFieldKeys];
+      return [personName, person_id, status];
     });
 
     if (selectedFieldKeys.length > 0) {
-      await Promise.all(rows.map(async (rowObj, rowIndex) => {
-        const person_id = rowObj[1];
-        const resolvedFieldList = await resolveData(
-          state.session.client_id,
-          person_id,
-          selectedFieldKeys,
-          {
-            dictionaryCache,
-            address_lookup: false,
-            resolve_address: false
-          }
-        );
+      const personIds = rows.map((rowObj) => rowObj[1]);
+      const resolvedByPersonId = await resolveSelectedFieldValuesForPeople({
+        clientId: state.session.client_id,
+        personIds,
+        selectedFieldKeys
+      });
 
-        const selectedFieldValues = selectedFieldKeys.map((field_key, fieldIndex) => {
-          const resolvedField = resolvedFieldList[fieldIndex];
-          const formattedValue = resolvedField?.formatted;
-          if ((formattedValue === null) || (formattedValue === undefined)) {
-            return '';
-          }
-          if (Array.isArray(formattedValue)) {
-            return formattedValue.join('; ');
-          }
-          if (typeof formattedValue === 'object') {
-            try {
-              return JSON.stringify(formattedValue);
-            }
-            catch {
-              return '';
-            }
-          }
-          return `${formattedValue}`;
-        });
-
+      rows.forEach((rowObj, rowIndex) => {
+        const personId = rowObj[1];
+        const selectedFieldValues = resolvedByPersonId[personId] || selectedFieldKeys.map(() => '');
         rows[rowIndex] = [rowObj[0], rowObj[1], rowObj[2], ...selectedFieldValues];
-      }));
+      });
     } else {
       rows.forEach((rowObj, rowIndex) => {
         rows[rowIndex] = [rowObj[0], rowObj[1], rowObj[2]];

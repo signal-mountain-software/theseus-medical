@@ -3,7 +3,7 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 
 import { createNewGroup, getGroupMembers, getMemberList } from '../../util/AVAGroups';
-import { dbClient, sentenceCase, isObject, recordExists, deepCopy, listFromArray, cl, resolveData } from '../../util/AVAUtilities';
+import { dbClient, sentenceCase, isObject, recordExists, deepCopy, listFromArray, cl } from '../../util/AVAUtilities';
 import AVATextInput from '../forms/AVATextInput';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import GroupMaintenance from '../dialogs/GroupMaintenance';
@@ -11,7 +11,14 @@ import { getPerson } from '../../util/AVAPeople';
 
 import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Checkbox, FormControlLabel, LinearProgress } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
-import * as XLSX from 'xlsx';
+import {
+  getExportFieldPickerData,
+  saveExportFieldSelections,
+  resolveSelectedFieldValuesForPeople,
+  downloadRowsAsCsv,
+  downloadRowsAsXlsx,
+  sanitizeExportBaseName
+} from '../../util/AVAPeopleListExport';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -548,87 +555,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
     }
   }
 
-  function csvSafe(value) {
-    if ((value === null) || (value === undefined)) {
-      return '';
-    }
-    const stringValue = `${value}`.replace(/"/g, '""');
-    return `"${stringValue}"`;
-  }
-
-  async function getSavedExportFieldSelections() {
-    const session_id = state?.session?.user_id;
-    const client_id = pSession?.client_id;
-    if (!session_id || !client_id) {
-      return [];
-    }
-
-    const sessionRec = await dbClient
-      .get({
-        TableName: 'SessionsV2',
-        Key: { session_id }
-      })
-      .promise()
-      .catch((error) => {
-        cl({ 'Error reading SessionsV2 for export selections': error });
-      });
-
-    if (!recordExists(sessionRec)) {
-      return [];
-    }
-
-    return [sessionRec.Item?.customizations?.csv_export?.group_management?.[client_id]?.selected_fields]
-      .flat()
-      .filter((field_name) => (typeof field_name === 'string') && (field_name.trim() !== ''));
-  }
-
-  async function saveExportFieldSelections(selectedFieldNames = []) {
-    const session_id = state?.session?.user_id;
-    const client_id = pSession?.client_id;
-    if (!session_id || !client_id) {
-      return;
-    }
-
-    const sessionRec = await dbClient
-      .get({
-        TableName: 'SessionsV2',
-        Key: { session_id }
-      })
-      .promise()
-      .catch((error) => {
-        cl({ 'Error reading SessionsV2 before save export selections': error });
-      });
-
-    let customizations = deepCopy(sessionRec?.Item?.customizations || {});
-    if (!customizations.csv_export) {
-      customizations.csv_export = {};
-    }
-    if (!customizations.csv_export.group_management) {
-      customizations.csv_export.group_management = {};
-    }
-    customizations.csv_export.group_management[client_id] = {
-      selected_fields: [...selectedFieldNames],
-      updated_at: new Date().toISOString(),
-    };
-
-    await dbClient
-      .update({
-        TableName: 'SessionsV2',
-        Key: { session_id },
-        UpdateExpression: 'set #c = :c',
-        ExpressionAttributeNames: {
-          '#c': 'customizations'
-        },
-        ExpressionAttributeValues: {
-          ':c': customizations
-        }
-      })
-      .promise()
-      .catch((error) => {
-        cl({ 'Error saving SessionsV2 export selections': error });
-      });
-  }
-
   async function openFieldPicker() {
     const visibleMemberIds = (reactData.lower_people_filter
       ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
@@ -651,42 +577,15 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
       loadingExportFields: true,
     }, true);
 
-    const formFieldsRec = await dbClient
-      .query({
-        KeyConditionExpression: 'client_id = :c',
-        TableName: 'DataDictionaryV3',
-        ExpressionAttributeValues: {
-          ':c': pSession.client_id
-        }
-      })
-      .promise()
-      .catch(error => {
-        cl({ 'Error reading DataDictionaryV3 for group csv export': error });
-      });
-
-    let exportFieldOptions = [];
-    if (recordExists(formFieldsRec)) {
-      exportFieldOptions = formFieldsRec.Items
-        .filter((fieldRec) => !!fieldRec?.field_key)
-        .map((fieldRec) => ({
-          field_key: fieldRec.field_key,
-          description: fieldRec.description || fieldRec.field_key,
-          category: fieldRec.category || 'Other',
-          value_type: fieldRec?.type,
-        }))
-        .sort((a, b) => {
-          const catCompare = (a.category || '').localeCompare(b.category || '');
-          if (catCompare !== 0) {
-            return catCompare;
-          }
-          return (a.description || '').localeCompare(b.description || '');
-        });
-    }
-
-    const savedSelectionList = await getSavedExportFieldSelections();
-    const selectedExportFieldNames = exportFieldOptions
-      .map((fieldRec) => fieldRec.field_key)
-      .filter((field_name) => savedSelectionList.includes(field_name));
+    const {
+      exportFieldOptions,
+      selectedExportFieldNames
+    } = await getExportFieldPickerData({
+      sessionId: state?.session?.user_id,
+      clientId: pSession?.client_id,
+      exportScope: 'group_management',
+      logLabel: 'group csv export'
+    });
 
     updateReactData({
       loadingExportFields: false,
@@ -733,24 +632,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
     }, true);
   }
 
-  function formatExportValue(value) {
-    if ((value === null) || (value === undefined)) {
-      return '';
-    }
-    if (Array.isArray(value)) {
-      return value.join('; ');
-    }
-    if (typeof value === 'object') {
-      try {
-        return JSON.stringify(value);
-      }
-      catch {
-        return '';
-      }
-    }
-    return value;
-  }
-
   async function downloadCurrentPeopleListCsv() {
     try {
       const exportData = await buildCurrentPeopleListExportData();
@@ -764,22 +645,16 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
         safeGroupName
       } = exportData;
 
-      const csvContent = [header, ...rows]
-        .map(row => row.map(csvSafe).join(','))
-        .join('\n');
-
       const fileName = `${safeGroupName || 'group'}_people_list.csv`;
 
-      const csvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const csvUrl = URL.createObjectURL(csvBlob);
-      const downloadLink = document.createElement('a');
-      downloadLink.href = csvUrl;
-      downloadLink.setAttribute('download', fileName);
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
-      URL.revokeObjectURL(csvUrl);
-      await saveExportFieldSelections(reactData.selectedExportFieldNames || []);
+      downloadRowsAsCsv({ header, rows, fileName });
+      await saveExportFieldSelections({
+        sessionId: state?.session?.user_id,
+        clientId: pSession?.client_id,
+        exportScope: 'group_management',
+        selectedFieldNames: reactData.selectedExportFieldNames || [],
+        logLabel: 'group export selections'
+      });
       return true;
     }
     finally {
@@ -805,27 +680,15 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
         safeGroupName
       } = exportData;
 
-      const workbook = XLSX.utils.book_new();
-      const worksheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
-
-      const maxColumnWidth = 60;
-      worksheet['!cols'] = header.map((headerLabel, columnIndex) => {
-        const maxValueLength = rows.reduce((longest, row) => {
-          const value = row[columnIndex];
-          const length = `${value ?? ''}`.length;
-          return Math.max(longest, length);
-        }, `${headerLabel ?? ''}`.length);
-
-        return {
-          wch: Math.min(Math.max(maxValueLength + 2, 10), maxColumnWidth)
-        };
-      });
-
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'People List');
-
       const fileName = `${safeGroupName || 'group'}_people_list.xlsx`;
-      XLSX.writeFile(workbook, fileName);
-      await saveExportFieldSelections(reactData.selectedExportFieldNames || []);
+      downloadRowsAsXlsx({ header, rows, fileName });
+      await saveExportFieldSelections({
+        sessionId: state?.session?.user_id,
+        clientId: pSession?.client_id,
+        exportScope: 'group_management',
+        selectedFieldNames: reactData.selectedExportFieldNames || [],
+        logLabel: 'group export selections'
+      });
       return true;
     }
     finally {
@@ -860,7 +723,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
     });
 
     const selectedFieldKeys = selectedFieldOptions.map((fieldRec) => fieldRec.field_key);
-    const dictionaryCache = {};
 
     const header = [
       'ID',
@@ -876,7 +738,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
       const firstName = personRec.name?.first || '';
       const lastName = personRec.name?.last || '';
       const fullName = `${firstName} ${lastName}`.trim();
-      return [person_id, firstName, lastName, fullName, selectedFieldKeys];
+      return [person_id, firstName, lastName, fullName];
     });
 
     if (selectedFieldKeys.length > 0) {
@@ -885,63 +747,38 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
         exportInProgress: true,
         exportProgressCurrent: 0,
         exportProgressTotal: progressTotal,
-        exportProgressLabel: 'Preparing export data...'
+        exportProgressLabel: 'Preparing your report data...'
       }, true);
 
-      const batchSize = (selectedFieldKeys.length > 20) ? 4 : 8;
-      const progressUpdateEvery = Math.max(1, Math.floor(progressTotal / 100));
-      let completedCount = 0;
-
-      const resolveRow = async (rowIndex) => {
-        const rowObj = rows[rowIndex];
-        const person_id = rowObj[0];
-        const resolvedFieldList = await resolveData(
-          pSession.client_id,
-          person_id,
-          selectedFieldKeys,
-          {
-            dictionaryCache,
-            address_lookup: false,
-            resolve_address: false
-          }
-        );
-
-        const selectedFieldValues = selectedFieldKeys.map((field_key, fieldIndex) => {
-          const resolvedField = resolvedFieldList[fieldIndex];
-          const formattedValue = resolvedField?.formatted;
-          return formatExportValue(formattedValue);
-        });
-
-        rows[rowIndex] = [rowObj[0], rowObj[1], rowObj[2], rowObj[3], ...selectedFieldValues];
-
-        completedCount += 1;
-        if ((completedCount % progressUpdateEvery === 0) || (completedCount === progressTotal)) {
+      const personIds = rows.map((rowObj) => rowObj[0]);
+      const resolvedByPersonId = await resolveSelectedFieldValuesForPeople({
+        clientId: pSession.client_id,
+        personIds,
+        selectedFieldKeys,
+        onProgress: ({ completedCount, totalCount }) => {
           updateReactData({
             exportProgressCurrent: completedCount,
-            exportProgressTotal: progressTotal,
-            exportProgressLabel: 'Preparing export data...'
+            exportProgressTotal: totalCount,
+            exportProgressLabel: 'Preparing your report data...'
           }, true);
         }
-      };
+      });
 
-      for (let startIndex = 0; startIndex < rows.length; startIndex += batchSize) {
-        const endIndex = Math.min(startIndex + batchSize, rows.length);
-        const indexBatch = [];
-        for (let rowIndex = startIndex; rowIndex < endIndex; rowIndex++) {
-          indexBatch.push(rowIndex);
-        }
-        await Promise.all(indexBatch.map(resolveRow));
-      }
+      rows.forEach((rowObj, rowIndex) => {
+        const personId = rowObj[0];
+        const selectedFieldValues = resolvedByPersonId[personId] || selectedFieldKeys.map(() => '');
+        rows[rowIndex] = [rowObj[0], rowObj[1], rowObj[2], rowObj[3], ...selectedFieldValues];
+      });
     } else {
       rows.forEach((rowObj, rowIndex) => {
         rows[rowIndex] = [rowObj[0], rowObj[1], rowObj[2], rowObj[3]];
       });
     }
 
-    const safeGroupName = (reactData.selectedGroupRec?.group_name || reactData.selectedGroup_id || 'group')
-      .replace(/[^a-z0-9]+/gi, '_')
-      .replace(/^_+|_+$/g, '')
-      .toLowerCase();
+    const safeGroupName = sanitizeExportBaseName(
+      reactData.selectedGroupRec?.group_name || reactData.selectedGroup_id || 'group',
+      'group'
+    );
 
     return {
       header,

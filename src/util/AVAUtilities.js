@@ -1270,9 +1270,20 @@ function stringifyResolvedPart(value) {
 }
 
 async function getSourceRecord({ client_id, person_id, dictionaryRec, options = {} }) {
-  const source = (dictionaryRec.source || '').toString().toLowerCase();
-  if (!source) {
+  const sourceRaw = (dictionaryRec.source || '').toString().trim();
+  const source = sourceRaw.toLowerCase();
+  if (!sourceRaw) {
     return null;
+  }
+
+  const serviceRequestSource = parseServiceRequestSource(sourceRaw);
+  if (serviceRequestSource) {
+    return getServiceRequestSourceRecord({
+      client_id,
+      person_id,
+      dictionaryRec,
+      serviceRequestSubType: serviceRequestSource.subType
+    });
   }
 
   if (source === 'document' || source === 'documents' || source === 'documentmaster') {
@@ -1320,6 +1331,120 @@ async function getSourceRecord({ client_id, person_id, dictionaryRec, options = 
     return sourceRec.Item;
   }
   return null;
+}
+
+function parseServiceRequestSource(sourceRaw = '') {
+  if (typeof sourceRaw !== 'string') {
+    return null;
+  }
+
+  const trimmedSource = sourceRaw.trim();
+  if (!trimmedSource) {
+    return null;
+  }
+
+  const [sourceName, subTypeRaw] = trimmedSource.split(/#(.*)/);
+  if (!sourceName || !subTypeRaw) {
+    return null;
+  }
+
+  if (sourceName.trim().toLowerCase() !== 'servicerequest') {
+    return null;
+  }
+
+  const subType = subTypeRaw.trim();
+  if (!subType) {
+    return null;
+  }
+
+  return { subType };
+}
+
+function parseServiceRequestLocator(locatorRaw = '') {
+  if (typeof locatorRaw !== 'string') {
+    return null;
+  }
+
+  const trimmedLocator = locatorRaw.trim();
+  if (!trimmedLocator) {
+    return null;
+  }
+
+  const [locatorName, statusRaw] = trimmedLocator.split(/#(.*)/);
+  if (!locatorName || !statusRaw) {
+    return null;
+  }
+
+  if (locatorName.trim().toLowerCase() !== 'person') {
+    return null;
+  }
+
+  const status = statusRaw.trim();
+  if (!status) {
+    return null;
+  }
+
+  return { status };
+}
+
+async function getServiceRequestSourceRecord({ client_id, person_id, dictionaryRec, serviceRequestSubType }) {
+  if (!person_id || !serviceRequestSubType) {
+    return null;
+  }
+
+  const locatorInfo = parseServiceRequestLocator(dictionaryRec?.locator || '');
+  if (!locatorInfo?.status) {
+    cl({
+      'resolveData serviceRequest locator missing status': {
+        client_id,
+        person_id,
+        locator: dictionaryRec?.locator,
+        source: dictionaryRec?.source
+      }
+    });
+    return null;
+  }
+
+  const foundRequests = await dbClient
+    .query({
+      TableName: 'ServiceRequests',
+      IndexName: 'requestor-type-date',
+      KeyConditionExpression: 'requestor = :p and request_type = :t',
+      ExpressionAttributeValues: {
+        ':p': person_id,
+        ':t': serviceRequestSubType
+      },
+      ScanIndexForward: false
+    })
+    .promise()
+    .catch((error) => {
+      cl({
+        'resolveData serviceRequest source read failed': {
+          client_id,
+          person_id,
+          serviceRequestSubType,
+          locator: dictionaryRec?.locator,
+          error
+        }
+      });
+    });
+
+  if (!recordExists(foundRequests) || !Array.isArray(foundRequests.Items)) {
+    return null;
+  }
+
+  const targetStatus = locatorInfo.status.trim().toLowerCase();
+  const newestRequest = foundRequests.Items[0] || null;
+  if (!newestRequest) {
+    return null;
+  }
+
+  const newestStatus = (newestRequest.last_status || '').toString().trim().toLowerCase();
+  if (newestStatus !== targetStatus) {
+    return null;
+  }
+
+  return newestRequest;
 }
 
 async function getDocumentRecordsForDictionary({ client_id, person_id, dictionaryRec }) {
@@ -1461,7 +1586,7 @@ function isGoodResolvedValue(value) {
 async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_id, options = {} }) {
   const dataType = (dictionaryRec?.type || '').toString().toLowerCase();
   if (dataType === 'boolean' || dataType === 'bool') {
-    const boolObj = normalizeBooleanInput(rawValue);
+    const boolObj = normalizeBooleanInput(rawValue, dictionaryRec);
     return {
       formatted: boolObj.value,
       details: boolObj
@@ -1495,7 +1620,7 @@ async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_
       const addressObj = normalizeAddressInput(rawValue);
       if (!addressObj) {
         return {
-          formatted: rawValue,
+          formatted: null,
           details: null
         };
       }
@@ -1570,11 +1695,28 @@ async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_
         details: phoneObj || null
       };
     }
-    case 'date':
-    case 'datetime': {
-      const dateObjOut = makeDate(rawValue);      
+    case 'date': {
+      const dateObjOut = makeDate(rawValue);
       return {
         formatted: dateObjOut.slashDate || rawValue,
+        details: dateObjOut
+      };
+    }
+    case 'datetime':
+    case 'date_time':
+    case 'date-time': {
+      const dateObjOut = makeDate(rawValue);
+      return {
+        formatted: dateObjOut.absolute || rawValue,
+        details: dateObjOut
+      };
+    }
+    case 'time':
+    case 'time_only':
+    case 'time-only': {
+      const dateObjOut = makeDate(rawValue);
+      return {
+        formatted: dateObjOut.timeOnly || rawValue,
         details: dateObjOut
       };
     }
@@ -1629,27 +1771,169 @@ async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_
   }
 }
 
-function normalizeBooleanInput(rawValue) {
-  if (rawValue === null || rawValue === undefined) {
+function normalizeBooleanInput(rawValue, dictionaryRec = {}) {
+  const dictionaryValues = (dictionaryRec && typeof dictionaryRec.values === 'object' && !Array.isArray(dictionaryRec.values))
+    ? dictionaryRec.values
+    : {};
+
+  const trueIfSet = new Set(normalizeBooleanRuleTerms(dictionaryValues.true_if));
+  const falseIfSet = new Set(normalizeBooleanRuleTerms(dictionaryValues.false_if));
+
+  const resolvedRaw = resolveBooleanValue(rawValue, { trueIfSet, falseIfSet });
+  if (resolvedRaw.resolved) {
     return {
-      value: false,
-      populated: false,
-      source_type: 'nullish'
+      value: resolvedRaw.value,
+      populated: true,
+      source_type: resolvedRaw.source_type,
+      normalized_value: resolvedRaw.normalized_value || null,
+      resolution_reason: resolvedRaw.reason
     };
   }
 
+  if (Object.prototype.hasOwnProperty.call(dictionaryValues, 'default')) {
+    const resolvedDefault = resolveBooleanValue(dictionaryValues.default, { trueIfSet, falseIfSet });
+    if (resolvedDefault.resolved) {
+      return {
+        value: resolvedDefault.value,
+        populated: (rawValue !== null) && (rawValue !== undefined),
+        source_type: resolvedRaw.source_type,
+        normalized_value: resolvedRaw.normalized_value || null,
+        resolution_reason: 'dictionary_default',
+        default_value_used: dictionaryValues.default
+      };
+    }
+
+    if (typeof dictionaryValues.default === 'boolean') {
+      return {
+        value: dictionaryValues.default,
+        populated: (rawValue !== null) && (rawValue !== undefined),
+        source_type: resolvedRaw.source_type,
+        normalized_value: resolvedRaw.normalized_value || null,
+        resolution_reason: 'dictionary_default_boolean',
+        default_value_used: dictionaryValues.default
+      };
+    }
+  }
+
+  return {
+    value: false,
+    populated: (rawValue !== null) && (rawValue !== undefined),
+    source_type: resolvedRaw.source_type,
+    normalized_value: resolvedRaw.normalized_value || null,
+    resolution_reason: 'fallback_false'
+  };
+}
+
+function normalizeBooleanRuleTerms(ruleValue) {
+  const rawTerms = Array.isArray(ruleValue) ? ruleValue : [ruleValue];
+  return rawTerms
+    .map((termValue) => normalizeBooleanMatchToken(termValue))
+    .filter(Boolean);
+}
+
+function normalizeBooleanMatchToken(value) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  if (typeof value === 'number') {
+    return `${value}`;
+  }
+  if (typeof value === 'string') {
+    return cleanUndefinedString(value).trim().toLowerCase();
+  }
+  return '';
+}
+
+function resolveBooleanValue(rawValue, { trueIfSet = new Set(), falseIfSet = new Set() } = {}) {
+  const sourceType = (rawValue === null || rawValue === undefined)
+    ? 'nullish'
+    : (Array.isArray(rawValue) ? 'array' : typeof rawValue);
+
   if (typeof rawValue === 'boolean') {
     return {
+      resolved: true,
       value: rawValue,
-      populated: true,
-      source_type: 'boolean'
+      source_type: 'boolean',
+      reason: 'boolean_literal',
+      normalized_value: rawValue ? 'true' : 'false'
+    };
+  }
+
+  if (typeof rawValue === 'number') {
+    if (rawValue === 1) {
+      return {
+        resolved: true,
+        value: true,
+        source_type: 'number',
+        reason: 'normalized_number',
+        normalized_value: '1'
+      };
+    }
+    if (rawValue === 0) {
+      return {
+        resolved: true,
+        value: false,
+        source_type: 'number',
+        reason: 'normalized_number',
+        normalized_value: '0'
+      };
+    }
+  }
+
+  const normalizedToken = normalizeBooleanMatchToken(rawValue);
+
+  const normalizedTrueSet = new Set(['true', 't', 'yes', 'y', '1', 'on', 'checked', 'active', 'enabled']);
+  const normalizedFalseSet = new Set(['false', 'f', 'no', 'n', '0', 'off', 'unchecked', 'inactive', 'disabled', 'none', 'null']);
+
+  if (normalizedToken && normalizedTrueSet.has(normalizedToken)) {
+    return {
+      resolved: true,
+      value: true,
+      source_type: sourceType,
+      reason: 'normalized_string',
+      normalized_value: normalizedToken
+    };
+  }
+
+  if (normalizedToken && normalizedFalseSet.has(normalizedToken)) {
+    return {
+      resolved: true,
+      value: false,
+      source_type: sourceType,
+      reason: 'normalized_string',
+      normalized_value: normalizedToken
+    };
+  }
+
+  if (normalizedToken && trueIfSet.has(normalizedToken)) {
+    return {
+      resolved: true,
+      value: true,
+      source_type: sourceType,
+      reason: 'dictionary_true_if',
+      normalized_value: normalizedToken
+    };
+  }
+
+  if (normalizedToken && falseIfSet.has(normalizedToken)) {
+    return {
+      resolved: true,
+      value: false,
+      source_type: sourceType,
+      reason: 'dictionary_false_if',
+      normalized_value: normalizedToken
     };
   }
 
   return {
-    value: isGoodResolvedValue(rawValue),
-    populated: true,
-    source_type: Array.isArray(rawValue) ? 'array' : typeof rawValue
+    resolved: false,
+    value: false,
+    source_type: sourceType,
+    reason: 'unresolved',
+    normalized_value: normalizedToken || ''
   };
 }
 
