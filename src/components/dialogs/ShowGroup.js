@@ -2,15 +2,11 @@ import React from 'react';
 import { useSnackbar } from 'notistack';
 import { getAllGroups, getGroup, getRole, getMemberList } from '../../util/AVAGroups';
 
-import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import DialogContent from '@material-ui/core/DialogContent';
 import Slide from '@material-ui/core/Slide';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import Typography from '@material-ui/core/Typography';
-
-import GroupForm from '../forms/GroupForm';
 import GroupPhotoDirectory from '../forms/GroupPhotoDirectory';
 import GroupFilter from '../forms/GroupFilter';
 import GroupControl from '../forms/GroupControl';
@@ -76,8 +72,7 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 
 export default ({ options, defaults, onClose, onAbort }) => {
 
-  let { pSession, pGroup_id, pGroup_name, peopleList, showList, safeMode } = options;
-  const ActiveGroupForm = options.useLegacyGroupForm ? GroupForm : GroupPhotoDirectory;
+  let { pSession, pGroup_id, pGroup_name, showList, safeMode } = options;
 
   const [reactData, setReactData] = React.useState({
     groupMemberList: [],
@@ -345,31 +340,15 @@ export default ({ options, defaults, onClose, onAbort }) => {
         className={classes.pageHead}
         fullScreen
       >
-        {!reactData.showGroupSelect && options.useLegacyGroupForm &&
-          <Box
-            display='flex'
-            grow={1}
-            style={{ width: '90%' }}
-            mb={0}
-            flexDirection='column'
-            justifyContent='center'
-            alignItems='flex-start'
-          >
-            <Typography className={classes.formControl} variant='h5' >
-              {reactData.groupName || 'Group Maintenance'}
-            </Typography>
-          </Box>
-        }
         {!reactData.showGroupSelect &&
           <DialogContent
-            dividers={options.useLegacyGroupForm}
-            className={options.useLegacyGroupForm ? classes.dialogBox : classes.dialogBoxDirectory}
+            dividers={false}
+            className={classes.dialogBoxDirectory}
           >
             {(reactData.building === 'done') &&
-              <ActiveGroupForm
+              <GroupPhotoDirectory
                 options={Object.assign(options, {
                   groupMemberList: reactData.groupMemberList,
-                  peopleList: peopleList,
                   pPatient: pSession.patient_id,
                   pPatientName: pSession.patient_display_name,
                   pClient: pSession.client_id,
