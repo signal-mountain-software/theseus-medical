@@ -543,6 +543,17 @@ export function titleCase(pString) {
           return part;
         }
 
+        const alphaOnlyPart = part.replace(/[^a-z]/gi, '');
+        const isShortAlphaPart = alphaOnlyPart.length > 0 && alphaOnlyPart.length <= 3;
+        const hasUpper = /[A-Z]/.test(part);
+        const hasLower = /[a-z]/.test(part);
+        const isAllCapsAsEntered = hasUpper && !hasLower;
+        const isMixedCaseAsEntered = hasUpper && hasLower;
+        const isSmallWordException = smallWords.includes(lowerPart);
+        if (!isSmallWordException && isShortAlphaPart && (isAllCapsAsEntered || isMixedCaseAsEntered)) {
+          return part;
+        }
+
         if (allCapWords.includes(lowerPart)) {
           return part.toUpperCase();
         }
