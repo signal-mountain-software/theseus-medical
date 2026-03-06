@@ -17,6 +17,7 @@ export default () => {
   const { state } = useSession();
   const { patient, session } = state;
   const [cookies, , removeCookie] = useCookies(['AVAuser', 'AVAaction']);
+  const ava_env = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.ready
@@ -102,7 +103,7 @@ export default () => {
 
   return (
     <Box>
-      {(state.session.client_style && state.session.client_style.ui_v3)
+      {(state.session.client_style && state.session.client_style.ui_v3 && ava_env !== 'D')
         ? <MainMenuV3 />
         :
         ((state.session.client_style && state.session.client_style.ui_tiles)
