@@ -523,20 +523,50 @@ export function array_in_array(a1, a2) {
 export function titleCase(pString) {
   if (!pString) { return ''; }
   let words = pString.split(/([^\w':]+)/);
-  // console.log(words);
   const smallWords = ['of', 'and', 'or', 'a', 'an', 'the', 'in', 'on', 'at', 'to', 'for', 'with', 'from', 'by'];
   const allCapWords = ['ava', 'bbq', 'id', 'tv', 'ceo', 'cfo', 'coo', 'usa', 'uk', 'eu', 'am', 'pm'];
+  const formatWordToken = (wordToken, isFirstWord) => {
+    const lowerWordToken = wordToken.toLowerCase();
+    if (!isFirstWord && smallWords.includes(lowerWordToken)) {
+      return lowerWordToken;
+    }
+
+    return wordToken
+      .split(/([-'])/)
+      .map((part) => {
+        if ((part === '-') || (part === "'")) {
+          return part;
+        }
+
+        const lowerPart = part.toLowerCase();
+        if (!lowerPart) {
+          return part;
+        }
+
+        if (allCapWords.includes(lowerPart)) {
+          return part.toUpperCase();
+        }
+
+        if (lowerPart.startsWith('mc') && (lowerPart.length > 2)) {
+          return `Mc${lowerPart.charAt(2).toUpperCase()}${lowerPart.slice(3)}`;
+        }
+
+        return lowerPart.charAt(0).toUpperCase() + lowerPart.slice(1);
+      })
+      .join('');
+  };
+
   var titleCased = [];
-  words.forEach((w, idx) => {
-    // if (!w.trim()) { return; }   // ignore spaces between words (we'll put them back in later)
-    // Always capitalize first word, otherwise check if it's a small word
-    if (allCapWords.includes(w.toLowerCase())) {
-      titleCased.push(w.toUpperCase());
+  let hasSeenWord = false;
+  words.forEach((w) => {
+    const hasLettersOrDigits = /[a-z0-9]/i.test(w);
+    if (!hasLettersOrDigits) {
+      titleCased.push(w);
+      return;
     }
-    else if (idx === 0 || !smallWords.includes(w.toLowerCase())) {
-      titleCased.push(w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-    }
-    else { titleCased.push(w.toLowerCase()); }
+
+    titleCased.push(formatWordToken(w, !hasSeenWord));
+    hasSeenWord = true;
   });
   return titleCased.join('').trim();
 }
