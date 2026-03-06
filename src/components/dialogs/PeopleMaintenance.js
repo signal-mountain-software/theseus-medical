@@ -731,6 +731,36 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     }, true);
   };
 
+  const doesUserIdExistInEitherTable = async (candidateId) => {
+    if (!candidateId) {
+      return false;
+    }
+    const normalizedId = String(candidateId).trim().toLowerCase();
+    const [peopleResult, sessionResult] = await Promise.all([
+      dbClient
+        .get({
+          Key: { person_id: normalizedId },
+          TableName: 'People'
+        })
+        .promise()
+        .catch(error => {
+          cl({ [`Error validating People id ${normalizedId}`]: error });
+          return null;
+        }),
+      dbClient
+        .get({
+          Key: { session_id: normalizedId },
+          TableName: 'SessionsV2'
+        })
+        .promise()
+        .catch(error => {
+          cl({ [`Error validating SessionsV2 id ${normalizedId}`]: error });
+          return null;
+        })
+    ]);
+    return recordExists(peopleResult) || recordExists(sessionResult);
+  };
+
   const saveChanges = async () => {
     let updatedPeopleRecord = false;
     const person_id_blank = !reactData.current.peopleRec.person_id;
@@ -739,9 +769,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     if (person_id_blank || person_id_changed) {
       // check person_id just before saving to assure that it hasn't been claimed between setting and saving
       let person_id_exists = false;
-      if (!person_id_blank) (
-        person_id_exists = await getPerson(reactData.current.peopleRec.person_id, 'validate')
-      );
+      if (!person_id_blank) {
+        person_id_exists = await doesUserIdExistInEitherTable(reactData.current.peopleRec.person_id);
+      }
       if (person_id_exists || person_id_blank) {
         // it's a duplicate OR blank; fix it and abort the save with an alert message
         const { proposedID, newID } = await newUserID(reactData.current.peopleRec.person_id);
@@ -902,22 +932,80 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       }
     }
 
-    if (JSON.stringify(reactData.og.peopleRec) !== JSON.stringify(reactData.current.peopleRec)) {
-      // **** NEED TO ADD SPECIAL HANDLING FOR CHANGE OF PRIMARY KEY ***  (likely change to inactive account?)
-      reactData.current.peopleRec.last_update = new Date().toISOString();  // Expected output: "2011-10-05T14:48:00.000Z"
+    const peopleChanged = JSON.stringify(reactData.og.peopleRec) !== JSON.stringify(reactData.current.peopleRec);
+    const sessionChanged = JSON.stringify(reactData.og.sessionRec) !== JSON.stringify(reactData.current.sessionRec);
+
+    if (peopleChanged) {
+      reactData.current.peopleRec.last_update = new Date().toISOString();
       if (!reactData.current.peopleRec.created_on) {
-        reactData.current.peopleRec.created_on = new Date().toISOString();  // Expected output: "2011-10-05T14:48:00.000Z"
+        reactData.current.peopleRec.created_on = new Date().toISOString();
       }
-      await dbClient
-        .put({
-          TableName: 'People',
-          Item: reactData.current.peopleRec
-        })
-        .promise()
-        .catch(error => {
-          console.log(`caught error putting to People; error is:`, error);
-        });
-      updatedPeopleRecord = true;
+    }
+    if (sessionChanged) {
+      reactData.current.sessionRec.last_update = new Date().toISOString();
+    }
+
+    try {
+      if (peopleChanged && sessionChanged) {
+        await dbClient
+          .transactWrite({
+            TransactItems: [
+              {
+                Put: {
+                  TableName: 'People',
+                  Item: reactData.current.peopleRec
+                }
+              },
+              {
+                Put: {
+                  TableName: 'SessionsV2',
+                  Item: reactData.current.sessionRec
+                }
+              }
+            ]
+          })
+          .promise();
+        updatedPeopleRecord = true;
+      }
+      else if (peopleChanged) {
+        await dbClient
+          .put({
+            TableName: 'People',
+            Item: reactData.current.peopleRec
+          })
+          .promise();
+        updatedPeopleRecord = true;
+      }
+      else if (sessionChanged) {
+        await dbClient
+          .put({
+            TableName: 'SessionsV2',
+            Item: reactData.current.sessionRec
+          })
+          .promise();
+      }
+    }
+    catch (error) {
+      cl({ 'Error saving People/SessionsV2': error });
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: 'Unable to Save',
+          message: 'We could not save account updates to both records. Please try again.',
+          action: [
+            {
+              text: 'OK',
+              function: () => {
+                updateReactData({ alert: false }, true);
+              }
+            }
+          ]
+        }
+      }, true);
+      return false;
+    }
+
+    if (peopleChanged) {
       // update the cross-reference table PeopleAccounts
       // Note here...  we are intentionally NOT removing old records from PeopleAccounts because we want to preserve the history of all accounts that have ever been associated with this person_id
       // This means that a mis-spelled email, phone number, or name will still be a valid cross reference.
@@ -976,19 +1064,6 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         personRec: reactData.current.peopleRec
       });
     }
-    if (JSON.stringify(reactData.og.sessionRec) !== JSON.stringify(reactData.current.sessionRec)) {
-      // **** NEED TO ADD SPECIAL HANDLING FOR CHANGE OF PRIMARY KEY ***  (likely change to inactive account?)
-      reactData.current.sessionRec.last_update = new Date().toISOString();  // Expected output: "2011-10-05T14:48:00.000Z"
-      await dbClient
-        .put({
-          TableName: 'SessionsV2',
-          Item: reactData.current.sessionRec
-        })
-        .promise()
-        .catch(error => {
-          console.log(`caught error putting to People; error is:`, error);
-        });
-    }
     if (reactData.current.familyRecs) {
       for (let i = 0; i < reactData.current.familyRecs.length; i++) {
         if (!reactData.og.familyRecs || !reactData.og.familyRecs[i]
@@ -1008,58 +1083,61 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
               if (this_member.createAccount) {
                 reactData.current.peopleRec.created_on = new Date().toISOString();  // Expected output: "2011-10-05T14:48:00.000Z"
                 await dbClient
-                  .put({
-                    TableName: 'People',
-                    Item: {
-                      person_id: this_member.id,
-                      clients: {
-                        groups: this_member.groups,
-                        id: state.session.client_id
+                  .transactWrite({
+                    TransactItems: [
+                      {
+                        Put: {
+                          TableName: 'People',
+                          Item: {
+                            person_id: this_member.id,
+                            clients: {
+                              groups: this_member.groups,
+                              id: state.session.client_id
+                            },
+                            client_id: state.session.client_id,
+                            display_name: this_member.name,
+                            address: this_member.address,
+                            family_groups: [
+                              reactData.current.familyRecs[i].family_id
+                            ],
+                            groups: this_member.groups,
+                            name: {
+                              first: this_member.firstName,
+                              last: this_member.lastName
+                            },
+                            preferred_method: "AVA",
+                            preferred_methods: [
+                              "AVA"
+                            ],
+                            search_data: `${this_member.name} ${this_member.name.toLowerCase()} ${this_member.nickname} ${this_member.nickname.toLowerCase()}`,
+                          }
+                        }
                       },
-                      client_id: state.session.client_id,
-                      display_name: this_member.name,
-                      address: this_member.address,
-                      family_groups: [
-                        reactData.current.familyRecs[i].family_id
-                      ],
-                      groups: this_member.groups,
-                      name: {
-                        first: this_member.firstName,
-                        last: this_member.lastName
-                      },
-                      preferred_method: "AVA",
-                      preferred_methods: [
-                        "AVA"
-                      ],
-                      search_data: `${this_member.name} ${this_member.name.toLowerCase()} ${this_member.nickname} ${this_member.nickname.toLowerCase()}`,
-                    }
+                      {
+                        Put: {
+                          TableName: 'SessionsV2',
+                          Item: {
+                            session_id: this_member.id,
+                            client_id: state.session.client_id,
+                            last_login: "password",
+                            method: "added as Family Member",
+                            patient_display_name: this_member.name,
+                            patient_id: this_member.id,
+                            person_id: this_member.id,
+                            requirePassword: false,
+                            storePassword: true,
+                            subscription_status: "na",
+                            user_display_name: this_member.name,
+                            user_homeClient: state.session.client_id,
+                            user_id: this_member.id,
+                          }
+                        }
+                      }
+                    ]
                   })
                   .promise()
                   .catch(error => {
-                    console.log(`caught error putting to People; error is:`, error);
-                  });
-                await dbClient
-                  .put({
-                    TableName: 'SessionsV2',
-                    Item: {
-                      session_id: this_member.id,
-                      client_id: state.session.client_id,
-                      last_login: "password",
-                      method: "added as Family Member",
-                      patient_display_name: this_member.name,
-                      patient_id: this_member.id,
-                      person_id: this_member.id,
-                      requirePassword: false,
-                      storePassword: true,
-                      subscription_status: "na",
-                      user_display_name: this_member.name,
-                      user_homeClient: state.session.client_id,
-                      user_id: this_member.id,
-                    }
-                  })
-                  .promise()
-                  .catch(error => {
-                    console.log(`caught error putting to SessionsV2; error is:`, error);
+                    throw error;
                   });
               }
               else {
@@ -1108,7 +1186,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
   async function newUserID(proposedID) {
     let tryAgain;
     let newID, namePart;
-    let clientPart = state.session.client_id.toLowerCase();
+    let clientPart = state.session.client_style?.client_suffix || state.session.client_id.toLowerCase();
     let numberPart = 1;
     if (proposedID) {
       namePart = (proposedID.match(/([\w-]*[^\d]+)(\d*)$/))[1];
@@ -1135,7 +1213,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     }
     do {
       tryAgain = false;
-      const person_id_exists = await getPerson(newID, 'validate');
+      const person_id_exists = await doesUserIdExistInEitherTable(newID);
       if (person_id_exists) {
         numberPart++;
         if (newID.includes(clientPart)) {
