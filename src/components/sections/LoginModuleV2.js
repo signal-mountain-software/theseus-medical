@@ -1263,11 +1263,24 @@ const LoginModuleV2 = ({
                   type='password'
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && password && !loading) {
+                      event.preventDefault();
+                      handleSubmitPassword();
+                    }
+                  }}
                   variant='outlined'
                   margin='normal'
                   disabled={loading}
                   autoFocus
                 />
+                {alertMessage && (
+                  <Box mt={1}>
+                    <Alert severity='error'>
+                      {alertMessage}
+                    </Alert>
+                  </Box>
+                )}
                 {errorText && (
                   <Typography color='error' variant='body2'>
                     {errorText}
