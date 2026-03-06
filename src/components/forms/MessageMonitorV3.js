@@ -11,7 +11,8 @@ import {
     ListItem,
     ListItemText,
     Divider,
-    CircularProgress
+    CircularProgress,
+    IconButton
 } from '@material-ui/core';
 import { Alert } from '@material-ui/lab/';
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -19,13 +20,17 @@ import Slide from '@material-ui/core/Slide';
 import { fade } from '@material-ui/core/styles/colorManipulator';
 
 import CloseIcon from '@material-ui/icons/ExitToApp';
+import LockOpenIcon from '@material-ui/icons/LockOpen';
+import ForwardIcon from '@material-ui/icons/Forward';
 
 import useSession from '../../hooks/useSession';
 import { dbClient, sentenceCase } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
+import { makeName } from '../../util/AVAPeople';
 import QuickSearch from '../sections/QuickSearch';
 import MessageForm from './MessageForm';
+import AVAConfirm from './AVAConfirm';
 
 
 
@@ -141,6 +146,13 @@ const useStyles = makeStyles(theme => ({
     muted: {
         opacity: 0.7
     },
+    messagePreview: {
+        marginBottom: theme.spacing(0.6),
+        opacity: 0.88,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+    },
     flagRow: {
         display: 'flex',
         flexWrap: 'wrap',
@@ -227,6 +239,27 @@ const useStyles = makeStyles(theme => ({
         WebkitLineClamp: 2,
         WebkitBoxOrient: 'vertical'
     },
+    recipientFooterRow: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: theme.spacing(1)
+    },
+    recipientActionButtons: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: theme.spacing(0.35),
+        marginLeft: 'auto'
+    },
+    recipientActionButton: {
+        padding: theme.spacing(0.45)
+    },
+    detailHoldActions: {
+        display: 'flex',
+        justifyContent: 'flex-end',
+        gap: theme.spacing(1),
+        marginBottom: theme.spacing(0.5)
+    },
     detailDialogContent: {
         display: 'flex',
         flexDirection: 'column',
@@ -245,7 +278,8 @@ const useStyles = makeStyles(theme => ({
     },
     detailDialogFooter: {
         display: 'flex',
-        justifyContent: 'flex-end',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         flexShrink: 0,
         paddingTop: theme.spacing(1),
         paddingBottom: theme.spacing(0.5)
@@ -640,6 +674,67 @@ function getResultFlags(message) {
     };
 }
 
+function getAttachmentUrlsFromMessage(message) {
+    const normalizeUrlCandidate = (value) => {
+        const textValue = String(value || '').trim();
+        if (!textValue) {
+            return '';
+        }
+        const lowered = textValue.toLowerCase();
+        if (lowered.startsWith('http://') || lowered.startsWith('https://')) {
+            return textValue;
+        }
+        return '';
+    };
+
+    const attachmentSources = [
+        message?.content?.current?.attachments,
+        message?.attachments
+    ].flat();
+
+    const urls = [];
+
+    attachmentSources.forEach((attachmentSource) => {
+        if (!attachmentSource) {
+            return;
+        }
+
+        const attachmentItems = Array.isArray(attachmentSource) ? attachmentSource : [attachmentSource];
+        attachmentItems.forEach((attachmentItem) => {
+            if ((typeof attachmentItem === 'string') || (typeof attachmentItem === 'number')) {
+                const normalized = normalizeUrlCandidate(attachmentItem);
+                if (normalized) {
+                    urls.push(normalized);
+                }
+                return;
+            }
+
+            if (attachmentItem && (typeof attachmentItem === 'object')) {
+                const objectUrlCandidate = [
+                    attachmentItem.Location,
+                    attachmentItem.location,
+                    attachmentItem.url,
+                    attachmentItem.href,
+                    attachmentItem.link,
+                    attachmentItem.file_url,
+                    attachmentItem.fileUrl,
+                    attachmentItem.s3Location,
+                    attachmentItem.s3_location,
+                    attachmentItem.fLoc
+                ]
+                    .map(normalizeUrlCandidate)
+                    .find(Boolean);
+
+                if (objectUrlCandidate) {
+                    urls.push(objectUrlCandidate);
+                }
+            }
+        });
+    });
+
+    return Array.from(new Set(urls));
+}
+
 function getRecipientFlags(message) {
     const recipientList = message?.recipient_list;
     if (!recipientList || (typeof recipientList !== 'object')) {
@@ -902,6 +997,10 @@ function getMessageText(message, options = {}) {
     return stripSignatureBlock(getRawMessageText(message), options);
 }
 
+function toSingleLinePreview(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
 function normalizeDateValue(message) {
     return message.created_time || message.message_date || message.created_at || message.sent_at || message.timestamp || null;
 }
@@ -1160,6 +1259,32 @@ function mergeDerivedFlags(baseFlags = {}, incomingFlags = {}) {
     return merged;
 }
 
+function isDeliveryStillHeld(deliveryItem) {
+    const statusValue = String(normalizeStatus(deliveryItem) || '').trim().toLowerCase();
+    const methodValue = String(deliveryItem?.recipient_list?.method || '').trim().toLowerCase();
+    return (statusValue === 'held') || (methodValue === 'hold');
+}
+
+function dedupeReplyTextForDisplay(resultEntries = []) {
+    if (!Array.isArray(resultEntries) || (resultEntries.length <= 1)) {
+        return resultEntries;
+    }
+
+    const chosenReplyText = resultEntries
+        .map((entry) => String(entry?.replyText || '').trim())
+        .find(Boolean);
+
+    if (!chosenReplyText) {
+        return resultEntries;
+    }
+
+    const lastIndex = resultEntries.length - 1;
+    return resultEntries.map((entry, index) => ({
+        ...entry,
+        replyText: index === lastIndex ? chosenReplyText : ''
+    }));
+}
+
 function buildRecipientSummaries(deliveryItems = [], resolvePersonName = (id) => id) {
     const recipientMap = new Map();
     const otherPersonByAddress = buildRecipientNameByAddressLookup(deliveryItems, resolvePersonName);
@@ -1194,7 +1319,11 @@ function buildRecipientSummaries(deliveryItems = [], resolvePersonName = (id) =>
                     flagSet: new Set(),
                     resultEntries: [],
                     resultEntryKeySet: new Set(),
-                    compositeKeySet: new Set()
+                    compositeKeySet: new Set(),
+                    attachmentUrlSet: new Set(),
+                    heldCompositeKeySet: new Set(),
+                    hasHeldDelivery: false,
+                    hasNonHeldDelivery: false
                 });
             }
 
@@ -1223,6 +1352,22 @@ function buildRecipientSummaries(deliveryItems = [], resolvePersonName = (id) =>
                 recipientSummary.compositeKeySet.add(compositeKey);
             }
 
+            const isHeldDelivery = isDeliveryStillHeld(deliveryItem);
+            if (isHeldDelivery) {
+                recipientSummary.hasHeldDelivery = true;
+                if (compositeKey) {
+                    recipientSummary.heldCompositeKeySet.add(compositeKey);
+                }
+            }
+            else {
+                recipientSummary.hasNonHeldDelivery = true;
+            }
+
+            const attachmentUrls = getAttachmentUrlsFromMessage(deliveryItem);
+            attachmentUrls.forEach((attachmentUrl) => {
+                recipientSummary.attachmentUrlSet.add(attachmentUrl);
+            });
+
             deliveryFlagLabels.forEach((flagLabel) => {
                 recipientSummary.flagSet.add(flagLabel);
             });
@@ -1230,26 +1375,33 @@ function buildRecipientSummaries(deliveryItems = [], resolvePersonName = (id) =>
     });
 
     return Array.from(recipientMap.values())
-        .map((recipientSummary) => ({
-            resultDisplayList: recipientSummary.resultEntries
+        .map((recipientSummary) => {
+            const sortedResultEntries = recipientSummary.resultEntries
                 .slice()
-                .sort((a, b) => (b.deliveryTime || 0) - (a.deliveryTime || 0)),
-            recipientId: recipientSummary.recipientId,
-            recipientName: recipientSummary.recipientName,
-            flagLabels: Array.from(recipientSummary.flagSet).sort(),
-            resultTextList: recipientSummary.resultEntries
-                .slice()
-                .sort((a, b) => (b.deliveryTime || 0) - (a.deliveryTime || 0))
-                .map((entry) => entry.text)
-                .filter(Boolean),
-            resultText: recipientSummary.resultEntries
-                .slice()
-                .sort((a, b) => (b.deliveryTime || 0) - (a.deliveryTime || 0))
-                .map((entry) => entry.text)
-                .find(Boolean) || '',
-            compositeKeys: Array.from(recipientSummary.compositeKeySet),
-            compositeKey: Array.from(recipientSummary.compositeKeySet)[0] || ''
-        }))
+                .sort((a, b) => (b.deliveryTime || 0) - (a.deliveryTime || 0));
+
+            const resultDisplayList = dedupeReplyTextForDisplay(sortedResultEntries);
+
+            return {
+                resultDisplayList,
+                recipientId: recipientSummary.recipientId,
+                recipientName: recipientSummary.recipientName,
+                flagLabels: Array.from(recipientSummary.flagSet).sort(),
+                resultTextList: sortedResultEntries
+                    .map((entry) => entry.text)
+                    .filter(Boolean),
+                resultText: sortedResultEntries
+                    .map((entry) => entry.text)
+                    .find(Boolean) || '',
+                compositeKeys: Array.from(recipientSummary.compositeKeySet),
+                compositeKey: Array.from(recipientSummary.compositeKeySet)[0] || '',
+                attachmentUrls: Array.from(recipientSummary.attachmentUrlSet),
+                attachmentUrl: Array.from(recipientSummary.attachmentUrlSet)[0] || '',
+                heldCompositeKeys: Array.from(recipientSummary.heldCompositeKeySet),
+                heldCompositeKey: Array.from(recipientSummary.heldCompositeKeySet)[0] || '',
+                isUnresolvedHold: !!recipientSummary.hasHeldDelivery && !recipientSummary.hasNonHeldDelivery
+            };
+        })
         .sort((a, b) => a.recipientName.localeCompare(b.recipientName));
 }
 
@@ -1317,6 +1469,9 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
     });
     const [showSenderQuickSearch, setShowSenderQuickSearch] = React.useState(false);
     const [showReceiverQuickSearch, setShowReceiverQuickSearch] = React.useState(false);
+    const [holdActionBusy, setHoldActionBusy] = React.useState(false);
+    const [forwardMessageOptions, setForwardMessageOptions] = React.useState(null);
+    const [releaseConfirmContext, setReleaseConfirmContext] = React.useState(null);
     const [senderQuickSearchData, setSenderQuickSearchData] = React.useState({
         selections: [],
         accessList,
@@ -1366,7 +1521,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         }));
     }, [accessList, quickSearchSpecialValues]);
 
-    const personNameFromAccessList = (personId) => {
+    const personNameFromAccessList = React.useCallback((personId) => {
         const normalizedPersonId = String(personId || '').trim();
         if (!normalizedPersonId) { return ''; }
         const found = accessList.find(p => String(p.person_id || '').trim() === normalizedPersonId)
@@ -1376,7 +1531,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         const last = found.last || found?.name?.last || '';
         const full = `${first} ${last}`.trim();
         return full || found.display_name || normalizedPersonId;
-    };
+    }, [accessList]);
 
     const getSignatureKeyFromAccessList = React.useCallback((personId) => {
         const normalizedPersonId = String(personId || '').trim();
@@ -1656,6 +1811,255 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         }
         if (force) { }
     };
+
+    const findHeldActionRecByCompositeKey = React.useCallback(async (heldCompositeKey) => {
+        const normalizedCompositeKey = String(heldCompositeKey || '').trim();
+        if (!normalizedCompositeKey || !currentClientId) {
+            return null;
+        }
+
+        let lastKey;
+        let pageGuard = 0;
+
+        do {
+            const actionResponse = await dbClient
+                .query({
+                    TableName: 'MessageActions',
+                    KeyConditionExpression: 'client_id = :clientId',
+                    FilterExpression: '#content.#compositeKey = :compositeKey',
+                    ExpressionAttributeNames: {
+                        '#content': 'content',
+                        '#compositeKey': 'composite_key'
+                    },
+                    ExpressionAttributeValues: {
+                        ':clientId': currentClientId,
+                        ':compositeKey': normalizedCompositeKey
+                    },
+                    ExclusiveStartKey: lastKey,
+                    Limit: 100
+                })
+                .promise();
+
+            const matchedAction = (Array.isArray(actionResponse?.Items) ? actionResponse.Items : []).find(Boolean);
+            if (matchedAction) {
+                return matchedAction;
+            }
+
+            lastKey = actionResponse?.LastEvaluatedKey;
+            pageGuard++;
+        } while (lastKey && (pageGuard < 6));
+
+        return null;
+    }, [currentClientId]);
+
+    const releaseHeldByCompositeKey = React.useCallback(async (heldCompositeKey) => {
+        const actionRec = await findHeldActionRecByCompositeKey(heldCompositeKey);
+        if (!actionRec) {
+            throw new Error(`No MessageActions record found for ${heldCompositeKey}`);
+        }
+
+        const postOfficeMessageId = String(actionRec?.content?.message_id || '').trim();
+        if (!postOfficeMessageId) {
+            throw new Error('Held action record is missing content.message_id');
+        }
+
+        const poTableName = actionRec?.content?.testMode ? 'TestPostOffice' : 'PostOffice';
+        const postOfficeOriginal = await dbClient
+            .get({
+                TableName: poTableName,
+                Key: { message_id: postOfficeMessageId }
+            })
+            .promise();
+
+        if (!postOfficeOriginal?.Item) {
+            throw new Error(`PostOffice message_id ${postOfficeMessageId} not found in ${poTableName}`);
+        }
+
+        const nextPostOfficeRecord = {
+            ...postOfficeOriginal.Item,
+            message_id: `${postOfficeOriginal.Item.message_id}.${Date.now()}`,
+            byPass_rules: true
+        };
+
+        const actionCompositeKey = String(actionRec?.content?.composite_key || '').trim();
+        if (actionCompositeKey) {
+            const originalDelivery = await dbClient
+                .get({
+                    TableName: 'TheseusMessages',
+                    Key: {
+                        thread_id: postOfficeOriginal.Item.thread_id,
+                        composite_key: actionCompositeKey
+                    }
+                })
+                .promise();
+
+            if (originalDelivery?.Item?.deliver_to) {
+                nextPostOfficeRecord.recipient_base = 'list';
+                nextPostOfficeRecord.recipient_key = [originalDelivery.Item.deliver_to];
+            }
+        }
+
+        await dbClient
+            .put({
+                TableName: poTableName,
+                Item: nextPostOfficeRecord
+            })
+            .promise();
+
+        await dbClient
+            .delete({
+                TableName: 'MessageActions',
+                Key: {
+                    client_id: actionRec.client_id,
+                    after: actionRec.after
+                }
+            })
+            .promise();
+
+        return nextPostOfficeRecord.message_id;
+    }, [findHeldActionRecByCompositeKey]);
+
+    const handleReleaseHeldRecipients = React.useCallback(async (recipientSummaryList = []) => {
+        const unresolvedRecipients = (Array.isArray(recipientSummaryList) ? recipientSummaryList : []).filter((recipientSummary) => {
+            return !!recipientSummary?.isUnresolvedHold && !!String(recipientSummary?.heldCompositeKey || '').trim();
+        });
+
+        if (unresolvedRecipients.length === 0) {
+            return;
+        }
+
+        setHoldActionBusy(true);
+        let successCount = 0;
+        const failures = [];
+
+        for (const recipientSummary of unresolvedRecipients) {
+            const heldCompositeKey = String(recipientSummary.heldCompositeKey || '').trim();
+            try {
+                await releaseHeldByCompositeKey(heldCompositeKey);
+                successCount++;
+            }
+            catch (error) {
+                failures.push({
+                    recipient: recipientSummary.recipientName || recipientSummary.recipientId,
+                    message: error?.message || String(error)
+                });
+            }
+        }
+
+        setHoldActionBusy(false);
+
+        if (failures.length > 0) {
+            window.alert([
+                `Released ${successCount} held recipient${successCount === 1 ? '' : 's'}.`,
+                ...failures.map((failure) => `Failed ${failure.recipient}: ${failure.message}`)
+            ].join('\n'));
+        }
+        else {
+            window.alert(`Released ${successCount} held recipient${successCount === 1 ? '' : 's'}.`);
+        }
+
+        setSelectedMessage(null);
+        runSearchRef.current();
+    }, [releaseHeldByCompositeKey]);
+
+    const requestReleaseHeldRecipients = React.useCallback((recipientSummaryList = []) => {
+        const unresolvedRecipients = (Array.isArray(recipientSummaryList) ? recipientSummaryList : []).filter((recipientSummary) => {
+            return !!recipientSummary?.isUnresolvedHold && !!String(recipientSummary?.heldCompositeKey || '').trim();
+        });
+        if (unresolvedRecipients.length === 0) {
+            return;
+        }
+
+        const recipientNames = unresolvedRecipients
+            .map((recipientSummary) => String(recipientSummary?.recipientName || recipientSummary?.recipientId || '').trim())
+            .filter(Boolean);
+
+        const promptText = unresolvedRecipients.length === 1
+            ? `Release held message for ${recipientNames[0] || 'this recipient'}?`
+            : `Release held messages for ${unresolvedRecipients.length} recipients?`;
+
+        setReleaseConfirmContext({
+            recipientSummaryList: unresolvedRecipients,
+            promptText
+        });
+    }, []);
+
+    const handleForwardMessage = React.useCallback(async () => {
+        if (!selectedMessage) {
+            return;
+        }
+
+        const senderId = String(selectedMessage?.sent_from || '').trim();
+        const senderName = personNameFromAccessList(senderId || 'Unknown sender');
+        const forwarderId = String(state?.session?.user_id || '').trim();
+        const resolvedForwarderName = personNameFromAccessList(forwarderId || '');
+        const forwarderNameFromSession = [
+            state?.session?.user_name,
+            state?.session?.user_full_name,
+            `${state?.session?.user_first || ''} ${state?.session?.user_last || ''}`.trim(),
+            state?.session?.name
+        ]
+            .map((value) => String(value || '').trim())
+            .find(Boolean);
+        const forwarderNameFromMakeName = forwarderId
+            ? String((await makeName(forwarderId)) || '').trim()
+            : '';
+        const forwarderName = (
+            resolvedForwarderName
+            && forwarderId
+            && (String(resolvedForwarderName).trim().toLowerCase() !== forwarderId.toLowerCase())
+        )
+            ? resolvedForwarderName
+            : (forwarderNameFromSession || forwarderNameFromMakeName || 'Unknown user');
+        const selectedDeliveryItems = Array.isArray(selectedMessage.delivery_items) ? selectedMessage.delivery_items : [selectedMessage];
+        const selectedReceivers = getUniqueReceiversFromDeliveries(selectedDeliveryItems);
+        const recipientText = summarizeReceivers(selectedReceivers, personNameFromAccessList, 10);
+        const shouldBypassRulesOnForward = selectedDeliveryItems.some((deliveryItem) => isDeliveryStillHeld(deliveryItem));
+        const forwardAttachmentUrls = Array.from(new Set(
+            selectedDeliveryItems
+                .flatMap((deliveryItem) => getAttachmentUrlsFromMessage(deliveryItem))
+                .filter(Boolean)
+        ));
+
+        const sentDateText = formatMessageDate(normalizeDateValue(selectedMessage));
+        const originalText = getMessageText(selectedMessage, {
+            signatureKey: getSignatureKeyForPerson(selectedMessage?.sent_from)
+        }) || '';
+
+        const forwardIntro = `I thought you should see this message.  It was originally sent by ${senderName} on ${sentDateText}.`;
+        const forwardRecipientsLine = `Original recipients listed on that send: ${recipientText}.`;
+        const forwardAttachmentWarningLine = (forwardAttachmentUrls.length > 0)
+            ? `Attachment note: ${forwardAttachmentUrls.length} original attachment link${forwardAttachmentUrls.length === 1 ? '' : 's'} copied to this forward.`
+            : '';
+        const forwardRuleBypassLine = shouldBypassRulesOnForward
+            ? 'Routing note: Rule bypass was enabled because at least one original delivery was held.'
+            : '';
+        const forwardSeparatorLine = '\n~ ~ ~\n';
+        const forwardTextWithContext = [
+            forwardIntro,
+            forwardRecipientsLine,
+            forwardAttachmentWarningLine,
+            forwardRuleBypassLine,
+            forwardSeparatorLine,
+            originalText
+        ]
+            .filter((line) => String(line || '').trim() !== '')
+            .join('\n')
+            .trim();
+        const forwardSubject = `Message Forwarded from ${forwarderName}`;
+
+        setForwardMessageOptions({
+            newMessage: true,
+            sendFrom: forwarderId,
+            subject: forwardSubject,
+            messageText: forwardTextWithContext,
+            attachmentList: forwardAttachmentUrls,
+            forwardBypassRules: shouldBypassRulesOnForward,
+            newMessageSendFrom: forwarderId,
+            newMessageSubject: forwardSubject,
+            newMessageText: forwardTextWithContext
+        });
+    }, [selectedMessage, personNameFromAccessList, state, getSignatureKeyForPerson]);
 
     const runSearch = async () => {
         setLoading(true);
@@ -2329,6 +2733,11 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                             ? `${senderText} → reply to ${receiverText}`
                                             : `${senderText} → ${receiverText}`;
                                         const secondary = `${dateText} • ${directionText}${deliveryCount > 1 ? ` • ${deliveryCount} deliveries` : ''}`;
+                                        const previewText = toSingleLinePreview(
+                                            getMessageText(message, {
+                                                signatureKey: getSignatureKeyForPerson(message?.sent_from)
+                                            })
+                                        );
                                         const itemKey = message.message_identity_key || message.composite_key || message.thread_id || `${subjectText}-${index}`;
 
                                         return (
@@ -2347,6 +2756,17 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                                                 <Typography variant='body2' color='textSecondary'>
                                                                     {secondary}
                                                                 </Typography>
+                                                                {!!previewText && (
+                                                                    <Typography
+                                                                        variant='body2'
+                                                                        color='textSecondary'
+                                                                        className={classes.messagePreview}
+                                                                        noWrap
+                                                                        title={previewText}
+                                                                    >
+                                                                        {previewText}
+                                                                    </Typography>
+                                                                )}
                                                                 {flagLabels.length > 0 && (
                                                                     <Box className={classes.flagRow}>
                                                                         {flagLabels.map((flagLabel) => (
@@ -2476,6 +2896,8 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                 const selectedReceiverText = summarizeReceivers(selectedReceivers, personNameFromAccessList, 10);
                                 const selectedDeliveryCount = selectedDeliveryItems.length;
                                 const recipientSummaries = buildRecipientSummaries(selectedDeliveryItems, personNameFromAccessList);
+                                const unresolvedHoldRecipientSummaries = recipientSummaries.filter((recipientSummary) => !!recipientSummary.isUnresolvedHold);
+                                const hasUnresolvedHoldRecipients = unresolvedHoldRecipientSummaries.length > 0;
                                 return (
                                     <React.Fragment>
                                         <Typography style={AVATextStyle({ size: 1.2, bold: true })}>
@@ -2532,6 +2954,22 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                         <Typography variant='body2' style={AVATextStyle({ size: 0.95, bold: true })}>
                                             {'Recipients'}
                                         </Typography>
+                                        {hasUnresolvedHoldRecipients && (
+                                            <Box className={classes.detailHoldActions}>
+                                                <Button
+                                                    size='small'
+                                                    color='primary'
+                                                    variant='outlined'
+                                                    startIcon={<LockOpenIcon fontSize='small' />}
+                                                    disabled={holdActionBusy}
+                                                    onClick={() => {
+                                                        requestReleaseHeldRecipients(unresolvedHoldRecipientSummaries);
+                                                    }}
+                                                >
+                                                    {'Release Hold'}
+                                                </Button>
+                                            </Box>
+                                        )}
                                         <Box className={classes.recipientScrollArea}>
                                             {recipientSummaries.map((recipientSummary) => {
                                                 return (
@@ -2590,20 +3028,49 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                                                 ))}
                                                             </Box>
                                                         </Box>
-                                                        <Box className={classes.flagRow}>
-                                                            {recipientSummary.flagLabels.map((pillLabel) => (
-                                                                <Button
-                                                                    key={`${recipientSummary.recipientId}_${pillLabel}`}
-                                                                    size='small'
-                                                                    variant='outlined'
-                                                                    disableRipple
-                                                                    disableFocusRipple
-                                                                    onClick={(event) => event.preventDefault()}
-                                                                    className={`${classes.flagPill} ${getFlagPillVariantClass(pillLabel, classes)}`}
-                                                                >
-                                                                    {pillLabel}
-                                                                </Button>
-                                                            ))}
+                                                        <Box className={classes.recipientFooterRow}>
+                                                            <Box className={classes.flagRow}>
+                                                                {recipientSummary.flagLabels.map((pillLabel) => (
+                                                                    <Button
+                                                                        key={`${recipientSummary.recipientId}_${pillLabel}`}
+                                                                        size='small'
+                                                                        variant='outlined'
+                                                                        disableRipple
+                                                                        disableFocusRipple
+                                                                        onClick={(event) => {
+                                                                            event.preventDefault();
+                                                                            if (pillLabel !== 'Attachment') {
+                                                                                return;
+                                                                            }
+                                                                            const attachmentUrl = String(recipientSummary.attachmentUrl || '').trim();
+                                                                            if (!attachmentUrl) {
+                                                                                return;
+                                                                            }
+                                                                            window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
+                                                                        }}
+                                                                        style={{ cursor: ((pillLabel === 'Attachment') && !!recipientSummary.attachmentUrl) ? 'pointer' : 'default' }}
+                                                                        title={((pillLabel === 'Attachment') && !!recipientSummary.attachmentUrl) ? recipientSummary.attachmentUrl : ''}
+                                                                        className={`${classes.flagPill} ${getFlagPillVariantClass(pillLabel, classes)}`}
+                                                                    >
+                                                                        {pillLabel}
+                                                                    </Button>
+                                                                ))}
+                                                            </Box>
+                                                            {recipientSummary.isUnresolvedHold && (
+                                                                <Box className={classes.recipientActionButtons}>
+                                                                    <IconButton
+                                                                        size='small'
+                                                                        className={classes.recipientActionButton}
+                                                                        title='Release held message for this recipient'
+                                                                        disabled={holdActionBusy}
+                                                                        onClick={() => {
+                                                                            requestReleaseHeldRecipients([recipientSummary]);
+                                                                        }}
+                                                                    >
+                                                                        <LockOpenIcon fontSize='small' />
+                                                                    </IconButton>
+                                                                </Box>
+                                                            )}
                                                         </Box>
                                                         <Divider />
                                                     </Box>
@@ -2620,6 +3087,19 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                             })()}
                         </Box>
                         <Box className={classes.detailDialogFooter}>
+                            <Box>
+                                <Button
+                                    className={AVAClass.AVAButton}
+                                    size='small'
+                                    variant='outlined'
+                                    startIcon={<ForwardIcon fontSize='small' />}
+                                    onClick={() => {
+                                        handleForwardMessage();
+                                    }}
+                                >
+                                    {'Forward'}
+                                </Button>
+                            </Box>
                             <Button
                                 className={AVAClass.AVAButton}
                                 style={{ backgroundColor: 'red', color: 'white' }}
@@ -2647,6 +3127,33 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                     options={{
                         viewOnly: true
                     }}
+                />
+            )}
+
+            {!!releaseConfirmContext && (
+                <AVAConfirm
+                    promptText={releaseConfirmContext.promptText}
+                    onCancel={() => {
+                        setReleaseConfirmContext(null);
+                    }}
+                    onConfirm={async () => {
+                        const recipientSummaryList = releaseConfirmContext?.recipientSummaryList || [];
+                        setReleaseConfirmContext(null);
+                        await handleReleaseHeldRecipients(recipientSummaryList);
+                    }}
+                />
+            )}
+
+            {!!forwardMessageOptions && (
+                <MessageForm
+                    pPerson={state?.session?.user_id || state?.session?.patient_id || ''}
+                    pClient={state.session.client_id}
+                    pMessageList={[]}
+                    pSession={state.session}
+                    onReset={() => {
+                        setForwardMessageOptions(null);
+                    }}
+                    options={forwardMessageOptions}
                 />
             )}
             </Dialog>

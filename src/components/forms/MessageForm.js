@@ -736,6 +736,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       },
       TableName: 'PostOffice'
     };
+    if (options && options.forwardBypassRules) {
+      PostOfficeRec.Item.byPass_rules = true;
+    }
     if (reactData.newMessageSendFrom !== pPerson) {
       PostOfficeRec.Item.sender_spoofedByAccount = pPerson;
       PostOfficeRec.Item.sender_spoofedByUser = state.session.user_id;
@@ -865,7 +868,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         }
       }, true);
     }
-    return;
+    return goodPost;
   }
 
   function handleResize() {
@@ -1539,6 +1542,20 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       myName: await makeName(pPerson),
       templateList: await getTemplateList()
     }, true);
+
+    if (reactData.newMessageMode && options && options.newMessage) {
+      updateReactData({
+        threads: {},
+        sorted_threads: [],
+        lastReloadTime: new Date(),
+        lastActiveTime: new Date(),
+        forceReloadTime: 0,
+        idleState: false,
+        statusMessage: false
+      }, true);
+      return;
+    }
+
     let nowTime = new Date().getTime();
     let loop_until;
     if (!reactData.start_time) {
@@ -2045,8 +2062,15 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                 }, true);
                               }
                               else if (!reactData.warning) {
-                                await sendMessage();
-                                await initialize();
+                                const sendWasSuccessful = await sendMessage();
+                                if (sendWasSuccessful) {
+                                  if (options && options.newMessage) {
+                                    onReset();
+                                  }
+                                  else {
+                                    await initialize();
+                                  }
+                                }
                               }
                             }}
                             startIcon={<SendIcon className={classes.tightRight} size="small" />}
@@ -2159,6 +2183,10 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                           <Typography
                             style={AVATextStyle({ size: 1 })}
                             onClick={() => {
+                              if (options && options.newMessage) {
+                                onReset();
+                                return;
+                              }
                               updateReactData({
                                 newMessageRecipients: [],
                                 selectedPeople_count: 0,
