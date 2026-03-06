@@ -763,6 +763,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
 
   const saveChanges = async () => {
     let updatedPeopleRecord = false;
+    const originalPersonId = reactData.person_id;
+    const proposedPersonId = reactData.current.peopleRec.person_id;
     const person_id_blank = !reactData.current.peopleRec.person_id;
     const person_id_changed = reactData.current.peopleRec.person_id !== reactData.person_id;
     // Check for errors before moving forward with updates
@@ -848,6 +850,38 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       }, true);
       return false;
     }
+
+    const timeRules = reactData.current.peopleRec.time_based_rules || [];
+    const dayRuleErrors = {};
+    timeRules.forEach((this_rule, ruleIndex) => {
+      if (!this_rule || this_rule.global_rule) {
+        return;
+      }
+      const normalizedDays = Array.from(
+        new Set(String(this_rule.day || '').split('').filter(day => /[0-6]/.test(day)))
+      );
+      if (normalizedDays.length === 0) {
+        dayRuleErrors[`time_based_rules__day_${ruleIndex}`] = {
+          errorField: `time_based_rules__day_${ruleIndex}`,
+          errorValue: this_rule.day || '',
+          isError: true,
+          errorMessage: 'Select at least one day for this rule.'
+        };
+      }
+    });
+    Object.keys(reactData.errorList || {}).forEach(errorKey => {
+      if (errorKey.startsWith('time_based_rules__day_')) {
+        delete reactData.errorList[errorKey];
+      }
+    });
+    if (Object.keys(dayRuleErrors).length > 0) {
+      Object.assign(reactData.errorList, dayRuleErrors);
+      updateReactData({
+        errorList: reactData.errorList,
+      }, true);
+      return false;
+    }
+
     // are there new accounts that need to be created (would have been in LinkedAccounts - which is Family maintenance)
     if (reactData.current.familyRecs && (reactData.current.familyRecs.length > 0) && reactData.current.familyRecs[0].hasOwnProperty('primary')) {
       for (let this_family of reactData.current.familyRecs) {
@@ -934,6 +968,26 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
 
     const peopleChanged = JSON.stringify(reactData.og.peopleRec) !== JSON.stringify(reactData.current.peopleRec);
     const sessionChanged = JSON.stringify(reactData.og.sessionRec) !== JSON.stringify(reactData.current.sessionRec);
+    const personIdChangedForSave = !!originalPersonId && !!proposedPersonId && (proposedPersonId !== originalPersonId);
+
+    if (personIdChangedForSave && (!peopleChanged || !sessionChanged)) {
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: 'Unable to Save',
+          message: 'Account ID updates require both People and Session records to change together. Please try again.',
+          action: [
+            {
+              text: 'OK',
+              function: () => {
+                updateReactData({ alert: false }, true);
+              }
+            }
+          ]
+        }
+      }, true);
+      return false;
+    }
 
     if (peopleChanged) {
       reactData.current.peopleRec.last_update = new Date().toISOString();
@@ -947,22 +1001,72 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
 
     try {
       if (peopleChanged && sessionChanged) {
-        await dbClient
-          .transactWrite({
-            TransactItems: [
-              {
-                Put: {
-                  TableName: 'People',
-                  Item: reactData.current.peopleRec
-                }
-              },
-              {
-                Put: {
-                  TableName: 'SessionsV2',
-                  Item: reactData.current.sessionRec
+        const transactItems = [
+          {
+            Put: {
+              TableName: 'People',
+              Item: reactData.current.peopleRec
+            }
+          },
+          {
+            Put: {
+              TableName: 'SessionsV2',
+              Item: reactData.current.sessionRec
+            }
+          }
+        ];
+
+        if (personIdChangedForSave) {
+          const oldClientId = reactData.og.peopleRec?.client_id || reactData.og.sessionRec?.client_id || state.session.client_id;
+          const renamedClientId = String(oldClientId || '').endsWith('_RENAMED')
+            ? String(oldClientId || '')
+            : `${oldClientId}_RENAMED`;
+          const renamedOn = new Date().toISOString();
+
+          transactItems.push(
+            {
+              Update: {
+                TableName: 'People',
+                Key: { person_id: originalPersonId },
+                ConditionExpression: 'attribute_exists(person_id)',
+                UpdateExpression: 'set #c = :c, #renamed_to = :renamed_to, #renamed_on = :renamed_on',
+                ExpressionAttributeNames: {
+                  '#c': 'client_id',
+                  '#renamed_to': 'renamed_to',
+                  '#renamed_on': 'renamed_on'
+                },
+                ExpressionAttributeValues: {
+                  ':c': renamedClientId,
+                  ':renamed_to': proposedPersonId,
+                  ':renamed_on': renamedOn
                 }
               }
-            ]
+            },
+            {
+              Update: {
+                TableName: 'SessionsV2',
+                Key: { session_id: originalPersonId },
+                ConditionExpression: 'attribute_exists(session_id)',
+                UpdateExpression: 'set #c = :c, #uhc = :c, #renamed_to = :renamed_to, #renamed_on = :renamed_on',
+                ExpressionAttributeNames: {
+                  '#c': 'client_id',
+                  '#uhc': 'user_homeClient',
+                  '#renamed_to': 'renamed_to',
+                  '#renamed_on': 'renamed_on'
+                },
+                ExpressionAttributeValues: {
+                  ':c': renamedClientId,
+                  ':renamed_to': proposedPersonId,
+                  ':renamed_on': renamedOn
+                }
+              }
+            }
+          );
+        }
+
+        await dbClient
+          .transactWrite({
+            TransactItems: transactItems
           })
           .promise();
         updatedPeopleRecord = true;
@@ -1227,6 +1331,41 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     } while (tryAgain);
     return { proposedID, newID };
   }
+
+  const flushActiveInput = async () => {
+    if (typeof document !== 'undefined' && document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
+    await new Promise(resolve => setTimeout(resolve, 0));
+  };
+
+  const handleSaveTap = async ({ finish = false }) => {
+    await flushActiveInput();
+    if (!reactData.OKtoSave && isEmpty(reactData.errorList)) {
+      return false;
+    }
+    const result = await saveChanges();
+    if (!result) {
+      return false;
+    }
+    reactData.saveCompleted = true;
+    reactData.changesMade = true;
+    updateReactData({
+      changesMade: reactData.changesMade,
+      saveCompleted: reactData.saveCompleted,
+      OKtoSave: false
+    }, true);
+    if (finish) {
+      onExit({
+        saveCompleted: reactData.saveCompleted,
+        changesMade: reactData.changesMade,
+        directory_option: reactData.current.peopleRec.directory_option || false,
+        newID: reactData.current.peopleRec.person_id,
+        newName: (`${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`).trim()
+      });
+    }
+    return true;
+  };
 
   return (
     (reactData.initialized || reactData.alert) &&
@@ -1536,21 +1675,12 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             >
               {'Exit'}
             </Button>
-            {(reactData.OKtoSave || (!isEmpty(reactData.errorList))) ?
-              (isEmpty(reactData.errorList) ?
+            {(reactData.mode !== 'view') &&
+              <Box display='flex' flexDirection='column' justifyContent='flex-end' alignItems='flex-end'>
                 <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
                   <Button
                     onClick={async () => {
-                      const result = await saveChanges();
-                      if (!!result) {
-                        reactData.saveCompleted = true;
-                        reactData.changesMade = true;
-                      }
-                      updateReactData({
-                        changesMade: reactData.changesMade,
-                        saveCompleted: reactData.saveCompleted,
-                        OKtoSave: !result
-                      }, true);
+                      await handleSaveTap({ finish: false });
                     }}
                     className={AVAClass.AVAButton}
                     style={{ backgroundColor: 'lightcyan', color: 'black' }}
@@ -1560,18 +1690,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                   </Button>
                   <Button
                     onClick={async () => {
-                      let result = await saveChanges();
-                      if (result) {
-                        reactData.saveCompleted = true;
-                        reactData.changesMade = true;
-                        onExit({
-                          saveCompleted: reactData.saveCompleted,
-                          changesMade: reactData.changesMade,
-                          directory_option: reactData.current.peopleRec.directory_option || false,
-                          newID: reactData.current.peopleRec.person_id,
-                          newName: (`${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`).trim()
-                        });
-                      }
+                      await handleSaveTap({ finish: true });
                     }}
                     className={AVAClass.AVAButton}
                     style={{ backgroundColor: 'green', color: 'white' }}
@@ -1580,34 +1699,30 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                     {'Save/Finish'}
                   </Button>
                 </Box>
-                :
-                <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-                  <Typography style={{ color: 'red', bold: true }}>
-                    {(Object.keys(reactData.errorList).length === 1)
-                      ? `${reactData.errorList[Object.keys(reactData.errorList)[0]].errorMessage}`
-                      : `${Object.keys(reactData.errorList).length} issues`
-                    }
-                  </Typography>
-                </Box>
-              )
-              :
-              (reactData.current.peopleRec?.name?.first &&
-                <Box display='flex' flexDirection='column' justifyContent='flex-end' alignItems='center'>
-                  <Typography style={{ size: 1.2, bold: true }}>
-                    {`${((reactData.current.peopleRec?.name?.first || 'User') + "'s").replace("s's", "s'")} Profile`}
-                  </Typography>
-                  {(reactData.mode === 'view') &&
-                    <Typography style={{ size: 1.2, bold: true }}>
-                      {`** View only **`}
+                {!isEmpty(reactData.errorList) &&
+                  <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
+                    <Typography style={{ color: 'red', bold: true }}>
+                      {(Object.keys(reactData.errorList).length === 1)
+                        ? `${reactData.errorList[Object.keys(reactData.errorList)[0]].errorMessage}`
+                        : `${Object.keys(reactData.errorList).length} issues`
+                      }
                     </Typography>
-                  }
-                  {(reactData.mode === 'view') &&
-                    <Typography style={{ marginTop: 0, size: 1 }}>
-                      {`No Changes allowed`}
-                    </Typography>
-                  }
-                </Box>
-              )
+                  </Box>
+                }
+              </Box>
+            }
+            {(reactData.mode === 'view') && (reactData.current.peopleRec?.name?.first) &&
+              <Box display='flex' flexDirection='column' justifyContent='flex-end' alignItems='center'>
+                <Typography style={{ size: 1.2, bold: true }}>
+                  {`${((reactData.current.peopleRec?.name?.first || 'User') + "'s").replace("s's", "s'")} Profile`}
+                </Typography>
+                <Typography style={{ size: 1.2, bold: true }}>
+                  {`** View only **`}
+                </Typography>
+                <Typography style={{ marginTop: 0, size: 1 }}>
+                  {`No Changes allowed`}
+                </Typography>
+              </Box>
             }
           </Box>
         </React.Fragment>
