@@ -17,7 +17,7 @@ import {
 import { Alert } from '@material-ui/lab/';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import Slide from '@material-ui/core/Slide';
-import { fade } from '@material-ui/core/styles/colorManipulator';
+import { alpha } from '@material-ui/core/styles/colorManipulator';
 
 import CloseIcon from '@material-ui/icons/ExitToApp';
 import LockOpenIcon from '@material-ui/icons/LockOpen';
@@ -67,12 +67,27 @@ const useStyles = makeStyles(theme => ({
         alignItems: 'end',
         marginTop: theme.spacing(1)
     },
+    scopePresetRow: {
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: theme.spacing(1),
+        marginTop: theme.spacing(0.5)
+    },
+    scopePresetActions: {
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: theme.spacing(1)
+    },
     statusPillRow: {
         display: 'flex',
         flexWrap: 'wrap',
         gap: theme.spacing(1),
         alignItems: 'flex-end',
-        marginBottom: theme.spacing(2.5)
+        marginBottom: theme.spacing(1),
+        marginTop: theme.spacing(1.5)
     },
     statusPillItem: {
         display: 'flex',
@@ -93,16 +108,24 @@ const useStyles = makeStyles(theme => ({
         padding: theme.spacing(0.25, 1)
     },
     statusPillActive: {
-        outline: `6px solid ${fade(theme.palette.primary.main, 0.55)}`,
+        outline: `6px solid ${alpha(theme.palette.primary.main, 0.55)}`,
         outlineOffset: 1,
-        boxShadow: `0 0 0 6px ${fade(theme.palette.primary.main, 0.2)}`,
+        boxShadow: `0 0 0 6px ${alpha(theme.palette.primary.main, 0.2)}`,
         transform: 'translateY(-1px)'
     },
     scrollArea: {
         flex: 1,
         minHeight: 0,
-        overflowY: 'auto',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
         padding: theme.spacing(2)
+    },
+    listScrollArea: {
+        flex: 1,
+        minHeight: 0,
+        overflowY: 'auto',
+        overflowX: 'hidden'
     },
     actions: {
         display: 'flex',
@@ -118,18 +141,18 @@ const useStyles = makeStyles(theme => ({
     },
     searchButtonPending: {
         animation: '$searchButtonPulse 1400ms ease-in-out infinite',
-        boxShadow: `0 0 0 0 ${fade(theme.palette.warning.main, 0.45)}`,
+        boxShadow: `0 0 0 0 ${alpha(theme.palette.warning.main, 0.45)}`,
         borderColor: `${theme.palette.warning.main} !important`
     },
     '@keyframes searchButtonPulse': {
         '0%': {
-            boxShadow: `0 0 0 0 ${fade(theme.palette.warning.main, 0.45)}`
+            boxShadow: `0 0 0 0 ${alpha(theme.palette.warning.main, 0.45)}`
         },
         '70%': {
-            boxShadow: `0 0 0 10px ${fade(theme.palette.warning.main, 0)}`
+            boxShadow: `0 0 0 10px ${alpha(theme.palette.warning.main, 0)}`
         },
         '100%': {
-            boxShadow: `0 0 0 0 ${fade(theme.palette.warning.main, 0)}`
+            boxShadow: `0 0 0 0 ${alpha(theme.palette.warning.main, 0)}`
         }
     },
     bottomBar: {
@@ -141,7 +164,11 @@ const useStyles = makeStyles(theme => ({
         borderTop: `1px solid ${theme.palette.divider}`,
     },
     listPaper: {
-        width: '100%'
+        width: '100%',
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column'
     },
     muted: {
         opacity: 0.7
@@ -173,12 +200,12 @@ const useStyles = makeStyles(theme => ({
     flagPillRedOutline: {
         borderColor: `${theme.palette.type === 'dark' ? theme.palette.error.light : theme.palette.error.main} !important`,
         color: `${theme.palette.type === 'dark' ? theme.palette.error.light : theme.palette.error.main} !important`,
-        backgroundColor: `${fade(theme.palette.error.main, theme.palette.type === 'dark' ? 0.22 : 0.08)} !important`
+        backgroundColor: `${alpha(theme.palette.error.main, theme.palette.type === 'dark' ? 0.22 : 0.08)} !important`
     },
     flagPillOrangeOutline: {
         borderColor: `${theme.palette.type === 'dark' ? theme.palette.warning.light : theme.palette.warning.dark} !important`,
         color: `${theme.palette.type === 'dark' ? theme.palette.warning.light : theme.palette.warning.dark} !important`,
-        backgroundColor: `${fade(theme.palette.warning.main, theme.palette.type === 'dark' ? 0.2 : 0.08)} !important`
+        backgroundColor: `${alpha(theme.palette.warning.main, theme.palette.type === 'dark' ? 0.2 : 0.08)} !important`
     },
     flagPillGreenSolid: {
         borderColor: `${theme.palette.type === 'dark' ? theme.palette.success.main : theme.palette.success.dark} !important`,
@@ -192,11 +219,9 @@ const useStyles = makeStyles(theme => ({
     },
     recipientScrollArea: {
         flex: 1,
-        minHeight: 120,
-        maxHeight: '45vh',
+        minHeight: 0,
         overflowY: 'auto',
-        border: `1px solid ${theme.palette.divider}`,
-        borderRadius: theme.shape.borderRadius,
+        overflowX: 'hidden',
         padding: theme.spacing(1)
     },
     recipientRow: {
@@ -258,7 +283,8 @@ const useStyles = makeStyles(theme => ({
         display: 'flex',
         justifyContent: 'flex-end',
         gap: theme.spacing(1),
-        marginBottom: theme.spacing(0.5)
+        marginBottom: theme.spacing(0.5),
+        flexShrink: 0
     },
     detailDialogContent: {
         display: 'flex',
@@ -274,7 +300,8 @@ const useStyles = makeStyles(theme => ({
         flexDirection: 'column',
         gap: theme.spacing(1.2),
         minHeight: 0,
-        flex: 1
+        flex: 1,
+        overflow: 'hidden'
     },
     detailDialogFooter: {
         display: 'flex',
@@ -289,7 +316,10 @@ const useStyles = makeStyles(theme => ({
         border: `1px solid ${theme.palette.divider}`,
         borderRadius: theme.shape.borderRadius,
         padding: theme.spacing(1.6, 1.2, 1.1, 1.2),
-        backgroundColor: theme.palette.background.paper
+        marginTop: theme.spacing(0.5),
+        backgroundColor: theme.palette.background.paper,
+        minWidth: 0,
+        flexShrink: 0
     },
     messageBoxLabel: {
         position: 'absolute',
@@ -311,7 +341,12 @@ const useStyles = makeStyles(theme => ({
         fontSize: '0.9rem',
         lineHeight: 1.42,
         whiteSpace: 'pre-wrap',
-        overflowY: 'auto'
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        wordBreak: 'break-word',
+        overflowWrap: 'anywhere',
+        minWidth: 0,
+        maxWidth: '100%'
     }
 }));
 
@@ -525,8 +560,8 @@ function makeResultDisplay(message, options = {}) {
     if (method && method === 'AVA') {
         methodMsg = `via AVA`;
         resultText = `via AVA`;
-    } 
-    else if (defaultStatus === 'Duplicate') { 
+    }
+    else if (defaultStatus === 'Duplicate') {
         const otherAddress = message?.recipient_address || message?.deliver_address || message?.recipient_list?.address || '';
         const resolvedOtherPerson = otherPersonByAddress(otherAddress, {
             excludeRecipientId: currentRecipientId,
@@ -1447,13 +1482,15 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         senderDisplay: defaults.senderDisplay || defaults.sender_display || defaults.sender || '*me',
         receiverDisplay: defaults.receiverDisplay || defaults.receiver_display || defaults.receiver || '*anyone',
         dateFrom: toDateInputValue(defaults.dateFrom) || defaultDates.dateFrom,
-        dateTo: toDateInputValue(defaults.dateTo) || defaultDates.dateTo
+        dateTo: toDateInputValue(defaults.dateTo) || defaultDates.dateTo,
+        messageSearchText: defaults.messageSearchText || defaults.message_search_text || defaults.messageSearch || defaults.message_search || ''
     });
     const [activeStatusFilter, setActiveStatusFilter] = React.useState(normalizeStatusFilterValue(defaults.status));
     const [pendingSearchChanges, setPendingSearchChanges] = React.useState(false);
     const [loading, setLoading] = React.useState(false);
+    const [hasSearchedOnce, setHasSearchedOnce] = React.useState(false);
     const [errorText, setErrorText] = React.useState('');
-    const [messages, setMessages] = React.useState([]);
+    const [baseMessages, setBaseMessages] = React.useState([]);
     const [selectedMessage, setSelectedMessage] = React.useState(null);
     const [selectedRecipientPersonId, setSelectedRecipientPersonId] = React.useState('');
     const runSearchRef = React.useRef(() => { });
@@ -1521,28 +1558,38 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         }));
     }, [accessList, quickSearchSpecialValues]);
 
+    const accessListByPersonId = React.useMemo(() => {
+        const lookup = new Map();
+        accessList.forEach((person) => {
+            const key = String(person?.person_id || '').trim().toLowerCase();
+            if (!key || lookup.has(key)) {
+                return;
+            }
+            lookup.set(key, person);
+        });
+        return lookup;
+    }, [accessList]);
+
     const personNameFromAccessList = React.useCallback((personId) => {
         const normalizedPersonId = String(personId || '').trim();
         if (!normalizedPersonId) { return ''; }
-        const found = accessList.find(p => String(p.person_id || '').trim() === normalizedPersonId)
-            || accessList.find(p => String(p.person_id || '').trim().toLowerCase() === normalizedPersonId.toLowerCase());
+        const found = accessListByPersonId.get(normalizedPersonId.toLowerCase());
         if (!found) { return personId; }
         const first = found.first || found?.name?.first || '';
         const last = found.last || found?.name?.last || '';
         const full = `${first} ${last}`.trim();
         return full || found.display_name || normalizedPersonId;
-    }, [accessList]);
+    }, [accessListByPersonId]);
 
     const getSignatureKeyFromAccessList = React.useCallback((personId) => {
         const normalizedPersonId = String(personId || '').trim();
         if (!normalizedPersonId) {
             return '';
         }
-        const found = accessList.find((person) => String(person?.person_id || '').trim() === normalizedPersonId)
-            || accessList.find((person) => String(person?.person_id || '').trim().toLowerCase() === normalizedPersonId.toLowerCase());
+        const found = accessListByPersonId.get(normalizedPersonId.toLowerCase());
         const signatureKey = String(found?.signature_key || found?.signatureKey || '').trim();
         return signatureKey;
-    }, [accessList]);
+    }, [accessListByPersonId]);
 
     const getSignatureKeyForPerson = React.useCallback((personId) => {
         const normalizedPersonId = String(personId || '').trim();
@@ -2061,14 +2108,15 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         });
     }, [selectedMessage, personNameFromAccessList, state, getSignatureKeyForPerson]);
 
-    const runSearch = async () => {
+    const runSearch = async (overrideFilters = null) => {
         setLoading(true);
         setErrorText('');
         try {
-            const senderMatch = (filters.senderDisplay || '').trim().toLowerCase();
-            const receiverMatch = (filters.receiverDisplay || '').trim().toLowerCase();
-            const senderIdMatch = (filters.senderIds || []).map(v => String(v).toLowerCase());
-            const receiverIdMatch = (filters.receiverIds || []).map(v => String(v).toLowerCase());
+            const searchFilters = overrideFilters || filters;
+            const senderMatch = (searchFilters.senderDisplay || '').trim().toLowerCase();
+            const receiverMatch = (searchFilters.receiverDisplay || '').trim().toLowerCase();
+            const senderIdMatch = (searchFilters.senderIds || []).map(v => String(v).toLowerCase());
+            const receiverIdMatch = (searchFilters.receiverIds || []).map(v => String(v).toLowerCase());
             const myIdentityList = [state?.session?.patient_id]
                 .filter(Boolean)
                 .map(v => String(v).toLowerCase());
@@ -2076,8 +2124,8 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
             const receiverHasAnyone = receiverIdMatch.includes('*anyone') || (receiverMatch === '*anyone');
             const senderHasMe = senderIdMatch.includes('*me') || (senderMatch === '*me');
             const receiverHasMe = receiverIdMatch.includes('*me') || (receiverMatch === '*me');
-            const fromDate = filters.dateFrom ? parseDateInputAsLocalDate(filters.dateFrom) : null;
-            const toDate = filters.dateTo ? parseDateInputAsLocalDate(filters.dateTo) : null;
+            const fromDate = searchFilters.dateFrom ? parseDateInputAsLocalDate(searchFilters.dateFrom) : null;
+            const toDate = searchFilters.dateTo ? parseDateInputAsLocalDate(searchFilters.dateTo) : null;
             if (toDate) {
                 toDate.setHours(23, 59, 59, 999);
             }
@@ -2123,9 +2171,9 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
             let scanResults = [];
 
             if (canUseSenderWeekIndex) {
-                const weekList = buildMessageWeekList(filters.dateFrom, filters.dateTo);
-                const startEpochMs = toEpochMsString(filters.dateFrom, false);
-                const endEpochMs = toEpochMsString(filters.dateTo, true);
+                const weekList = buildMessageWeekList(searchFilters.dateFrom, searchFilters.dateTo);
+                const startEpochMs = toEpochMsString(searchFilters.dateFrom, false);
+                const endEpochMs = toEpochMsString(searchFilters.dateTo, true);
 
                 for (const senderId of querySenderIds) {
                     for (const messageWeek of weekList) {
@@ -2160,9 +2208,9 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                 }
             }
             else if (canUseReceiverWeekIndex) {
-                const weekList = buildMessageWeekList(filters.dateFrom, filters.dateTo);
-                const startEpochMs = toEpochMsString(filters.dateFrom, false);
-                const endEpochMs = toEpochMsString(filters.dateTo, true);
+                const weekList = buildMessageWeekList(searchFilters.dateFrom, searchFilters.dateTo);
+                const startEpochMs = toEpochMsString(searchFilters.dateFrom, false);
+                const endEpochMs = toEpochMsString(searchFilters.dateTo, true);
 
                 for (const receiverId of queryReceiverIds) {
                     for (const messageWeek of weekList) {
@@ -2536,11 +2584,11 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                 return bTime - aTime;
             });
 
-            setMessages(groupedMessages);
+            setBaseMessages(groupedMessages);
         }
         catch (error) {
             setErrorText(`Unable to load messages: ${error?.message || error}`);
-            setMessages([]);
+            setBaseMessages([]);
         }
         setLoading(false);
     };
@@ -2549,6 +2597,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
 
     const handleManualSearch = React.useCallback(() => {
         hasManualSearchRef.current = true;
+        setHasSearchedOnce(true);
         setPendingSearchChanges(false);
         runSearchRef.current();
     }, []);
@@ -2574,28 +2623,100 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         };
     }, []);
 
+    const textFilteredMessages = React.useMemo(() => {
+        const messageSearchQuery = String(filters.messageSearchText || '').trim().toLowerCase();
+        if (!messageSearchQuery) {
+            return baseMessages;
+        }
+
+        return baseMessages.filter((groupedMessage) => {
+            const deliveryItems = Array.isArray(groupedMessage?.delivery_items)
+                ? groupedMessage.delivery_items
+                : [groupedMessage];
+
+            return deliveryItems.some((deliveryItem) => {
+                const rawText = String(getRawMessageText(deliveryItem) || '').toLowerCase();
+                const strippedText = String(getMessageText(deliveryItem, {
+                    signatureKey: getSignatureKeyForPerson(deliveryItem?.sent_from)
+                }) || '').toLowerCase();
+
+                return rawText.includes(messageSearchQuery) || strippedText.includes(messageSearchQuery);
+            });
+        });
+    }, [baseMessages, filters.messageSearchText, getSignatureKeyForPerson]);
+
     const statusPillCounts = React.useMemo(() => {
-        const counts = { '*all': messages.length };
+        const counts = { '*all': textFilteredMessages.length };
         STATUS_FILTER_OPTIONS.forEach((statusKey) => {
             if (statusKey === '*all') { return; }
-            counts[statusKey] = messages.filter((message) => messageMatchesStatusKey(message, statusKey)).length;
+            counts[statusKey] = textFilteredMessages.filter((message) => messageMatchesStatusKey(message, statusKey)).length;
         });
         return counts;
-    }, [messages]);
+    }, [textFilteredMessages]);
 
     const visibleStatusPills = React.useMemo(() => {
         return STATUS_FILTER_OPTIONS.filter((statusKey) => {
             if (statusKey === '*all') { return true; }
+            if (statusKey === activeStatusFilter) { return true; }
             return (statusPillCounts[statusKey] || 0) > 0;
         });
-    }, [statusPillCounts]);
+    }, [statusPillCounts, activeStatusFilter]);
 
     const displayedMessages = React.useMemo(() => {
         if (activeStatusFilter === '*all') {
-            return messages;
+            return textFilteredMessages;
         }
-        return messages.filter((message) => messageMatchesStatusKey(message, activeStatusFilter));
-    }, [messages, activeStatusFilter]);
+        return textFilteredMessages.filter((message) => messageMatchesStatusKey(message, activeStatusFilter));
+    }, [textFilteredMessages, activeStatusFilter]);
+
+    const normalizedMyPatientId = String(myPatientId || '').trim().toLowerCase();
+    const normalizedSenderDisplay = String(filters.senderDisplay || '').trim().toLowerCase();
+    const normalizedReceiverDisplay = String(filters.receiverDisplay || '').trim().toLowerCase();
+    const normalizedSenderIds = (filters.senderIds || []).map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
+    const normalizedReceiverIds = (filters.receiverIds || []).map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
+
+    const senderIsAnyoneConfig = normalizedSenderDisplay === '*anyone' || normalizedSenderIds.includes('*anyone');
+    const receiverIsAnyoneConfig = normalizedReceiverDisplay === '*anyone' || normalizedReceiverIds.includes('*anyone');
+    const senderIsMeConfig = (
+        normalizedSenderDisplay === '*me'
+        || normalizedSenderIds.includes('*me')
+        || (!!normalizedMyPatientId && (normalizedSenderIds.length === 1) && (normalizedSenderIds[0] === normalizedMyPatientId))
+    );
+    const receiverIsMeConfig = (
+        normalizedReceiverDisplay === '*me'
+        || normalizedReceiverIds.includes('*me')
+        || (!!normalizedMyPatientId && (normalizedReceiverIds.length === 1) && (normalizedReceiverIds[0] === normalizedMyPatientId))
+    );
+
+    const sentScopePresetActive = senderIsMeConfig && receiverIsAnyoneConfig;
+    const receivedScopePresetActive = senderIsAnyoneConfig && receiverIsMeConfig;
+
+    const applyScopePreset = (scopePreset) => {
+        const presetValues = scopePreset === 'received'
+            ? {
+                senderIds: ['*anyone'],
+                receiverIds: ['*me'],
+                senderDisplay: '*anyone',
+                receiverDisplay: '*me'
+            }
+            : {
+                senderIds: ['*me'],
+                receiverIds: ['*anyone'],
+                senderDisplay: '*me',
+                receiverDisplay: '*anyone'
+            };
+
+        const nextFilters = {
+            ...filters,
+            ...presetValues
+        };
+
+        setFilters(nextFilters);
+        setPendingSearchChanges(false);
+        setHasSearchedOnce(true);
+        hasManualSearchRef.current = true;
+        runSearchRef.current(nextFilters);
+    };
 
     return (
         <Dialog
@@ -2614,7 +2735,36 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                         >
                             {'Message Monitor'}
                         </Typography>
-                        <Typography variant='body2' className={classes.muted}>Filter by Sender, Receiver, and Date Range.</Typography>
+                        <Box className={classes.scopePresetRow}>
+                            <Typography variant='caption' color='textSecondary' className={classes.muted}>
+                                {'Filters'}
+                            </Typography>
+                            <Box className={classes.scopePresetActions}>
+                                <Typography variant='caption' color='textSecondary'>Quick scope:</Typography>
+                                <Button
+                                    variant='outlined'
+                                    size='small'
+                                    disableRipple
+                                    disableFocusRipple
+                                    className={`${classes.statusPillButton} ${classes.flagPill} ${sentScopePresetActive ? classes.statusPillActive : ''}`}
+                                    onClick={() => applyScopePreset('sent')}
+                                    style={{ opacity: sentScopePresetActive ? 1 : 0.8 }}
+                                >
+                                    {'Sent by Me'}
+                                </Button>
+                                <Button
+                                    variant='outlined'
+                                    size='small'
+                                    disableRipple
+                                    disableFocusRipple
+                                    className={`${classes.statusPillButton} ${classes.flagPill} ${receivedScopePresetActive ? classes.statusPillActive : ''}`}
+                                    onClick={() => applyScopePreset('received')}
+                                    style={{ opacity: receivedScopePresetActive ? 1 : 0.8 }}
+                                >
+                                    {'Received by Me'}
+                                </Button>
+                            </Box>
+                        </Box>
 
                         <Box className={classes.filters}>
                             <TextField
@@ -2662,37 +2812,58 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                 onChange={event => updateFilter('dateTo', event.target.value)}
                                 InputLabelProps={{ shrink: true }}
                             />
+
+                            <Box>
+                                <TextField
+                                    label='Message Text'
+                                    variant='outlined'
+                                    size='small'
+                                    value={filters.messageSearchText}
+                                    onChange={event => {
+                                        const nextValue = event?.target?.value || '';
+                                        setFilters(prev => ({ ...prev, messageSearchText: nextValue }));
+                                    }}
+                                    placeholder='Contains text...'
+                                    fullWidth
+                                />
+                                {String(filters.messageSearchText || '').trim() !== '' && (
+                                    <Typography variant='caption' color='textSecondary' style={{ marginTop: 2, display: 'block' }}>
+                                        {`${textFilteredMessages.length} match${textFilteredMessages.length === 1 ? '' : 'es'}`}
+                                    </Typography>
+                                )}
+                            </Box>
                         </Box>
                     </Box>
 
+                    {textFilteredMessages.length > 0 && (
+                        <Box className={classes.statusPillRow} style={{ padding: '0 16px' }}>
+                            {visibleStatusPills.map((statusKey) => {
+                                const isActive = activeStatusFilter === statusKey;
+                                const pillLabel = getStatusPillLabel(statusKey);
+                                const pillVariantClass = statusKey === '*all' ? '' : getFlagPillVariantClass(pillLabel, classes);
+                                return (
+                                    <Box key={statusKey} className={classes.statusPillItem}>
+                                        <Typography className={classes.statusPillCount} color='textSecondary'>
+                                            {statusPillCounts[statusKey] || 0}
+                                        </Typography>
+                                        <Button
+                                            variant='outlined'
+                                            size='small'
+                                            disableRipple
+                                            disableFocusRipple
+                                            className={`${classes.statusPillButton} ${classes.flagPill} ${pillVariantClass} ${isActive ? classes.statusPillActive : ''}`}
+                                            onClick={() => setActiveStatusFilter(statusKey)}
+                                            style={{ opacity: isActive ? 1 : 0.75 }}
+                                        >
+                                            {pillLabel}
+                                        </Button>
+                                    </Box>
+                                );
+                            })}
+                        </Box>
+                    )}
+
                     <Box className={classes.scrollArea}>
-                        {displayedMessages.length > 0 && (
-                            <Box className={classes.statusPillRow}>
-                                {visibleStatusPills.map((statusKey) => {
-                                    const isActive = activeStatusFilter === statusKey;
-                                    const pillLabel = getStatusPillLabel(statusKey);
-                                    const pillVariantClass = statusKey === '*all' ? '' : getFlagPillVariantClass(pillLabel, classes);
-                                    return (
-                                        <Box key={statusKey} className={classes.statusPillItem}>
-                                            <Typography className={classes.statusPillCount} color='textSecondary'>
-                                                {statusPillCounts[statusKey] || 0}
-                                            </Typography>
-                                            <Button
-                                                variant='outlined'
-                                                size='small'
-                                                disableRipple
-                                                disableFocusRipple
-                                                className={`${classes.statusPillButton} ${classes.flagPill} ${pillVariantClass} ${isActive ? classes.statusPillActive : ''}`}
-                                                onClick={() => setActiveStatusFilter(statusKey)}
-                                                style={{ opacity: isActive ? 1 : 0.75 }}
-                                            >
-                                                {pillLabel}
-                                            </Button>
-                                        </Box>
-                                    );
-                                })}
-                            </Box>
-                        )}
 
                         {errorText && (
                             <Box mb={1}>
@@ -2701,99 +2872,105 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                         )}
 
                         <Paper variant='outlined' className={classes.listPaper}>
-                            {loading && (
-                                <Box p={2} display='flex' alignItems='center' gridGap={8}>
-                                    <CircularProgress size={18} />
-                                    <Typography variant='body2'>Loading messages…</Typography>
-                                </Box>
-                            )}
+                            <Box className={classes.listScrollArea}>
+                                {loading && (
+                                    <Box p={2} display='flex' alignItems='center' gridGap={8}>
+                                        <CircularProgress size={18} />
+                                        <Typography variant='body2'>Loading messages…</Typography>
+                                    </Box>
+                                )}
 
-                            {!loading && displayedMessages.length === 0 && (
-                                <Box p={2}>
-                                    <Typography variant='body2' className={classes.muted}>No messages match these filters.</Typography>
-                                </Box>
-                            )}
+                                {!loading && displayedMessages.length === 0 && (
+                                    <Box p={2}>
+                                        <Typography variant='body2' className={classes.muted}>
+                                            {hasSearchedOnce
+                                                ? 'No messages match these filters.'
+                                                : 'Tap Search to load messages with these filters.'}
+                                        </Typography>
+                                    </Box>
+                                )}
 
-                            {!loading && displayedMessages.length > 0 && (
-                                <List dense>
-                                    {displayedMessages.map((message, index) => {
-                                        const sender = message.sent_from || 'Unknown sender';
-                                        const deliveryItems = Array.isArray(message.delivery_items) ? message.delivery_items : [message];
-                                        const receivers = getUniqueReceiversFromDeliveries(deliveryItems);
-                                        const isReplyMessage = isReplyMessageFromDeliveries(deliveryItems);
-                                        const senderText = personNameFromAccessList(sender);
-                                        const receiverText = summarizeReceivers(receivers, personNameFromAccessList, 2);
-                                        const dateText = formatMessageDate(normalizeDateValue(message));
-                                        const subjectText = getMessageSubject(message);
-                                        const derivedFlags = message.derived_flags || {};
-                                        const flagLabels = getEnabledFlagLabels(derivedFlags);
-                                        const deliveryCount = deliveryItems.length;
-                                        const primary = `${subjectText}`;
-                                        const directionText = isReplyMessage
-                                            ? `${senderText} → reply to ${receiverText}`
-                                            : `${senderText} → ${receiverText}`;
-                                        const secondary = `${dateText} • ${directionText}${deliveryCount > 1 ? ` • ${deliveryCount} deliveries` : ''}`;
-                                        const previewText = toSingleLinePreview(
-                                            getMessageText(message, {
-                                                signatureKey: getSignatureKeyForPerson(message?.sent_from)
-                                            })
-                                        );
-                                        const itemKey = message.message_identity_key || message.composite_key || message.thread_id || `${subjectText}-${index}`;
+                                {!loading && displayedMessages.length > 0 && (
+                                    <List dense>
+                                        {displayedMessages.map((message, index) => {
+                                            const sender = message.sent_from || 'Unknown sender';
+                                            const deliveryItems = Array.isArray(message.delivery_items) ? message.delivery_items : [message];
+                                            const receivers = getUniqueReceiversFromDeliveries(deliveryItems);
+                                            const isReplyMessage = isReplyMessageFromDeliveries(deliveryItems);
+                                            const senderText = personNameFromAccessList(sender);
+                                            const receiverText = summarizeReceivers(receivers, personNameFromAccessList, 2);
+                                            const dateText = formatMessageDate(normalizeDateValue(message));
+                                            const subjectText = getMessageSubject(message);
+                                            const derivedFlags = message.derived_flags || {};
+                                            const flagLabels = getEnabledFlagLabels(derivedFlags);
+                                            const deliveryCount = deliveryItems.length;
+                                            const primary = `${subjectText}`;
+                                            const directionText = isReplyMessage
+                                                ? `${senderText} → reply to ${receiverText}`
+                                                : `${senderText} → ${receiverText}`;
+                                            const secondary = `${dateText} • ${directionText}${deliveryCount > 1 ? ` • ${deliveryCount} deliveries` : ''}`;
+                                            const previewText = toSingleLinePreview(
+                                                getMessageText(message, {
+                                                    signatureKey: getSignatureKeyForPerson(message?.sent_from)
+                                                })
+                                            );
+                                            const itemKey = message.message_identity_key || message.composite_key || message.thread_id || `${subjectText}-${index}`;
 
-                                        return (
-                                            <React.Fragment key={itemKey}>
-                                                <ListItem
-                                                    button
-                                                    onClick={() => {
-                                                        setSelectedMessage(message);
-                                                    }}
-                                                >
-                                                    <ListItemText
-                                                        primary={primary}
-                                                        secondaryTypographyProps={{ component: 'div' }}
-                                                        secondary={(
-                                                            <Box>
-                                                                <Typography variant='body2' color='textSecondary'>
-                                                                    {secondary}
-                                                                </Typography>
-                                                                {!!previewText && (
-                                                                    <Typography
-                                                                        variant='body2'
-                                                                        color='textSecondary'
-                                                                        className={classes.messagePreview}
-                                                                        noWrap
-                                                                        title={previewText}
-                                                                    >
-                                                                        {previewText}
+                                            return (
+                                                <React.Fragment key={itemKey}>
+                                                    <ListItem
+                                                        button
+                                                        onClick={() => {
+                                                            setSelectedMessage(message);
+                                                        }}
+                                                    >
+                                                        <ListItemText
+                                                            primary={primary}
+                                                            secondaryTypographyProps={{ component: 'div' }}
+                                                            secondary={(
+                                                                <Box>
+                                                                    <Typography variant='body2' color='textSecondary'>
+                                                                        {secondary}
                                                                     </Typography>
-                                                                )}
-                                                                {flagLabels.length > 0 && (
-                                                                    <Box className={classes.flagRow}>
-                                                                        {flagLabels.map((flagLabel) => (
-                                                                            <Button
-                                                                                key={`${itemKey}_${flagLabel}`}
-                                                                                size='small'
-                                                                                variant='outlined'
-                                                                                disableRipple
-                                                                                disableFocusRipple
-                                                                                onClick={(event) => event.preventDefault()}
-                                                                                className={`${classes.flagPill} ${getFlagPillVariantClass(flagLabel, classes)}`}
-                                                                            >
-                                                                                {flagLabel}
-                                                                            </Button>
-                                                                        ))}
-                                                                    </Box>
-                                                                )}
-                                                            </Box>
-                                                        )}
-                                                    />
-                                                </ListItem>
-                                                {index < (displayedMessages.length - 1) && <Divider component='li' />}
-                                            </React.Fragment>
-                                        );
-                                    })}
-                                </List>
-                            )}
+                                                                    {!!previewText && (
+                                                                        <Typography
+                                                                            variant='body2'
+                                                                            color='textSecondary'
+                                                                            className={classes.messagePreview}
+                                                                            noWrap
+                                                                            title={previewText}
+                                                                        >
+                                                                            {previewText}
+                                                                        </Typography>
+                                                                    )}
+                                                                    {flagLabels.length > 0 && (
+                                                                        <Box className={classes.flagRow}>
+                                                                            {flagLabels.map((flagLabel) => (
+                                                                                <Button
+                                                                                    key={`${itemKey}_${flagLabel}`}
+                                                                                    size='small'
+                                                                                    variant='outlined'
+                                                                                    disableRipple
+                                                                                    disableFocusRipple
+                                                                                    onClick={(event) => event.preventDefault()}
+                                                                                    className={`${classes.flagPill} ${getFlagPillVariantClass(flagLabel, classes)}`}
+                                                                                >
+                                                                                    {flagLabel}
+                                                                                </Button>
+                                                                            ))}
+                                                                        </Box>
+                                                                    )}
+                                                                </Box>
+                                                            )}
+                                                        />
+                                                    </ListItem>
+                                                    {index < (displayedMessages.length - 1) && <Divider component='li' />}
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </List>
+                                )}
+                            </Box>
                         </Paper>
                     </Box>
 
@@ -2815,6 +2992,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                             </Button>
                             <Button
                                 className={`${AVAClass.AVAButton} ${(pendingSearchChanges && !loading) ? classes.searchButtonPending : ''}`}
+                                size='small'
                                 color='primary'
                                 variant='contained'
                                 onClick={handleManualSearch}
@@ -2898,16 +3076,25 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                 const recipientSummaries = buildRecipientSummaries(selectedDeliveryItems, personNameFromAccessList);
                                 const unresolvedHoldRecipientSummaries = recipientSummaries.filter((recipientSummary) => !!recipientSummary.isUnresolvedHold);
                                 const hasUnresolvedHoldRecipients = unresolvedHoldRecipientSummaries.length > 0;
+                                const replyToBodyHeightStyle = selectedIsReplyMessage
+                                    ? { minHeight: '3.6em', maxHeight: '5.4em' }
+                                    : { minHeight: '4.6em', maxHeight: '8.6em' };
+                                const thisMessageBodyHeightStyle = selectedIsReplyMessage
+                                    ? { minHeight: '4.8em', maxHeight: '6.2em' }
+                                    : { minHeight: '7.2em', maxHeight: '10.8em' };
                                 return (
                                     <React.Fragment>
-                                        <Typography style={AVATextStyle({ size: 1.2, bold: true })}>
+                                        <Typography style={{ ...AVATextStyle({ size: 1.2, bold: true }), flexShrink: 0 }}>
                                             {getMessageSubject(selectedMessage)}
                                         </Typography>
                                         {(selectedDeliveryCount > 1) && (
-                                            <Typography variant='body2' color='textSecondary'>
+                                            <Typography variant='body2' color='textSecondary' style={{ flexShrink: 0 }}>
                                                 {`${selectedDeliveryCount} delivery records in this message thread`}
                                             </Typography>
                                         )}
+                                        <Typography variant='body2' style={{ ...AVATextStyle({ size: 0.95, bold: true }), flexShrink: 0 }}>
+                                            {'Message'}
+                                        </Typography>
                                         {selectedIsReplyMessage && (
                                             <Box className={classes.messageBox}>
                                                 <Typography className={classes.messageBoxLabel}>
@@ -2925,7 +3112,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                                 {!replyToContext.loading && !!replyToContext.message && (
                                                     <Typography
                                                         className={classes.messageBoxBody}
-                                                        style={{ minHeight: '4.6em', maxHeight: '8.6em' }}
+                                                        style={replyToBodyHeightStyle}
                                                     >
                                                         {getMessageText(replyToContext.message, {
                                                             signatureKey: getSignatureKeyForPerson(replyToContext.message.sent_from)
@@ -2936,14 +3123,14 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                         )}
                                         <Box className={classes.messageBox}>
                                             <Typography className={classes.messageBoxLabel}>
-                                                {'Message'}
+                                                {'This Message'}
                                             </Typography>
                                             <Typography className={classes.messageBoxMeta}>
                                                 {`${formatMessageDate(normalizeDateValue(selectedMessage))} • ${personNameFromAccessList(selectedMessage.sent_from || 'Unknown sender')} → ${selectedReceiverText}`}
                                             </Typography>
                                             <Typography
                                                 className={classes.messageBoxBody}
-                                                style={{ minHeight: '7.2em', maxHeight: '7.2em' }}
+                                                style={thisMessageBodyHeightStyle}
                                             >
                                                 {getMessageText(selectedMessage, {
                                                     signatureKey: getSignatureKeyForPerson(selectedMessage?.sent_from)
@@ -2951,7 +3138,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                             </Typography>
                                         </Box>
 
-                                        <Typography variant='body2' style={AVATextStyle({ size: 0.95, bold: true })}>
+                                        <Typography variant='body2' style={{ ...AVATextStyle({ size: 0.95, bold: true }), flexShrink: 0 }}>
                                             {'Recipients'}
                                         </Typography>
                                         {hasUnresolvedHoldRecipients && (
@@ -3156,6 +3343,6 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                     options={forwardMessageOptions}
                 />
             )}
-            </Dialog>
+        </Dialog>
     );
 }

@@ -177,6 +177,7 @@ export async function accountAccess(person_id, pClient_id) {
             preferred_method: this_person.preferred_method,
             id: this_person.person_id,
             access: accessLevel,
+            signature_key: this_person.signature_key || null
           };
           if (client_id === session.client_id) {
             pRec2Push.directory_option = this_person.directory_option;
