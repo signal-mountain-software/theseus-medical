@@ -427,6 +427,20 @@ function normalizeStatus(message) {
     ).toString().toLowerCase();
 }
 
+function getComplaintHistoryEntry(message) {
+    const historyList = [message?.history].flat().filter(Boolean);
+    return historyList.find((historyEntry) => {
+        const historyStatus = String(
+            historyEntry?.status
+            || historyEntry?.delivery_status
+            || historyEntry?.send_status
+            || historyEntry?.result
+            || ''
+        ).trim().toLowerCase();
+        return historyStatus === 'complaint';
+    }) || null;
+}
+
 function normalizeMethod(message) {
     const methodValue = String(
         message?.deliver_method
@@ -578,6 +592,23 @@ function makeResultDisplay(message, options = {}) {
         resultText = `Held${heldRuleUsedText ? ` by rule ${heldRuleUsedText} ` : ''}`;
         resultText += makeDate(message.created_time).oaDate;
     }
+    else if (normalizeStatus(message) === 'complaint') {
+        const complaintHistoryEntry = getComplaintHistoryEntry(message);
+        const complaintCarrier = String(complaintHistoryEntry?.details?.userAgent || '').trim();
+        const complaintTimestamp = (
+            complaintHistoryEntry?.posted_time
+            || complaintHistoryEntry?.created_time
+            || complaintHistoryEntry?.timestamp
+            || message?.created_time
+            || null
+        );
+        const complaintDateText = complaintTimestamp ? ` ${makeDate(complaintTimestamp).oaDate}` : '';
+        const complaintCarrierText = complaintCarrier ? ` - carrier: ${complaintCarrier}` : '';
+        return {
+            text: `reported as Spam${complaintCarrierText}${complaintDateText}`,
+            replyText: ''
+        };
+    }
     else {
         methodMsg = heldMethodText ? `via ${heldMethodText} - ` : '';
         resultText = `${methodMsg}${defaultStatus === 'Submitted' ? 'Sent' : defaultStatus}`;
@@ -660,6 +691,7 @@ function getResultFlags(message) {
     const resultTextList = resultsList.map(normalizeResultText).filter(Boolean);
     const combinedText = resultTextList.join(' ');
     const isDuplicate = normalizeStatus(message) === 'duplicate';
+    const isSpam = normalizeStatus(message) === 'complaint';
     const resultValueList = resultsList
         .map((resultEntry) => {
             if ((typeof resultEntry === 'string') || (typeof resultEntry === 'number')) {
@@ -699,6 +731,7 @@ function getResultFlags(message) {
 
     return {
         duplicate: isDuplicate,
+        spam: isSpam,
         machine_answered: machineAnswered,
         person_answered: personAnswered,
         accepted_by_carrier: acceptedByCarrier,
@@ -826,6 +859,7 @@ function getRecipientFlags(message) {
 function getEnabledFlagLabels(derivedFlags = {}) {
     const flagMap = [
         ['duplicate', 'Duplicate'],
+        ['spam', 'Spam'],
         ['machine_answered', 'Machine'],
         ['person_answered', 'Person'],
         ['accepted_by_carrier', 'Carrier OK'],
@@ -855,7 +889,8 @@ function getStatusPillLabel(statusKey) {
         call_not_answered: 'No Answer',
         ava_only: 'AVA Only',
         was_responded_to: 'Responded',
-        has_attachment: 'Attachment'
+        has_attachment: 'Attachment',
+        spam: 'Spam'
     };
     return statusToLabelMap[statusKey] || sentenceCase(statusKey.replace(/_/g, ' '));
 }
@@ -863,6 +898,7 @@ function getStatusPillLabel(statusKey) {
 const STATUS_FILTER_OPTIONS = [
     '*all',
     'duplicate',
+    'spam',
     'machine_answered',
     'person_answered',
     'accepted_by_carrier',
@@ -889,6 +925,7 @@ function messageMatchesStatusKey(message, statusKey) {
         ...(message?.derived_flags || {})
     };
     if (normalizedStatusKey === 'duplicate') { return !!resultFlags.duplicate; }
+    if (normalizedStatusKey === 'spam') { return !!resultFlags.spam; }
     if (normalizedStatusKey === 'machine_answered') { return !!resultFlags.machine_answered; }
     if (normalizedStatusKey === 'person_answered') { return !!resultFlags.person_answered; }
     if (normalizedStatusKey === 'accepted_by_carrier') { return !!resultFlags.accepted_by_carrier; }
@@ -905,7 +942,7 @@ function getFlagPillVariantClass(label, classes) {
     const greenSolidLabels = ['Person', 'Responded', 'Opened'];
     const orangeOutlineLabels = ['Carrier OK', 'Machine', 'AVA Only'];
 
-    if (label === 'Blocked') {
+    if ((label === 'Blocked') || (label === 'Spam')) {
         return classes.flagPillRedSolid;
     }
     if (redOutlineLabels.includes(label)) {
@@ -1320,6 +1357,24 @@ function dedupeReplyTextForDisplay(resultEntries = []) {
     }));
 }
 
+function trimViaAvaOnlyResultEntries(resultEntries = []) {
+    if (!Array.isArray(resultEntries) || (resultEntries.length <= 1)) {
+        return resultEntries;
+    }
+
+    const isViaAvaEntry = (entry) => {
+        const textValue = String(entry?.text || '').trim().toLowerCase();
+        return textValue === 'via ava';
+    };
+
+    const hasNonViaAvaEntry = resultEntries.some((entry) => !isViaAvaEntry(entry));
+    if (!hasNonViaAvaEntry) {
+        return resultEntries;
+    }
+
+    return resultEntries.filter((entry) => !isViaAvaEntry(entry));
+}
+
 function buildRecipientSummaries(deliveryItems = [], resolvePersonName = (id) => id) {
     const recipientMap = new Map();
     const otherPersonByAddress = buildRecipientNameByAddressLookup(deliveryItems, resolvePersonName);
@@ -1352,6 +1407,8 @@ function buildRecipientSummaries(deliveryItems = [], resolvePersonName = (id) =>
                     recipientId: normalizedReceiverId,
                     recipientName: resolvePersonName(normalizedReceiverId) || normalizedReceiverId,
                     flagSet: new Set(),
+                    deliveryCount: 0,
+                    avaOnlyDeliveryCount: 0,
                     resultEntries: [],
                     resultEntryKeySet: new Set(),
                     compositeKeySet: new Set(),
@@ -1372,7 +1429,9 @@ function buildRecipientSummaries(deliveryItems = [], resolvePersonName = (id) =>
             const replyText = resultDisplay.replyText;
 
             const compositeKey = String(deliveryItem?.composite_key || '').trim();
-            const resultEntryKey = compositeKey || `${deliveryTime}::${resultText}::${replyText}`;
+            const resultEntryKey = compositeKey
+                ? `${compositeKey}::${resultText}::${replyText}`
+                : `${deliveryTime}::${resultText}::${replyText}`;
             if (resultText && !recipientSummary.resultEntryKeySet.has(resultEntryKey)) {
                 recipientSummary.resultEntries.push({
                     text: resultText,
@@ -1388,6 +1447,11 @@ function buildRecipientSummaries(deliveryItems = [], resolvePersonName = (id) =>
             }
 
             const isHeldDelivery = isDeliveryStillHeld(deliveryItem);
+            recipientSummary.deliveryCount += 1;
+            if (!!deliveryFlags.ava_only) {
+                recipientSummary.avaOnlyDeliveryCount += 1;
+            }
+
             if (isHeldDelivery) {
                 recipientSummary.hasHeldDelivery = true;
                 if (compositeKey) {
@@ -1415,13 +1479,21 @@ function buildRecipientSummaries(deliveryItems = [], resolvePersonName = (id) =>
                 .slice()
                 .sort((a, b) => (b.deliveryTime || 0) - (a.deliveryTime || 0));
 
-            const resultDisplayList = dedupeReplyTextForDisplay(sortedResultEntries);
+            const resultDisplayList = trimViaAvaOnlyResultEntries(
+                dedupeReplyTextForDisplay(sortedResultEntries)
+            );
+
+            const recipientFlagSet = new Set(recipientSummary.flagSet);
+            const hasOnlySingleAvaDelivery = (recipientSummary.deliveryCount === 1) && (recipientSummary.avaOnlyDeliveryCount === 1);
+            if (!hasOnlySingleAvaDelivery) {
+                recipientFlagSet.delete('AVA Only');
+            }
 
             return {
                 resultDisplayList,
                 recipientId: recipientSummary.recipientId,
                 recipientName: recipientSummary.recipientName,
-                flagLabels: Array.from(recipientSummary.flagSet).sort(),
+                flagLabels: Array.from(recipientFlagSet).sort(),
                 resultTextList: sortedResultEntries
                     .map((entry) => entry.text)
                     .filter(Boolean),
@@ -2576,6 +2648,32 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
 
             const groupedMessages = Array.from(groupedMap.values());
 
+            groupedMessages.forEach((groupedMessage) => {
+                const deliveryItems = Array.isArray(groupedMessage.delivery_items)
+                    ? groupedMessage.delivery_items
+                    : [];
+
+                if (deliveryItems.length !== 1) {
+                    groupedMessage.derived_flags = {
+                        ...(groupedMessage.derived_flags || {}),
+                        ava_only: false
+                    };
+                    return;
+                }
+
+                const onlyDelivery = deliveryItems[0] || null;
+                const onlyDeliveryFlags = {
+                    ...getResultFlags(onlyDelivery),
+                    ...getRecipientFlags(onlyDelivery),
+                    ...(onlyDelivery?.derived_flags || {})
+                };
+
+                groupedMessage.derived_flags = {
+                    ...(groupedMessage.derived_flags || {}),
+                    ava_only: !!onlyDeliveryFlags.ava_only
+                };
+            });
+
             groupedMessages.sort((a, b) => {
                 const aValue = normalizeDateValue(a);
                 const bValue = normalizeDateValue(b);
@@ -2847,7 +2945,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                             {statusPillCounts[statusKey] || 0}
                                         </Typography>
                                         <Button
-                                            variant='outlined'
+                                            variant={pillLabel === 'Spam' ? 'contained' : 'outlined'}
                                             size='small'
                                             disableRipple
                                             disableFocusRipple
