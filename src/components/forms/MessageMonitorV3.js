@@ -1266,22 +1266,6 @@ function isReplyMessageFromDeliveries(deliveryItems = []) {
     });
 }
 
-function getThreadMessageCutoffKey(message, deliveryItems = []) {
-    const messageIdentityKey = String(message?.message_identity_key || '').trim();
-    if (messageIdentityKey) {
-        return messageIdentityKey;
-    }
-
-    for (const deliveryItem of deliveryItems) {
-        const candidateKey = getMessageIdentityKey(deliveryItem);
-        if (candidateKey) {
-            return candidateKey;
-        }
-    }
-
-    return getMessageIdentityKey(message);
-}
-
 function getUniqueReceiversFromDeliveries(deliveryItems = []) {
     const receiverSet = new Set();
     for (const delivery of deliveryItems) {
@@ -1776,9 +1760,22 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                 || ''
             ).trim();
             const senderId = String(selectedMessage?.sent_from || '').trim();
-            const cutoffCompositeKey = String(getThreadMessageCutoffKey(selectedMessage, selectedDeliveryItems) || '').trim();
+            const targetDeliverTo = String(
+                selectedMessage?.deliver_to
+                || selectedDeliveryItems.find((deliveryItem) => !!deliveryItem?.deliver_to)?.deliver_to
+                || ''
+            ).trim().toLowerCase();
+            const targetMessageDateValue = normalizeDateValue(selectedMessage);
+            const targetMessageTime = (() => {
+                const asNumber = Number(targetMessageDateValue);
+                if (!Number.isNaN(asNumber) && (asNumber > 0)) {
+                    return asNumber;
+                }
+                const asDate = new Date(targetMessageDateValue || 0).getTime();
+                return Number.isNaN(asDate) ? 0 : asDate;
+            })();
 
-            if (!threadId || !senderId || !cutoffCompositeKey) {
+            if (!threadId || !senderId || !targetDeliverTo || !targetMessageTime) {
                 setReplyToContext({
                     loading: false,
                     errorText: 'Missing thread context for reply lookup.',
@@ -1790,39 +1787,74 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
             setReplyToContext({ loading: true, errorText: '', message: null });
 
             try {
-                const senderIdLower = senderId.toLowerCase();
+                const replyLookupPageSize = 25;
+                const replyLookupMaxPages = 20;
+                const selectedIdentityKey = getMessageIdentityKey(selectedMessage);
                 let foundReplyToMessage = null;
                 let lastKey;
                 let pageGuard = 0;
+                const fetchedCandidates = [];
 
                 do {
                     const response = await dbClient
                         .query({
                             TableName: 'TheseusMessages',
-                            KeyConditionExpression: 'thread_id = :threadId AND composite_key < :cutoffKey',
+                            KeyConditionExpression: 'thread_id = :threadId',
                             FilterExpression: 'record_type = :recordType AND deliver_to = :deliverTo',
                             ExpressionAttributeValues: {
                                 ':threadId': threadId,
-                                ':cutoffKey': cutoffCompositeKey,
                                 ':recordType': 'delivery',
                                 ':deliverTo': senderId
                             },
                             ExclusiveStartKey: lastKey,
                             ScanIndexForward: false,
-                            Limit: 25
+                            Limit: replyLookupPageSize
                         })
                         .promise();
 
                     const candidateItems = Array.isArray(response?.Items) ? response.Items : [];
-                    foundReplyToMessage = candidateItems.find((candidate) => {
-                        const receiverList = normalizeReceivers(candidate)
-                            .map((receiverId) => String(receiverId || '').trim().toLowerCase());
-                        return receiverList.includes(senderIdLower);
-                    }) || null;
+                    fetchedCandidates.push(...candidateItems);
 
                     lastKey = response?.LastEvaluatedKey;
                     pageGuard++;
-                } while (!foundReplyToMessage && lastKey && (pageGuard < 5));
+                } while (!foundReplyToMessage && lastKey && (pageGuard < replyLookupMaxPages));
+
+                const sortedCandidates = fetchedCandidates
+                    .map((candidate) => {
+                        const candidateDateValue = normalizeDateValue(candidate);
+                        const candidateTime = (() => {
+                            const asNumber = Number(candidateDateValue);
+                            if (!Number.isNaN(asNumber) && (asNumber > 0)) {
+                                return asNumber;
+                            }
+                            const asDate = new Date(candidateDateValue || 0).getTime();
+                            return Number.isNaN(asDate) ? 0 : asDate;
+                        })();
+
+                        return {
+                            candidate,
+                            candidateTime,
+                            candidateIdentityKey: getMessageIdentityKey(candidate)
+                        };
+                    })
+                    .filter(({ candidateTime }) => candidateTime > 0)
+                    .sort((a, b) => b.candidateTime - a.candidateTime);
+
+                foundReplyToMessage = (
+                    sortedCandidates.find(({ candidate, candidateTime, candidateIdentityKey }) => {
+                        if (candidateTime >= targetMessageTime) {
+                            return false;
+                        }
+                        if (selectedIdentityKey && (candidateIdentityKey === selectedIdentityKey)) {
+                            return false;
+                        }
+                        const candidateSender = String(candidate?.sent_from || '').trim().toLowerCase();
+                        if (candidateSender !== targetDeliverTo) {
+                            return false;
+                        }
+                        return true;
+                    })?.candidate
+                ) || null;
 
                 if (cancelled) {
                     return;
