@@ -620,9 +620,9 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                                     severity: 'info',
                                                     title: "Document Info",
                                                     message: <div>
-                                                      Document ID: <strong>{myDocs.completedDocs
+                                                      Document ID: <strong>{(myDocs.completedDocs && myDocs.completedDocs.length > 0)
                                                         ? myDocs.completedDocs[0].document_id
-                                                        : (myDocs.wipDocs ? myDocs.wipDocs[0].document_id : 'Not started')}</strong><br />
+                                                        : (myDocs.wipDocs && myDocs.wipDocs.length > 0 ? myDocs.wipDocs[0].document_id : 'Not started')}</strong><br />
                                                       Form ID: <strong>{this_formID}</strong><br />
                                                     </div>
                                                   }
@@ -636,7 +636,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                             >
                                               {myDocs.form_name}
                                             </Typography>
-                                            {(myDocs.dueDate || (myDocs.wipDocs.length > 0)) &&
+                                            {(myDocs.dueDate || (myDocs.wipDocs && myDocs.wipDocs.length > 0)) &&
                                               <Typography
                                                 key={`duedate-col_form${form_index}t1`}
                                                 style={AVATextStyle({
