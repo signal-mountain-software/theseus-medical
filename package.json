@@ -1,6 +1,6 @@
 {
   "name": "ava",
-  "version": "26.03.06",
+  "version": "26.03.09",
   "private": true,
   "scripts": {
     "start": "react-scripts --openssl-legacy-provider start",
