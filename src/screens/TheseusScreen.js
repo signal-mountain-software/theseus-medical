@@ -103,7 +103,7 @@ export default () => {
 
   return (
     <Box>
-      {(state.session.client_style && state.session.client_style.ui_v3 && ava_env !== 'D')
+      {(state.session.client_style && state.session.client_style.ui_v3 && (ava_env !== 'D' || (state.session.client_style && state.session.client_style.ui_v3Dev)))
         ? <MainMenuV3 />
         :
         ((state.session.client_style && state.session.client_style.ui_tiles)
