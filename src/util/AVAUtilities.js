@@ -872,6 +872,26 @@ export async function deepResolve(pKey, pSession, options = {}) {
   return resolveVariables(pKey, pSession, options);
 }
 
+/**
+ * Resolve one or more DataDictionary fields for a person.
+ *
+ * @param {string} client_id
+ * @param {string} person_id
+ * @param {string[]} field_ids
+ * @param {Object} [options]
+ * @param {Object<string, Object>} [options.dictionaryCache] Optional mutable cache keyed as `${client_id}::${field_id}`.
+ * @param {Object<string, any>} [options.locators] Optional locator overrides by locator name (highest priority).
+ * @param {any} [options.person_id] Optional direct locator override when dictionary locator is `person_id`.
+ * @param {any} [options.client_id] Optional direct locator override when dictionary locator is `client_id`.
+ * @param {boolean} [options.address_lookup=true] Set false to disable external address lookup for `address` fields.
+ * @param {boolean} [options.resolve_address=true] Alias/companion switch for address lookup; false disables lookup.
+ * @param {boolean} [options.persist_resolved_address=true] Set false to skip writing resolved address back to `People`.
+ * @param {string} [options.address_full_format='us_standard'] Address formatting mode (`us_standard` or `legacy`).
+ * @param {string} [options.address_lookup_email] Optional email param sent to address lookup provider.
+ * @param {string} [options.address_lookup_country_code] Optional country code filter for address lookup.
+ * @param {number} [options.address_lookup_timeout_ms=4000] Address lookup timeout in milliseconds.
+ * @returns {Promise<Array<{raw:any, formatted:any, details:any, meta:{field_id:string|null, client_id?:string, source?:string|null, locator?:string|null, path_used?:string|null, status:string}}>>}
+ */
 export async function resolveData(client_id, person_id, field_ids = [], options = {}) {
   if (!client_id || !person_id || !Array.isArray(field_ids)) {
     return [];

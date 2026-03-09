@@ -167,6 +167,20 @@ export async function getExportFieldPickerData({ sessionId, clientId, exportScop
   };
 }
 
+/**
+ * Resolve selected DataDictionary fields for a set of people for export.
+ *
+ * Notes:
+ * - Uses a shared in-memory `dictionaryCache` across all people in this run.
+ * - Disables address lookup/resolve for speed and to avoid side effects during export.
+ *
+ * @param {Object} params
+ * @param {string} params.clientId
+ * @param {string[]} [params.personIds=[]]
+ * @param {string[]} [params.selectedFieldKeys=[]]
+ * @param {(progress:{completedCount:number,totalCount:number}) => void} [params.onProgress=null]
+ * @returns {Promise<Object<string, any[]>>} Map of `person_id` to resolved/formatted field value list.
+ */
 export async function resolveSelectedFieldValuesForPeople({
   clientId,
   personIds = [],
