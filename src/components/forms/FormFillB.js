@@ -1883,91 +1883,101 @@ export default ({ request = {}, onClose }) => {
     //   prop
     //   prompt
     //   text - an array of options, each can independently go true or false
-    const isRequiredField = isFieldRequired(reactData.fields[props.prop]);
+    const fieldRec = reactData.fields[props.prop];
+    if (!fieldRec) {
+      return null;
+    }
+
+    const isRequiredField = isFieldRequired(fieldRec);
+    const isDisabled = fieldRec.options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked;
     let optionList = normalizeSelectionList(props.text)
       .map(this_option => ({ value: this_option.value, label: this_option.display }))
       .sort((a, b) => `${a.label}`.localeCompare(`${b.label}`));
-    const promptHTML = normalizePromptMarkup(reconcilePrompt({
-      rawValue: reactData.fields[props.prop].prompt?.value,
+    const promptText = toInlineFieldText(reconcilePrompt({
+      rawValue: fieldRec.prompt?.value,
       this_field: props.prop,
       includeRequiredMarker: false
     }));
+    const helperText = toInlineFieldText(fieldRec.prompt?.helper || '');
+    const hasLongPrompt = isLongPromptField(props.prop);
+    const promptWidth = fieldRec.prompt?.width;
+    const containerStyle = {
+      width: hasLongPrompt ? '70vw' : `${promptWidth || 320}px`,
+      minWidth: `${MIN_FIELD_WIDTH_PX}px`,
+      maxWidth: '80vw',
+      margin: '8px 8px 8px 8px'
+    };
+    const selectionMax = fieldRec?.selectionObj?.max;
+    const isMulti = Number(selectionMax) > 1;
+    const selectedValueList = [fieldRec?.value].flat().filter(v => !isEmpty(v));
+
     return (
-      <Box
-        key={'topBox'} flexGrow={1}
-        display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
-      >
-        <Typography className={`${classes.formControlTitle} ${isRequiredField ? classes.requiredLabel : ''}`}>
-          <span dangerouslySetInnerHTML={{ __html: promptHTML }} />
-          {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
-        </Typography>
-        <React.Fragment>
-          <Box
-            key={`selectBox_filterdrop`}
-            display='flex' flexGrow={1} flexDirection='column'
-            pt={1} pb={1} marginLeft={'8px'} width={'60%'} minWidth={`${MIN_FIELD_WIDTH_PX}px`}
-          >
-            <React.Fragment>
-              <Select
-                options={optionList}
-                searchBy={'label'}
-                style={{
-                  fontSize: '0.8rem',
-                  marginLeft: -5,
-                  marginBottom: -4,
-                  marginTop: 1,
-                  borderWidth: 3
-                }}
-                dropdownHandle={true}
-                variant={'standard'}
-                disabled={reactData.fields[props.prop].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
-                dropdownPosition={'auto'}
-                values={(reactData.fields[props.prop]?.value && reactData.fields[props.prop]?.value.length > 0)
-                  ? (() => {
-                    let currentValue = Array.isArray(reactData.fields[props.prop]?.value) ? reactData.fields[props.prop]?.value[0] : reactData.fields[props.prop]?.value || '';
-                    if (currentValue) {
-                      return optionList.filter(option => option.value === currentValue);
-                    }
-                    return [];
-                  })()
-                  : []
+      <Box flexDirection='column' key={`DropDown__${props.prop}`} className={classes.formControlCheckGroup}>
+        <Box
+          key={`DropDownBox__${props.prop}`}
+          className={`${classes.selectionFieldBox} ${isRequiredField ? classes.requiredOutline : ''}`}
+          style={containerStyle}
+        >
+          <Typography className={`${classes.selectionFieldLabel} ${isRequiredField ? classes.requiredLabel : ''}`}>
+            {promptText || props.prop}
+            {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
+          </Typography>
+          {!!helperText && (
+            <Typography className={classes.selectionFieldHelper}>{helperText}</Typography>
+          )}
+          <Box display='flex' flexDirection='column' marginTop={0.5}>
+            <Select
+              options={optionList}
+              searchBy={'label'}
+              style={{
+                fontSize: '0.8rem',
+                minHeight: '40px',
+                borderRadius: '4px',
+                borderColor: isRequiredField ? '#2e7d32' : undefined
+              }}
+              dropdownHandle={true}
+              variant={'standard'}
+              disabled={isDisabled}
+              dropdownPosition={'auto'}
+              values={(selectedValueList.length > 0)
+                ? optionList.filter(option => selectedValueList.includes(option.value) || selectedValueList.includes(option.label))
+                : []
+              }
+              clearable={true}
+              clearOnSelect={false}
+              placeholder={helperText || 'Select an option'}
+              clearOnBlur={false}
+              key={`selectBox_selectdrop_${props.prop}`}
+              searchable={true}
+              multi={isMulti}
+              closeOnClickInput={isMulti}
+              closeOnSelect={isMulti}
+              create={true}
+              keepSelectedInList={true}
+              noDataLabel={''}
+              onInputChange={async (values) => {
+                if (!values || values.length === 0) {
+                  return;
                 }
-                clearable={true}
-                clearOnSelect={false}
-                placeholder={'Please select your preferred language'}
-                clearOnBlur={false}
-                key={`selectBox_selectdrop`}
-                searchable={true}
-                multi={(reactData.fields[props.prop]?.selectionObj?.max > 1) || false}
-                closeOnClickInput={(reactData.fields[props.prop]?.selectionObj?.max > 1) || false}
-                closeOnSelect={(reactData.fields[props.prop]?.selectionObj?.max > 1) || false}
-                create={true}
-                keepSelectedInList={true}
-                noDataLabel={''}
-                onInputChange={async (values) => {
-                  if (!values || values.length === 0) {
-                    return;
-                  }
-                  await handleMakeSelection({
-                    clickText: values[0].value,
-                    prop: props.prop,
-                    singleValue: (reactData.fields[props.prop]?.selectionObj?.max > 1) ? false : true
-                  });
-                }}
-                onChange={async (values) => {
-                  if (!values || values.length === 0) {
-                    return;
-                  }
-                  await handleMakeSelection({
-                    clickText: values[0].value,
-                    prop: props.prop,
-                    singleValue: (reactData.fields[props.prop]?.selectionObj?.max > 1) ? false : true
-                  });
-                }}
-              />
-            </React.Fragment>
+                await handleMakeSelection({
+                  clickText: values[0].value,
+                  prop: props.prop,
+                  singleValue: !isMulti
+                });
+              }}
+              onChange={async (values) => {
+                if (!values || values.length === 0) {
+                  return;
+                }
+                await handleMakeSelection({
+                  clickText: values[0].value,
+                  prop: props.prop,
+                  singleValue: !isMulti
+                });
+              }}
+            />
           </Box>
-        </React.Fragment>
+        </Box>
       </Box>
     );
   };
