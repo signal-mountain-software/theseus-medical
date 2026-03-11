@@ -435,21 +435,43 @@ export default ({ start_at }) => {
 
   /**** NEW V3 CODE ****/
 
+  const getSubjectContextForMenu = () => {
+    const subjectRec = state.patient || state.user || {};
+    const subjectAccountClass = subjectRec?.account_class || '';
+    const subjectGroups = Array.isArray(subjectRec?.groups) ? subjectRec.groups : [];
+    const subjectPersonId = subjectRec?.person_id || state.session?.patient_id || state.session?.person_id;
+
+    return {
+      subjectAccountClass,
+      subjectGroups,
+      subjectPersonId,
+      isSubjectAdmin: ['master', 'admin'].includes(subjectAccountClass),
+      isSubjectSupport: ['master', 'support', 'admin'].includes(subjectAccountClass)
+    };
+  };
+
   const authorizedToMenuItem = (available_to) => {
+    const {
+      isSubjectAdmin,
+      isSubjectSupport,
+      subjectGroups,
+      subjectPersonId
+    } = getSubjectContextForMenu();
+
     if (!available_to || available_to.length === 0) { return true; }
     for (let this_rule of available_to) {
       switch (this_rule.split(':')[0]) {
         case '*all': return true;
-        case '*admin': { if (reactData.is_admin) { return true; } break; }
-        case '*support': { if (reactData.is_support) { return true; } break; }
+        case '*admin': { if (isSubjectAdmin) { return true; } break; }
+        case '*support': { if (isSubjectSupport) { return true; } break; }
         case 'group': {
           const check_group = this_rule.split(':')[1];
           if ((state.groups?.belongsTo
             && state.groups.belongsTo.hasOwnProperty(check_group)
             && state.groups.belongsTo[check_group].belongs_to === true
-          ) || state.patient.groups.includes(check_group)) { return true; } break;
+          ) || subjectGroups.includes(check_group)) { return true; } break;
         }
-        case 'person': { if (state.session?.person_id === this_rule.split(':')[1]) { return true; } break; }
+        case 'person': { if (subjectPersonId === this_rule.split(':')[1]) { return true; } break; }
         default: { }
       }
     }
