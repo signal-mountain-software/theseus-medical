@@ -860,6 +860,7 @@ function getEnabledFlagLabels(derivedFlags = {}) {
     const flagMap = [
         ['duplicate', 'Duplicate'],
         ['spam', 'Spam'],
+        ['auto_cc', 'Auto CC'],
         ['machine_answered', 'Machine'],
         ['person_answered', 'Person'],
         ['accepted_by_carrier', 'Carrier OK'],
@@ -884,6 +885,7 @@ function getStatusPillLabel(statusKey) {
         duplicate: 'Duplicate',
         machine_answered: 'Machine',
         person_answered: 'Person',
+        auto_cc: 'Auto CC',
         accepted_by_carrier: 'Carrier OK',
         email_opened: 'Opened',
         call_not_answered: 'No Answer',
@@ -899,6 +901,7 @@ const STATUS_FILTER_OPTIONS = [
     '*all',
     'duplicate',
     'spam',
+    'auto_cc',
     'machine_answered',
     'person_answered',
     'accepted_by_carrier',
@@ -926,6 +929,7 @@ function messageMatchesStatusKey(message, statusKey) {
     };
     if (normalizedStatusKey === 'duplicate') { return !!resultFlags.duplicate; }
     if (normalizedStatusKey === 'spam') { return !!resultFlags.spam; }
+    if (normalizedStatusKey === 'auto_cc') { return !!resultFlags.auto_cc; }
     if (normalizedStatusKey === 'machine_answered') { return !!resultFlags.machine_answered; }
     if (normalizedStatusKey === 'person_answered') { return !!resultFlags.person_answered; }
     if (normalizedStatusKey === 'accepted_by_carrier') { return !!resultFlags.accepted_by_carrier; }
@@ -940,7 +944,7 @@ function messageMatchesStatusKey(message, statusKey) {
 function getFlagPillVariantClass(label, classes) {
     const redOutlineLabels = ['Hold', 'Replaced', 'Duplicate', 'Attachment', 'No Answer'];
     const greenSolidLabels = ['Person', 'Responded', 'Opened'];
-    const orangeOutlineLabels = ['Carrier OK', 'Machine', 'AVA Only'];
+    const orangeOutlineLabels = ['Carrier OK', 'Machine', 'AVA Only', 'Auto CC'];
 
     if ((label === 'Blocked') || (label === 'Spam')) {
         return classes.flagPillRedSolid;
@@ -1565,6 +1569,9 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
     const [holdActionBusy, setHoldActionBusy] = React.useState(false);
     const [forwardMessageOptions, setForwardMessageOptions] = React.useState(null);
     const [releaseConfirmContext, setReleaseConfirmContext] = React.useState(null);
+    const [autoCcForwardNameByRecipientId, setAutoCcForwardNameByRecipientId] = React.useState({});
+    const autoCcForwardNameByRecipientIdRef = React.useRef({});
+    const autoCcLookupAttemptedRef = React.useRef(new Set());
     const [senderQuickSearchData, setSenderQuickSearchData] = React.useState({
         selections: [],
         accessList,
@@ -1735,6 +1742,138 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
             cancelled = true;
         };
     }, [selectedMessage, replyToContext, getSignatureKeyFromAccessList, signatureKeyByPersonId]);
+
+    React.useEffect(() => {
+        autoCcForwardNameByRecipientIdRef.current = autoCcForwardNameByRecipientId;
+    }, [autoCcForwardNameByRecipientId]);
+
+    React.useEffect(() => {
+        let cancelled = false;
+
+        const loadAutoCcForwardNames = async () => {
+            if (!selectedMessage || !currentClientId) {
+                setAutoCcForwardNameByRecipientId((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+                autoCcLookupAttemptedRef.current = new Set();
+                return;
+            }
+
+            const selectedDeliveryItems = Array.isArray(selectedMessage.delivery_items)
+                ? selectedMessage.delivery_items
+                : [selectedMessage];
+            const recipientSummaries = buildRecipientSummaries(selectedDeliveryItems, personNameFromAccessList);
+            const autoCcRecipientIds = recipientSummaries
+                .filter((recipientSummary) => {
+                    return Array.isArray(recipientSummary?.flagLabels) && recipientSummary.flagLabels.includes('Auto CC');
+                })
+                .map((recipientSummary) => String(recipientSummary?.recipientId || '').trim())
+                .filter((recipientId) => recipientId !== '');
+
+            if (autoCcRecipientIds.length === 0) {
+                setAutoCcForwardNameByRecipientId((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+                autoCcLookupAttemptedRef.current = new Set();
+                return;
+            }
+
+            const uniqueRecipientIds = Array.from(new Set(autoCcRecipientIds));
+
+            const idsToLookup = uniqueRecipientIds.filter((recipientId) => {
+                const key = recipientId.toLowerCase();
+                if (autoCcForwardNameByRecipientIdRef.current[key] !== undefined) {
+                    return false;
+                }
+                if (autoCcLookupAttemptedRef.current.has(key)) {
+                    return false;
+                }
+                return true;
+            });
+
+            if (idsToLookup.length === 0) {
+                return;
+            }
+
+            idsToLookup.forEach((recipientId) => autoCcLookupAttemptedRef.current.add(recipientId.toLowerCase()));
+
+            const resolvedEntries = await Promise.all(idsToLookup.map(async (recipientId) => {
+                try {
+                    const recipientKey = recipientId.toLowerCase();
+                    let receiverPerson = null;
+
+                    const personResponse = await dbClient
+                        .get({
+                            TableName: 'People',
+                            Key: { person_id: recipientId }
+                        })
+                        .promise();
+
+                    if (personResponse?.Item) {
+                        receiverPerson = personResponse.Item;
+                    }
+                    else {
+                        receiverPerson = accessListByPersonId.get(recipientKey) || null;
+                    }
+
+                    const familyGroupsFromPerson = Array.isArray(receiverPerson?.family_groups)
+                        ? receiverPerson.family_groups
+                            .map((familyGroupId) => String(familyGroupId || '').trim())
+                            .filter(Boolean)
+                        : [];
+                    const familyGroupFromPerson = String(receiverPerson?.family_group || '').trim();
+                    const familyId = familyGroupsFromPerson[0] || familyGroupFromPerson;
+
+                    if (!familyId) {
+                        return { recipientKey, forwardName: '' };
+                    }
+
+                    const familyGroupResponse = await dbClient
+                        .get({
+                            TableName: 'FamilyGroups',
+                            Key: {
+                                client_id: currentClientId,
+                                composite_key: familyId
+                            }
+                        })
+                        .promise();
+
+                    const primaryContactId = String(familyGroupResponse?.Item?.primary_contact?.id || '').trim();
+                    if (!primaryContactId) {
+                        return { recipientKey, forwardName: '' };
+                    }
+
+                    const primaryContactNameFromAccessList = String(personNameFromAccessList(primaryContactId) || '').trim();
+                    const primaryContactName = (
+                        primaryContactNameFromAccessList
+                        && (primaryContactNameFromAccessList.toLowerCase() !== primaryContactId.toLowerCase())
+                    )
+                        ? primaryContactNameFromAccessList
+                        : (String((await makeName(primaryContactId)) || '').trim() || primaryContactId);
+
+                    return { recipientKey, forwardName: primaryContactName };
+                }
+                catch (error) {
+                    console.log('[MessageMonitorV3] Unable to resolve Auto CC family contact', { recipientId, error });
+                    return { recipientKey: recipientId.toLowerCase(), forwardName: '' };
+                }
+            }));
+
+            if (cancelled) {
+                return;
+            }
+
+            setAutoCcForwardNameByRecipientId((prev) => {
+                const next = { ...prev };
+                resolvedEntries.forEach(({ recipientKey, forwardName }) => {
+                    next[recipientKey] = String(forwardName || '').trim();
+                });
+                return next;
+            });
+        };
+
+        loadAutoCcForwardNames();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedMessage, currentClientId, accessListByPersonId, personNameFromAccessList]);
 
     React.useEffect(() => {
         let cancelled = false;
@@ -2641,13 +2780,36 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                 return true;
             });
 
-            const withDerivedFlags = filtered.map((message) => ({
-                ...message,
-                derived_flags: {
-                    ...getResultFlags(message),
-                    ...getRecipientFlags(message)
-                }
-            }));
+            const withDerivedFlags = filtered.map((message) => {
+                const receiverIds = normalizeReceivers(message)
+                    .map((receiverId) => String(receiverId || '').trim().toLowerCase())
+                    .filter(Boolean);
+
+                const hasAutoCcReceiver = receiverIds.some((receiverId) => {
+                    const receiverPerson = accessListByPersonId.get(receiverId);
+                    if (!receiverPerson) {
+                        return false;
+                    }
+
+                    const preferredMethod = String(receiverPerson?.preferred_method || '').trim().toLowerCase();
+                    const preferredMethods = Array.isArray(receiverPerson?.preferred_methods)
+                        ? receiverPerson.preferred_methods
+                            .map((methodValue) => String(methodValue || '').trim().toLowerCase())
+                            .filter(Boolean)
+                        : [];
+
+                    return (preferredMethod === 'family_primary') || preferredMethods.includes('family_primary');
+                });
+
+                return {
+                    ...message,
+                    derived_flags: {
+                        ...getResultFlags(message),
+                        ...getRecipientFlags(message),
+                        auto_cc: hasAutoCcReceiver
+                    }
+                };
+            });
 
             const groupedMap = new Map();
             withDerivedFlags.forEach((deliveryMessage) => {
@@ -3289,6 +3451,9 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                         )}
                                         <Box className={classes.recipientScrollArea}>
                                             {recipientSummaries.map((recipientSummary) => {
+                                                const recipientKey = String(recipientSummary.recipientId || '').trim().toLowerCase();
+                                                const hasAutoCcFlag = Array.isArray(recipientSummary?.flagLabels) && recipientSummary.flagLabels.includes('Auto CC');
+                                                const autoCcForwardName = String(autoCcForwardNameByRecipientId[recipientKey] || '').trim();
                                                 return (
                                                     <Box key={`${recipientSummary.recipientId}`} className={classes.recipientRow}>
                                                         <Box className={classes.recipientHeader}>
@@ -3343,6 +3508,15 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                                                         )}
                                                                     </React.Fragment>
                                                                 ))}
+                                                                {hasAutoCcFlag && !!autoCcForwardName && (
+                                                                    <Typography
+                                                                        variant='body2'
+                                                                        color='textSecondary'
+                                                                        className={classes.recipientResultLine}
+                                                                    >
+                                                                        {`Per preferences, also sent to ${autoCcForwardName}`}
+                                                                    </Typography>
+                                                                )}
                                                             </Box>
                                                         </Box>
                                                         <Box className={classes.recipientFooterRow}>
