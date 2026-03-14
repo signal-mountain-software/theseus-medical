@@ -1342,6 +1342,16 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
   const handleSaveTap = async ({ finish = false }) => {
     await flushActiveInput();
     if (!reactData.OKtoSave && isEmpty(reactData.errorList)) {
+      if (finish) {
+        onExit({
+          saveCompleted: reactData.saveCompleted,
+          changesMade: reactData.changesMade,
+          directory_option: reactData.current.peopleRec.directory_option || false,
+          newID: reactData.current.peopleRec.person_id,
+          newName: (`${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`).trim()
+        });
+        return true;
+      }
       return false;
     }
     const result = await saveChanges();
