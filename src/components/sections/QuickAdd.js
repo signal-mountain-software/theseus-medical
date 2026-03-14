@@ -68,6 +68,7 @@ import useSession from '../../hooks/useSession';
 import { useCookies } from 'react-cookie';
 
 import { deepCopy, titleCase, getDb, putDb, isEmpty, uuid, recordExists, dbClient } from '../../util/AVAUtilities';
+import { getGroupAccess } from '../../util/AVAGroups';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import { sendMessages } from '../../util/AVAMessages';
@@ -138,7 +139,8 @@ export default ({ onClose, options = {} }) => {
     code_send_method: '',
     // Family group fields
     family_id: options?.family_id || null, // If passed in options, use existing family_id
-    existing_family_rec: null // Store existing FamilyGroups record if adding to existing family
+    existing_family_rec: null, // Store existing FamilyGroups record if adding to existing family
+    available_to_groups: []
   });
 
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
@@ -155,6 +157,23 @@ export default ({ onClose, options = {} }) => {
   React.useEffect(() => {
     async function initialize() {
       let reactUpd = {};
+
+      // Build list of groups this patient is allowed to access, using the same group access rules.
+      const patientId = state?.session?.patient_id || state?.session?.person_id || state?.user?.user_id;
+      let availableToGroups = Array.isArray(state?.accessList?.[reactData.client_id]?.groups)
+        ? [...state.accessList[reactData.client_id].groups]
+        : [];
+
+      if (availableToGroups.length === 0 && reactData.client_id && patientId) {
+        const [groupsBelongTo = {}, rejectedGroups = {}] = await getGroupAccess(reactData.client_id, patientId)
+          .catch(() => [{}, {}]);
+
+        availableToGroups = Object.entries(Object.assign({}, groupsBelongTo, rejectedGroups))
+          .filter(([, value]) => value?.is_accessible)
+          .map(([groupId]) => groupId);
+      }
+
+      reactUpd.available_to_groups = availableToGroups;
 
       // Grab the new_account_form object from session or Customizations table
       let newAccountForm = state.session?.new_account_form || null;
@@ -177,6 +196,24 @@ export default ({ onClose, options = {} }) => {
           if (entry.restrict_to_admin && (!reactData.administrative_account || options.source === 'url_parameter')) {
             return false;
           }
+
+          // If restrict_to_groups exists, it must include at least one group in available_to_groups.
+          if (entry.restrict_to_groups) {
+            const requiredGroups = Array.isArray(entry.restrict_to_groups)
+              ? entry.restrict_to_groups
+              : [entry.restrict_to_groups];
+            const normalizedRequired = requiredGroups
+              .map(groupId => String(groupId || '').trim())
+              .filter(Boolean);
+
+            if (normalizedRequired.length > 0) {
+              const hasMatch = normalizedRequired.some(groupId => availableToGroups.includes(groupId));
+              if (!hasMatch) {
+                return false;
+              }
+            }
+          }
+
           return true;
         });
       }
