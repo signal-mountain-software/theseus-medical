@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { s3, elastictranscoder, makeArray, deepCopy, dbClient } from '../util/AVAUtilities';
+import { s3, mediaconvert, makeArray, deepCopy, dbClient } from '../util/AVAUtilities';
 import useSession from '../hooks/useSession';
 
 import Dialog from '@material-ui/core/Dialog';
@@ -45,6 +45,9 @@ const useStyles = makeStyles(theme => ({
 
 export default ({ onCancel, onLoad, options = {} }) => {
 
+  const defaultBucketName = 'theseus-medical-storage';
+  const bucketPrefix = '125549937716-';
+
   const AVAClass = AVAclasses();
   const classes = useStyles();
   const { state } = useSession();
@@ -76,6 +79,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
   const { enqueueSnackbar } = useSnackbar();
 
   const hiddenFileInput = React.useRef(null);
+  const bucketCacheRef = React.useRef({ clientId: null, bucketName: null });
 
   const handleFileUpload = event => {
     hiddenFileInput.current.click();
@@ -119,15 +123,62 @@ export default ({ onCancel, onLoad, options = {} }) => {
     return { partSize: basePartSize, queueSize: baseQueueSize };
   };
 
+  function buildClientBucketName(clientId) {
+    if (!clientId || typeof clientId !== 'string') {
+      return null;
+    }
+    const normalizedClientId = clientId.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    if (!normalizedClientId) {
+      return null;
+    }
+    return `${bucketPrefix}${normalizedClientId}`;
+  }
+
+  async function resolveBucketName() {
+    const clientId = state?.session?.client_id || '';
+    const cached = bucketCacheRef.current;
+    if (cached.clientId === clientId && cached.bucketName) {
+      return cached.bucketName;
+    }
+
+    const candidateBucket = buildClientBucketName(clientId);
+    if (candidateBucket) {
+      const exists = await s3
+        .headBucket({ Bucket: candidateBucket })
+        .promise()
+        .then(() => true)
+        .catch(() => false);
+      if (exists) {
+        bucketCacheRef.current = { clientId, bucketName: candidateBucket };
+        return candidateBucket;
+      }
+    }
+
+    bucketCacheRef.current = { clientId, bucketName: defaultBucketName };
+    return defaultBucketName;
+  }
+
+  function toPublicS3Url(s3Uri, bucketName) {
+    if (!s3Uri || typeof s3Uri !== 'string') {
+      return s3Uri;
+    }
+    const s3Prefix = `s3://${bucketName}/`;
+    if (s3Uri.startsWith(s3Prefix)) {
+      return s3Uri.replace(s3Prefix, `https://${bucketName}.s3.amazonaws.com/`);
+    }
+    return s3Uri;
+  }
+
   async function handleSaveFile(pTarget) {
     let pType = pTarget.type;
     let now_time = new Date().getTime();
     let newKey = pTarget.name.replace('.', `_${now_time}.`);
+    const targetBucketName = await resolveBucketName();
     const uploadSettings = getUploadSettings(pTarget?.size);
     const upload = s3.upload({
       partSize: uploadSettings.partSize,
       queueSize: uploadSettings.queueSize,
-      Bucket: 'theseus-medical-storage',
+      Bucket: targetBucketName,
       Key: newKey,
       Body: pTarget,
       ACL: 'public-read-write',
@@ -178,6 +229,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
         console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
       });
     if (extension.toLowerCase() === 'mov') {
+      let mediaConvertJobId = null;
       dbClient
         .put({
           TableName: 'ActivityLog',
@@ -195,27 +247,76 @@ export default ({ onCancel, onLoad, options = {} }) => {
         .catch(putError => {
           console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
         });
-      var converterParms = {
-        PipelineId: '1626108726566-cv5z9u',
-        Input: {
-          Key: newKey,
-        },
-        Output: {
-          Key: `${newKey.split('.').slice(0, -1).join('.')}.mp4`,
-          PresetId: '1351620000001-000001',
-        },
+      const roleArn = options.mediaConvertRoleArn || process.env.REACT_APP_MEDIACONVERT_ROLE_ARN;
+      const inputFile = `s3://${targetBucketName}/${newKey}`;
+      const outputDestination = `s3://${targetBucketName}/`;
+      const converterParms = {
+        Role: roleArn,
+        JobTemplate: options.mediaConvertTemplate || 'mov-to-mp4',
+        Settings: {
+          Inputs: [
+            {
+              FileInput: inputFile
+            }
+          ],
+          OutputGroups: [
+            {
+              OutputGroupSettings: {
+                FileGroupSettings: {
+                  Destination: outputDestination
+                }
+              }
+            }
+          ]
+        }
       };
-      let data = await elastictranscoder
-        .createJob(converterParms)
-        .promise()
-        .catch(err => {
-          enqueueSnackbar(`Conversion unsuccessful`, { variant: 'failure', persist: true });
-        });
-      if (false) { console.log(data); }
-      let timeoutMs = 30 * 60 * 1000;
-      let converterResult = await waitForEtsJob(data.Job.Id, { intervalMs: 5000, timeoutMs });
+      let converterResult = { ok: false, status: 'NOT_STARTED' };
+      if (!roleArn) {
+        enqueueSnackbar(`MediaConvert role ARN is not configured`, { variant: 'failure', persist: true });
+        converterResult = { ok: false, status: 'MISSING_ROLE_ARN' };
+      }
+      else {
+        await configureMediaConvertEndpoint();
+        let data = await mediaconvert
+          .createJob(converterParms)
+          .promise()
+          .catch(err => {
+            enqueueSnackbar(`Conversion unsuccessful`, { variant: 'failure', persist: true });
+            return null;
+          });
+        mediaConvertJobId = data?.Job?.Id || null;
+        if (mediaConvertJobId) {
+          dbClient
+            .put({
+              TableName: 'ActivityLog',
+              Item: {
+                timestamp: new Date().getTime(),
+                user_id: state.session.patient_id || 'error-no_patient_id',
+                activity_code: `AVAUploadFile called from ${options.calledFrom || 'not_specified'}`,
+                activity_name: `MediaConvert job created (${mediaConvertJobId}) using template ${converterParms.JobTemplate}`,
+                cookieValues: 'n/a',
+                errorInfo: { inputFile, outputDestination },
+                AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+              }
+            })
+            .promise()
+            .catch(putError => {
+              console.log(`Bad put to ActivityLog - caught error is: ${putError}`);
+            });
+        }
+        if (data?.Job?.Id) {
+          const timeoutMs = 30 * 60 * 1000;
+          converterResult = await waitForMediaConvertJob(data.Job.Id, { intervalMs: 5000, timeoutMs });
+        }
+        else {
+          converterResult = { ok: false, status: 'JOB_NOT_CREATED' };
+        }
+      }
       if (converterResult.ok) {
-        s3Resp.Location = `${s3Resp.Location.split('.').slice(0, -1).join('.')}.mp4`;
+        const convertedPath = converterResult?.job?.OutputGroupDetails?.[0]?.OutputDetails?.[0]?.OutputFilePaths?.[0];
+        s3Resp.Location = convertedPath
+          ? toPublicS3Url(convertedPath, targetBucketName)
+          : `${s3Resp.Location.split('.').slice(0, -1).join('.')}.mp4`;
         extension = 'mp4';
       }
       dbClient
@@ -225,9 +326,14 @@ export default ({ onCancel, onLoad, options = {} }) => {
             timestamp: new Date().getTime(),
             user_id: state.session.patient_id || 'error-no_patient_id',
             activity_code: `AVAUploadFile called from ${options.calledFrom || 'not_specified'}`,
-            activity_name: `Conversion job ended - results: ${converterResult.ok ? 'OK' : converterResult.status}`,
+            activity_name: `Conversion job ended - results: ${converterResult.ok ? 'OK' : converterResult.status}${mediaConvertJobId ? ` (JobId: ${mediaConvertJobId})` : ''}`,
             cookieValues: 'n/a',
-            errorInfo: s3Resp,
+            errorInfo: {
+              uploadResult: s3Resp,
+              mediaConvertStatus: converterResult.status || (converterResult.ok ? 'COMPLETE' : 'UNKNOWN'),
+              mediaConvertJobId,
+              outputPath: converterResult?.job?.OutputGroupDetails?.[0]?.OutputDetails?.[0]?.OutputFilePaths?.[0] || null
+            },
             AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
           }
         })
@@ -246,19 +352,39 @@ export default ({ onCancel, onLoad, options = {} }) => {
     }, true);
     return s3Resp;
 
-    async function waitForEtsJob(jobId, { intervalMs = 5000, timeoutMs = 30 * 60 * 1000 } = {}) {
+    async function configureMediaConvertEndpoint() {
+      const currentEndpoint = mediaconvert?.config?.endpoint?.href || mediaconvert?.config?.endpoint;
+      if (currentEndpoint && `${currentEndpoint}`.includes('mediaconvert')) {
+        return;
+      }
+      const endpointResponse = await mediaconvert
+        .describeEndpoints({ MaxResults: 1 })
+        .promise()
+        .catch(() => null);
+      const endpointUrl = endpointResponse?.Endpoints?.[0]?.Url;
+      if (endpointUrl) {
+        mediaconvert.config.endpoint = endpointUrl;
+      }
+    }
+
+    async function waitForMediaConvertJob(jobId, { intervalMs = 5000, timeoutMs = 30 * 60 * 1000 } = {}) {
       const start = Date.now();
       while (true) {
-        const { Job } = await elastictranscoder
-          .readJob({ Id: jobId })
+        const response = await mediaconvert
+          .getJob({ Id: jobId })
           .promise()
           .catch(err => {
             enqueueSnackbar(`Conversion unsuccessful`, { variant: 'failure', persist: true });
-            return { ok: false, job: Job };
+            return null;
           });
-        const status = Job?.Status; // Submitted | Progressing | Complete | Canceled | Error
-        if (status === "Complete") return { ok: true, job: Job };
-        if (status === "Error" || status === "Canceled") return { ok: false, job: Job, status };
+
+        if (!response?.Job) {
+          return { ok: false, status: 'READ_JOB_FAILED' };
+        }
+        const { Job } = response;
+        const status = Job?.Status; // SUBMITTED | PROGRESSING | COMPLETE | CANCELED | ERROR
+        if (status === 'COMPLETE') return { ok: true, job: Job };
+        if (status === 'ERROR' || status === 'CANCELED') return { ok: false, job: Job, status };
 
         if (Date.now() - start > timeoutMs) throw new Error("Timed out waiting for job");
         await new Promise(r => setTimeout(r, intervalMs)); // backoff if you like

@@ -18,6 +18,7 @@ import AlertTitle from '@material-ui/lab/AlertTitle';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 import Marquee from "react-fast-marquee";
+import ReactPlayer from 'react-player';
 
 import { useCookies } from 'react-cookie';
 import { useIdleTimer } from 'react-idle-timer';
@@ -206,6 +207,9 @@ export default ({ start_at }) => {
     showAddMessageTargetSearch: false,
     uiTilesOverrideLoaded: false,
     uiTilesOverride: null,
+    showLiveLink: false,
+    liveLinkUrl: '',
+    liveLinkTitle: '',
     alert: false,
     testMode: ["T", "L"].includes(window.location.href.split('//')[1].slice(0, 1).toUpperCase())
   });
@@ -785,6 +789,26 @@ export default ({ start_at }) => {
       Object.prototype.hasOwnProperty.call(menuItemRec, 'allow_add') &&
       authorizedToMenuItem(menuItemRec.allow_add)
     );
+  };
+
+  const buildLiveLinkEmbedUrl = (url) => {
+    if (!url || typeof url !== 'string') {
+      return '';
+    }
+
+    const normalizedUrl = url.trim();
+    if (!normalizedUrl) {
+      return '';
+    }
+
+    return normalizedUrl;
+  };
+
+  const canPlayAsMedia = (url) => {
+    if (!url || typeof url !== 'string') {
+      return false;
+    }
+    return ReactPlayer.canPlay(url.trim());
   };
 
   const findMenuCellInHierarchy = (menu_id) => {
@@ -1878,6 +1902,7 @@ export default ({ start_at }) => {
   function renderMenuCardCell(this_cell, level_index, item_index, keyPrefix = 'menuLevel', accessibleDepth = 0) {
     const this_item = this_cell.menuItemRec;
     const menuItemType = this_item.menu_itemType;
+    const normalizedMenuType = this_item.menu_type || menuItemType;
     const isFavoriteCard = this_item.menu_id === '__v3_favorites__';
     const isFavorite = (reactData.v3_favorites || []).includes(this_item.menu_id);
     const canAddFromThisRow = (!useTileUI) && (menuItemType === 'menu') && !!(
@@ -2008,6 +2033,24 @@ export default ({ start_at }) => {
               renderFunctionCall: this_item.call || false
             }, true);
           }
+          else if (normalizedMenuType === 'live_link') {
+            const frameUrl = buildLiveLinkEmbedUrl(this_item.url);
+            if (!frameUrl) {
+              updateReactData({
+                alert: {
+                  severity: 'warning',
+                  title: 'Missing URL',
+                  message: 'This Live Link does not have a URL configured.'
+                }
+              }, true);
+              return;
+            }
+            updateReactData({
+              showLiveLink: true,
+              liveLinkUrl: frameUrl,
+              liveLinkTitle: this_item.description?.short || this_item.menu_id
+            }, true);
+          }
         }}
         draggable={canDragThisCard}
         onDragStart={(event) => {
@@ -2059,7 +2102,7 @@ export default ({ start_at }) => {
               </IconButton>
             </Box>
           }
-          {this_item.icon && menuItemType !== 'link' && !reactData.editFavorites && !hideCardImage &&
+          {this_item.icon && !['link', 'live_link'].includes(normalizedMenuType) && !reactData.editFavorites && !hideCardImage &&
             <CardMedia
               className={classes.media}
               key={`${keyPrefix}cardMedia_card-${level_index}.${item_index}`}
@@ -2110,7 +2153,7 @@ export default ({ start_at }) => {
                     {menuLabel}
                   </Typography>
                 );
-                if (menuItemType === 'link') {
+                if (normalizedMenuType === 'link') {
                   return (
                     <a
                       href={this_item.url + (!this_item.url?.includes('?') ? ('?a=' + new Date().getTime()) : '')}
@@ -2190,7 +2233,7 @@ export default ({ start_at }) => {
       </Card>
     );
 
-    const wrappedCard = ((menuItemType === 'link') && this_item.description?.long)
+    const wrappedCard = ((['link', 'live_link'].includes(normalizedMenuType)) && this_item.description?.long)
       ? (
         <Tooltip
           key={`${keyPrefix}${level_index}_tooltip${item_index}`}
@@ -2844,6 +2887,92 @@ export default ({ start_at }) => {
 
           {reactData.renderFunctionCall &&
             renderFunction(reactData.renderFunctionCall)
+          }
+
+          {reactData.showLiveLink &&
+            <Dialog
+              open={reactData.showLiveLink}
+              onClose={() => {
+                updateReactData({
+                  showLiveLink: false,
+                  liveLinkUrl: '',
+                  liveLinkTitle: ''
+                }, true);
+              }}
+              maxWidth={false}
+              PaperProps={{
+                style: {
+                  width: '90vw',
+                  maxWidth: '90vw',
+                  height: '90vh',
+                  maxHeight: '90vh',
+                  borderRadius: '20px',
+                  overflow: 'hidden'
+                }
+              }}
+            >
+              <Box display='flex' flexDirection='column' width='100%' height='100%'>
+                <Box display='flex' justifyContent='space-between' alignItems='center' p={1} style={{ minHeight: 52, flexShrink: 0 }}>
+                  <Typography style={AVATextStyle({ size: 1.2, bold: true })}>
+                    {reactData.liveLinkTitle || 'Live Link'}
+                  </Typography>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    variant='contained'
+                    size='small'
+                    onClick={() => {
+                      updateReactData({
+                        showLiveLink: false,
+                        liveLinkUrl: '',
+                        liveLinkTitle: ''
+                      }, true);
+                    }}
+                  >
+                    {'Close'}
+                  </Button>
+                </Box>
+                <Box
+                  width='100%'
+                  style={{
+                    height: 'calc(100% - 52px)',
+                    minHeight: 0,
+                    paddingBottom: 24,
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  {canPlayAsMedia(reactData.liveLinkUrl)
+                    ?
+                    <ReactPlayer
+                      url={reactData.liveLinkUrl}
+                      width='100%'
+                      height='100%'
+                      playing
+                      controls
+                      muted
+                      config={{
+                        file: {
+                          attributes: {
+                            controlsList: 'nodownload'
+                          }
+                        }
+                      }}
+                    />
+                    :
+                    <iframe
+                      title={reactData.liveLinkTitle || 'Live Link'}
+                      src={reactData.liveLinkUrl}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        border: 'none'
+                      }}
+                      allow='autoplay; fullscreen'
+                      allowFullScreen
+                    />
+                  }
+                </Box>
+              </Box>
+            </Dialog>
           }
 
           {reactData.addMenuDialog &&

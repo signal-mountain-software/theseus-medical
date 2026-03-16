@@ -47,12 +47,6 @@ export const s3 = new AWS.S3({
   secretAccessKey: sak()[1]
 });
 
-export const elastictranscoder = new AWS.ElasticTranscoder({
-  accessKeyId: sak()[0],
-  secretAccessKey: sak()[1],
-  region: "us-east-1"
-});
-
 const MediaConvert = require('aws-sdk/clients/mediaconvert');
 export const mediaconvert = new MediaConvert({
   accessKeyId: sak()[0],
