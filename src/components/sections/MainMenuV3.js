@@ -1612,7 +1612,7 @@ export default ({ start_at }) => {
           alert: {
             severity: 'error',
             title: 'Upload failed',
-            message: `Unable to upload ${uploadFile?.name || 'selected file'} to bucket ${uploadFile?.bucketName}.`
+            message: `Unable to upload ${uploadFile?.name || 'selected file'}`
           }
         }, true);
         return;
