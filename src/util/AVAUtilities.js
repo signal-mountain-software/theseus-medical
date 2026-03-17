@@ -746,13 +746,40 @@ export async function getObject64(pObj) {
   }
 };
 
-export function getObject(pObjIn, pTyp) {
-  let imageBucket, imageURI;
+export function getObject(pObjIn, pTyp, options = {}) {
+  let imageBucket = (options && options.imageBucket) ? options.imageBucket : 'theseus-medical-storage'; 
+  let imageURI;
   let [pObj, fExt] = pObjIn.split(/\.(.*)/);
   switch (pTyp) {
     case 'icon': {
       imageBucket = 'ava-icons';
       imageURI = `${pObj}.${fExt || 'png'}`;
+      break;
+    }
+    case 'url': {
+      try {
+        let decodedURL = pObjIn;
+        try {
+          decodedURL = decodeURIComponent(pObjIn);
+        }
+        catch (decodeError) {
+          decodedURL = pObjIn;
+        }
+
+        let parsedURL = new URL(decodedURL);
+        let hostMatch = parsedURL.hostname.match(/^(.*?)\.s3\.us-east-1\.amazonaws\.com$/i);
+        if (hostMatch && hostMatch[1]) {
+          imageBucket = hostMatch[1];
+          imageURI = decodeURIComponent(parsedURL.pathname.replace(/^\//, ''));
+        }
+        else {
+          imageURI = decodedURL;
+        }
+      }
+      catch (e) {
+        imageURI = pObjIn;
+      }
+      console.log(`getObject with url type.  imageBucket is ${imageBucket} and imageURI is ${imageURI}`);
       break;
     }
     case 'image': {

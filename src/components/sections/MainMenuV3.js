@@ -1,6 +1,6 @@
 import React from 'react';
 import { Auth } from '@aws-amplify/auth';
-import { recordExists, cl, switchActiveAccount, dbClient, lambda, getMarqueeMessage, deepCopy } from '../../util/AVAUtilities';
+import { recordExists, getObject, cl, switchActiveAccount, dbClient, lambda, getMarqueeMessage, deepCopy } from '../../util/AVAUtilities';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { AVATextStyle, AVAclasses, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
@@ -791,6 +791,19 @@ export default ({ start_at }) => {
     );
   };
 
+  const isPowerPointLink = (url = '') => {
+    if (!url || typeof url !== 'string') {
+      return false;
+    }
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl) {
+      return false;
+    }
+    const withoutHash = trimmedUrl.split('#')[0];
+    const withoutQuery = withoutHash.split('?')[0];
+    return /\.(ppt|pptx)$/i.test(withoutQuery);
+  };
+
   const buildLiveLinkEmbedUrl = (url) => {
     if (!url || typeof url !== 'string') {
       return '';
@@ -799,6 +812,12 @@ export default ({ start_at }) => {
     const normalizedUrl = url.trim();
     if (!normalizedUrl) {
       return '';
+    }
+
+    if (isPowerPointLink(normalizedUrl) && !/view\.officeapps\.live\.com\/op\/embed\.aspx/i.test(normalizedUrl)) {
+      const encodedSource = encodeURIComponent(normalizedUrl);
+      const objRef = getObject(encodedSource, 'url');
+      return `https://view.officeapps.live.com/op/embed.aspx?src=${objRef}`;
     }
 
     return normalizedUrl;
@@ -2913,7 +2932,7 @@ export default ({ start_at }) => {
             >
               <Box display='flex' flexDirection='column' width='100%' height='100%'>
                 <Box display='flex' justifyContent='space-between' alignItems='center' p={1} style={{ minHeight: 52, flexShrink: 0 }}>
-                  <Typography style={AVATextStyle({ size: 1.2, bold: true })}>
+                  <Typography style={AVATextStyle({ margin: { left: 1.2 }, size: 1.5, bold: true })}>
                     {reactData.liveLinkTitle || 'Live Link'}
                   </Typography>
                   <Button
