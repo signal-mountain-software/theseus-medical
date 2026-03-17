@@ -1941,7 +1941,7 @@ export default ({ start_at }) => {
       ? reactData.menu_hierarchy[level_index - 1]?.find((parentCell) => parentCell.menu_id === this_cell.parent)?.menuItemRec?.color
       : null;
     const tileColor = this_item.color || parentColor || stringToColor(this_item.menu_id);
-    const tileOpacity = Math.max(0, 1 - (level_index * 0.3));
+    const tileOpacity = Math.max(0.5, 1 - (level_index * 0.2));
     const cardTile = (
       <Card className={classes.root}
         key={`${keyPrefix}${level_index}_card${item_index}`}
