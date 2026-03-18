@@ -1291,10 +1291,15 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     let tryAgain;
     let newID, namePart;
     let clientPart = state.session.client_style?.client_suffix || state.session.client_id.toLowerCase();
+    let useNameOnly = (state.session.client_style?.client_suffix === '*none');
     let numberPart = 1;
     if (proposedID) {
       namePart = (proposedID.match(/([\w-]*[^\d]+)(\d*)$/))[1];
-      newID = proposedID.toLowerCase().replace(/\W/g, '').replace(clientPart, `-${clientPart}`);
+      if (useNameOnly) {
+        newID = proposedID.toLowerCase().replace(/\W/g, '');
+      } else {
+        newID = proposedID.toLowerCase().replace(/\W/g, '').replace(clientPart, `-${clientPart}`);
+      }
     }
     else {
       if (!reactData.current.peopleRec?.name?.last) {
@@ -1313,14 +1318,21 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         const lastName = reactData.current.peopleRec.name.last || '';
         namePart = `${firstName.trim().charAt(0) || 'X'}${lastName.trim()}`;
       }
-      newID = `${namePart.toLowerCase().replace(/\W/g, '')}-${clientPart}`;
+      if (useNameOnly) {
+        newID = `${namePart.toLowerCase().replace(/\W/g, '')}`;
+      } else {
+        newID = `${namePart.toLowerCase().replace(/\W/g, '')}-${clientPart}`;
+      }
     }
     do {
       tryAgain = false;
       const person_id_exists = await doesUserIdExistInEitherTable(newID);
       if (person_id_exists) {
         numberPart++;
-        if (newID.includes(clientPart)) {
+        if (useNameOnly) {
+          newID = `${namePart.toLowerCase().replace(/\W/g, '')}${numberPart}`;
+        }
+        else if (newID.includes(clientPart)) {
           newID = `${namePart.toLowerCase().split(clientPart)[0].replace('-', '')}${numberPart}-${clientPart}`;
         }
         else {

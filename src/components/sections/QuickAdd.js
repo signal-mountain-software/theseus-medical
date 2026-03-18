@@ -1639,6 +1639,7 @@ export default ({ onClose, options = {} }) => {
     const firstInitial = firstName.charAt(0).toLowerCase();
     const cleanLastName = lastName.toLowerCase().replace(/[^a-z]/g, ''); // Remove non-alphabetic characters
     const clientId = reactData.client_id;
+    const useNameOnly = (state.session.client_style?.client_suffix === '*none');
 
     let counter = '';
     let proposedId = '';
@@ -1647,7 +1648,11 @@ export default ({ onClose, options = {} }) => {
 
     // Check for uniqueness
     while (attempts < maxAttempts) {
-      proposedId = `${firstInitial}${cleanLastName}${counter}-${clientId}`.toLowerCase();
+      if (useNameOnly) {
+        proposedId = `${firstInitial}${cleanLastName}${counter}`.toLowerCase();
+      } else {
+        proposedId = `${firstInitial}${cleanLastName}${counter}-${clientId}`.toLowerCase();
+      }
 
       try {
         // Check if this ID already exists in any family members being created
