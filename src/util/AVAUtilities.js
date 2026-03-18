@@ -2750,7 +2750,7 @@ export async function switchActiveAccount(session, newClient, newPatient, option
       UpdateExpression: 'set client_id = :c, patient_id = :p, patient_display_name = :d, user_homeClient = :h',
       ExpressionAttributeValues: {
         ':c': newClient,
-        ':p': newPatient.id,
+        ':p': newPatient.id || newPatient.person_id,
         ':d': (newPatient.name ? (`${newPatient.name.first} ${newPatient.name.last}`).trim() : (`${newPatient.first} ${newPatient.last}`).trim()),
         ':h': (session.user_homeClient || session.client_id)
       },

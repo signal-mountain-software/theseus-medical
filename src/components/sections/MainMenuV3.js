@@ -176,6 +176,7 @@ export default ({ start_at }) => {
     loading: 'Initializing',
     current_time: new Date(),
     showPersonSelect: false,
+    showClientSelect: false,
     popupMenuOpen: false,
     showProfileEdit: false,
     showAddAccount: false,
@@ -2517,6 +2518,23 @@ export default ({ start_at }) => {
                     </Box>
                   </MenuItem>
                 }
+                {proxyAuthority() && reactData.is_master
+                  &&
+                  <MenuItem onClick={() => {
+                    updateReactData({
+                      showClientSelect: true,
+                      popupMenuOpen: false
+                    }, true);
+                  }}>
+                    <Box
+                      display='flex' flexDirection='row' alignItems={'center'}
+                      key={'vRowSwitch'}
+                    >
+                      <SwapHorizIcon />
+                      <Typography className={classes.popUpMenuRow} >{'Switch Client'}</Typography>
+                    </Box>
+                  </MenuItem>
+                }
                 {createAccountAuthority()
                   &&
                   <MenuItem onClick={async () => {
@@ -2806,6 +2824,19 @@ export default ({ start_at }) => {
               onClose={() => {
                 updateReactData({
                   showPersonSelect: false
+                }, true);
+              }}
+            />
+          }
+
+   {reactData.showClientSelect &&
+            <SwitchPatientDialog
+              open={reactData.showClientSelect}
+              options={{mode: 'client'}}
+              roles={roles}
+              onClose={() => {
+                updateReactData({
+                  showClientSelect: false
                 }, true);
               }}
             />
