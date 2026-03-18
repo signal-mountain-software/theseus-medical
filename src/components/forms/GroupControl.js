@@ -34,7 +34,7 @@ import HighlightOffIcon from '@material-ui/icons/HighlightOff';
 import GetAppIcon from '@material-ui/icons/GetApp';
 import PhotoLibraryIcon from '@material-ui/icons/PhotoLibrary';
 
-import { SET_GROUPS } from '../../contexts/Session/actions';
+import { SET_GROUPS, SET_ACCESSLIST } from '../../contexts/Session/actions';
 
 import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 import MessageForm from './MessageForm';
@@ -405,132 +405,259 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
         }, true);
         return;
       }
-      // get my peopleRec
-      let peopleRec = await dbClient
-        .get({
-          TableName: 'People',
-          Key: { person_id: draggedFrom.personObj.person_id }
-        })
-        .promise()
-        .catch(error => {
-          console.log(`caught error reading People; error is: `, error);
-        });
-      if (!recordExists(peopleRec)) {
-        updateReactData({
-          alert: {
-            severity: 'error',
-            title: 'Error',
-            message: `Something's not right... we couldn't find ${draggedFrom.personObj.name?.first || 'this person'} in the database.  Contact Support for more assistance`
-          }
-        }, true);
-        return;
-      }
-      // good peopleRec
-      // are you trying to drag this person to an inactive group?   if so, give an error and send them to PeopleMaintenance
-      if (state.session.group_assignments?.inactive && state.session.group_assignments.inactive.includes(droppedOn.group_id)) {
-        updateReactData({
-          alert: {
-            severity: 'error',
-            title: 'Dropped on Inactive Group',
-            message: `You dragged ${peopleRec.Item.name?.first || 'someone'} to a group of Inactive accounts.  
-              For safety, we don't allow that here.
-              If you mean to make this account inactive, please tap on ${(peopleRec.Item.name?.first + "'s") || 'their'} name.  
-              You can make the account inactive in that screen.`
-          }
-        }, true);
-        return;
-      }
-      // we are adding the dropped on groups and all its parents to the groupList for this person. Get that list
-      let addGroupList = [droppedOn.group_id];
-      let this_group = myParent(droppedOn.group_id);
-      for (this_group; !!this_group; this_group = myParent(this_group)) {
-        addGroupList.push(this_group);
-      }
-      let newGroupList = deepCopy([peopleRec.Item.groups].flat());
-      let addedGroups = [];
-      for (let this_group of addGroupList) {
-        if (!newGroupList.includes(this_group)) {
-          newGroupList.push(this_group);
-          addedGroups.push(groupsManagedObject[this_group].group_name);
-        }
-      }
-      let reactUpdObj = {};
-      if (addedGroups.length === 0) {
-        reactUpdObj.alert = {
+      // Ask the user whether to Move or Copy
+      updateReactData({
+        alert: {
           severity: 'info',
-          title: `Already a member`,
-          message: `${draggedFrom.personObj.name.first} was already a member of ${groupsManagedObject[droppedOn.group_id].group_name}`
-        };
-      }
-      else {
-        reactUpdObj.alert = {
-          severity: 'success',
-          title: `Success!`,
-          message: `${draggedFrom.personObj.name.first} was added to ${listFromArray(addedGroups)}`
-        };
-      }
-      // make the update
-      let newClientGroupsObj;
-      if (peopleRec.Item.clients) {
-        newClientGroupsObj = deepCopy(peopleRec.Item.clients);
-      }
-      else {
-        newClientGroupsObj = {
-          id: pSession.client_id,
-          groups: newGroupList
-        };
-      }
-      if (newClientGroupsObj.hasOwnProperty('id')) {     // expected and standard
-        if (newClientGroupsObj.id !== pSession.client_id) {     // but we are in a client other than the typical one (this should be very rare)
-          newClientGroupsObj[newClientGroupsObj.id] = Object.assign({}, newClientGroupsObj);
-          newClientGroupsObj[pSession.client_id] = {
-            id: pSession.client_id,
-            groups: newGroupList
-          };
+          title: 'Move or Copy?',
+          message: `${draggedFrom.personObj.name.first} ${draggedFrom.personObj.name.last} → ${groupsManagedObject[droppedOn.group_id].group_name}`,
+          action: [
+            {
+              text: 'Copy',
+              function: async () => { await executeDrop_copyPerson(draggedFrom, droppedOn); }
+            },
+            {
+              text: 'Move',
+              function: async () => {
+                await executeDrop_copyPerson(draggedFrom, droppedOn);
+                await executeRemovePersonFromGroup(draggedFrom);
+              }
+            }
+          ]
         }
-        newClientGroupsObj.groups = newGroupList;
-        newClientGroupsObj.id = pSession.client_id;
+      }, true);
+    };
+  };
+
+  const executeDrop_copyPerson = async (draggedFrom, droppedOn) => {
+    // get my peopleRec
+    let peopleRec = await dbClient
+      .get({
+        TableName: 'People',
+        Key: { person_id: draggedFrom.personObj.person_id }
+      })
+      .promise()
+      .catch(error => {
+        console.log(`caught error reading People; error is: `, error);
+      });
+    if (!recordExists(peopleRec)) {
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: 'Error',
+          message: `Something's not right... we couldn't find ${draggedFrom.personObj.name?.first || 'this person'} in the database.  Contact Support for more assistance`
+        }
+      }, true);
+      return;
+    }
+    // good peopleRec
+    // are you trying to drag this person to an inactive group?   if so, give an error and send them to PeopleMaintenance
+    if (state.session.group_assignments?.inactive && state.session.group_assignments.inactive.includes(droppedOn.group_id)) {
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: 'Dropped on Inactive Group',
+          message: `You dragged ${peopleRec.Item.name?.first || 'someone'} to a group of Inactive accounts.  
+            For safety, we don't allow that here.
+            If you mean to make this account inactive, please tap on ${(peopleRec.Item.name?.first + "'s") || 'their'} name.  
+            You can make the account inactive in that screen.`
+        }
+      }, true);
+      return;
+    }
+    // we are adding the dropped on groups and all its parents to the groupList for this person. Get that list
+    let addGroupList = [droppedOn.group_id];
+    let this_group = myParent(droppedOn.group_id);
+    for (this_group; !!this_group; this_group = myParent(this_group)) {
+      addGroupList.push(this_group);
+    }
+    let newGroupList = deepCopy([peopleRec.Item.groups].flat());
+    let addedGroups = [];
+    for (let this_group of addGroupList) {
+      if (!newGroupList.includes(this_group)) {
+        newGroupList.push(this_group);
+        addedGroups.push(groupsManagedObject[this_group].group_name);
       }
-      else {
+    }
+    let reactUpdObj = {};
+    if (addedGroups.length === 0) {
+      reactUpdObj.alert = {
+        severity: 'info',
+        title: `Already a member`,
+        message: `${draggedFrom.personObj.name.first} was already a member of ${groupsManagedObject[droppedOn.group_id].group_name}`
+      };
+    }
+    else {
+      reactUpdObj.alert = {
+        severity: 'success',
+        title: `Success!`,
+        message: `${draggedFrom.personObj.name.first} was added to ${listFromArray(addedGroups)}`
+      };
+    }
+    // make the update
+    let newClientGroupsObj;
+    if (peopleRec.Item.clients) {
+      newClientGroupsObj = deepCopy(peopleRec.Item.clients);
+    }
+    else {
+      newClientGroupsObj = {
+        id: pSession.client_id,
+        groups: newGroupList
+      };
+    }
+    if (newClientGroupsObj.hasOwnProperty('id')) {     // expected and standard
+      if (newClientGroupsObj.id !== pSession.client_id) {     // but we are in a client other than the typical one (this should be very rare)
+        newClientGroupsObj[newClientGroupsObj.id] = Object.assign({}, newClientGroupsObj);
         newClientGroupsObj[pSession.client_id] = {
           id: pSession.client_id,
           groups: newGroupList
         };
       }
-      let UpdateExpression = 'set #g = :g, #c = :c';
-      let ExpressionAttributeValues = {
-        ':g': newGroupList,
-        ':c': newClientGroupsObj
+      newClientGroupsObj.groups = newGroupList;
+      newClientGroupsObj.id = pSession.client_id;
+    }
+    else {
+      newClientGroupsObj[pSession.client_id] = {
+        id: pSession.client_id,
+        groups: newGroupList
       };
-      let ExpressionAttributeNames = {
-        '#g': 'groups',
-        '#c': 'clients'
-      };
-      await dbClient
-        .update({
-          Key: {
-            person_id: draggedFrom.personObj.person_id
-          },
-          UpdateExpression,
-          ExpressionAttributeValues,
-          ExpressionAttributeNames,
-          TableName: "People",
-        })
-        .promise()
-        .catch(error => {
-          console.log(`caught error updating Group; error is: `, error);
-        });
-      if (reactData.selectedGroupRec) {
-        if (newGroupList.includes(reactData.selectedGroup_id)) {
-          if (!reactData.selectedGroupMembers.hasOwnProperty(draggedFrom.personObj.person_id)) {
-            reactData.selectedGroupMembers[draggedFrom.personObj.person_id] = peopleRec.Item;
-          };
-          reactUpdObj.selectedGroupMembers = reactData.selectedGroupMembers;
-          reactUpdObj.sortedGroupMembers = sortGroupMembers(reactData.selectedGroupMembers);
-        }
-      }
-      updateReactData(reactUpdObj, true);
+    }
+    let UpdateExpression = 'set #g = :g, #c = :c';
+    let ExpressionAttributeValues = {
+      ':g': newGroupList,
+      ':c': newClientGroupsObj
     };
+    let ExpressionAttributeNames = {
+      '#g': 'groups',
+      '#c': 'clients'
+    };
+    await dbClient
+      .update({
+        Key: {
+          person_id: draggedFrom.personObj.person_id
+        },
+        UpdateExpression,
+        ExpressionAttributeValues,
+        ExpressionAttributeNames,
+        TableName: "People",
+      })
+      .promise()
+      .catch(error => {
+        console.log(`caught error updating Group; error is: `, error);
+      });
+    if (reactData.selectedGroupRec) {
+      if (newGroupList.includes(reactData.selectedGroup_id)) {
+        if (!reactData.selectedGroupMembers.hasOwnProperty(draggedFrom.personObj.person_id)) {
+          reactData.selectedGroupMembers[draggedFrom.personObj.person_id] = peopleRec.Item;
+        };
+        reactUpdObj.selectedGroupMembers = reactData.selectedGroupMembers;
+        reactUpdObj.sortedGroupMembers = sortGroupMembers(reactData.selectedGroupMembers);
+      }
+    }
+    // Update cached accessList so selectMembers reflects the change immediately
+    const copyAccessEntry = state.accessList?.[pSession.client_id]?.list?.find(p => p.person_id === draggedFrom.personObj.person_id);
+    if (copyAccessEntry) {
+      copyAccessEntry.groups = newGroupList;
+      dispatch({ type: SET_ACCESSLIST, payload: Object.assign({}, state.accessList) });
+    }
+    updateReactData(reactUpdObj, true);
+  };
+
+  const executeRemovePersonFromGroup = async (draggedFrom) => {
+    // get my peopleRec
+    let peopleRec = await dbClient
+      .get({
+        TableName: 'People',
+        Key: { person_id: draggedFrom.personObj.person_id }
+      })
+      .promise()
+      .catch(error => {
+        console.log(`caught error reading People; error is: `, error);
+      });
+    if (!recordExists(peopleRec)) {
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: 'Error',
+          message: `Something's not right... we couldn't find ${draggedFrom.personObj.name?.first} in the database.  Contact Support for more assistance`
+        }
+      }, true);
+      return;
+    }
+    // good peopleRec
+    // we are removing the draggedFrom.personGroup from the group list for draggedFrom.personObj.person_id;  get the current group list
+    let newGroupList = deepCopy([peopleRec.Item.groups].flat());
+    let foundAt = newGroupList.indexOf(draggedFrom.personGroup);
+    if (foundAt > -1) {
+      newGroupList.splice(foundAt, 1);
+    }
+    // if I am removing a group that has children, remove the children
+    newGroupList = removeChildren(draggedFrom.personGroup, newGroupList);
+    // if what is left contains a parent of this group and that parent now has no children remaining, remove it
+    newGroupList = checkEmptyParent(draggedFrom.personGroup, newGroupList);
+    // make the update
+    let newClientGroupsObj = deepCopy(peopleRec.Item.clients);
+    if (newClientGroupsObj.hasOwnProperty('id')) {     // expected and standard
+      if (newClientGroupsObj.id !== pSession.client_id) {     // but we are in a client other than the typical one (this should be very rare)
+        newClientGroupsObj[newClientGroupsObj.id] = Object.assign({}, newClientGroupsObj);
+        newClientGroupsObj[pSession.client_id] = {
+          id: pSession.client_id,
+          groups: newGroupList
+        };
+      }
+      newClientGroupsObj.groups = newGroupList;
+      newClientGroupsObj.id = pSession.client_id;
+    }
+    else {
+      newClientGroupsObj[pSession.client_id] = {
+        id: pSession.client_id,
+        groups: newGroupList
+      };
+    }
+    let UpdateExpression = 'set #g = :g, #c = :c';
+    let ExpressionAttributeValues = {
+      ':g': newGroupList,
+      ':c': newClientGroupsObj
+    };
+    let ExpressionAttributeNames = {
+      '#g': 'groups',
+      '#c': 'clients'
+    };
+    await dbClient
+      .update({
+        Key: {
+          person_id: draggedFrom.personObj.person_id
+        },
+        UpdateExpression,
+        ExpressionAttributeValues,
+        ExpressionAttributeNames,
+        TableName: "People",
+      })
+      .promise()
+      .catch(error => {
+        console.log(`caught error updating Group; error is: `, error);
+      });
+    delete reactData.selectedGroupMembers[draggedFrom.personObj.person_id];
+    let removedGroups = [peopleRec.Item.groups].flat().filter(g => { return !newGroupList.includes(g); });
+    let alertMessage = false;
+    if (removedGroups.length > 0) {
+      alertMessage = {
+        severity: 'success',
+        title: `Success!`,
+        message: `${draggedFrom.personObj.name.first} was removed from ${listFromArray(removedGroups.map(g => { return groupsManagedObject[g].group_name; }))}`
+      };
+    }
+    // Update cached accessList so selectMembers reflects the change immediately
+    const removeAccessEntry = state.accessList?.[pSession.client_id]?.list?.find(p => p.person_id === draggedFrom.personObj.person_id);
+    if (removeAccessEntry) {
+      removeAccessEntry.groups = newGroupList;
+      dispatch({ type: SET_ACCESSLIST, payload: Object.assign({}, state.accessList) });
+    }
+    updateReactData({
+      alert: alertMessage,
+      selectedGroupMembers: reactData.selectedGroupMembers,
+      sortedGroupMembers: sortGroupMembers(reactData.selectedGroupMembers)
+    }, true);
   };
 
   function sortGroupMembers(unsortedObj) {
@@ -833,96 +960,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
     let draggedFrom = JSON.parse(ev.dataTransfer.getData('id'));
     console.log(draggedFrom);
     if (draggedFrom.hasOwnProperty('personGroup')) {
-      // get my peopleRec
-      let peopleRec = await dbClient
-        .get({
-          TableName: 'People',
-          Key: { person_id: draggedFrom.personObj.person_id }
-        })
-        .promise()
-        .catch(error => {
-          console.log(`caught error reading People; error is: `, error);
-        });
-      if (!recordExists(peopleRec)) {
-        updateReactData({
-          alert: {
-            severity: 'error',
-            title: 'Error',
-            message: `Something's not right... we couldn't find ${draggedFrom.personObj.name?.first} in the database.  Contact Support for more assistance`
-          }
-        }, true);
-        return;
-      }
-      // good peopleRec
-      // we are removing the draggedFrom.personGroup from the group list for draggedFrom.personObj.person_id;  get the current group list
-      let newGroupList = deepCopy([peopleRec.Item.groups].flat());
-      let foundAt = newGroupList.indexOf(draggedFrom.personGroup);
-      if (foundAt > -1) {
-        newGroupList.splice(foundAt, 1);
-      }
-      // if I am removing a group that has children, remove the children
-      newGroupList = removeChildren(draggedFrom.personGroup, newGroupList);
-
-      // if what is left contains a parent of this group and that parent now has no children remaining, remove it
-      newGroupList = checkEmptyParent(draggedFrom.personGroup, newGroupList);
-
-      // make the update
-      let newClientGroupsObj = deepCopy(peopleRec.Item.clients);
-      if (newClientGroupsObj.hasOwnProperty('id')) {     // expected and standard
-        if (newClientGroupsObj.id !== pSession.client_id) {     // but we are in a client other than the typical one (this should be very rare)
-          newClientGroupsObj[newClientGroupsObj.id] = Object.assign({}, newClientGroupsObj);
-          newClientGroupsObj[pSession.client_id] = {
-            id: pSession.client_id,
-            groups: newGroupList
-          };
-        }
-        newClientGroupsObj.groups = newGroupList;
-        newClientGroupsObj.id = pSession.client_id;
-      }
-      else {
-        newClientGroupsObj[pSession.client_id] = {
-          id: pSession.client_id,
-          groups: newGroupList
-        };
-      }
-      let UpdateExpression = 'set #g = :g, #c = :c';
-      let ExpressionAttributeValues = {
-        ':g': newGroupList,
-        ':c': newClientGroupsObj
-      };
-      let ExpressionAttributeNames = {
-        '#g': 'groups',
-        '#c': 'clients'
-      };
-      await dbClient
-        .update({
-          Key: {
-            person_id: draggedFrom.personObj.person_id
-          },
-          UpdateExpression,
-          ExpressionAttributeValues,
-          ExpressionAttributeNames,
-          TableName: "People",
-        })
-        .promise()
-        .catch(error => {
-          console.log(`caught error updating Group; error is: `, error);
-        });
-      delete reactData.selectedGroupMembers[draggedFrom.personObj.person_id];
-      let removedGroups = [peopleRec.Item.groups].flat().filter(g => { return !newGroupList.includes(g); });
-      let alertMessage = false;
-      if (removedGroups.length > 0) {
-        alertMessage = {
-          severity: 'success',
-          title: `Success!`,
-          message: `${draggedFrom.personObj.name.first} was removed from ${listFromArray(removedGroups.map(g => { return groupsManagedObject[g].group_name; }))}`
-        };
-      }
-      updateReactData({
-        alert: alertMessage,
-        selectedGroupMembers: reactData.selectedGroupMembers,
-        sortedGroupMembers: sortGroupMembers(reactData.selectedGroupMembers)
-      }, true);
+      await executeRemovePersonFromGroup(draggedFrom);
     }
     else if (draggedFrom.hasOwnProperty('groupObj')) {
       if (Object.keys(reactData.selectedGroupMembers).length > 0) {
@@ -1378,7 +1416,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                     {(reactData.lower_people_filter
                       ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
                       : reactData.sortedGroupMembers
-                    )?.map((this_person, cX) => (
+                    )?.filter(p => !!reactData.selectedGroupMembers[p])
+                    .map((this_person, cX) => (
                       <Typography
                         key={`g_textpeople-${cX}`}
                         style={AVATextStyle({
