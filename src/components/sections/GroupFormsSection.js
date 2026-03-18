@@ -1,8 +1,7 @@
 import React from 'react';
 import useSession from '../../hooks/useSession';
 
-import { Box, Checkbox, IconButton, Typography } from '@material-ui/core/';
-import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
+import { Box, Checkbox, Typography } from '@material-ui/core/';
 
 import { AVATextStyle } from '../../util/AVAStyles';
 import { cl, dbClient, recordExists } from '../../util/AVAUtilities';
@@ -174,18 +173,17 @@ export default ({ currentValues, updateField }) => {
                     {categoryName}
                   </Typography>
                   {groupedAssigned[categoryName].map((formRec) => (
-                    <Box key={`assigned_form_${formRec.form_id}`} display='flex' alignItems='center' justifyContent='space-between' ml={1}>
+                    <Box key={`assigned_form_${formRec.form_id}`} display='flex' alignItems='center' ml={1}>
+                      <Checkbox
+                        checked={true}
+                        color='primary'
+                        onChange={async () => {
+                          await removeFormFromGroup(formRec.form_id);
+                        }}
+                      />
                       <Typography style={AVATextStyle({ size: 0.9 })}>
                         {formRec.form_name || formRec.form_id}
                       </Typography>
-                      <IconButton
-                        size='small'
-                        onClick={async () => {
-                          await removeFormFromGroup(formRec.form_id);
-                        }}
-                      >
-                        <DeleteOutlineIcon fontSize='small' />
-                      </IconButton>
                     </Box>
                   ))}
                 </Box>
