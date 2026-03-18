@@ -1531,7 +1531,7 @@ export default ({ start_at }) => {
 
   async function handleAddMenuItem() {
     const titleText = (reactData.addMenuDialogTitle || '').trim();
-    const itemType = reactData.addMenuDialogType;
+    const itemType = reactData.addMenuDialogType || (!reactData.is_support ? 'link' : null);
     const linkSource = reactData.addMenuDialogLinkSource || 'url';
     const urlText = (reactData.addMenuDialogUrl || '').trim();
     const uploadFile = reactData.addMenuDialogUploadFile;
@@ -3041,26 +3041,30 @@ export default ({ start_at }) => {
                     updateReactData({ addMenuDialogTitle: e.target.value }, true);
                   }}
                 />
-                <Typography style={AVATextStyle({ size: 0.95, margin: { top: 1.5, bottom: 0.25 } })}>
-                  {'Type'}
-                </Typography>
-                <RadioGroup
-                  row
-                  value={reactData.addMenuDialogType || ''}
-                  onChange={(e) => {
-                    updateReactData({
-                      addMenuDialogType: e.target.value,
-                      addMenuDialogTargets: (e.target.value === 'message_target') ? reactData.addMenuDialogTargets : [],
-                      selections: (e.target.value === 'message_target') ? reactData.selections : []
-                    }, true);
-                  }}
-                >
-                  <FormControlLabel value='menu' control={<Radio color='primary' />} label='Sub-Menu' />
-                  <FormControlLabel value='link' control={<Radio color='primary' />} label='Document, Video, or Link' />
-                  {reactData.is_admin && <FormControlLabel value='message_target' control={<Radio color='primary' />} label='Message Target' />}
-                </RadioGroup>
+                {reactData.is_support &&
+                  <React.Fragment>
+                    <Typography style={AVATextStyle({ size: 0.95, margin: { top: 1.5, bottom: 0.25 } })}>
+                      {'Type'}
+                    </Typography>
+                    <RadioGroup
+                      row
+                      value={reactData.addMenuDialogType || ''}
+                      onChange={(e) => {
+                        updateReactData({
+                          addMenuDialogType: e.target.value,
+                          addMenuDialogTargets: (e.target.value === 'message_target') ? reactData.addMenuDialogTargets : [],
+                          selections: (e.target.value === 'message_target') ? reactData.selections : []
+                        }, true);
+                      }}
+                    >
+                      <FormControlLabel value='menu' control={<Radio color='primary' />} label='Sub-Menu' />
+                      <FormControlLabel value='link' control={<Radio color='primary' />} label='Document, Video, Picture, or Link' />
+                      {reactData.is_admin && <FormControlLabel value='message_target' control={<Radio color='primary' />} label='Message Target' />}
+                    </RadioGroup>
+                  </React.Fragment>
+                }
 
-                {reactData.addMenuDialogType === 'link' &&
+                {(reactData.addMenuDialogType === 'link' || !reactData.is_support) &&
                   <React.Fragment>
                     <Typography style={AVATextStyle({ size: 0.95, margin: { top: 2, bottom: 0.25 } })}>
                       {`Where can we find the Item you're adding?`}
