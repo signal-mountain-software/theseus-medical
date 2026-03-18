@@ -91,6 +91,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     saveCompleted: false,
     changesMade: false,
     alert: false,
+    has_been_saved: false,
     myFormListObj: {},
     formsInitialized: false,
     myImage: (options.mode === 'add') ? '' : getImage(person_id || patient?.person_id || personRec?.person_id || state.session.patient_id),
@@ -1372,9 +1373,11 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     }
     reactData.saveCompleted = true;
     reactData.changesMade = true;
+    reactData.has_been_saved = true;
     updateReactData({
       changesMade: reactData.changesMade,
       saveCompleted: reactData.saveCompleted,
+      has_been_saved: reactData.has_been_saved,
       OKtoSave: false
     }, true);
     if (finish) {

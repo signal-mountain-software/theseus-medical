@@ -168,6 +168,7 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
           style={{ minWidth: '40%' }}
           id='person_id'
           autoComplete='off'
+          disabled={!!(ogValues?.peopleRec?.person_id || reactData?.has_been_saved)}
           key={`techSection__person_id__${currentValues.peopleRec.person_id}__${errorList.hasOwnProperty('person_id') ? 'error' : 'ok'}`}
           error={errorList.hasOwnProperty('person_id')}
           defaultValue={((errorList.hasOwnProperty('person_id')) && (errorList.person_id.errorValue))
