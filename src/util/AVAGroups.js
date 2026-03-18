@@ -90,7 +90,7 @@ export async function accountAccess(person_id, pClient_id) {
     }
     let accessLevelTable = ['none', 'restricted', 'view', 'proxy', 'full'];
     let clientList = [pClient_id];
-    if (((myClass === 'support') || (myClass === 'admin'))
+ /*   if (((myClass === 'support') || (myClass === 'admin'))
       && (myPeopleRec.hasOwnProperty('clients') && Array.isArray(myPeopleRec.clients))) {
       myPeopleRec.clients.forEach(c => {
         if (!clientList.includes(c.id)) { clientList.push(c.id); }
@@ -98,7 +98,7 @@ export async function accountAccess(person_id, pClient_id) {
     }
     else if (myClass === 'master') {
       clientList = await getAllClients();
-    };
+    };  */
     for (let client_id of clientList) {
       // for each client that I have access to, get the client name and logo for display purposes
       let clientName = await getCustomizations('client_name', client_id);
@@ -411,7 +411,7 @@ export async function getGroupAccess(client_id, person_id, options) {
       is_responsible,
       belongs_to
     };
-    if (resultObj.role === 'non-member') {
+    if (resultObj.role === 'non-member' && !is_accessible) {
       rejectObject[this_group.group_id] = resultObj;
     }
     else {
@@ -1460,6 +1460,7 @@ export async function getGroupHierarchy(pClient_id, options) {
   for (let g = 0; g < groupRec.Items.length; g++) {
     if (!groupRec.Items[g].belongs_to) { groupRec.Items[g].belongs_to = '__TOP__'; }
     let thisGroup = groupRec.Items[g];
+    // **** NOTE: I think we nee to include group_types 'open' and 'public' in this test to assure they are accessible
     if ((thisGroup.group_type === 'admin') || (thisGroup.group_type === 'parent')) {
       if (!hierarchy.hasOwnProperty(thisGroup.belongs_to)) {
         hierarchy[thisGroup.belongs_to] = {};
