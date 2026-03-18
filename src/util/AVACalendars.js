@@ -1347,7 +1347,10 @@ export async function writeSlot(body) {
       .promise();
 
     if (getResult.Item && body.rejectDuplicate) {
-      return { success: false, message: "Duplicate slot assignment rejected", existing: getResult.Item }; // Indicate that the slot was not assigned due to duplicate rejection
+      const existingStatus = getResult.Item?.slotData?.status?.current;
+      if (existingStatus !== 'released') {
+        return { success: false, message: "Duplicate slot assignment rejected", existing: getResult.Item }; // Indicate that the slot was not assigned due to duplicate rejection
+      }
     }
   } catch (error) {
     console.log(`Error checking for existing Calendar record:`, error);

@@ -47,12 +47,6 @@ export const s3 = new AWS.S3({
   secretAccessKey: sak()[1]
 });
 
-export const elastictranscoder = new AWS.ElasticTranscoder({
-  accessKeyId: sak()[0],
-  secretAccessKey: sak()[1],
-  region: "us-east-1"
-});
-
 const MediaConvert = require('aws-sdk/clients/mediaconvert');
 export const mediaconvert = new MediaConvert({
   accessKeyId: sak()[0],
@@ -523,20 +517,61 @@ export function array_in_array(a1, a2) {
 export function titleCase(pString) {
   if (!pString) { return ''; }
   let words = pString.split(/([^\w':]+)/);
-  // console.log(words);
   const smallWords = ['of', 'and', 'or', 'a', 'an', 'the', 'in', 'on', 'at', 'to', 'for', 'with', 'from', 'by'];
   const allCapWords = ['ava', 'bbq', 'id', 'tv', 'ceo', 'cfo', 'coo', 'usa', 'uk', 'eu', 'am', 'pm'];
+  const formatWordToken = (wordToken, isFirstWord) => {
+    const lowerWordToken = wordToken.toLowerCase();
+    if (!isFirstWord && smallWords.includes(lowerWordToken)) {
+      return lowerWordToken;
+    }
+
+    return wordToken
+      .split(/([-'])/)
+      .map((part) => {
+        if ((part === '-') || (part === "'")) {
+          return part;
+        }
+
+        const lowerPart = part.toLowerCase();
+        if (!lowerPart) {
+          return part;
+        }
+
+        const alphaOnlyPart = part.replace(/[^a-z]/gi, '');
+        const isShortAlphaPart = alphaOnlyPart.length > 0 && alphaOnlyPart.length <= 3;
+        const hasUpper = /[A-Z]/.test(part);
+        const hasLower = /[a-z]/.test(part);
+        const isAllCapsAsEntered = hasUpper && !hasLower;
+        const isMixedCaseAsEntered = hasUpper && hasLower;
+        const isSmallWordException = smallWords.includes(lowerPart);
+        if (!isSmallWordException && isShortAlphaPart && (isAllCapsAsEntered || isMixedCaseAsEntered)) {
+          return part;
+        }
+
+        if (allCapWords.includes(lowerPart)) {
+          return part.toUpperCase();
+        }
+
+        if (lowerPart.startsWith('mc') && (lowerPart.length > 2)) {
+          return `Mc${lowerPart.charAt(2).toUpperCase()}${lowerPart.slice(3)}`;
+        }
+
+        return lowerPart.charAt(0).toUpperCase() + lowerPart.slice(1);
+      })
+      .join('');
+  };
+
   var titleCased = [];
-  words.forEach((w, idx) => {
-    // if (!w.trim()) { return; }   // ignore spaces between words (we'll put them back in later)
-    // Always capitalize first word, otherwise check if it's a small word
-    if (allCapWords.includes(w.toLowerCase())) {
-      titleCased.push(w.toUpperCase());
+  let hasSeenWord = false;
+  words.forEach((w) => {
+    const hasLettersOrDigits = /[a-z0-9]/i.test(w);
+    if (!hasLettersOrDigits) {
+      titleCased.push(w);
+      return;
     }
-    else if (idx === 0 || !smallWords.includes(w.toLowerCase())) {
-      titleCased.push(w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-    }
-    else { titleCased.push(w.toLowerCase()); }
+
+    titleCased.push(formatWordToken(w, !hasSeenWord));
+    hasSeenWord = true;
   });
   return titleCased.join('').trim();
 }
@@ -711,13 +746,40 @@ export async function getObject64(pObj) {
   }
 };
 
-export function getObject(pObjIn, pTyp) {
-  let imageBucket, imageURI;
+export function getObject(pObjIn, pTyp, options = {}) {
+  let imageBucket = (options && options.imageBucket) ? options.imageBucket : 'theseus-medical-storage'; 
+  let imageURI;
   let [pObj, fExt] = pObjIn.split(/\.(.*)/);
   switch (pTyp) {
     case 'icon': {
       imageBucket = 'ava-icons';
       imageURI = `${pObj}.${fExt || 'png'}`;
+      break;
+    }
+    case 'url': {
+      try {
+        let decodedURL = pObjIn;
+        try {
+          decodedURL = decodeURIComponent(pObjIn);
+        }
+        catch (decodeError) {
+          decodedURL = pObjIn;
+        }
+
+        let parsedURL = new URL(decodedURL);
+        let hostMatch = parsedURL.hostname.match(/^(.*?)\.s3\.us-east-1\.amazonaws\.com$/i);
+        if (hostMatch && hostMatch[1]) {
+          imageBucket = hostMatch[1];
+          imageURI = decodeURIComponent(parsedURL.pathname.replace(/^\//, ''));
+        }
+        else {
+          imageURI = decodedURL;
+        }
+      }
+      catch (e) {
+        imageURI = pObjIn;
+      }
+      console.log(`getObject with url type.  imageBucket is ${imageBucket} and imageURI is ${imageURI}`);
       break;
     }
     case 'image': {
@@ -829,6 +891,1708 @@ export async function deepResolve(pKey, pSession, options = {}) {
     return workObj;
   }
   return resolveVariables(pKey, pSession, options);
+}
+
+/**
+ * Resolve one or more DataDictionary fields for a person.
+ *
+ * @param {string} client_id
+ * @param {string} person_id
+ * @param {string[]} field_ids
+ * @param {Object} [options]
+ * @param {Object<string, Object>} [options.dictionaryCache] Optional mutable cache keyed as `${client_id}::${field_id}`.
+ * @param {Object<string, any>} [options.locators] Optional locator overrides by locator name (highest priority).
+ * @param {any} [options.person_id] Optional direct locator override when dictionary locator is `person_id`.
+ * @param {any} [options.client_id] Optional direct locator override when dictionary locator is `client_id`.
+ * @param {boolean} [options.address_lookup=true] Set false to disable external address lookup for `address` fields.
+ * @param {boolean} [options.resolve_address=true] Alias/companion switch for address lookup; false disables lookup.
+ * @param {boolean} [options.persist_resolved_address=true] Set false to skip writing resolved address back to `People`.
+ * @param {string} [options.address_full_format='us_standard'] Address formatting mode (`us_standard` or `legacy`).
+ * @param {string} [options.address_lookup_email] Optional email param sent to address lookup provider.
+ * @param {string} [options.address_lookup_country_code] Optional country code filter for address lookup.
+ * @param {number} [options.address_lookup_timeout_ms=4000] Address lookup timeout in milliseconds.
+ * @returns {Promise<Array<{raw:any, formatted:any, details:any, meta:{field_id:string|null, client_id?:string, source?:string|null, locator?:string|null, path_used?:string|null, status:string}}>>}
+ */
+export async function resolveData(client_id, person_id, field_ids = [], options = {}) {
+  if (!client_id || !person_id || !Array.isArray(field_ids)) {
+    return [];
+  }
+
+  const resolvedValues = [];
+  const dictionaryCache = options.dictionaryCache || {};
+
+  for (const field_id of field_ids) {
+    if (!field_id) {
+      resolvedValues.push({
+        raw: null,
+        formatted: null,
+        details: null,
+        meta: {
+          field_id: null,
+          status: 'missing_field_id'
+        }
+      });
+      continue;
+    }
+
+    const cacheKey = `${client_id}::${field_id}`;
+    let dictionaryRec = dictionaryCache[cacheKey] || null;
+
+    if (!dictionaryRec) {
+      let foundRec = await dbClient
+        .get({
+          TableName: 'DataDictionaryV3',
+          Key: {
+            client_id,
+            field_key: field_id
+          }
+        })
+        .promise()
+        .catch((error) => {
+            cl({ 'resolveData DataDictionaryV3 read failed': { client_id, field_id, error } });
+          });
+
+      dictionaryRec = recordExists(foundRec) ? foundRec.Item : null;
+      if (dictionaryRec) {
+        dictionaryCache[cacheKey] = dictionaryRec;
+      }
+    }
+
+    if (!dictionaryRec) {
+      resolvedValues.push({
+        raw: null,
+        formatted: null,
+        details: null,
+        meta: {
+          field_id,
+          client_id,
+          status: 'dictionary_not_found'
+        }
+      });
+      continue;
+    }
+
+    const resolution = await resolveDataByDictionary({
+      client_id,
+      person_id,
+      field_id,
+      dictionaryRec,
+      options
+    });
+
+    const effectiveDictionaryRec = resolution.dictionaryRec || dictionaryRec;
+    const resolvedRaw = resolution.rawValue;
+
+    const resolvedOutput = await formatResolvedValue({
+      rawValue: resolvedRaw,
+      dictionaryRec: effectiveDictionaryRec,
+      client_id,
+      person_id,
+      options
+    });
+
+    const resolvedEntry = {
+      raw: resolvedRaw,
+      formatted: resolvedOutput.formatted,
+      details: resolvedOutput.details,
+      meta: {
+        field_id,
+        client_id,
+        source: effectiveDictionaryRec.source || null,
+        locator: effectiveDictionaryRec.locator || null,
+        path_used: resolution.pathUsed,
+        status: resolution.status || (isGoodResolvedValue(resolvedRaw) ? 'resolved' : 'not_found')
+      }
+    };
+
+    resolvedValues.push(cleanUndefinedArtifacts(resolvedEntry));
+  }
+
+  return resolvedValues;
+}
+
+async function resolveDataByDictionary({ client_id, person_id, field_id, dictionaryRec, options = {} }) {
+  const resolutionCandidates = buildResolutionCandidates(dictionaryRec);
+
+  for (const candidateRec of resolutionCandidates) {
+    const pathList = Array.isArray(candidateRec.path)
+      ? candidateRec.path
+      : ((typeof candidateRec.path === 'string' && candidateRec.path.trim()) ? [candidateRec.path] : []);
+
+    const source = (candidateRec?.source || '').toString().toLowerCase();
+    if (source === 'document' || source === 'documents' || source === 'documentmaster') {
+      const completionDateValue = await resolveDocumentCompletionDateFromPath({
+        client_id,
+        person_id,
+        dictionaryRec: candidateRec,
+        pathList
+      });
+      if (completionDateValue !== undefined) {
+        return {
+          rawValue: completionDateValue,
+          pathUsed: '*completion_date',
+          status: 'resolved_from_document_completion_date',
+          dictionaryRec: candidateRec
+        };
+      }
+
+      const updateDateValue = await resolveDocumentUpdateDateFromPath({
+        client_id,
+        person_id,
+        dictionaryRec: candidateRec,
+        pathList
+      });
+      if (updateDateValue !== undefined) {
+        return {
+          rawValue: updateDateValue,
+          pathUsed: '*update_date',
+          status: 'resolved_from_document_update_date',
+          dictionaryRec: candidateRec
+        };
+      }
+    }
+
+    const sourceRecord = await getSourceRecord({
+      client_id,
+      person_id,
+      dictionaryRec: candidateRec,
+      options
+    });
+
+    if (sourceRecord) {
+      for (const pathSpec of pathList) {
+        const pathValue = resolvePathSpecValue(sourceRecord, pathSpec);
+        if (isGoodResolvedValue(pathValue)) {
+          return {
+            rawValue: pathValue,
+            pathUsed: pathSpec,
+            status: 'resolved_from_path',
+            dictionaryRec: candidateRec
+          };
+        }
+      }
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(dictionaryRec, 'fixed_value')) {
+    return {
+      rawValue: dictionaryRec.fixed_value,
+      pathUsed: null,
+      status: 'resolved_from_fixed_value',
+      dictionaryRec
+    };
+  }
+  if (Object.prototype.hasOwnProperty.call(dictionaryRec, 'default_value')) {
+    return {
+      rawValue: dictionaryRec.default_value,
+      pathUsed: null,
+      status: 'resolved_from_default_value',
+      dictionaryRec
+    };
+  }
+  if (Object.prototype.hasOwnProperty.call(dictionaryRec, 'value')) {
+    return {
+      rawValue: dictionaryRec.value,
+      pathUsed: null,
+      status: 'resolved_from_value',
+      dictionaryRec
+    };
+  }
+
+  cl({ 'resolveData unresolved field': { client_id, person_id, field_id, dictionaryRec } });
+  return {
+    rawValue: null,
+    pathUsed: null,
+    status: 'unresolved',
+    dictionaryRec
+  };
+}
+
+function buildResolutionCandidates(dictionaryRec = {}) {
+  const multiSourceCandidates = firstArrayOfObjects([
+    dictionaryRec.sources,
+    dictionaryRec.source_options,
+    dictionaryRec.source_candidates,
+    dictionaryRec.resolution_sources
+  ]);
+
+  if (!multiSourceCandidates) {
+    return [dictionaryRec];
+  }
+
+  return multiSourceCandidates.map((candidate) => {
+    return Object.assign({}, dictionaryRec, candidate);
+  });
+}
+
+function firstArrayOfObjects(candidateValues = []) {
+  for (const candidateValue of candidateValues) {
+    if (!Array.isArray(candidateValue) || candidateValue.length === 0) {
+      continue;
+    }
+
+    const objectCandidates = candidateValue.filter((item) => {
+      return item && typeof item === 'object' && !Array.isArray(item);
+    });
+
+    if (objectCandidates.length > 0) {
+      return objectCandidates;
+    }
+  }
+  return null;
+}
+
+async function resolveDocumentCompletionDateFromPath({ client_id, person_id, dictionaryRec, pathList = [] }) {
+  if (!Array.isArray(pathList) || pathList.length === 0) {
+    return undefined;
+  }
+
+  const hasCompletionDatePath = pathList.some((pathSpec) => {
+    return isCompletionDatePathSpec(pathSpec);
+  });
+
+  if (!hasCompletionDatePath) {
+    return undefined;
+  }
+
+  const documentList = await getDocumentRecordsForDictionary({
+    client_id,
+    person_id,
+    dictionaryRec
+  });
+
+  if (!Array.isArray(documentList) || documentList.length === 0) {
+    return undefined;
+  }
+
+  return getLowestCompletedHistoryLastUpdate(documentList);
+}
+
+async function resolveDocumentUpdateDateFromPath({ client_id, person_id, dictionaryRec, pathList = [] }) {
+  if (!Array.isArray(pathList) || pathList.length === 0) {
+    return undefined;
+  }
+
+  const hasUpdateDatePath = pathList.some((pathSpec) => {
+    return isUpdateDatePathSpec(pathSpec);
+  });
+
+  if (!hasUpdateDatePath) {
+    return undefined;
+  }
+
+  const documentList = await getDocumentRecordsForDictionary({
+    client_id,
+    person_id,
+    dictionaryRec
+  });
+
+  if (!Array.isArray(documentList) || documentList.length === 0) {
+    return undefined;
+  }
+
+  return getMostRecentCompletedHistoryLastUpdate(documentList);
+}
+
+function isCompletionDatePathSpec(pathSpec) {
+  if (typeof pathSpec === 'string') {
+    return (pathSpec.trim().toLowerCase() === '*completion_date');
+  }
+  if (Array.isArray(pathSpec)) {
+    return pathSpec.some((subPathSpec) => {
+      return (typeof subPathSpec === 'string') && (subPathSpec.trim().toLowerCase() === '*completion_date');
+    });
+  }
+  return false;
+}
+
+function isUpdateDatePathSpec(pathSpec) {
+  if (typeof pathSpec === 'string') {
+    return (pathSpec.trim().toLowerCase() === '*update_date');
+  }
+  if (Array.isArray(pathSpec)) {
+    return pathSpec.some((subPathSpec) => {
+      return (typeof subPathSpec === 'string') && (subPathSpec.trim().toLowerCase() === '*update_date');
+    });
+  }
+  return false;
+}
+
+function getLowestCompletedHistoryLastUpdate(documentList = []) {
+  let lowestComparableLastUpdate = Number.POSITIVE_INFINITY;
+  let lowestRawLastUpdate;
+
+  for (const doc of documentList) {
+    const historyEntries = Array.isArray(doc?.history) ? doc.history : [];
+    for (const historyEntry of historyEntries) {
+      if (!isCompletedDocumentStatus(historyEntry?.status)) {
+        continue;
+      }
+
+      const rawLastUpdate = historyEntry?.last_update;
+      const comparableLastUpdate = getComparableLastUpdateValue(rawLastUpdate);
+      if (comparableLastUpdate === null) {
+        continue;
+      }
+
+      if (comparableLastUpdate < lowestComparableLastUpdate) {
+        lowestComparableLastUpdate = comparableLastUpdate;
+        lowestRawLastUpdate = rawLastUpdate;
+      }
+    }
+  }
+
+  return lowestRawLastUpdate;
+}
+
+function getMostRecentCompletedHistoryLastUpdate(documentList = []) {
+  let highestComparableLastUpdate = Number.NEGATIVE_INFINITY;
+  let highestRawLastUpdate;
+
+  for (const doc of documentList) {
+    const historyEntries = Array.isArray(doc?.history) ? doc.history : [];
+    for (const historyEntry of historyEntries) {
+      if (!isCompletedDocumentStatus(historyEntry?.status)) {
+        continue;
+      }
+
+      const rawLastUpdate = historyEntry?.last_update;
+      const comparableLastUpdate = getComparableLastUpdateValue(rawLastUpdate);
+      if (comparableLastUpdate === null) {
+        continue;
+      }
+
+      if (comparableLastUpdate > highestComparableLastUpdate) {
+        highestComparableLastUpdate = comparableLastUpdate;
+        highestRawLastUpdate = rawLastUpdate;
+      }
+    }
+  }
+
+  return highestRawLastUpdate;
+}
+
+function isCompletedDocumentStatus(statusValue) {
+  if (statusValue === null || statusValue === undefined) {
+    return false;
+  }
+
+  const normalizedStatus = `${statusValue}`
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  const completedStatusValues = [
+    'complete',
+    'completed',
+    'save_final',
+    'saved_final',
+    'final',
+    'finalized'
+  ];
+
+  return completedStatusValues.includes(normalizedStatus);
+}
+
+function resolvePathSpecValue(sourceRecord, pathSpec) {
+  if (!sourceRecord || !pathSpec) {
+    return undefined;
+  }
+
+  if (typeof pathSpec === 'string') {
+    return getValueByPath(sourceRecord, pathSpec);
+  }
+
+  if (!Array.isArray(pathSpec)) {
+    return undefined;
+  }
+
+  const compositeParts = [];
+  for (const subPathSpec of pathSpec) {
+    if (typeof subPathSpec !== 'string' || !subPathSpec.trim()) {
+      continue;
+    }
+    const subValue = getValueByPath(sourceRecord, subPathSpec);
+    if (!isGoodResolvedValue(subValue)) {
+      continue;
+    }
+    const partValue = stringifyResolvedPart(subValue);
+    if (partValue) {
+      compositeParts.push(partValue);
+    }
+  }
+
+  if (compositeParts.length === 0) {
+    return undefined;
+  }
+
+  return compositeParts.join(' ');
+}
+
+function stringifyResolvedPart(value) {
+  if (!isGoodResolvedValue(value)) {
+    return '';
+  }
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return `${value}`;
+  }
+  if (value instanceof Date) {
+    return isNaN(value.getTime()) ? '' : value.toISOString();
+  }
+  try {
+    return JSON.stringify(value);
+  }
+  catch {
+    return `${value}`;
+  }
+}
+
+async function getSourceRecord({ client_id, person_id, dictionaryRec, options = {} }) {
+  const sourceRaw = (dictionaryRec.source || '').toString().trim();
+  const source = sourceRaw.toLowerCase();
+  if (!sourceRaw) {
+    return null;
+  }
+
+  const serviceRequestSource = parseServiceRequestSource(sourceRaw);
+  if (serviceRequestSource) {
+    return getServiceRequestSourceRecord({
+      client_id,
+      person_id,
+      dictionaryRec,
+      serviceRequestSubType: serviceRequestSource.subType
+    });
+  }
+
+  if (source === 'document' || source === 'documents' || source === 'documentmaster') {
+    const foundDocs = await getDocumentRecordsForDictionary({
+      client_id,
+      person_id,
+      dictionaryRec
+    });
+    if (!Array.isArray(foundDocs) || foundDocs.length === 0) {
+      return null;
+    }
+
+    return pickMostRecentDocument(foundDocs);
+  }
+
+  const locatorField = dictionaryRec.locator || 'person_id';
+  const locatorValue = getLocatorValue({ client_id, person_id, locatorField, options });
+  if (!locatorValue) {
+    return null;
+  }
+
+  let tableName = dictionaryRec.table;
+  if (!tableName) {
+    if (source === 'person' || source === 'people') {
+      tableName = 'People';
+    }
+    else {
+      tableName = dictionaryRec.source;
+    }
+  }
+
+  const sourceRec = await dbClient
+    .get({
+      TableName: tableName,
+      Key: {
+        [locatorField]: locatorValue
+      }
+    })
+    .promise()
+    .catch((error) => {
+      cl({ 'resolveData source read failed': { tableName, locatorField, locatorValue, error } });
+    });
+
+  if (recordExists(sourceRec)) {
+    return sourceRec.Item;
+  }
+  return null;
+}
+
+function parseServiceRequestSource(sourceRaw = '') {
+  if (typeof sourceRaw !== 'string') {
+    return null;
+  }
+
+  const trimmedSource = sourceRaw.trim();
+  if (!trimmedSource) {
+    return null;
+  }
+
+  const [sourceName, subTypeRaw] = trimmedSource.split(/#(.*)/);
+  if (!sourceName || !subTypeRaw) {
+    return null;
+  }
+
+  if (sourceName.trim().toLowerCase() !== 'servicerequest') {
+    return null;
+  }
+
+  const subType = subTypeRaw.trim();
+  if (!subType) {
+    return null;
+  }
+
+  return { subType };
+}
+
+function parseServiceRequestLocator(locatorRaw = '') {
+  if (typeof locatorRaw !== 'string') {
+    return null;
+  }
+
+  const trimmedLocator = locatorRaw.trim();
+  if (!trimmedLocator) {
+    return null;
+  }
+
+  const [locatorName, statusRaw] = trimmedLocator.split(/#(.*)/);
+  if (!locatorName || !statusRaw) {
+    return null;
+  }
+
+  if (locatorName.trim().toLowerCase() !== 'person') {
+    return null;
+  }
+
+  const status = statusRaw.trim();
+  if (!status) {
+    return null;
+  }
+
+  return { status };
+}
+
+async function getServiceRequestSourceRecord({ client_id, person_id, dictionaryRec, serviceRequestSubType }) {
+  if (!person_id || !serviceRequestSubType) {
+    return null;
+  }
+
+  const locatorInfo = parseServiceRequestLocator(dictionaryRec?.locator || '');
+  if (!locatorInfo?.status) {
+    cl({
+      'resolveData serviceRequest locator missing status': {
+        client_id,
+        person_id,
+        locator: dictionaryRec?.locator,
+        source: dictionaryRec?.source
+      }
+    });
+    return null;
+  }
+
+  const foundRequests = await dbClient
+    .query({
+      TableName: 'ServiceRequests',
+      IndexName: 'requestor-type-date',
+      KeyConditionExpression: 'requestor = :p and request_type = :t',
+      ExpressionAttributeValues: {
+        ':p': person_id,
+        ':t': serviceRequestSubType
+      },
+      ScanIndexForward: false
+    })
+    .promise()
+    .catch((error) => {
+      cl({
+        'resolveData serviceRequest source read failed': {
+          client_id,
+          person_id,
+          serviceRequestSubType,
+          locator: dictionaryRec?.locator,
+          error
+        }
+      });
+    });
+
+  if (!recordExists(foundRequests) || !Array.isArray(foundRequests.Items)) {
+    return null;
+  }
+
+  const targetStatus = locatorInfo.status.trim().toLowerCase();
+  const newestRequest = foundRequests.Items[0] || null;
+  if (!newestRequest) {
+    return null;
+  }
+
+  const newestStatus = (newestRequest.last_status || '').toString().trim().toLowerCase();
+  if (newestStatus !== targetStatus) {
+    return null;
+  }
+
+  return newestRequest;
+}
+
+async function getDocumentRecordsForDictionary({ client_id, person_id, dictionaryRec }) {
+  const formType = (dictionaryRec?.locator || '').toString().trim();
+  if (!person_id || !formType) {
+    return [];
+  }
+
+  const foundDocs = await dbClient
+    .query({
+      TableName: 'DocumentMaster',
+      IndexName: 'person_form-index',
+      KeyConditionExpression: 'pertains_to = :p and form_type = :f',
+      ExpressionAttributeValues: {
+        ':p': person_id,
+        ':f': formType
+      }
+    })
+    .promise()
+    .catch((error) => {
+      cl({ 'resolveData document source read failed': { client_id, person_id, formType, error } });
+    });
+
+  if (!recordExists(foundDocs) || !Array.isArray(foundDocs.Items)) {
+    return [];
+  }
+
+  return foundDocs.Items;
+}
+
+function pickMostRecentDocument(documentList = []) {
+  if (!Array.isArray(documentList) || documentList.length === 0) {
+    return null;
+  }
+
+  let mostRecentDoc = null;
+  let mostRecentValue = Number.NEGATIVE_INFINITY;
+
+  for (const doc of documentList) {
+    const lastUpdateValue = getDocumentLastUpdateValue(doc);
+    if (mostRecentDoc === null || lastUpdateValue > mostRecentValue) {
+      mostRecentDoc = doc;
+      mostRecentValue = lastUpdateValue;
+    }
+  }
+
+  return mostRecentDoc;
+}
+
+function getDocumentLastUpdateValue(doc) {
+  const rawLastUpdate = doc?.history?.[0]?.last_update;
+  const comparableLastUpdate = getComparableLastUpdateValue(rawLastUpdate);
+  if (comparableLastUpdate === null) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  return comparableLastUpdate;
+}
+
+function getComparableLastUpdateValue(rawLastUpdate) {
+  if (rawLastUpdate === null || rawLastUpdate === undefined) {
+    return null;
+  }
+
+  if (typeof rawLastUpdate === 'number' && !isNaN(rawLastUpdate)) {
+    return rawLastUpdate;
+  }
+
+  const dateValue = new Date(rawLastUpdate).getTime();
+  if (!isNaN(dateValue)) {
+    return dateValue;
+  }
+
+  const numValue = Number(rawLastUpdate);
+  if (!isNaN(numValue)) {
+    return numValue;
+  }
+
+  return null;
+}
+
+function getLocatorValue({ client_id, person_id, locatorField, options = {} }) {
+  if (options.locators && Object.prototype.hasOwnProperty.call(options.locators, locatorField)) {
+    return options.locators[locatorField];
+  }
+  if (Object.prototype.hasOwnProperty.call(options, locatorField)) {
+    return options[locatorField];
+  }
+  switch (locatorField) {
+    case 'person_id': return person_id;
+    case 'client_id': return client_id;
+    default: return null;
+  }
+}
+
+function getValueByPath(sourceObject, pathSpec) {
+  if (!sourceObject || !pathSpec || (typeof pathSpec !== 'string')) {
+    return undefined;
+  }
+  const pathParts = pathSpec.split('.').map((p) => p.trim()).filter((p) => p.length > 0);
+  let currentValue = sourceObject;
+  for (const part of pathParts) {
+    if (currentValue === null || currentValue === undefined) {
+      return undefined;
+    }
+    if (Array.isArray(currentValue)) {
+      const idx = Number(part);
+      if (!Number.isInteger(idx)) {
+        return undefined;
+      }
+      currentValue = currentValue[idx];
+    }
+    else {
+      currentValue = currentValue[part];
+    }
+  }
+  return currentValue;
+}
+
+function isGoodResolvedValue(value) {
+  if (value === null || value === undefined) {
+    return false;
+  }
+  if (typeof value === 'string') {
+    return value.trim().length > 0;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  if (value instanceof Date) {
+    return !isNaN(value.getTime());
+  }
+  if (typeof value === 'object') {
+    return Object.keys(value).length > 0;
+  }
+  return true;
+}
+
+async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_id, options = {} }) {
+  const dataType = (dictionaryRec?.type || '').toString().toLowerCase();
+  if (dataType === 'boolean' || dataType === 'bool') {
+    const boolObj = normalizeBooleanInput(rawValue, dictionaryRec);
+    return {
+      formatted: boolObj.value,
+      details: boolObj
+    };
+  }
+
+  if (!isGoodResolvedValue(rawValue)) {
+    return {
+      formatted: null,
+      details: null
+    };
+  }
+
+  switch (dataType) {
+    case 'email':
+    case 'e-mail':
+    case 'e_mail': {
+      const emailObj = normalizeEmailInput(rawValue);
+      if (!emailObj) {
+        return {
+          formatted: rawValue,
+          details: null
+        };
+      }
+      return {
+        formatted: emailObj.full,
+        details: emailObj
+      };
+    }
+    case 'address': {
+      const addressObj = normalizeAddressInput(rawValue);
+      if (!addressObj) {
+        return {
+          formatted: null,
+          details: null
+        };
+      }
+
+      addressObj.full = buildAddressFull(addressObj, options) || addressObj.full;
+
+      if (isMarkedResolvedAddress(rawValue)) {
+        const storedAddress = mergeAddressDetails(addressObj, rawValue, options);
+        return {
+          formatted: storedAddress.full,
+          details: storedAddress
+        };
+      }
+
+      const lookupEnabled = (options.address_lookup !== false) && (options.resolve_address !== false);
+      if (lookupEnabled) {
+        const resolvedAddress = await resolveAddressWithPublicApi(addressObj.full, options);
+        if (resolvedAddress) {
+          const mergedAddress = mergeAddressDetails(addressObj, resolvedAddress, options);
+          if (mergedAddress && mergedAddress.full) {
+            await persistResolvedAddressToPerson({
+              client_id,
+              person_id,
+              dictionaryRec,
+              options,
+              resolvedAddress: mergedAddress
+            });
+          }
+          return {
+            formatted: mergedAddress.full,
+            details: mergedAddress
+          };
+        }
+      }
+
+      return {
+        formatted: addressObj.full,
+        details: addressObj
+      };
+    }
+    case 'name': {
+      const nameObj = normalizeNameInput(rawValue);
+      if (!nameObj) {
+        return {
+          formatted: rawValue,
+          details: null
+        };
+      }
+      return {
+        formatted: nameObj.full,
+        details: nameObj
+      };
+    }
+    case 'phone': {
+      const phoneInput = normalizePhoneInput(rawValue);
+      if (!phoneInput) {
+        return {
+          formatted: rawValue,
+          details: null
+        };
+      }
+      const lastTen = phoneInput.replace(/\D/g, '').slice(-10);
+      if (lastTen.length < 10) {
+        return {
+          formatted: rawValue,
+          details: null
+        };
+      }
+      const phoneObj = validatePhone(lastTen);
+      return {
+        formatted: phoneObj?.display || rawValue,
+        details: phoneObj || null
+      };
+    }
+    case 'date': {
+      const dateObjOut = makeDate(rawValue);
+      return {
+        formatted: dateObjOut.slashDate || rawValue,
+        details: dateObjOut
+      };
+    }
+    case 'datetime':
+    case 'date_time':
+    case 'date-time': {
+      const dateObjOut = makeDate(rawValue);
+      return {
+        formatted: dateObjOut.absolute || rawValue,
+        details: dateObjOut
+      };
+    }
+    case 'time':
+    case 'time_only':
+    case 'time-only': {
+      const dateObjOut = makeDate(rawValue);
+      return {
+        formatted: dateObjOut.timeOnly || rawValue,
+        details: dateObjOut
+      };
+    }
+    case 'age':{
+      const dateObjOut = makeDate(rawValue);      
+      return {
+        formatted: dateObjOut.age || rawValue,
+        details: dateObjOut
+      };
+    }
+    case 'number': {
+      const nValue = Number(rawValue);
+      if (isNaN(nValue)) {
+        return {
+          formatted: rawValue,
+          details: null
+        };
+      }
+      return {
+        formatted: nValue,
+        details: null
+      };
+    }
+    case 'string_list': {
+      const listObj = normalizeStringListInput(rawValue);
+      return {
+        formatted: listObj,
+        details: {
+          values: listObj,
+          count: listObj.length
+        }
+      };
+    }
+    case 'string': {
+      if (typeof rawValue === 'string') {
+        return {
+          formatted: rawValue,
+          details: null
+        };
+      }
+      return {
+        formatted: `${rawValue}`,
+        details: null
+      };
+    }
+    default: {
+      return {
+        formatted: rawValue,
+        details: null
+      };
+    }
+  }
+}
+
+function normalizeBooleanInput(rawValue, dictionaryRec = {}) {
+  const dictionaryValues = (dictionaryRec && typeof dictionaryRec.values === 'object' && !Array.isArray(dictionaryRec.values))
+    ? dictionaryRec.values
+    : {};
+
+  const trueIfSet = new Set(normalizeBooleanRuleTerms(dictionaryValues.true_if));
+  const falseIfSet = new Set(normalizeBooleanRuleTerms(dictionaryValues.false_if));
+
+  const resolvedRaw = resolveBooleanValue(rawValue, { trueIfSet, falseIfSet });
+  if (resolvedRaw.resolved) {
+    return {
+      value: resolvedRaw.value,
+      populated: true,
+      source_type: resolvedRaw.source_type,
+      normalized_value: resolvedRaw.normalized_value || null,
+      resolution_reason: resolvedRaw.reason
+    };
+  }
+
+  if (Object.prototype.hasOwnProperty.call(dictionaryValues, 'default')) {
+    const resolvedDefault = resolveBooleanValue(dictionaryValues.default, { trueIfSet, falseIfSet });
+    if (resolvedDefault.resolved) {
+      return {
+        value: resolvedDefault.value,
+        populated: (rawValue !== null) && (rawValue !== undefined),
+        source_type: resolvedRaw.source_type,
+        normalized_value: resolvedRaw.normalized_value || null,
+        resolution_reason: 'dictionary_default',
+        default_value_used: dictionaryValues.default
+      };
+    }
+
+    if (typeof dictionaryValues.default === 'boolean') {
+      return {
+        value: dictionaryValues.default,
+        populated: (rawValue !== null) && (rawValue !== undefined),
+        source_type: resolvedRaw.source_type,
+        normalized_value: resolvedRaw.normalized_value || null,
+        resolution_reason: 'dictionary_default_boolean',
+        default_value_used: dictionaryValues.default
+      };
+    }
+  }
+
+  return {
+    value: false,
+    populated: (rawValue !== null) && (rawValue !== undefined),
+    source_type: resolvedRaw.source_type,
+    normalized_value: resolvedRaw.normalized_value || null,
+    resolution_reason: 'fallback_false'
+  };
+}
+
+function normalizeBooleanRuleTerms(ruleValue) {
+  const rawTerms = Array.isArray(ruleValue) ? ruleValue : [ruleValue];
+  return rawTerms
+    .map((termValue) => normalizeBooleanMatchToken(termValue))
+    .filter(Boolean);
+}
+
+function normalizeBooleanMatchToken(value) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  if (typeof value === 'number') {
+    return `${value}`;
+  }
+  if (typeof value === 'string') {
+    return cleanUndefinedString(value).trim().toLowerCase();
+  }
+  return '';
+}
+
+function resolveBooleanValue(rawValue, { trueIfSet = new Set(), falseIfSet = new Set() } = {}) {
+  const sourceType = (rawValue === null || rawValue === undefined)
+    ? 'nullish'
+    : (Array.isArray(rawValue) ? 'array' : typeof rawValue);
+
+  if (typeof rawValue === 'boolean') {
+    return {
+      resolved: true,
+      value: rawValue,
+      source_type: 'boolean',
+      reason: 'boolean_literal',
+      normalized_value: rawValue ? 'true' : 'false'
+    };
+  }
+
+  if (typeof rawValue === 'number') {
+    if (rawValue === 1) {
+      return {
+        resolved: true,
+        value: true,
+        source_type: 'number',
+        reason: 'normalized_number',
+        normalized_value: '1'
+      };
+    }
+    if (rawValue === 0) {
+      return {
+        resolved: true,
+        value: false,
+        source_type: 'number',
+        reason: 'normalized_number',
+        normalized_value: '0'
+      };
+    }
+  }
+
+  const normalizedToken = normalizeBooleanMatchToken(rawValue);
+
+  const normalizedTrueSet = new Set(['true', 't', 'yes', 'y', '1', 'on', 'checked', 'active', 'enabled']);
+  const normalizedFalseSet = new Set(['false', 'f', 'no', 'n', '0', 'off', 'unchecked', 'inactive', 'disabled', 'none', 'null']);
+
+  if (normalizedToken && normalizedTrueSet.has(normalizedToken)) {
+    return {
+      resolved: true,
+      value: true,
+      source_type: sourceType,
+      reason: 'normalized_string',
+      normalized_value: normalizedToken
+    };
+  }
+
+  if (normalizedToken && normalizedFalseSet.has(normalizedToken)) {
+    return {
+      resolved: true,
+      value: false,
+      source_type: sourceType,
+      reason: 'normalized_string',
+      normalized_value: normalizedToken
+    };
+  }
+
+  if (normalizedToken && trueIfSet.has(normalizedToken)) {
+    return {
+      resolved: true,
+      value: true,
+      source_type: sourceType,
+      reason: 'dictionary_true_if',
+      normalized_value: normalizedToken
+    };
+  }
+
+  if (normalizedToken && falseIfSet.has(normalizedToken)) {
+    return {
+      resolved: true,
+      value: false,
+      source_type: sourceType,
+      reason: 'dictionary_false_if',
+      normalized_value: normalizedToken
+    };
+  }
+
+  return {
+    resolved: false,
+    value: false,
+    source_type: sourceType,
+    reason: 'unresolved',
+    normalized_value: normalizedToken || ''
+  };
+}
+
+function normalizePhoneInput(rawValue) {
+  if (rawValue === null || rawValue === undefined) {
+    return null;
+  }
+  if ((typeof rawValue === 'string') || (typeof rawValue === 'number')) {
+    return `${rawValue}`;
+  }
+  return null;
+}
+
+function normalizeEmailInput(rawValue) {
+  if (rawValue === null || rawValue === undefined) {
+    return null;
+  }
+
+  if (typeof rawValue === 'string' || typeof rawValue === 'number') {
+    const parsed = splitEmailFromString(`${rawValue}`);
+    return parsed;
+  }
+
+  if (typeof rawValue !== 'object') {
+    return null;
+  }
+
+  const fullFromObject = firstNonBlank([
+    rawValue.full,
+    rawValue.email,
+    rawValue.address,
+    rawValue.email_address,
+    rawValue.value
+  ]);
+
+  let name = firstNonBlank([
+    rawValue.name,
+    rawValue.local,
+    rawValue.local_part,
+    rawValue.user
+  ]);
+
+  let domain = firstNonBlank([
+    rawValue.domain,
+    rawValue.host
+  ]);
+
+  let full = fullFromObject;
+  if (!full && name && domain) {
+    full = `${name}@${domain}`;
+  }
+
+  const parsedFromFull = splitEmailFromString(full);
+  if (!name) {
+    name = parsedFromFull.name;
+  }
+  if (!domain) {
+    domain = parsedFromFull.domain;
+  }
+  if (!full) {
+    full = parsedFromFull.full;
+  }
+
+  if (!full) {
+    return null;
+  }
+
+  return {
+    full,
+    name,
+    domain,
+    is_valid: isValidEmail(full)
+  };
+}
+
+function splitEmailFromString(emailString) {
+  if (typeof emailString !== 'string') {
+    return {
+      full: '',
+      name: '',
+      domain: '',
+      is_valid: false
+    };
+  }
+
+  const full = cleanUndefinedString(emailString).trim();
+  if (!full) {
+    return {
+      full: '',
+      name: '',
+      domain: '',
+      is_valid: false
+    };
+  }
+
+  const atPos = full.indexOf('@');
+  if (atPos < 0) {
+    return {
+      full,
+      name: full,
+      domain: '',
+      is_valid: isValidEmail(full)
+    };
+  }
+
+  const name = full.slice(0, atPos).trim();
+  const domain = full.slice(atPos + 1).trim();
+  return {
+    full,
+    name,
+    domain,
+    is_valid: isValidEmail(full)
+  };
+}
+
+function normalizeStringListInput(rawValue) {
+  if (rawValue === null || rawValue === undefined) {
+    return [];
+  }
+
+  if (Array.isArray(rawValue)) {
+    const cleanedArray = rawValue
+      .map(item => cleanUndefinedString(item))
+      .filter(item => !!item);
+    return cleanedArray;
+  }
+
+  if (typeof rawValue === 'string' || typeof rawValue === 'number') {
+    const cleanedValue = cleanUndefinedString(rawValue);
+    return (cleanedValue ? [cleanedValue] : []);
+  }
+
+  if (typeof rawValue === 'object') {
+    const asString = cleanUndefinedString(JSON.stringify(rawValue));
+    return (asString ? [asString] : []);
+  }
+
+  return [];
+}
+
+function normalizeNameInput(rawValue) {
+  if (rawValue === null || rawValue === undefined) {
+    return null;
+  }
+
+  if (typeof rawValue === 'string') {
+    const parsed = splitNameFromString(rawValue);
+    return parsed;
+  }
+
+  if (typeof rawValue !== 'object') {
+    return null;
+  }
+
+  const first = firstNonBlank([
+    rawValue.first,
+    rawValue.first_name,
+    rawValue.firstname,
+    rawValue.given_name,
+    rawValue.givenName
+  ]);
+
+  const last = firstNonBlank([
+    rawValue.last,
+    rawValue.last_name,
+    rawValue.lastname,
+    rawValue.family_name,
+    rawValue.familyName,
+    rawValue.surname
+  ]);
+
+  const fullFromObject = firstNonBlank([
+    rawValue.full,
+    rawValue.full_name,
+    rawValue.fullname,
+    rawValue.display_name,
+    rawValue.displayName,
+    rawValue.name
+  ]);
+
+  let normalizedFirst = first || '';
+  let normalizedLast = last || '';
+
+  if ((!normalizedFirst || !normalizedLast) && fullFromObject) {
+    const splitFromFull = splitNameFromString(fullFromObject);
+    if (!normalizedFirst) {
+      normalizedFirst = splitFromFull.first;
+    }
+    if (!normalizedLast) {
+      normalizedLast = splitFromFull.last;
+    }
+  }
+
+  let full = `${normalizedFirst} ${normalizedLast}`.trim();
+  if (!full) {
+    full = (fullFromObject || '').trim();
+  }
+
+  if (!full) {
+    return null;
+  }
+
+  return {
+    first: normalizedFirst,
+    last: normalizedLast,
+    full
+  };
+}
+
+function normalizeAddressInput(rawValue) {
+  if (rawValue === null || rawValue === undefined) {
+    return null;
+  }
+
+  if (typeof rawValue === 'string') {
+    const full = rawValue.trim();
+    if (!full) {
+      return null;
+    }
+    return {
+      line1: '',
+      line2: '',
+      city: '',
+      state: '',
+      zip: '',
+      full
+    };
+  }
+
+  if (typeof rawValue !== 'object') {
+    return null;
+  }
+
+  const line1 = firstNonBlank([
+    rawValue.address,
+    rawValue.address1,
+    rawValue.street,
+    rawValue.location,
+    rawValue.line1,
+    rawValue.address_line1
+  ]);
+
+  let line2 = firstNonBlank([
+    rawValue.address2,
+    rawValue.line2,
+    rawValue.address_line2
+  ]);
+
+  if (line2 === line1) {
+    line2 = '';
+  }
+
+  const city = firstNonBlank([rawValue.city]);
+  const state = firstNonBlank([rawValue.state]);
+  const zip = firstNonBlank([
+    rawValue.zip,
+    rawValue.zip_code
+  ]);
+
+  const fullFromObject = firstNonBlank([
+    rawValue.full,
+    rawValue.full_address,
+    rawValue.display_address
+  ]);
+
+  let full = buildAddressFull({ line1, line2, city, state, zip }, { address_full_format: 'legacy' });
+
+  if (!full) {
+    full = fullFromObject;
+  }
+
+  if (!full) {
+    return null;
+  }
+
+  return {
+    line1,
+    line2,
+    city,
+    state,
+    zip,
+    full
+  };
+}
+
+async function resolveAddressWithPublicApi(addressString, options = {}) {
+  if (!addressString || typeof addressString !== 'string' || typeof fetch !== 'function') {
+    return null;
+  }
+
+  const trimmedAddress = addressString.trim();
+  if (!trimmedAddress) {
+    return null;
+  }
+
+  const queryParams = new URLSearchParams({
+    format: 'jsonv2',
+    addressdetails: '1',
+    limit: '1',
+    q: trimmedAddress
+  });
+
+  if (options.address_lookup_email) {
+    queryParams.set('email', options.address_lookup_email);
+  }
+  if (options.address_lookup_country_code) {
+    queryParams.set('countrycodes', `${options.address_lookup_country_code}`.toLowerCase());
+  }
+
+  const timeoutMs = Number(options.address_lookup_timeout_ms) || 4000;
+  const controller = (typeof AbortController === 'function') ? new AbortController() : null;
+  let timeoutHandle = null;
+  if (controller && timeoutMs > 0) {
+    timeoutHandle = setTimeout(() => {
+      controller.abort();
+    }, timeoutMs);
+  }
+
+  try {
+    const response = await fetch(`https://nominatim.openstreetmap.org/search?${queryParams.toString()}`, {
+      method: 'GET',
+      signal: controller ? controller.signal : undefined,
+      headers: {
+        Accept: 'application/json'
+      }
+    });
+
+    if (!response || !response.ok) {
+      return null;
+    }
+
+    const data = await response.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      return null;
+    }
+
+    const best = data[0] || {};
+    const addr = best.address || {};
+    const line1 = buildAddressLine1(addr);
+    const city = firstNonBlank([
+      addr.city,
+      addr.town,
+      addr.village,
+      addr.hamlet,
+      addr.municipality,
+      addr.county
+    ]);
+    const state = firstNonBlank([addr.state, addr.state_district]);
+    const zip = firstNonBlank([addr.postcode]);
+
+    let full = buildAddressFull({
+      line1,
+      line2: '',
+      city,
+      state,
+      zip
+    }, options);
+    if (!full) {
+      full = firstNonBlank([best.display_name]);
+    }
+    if (!full) {
+      return null;
+    }
+
+    return {
+      line1,
+      line2: '',
+      city,
+      state,
+      zip,
+      full,
+      source: 'nominatim',
+      validated: true,
+      confidence: (typeof best.importance === 'number') ? best.importance : null,
+      latitude: best.lat || null,
+      longitude: best.lon || null
+    };
+  }
+  catch {
+    return null;
+  }
+  finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
+
+function buildAddressLine1(addressObj = {}) {
+  const houseNumber = firstNonBlank([addressObj.house_number]);
+  const road = firstNonBlank([
+    addressObj.road,
+    addressObj.pedestrian,
+    addressObj.residential,
+    addressObj.path
+  ]);
+  return [houseNumber, road].filter(Boolean).join(' ').trim();
+}
+
+function buildAddressFull({ line1 = '', line2 = '', city = '', state = '', zip = '' } = {}, options = {}) {
+  const normalized = {
+    line1: cleanUndefinedString(line1),
+    line2: cleanUndefinedString(line2),
+    city: cleanUndefinedString(city),
+    state: cleanUndefinedString(state),
+    zip: cleanUndefinedString(zip)
+  };
+
+  const addressFormat = `${options?.address_full_format || 'us_standard'}`.toLowerCase();
+  const cityStateZip = [normalized.city, normalized.state].filter(Boolean).join(', ');
+  const cityStateZipWithZip = [cityStateZip, normalized.zip].filter(Boolean).join(' ').trim();
+
+  if (addressFormat === 'legacy') {
+    const lineSection = [normalized.line1, normalized.line2].filter(Boolean).join(' ');
+    const legacyCityStateZip = [normalized.city, normalized.state, normalized.zip].filter(Boolean).join(' ');
+    return [lineSection, legacyCityStateZip].filter(Boolean).join(', ').trim();
+  }
+
+  const segments = [];
+  if (normalized.line1) { segments.push(normalized.line1); }
+  if (normalized.line2) { segments.push(normalized.line2); }
+  if (cityStateZipWithZip) { segments.push(cityStateZipWithZip); }
+  return segments.join(', ').trim();
+}
+
+function mergeAddressDetails(baseAddress = {}, resolvedAddress = {}, options = {}) {
+  const merged = {
+    line1: firstNonBlank([resolvedAddress.line1, baseAddress.line1]),
+    line2: firstNonBlank([resolvedAddress.line2, baseAddress.line2]),
+    city: firstNonBlank([resolvedAddress.city, baseAddress.city]),
+    state: firstNonBlank([resolvedAddress.state, baseAddress.state]),
+    zip: firstNonBlank([resolvedAddress.zip, baseAddress.zip]),
+    source: resolvedAddress.source || null,
+    validated: !!resolvedAddress.validated,
+    is_resolved_address: true,
+    resolved_at: resolvedAddress.resolved_at || new Date().toISOString(),
+    confidence: (resolvedAddress.confidence === undefined ? null : resolvedAddress.confidence),
+    latitude: resolvedAddress.latitude || null,
+    longitude: resolvedAddress.longitude || null
+  };
+
+  merged.full = buildAddressFull(merged, options) || firstNonBlank([resolvedAddress.full, baseAddress.full]);
+  return merged;
+}
+
+function isMarkedResolvedAddress(value) {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  return (value.is_resolved_address === true) || (value.resolved_address === true);
+}
+
+async function persistResolvedAddressToPerson({ client_id, person_id, dictionaryRec, options = {}, resolvedAddress }) {
+  if (!person_id || !resolvedAddress || options.persist_resolved_address === false) {
+    return;
+  }
+
+  const sourceName = (dictionaryRec?.source || '').toString().toLowerCase();
+  const tableName = (dictionaryRec?.table || '').toString();
+  const shouldPersist = (!sourceName || sourceName === 'person' || sourceName === 'people' || tableName === 'People');
+  if (!shouldPersist) {
+    return;
+  }
+
+  await dbClient
+    .update({
+      TableName: 'People',
+      Key: {
+        person_id
+      },
+      UpdateExpression: 'set resolved_address = :r',
+      ExpressionAttributeValues: {
+        ':r': Object.assign({}, resolvedAddress, {
+          is_resolved_address: true,
+          resolved_at: resolvedAddress.resolved_at || new Date().toISOString(),
+          source: resolvedAddress.source || 'nominatim',
+          client_id: client_id || null
+        })
+      }
+    })
+    .promise()
+    .catch((error) => {
+      cl({ 'resolveData persist resolved_address failed': { person_id, client_id, error } });
+    });
+}
+
+function splitNameFromString(nameString) {
+  if (typeof nameString !== 'string') {
+    return {
+      first: '',
+      last: '',
+      full: ''
+    };
+  }
+
+  const cleaned = nameString.trim().replace(/\s+/g, ' ');
+  if (!cleaned) {
+    return {
+      first: '',
+      last: '',
+      full: ''
+    };
+  }
+
+  const firstSpace = cleaned.indexOf(' ');
+  if (firstSpace < 0) {
+    return {
+      first: cleaned,
+      last: '',
+      full: cleaned
+    };
+  }
+
+  const first = cleaned.slice(0, firstSpace).trim();
+  const last = cleaned.slice(firstSpace + 1).trim();
+  const full = `${first} ${last}`.trim();
+
+  return {
+    first,
+    last,
+    full
+  };
+}
+
+function firstNonBlank(values = []) {
+  for (const value of values) {
+    if (typeof value === 'string' || typeof value === 'number') {
+      const trimmed = cleanUndefinedString(value);
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+  }
+  return '';
+}
+
+function cleanUndefinedArtifacts(value) {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    return cleanUndefinedString(value);
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(item => cleanUndefinedArtifacts(item));
+  }
+
+  if (typeof value === 'object') {
+    const outObj = {};
+    Object.keys(value).forEach((key) => {
+      outObj[key] = cleanUndefinedArtifacts(value[key]);
+    });
+    return outObj;
+  }
+
+  return value;
+}
+
+function cleanUndefinedString(value) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  let cleaned = `${value}`;
+  cleaned = cleaned.replace(/\bundefined\b/gi, ' ');
+  cleaned = cleaned.replace(/\s+,/g, ',');
+  cleaned = cleaned.replace(/,\s*,+/g, ', ');
+  cleaned = cleaned.replace(/\s{2,}/g, ' ');
+  cleaned = cleaned.replace(/\s+$/g, '');
+  cleaned = cleaned.replace(/^\s+/g, '');
+  return cleaned;
 }
 
 

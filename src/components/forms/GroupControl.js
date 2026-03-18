@@ -6,10 +6,19 @@ import { createNewGroup, getGroupMembers, getMemberList } from '../../util/AVAGr
 import { dbClient, sentenceCase, isObject, recordExists, deepCopy, listFromArray, cl } from '../../util/AVAUtilities';
 import AVATextInput from '../forms/AVATextInput';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
+import GroupMaintenance from '../dialogs/GroupMaintenance';
 import { getPerson } from '../../util/AVAPeople';
 
-import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography } from '@material-ui/core';
+import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Checkbox, FormControlLabel, LinearProgress } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
+import {
+  getExportFieldPickerData,
+  saveExportFieldSelections,
+  resolveSelectedFieldValuesForPeople,
+  downloadRowsAsCsv,
+  downloadRowsAsXlsx,
+  sanitizeExportBaseName
+} from '../../util/AVAPeopleListExport';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -21,11 +30,15 @@ import SendIcon from '@material-ui/icons/Send';
 import ExpandMoreIcon from '@material-ui/icons/Visibility';
 import ExpandLessIcon from '@material-ui/icons/VisibilityOff';
 import ArrowBackIcon from '@material-ui/icons/ArrowBack';
+import HighlightOffIcon from '@material-ui/icons/HighlightOff';
+import GetAppIcon from '@material-ui/icons/GetApp';
+import PhotoLibraryIcon from '@material-ui/icons/PhotoLibrary';
 
 import { SET_GROUPS } from '../../contexts/Session/actions';
 
 import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 import MessageForm from './MessageForm';
+import GroupPhotoDirectory from './GroupPhotoDirectory';
 
 const useStyles = makeStyles(theme => ({
   buttonArea: {
@@ -105,7 +118,13 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, onSelect, onRefresh, renderAsDialog = true }) => {
+export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = () => { }, onRefresh = () => { }, renderAsDialog = true }) => {
+
+  const isMounted = React.useRef(false);
+  const isExiting = React.useRef(false);
+  const filterTimeoutRef = React.useRef(null);
+  const personRowDragActiveRef = React.useRef(false);
+  const personRowDragResetRef = React.useRef(null);
 
   const { dispatch, state } = useSession();
 
@@ -146,6 +165,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     newGroups: {},
     people_filter: null,
     lower_people_filter: null,
+    minimumGroupLevel: calcMinimumGroupLevel() - 1,
+    people_filter_reset: 0,
     popUpOpen: false,
     progressMessage: 'Building Group List',
     pWidth: 60,
@@ -161,27 +182,59 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     selectedGroupRec: false,
     selectedGroupMembers: false,
     sortedGroupMembers: [],
+    showFieldPicker: false,
+    showPhotoDirectory: false,
+    photoDirectoryPeople: [],
+    loadingExportFields: false,
+    exportInProgress: false,
+    exportProgressCurrent: 0,
+    exportProgressTotal: 0,
+    exportProgressLabel: '',
+    exportFieldOptions: [],
+    selectedExportFieldNames: [],
     updatesMade: false,
-    viewPeopleMaintenance: false
+    viewPeopleMaintenance: false,
+    viewGroupMaintenance: false
   });
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
   const updateReactData = (newData, force = false) => {
-    setReactData((prevValues) => (Object.assign(
-      prevValues,
-      newData
-    )));
-    if (force) { setRefreshTrigger(refreshTrigger => !refreshTrigger); }
+    if (isMounted.current) {
+      setReactData((prevValues) => (Object.assign(
+        prevValues,
+        newData
+      )));
+      if (force) { setRefreshTrigger(refreshTrigger => !refreshTrigger); }
+    }
   };
+
+  function exitGroupControl({ mode = 'cancel', reason = 'done', payload = {} } = {}) {
+    if (isExiting.current) {
+      return;
+    }
+    isExiting.current = true;
+    clearTimeout(filterTimeoutRef.current);
+
+    const responseObj = {
+      reason,
+      ...payload
+    };
+
+    if (mode === 'refresh') {
+      onRefresh(responseObj);
+    }
+    else {
+      onCancel(responseObj);
+    }
+  }
 
   const isSmallScreen = () => {
     return (reactData.window_width < 800);
   };
 
-  let filterTimeOut;
   async function handleChangePersonFilter(vCheck) {
-    clearTimeout(filterTimeOut);
+    clearTimeout(filterTimeoutRef.current);
     cl(`set timeout with ${vCheck} at ${new Date().getTime()}`);
-    filterTimeOut = setTimeout(async () => {
+    filterTimeoutRef.current = setTimeout(async () => {
       cl(`timeout ended ${vCheck} at ${new Date().getTime()}`);
       let reactUpdObj = {
         people_filter: vCheck,
@@ -200,6 +253,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
         reactUpdObj.selectedGroupMembers = memberList;
         reactUpdObj.sortedGroupMembers = sortGroupMembers(memberList);
       };
+      if (!vCheck || vCheck === '') {
+        reactUpdObj.people_filter_reset = reactData.people_filter_reset + 1;
+      }
       updateReactData(reactUpdObj, true);
     }, 500);
   };
@@ -219,7 +275,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
     });
     return response;
   }
-  const [minimumGroupLevel,] = React.useState(calcMinimumGroupLevel() - 1);
 
   function hasChildren(this_index) {
     try {
@@ -231,6 +286,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
   }
 
   const handleDragStart = (ev, id) => {
+    ev.dataTransfer.effectAllowed = 'move';
     ev.dataTransfer.setData('id', JSON.stringify(id));
   };
 
@@ -467,7 +523,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
       if (reactData.selectedGroupRec) {
         if (newGroupList.includes(reactData.selectedGroup_id)) {
           if (!reactData.selectedGroupMembers.hasOwnProperty(draggedFrom.personObj.person_id)) {
-            reactData.selectedGroupMembers[draggedFrom.personObj.AVAclassesperson_id] = peopleRec.Item;
+            reactData.selectedGroupMembers[draggedFrom.personObj.person_id] = peopleRec.Item;
           };
           reactUpdObj.selectedGroupMembers = reactData.selectedGroupMembers;
           reactUpdObj.sortedGroupMembers = sortGroupMembers(reactData.selectedGroupMembers);
@@ -498,6 +554,250 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
       });
     }
   }
+
+  async function openFieldPicker() {
+    const visibleMemberIds = (reactData.lower_people_filter
+      ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
+      : reactData.sortedGroupMembers
+    ) || [];
+
+    if (visibleMemberIds.length === 0) {
+      updateReactData({
+        alert: {
+          severity: 'info',
+          title: 'No people to export',
+          message: 'There are no people in the current list to export.'
+        }
+      }, true);
+      return;
+    }
+
+    updateReactData({
+      showFieldPicker: true,
+      loadingExportFields: true,
+    }, true);
+
+    const {
+      exportFieldOptions,
+      selectedExportFieldNames
+    } = await getExportFieldPickerData({
+      sessionId: state?.session?.user_id,
+      clientId: pSession?.client_id,
+      exportScope: 'group_management',
+      logLabel: 'group csv export'
+    });
+
+    updateReactData({
+      loadingExportFields: false,
+      exportFieldOptions,
+      selectedExportFieldNames
+    }, true);
+  }
+
+  function getVisiblePeopleForDirectory() {
+    const visibleMemberIds = (reactData.lower_people_filter
+      ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
+      : reactData.sortedGroupMembers
+    ) || [];
+
+    return state.accessList[state.session.client_id].list
+      .filter((personKey) => visibleMemberIds.includes(personKey.person_id));
+  }
+
+  function openPhotoDirectory() {
+    const visiblePeople = getVisiblePeopleForDirectory();
+    if (visiblePeople.length === 0) {
+      updateReactData({
+        alert: {
+          severity: 'info',
+          title: 'No people to display',
+          message: 'There are no people in the current list for the photo directory.'
+        }
+      }, true);
+      return;
+    }
+
+    updateReactData({
+      showPhotoDirectory: true,
+      photoDirectoryPeople: visiblePeople
+    }, true);
+  }
+
+  function toggleExportFieldSelection(field_name) {
+    const selectedExportFieldNames = reactData.selectedExportFieldNames.includes(field_name)
+      ? reactData.selectedExportFieldNames.filter((this_field) => this_field !== field_name)
+      : [...reactData.selectedExportFieldNames, field_name];
+    updateReactData({
+      selectedExportFieldNames
+    }, true);
+  }
+
+  async function downloadCurrentPeopleListCsv() {
+    try {
+      const exportData = await buildCurrentPeopleListExportData();
+      if (!exportData) {
+        return false;
+      }
+
+      const {
+        header,
+        rows,
+        safeGroupName
+      } = exportData;
+
+      const fileName = `${safeGroupName || 'group'}_people_list.csv`;
+
+      downloadRowsAsCsv({ header, rows, fileName });
+      await saveExportFieldSelections({
+        sessionId: state?.session?.user_id,
+        clientId: pSession?.client_id,
+        exportScope: 'group_management',
+        selectedFieldNames: reactData.selectedExportFieldNames || [],
+        logLabel: 'group export selections'
+      });
+      return true;
+    }
+    finally {
+      updateReactData({
+        exportInProgress: false,
+        exportProgressCurrent: 0,
+        exportProgressTotal: 0,
+        exportProgressLabel: ''
+      }, true);
+    }
+  }
+
+  async function downloadCurrentPeopleListXlsx() {
+    try {
+      const exportData = await buildCurrentPeopleListExportData();
+      if (!exportData) {
+        return false;
+      }
+
+      const {
+        header,
+        rows,
+        safeGroupName
+      } = exportData;
+
+      const fileName = `${safeGroupName || 'group'}_people_list.xlsx`;
+      downloadRowsAsXlsx({ header, rows, fileName });
+      await saveExportFieldSelections({
+        sessionId: state?.session?.user_id,
+        clientId: pSession?.client_id,
+        exportScope: 'group_management',
+        selectedFieldNames: reactData.selectedExportFieldNames || [],
+        logLabel: 'group export selections'
+      });
+      return true;
+    }
+    finally {
+      updateReactData({
+        exportInProgress: false,
+        exportProgressCurrent: 0,
+        exportProgressTotal: 0,
+        exportProgressLabel: ''
+      }, true);
+    }
+  }
+
+  async function buildCurrentPeopleListExportData() {
+    const visibleMemberIds = (reactData.lower_people_filter
+      ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
+      : reactData.sortedGroupMembers
+    ) || [];
+
+    if (visibleMemberIds.length === 0) {
+      updateReactData({
+        alert: {
+          severity: 'info',
+          title: 'No people to export',
+          message: 'There are no people in the current list to export.'
+        }
+      }, true);
+      return false;
+    }
+
+    const selectedFieldOptions = reactData.exportFieldOptions.filter((fieldRec) => {
+      return reactData.selectedExportFieldNames.includes(fieldRec.field_key);
+    });
+
+    const selectedFieldKeys = selectedFieldOptions.map((fieldRec) => fieldRec.field_key);
+
+    const header = [
+      'ID',
+      'First Name',
+      'Last Name',
+      'Full Name',
+      ...selectedFieldOptions.map((fieldRec) => fieldRec.description)
+    ];
+
+    const rows = visibleMemberIds.map((this_person) => {
+      const personRec = reactData.selectedGroupMembers?.[this_person] || {};
+      const person_id = personRec.person_id || '';
+      const firstName = personRec.name?.first || '';
+      const lastName = personRec.name?.last || '';
+      const fullName = `${firstName} ${lastName}`.trim();
+      return [person_id, firstName, lastName, fullName];
+    });
+
+    if (selectedFieldKeys.length > 0) {
+      const progressTotal = rows.length;
+      updateReactData({
+        exportInProgress: true,
+        exportProgressCurrent: 0,
+        exportProgressTotal: progressTotal,
+        exportProgressLabel: 'Preparing your report data...'
+      }, true);
+
+      const personIds = rows.map((rowObj) => rowObj[0]);
+      const resolvedByPersonId = await resolveSelectedFieldValuesForPeople({
+        clientId: pSession.client_id,
+        personIds,
+        selectedFieldKeys,
+        onProgress: ({ completedCount, totalCount }) => {
+          updateReactData({
+            exportProgressCurrent: completedCount,
+            exportProgressTotal: totalCount,
+            exportProgressLabel: 'Preparing your report data...'
+          }, true);
+        }
+      });
+
+      rows.forEach((rowObj, rowIndex) => {
+        const personId = rowObj[0];
+        const selectedFieldValues = resolvedByPersonId[personId] || selectedFieldKeys.map(() => '');
+        rows[rowIndex] = [rowObj[0], rowObj[1], rowObj[2], rowObj[3], ...selectedFieldValues];
+      });
+    } else {
+      rows.forEach((rowObj, rowIndex) => {
+        rows[rowIndex] = [rowObj[0], rowObj[1], rowObj[2], rowObj[3]];
+      });
+    }
+
+    const safeGroupName = sanitizeExportBaseName(
+      reactData.selectedGroupRec?.group_name || reactData.selectedGroup_id || 'group',
+      'group'
+    );
+
+    return {
+      header,
+      rows,
+      safeGroupName
+    };
+  }
+
+  const OKtoShow = (this_person) => {
+    if (!reactData.lower_people_filter) { return true; }
+
+    const person = reactData.selectedGroupMembers[this_person];
+    const allValues = Object.values(person).flatMap(value =>
+      (typeof value === 'object' && value !== null) ? Object.values(value) : value
+    );
+    const searchString = allValues.filter(v => v != null).join(' ').toLowerCase();
+
+    return searchString.includes(reactData.lower_people_filter);
+  };
 
   function removeChildren(this_group, newGroupList) {
     if (!state.groups.parent_of.hasOwnProperty(this_group)) {
@@ -713,6 +1013,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
 
   var rowsDisplayed;
 
+  const canDragManage = !!(pSession?.adminAccount || reactData.administrative_account);
+
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
@@ -720,7 +1022,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
 
   async function selectMembers(this_group) {
     let response = {};
-    let memberList = await getMemberList(this_group, state.session.client_id, { "exclude": false });
+    let memberList = await getMemberList(this_group, state.session.client_id, { "name_and_search": true, state });
     for (const this_member of memberList.peopleList) {
       response[this_member.person_id] = this_member;
     }
@@ -765,9 +1067,16 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
   }
 
   React.useEffect(() => {
+    isMounted.current = true;
+    isExiting.current = false;
     initialize();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      isMounted.current = false;
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(filterTimeoutRef.current);
+      clearTimeout(personRowDragResetRef.current);
+    };
   }, [pSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
@@ -787,7 +1096,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
               paddingTop: 3,
             }}
           >
-            {`No Groups to show for ${pSession.user_display_name}`}
+            {`No Groups to show for ${pSession.patient_display_name || 'your account'}`}
           </Typography>
         </Box>
         :
@@ -821,7 +1130,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                   minHeight: 2.8,
                 }}
                 id='List Filter'
+                key={`filter_${reactData.people_filter_reset}`}
                 className={classes.freeInput}
+                defaultValue={reactData.lower_people_filter || null}
                 onChange={event => (handleChangePersonFilter(event.target.value))}
                 helperText={'Filter People'}
                 inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
@@ -846,12 +1157,13 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                   key={`g_client_name_header`}
                   onDragOver={(e) => handleDragOver(e)}
                   onDrop={async (e) => {
+                    // Keep GroupControl state in place after drag/drop.
+                    // Full refresh here clears selectedGroup and right-side list context.
                     await handleDrop(e, {
                       droppedOn: {
                         levelZero: true
                       }
                     });
-                    onRefresh();
                   }}
                   style={AVATextStyle({
                     size: 1.5,
@@ -871,14 +1183,14 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                   >
                     {Object.keys(groupsManagedObject).map((listEntry, listIndex) => (
                       <React.Fragment key={`frag_${listIndex}`}>
-                        {(((groupsManagedObject[listEntry].level - minimumGroupLevel) < 3) ||
+                        {(((groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) < 3) ||
                           !(reactData.levelHidden[listIndex] ?? reactData.defaultCollapsed)) &&
                           <Box
                             display='flex' flexDirection='row'
                             justifyContent='flex-start'
                             alignItems='center'
                             key={`activity-list_${listIndex}_${((listIndex === focusAt) ? 'selected' : '')}`}
-                            draggable={pSession?.adminAccount}
+                            draggable={canDragManage}
                             onDragStart={(e) => handleDragStart(e, {
                               group_id: listEntry,
                               groupObj: groupsManagedObject[listEntry],
@@ -886,6 +1198,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                             })}
                             onDragOver={(e) => handleDragOver(e)}
                             onDrop={async (e) => {
+                              // Intentionally avoid onRefresh() here so the current
+                              // right-side selection/member view does not reset.
                               await handleDrop(e, {
                                 droppedOn: {
                                   group_id: listEntry,
@@ -893,17 +1207,11 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                                   listIndex
                                 }
                               });
-                              onRefresh();
                             }}
                             onContextMenu={async (e) => {
                               e.preventDefault();
                               updateReactData({
-                                alert: {
-                                  severity: 'info',
-                                  title: groupsManagedObject[listEntry].group_name,
-                                  message: <div>
-                                    Group ID: <strong>{listEntry}</strong></div>
-                                }
+                                viewGroupMaintenance: listEntry
                               }, true);
                             }}
                           >
@@ -929,11 +1237,13 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                                   : null
                                 ),
                                 weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry)) || (reactData.selectedGroup_id === listEntry)) ? 'bold' : null),
-                                margin: { left: (groupsManagedObject[listEntry].level ? ((groupsManagedObject[listEntry].level - minimumGroupLevel) - 1) * 1.5 : 0), top: 0.35, bottom: 0.65, right: 0.8 },
+                                cursor: canDragManage ? 'grab' : null,
+                                userSelect: 'none',
+                                margin: { left: (groupsManagedObject[listEntry].level ? ((groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) - 1) * 1.5 : 0), top: 0.35, bottom: 0.65, right: 0.8 },
                               })}>
                               {groupsManagedObject[listEntry].group_name}
                             </Typography>
-                            {(groupsManagedObject[listEntry].level - minimumGroupLevel > 1) && hasChildren(listIndex) && (
+                            {(groupsManagedObject[listEntry].level - reactData.minimumGroupLevel > 1) && hasChildren(listIndex) && (
                               (reactData.levelHidden[listIndex + 1] ?? reactData.defaultCollapsed) ? (
                                 <ExpandMoreIcon
                                   style={{ size: 8, fontSize: '1rem' }}
@@ -1013,14 +1323,51 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
               >
                 <Typography
                   key={`g_name`}
+                  onClick={() => {
+                    updateReactData({
+                      viewGroupMaintenance: reactData.selectedGroupRec.group_id
+                    }, true);
+                  }}
                   style={AVATextStyle({
                     size: 1.5,
                     overflow: 'visible',
                     bold: true,
-                    margin: { top: 1, bottom: 1 },
+                    margin: { top: 1, bottom: 0 },
                   })}>
-                  {`${reactData.selectedGroupRec.group_name} (${reactData.sortedGroupMembers?.length || 0})`}
+                  {reactData.selectedGroupRec.group_name}
                 </Typography>
+                <Typography
+                  style={AVATextStyle({
+                    size: 0.9,
+                    margin: { top: 0, bottom: (reactData.lower_people_filter ? 0 : 1.2) },
+                    color: 'textSecondary',
+                    overflow: 'visible'
+                  })}
+                >
+                  {`${reactData.sortedGroupMembers?.length || 0} people in the group`}
+                </Typography>
+                {reactData.lower_people_filter &&
+                  <Box display='flex' flexDirection='row'
+                    justifyContent='flex-start'
+                    alignItems='center'
+                    style={{ marginBottom: 1.2, marginTop: 0 }}
+                    onClick={() => {
+                      handleChangePersonFilter('');
+                    }}
+                  >
+                    <Typography
+                      style={AVATextStyle({
+                        size: 0.9,
+                        margin: { top: 0, bottom: 0, right: 1 },
+                        color: 'textSecondary',
+                        overflow: 'visible'
+                      })}
+                    >
+                      {'This is a filtered subset.  Tap to remove the filter'}
+                    </Typography>
+                    <HighlightOffIcon />
+                  </Box>
+                }
                 <Paper component={Box} width='100%' elevation={0} overflow='auto' square
                   style={{ scrollbarWidth: 'thin', flexGrow: 1, display: 'flex' }}
                 >
@@ -1028,25 +1375,23 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                     justifyContent='flex-start'
                     alignItems='flex-start'
                   >
-                    {reactData.sortedGroupMembers && reactData.sortedGroupMembers.map((this_person, cX) => (
-                      (!reactData.lower_people_filter
-                        || (`${reactData.selectedGroupMembers[this_person].name.first} ${reactData.selectedGroupMembers[this_person].name.last}`).toLowerCase().includes(reactData.lower_people_filter)) &&
+                    {(reactData.lower_people_filter
+                      ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
+                      : reactData.sortedGroupMembers
+                    )?.map((this_person, cX) => (
                       <Typography
                         key={`g_textpeople-${cX}`}
                         style={AVATextStyle({
                           overflow: 'visible',
                           size: 1.2,
+                          cursor: canDragManage ? 'grab' : null,
+                          userSelect: 'none',
                           margin: { top: 0, bottom: 0.8 },
-                          weight: (reactData.selectedPerson_id === reactData.selectedGroupMembers[this_person].person_id
-                            ? 'bold'
-                            : null
-                          ),
-                          color: (reactData.selectedPerson_id === reactData.selectedGroupMembers[this_person].person_id
-                            ? 'orange'
-                            : null
-                          ),
                         })}
                         onClick={async () => {
+                          if (personRowDragActiveRef.current) {
+                            return;
+                          }
                           updateReactData({
                             viewPeopleMaintenance: this_person
                           }, true);
@@ -1066,37 +1411,260 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
                             }
                           }, true);
                         }}
-                        draggable={pSession?.adminAccount}
-                        onDragStart={(e) => handleDragStart(e, {
-                          personGroup: reactData.selectedGroup_id,
-                          personObj: reactData.selectedGroupMembers[this_person],
-                          intent: 'person'
-                        })}
+                        draggable={canDragManage}
+                        onDragStart={(e) => {
+                          personRowDragActiveRef.current = true;
+                          clearTimeout(personRowDragResetRef.current);
+                          handleDragStart(e, {
+                            personGroup: reactData.selectedGroup_id,
+                            personObj: reactData.selectedGroupMembers[this_person],
+                            intent: 'person'
+                          });
+                        }}
+                        onDragEnd={() => {
+                          clearTimeout(personRowDragResetRef.current);
+                          personRowDragResetRef.current = setTimeout(() => {
+                            personRowDragActiveRef.current = false;
+                          }, 150);
+                        }}
                       >
                         {`${reactData.selectedGroupMembers[this_person].name.first} ${reactData.selectedGroupMembers[this_person].name.last}`}
                       </Typography>
                     ))}
                   </Box>
                 </Paper>
-                {reactData.administrative_account &&
-                  <DeleteIcon
+                <Box
+                  display='flex'
+                  flexDirection='row'
+                  justifyContent='center'
+                  alignItems='center'
+                  style={{ alignSelf: 'center', marginTop: '6px' }}
+                >
+                  <PhotoLibraryIcon
                     classes={{ root: classes.rowButton }}
                     size='medium'
-                    style={{ alignSelf: 'center' }}
-                    aria-label="trash_icon"
-                    onDragOver={(e) => handleDragOver(e)}
-                    onDrop={async (e) => {
-                      await handleDrop_removePerson(e);
-                      onRefresh();
+                    style={{ marginRight: '12px', opacity: (reactData.sortedGroupMembers?.length > 0) ? 1 : 0.4 }}
+                    aria-label="open_photo_directory_icon"
+                    onClick={() => {
+                      if (reactData.sortedGroupMembers?.length > 0) {
+                        openPhotoDirectory();
+                      }
                     }}
-                    edge="start"
                   />
-                }
+                  <GetAppIcon
+                    classes={{ root: classes.rowButton }}
+                    size='medium'
+                    style={{ marginRight: reactData.administrative_account ? '12px' : 0, opacity: (reactData.sortedGroupMembers?.length > 0) ? 1 : 0.4 }}
+                    aria-label="download_csv_icon"
+                    onClick={() => {
+                      if (reactData.sortedGroupMembers?.length > 0) {
+                        openFieldPicker();
+                      }
+                    }}
+                  />
+                  {reactData.administrative_account &&
+                    <DeleteIcon
+                      classes={{ root: classes.rowButton }}
+                      size='medium'
+                      style={{ alignSelf: 'center' }}
+                      aria-label="trash_icon"
+                      onDragOver={(e) => handleDragOver(e)}
+                      onDrop={async (e) => {
+                        // Same rule for removals: apply local updates only,
+                        // do not force a full dialog refresh.
+                        await handleDrop_removePerson(e);
+                      }}
+                      edge="start"
+                    />
+                  }
+                </Box>
               </Box>
             }
           </Box>
 
         </React.Fragment>
+      }
+      {reactData.showFieldPicker &&
+        <Dialog
+          open={reactData.showFieldPicker}
+          PaperProps={{ style: { padding: '20px', borderRadius: '30px' } }}
+          onClose={() => {
+            updateReactData({
+              showFieldPicker: false
+            }, true);
+          }}
+          maxWidth='sm'
+          fullWidth
+        >
+          <Box p={2}>
+            <Typography
+              style={AVATextStyle({ size: 1.3, bold: true, margin: { bottom: 0.5 } })}
+            >
+              {'Choose fields to include in the output file'}
+            </Typography>
+            <Typography
+              style={AVATextStyle({ size: 0.9, color: 'textSecondary', margin: { bottom: 1 } })}
+            >
+              Select data to include in export columns.<br />(Report always includes User ID and Name.)
+            </Typography>
+
+            {reactData.exportInProgress && (reactData.exportProgressTotal > 0) &&
+              <Box mb={1.5}>
+                <Typography style={AVATextStyle({ size: 0.9, margin: { bottom: 0.4 } })}>
+                  {`${reactData.exportProgressLabel || 'Preparing export data...'} ${reactData.exportProgressCurrent}/${reactData.exportProgressTotal}`}
+                </Typography>
+                <LinearProgress
+                  variant='determinate'
+                  value={Math.min(100, Math.round((reactData.exportProgressCurrent / reactData.exportProgressTotal) * 100))}
+                />
+              </Box>
+            }
+
+            {reactData.loadingExportFields
+              ?
+              <Typography style={AVATextStyle({ size: 1 })}>
+                {'Loading field list...'}
+              </Typography>
+              :
+              <Box
+                display='flex'
+                flexDirection='column'
+                style={{ maxHeight: '360px', overflowY: 'auto' }}
+              >
+                {reactData.exportFieldOptions.length === 0
+                  ?
+                  <Typography style={AVATextStyle({ size: 1 })}>
+                    {'No DataDictionary fields were found for this client.'}
+                  </Typography>
+                  :
+                  Object.keys(reactData.exportFieldOptions.reduce((acc, fieldRec) => {
+                    const category = fieldRec.category || 'Other';
+                    if (!acc[category]) {
+                      acc[category] = [];
+                    }
+                    acc[category].push(fieldRec);
+                    return acc;
+                  }, {})).sort((a, b) => a.localeCompare(b)).map((categoryKey) => {
+                    const groupedFields = reactData.exportFieldOptions.filter((fieldRec) => {
+                      return (fieldRec.category || 'Other') === categoryKey;
+                    });
+                    return (
+                      <Box key={`csv_field_group_${categoryKey}`} mb={1}>
+                        <Typography
+                          style={AVATextStyle({ size: 1, bold: true, margin: { left: 1, top: 0.5, bottom: 0.2 } })}
+                        >
+                          {categoryKey}
+                        </Typography>
+                        {groupedFields.map((fieldRec) => (
+                          <FormControlLabel
+                            key={`csv_field_${fieldRec.field_key}`}
+                            control={
+                              <Checkbox
+                                color='primary'
+                                style={{ marginLeft: '1rem' }}
+                                checked={reactData.selectedExportFieldNames.includes(fieldRec.field_key)}
+                                disabled={reactData.exportInProgress}
+                                onChange={() => {
+                                  toggleExportFieldSelection(fieldRec.field_key);
+                                }}
+                              />
+                            }
+                            label={fieldRec.description}
+                          />
+                        ))}
+                      </Box>
+                    );
+                  })
+                }
+              </Box>
+            }
+          </Box>
+          <DialogActions className={classes.buttonArea} style={{ marginBottom: '0' }} >
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'green', color: 'white' }}
+              size='small'
+              onClick={async () => {
+                const result = await downloadCurrentPeopleListCsv();
+                if (result) {
+                  updateReactData({
+                    showFieldPicker: false
+                  }, true);
+                }
+              }}
+              disabled={reactData.loadingExportFields || reactData.exportInProgress}
+            >
+              {'Download CSV'}
+            </Button>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'green', color: 'white' }}
+              size='small'
+              onClick={async () => {
+                const result = await downloadCurrentPeopleListXlsx();
+                if (result) {
+                  updateReactData({
+                    showFieldPicker: false
+                  }, true);
+                }
+              }}
+              disabled={reactData.loadingExportFields || reactData.exportInProgress}
+            >
+              {'Download Excel'}
+            </Button>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'red', color: 'white' }}
+              size='small'
+              onClick={() => {
+                updateReactData({
+                  showFieldPicker: false
+                }, true);
+              }}
+              disabled={reactData.exportInProgress}
+            >
+              {'Close'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      }
+      {reactData.showPhotoDirectory &&
+        <Dialog
+          open={reactData.showPhotoDirectory}
+          onClose={() => {
+            updateReactData({
+              showPhotoDirectory: false,
+              photoDirectoryPeople: []
+            }, true);
+          }}
+          fullScreen
+          scroll='paper'
+          PaperProps={{
+            style: {
+              margin: 0,
+              height: '100%',
+              maxHeight: '100%',
+              overflow: 'hidden'
+            }
+          }}
+        >
+          <Box style={{ height: '100%', minHeight: 0, overflow: 'hidden' }}>
+            <GroupPhotoDirectory
+              options={{
+                groupMemberList: reactData.photoDirectoryPeople,
+                pClient: pSession.client_id,
+                pGroup: reactData.selectedGroup_id,
+                pGroupName: reactData.selectedGroupRec?.group_name || reactData.selectedGroup_id,
+              }}
+              onReset={() => {
+                updateReactData({
+                  showPhotoDirectory: false,
+                  photoDirectoryPeople: []
+                }, true);
+              }}
+            />
+          </Box>
+        </Dialog>
       }
       {reactData.sendMessage &&
         <MessageForm
@@ -1131,6 +1699,52 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
               reactUpd.selectedGroupMembers = await selectMembers(reactData.selectedGroup_id);
               reactUpd.sortedGroupMembers = sortGroupMembers(reactUpd.selectedGroupMembers);
             }
+            updateReactData(reactUpd, true);
+          }}
+        />
+      }
+      {reactData.viewGroupMaintenance &&
+        <GroupMaintenance
+          pK={reactData.viewGroupMaintenance}
+          client_id={state.session.client_id}
+          overrideValues={null}
+          tableName='Groups'
+          pKName='group_id'
+          options={{
+            sectionToShow: null,
+            color: 'blue',
+            groupsManagedObject,
+            minimumGroupLevel: reactData.minimumGroupLevel,
+
+          }}
+          onModuleClose={async ({ response = {}, reason }) => {
+            console.log(`Exit from GroupMaintenance with reason: `, reason);
+            let reactUpd = {};
+            if (response.reload) {
+              let jumpTo = `${window.location.href.replace('refresh', 'theseus')}?goto=group_management`;
+              window.location.replace(jumpTo);
+            }
+            if (response.refresh) {
+              exitGroupControl({
+                mode: 'refresh',
+                reason: reason || 'group_maintenance_reload',
+                payload: {
+                  source: 'group_maintenance',
+                  restart: true
+                }
+              });
+              return;
+            }
+            else {
+              if (response.rename) {
+                groupsManagedObject[reactData.viewGroupMaintenance].group_name = response.rename;
+              }
+              if (response.membership) {
+                reactUpd.selectedGroupMembers = await selectMembers(reactData.viewGroupMaintenance);
+                reactUpd.sortedGroupMembers = sortGroupMembers(reactUpd.selectedGroupMembers);
+              }
+            }
+            reactUpd.viewGroupMaintenance = false;
             updateReactData(reactUpd, true);
           }}
         />
@@ -1196,7 +1810,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel, on
           size='small'
           startIcon={<CloseIcon fontSize="small" />}
           onClick={() => {
-            onCancel();
+            exitGroupControl({
+              mode: 'cancel',
+              reason: 'done'
+            });
           }}
         >
           {'Done'}

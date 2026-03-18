@@ -136,7 +136,6 @@ const LoginModuleV2 = ({
       .catch(() => null);
 
     if (clientRec && clientRec.Item && clientRec.Item.customization_value) {
-      setClientStyle(clientRec.Item.customization_value);
       return clientRec.Item.customization_value;
     }
     return null;
@@ -174,6 +173,7 @@ const LoginModuleV2 = ({
         getClientLogoForId(clientId)
       ]);
       if (!isActive) return;
+      setClientStyle(clientStyle || {});
       setBackgroundImageUrl(clientStyle?.checkin_image || null);
       setClientNameOverride(fetchedClientName || '');
       setClientLogoOverride(fetchedClientLogo || '');
@@ -542,6 +542,7 @@ const LoginModuleV2 = ({
       updateExpression += ', last_login = :p';
     }
     if (sessionRec.patient_id) {
+      // INVESTIGATE: this might need to set pid to patientRec.person_id (not sessionRec.person_id)
       attributeValues[':pid'] = sessionRec.patient_id;
       updateExpression += ', patient_id = :pid';
     }
@@ -1262,11 +1263,24 @@ const LoginModuleV2 = ({
                   type='password'
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && password && !loading) {
+                      event.preventDefault();
+                      handleSubmitPassword();
+                    }
+                  }}
                   variant='outlined'
                   margin='normal'
                   disabled={loading}
                   autoFocus
                 />
+                {alertMessage && (
+                  <Box mt={1}>
+                    <Alert severity='error'>
+                      {alertMessage}
+                    </Alert>
+                  </Box>
+                )}
                 {errorText && (
                   <Typography color='error' variant='body2'>
                     {errorText}

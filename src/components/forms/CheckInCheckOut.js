@@ -6,10 +6,11 @@ import { Alert, AlertTitle } from '@material-ui/lab/';
 
 import { isEmpty, titleCase, dbClient, cl, recordExists } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
-import { determineClass } from '../../util/AVAGroups';
+import { determineClass, getMemberList } from '../../util/AVAGroups';
 import { getServiceRequests, putServiceRequest, updateServiceRequest } from '../../util/AVAServiceRequest';
 import { getPerson, getImage, getPersonByWords, addGuest, addVendor, makeName } from '../../util/AVAPeople';
 import { AVAclasses, AVADefaults, AVATextStyle, AVATextVariableStyle } from '../../util/AVAStyles';
+import { downloadPeopleListWithPreselectedFields } from '../../util/AVAPeopleListExport';
 
 // import { useSnackbar } from 'notistack';
 
@@ -60,6 +61,8 @@ export default ({ onSave, onClose }) => {
       adminIndex: -1,
       outList: [],
       adminView: false,
+      is_admin: state.session.adminAccount || (state.user?.account_class && (['master', 'admin'].includes(state.user.account_class))),
+      exportInProgress: false,
       initialized: false,
       alert: false
     }
@@ -323,15 +326,17 @@ export default ({ onSave, onClose }) => {
         nameIndex = x;
         obo = titleCase(responses[x]);
         responses[x] = obo;
+        const normalizedDestination = `${responses[x] || ''}`.trim().replace(/\s+/g, ' ').toLowerCase();
+        const normalizedPreviousDestination = `${reactData.previouslyEnteredDestination || ''}`.trim().replace(/\s+/g, ' ').toLowerCase();
         if ((state.session.guest_checkout_prompts[nameIndex].checkSensitivity === 'error')
-          || !reactData.previouslyEnteredDestination
-          || (responses[x].toLowerCase() !== reactData.previouslyEnteredDestination.toLowerCase())
+          || !normalizedPreviousDestination
+          || (normalizedDestination !== normalizedPreviousDestination)
         ) {
           let validation = await validateUser(responses[x], state.session.client_id, 'active', ['resident', 'staff', 'admin']);
           switch (validation.result) {
             case 'invalid': {
               errorText[x] = `We don't find anyone to match "${responses[x]}".  Please confirm this is correct.`;
-              reactData.previouslyEnteredDestination = responses[x];
+              reactData.previouslyEnteredDestination = normalizedDestination;
               break;
             }
             case 'match': {
@@ -394,7 +399,7 @@ export default ({ onSave, onClose }) => {
     }
     await dbClient
       .update({
-        Key: { person_id: reactData.personRec.person_id },
+        Key: { person_id: reqRec.requestor || reactData.personRec.person_id },
         UpdateExpression: 'set #s = :s, #h = :h',
         ExpressionAttributeValues: {
           ':s': reqRec.last_status,
@@ -410,6 +415,91 @@ export default ({ onSave, onClose }) => {
       .catch(error => {
         cl(`caught error updating People; error is: `, error);
       });
+  }
+
+  async function getResidentPersonIdsForExport() {
+    const customizationRec = await dbClient
+      .get({
+        TableName: 'Customizations',
+        Key: {
+          client_id: state.session.client_id,
+          custom_key: 'group_assignments'
+        }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error reading Customizations group_assignments for CheckInCheckOut export': error });
+      });
+
+    if (!recordExists(customizationRec)) {
+      return [];
+    }
+
+    const residentGroupList = [...new Set([
+      customizationRec.Item?.customization_value?.resident
+    ].flat().filter((groupId) => {
+      return (typeof groupId === 'string') && (groupId.trim() !== '');
+    }).map((groupId) => groupId.trim()))];
+
+    if (residentGroupList.length === 0) {
+      return [];
+    }
+
+    const residentMembers = await getMemberList(residentGroupList, state.session.client_id, {
+      state,
+      sortResults: false,
+      exclude: false
+    });
+
+    if (!residentMembers?.peopleList || !Array.isArray(residentMembers.peopleList)) {
+      return [];
+    }
+
+    return [...new Set(residentMembers.peopleList
+      .map((personRec) => personRec?.person_id)
+      .filter((personId) => (typeof personId === 'string') && (personId.trim() !== ''))
+      .map((personId) => personId.trim()))];
+  }
+
+  async function exportResidentCheckInReport() {
+    updateReactData({ exportInProgress: true }, true);
+    try {
+      const personIds = await getResidentPersonIdsForExport();
+      if (personIds.length === 0) {
+        enqueueSnackbar('No resident members were found to export.', {
+          variant: 'info',
+          title: 'Export'
+        });
+        return;
+      }
+
+      const selectedFieldKeys = ['name', 'address', 'checkout_status', 'checkout_date', 'hospitalized', 'cell_phone'];
+
+      await downloadPeopleListWithPreselectedFields({
+        clientId: state.session.client_id,
+        baseHeader: [],
+        baseRows: personIds.map(() => []),
+        personIds,
+        selectedFieldKeys,
+        downloadType: 'xlsx',
+        fileBaseName: 'resident_checkin_export'
+      });
+
+      enqueueSnackbar('Resident export downloaded.', {
+        variant: 'success',
+        title: 'Export'
+      });
+    }
+    catch (error) {
+      cl({ 'CheckInCheckOut export failed': error });
+      enqueueSnackbar('Unable to create export right now. Please try again.', {
+        variant: 'error',
+        title: 'Export failed'
+      });
+    }
+    finally {
+      updateReactData({ exportInProgress: false }, true);
+    }
   }
 
   function reset() {
@@ -549,7 +639,7 @@ export default ({ onSave, onClose }) => {
                 valueText={[
                   (!reactData.kiosk_mode ? reactData.residentName : '')
                 ]}
-                buttonText={[(!reactData.kiosk_mode ? 'Confirm' : 'Lookup'), 'Cancel', (state.session.adminAccount ? 'Admin' : null)]}
+                buttonText={[(!reactData.kiosk_mode ? 'Confirm' : 'Lookup'), 'Cancel', (reactData.is_admin ? 'Admin' : null)]}
                 onCancel={() => {
                   onClose();
                 }}
@@ -742,7 +832,7 @@ export default ({ onSave, onClose }) => {
                   }
                   await putCheckout(reactData.currentStatus.reqRec);
                   enqueueSnackbar(`Got it!  You have successfully checked out.  Thank you!`, { variant: 'success', persist: false });
-                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  if (!reactData.kiosk_mode && !reactData.is_admin) { onClose(); }
                   else { reset(); }
                 }}
                 allowCancel={true}
@@ -765,7 +855,7 @@ export default ({ onSave, onClose }) => {
                   bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
                 }}
                 onCancel={() => {
-                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  if (!reactData.kiosk_mode && !reactData.is_admin) { onClose(); }
                   else {
                     reactData.validated_user = false;
                     setReactData(reactData);
@@ -780,7 +870,7 @@ export default ({ onSave, onClose }) => {
                   reactData.currentStatus.reqRec.history.unshift(hNote);
                   await putCheckout(reactData.currentStatus.reqRec);
                   enqueueSnackbar(`You're all set!  You have successfully checked in.`, { variant: 'success', persist: false });
-                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  if (!reactData.kiosk_mode && !reactData.is_admin) { onClose(); }
                   else { reset(); }
                 }}
                 allowCancel={true}
@@ -815,7 +905,7 @@ export default ({ onSave, onClose }) => {
                   reactData.currentStatus.reqRec.history.unshift(hNote);
                   await putCheckout(reactData.currentStatus.reqRec);
                   enqueueSnackbar(`You're all set!`, { variant: 'success', persist: false });
-                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  if (!reactData.kiosk_mode && !reactData.is_admin) { onClose(); }
                   else { reset(); }
                 }}
                 allowCancel={true}
@@ -842,7 +932,7 @@ export default ({ onSave, onClose }) => {
                   reactData.currentStatus.reqRec.history.unshift(hNote);
                   await putCheckout(reactData.currentStatus.reqRec);
                   enqueueSnackbar(`You're all set!`, { variant: 'success', persist: false });
-                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  if (!reactData.kiosk_mode && !reactData.is_admin) { onClose(); }
                   else { reset(); }
                 }}
                 allowCancel={true}
@@ -880,7 +970,7 @@ export default ({ onSave, onClose }) => {
                   reactData.currentStatus.reqRec.history.unshift(hNote);
                   await putCheckout(reactData.currentStatus.reqRec);
                   enqueueSnackbar(`You're all set!`, { variant: 'success', persist: false });
-                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  if (!reactData.kiosk_mode && !reactData.is_admin) { onClose(); }
                   else { reset(); }
                 }}
                 allowCancel={true}
@@ -953,7 +1043,7 @@ export default ({ onSave, onClose }) => {
                     enqueueSnackbar(`Got it!  You have successfully checked in to see ${obo}.  Thank you!`, { variant: 'success', persist: false });
                     reactData.validated_user = false;
                     reactData.add_guest_mode = false;
-                    if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                    if (!reactData.kiosk_mode && !reactData.is_admin) { onClose(); }
                     else { reset(); }
                   }
                   else {
@@ -1142,7 +1232,7 @@ export default ({ onSave, onClose }) => {
                   enqueueSnackbar(`Got it!  You have successfully checked in to see ${obo}.  Thank you!`, { variant: 'success', persist: false });
                   reactData.validated_user = false;
                   reactData.add_guest_mode = false;
-                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  if (!reactData.kiosk_mode && !reactData.is_admin) { onClose(); }
                   else { reset(); }
                 }
                 else {
@@ -1301,6 +1391,17 @@ export default ({ onSave, onClose }) => {
                   </Box>
                 </Paper>
                 <Box display='flex' flexDirection='row' marginTop={1} paddingBottom={1} justifyContent='center' alignItems='center'>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'blue', color: 'white' }}
+                    size='small'
+                    disabled={reactData.exportInProgress}
+                    onClick={async () => {
+                      await exportResidentCheckInReport();
+                    }}
+                  >
+                    {reactData.exportInProgress ? 'Exporting...' : 'Export'}
+                  </Button>
                   <Button
                     className={AVAClass.AVAButton}
                     style={{ backgroundColor: 'red', color: 'white' }}

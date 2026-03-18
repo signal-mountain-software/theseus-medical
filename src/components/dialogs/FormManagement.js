@@ -16,6 +16,14 @@ import FormEditor from '../forms/FormEditor';
 import { Snackbar, Paper, Box, Dialog, DialogActions, DialogContent, DialogContentText, Button, Typography, Checkbox, FormControlLabel } from '@material-ui/core';
 import Select from "react-dropdown-select";
 import { Alert, AlertTitle } from '@material-ui/lab/';
+import {
+  getExportFieldPickerData,
+  saveExportFieldSelections,
+  resolveSelectedFieldValuesForPeople,
+  downloadRowsAsCsv,
+  downloadRowsAsXlsx,
+  sanitizeExportBaseName
+} from '../../util/AVAPeopleListExport';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -29,6 +37,7 @@ import SwapVertIcon from '@material-ui/icons/SwapVert';
 import EditIcon from '@material-ui/icons/Edit';
 import VisibilityIcon from '@material-ui/icons/Visibility';
 import LockIcon from '@material-ui/icons/Lock';
+import GetAppIcon from '@material-ui/icons/GetApp';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
 
@@ -46,55 +55,13 @@ const useStyles = makeStyles(theme => ({
     maxWidth: '50px',
     minHeight: '50px',
     maxHeight: '50px',
-    marginRight: theme.spacing(1),
-    borderRadius: '25px'
-  },
-  peopleBox: {
-    paddingTop: 0,
-    paddingBottom: theme.spacing(2),
-    overflowX: 'auto',
-    scrollbarWidth: 'thin',
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(2),
-    display: 'flex',
-    width: '100%',
-    flexDirection: 'column'
-  },
-  peopleBoxWithSpace: {
-    paddingTop: theme.spacing(2),
-    paddingBottom: theme.spacing(2),
-    overflowX: 'auto',
-    scrollbarWidth: 'thin',
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(2),
-    display: 'flex',
-    width: '100%',
-    flexDirection: 'row'
+    color: '#111111'
   },
   paperPallette: {
     borderRadius: '30px 30px 30px 30px',
     width: '95%',
     height: '100%',
     overflow: 'hidden'
-  },
-  dragNamesFirst: {
-    fontSize: theme.typography.fontSize * 0.8,
-    marginTop: '3px',
-    marginBottom: '-10px'
-  },
-  dragNamesLast: {
-    fontSize: theme.typography.fontSize * 0.8,
-    marginTop: '3px',
-    fontWeight: 'bold',
-    marginBottom: '-10px'
-  },
-  assignment_avatar: {
-    marginTop: 0,
-    marginBottom: 0,
-    height: 40,
-    width: 40,
-    paddingTop: 0,
-    fontSize: '1.2rem',
   },
   title: {
     marginTop: theme.spacing(3),
@@ -103,13 +70,15 @@ const useStyles = makeStyles(theme => ({
     marginBottom: 0,
     fontSize: '1.3rem',
   },
-  listItemAVA: {
-    fontSize: theme.typography.fontSize * 1.5,
+  filterSelect: {
+    minWidth: 220,
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginBottom: theme.spacing(1)
   },
-  noDisplay: {
-    display: 'none',
-    visibility: 'hidden'
-  },
+  rowButton: {
+    cursor: 'pointer'
+  }
 }));
 
 export default ({ defaults, onClose }) => {
@@ -178,6 +147,10 @@ export default ({ defaults, onClose }) => {
     selectedGroup_id: null,
     selectedGroupRec: false,
     selectedGroupMembers: false,
+    showFieldPicker: false,
+    loadingExportFields: false,
+    exportFieldOptions: [],
+    selectedExportFieldNames: [],
     updatesMade: false,
     viewPeopleMaintenance: false
   });
@@ -297,6 +270,173 @@ export default ({ defaults, onClose }) => {
     updateReactData({
       activity_sort_order: direction
     }, true);
+  }
+
+  async function openFieldPicker() {
+    if (!reactData.selectedForm_id) {
+      return;
+    }
+
+    const selectedForm = reactData.masterFormList?.[reactData.selectedForm_id];
+    const filteredMemberIds = selectedForm?.filteredMemberIds || [];
+
+    if (filteredMemberIds.length === 0) {
+      updateReactData({
+        alert: {
+          severity: 'info',
+          title: 'No people to export',
+          message: 'There are no people in the current list to export.'
+        }
+      }, true);
+      return;
+    }
+
+    updateReactData({
+      showFieldPicker: true,
+      loadingExportFields: true,
+    }, true);
+
+    const {
+      exportFieldOptions,
+      selectedExportFieldNames
+    } = await getExportFieldPickerData({
+      sessionId: state?.session?.user_id,
+      clientId: state?.session?.client_id,
+      exportScope: 'form_management',
+      logLabel: 'form management csv export'
+    });
+
+    updateReactData({
+      loadingExportFields: false,
+      exportFieldOptions,
+      selectedExportFieldNames
+    }, true);
+  }
+
+  function toggleExportFieldSelection(field_name) {
+    const selectedExportFieldNames = reactData.selectedExportFieldNames.includes(field_name)
+      ? reactData.selectedExportFieldNames.filter((this_field) => this_field !== field_name)
+      : [...reactData.selectedExportFieldNames, field_name];
+    updateReactData({
+      selectedExportFieldNames
+    }, true);
+  }
+
+  async function downloadCurrentPeopleListCsv() {
+    const exportData = await buildCurrentPeopleListExportData();
+    if (!exportData) {
+      return false;
+    }
+
+    const {
+      selectedForm,
+      header,
+      rows
+    } = exportData;
+
+    const safeFormName = sanitizeExportBaseName(
+      selectedForm?.form_name || reactData.selectedForm_id,
+      'form'
+    );
+    const fileName = `${safeFormName || 'form'}_people_list.csv`;
+
+    downloadRowsAsCsv({ header, rows, fileName });
+    await saveExportFieldSelections({
+      sessionId: state?.session?.user_id,
+      clientId: state?.session?.client_id,
+      exportScope: 'form_management',
+      selectedFieldNames: reactData.selectedExportFieldNames || [],
+      logLabel: 'form export selections'
+    });
+    return true;
+  }
+
+  async function downloadCurrentPeopleListXlsx() {
+    const exportData = await buildCurrentPeopleListExportData();
+    if (!exportData) {
+      return false;
+    }
+
+    const {
+      selectedForm,
+      header,
+      rows
+    } = exportData;
+
+    const safeFormName = sanitizeExportBaseName(
+      selectedForm?.form_name || reactData.selectedForm_id,
+      'form'
+    );
+    const fileName = `${safeFormName || 'form'}_people_list.xlsx`;
+
+    downloadRowsAsXlsx({ header, rows, fileName });
+    await saveExportFieldSelections({
+      sessionId: state?.session?.user_id,
+      clientId: state?.session?.client_id,
+      exportScope: 'form_management',
+      selectedFieldNames: reactData.selectedExportFieldNames || [],
+      logLabel: 'form export selections'
+    });
+    return true;
+  }
+
+  async function buildCurrentPeopleListExportData() {
+    if (!reactData.selectedForm_id) {
+      return false;
+    }
+
+    const selectedForm = reactData.masterFormList?.[reactData.selectedForm_id];
+    const filteredMemberIds = selectedForm?.filteredMemberIds || [];
+
+    if (filteredMemberIds.length === 0) {
+      updateReactData({
+        alert: {
+          severity: 'info',
+          title: 'No people to export',
+          message: 'There are no people in the current list to export.'
+        }
+      }, true);
+      return false;
+    }
+
+    const selectedFieldOptions = reactData.exportFieldOptions.filter((fieldRec) => {
+      return reactData.selectedExportFieldNames.includes(fieldRec.field_key);
+    });
+
+    const selectedFieldKeys = selectedFieldOptions.map((fieldRec) => fieldRec.field_key);
+
+    const header = ['Name', 'Person ID', 'Status', ...selectedFieldOptions.map((fieldRec) => fieldRec.description)];
+    const rows = filteredMemberIds.map(person_id => {
+      const memberData = selectedForm?.memberList?.[person_id] || {};
+      const personName = memberData.person_name || makeName(person_id).display;
+      const status = reactData.masterPeopleList?.[person_id]?.[reactData.selectedForm_id]?.status || 'not_started';
+      return [personName, person_id, status];
+    });
+
+    if (selectedFieldKeys.length > 0) {
+      const personIds = rows.map((rowObj) => rowObj[1]);
+      const resolvedByPersonId = await resolveSelectedFieldValuesForPeople({
+        clientId: state.session.client_id,
+        personIds,
+        selectedFieldKeys
+      });
+
+      rows.forEach((rowObj, rowIndex) => {
+        const personId = rowObj[1];
+        const selectedFieldValues = resolvedByPersonId[personId] || selectedFieldKeys.map(() => '');
+        rows[rowIndex] = [rowObj[0], rowObj[1], rowObj[2], ...selectedFieldValues];
+      });
+    } else {
+      rows.forEach((rowObj, rowIndex) => {
+        rows[rowIndex] = [rowObj[0], rowObj[1], rowObj[2]];
+      });
+    }
+
+    return {
+      selectedForm,
+      header,
+      rows
+    };
   }
 
   function OKtoShow(this_person, this_form, display_data) {
@@ -425,6 +565,29 @@ export default ({ defaults, onClose }) => {
     }
   }
 
+  function getDocumentFirstSaveUpdate(this_doc) {
+    const historyList = Array.isArray(this_doc?.history) ? [...this_doc.history] : [];
+    const validHistory = historyList.filter((historyEntry) => {
+      const candidate = Number(historyEntry?.update_date ?? historyEntry?.last_update);
+      return Number.isFinite(candidate) && (candidate > 0);
+    });
+
+    if (validHistory.length > 0) {
+      validHistory.sort((a, b) => {
+        const aTime = Number(a?.update_date ?? a?.last_update);
+        const bTime = Number(b?.update_date ?? b?.last_update);
+        return aTime - bTime;
+      });
+
+      const firstSaveEntry = validHistory[0];
+      return Number(firstSaveEntry?.update_date ?? firstSaveEntry?.last_update);
+    }
+
+    const splitter = `${this_doc?.document_id || ''}`.split('#');
+    const fallbackTime = Number(splitter[splitter.length - 1]);
+    return Number.isFinite(fallbackTime) && (fallbackTime > 0) ? fallbackTime : 0;
+  }
+
   async function buildMasters(this_doc, eventCache = {}) {
     if ((this_doc.restricted_access === 'admin_only') && (!reactData.administrative_account)) {
       return;    // skip this document
@@ -459,12 +622,9 @@ export default ({ defaults, onClose }) => {
       reactData.masterPeopleList[this_doc.pertains_to] = {};
     }
     if (!Array.isArray(this_doc.history)) {
-      this_doc.history = [{ last_update: 0 }];
+      this_doc.history = [];
     }
-    if (this_doc.history[0].last_update === 0) {
-      let splitter = this_doc.document_id.split('#');
-      this_doc.history[0].last_update = splitter[splitter.length - 1];
-    }
+    const firstSaveUpdate = getDocumentFirstSaveUpdate(this_doc);
     if (reactData.masterFormList[this_doc.form_type].dated_docs) {
       // get the event
       if (!this_doc.event_id) {
@@ -513,14 +673,14 @@ export default ({ defaults, onClose }) => {
       if (!eventDate.error) {
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].assignedDocs.push({
           document_id: this_doc.document_id,
-          last_update: this_doc.history[0].last_update,
+          last_update: firstSaveUpdate,
           due_date: this_doc.due_date || reactData.masterFormList[this_doc.form_type].dueDate,
           title: this_doc.title,
           event_date: eventDate.numeric,
           event_displayDate: eventDate.dateOnly,
           event_time: eventTime,
           event_key: this_doc.event_key,
-          location: this_doc.history[0].url,
+          location: this_doc.history?.[0]?.url,
           status: this_doc.status,
           formLocked: this_doc.formLocked || false
         });
@@ -553,43 +713,43 @@ export default ({ defaults, onClose }) => {
       const completed_count = reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.length;
       const cObj = {
         document_id: this_doc.document_id,
-        location: this_doc.history[0].url,
-        last_update: this_doc.history[0].last_update,
-        date_completed: makeDate(this_doc.history[0].last_update).relative,
+        location: this_doc.history?.[0]?.url,
+        last_update: firstSaveUpdate,
+        date_completed: makeDate(firstSaveUpdate).relative,
         title: this_doc.title,
         amendments: this_doc.amendments,
         formLocked: this_doc.formLocked || false
       };
-      if ((completed_count === 0) || (this_doc.history[0].last_update > reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs[0].last_update)) {
+      if ((completed_count === 0) || (firstSaveUpdate > reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs[0].last_update)) {
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.unshift(cObj);
-        if (!reactData.masterPeopleList[this_doc.pertains_to].hasOwnProperty(this_doc.form_type) || (this_doc.history[0].last_update > reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type].last_update)) {
+        if (!reactData.masterPeopleList[this_doc.pertains_to].hasOwnProperty(this_doc.form_type) || (firstSaveUpdate > reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type].last_update)) {
           reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type] = {
             status: 'completed',
-            last_update: this_doc.history[0].last_update
+            last_update: firstSaveUpdate
           };
         }
       }
-      else if (this_doc.history[0].last_update < reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs[completed_count - 1].last_update) {
+      else if (firstSaveUpdate < reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs[completed_count - 1].last_update) {
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.push(cObj);
       }
       else {
         const foundAt = reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.findIndex(d => {
-          return (d.last_update < this_doc.history[0].last_update);
+          return (d.last_update < firstSaveUpdate);
         });
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].completedDocs.splice(foundAt, 0, cObj);
       }
     }
     else if ((this_doc.status === 'in_process') || (this_doc.status === 'pending')) {
-      if (!reactData.masterPeopleList[this_doc.pertains_to].hasOwnProperty(this_doc.form_type) || (this_doc.history[0].last_update > reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type].last_update)) {
+      if (!reactData.masterPeopleList[this_doc.pertains_to].hasOwnProperty(this_doc.form_type) || (firstSaveUpdate > reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type].last_update)) {
         reactData.masterPeopleList[this_doc.pertains_to][this_doc.form_type] = {
           status: this_doc.status,
-          last_update: this_doc.history[0].last_update
+          last_update: firstSaveUpdate
         };
       }
-      if ((reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].wipDocs.length > 0) && (reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].wipDocs[0].last_update < this_doc.history[0].last_update)) {
+      if ((reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].wipDocs.length > 0) && (reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].wipDocs[0].last_update < firstSaveUpdate)) {
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].wipDocs.unshift({
           document_id: this_doc.document_id,
-          last_update: this_doc.history[0].last_update,
+          last_update: firstSaveUpdate,
           doc_status: this_doc.status,
           due_date: this_doc.due_date || reactData.masterFormList[this_doc.form_type].dueDate,
           title: this_doc.title,
@@ -599,7 +759,7 @@ export default ({ defaults, onClose }) => {
       else {
         reactData.masterFormList[this_doc.form_type].memberList[this_doc.pertains_to].wipDocs.push({
           document_id: this_doc.document_id,
-          last_update: this_doc.history[0].last_update,
+          last_update: firstSaveUpdate,
           doc_status: this_doc.status,
           due_date: this_doc.due_date || reactData.masterFormList[this_doc.form_type].dueDate,
           title: this_doc.title,
@@ -1014,6 +1174,7 @@ export default ({ defaults, onClose }) => {
                       <Select
                         options={reactData.default_filters}
                         searchBy={'label'}
+                        className={classes.filterSelect}
                         style={{
                           fontSize: '0.8rem',
                           marginLeft: -5,
@@ -1105,32 +1266,6 @@ export default ({ defaults, onClose }) => {
                   })}>
                   {`${state.session.client_name} Forms`}
                 </Typography>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="small"
-                  style={{
-                    borderRadius: '20px',
-                    textTransform: 'none',
-                    marginRight: '16px'
-                  }}
-                  onClick={() => {
-                    const newForm = {
-                      client_id: state.session.client_id,
-                      form_id: `form_${Date.now()}`,
-                      form_name: 'New Form',
-                      category: '',
-                      sections: [],
-                      fields: {}
-                    };
-                    updateReactData({
-                      showFormEditor: true,
-                      formEditorRecord: newForm
-                    }, true);
-                  }}
-                >
-                  + New Form
-                </Button>
               </Box>
               <Paper component={Box} elevation={0} overflow='auto' square
                 style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
@@ -1903,58 +2038,207 @@ export default ({ defaults, onClose }) => {
 
 
 
-                <SendIcon
-                  classes={{ root: classes.rowButton }}
-                  size='medium'
-                  style={{ alignSelf: 'center' }}
-                  aria-label="trash_icon"
-                  onDragOver={(e) => handleDragOver(e)}
-                  onClick={async (e) => {
-                    let sendMessage = reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds.map(p => {
-                      return {
-                        person_id: reactData.masterFormList[reactData.selectedForm_id]?.memberList[p].person_id,
-                        person_name: reactData.masterFormList[reactData.selectedForm_id]?.memberList[p].person_name,
-                        subject: `Your ${state.session.client_name} forms`
-                      };
-                    });
-                    updateReactData({
-                      sendMessage
-                    }, true);
-                  }}
-                  onDrop={async (e) => {
-                    e.preventDefault();
-                    let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
-                    let sendMessage = [];
-                    if (draggedFrom.reason === 'form') {
-                      let jumpTo = window.location.href.replace('refresh', 'theseus');
-                      if (jumpTo.includes('?')) {
-                        jumpTo = jumpTo.split('?')[0];
+                <Box
+                  display='flex'
+                  flexDirection='row'
+                  justifyContent='center'
+                  alignItems='center'
+                  style={{ alignSelf: 'center', marginTop: '6px' }}
+                >
+                  <GetAppIcon
+                    classes={{ root: classes.rowButton }}
+                    size='medium'
+                    style={{ marginRight: '16px', opacity: (reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds?.length > 0) ? 1 : 0.4 }}
+                    aria-label="download_csv_icon"
+                    onClick={() => {
+                      if (reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds?.length > 0) {
+                        openFieldPicker();
                       }
-                      sendMessage.push({
-                        person_id: draggedFrom.person_id,
-                        person_name: draggedFrom.person_name,
-                        subject: `Your ${state.session.client_name} forms`,
-                        messageText: `To access your ${state.session.client_name} forms, click the attached link!`,
-                        attachmentList: [`${jumpTo}?user=${draggedFrom.person_id}&forms=true`]
+                    }}
+                  />
+                  <SendIcon
+                    classes={{ root: classes.rowButton }}
+                    size='medium'
+                    style={{ alignSelf: 'center' }}
+                    aria-label="trash_icon"
+                    onDragOver={(e) => handleDragOver(e)}
+                    onClick={async (e) => {
+                      let sendMessage = reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds.map(p => {
+                        return {
+                          person_id: reactData.masterFormList[reactData.selectedForm_id]?.memberList[p].person_id,
+                          person_name: reactData.masterFormList[reactData.selectedForm_id]?.memberList[p].person_name,
+                          subject: `Your ${state.session.client_name} forms`
+                        };
                       });
-                    }
-                    else if (draggedFrom.hasOwnProperty('person_id')) {
-                      sendMessage.push({
-                        person_id: draggedFrom.person_id,
-                        person_name: draggedFrom.person_name
-                      });
-                    }
-                    updateReactData({
-                      sendMessage
-                    }, true);
-                  }}
-                  edge="start"
-                />
+                      updateReactData({
+                        sendMessage
+                      }, true);
+                    }}
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
+                      let sendMessage = [];
+                      if (draggedFrom.reason === 'form') {
+                        let jumpTo = window.location.href.replace('refresh', 'theseus');
+                        if (jumpTo.includes('?')) {
+                          jumpTo = jumpTo.split('?')[0];
+                        }
+                        sendMessage.push({
+                          person_id: draggedFrom.person_id,
+                          person_name: draggedFrom.person_name,
+                          subject: `Your ${state.session.client_name} forms`,
+                          messageText: `To access your ${state.session.client_name} forms, click the attached link!`,
+                          attachmentList: [`${jumpTo}?user=${draggedFrom.person_id}&forms=true`]
+                        });
+                      }
+                      else if (draggedFrom.hasOwnProperty('person_id')) {
+                        sendMessage.push({
+                          person_id: draggedFrom.person_id,
+                          person_name: draggedFrom.person_name
+                        });
+                      }
+                      updateReactData({
+                        sendMessage
+                      }, true);
+                    }}
+                    edge="start"
+                  />
+                </Box>
               </Box>
             }
           </Box>
 
         </React.Fragment >
+      }
+      {reactData.showFieldPicker &&
+        <Dialog
+          open={reactData.showFieldPicker}
+          PaperProps={{ style: { padding: '20px', borderRadius: '30px' } }}
+          onClose={() => {
+            updateReactData({
+              showFieldPicker: false
+            }, true);
+          }}
+          maxWidth='sm'
+          fullWidth
+        >
+          <Box p={2}>
+            <Typography
+              style={AVATextStyle({ size: 1.3, bold: true, margin: { bottom: 0.5 } })}
+            >
+              {'Choose fields to include in the output file'}
+            </Typography>
+            <Typography
+              style={AVATextStyle({ size: 0.9, color: 'textSecondary', margin: { bottom: 1 } })}
+            >
+              Select data to include in export columns.<br />(Report always includes Name, Person ID, and Status.)
+            </Typography>
+
+            {reactData.loadingExportFields
+              ?
+              <Typography style={AVATextStyle({ size: 1 })}>
+                {'Loading field list...'}
+              </Typography>
+              :
+              <Box
+                display='flex'
+                flexDirection='column'
+                style={{ maxHeight: '360px', overflowY: 'auto' }}
+              >
+                {reactData.exportFieldOptions.length === 0
+                  ?
+                  <Typography style={AVATextStyle({ size: 1 })}>
+                    {'No DataDictionary fields were found for this client.'}
+                  </Typography>
+                  :
+                  Object.keys(reactData.exportFieldOptions.reduce((acc, fieldRec) => {
+                    const category = fieldRec.category || 'Other';
+                    if (!acc[category]) {
+                      acc[category] = [];
+                    }
+                    acc[category].push(fieldRec);
+                    return acc;
+                  }, {})).sort((a, b) => a.localeCompare(b)).map((categoryKey) => {
+                    const groupedFields = reactData.exportFieldOptions.filter((fieldRec) => {
+                      return (fieldRec.category || 'Other') === categoryKey;
+                    });
+                    return (
+                      <Box key={`csv_field_group_${categoryKey}`} mb={1}>
+                        <Typography
+                          style={AVATextStyle({ size: 1, bold: true, margin: { left: 1, top: 0.5, bottom: 0.2 } })}
+                        >
+                          {categoryKey}
+                        </Typography>
+                        {groupedFields.map((fieldRec) => (
+                          <FormControlLabel
+                            key={`csv_field_${fieldRec.field_key}`}
+                            control={
+                              <Checkbox
+                                color='primary'
+                                style={{ marginLeft: '1rem' }}
+                                checked={reactData.selectedExportFieldNames.includes(fieldRec.field_key)}
+                                onChange={() => {
+                                  toggleExportFieldSelection(fieldRec.field_key);
+                                }}
+                              />
+                            }
+                            label={fieldRec.description}
+                          />
+                        ))}
+                      </Box>
+                    );
+                  })
+                }
+              </Box>
+            }
+          </Box>
+          <DialogActions className={classes.buttonArea} style={{ marginBottom: '0' }} >
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'green', color: 'white' }}
+              size='small'
+              onClick={async () => {
+                const result = await downloadCurrentPeopleListCsv();
+                if (result) {
+                  updateReactData({
+                    showFieldPicker: false
+                  }, true);
+                }
+              }}
+              disabled={reactData.loadingExportFields}
+            >
+              {'Download CSV'}
+            </Button>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'green', color: 'white' }}
+              size='small'
+              onClick={async () => {
+                const result = await downloadCurrentPeopleListXlsx();
+                if (result) {
+                  updateReactData({
+                    showFieldPicker: false
+                  }, true);
+                }
+              }}
+              disabled={reactData.loadingExportFields}
+            >
+              {'Download Excel'}
+            </Button>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'red', color: 'white' }}
+              size='small'
+              onClick={() => {
+                updateReactData({
+                  showFieldPicker: false
+                }, true);
+              }}
+            >
+              {'Close'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       }
       {reactData.isUploading &&
         <AVAUploadFile
@@ -2543,6 +2827,34 @@ export default ({ defaults, onClose }) => {
         >
           {'Done'}
         </Button>
+        {false &&
+          <Button
+            variant="contained"
+            color="primary"
+            size="small"
+            style={{
+              borderRadius: '20px',
+              textTransform: 'none',
+              marginRight: '16px'
+            }}
+            onClick={() => {
+              const newForm = {
+                client_id: state.session.client_id,
+                form_id: `form_${Date.now()}`,
+                form_name: 'New Form',
+                category: '',
+                sections: [],
+                fields: {}
+              };
+              updateReactData({
+                showFormEditor: true,
+                formEditorRecord: newForm
+              }, true);
+            }}
+          >
+            + New Form
+          </Button>
+        }
       </DialogActions>
       {reactData.showFormEditor && (
         <Dialog

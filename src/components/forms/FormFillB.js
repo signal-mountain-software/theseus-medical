@@ -25,8 +25,10 @@ import AVA_AlertSound from '../../ava_alert.mp3';
 import useSound from 'use-sound';
 
 import useSession from '../../hooks/useSession';
+import { syncPersonToSessionCaches } from '../../util/AVASessionSync';
 import { useIdleTimer } from 'react-idle-timer';
 import { updateDocument, createDocument } from '../../util/AVADocuments';
+import { writeSlot } from '../../util/AVACalendars';
 
 const useStyles = makeStyles(theme => ({
   dialogBox: {
@@ -34,6 +36,8 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingBottom: theme.spacing(1),
     overflowX: 'hidden',
+    overflowY: 'auto',
+    maxHeight: 'calc(100vh - 260px)',
     marginLeft: theme.spacing(2),
   },
   buttonArea: {
@@ -76,14 +80,12 @@ const useStyles = makeStyles(theme => ({
     marginLeft: '-8px',
     marginRight: '2px',
     height: 1,
-    fontSize: theme.typography.fontSize * 0.8,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: '10px',
     marginBottom: '25px',
   },
   radioDays: {
-    fontSize: theme.typography.fontSize * 0.8,
     marginLeft: '-8px',
     marginRight: '16px',
     '&.MuiInputBase-input': {
@@ -119,15 +121,79 @@ const useStyles = makeStyles(theme => ({
         color: 'black'
       }
     }
+  },
+  selectionFieldBox: {
+    position: 'relative',
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: 4,
+    boxSizing: 'border-box',
+    paddingTop: theme.spacing(2),
+    paddingRight: theme.spacing(1),
+    paddingBottom: theme.spacing(0.5),
+    paddingLeft: theme.spacing(1),
+  },
+  selectionFieldLabel: {
+    position: 'absolute',
+    top: -9,
+    left: 10,
+    padding: '0 4px',
+    backgroundColor: theme.palette.background.paper,
+    color: theme.palette.text.secondary,
+    fontSize: theme.typography.fontSize * 0.75,
+    lineHeight: 1.2,
+  },
+  selectionFieldHelper: {
+    color: theme.palette.text.secondary,
+    fontSize: theme.typography.fontSize * 0.72,
+    marginTop: 0,
+    marginBottom: theme.spacing(0.5),
+    marginLeft: theme.spacing(0.5),
+    marginRight: theme.spacing(0.5),
+  },
+  sectionStickyTitle: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 3,
+    backgroundColor: theme.palette.background.paper,
+    paddingTop: theme.spacing(0.5),
+    marginBottom: theme.spacing(1),
+  },
+  requiredTextField: {
+    '& .MuiInputLabel-asterisk': {
+      color: theme.palette.success.main,
+      fontWeight: 700,
+    },
+    '& .MuiOutlinedInput-root .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.success.main,
+    },
+    '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.success.main,
+    },
+    '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.success.main,
+      borderWidth: 2,
+    }
+  },
+  requiredOutline: {
+    borderColor: `${theme.palette.success.main} !important`,
+  },
+  requiredLabel: {
+    color: theme.palette.success.main,
+  },
+  requiredAsterisk: {
+    color: theme.palette.success.main,
+    fontWeight: 700,
+    marginLeft: 3,
   }
 }));
 
 export default ({ request = {}, onClose }) => {
+  const MIN_FIELD_WIDTH_PX = 400;
   const classes = useStyles();
   const AVAClass = AVAclasses();
   const signatureRef = [React.useRef(null), React.useRef(null), React.useRef(null)];
 
-  const { state } = useSession();
+  const { state, dispatch } = useSession();
 
   // This ref is to capture the entire form contents for HTML output
   const formContainerRef = React.useRef(null);
@@ -246,6 +312,8 @@ export default ({ request = {}, onClose }) => {
 
     formStages: [{}],  // this loads from the Form template (FormRec.stages)
     previous_formStage: 'default',
+    current_formStage: null,
+    form_stageStatus: {}, // keyed by stage_name: 'not_started', 'in_progress', 'complete'
     number_of_errorsOnForm: 0,
     /* 
      A form can define a stages array in its form record.  
@@ -341,6 +409,11 @@ export default ({ request = {}, onClose }) => {
   };
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const [activePromptFieldKey, setActivePromptFieldKey] = React.useState('');
+  const [renderedSectionCount, setRenderedSectionCount] = React.useState(0);
+  const sectionRenderTimerRef = React.useRef(null);
+  const formFieldDefinitionCacheRef = React.useRef({});
+  const commonFieldDefinitionCacheRef = React.useRef({});
   const updateReactData = (newData, force = false) => {
     setReactData((prevValues) => (Object.assign(
       prevValues,
@@ -382,20 +455,6 @@ export default ({ request = {}, onClose }) => {
       enteredIdleStateTime: now,
     };
     if (!reactData.idleState) {
-      // if we weren't previously in an idle state and we are now...
-      if (!isInitializing() && valuesChanged() && !reactData.saveInProcess) {
-        cl(`Auto save at ${now.toLocaleString()}.`);
-        let response = await handleSave({
-          document_id: reactData.document_id,
-          final: false,
-          timeout: true
-        });
-        if (response.goodPut) {
-          reactUpdObj.formUpdates = 0;
-          reactUpdObj.document_id = response.document_id;
-          reactUpdObj.recWritten = response.recWritten;
-        }
-      }
       updateReactData(reactUpdObj, true);
     }
     else {
@@ -403,27 +462,29 @@ export default ({ request = {}, onClose }) => {
       cl(`Still idle at ${new Date().toLocaleString()}.  Idle for ${minutesSinceActive} minutes.`);
     }
     if (minutesSinceActive > 5) {
+      let timeoutDocumentId = reactData.document_id;
+      let timeoutRecWritten = reactData.recWritten;
+      if (!isInitializing() && valuesChanged() && !reactData.saveInProcess && getDisplayState().hasDisplayableContent) {
+        let response = await handleSave({
+          document_id: reactData.document_id,
+          final: false,
+          timeout: true
+        });
+        if (response.goodPut) {
+          timeoutDocumentId = response.document_id || timeoutDocumentId;
+          timeoutRecWritten = response.recWritten || timeoutRecWritten;
+        }
+      }
       onClose('timeout', {
-        document_id: reactData.document_id,
+        document_id: timeoutDocumentId,
         document_title: reactData.document_title,
         document_status: (reactData.clientSampleMode ? 'cancel' : 'work_in_process'),
         pertains_to: reactData.pertains_to,
-        recWritten: reactData.recWritten,
+        recWritten: timeoutRecWritten,
         formLocked: reactData.docRec?.formLocked
       });
     }
-    else if (minutesSinceActive > 3) {
-      updateReactData({
-        alert: {
-          severity: 'info',
-          title: `Are you there?`,
-          message: <div>We haven't heard from you in over {minutesSinceActive} minutes.<br />
-            We'll automatically {reactData.clientSampleMode ? '' : 'save your work and '} close this form in {5 - minutesSinceActive} minutes.<br />
-            To keep this form active, just move your mouse or tap somewhere.</div>
-        }
-      }, true);
-    }
-    else if (minutesSinceActive === 5) {
+    else if (minutesSinceActive >= 5) {
       play();
       updateReactData({
         alert: {
@@ -431,6 +492,17 @@ export default ({ request = {}, onClose }) => {
           title: `Close imminent`,
           message: <div>Heads up!  We'll automatically {reactData.clientSampleMode ? '' : 'save your work and '} close this form in 1 minute!<br />
             <strong>To keep this form active, just move your mouse or tap somewhere.</strong></div>
+        }
+      }, true);
+    }
+    else if (minutesSinceActive > 3) {
+      updateReactData({
+        alert: {
+          severity: 'info',
+          title: `Are you there?`,
+          message: <div>We haven't heard from you in over {minutesSinceActive} minutes.<br />
+            We'll automatically {reactData.clientSampleMode ? '' : 'save your work and '} close this form in {6 - minutesSinceActive} minutes.<br />
+            To keep this form active, just move your mouse or tap somewhere.</div>
         }
       }, true);
     }
@@ -832,25 +904,46 @@ export default ({ request = {}, onClose }) => {
     //  finally, if fieldEntry is an object, use those values to override any of those values
     let field_variables = {};
 
-    let formFieldRec = await getDb({
-      Key: {
-        client_id: state.session.client_id,
-        field_name: field_key
-      },
-      TableName: "Form_Fields"
-    });
+    const loadFormFieldRec = async () => {
+      if (Object.prototype.hasOwnProperty.call(formFieldDefinitionCacheRef.current, field_key)) {
+        return formFieldDefinitionCacheRef.current[field_key];
+      }
+      const fetchedFormFieldRec = await getDb({
+        Key: {
+          client_id: state.session.client_id,
+          field_name: field_key
+        },
+        TableName: "Form_Fields"
+      });
+      formFieldDefinitionCacheRef.current[field_key] = fetchedFormFieldRec || null;
+      return formFieldDefinitionCacheRef.current[field_key];
+    };
+
+    const loadCommonFieldRec = async () => {
+      if (Object.prototype.hasOwnProperty.call(commonFieldDefinitionCacheRef.current, field_key)) {
+        return commonFieldDefinitionCacheRef.current[field_key];
+      }
+      const fetchedCommonFieldRec = await getDb({
+        Key: {
+          client_id: state.session.client_id,
+          field_id: field_key
+        },
+        TableName: "Common_Fields"
+      });
+      commonFieldDefinitionCacheRef.current[field_key] = fetchedCommonFieldRec || null;
+      return commonFieldDefinitionCacheRef.current[field_key];
+    };
+
+    const [formFieldRec, commonFieldRec] = await Promise.all([
+      loadFormFieldRec(),
+      loadCommonFieldRec()
+    ]);
+
     if (formFieldRec) {
       // Found in Form_Fields table
       field_variables = Object.assign({}, formFieldRec);
     }
 
-    let commonFieldRec = await getDb({
-      Key: {
-        client_id: state.session.client_id,
-        field_id: field_key
-      },
-      TableName: "Common_Fields"
-    });
     if (commonFieldRec) {
       // Found in Common_Fields table
       field_variables = Object.assign({}, field_variables, commonFieldRec.value, commonFieldRec);
@@ -977,7 +1070,7 @@ export default ({ request = {}, onClose }) => {
 
     // set options
     returnObj.options = {
-      required: !!returnObj.value?.required || false,
+      required: !!(field_variables.required || field_variables.value?.required || returnObj.value?.required),
       log_results: returnObj.value?.log_results || false,
       viewOnly: (returnObj.value?.edit === 'view'),
       hidden: (returnObj.value?.edit === 'hidden'),
@@ -986,8 +1079,9 @@ export default ({ request = {}, onClose }) => {
         || (field_variables.options ? field_variables.options.resetFields : null))
     };
 
-    // gather show_if/ignore_if in response
+    // gather show_if/show_ifAll/ignore_if in response
     returnObj.show_if = field_variables.show_if || null;
+    returnObj.show_ifAll = field_variables.show_ifAll || null;
     returnObj.ignore_if = field_variables.ignore_if || null;
 
     // set signature reference number if signature type
@@ -1137,6 +1231,46 @@ export default ({ request = {}, onClose }) => {
         );
       };
     };
+
+    if (formRec.noData_section && Array.isArray(formRec.noData_section.fields)) {
+      formRec.noData_section = Object.assign({}, formRec.noData_section);
+      formRec.noData_section.section_name = await resolveVariables(formRec.noData_section.section_name || 'No data');
+      for (let [index, fieldEntry] of formRec.noData_section.fields.entries()) {
+        let field_name = formRec.noData_section.section_name + '_field_' + index;
+        let field_key = field_name;
+        if (isObject(fieldEntry)) {
+          if (fieldEntry.field_name) {
+            field_name = fieldEntry.field_name || fieldEntry.field_key;
+          }
+          if (fieldEntry.field_key) {
+            field_key = fieldEntry.field_key;
+          } else {
+            field_key = fieldEntry.form_field || fieldEntry.field_id || fieldEntry.field_name || field_name;
+          }
+        } else {
+          field_name = fieldEntry;
+          field_key = fieldEntry;
+        }
+
+        formRec.fields[field_name] = await processFieldForSectionField({
+          field_name,
+          field_key,
+          fieldEntry,
+          docFields,
+          index,
+          section: formRec.noData_section,
+          formRec,
+          response
+        });
+
+        reactData.fields[field_name] = Object.assign({}, formRec.fields[field_name],
+          {
+            value: formRec.fields[field_name].field_value,
+            valueText: formRec.fields[field_name].field_valueText
+          }
+        );
+      }
+    }
 
     updateReactData({
       formRec,
@@ -1395,7 +1529,192 @@ export default ({ request = {}, onClose }) => {
     }, true);
   };
 
-  const reconcilePrompt = ({ rawValue, this_field }) => {
+  const getSelectionMinRequirement = (fieldRec) => {
+    if (!fieldRec || typeof fieldRec.type !== 'string') {
+      return 0;
+    }
+    if (!(fieldRec.type.startsWith('select') || fieldRec.type.startsWith('drop'))) {
+      return 0;
+    }
+    return Number(fieldRec.selectionObj?.min || 0);
+  };
+
+  const isFieldRequired = (fieldRec) => {
+    if (!fieldRec || fieldRec.options?.viewOnly) {
+      return false;
+    }
+    return !!(
+      fieldRec.required
+      || fieldRec.options?.required
+      || fieldRec.value?.required
+      || (getSelectionMinRequirement(fieldRec) > 0)
+    );
+  };
+
+  const escapeHtmlForRender = (value) => {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  };
+
+  const decodeHtmlEntitiesForRender = (value) => {
+    if (typeof value !== 'string' || !value) {
+      return '';
+    }
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = value;
+    return textarea.value;
+  };
+
+  const normalizePromptMarkup = (value) => {
+    const sourceText = String(value || '');
+    if (!sourceText.trim()) {
+      return '';
+    }
+
+    const decodedText = decodeHtmlEntitiesForRender(sourceText);
+    const hasLikelyHtml = /<(?:\/)?(?:p|div|span|br|strong|em|b|i|u|ul|ol|li|a|h[1-6]|table|thead|tbody|tr|td|th|blockquote|img|hr|sup|sub)\b[^>]*>/i.test(decodedText)
+      || /<\/[a-z][^>]*>/i.test(decodedText);
+
+    if (hasLikelyHtml) {
+      return decodedText;
+    }
+
+    return escapeHtmlForRender(sourceText).replace(/\r?\n/g, '<br />');
+  };
+
+  const toInlineFieldText = (value) => {
+    const normalizedMarkup = normalizePromptMarkup(value);
+    if (!normalizedMarkup) {
+      return '';
+    }
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = normalizedMarkup;
+    return String(tempDiv.textContent || tempDiv.innerText || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const getPromptLength = (value) => {
+    const inlineText = toInlineFieldText(value);
+    const inlineLength = inlineText.length;
+
+    if (typeof value !== 'string') {
+      return inlineLength;
+    }
+
+    const rawTextLength = value
+      .replace(/<br\s*\/?>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/\s+/g, ' ')
+      .trim()
+      .length;
+
+    return Math.max(inlineLength, rawTextLength);
+  };
+
+  const getFieldOccurrenceTextValue = (fieldRec, occ_index = 0) => {
+    if (!fieldRec) {
+      return '';
+    }
+    const valueText = fieldRec.valueText;
+    if (Array.isArray(valueText)) {
+      return String(valueText[occ_index] || '').trim();
+    }
+    return String(valueText || '').trim();
+  };
+
+  const isLongPromptField = (this_field) => {
+    const fullPromptText = reconcilePrompt({
+      rawValue: reactData.fields?.[this_field]?.prompt?.value,
+      this_field,
+      includeRequiredMarker: false
+    });
+    return getPromptLength(fullPromptText) > 70;
+  };
+
+  const getInlinePromptFieldProps = ({ this_field, helperValue = '', hidePrompt = false, forceShrink = false, fieldInstanceKey = '', hasCurrentValue = false }) => {
+    if (hidePrompt) {
+      return {
+        label: '',
+        placeholder: '',
+        InputLabelProps: forceShrink ? { shrink: true } : undefined
+      };
+    }
+
+    const fullPromptText = toInlineFieldText(reconcilePrompt({
+      rawValue: reactData.fields?.[this_field]?.prompt?.value,
+      this_field,
+      includeRequiredMarker: false
+    }));
+    const isLongPrompt = fullPromptText.length > 70;
+    const truncatedPromptText = isLongPrompt
+      ? `${fullPromptText.slice(0, 87).trimEnd()}…`
+      : fullPromptText;
+
+    const helperText = toInlineFieldText(helperValue || '');
+    const longPromptShouldUseNotch = isLongPrompt && (forceShrink || hasCurrentValue || (fieldInstanceKey === activePromptFieldKey));
+    const shouldShrink = forceShrink || (!isLongPrompt) || longPromptShouldUseNotch;
+
+    if (isLongPrompt && !longPromptShouldUseNotch) {
+      return {
+        label: '',
+        placeholder: fullPromptText,
+        InputLabelProps: shouldShrink ? { shrink: true } : undefined
+      };
+    }
+
+    return {
+      label: truncatedPromptText,
+      placeholder: isLongPrompt ? '' : helperText,
+      InputLabelProps: {
+        ...(shouldShrink ? { shrink: true } : {}),
+        ...(isLongPrompt
+          ? {
+            title: fullPromptText,
+            style: {
+              maxWidth: 'calc(100% - 10px)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              display: 'block'
+            }
+          }
+          : {})
+      }
+    };
+  };
+
+  const addRequiredPromptMarker = (promptText) => {
+    if (typeof promptText !== 'string') {
+      return promptText;
+    }
+
+    const marker = '\u00A0*';
+    const trailingHtmlRegex = /(\s*(?:<br\s*\/?>|<\/[^>]+>)\s*)+$/i;
+    const trailingHtmlMatch = promptText.match(trailingHtmlRegex);
+    const trailingStart = trailingHtmlMatch
+      ? (promptText.length - trailingHtmlMatch[0].length)
+      : promptText.length;
+
+    const contentPart = promptText.slice(0, trailingStart).trimEnd();
+    if (contentPart.endsWith('*')) {
+      return promptText;
+    }
+
+    return `${promptText.slice(0, trailingStart)}${marker}${promptText.slice(trailingStart)}`;
+  };
+
+  const reconcilePrompt = ({ rawValue, this_field, includeRequiredMarker = true }) => {
     let response = rawValue;
     if (!rawValue) { return this_field; }
     let answer = response.match(/%%.*?%%/);
@@ -1474,6 +1793,13 @@ export default ({ request = {}, onClose }) => {
       });
       response += ` (${logLine})`;
     }
+
+    const thisFieldRec = reactData.fields?.[this_field];
+    const isRequiredPrompt = isFieldRequired(thisFieldRec);
+    if (includeRequiredMarker && isRequiredPrompt && (typeof response === 'string')) {
+      response = addRequiredPromptMarker(response);
+    }
+
     if (rememberAnswer) {
       reactData.fields[this_field].prompt.value = response;
     }
@@ -1491,9 +1817,14 @@ export default ({ request = {}, onClose }) => {
     // - Add dynamic defaults based on reactData state
 
     if (!reactData.fields[fieldName] || reactData.fields[fieldName].options?.hidden) {
-      reactData.fields[fieldName].ignore = true;
-      return;
+      const previousIgnore = reactData.fields?.[fieldName]?.ignore;
+      if (reactData.fields?.[fieldName]) {
+        reactData.fields[fieldName].ignore = true;
+      }
+      return previousIgnore !== true;
     }
+
+    let hasChanges = false;
 
     // Resolve default value if not already set
     if (!reactData.fields[fieldName].value && reactData.formRec.fields[fieldName]) {
@@ -1502,6 +1833,7 @@ export default ({ request = {}, onClose }) => {
         fieldName
       });
       if (defaultResult.value !== undefined) {
+        hasChanges = true;
         reactData.fields[fieldName].value = defaultResult.value;
         reactData.fields[fieldName].valueText = formatValue({
           rawValue: reactData.fields[fieldName].value,
@@ -1510,254 +1842,323 @@ export default ({ request = {}, onClose }) => {
       }
     }
 
-    reactData.fields[fieldName].ignore = checkIgnore({
+    const nextIgnore = checkIgnore({
       ignoreObj: reactData.fields[fieldName]?.ignore_if || reactData.fields[fieldName]?.prompt?.ignore_if,
       showObj: reactData.fields[fieldName]?.show_if
     });
+    if (reactData.fields[fieldName].ignore !== nextIgnore) {
+      hasChanges = true;
+    }
+    reactData.fields[fieldName].ignore = nextIgnore;
 
-    return;
+    return hasChanges;
   };
 
   // **************************
+
+  const normalizeSelectionList = (selectionList) => {
+    return makeArray(selectionList).map((this_option) => {
+      if (isObject(this_option)) {
+        const optionValue = this_option.value ?? this_option.id ?? this_option.key ?? this_option.display ?? this_option.label;
+        const optionDisplay = this_option.display ?? this_option.label ?? this_option.value ?? this_option.id ?? this_option.key;
+        return {
+          value: optionValue,
+          display: optionDisplay
+        };
+      }
+      return {
+        value: this_option,
+        display: this_option
+      };
+    });
+  };
+
+  const isSelectionOptionSelected = ({ selectedValue, optionValue, optionDisplay }) => {
+    const selectedList = [selectedValue].flat().filter(v => (v !== null && v !== undefined));
+    return selectedList.some(v => (v === optionValue) || (v === optionDisplay));
+  };
 
   const AVADropDown = (props) => {
     // props should contain
     //   prop
     //   prompt
     //   text - an array of options, each can independently go true or false
-    let optionList = props.text.sort().map(this_option => {
-      if (isObject(this_option)) {
-        return this_option;
-      }
-      else {
-        return ({
-          value: this_option,
-          label: this_option
-        });
-      }
-    });
-    const promptHTML = reconcilePrompt({
-      rawValue: reactData.fields[props.prop].prompt?.value,
-      this_field: props.prop
-    });
+    const fieldRec = reactData.fields[props.prop];
+    if (!fieldRec) {
+      return null;
+    }
+
+    const isRequiredField = isFieldRequired(fieldRec);
+    const isDisabled = fieldRec.options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked;
+    let optionList = normalizeSelectionList(props.text)
+      .map(this_option => ({ value: this_option.value, label: this_option.display }))
+      .sort((a, b) => `${a.label}`.localeCompare(`${b.label}`));
+    const promptText = toInlineFieldText(reconcilePrompt({
+      rawValue: fieldRec.prompt?.value,
+      this_field: props.prop,
+      includeRequiredMarker: false
+    }));
+    const helperText = toInlineFieldText(fieldRec.prompt?.helper || '');
+    const hasLongPrompt = isLongPromptField(props.prop);
+    const promptWidth = fieldRec.prompt?.width;
+    const containerStyle = {
+      width: hasLongPrompt ? '70vw' : `${promptWidth || 320}px`,
+      minWidth: `${MIN_FIELD_WIDTH_PX}px`,
+      maxWidth: '80vw',
+      margin: '8px 8px 8px 8px'
+    };
+    const selectionMax = fieldRec?.selectionObj?.max;
+    const isMulti = Number(selectionMax) > 1;
+    const selectedValueList = [fieldRec?.value].flat().filter(v => !isEmpty(v));
+
     return (
-      <Box
-        key={'topBox'} flexGrow={1}
-        display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
-      >
-        <Typography className={classes.formControlTitle} dangerouslySetInnerHTML={{ __html: promptHTML }} />
-        <React.Fragment>
-          <Box
-            key={`selectBox_filterdrop`}
-            display='flex' flexGrow={1} flexDirection='column'
-            pt={1} pb={1} marginLeft={'8px'} width={'60%'}
-          >
-            <React.Fragment>
-              <Select
-                options={optionList}
-                searchBy={'label'}
-                style={{
-                  fontSize: '0.8rem',
-                  marginLeft: -5,
-                  marginBottom: -4,
-                  marginTop: 1,
-                  borderWidth: 3
-                }}
-                dropdownHandle={true}
-                variant={'standard'}
-                disabled={reactData.fields[props.prop].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
-                dropdownPosition={'auto'}
-                values={(reactData.fields[props.prop]?.value && reactData.fields[props.prop]?.value.length > 0)
-                  ? (() => {
-                    let currentValue = Array.isArray(reactData.fields[props.prop]?.value) ? reactData.fields[props.prop]?.value[0] : reactData.fields[props.prop]?.value || '';
-                    if (currentValue) {
-                      return optionList.filter(option => option.value === currentValue);
-                    }
-                    return [{ label: 'English', value: 'en' }];
-                  })()
-                  : [{ label: 'English', value: 'en' }]
+      <Box flexDirection='column' key={`DropDown__${props.prop}`} className={classes.formControlCheckGroup}>
+        <Box
+          key={`DropDownBox__${props.prop}`}
+          className={`${classes.selectionFieldBox} ${isRequiredField ? classes.requiredOutline : ''}`}
+          style={containerStyle}
+        >
+          <Typography className={`${classes.selectionFieldLabel} ${isRequiredField ? classes.requiredLabel : ''}`}>
+            {promptText || props.prop}
+            {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
+          </Typography>
+          {!!helperText && (
+            <Typography className={classes.selectionFieldHelper}>{helperText}</Typography>
+          )}
+          <Box display='flex' flexDirection='column' marginTop={0.5}>
+            <Select
+              options={optionList}
+              searchBy={'label'}
+              style={{
+                fontSize: '0.8rem',
+                minHeight: '40px',
+                borderRadius: '4px',
+                borderColor: isRequiredField ? '#2e7d32' : undefined
+              }}
+              dropdownHandle={true}
+              variant={'standard'}
+              disabled={isDisabled}
+              dropdownPosition={'auto'}
+              values={(selectedValueList.length > 0)
+                ? optionList.filter(option => selectedValueList.includes(option.value) || selectedValueList.includes(option.label))
+                : []
+              }
+              clearable={true}
+              clearOnSelect={false}
+              placeholder={helperText || 'Select an option'}
+              clearOnBlur={false}
+              key={`selectBox_selectdrop_${props.prop}`}
+              searchable={true}
+              multi={isMulti}
+              closeOnClickInput={isMulti}
+              closeOnSelect={isMulti}
+              create={true}
+              keepSelectedInList={true}
+              noDataLabel={''}
+              onInputChange={async (values) => {
+                if (!values || values.length === 0) {
+                  return;
                 }
-                clearable={true}
-                clearOnSelect={false}
-                placeholder={'Please select your preferred language'}
-                clearOnBlur={false}
-                key={`selectBox_selectdrop`}
-                searchable={true}
-                multi={(reactData.fields[props.prop]?.selectionObj?.max > 1) || false}
-                closeOnClickInput={(reactData.fields[props.prop]?.selectionObj?.max > 1) || false}
-                closeOnSelect={(reactData.fields[props.prop]?.selectionObj?.max > 1) || false}
-                create={true}
-                keepSelectedInList={true}
-                noDataLabel={''}
-                onInputChange={async (values) => {
-                  await handleMakeSelection({
-                    clickText: values[0].value,
-                    prop: props.prop,
-                    singleValue: (reactData.fields[props.prop]?.selectionObj?.max > 1) ? false : true
-                  });
-                }}
-                onChange={async (values) => {
-                  await handleMakeSelection({
-                    clickText: values[0].value,
-                    prop: props.prop,
-                    singleValue: (reactData.fields[props.prop]?.selectionObj?.max > 1) ? false : true
-                  });
-                }}
-              />
+                await handleMakeSelection({
+                  clickText: values[0].value,
+                  prop: props.prop,
+                  singleValue: !isMulti
+                });
+              }}
+              onChange={async (values) => {
+                if (!values || values.length === 0) {
+                  return;
+                }
+                await handleMakeSelection({
+                  clickText: values[0].value,
+                  prop: props.prop,
+                  singleValue: !isMulti
+                });
+              }}
+            />
+          </Box>
+        </Box>
+      </Box>
+    );
+  };
+
+  const AVASelectionCheckGroup = (props) => {
+    const fieldRec = reactData.fields[props.prop];
+    if (!fieldRec) {
+      return null;
+    }
+
+    const isRequiredField = isFieldRequired(fieldRec);
+    const isDisabled = fieldRec.options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked;
+    const promptText = toInlineFieldText(reconcilePrompt({
+      rawValue: fieldRec.prompt?.value,
+      this_field: props.prop,
+      includeRequiredMarker: false
+    }));
+    const hasLongPrompt = getPromptLength(reconcilePrompt({
+      rawValue: fieldRec.prompt?.value,
+      this_field: props.prop,
+      includeRequiredMarker: false
+    })) > 70;
+    const helperText = toInlineFieldText(fieldRec.prompt?.helper || '');
+    const selectionMax = fieldRec?.selectionObj?.max;
+    const shouldUseSingleSelection = Number.isFinite(selectionMax)
+      ? (selectionMax <= 1)
+      : !props.defaultMultiIfMaxMissing;
+
+    const containerStyle = props.useFamilySizing
+      ? {
+        width: hasLongPrompt ? '70vw' : `${fieldRec.prompt?.width || 320}px`,
+        minWidth: `${MIN_FIELD_WIDTH_PX}px`,
+        maxWidth: hasLongPrompt ? '80vw' : '80vw',
+        margin: '8px 8px 8px 8px'
+      }
+      : {
+        width: hasLongPrompt ? '70vw' : null,
+        minWidth: `${MIN_FIELD_WIDTH_PX}px`,
+        maxWidth: hasLongPrompt ? '70vw' : '80vw',
+        margin: '8px 8px 8px 8px'
+      };
+
+    const optionList = normalizeSelectionList(props.text);
+
+    return (
+      <Box flexDirection='column' key={`Box__${props.prop}`} className={classes.formControlCheckGroup}>
+        <Box
+          key={`CheckGroup__${props.prop}`}
+          className={`${classes.selectionFieldBox} ${isRequiredField ? classes.requiredOutline : ''}`}
+          style={containerStyle}
+        >
+          <Typography className={`${classes.selectionFieldLabel} ${isRequiredField ? classes.requiredLabel : ''}`}>
+            {promptText || props.prop}
+            {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
+          </Typography>
+          {!!helperText && (
+            <Typography className={classes.selectionFieldHelper}>{helperText}</Typography>
+          )}
+          <Box
+            display='flex'
+            flexDirection={props.column ? 'column' : 'row'}
+            alignItems='flex-start'
+            flexWrap={props.column ? 'nowrap' : 'wrap'}
+          >
+            <React.Fragment key={`groupFrag__${props.prop}`}>
+              {(optionList).map((text, tIndex) => (
+                <FormControlLabel
+                  className={classes.formControlDays}
+                  style={props.optionRowStyle || undefined}
+                  key={`${props.prop}_${tIndex}_${text.value}`}
+                  control={
+                    <Checkbox
+                      aria-label={`${props.prop}_${tIndex}`}
+                      name={`${props.prop}_${tIndex}`}
+                      key={`${props.groupKeyPrefix || 'CheckGroup'}__${props.prop}_${tIndex}`}
+                      size='small'
+                      disabled={isDisabled}
+                      checked={isSelectionOptionSelected({
+                        selectedValue: fieldRec.value,
+                        optionValue: text.value,
+                        optionDisplay: text.display
+                      })}
+                      onMouseDown={async () => {
+                        await handleMakeSelection({
+                          clickText: text.value,
+                          prop: props.prop,
+                          singleValue: shouldUseSingleSelection
+                        });
+                      }}
+                      disableRipple
+                      inputProps={{ 'aria-labelledby': `${props.ariaPrefix || 'message_routing'}_${tIndex}` }}
+                    />
+                  }
+                  label={<Typography className={classes.radioDays} style={{ whiteSpace: 'nowrap' }}>{text.display}</Typography>}
+                  labelPlacement='end'
+                />
+              ))}
+              {(optionList.length === 0) && !!props.noOptionsMessage && (
+                <Typography style={AVATextStyle({ size: 0.8, margin: { left: 1 } })}>
+                  {props.noOptionsMessage}
+                </Typography>
+              )}
+              {(props.withPrompt) &&
+                <FormControlLabel
+                  className={classes.formControlDays}
+                  key={`${props.prop}_other`}
+                  control={
+                    <TextField
+                      style={AVATextStyle({
+                        lineHeight: 1,
+                        padding: { bottom: 0, top: 1 },
+                        size: 0.75,
+                        margin: { top: 0, bottom: 0.5, left: 0.5, right: 3 }
+                      })}
+                      className={classes.radioDays}
+                      autoComplete='off'
+                      disabled={isDisabled}
+                      id={`${props.prop}_otherText`}
+                      defaultValue={(fieldRec.value && fieldRec.bonusText)
+                        ? fieldRec.bonusText
+                        : ''
+                      }
+                      onBlur={(event) => {
+                        if (!fieldRec.value) {
+                          fieldRec.value = [];
+                        }
+                        fieldRec.bonusText = event.target.value;
+                        setTimeout(() => {
+                          updateReactData({
+                            formUpdates: reactData.formUpdates++,
+                            fields: reactData.fields
+                          }, true);
+                        }, 0);
+                      }}
+                      variant='outlined'
+                      size='small'
+                      placeholder={toInlineFieldText(props.withPrompt || '')}
+                    />
+                  }
+                />
+              }
             </React.Fragment>
           </Box>
-        </React.Fragment>
+        </Box>
       </Box>
     );
   };
 
   const AVACheckBoxGroup = (props) => {
-    // props should contain
-    //   prop
-    //   text - an array of options, each can independently go true or false
-    const promptHTML = reconcilePrompt({
-      rawValue: reactData.fields[props.prop].prompt?.value,
-      this_field: props.prop
-    });
     return (
-      <Box flexDirection='column' key={`Box__${props.prop}`} className={classes.formControlCheckGroup}>
-        <Typography className={classes.formControlTitle} dangerouslySetInnerHTML={{ __html: promptHTML }} />
-        <Box
-          display='flex'
-          flexDirection={props.column ? 'column' : 'row'}
-          alignItems='flex-start'
-          flexWrap={props.column ? 'nowrap' : 'wrap'}
-          key={`CheckGroup__${props.prop}`}
-        >
-          <React.Fragment
-            key={`groupFrag__${props.prop}`}
-          >
-            {(props.text).map((text, tIndex) => (
-              <FormControlLabel
-                className={classes.formControlDays}
-                key={`${props.prop}_${tIndex}`}
-                control={
-                  <Checkbox
-                    aria-label={`${props.prop}_${tIndex}`}
-                    name={`${props.prop}_${tIndex}`}
-                    key={`CheckGroup__${props.prop}_${tIndex}`}
-                    size='small'
-                    disabled={reactData.fields[props.prop].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
-                    checked={reactData.fields[props.prop].value && reactData.fields[props.prop].value.includes(text)}
-                    onMouseDown={async () => {
-                      await handleMakeSelection({
-                        clickText: text,
-                        prop: props.prop,
-                        singleValue: (reactData.fields[props.prop]?.selectionObj?.max > 1) ? false : true
-                      });
-                    }}
-                    disableRipple
-                    inputProps={{ 'aria-labelledby': `message_routing_3` }}
-                  />
-                }
-                label={<Typography className={classes.radioDays} style={{ whiteSpace: 'nowrap' }}>{text}</Typography>}
-                labelPlacement='end'
-              />
-            ))}
-            {(props.withPrompt) &&
-              <FormControlLabel
-                className={classes.formControlDays}
-                key={`${props.prop}_other`}
-                control={
-                  <TextField
-                    style={AVATextStyle({
-                      lineHeight: 1,
-                      padding: { bottom: 0, top: 1 },
-                      size: 0.75,
-                      margin: { top: 0, bottom: 0.5, left: 0.5, right: 3 }
-                    })}
-                    className={classes.radioDays}
-                    autoComplete='off'
-                    disabled={reactData.fields[props.prop].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
-                    id={`${props.prop}_otherText`}
-                    defaultValue={(reactData.fields[props.prop].value && reactData.fields[props.prop].bonusText)
-                      ? reactData.fields[props.prop].bonusText
-                      : ''
-                    }
-                    onBlur={(event) => {
-                      if (!reactData.fields[props.prop].value) {
-                        reactData.fields[props.prop].value = [];
-                      }
-                      reactData.fields[props.prop].bonusText = event.target.value;
-                      // Delay re-render to allow checkbox clicks to complete first
-                      setTimeout(() => {
-                        updateReactData({
-                          formUpdates: reactData.formUpdates++,
-                          fields: reactData.fields
-                        }, true);
-                      }, 0);
-                    }}
-                    helperText={props.withPrompt}
-                  />
-                }
-              />
-            }
-          </React.Fragment>
-        </Box>
-      </Box>
+      <AVASelectionCheckGroup
+        prop={props.prop}
+        text={props.text}
+        column={props.column}
+        withPrompt={props.withPrompt}
+        defaultMultiIfMaxMissing={false}
+        useFamilySizing={false}
+        groupKeyPrefix={'CheckGroup'}
+        ariaPrefix={'message_routing'}
+      />
     );
   };
 
   const AVAFamilyCheckBoxGroup = (props) => {
-    // props should contain:
-    //   prop - field name
-    //   familyMembers - array of family member objects with { id, name, nickname }
-    const promptHTML = reconcilePrompt({
-      rawValue: reactData.fields[props.prop].prompt?.value,
-      this_field: props.prop
-    });
+    const familyOptionList = (props.familyMembers || []).map((member) => ({
+      value: member.id,
+      display: `${member.name}${member.nickname ? (` (${member.nickname})`) : ''}`
+    }));
+
     return (
-      <Box flexDirection='column' key={`Box__${props.prop}`} className={classes.formControlCheckGroup}>
-        <Typography className={classes.formControlTitle} dangerouslySetInnerHTML={{ __html: promptHTML }} />
-        <Box
-          display='flex'
-          flexDirection='column'
-          alignItems='flex-start'
-          flexWrap='nowrap'
-          key={`CheckGroup__${props.prop}`}
-        >
-          <React.Fragment key={`groupFrag__${props.prop}`}>
-            {(props.familyMembers && props.familyMembers.length > 0) ?
-              props.familyMembers.map((member, tIndex) => (
-                <FormControlLabel
-                  className={classes.formControlDays}
-                  style={{ marginLeft: '16px' }}
-                  key={`${props.prop}_${tIndex}`}
-                  control={
-                    <Checkbox
-                      aria-label={`${props.prop}_${tIndex}`}
-                      name={`${props.prop}_${tIndex}`}
-                      key={`FamilyCheckGroup__${props.prop}_${tIndex}`}
-                      size='small'
-                      disabled={reactData.fields[props.prop].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
-                      checked={reactData.fields[props.prop].value && reactData.fields[props.prop].value.includes(member.id)}
-                      onClick={async () => {
-                        await handleMakeSelection({
-                          clickText: member.id,
-                          prop: props.prop
-                        });
-                      }}
-                      disableRipple
-                      inputProps={{ 'aria-labelledby': `family_member_${tIndex}` }}
-                    />
-                  }
-                  label={<Typography className={classes.radioDays} style={{ whiteSpace: 'nowrap' }}>{`${member.name}${member.nickname ? (' (' + member.nickname + ')') : ''}`}</Typography>}
-                  labelPlacement='end'
-                />
-              ))
-              :
-              <Typography style={AVATextStyle({ size: 0.8, margin: { left: 1 } })}>
-                No family members found
-              </Typography>
-            }
-          </React.Fragment>
-        </Box>
-      </Box>
+      <AVASelectionCheckGroup
+        prop={props.prop}
+        text={familyOptionList}
+        column={props.column !== undefined ? props.column : true}
+        defaultMultiIfMaxMissing={true}
+        useFamilySizing={true}
+        groupKeyPrefix={'FamilyCheckGroup'}
+        ariaPrefix={'family_member'}
+        optionRowStyle={{ marginLeft: '16px' }}
+        noOptionsMessage={'No family members found'}
+      />
     );
   };
 
@@ -1772,6 +2173,30 @@ export default ({ request = {}, onClose }) => {
       document_status: 'aborted',
       formLocked: reactData.docRec?.formLocked
     });
+  };
+
+  const leaveFormNow = () => {
+    if (reactData.dataSaved) {
+      onClose('docAdded',
+        {
+          document_id: reactData.document_id,
+          document_title: reactData.document_title,
+          document_status: 'work_in_process',
+          pertains_to: reactData.pertains_to,
+          recWritten: reactData.recWritten,
+          formLocked: reactData.docRec?.formLocked
+        }
+      );
+    }
+    else {
+      onClose('aborted',
+        {
+          document_id: 'n/a',
+          document_status: 'aborted',
+          formLocked: reactData.docRec?.formLocked
+        }
+      );
+    }
   };
 
   const validateForm = () => {
@@ -1789,46 +2214,54 @@ export default ({ request = {}, onClose }) => {
       }
       if (okToShowSection(sectionObj)) {
         for (const this_field of sectionObj.fields) {
-          if (reactData.fields[this_field].ignore) {
+          const thisFieldRec = reactData.fields[this_field];
+          if (thisFieldRec.ignore) {
             continue;
           }
-          reactData.fields[this_field].isError = false;
-          if (reactData.fields[this_field]?.options?.ifEmpty && isEmpty(reactData.fields[this_field].value)) {
+          thisFieldRec.isError = false;
+          if (thisFieldRec?.options?.ifEmpty && isEmpty(thisFieldRec.value)) {
             // if there is a specific rule regarding empty value, apply it now
-            reactData.fields[this_field].value = reconcilePrompt({
-              rawValue: reactData.fields[this_field].options.ifEmpty,
+            thisFieldRec.value = reconcilePrompt({
+              rawValue: thisFieldRec.options.ifEmpty,
               this_field
             });
           }
-          if (reactData.fields[this_field]?.options?.required || reactData.fields[this_field]?.value?.required) {
-            // this is a required field
-            const signature_ok = (reactData.fields[this_field].type === 'signature')
-              ? (signatureRef[reactData.fields[this_field].options.sigRefNumber].current
-                && (!signatureRef[reactData.fields[this_field].options.sigRefNumber].current.isEmpty()))
-              : null;
-            if (!signature_ok ?? isEmpty(reactData.fields[this_field].value)) {
-              reactData.fields[this_field].errorMessage = `${reconcilePrompt({
-                rawValue: reactData.fields[this_field].prompt?.value,
-                this_field
-              })} is required`;
-              reactData.fields[this_field].isError = true;
-              messageList.push(reactData.fields[this_field].errorMessage);
-              number_of_errorsOnForm++;
-              form_stageStatus[stage_name].errors_in_stage++;
+          if (isFieldRequired(thisFieldRec)) {
+            const minSelectionRequired = getSelectionMinRequirement(thisFieldRec);
+            if (minSelectionRequired > 0) {
+              const selectedValues = [thisFieldRec.value ?? []].flat().filter(v => !isEmpty(v));
+              const numberOfSelections = selectedValues.length;
+              if (numberOfSelections < minSelectionRequired) {
+                const prompt_part = reconcilePrompt({
+                  rawValue: thisFieldRec.prompt?.value,
+                  this_field
+                });
+                thisFieldRec.errorMessage = numberOfSelections === 0
+                  ? `Please make a selection for ${prompt_part}`
+                  : `You must make at least ${minSelectionRequired} selections for ${prompt_part}`;
+                thisFieldRec.isError = true;
+                messageList.push(thisFieldRec.errorMessage);
+                number_of_errorsOnForm++;
+                form_stageStatus[stage_name].errors_in_stage++;
+              }
+              continue;
             }
-          }
-          else if (reactData.fields[this_field].type.startsWith('select')) {
-            let numberOfSelections = [reactData.fields[this_field].value ?? []].flat().length;
-            if (numberOfSelections < (reactData.fields[this_field].selectionObj.min ?? 0)) {
-              const prompt_part = reconcilePrompt({
-                rawValue: reactData.fields[this_field].prompt?.value,
+
+            // this is a required field
+            const signature_ok = (thisFieldRec.type === 'signature')
+              ? (signatureRef[thisFieldRec.options.sigRefNumber].current
+                && (!signatureRef[thisFieldRec.options.sigRefNumber].current.isEmpty()))
+              : null;
+            if (
+              ((thisFieldRec.type === 'signature') && !signature_ok)
+              || ((thisFieldRec.type !== 'signature') && isEmpty(thisFieldRec.value))
+            ) {
+              thisFieldRec.errorMessage = `${reconcilePrompt({
+                rawValue: thisFieldRec.prompt?.value,
                 this_field
-              });
-              reactData.fields[this_field].errorMessage = numberOfSelections === 0
-                ? `Please make a selection for ${prompt_part}`
-                : `You must make at least ${reactData.fields[this_field].selectionObj.min} selections for ${prompt_part}`;
-              reactData.fields[this_field].isError = true;
-              messageList.push(reactData.fields[this_field].errorMessage);
+              }).replace("*","").trim()} is required`;
+              thisFieldRec.isError = true;
+              messageList.push(thisFieldRec.errorMessage);
               number_of_errorsOnForm++;
               form_stageStatus[stage_name].errors_in_stage++;
             }
@@ -1856,18 +2289,31 @@ export default ({ request = {}, onClose }) => {
       current_form_stage = 'complete';
     }
     updateReactData({
-      current_formStage: current_form_stage
+      current_formStage: current_form_stage,
+      form_stageStatus: form_stageStatus
     }, false);
 
     return {
       messageList,
       number_of_errorsOnForm,
       fields: reactData.fields,
-      current_formStage: current_form_stage
+      current_formStage: current_form_stage,
+      form_stageStatus: form_stageStatus
     };
   };
 
   const handleReview = async () => {
+    if (!getDisplayState().hasDisplayableContent) {
+      updateReactData({
+        alert: {
+          severity: 'info',
+          title: 'No data available',
+          message: 'There are no displayable sections or fields available to save for this form.'
+        }
+      }, true);
+      return;
+    }
+
     const validationResult = validateForm();
 
     if (!validationResult.number_of_errorsOnForm) {
@@ -1917,6 +2363,17 @@ export default ({ request = {}, onClose }) => {
     // We don't want to lock a form that has problems
     // Consequently, locking a form forces its status to be 'complete'
     if (!currentLockedState) {
+      if (!getDisplayState().hasDisplayableContent) {
+        updateReactData({
+          alert: {
+            severity: 'info',
+            title: 'No data available',
+            message: 'There are no displayable sections or fields available to save for this form.'
+          }
+        }, true);
+        return;
+      }
+
       // Run validation
       const validationResult = validateForm();
 
@@ -1986,6 +2443,25 @@ export default ({ request = {}, onClose }) => {
   };
 
   const handleSave = async ({ document_id, final, timeout, pending = false, formLocked }) => {
+    if (!getDisplayState().hasDisplayableContent) {
+      if (!timeout) {
+        updateReactData({
+          alert: {
+            severity: 'info',
+            title: 'No data available',
+            message: 'There are no displayable sections or fields available to save for this form.'
+          }
+        }, true);
+      }
+      return {
+        goodPut: false,
+        skippedNoData: true,
+        putError: 'No displayable sections or fields available to save for this form.',
+        document_status: 'no_data',
+        status: 'no_data',
+        document_id: document_id || reactData.document_id
+      };
+    }
 
     // assure that peopleRec and sessionRec are available
     if (!reactData.peopleRec.hasOwnProperty(reactData.pertains_to)) {
@@ -2010,6 +2486,14 @@ export default ({ request = {}, onClose }) => {
     let field_values = {};
     let signatures = [];
     let needsUpdate = { peopleRec: false, sessionRec: false };
+    const selectEventAssignments = new Set();
+    const selectEventReleases = new Set();
+    const normalizeSelectEventList = (rawValue) => {
+      return [rawValue].flat()
+        .map(v => (isObject(v) ? (v.value || v.event || v.event_id || v.id || null) : v))
+        .filter(v => !isEmpty(v))
+        .map(v => `${v}`);
+    };
     for (const this_field in reactData.fields) {
       if (reactData.fields[this_field].bonusText) {   // an extra value added to the end of a list of selections (as in "other - please specify")
         let current_value = [reactData.fields[this_field].value].flat();
@@ -2022,6 +2506,20 @@ export default ({ request = {}, onClose }) => {
         field_values[this_field] = reactData.fields[this_field].value;
       }
       if (reactData.fields[this_field].ignore) { continue; }  // load the values, but don't save them anywhere
+      if ((reactData.fields[this_field].type === 'select_event') && !reactData.fields[this_field].options?.viewOnly) {
+        const selectedEventList = normalizeSelectEventList(reactData.fields[this_field].value);
+        const previousEventList = normalizeSelectEventList(reactData.docRec?.field_values?.[this_field]);
+
+        const selectedSet = new Set(selectedEventList);
+        for (const this_event of selectedEventList) {
+          selectEventAssignments.add(this_event);
+        }
+        for (const previous_event of previousEventList) {
+          if (!selectedSet.has(previous_event)) {
+            selectEventReleases.add(previous_event);
+          }
+        }
+      }
       if (reactData.fields[this_field].saveAs) {
         const save_instructions = reactData.fields[this_field].saveAs;
         const save_file = save_instructions.shift();
@@ -2047,24 +2545,58 @@ export default ({ request = {}, onClose }) => {
         signatures[reactData.fields[this_field].options.sigRefNumber] = signatureRef[reactData.fields[this_field].options.sigRefNumber].current.getTrimmedCanvas().toDataURL('image/png');
       }
     }
+
+    for (const releasedEventId of selectEventReleases) {
+      try {
+        await writeSlot({
+          client: state.session.client_id,
+          event: releasedEventId,
+          owner: state.session.patient_id,
+          slot: state.session.patient_id,
+          status: 'released',
+          show_this_slot: false,
+          no_messaging: false
+        });
+      }
+      catch (error) {
+        cl(`Error releasing select_event slot for ${releasedEventId}: ${error}`);
+      }
+    }
+
+    for (const selectedEventId of selectEventAssignments) {
+      try {
+        await writeSlot({
+          client: state.session.client_id,
+          event: selectedEventId,
+          owner: state.session.patient_id,
+          slot: state.session.patient_id,
+          show_this_slot: true,
+          no_messaging: false,
+          rejectDuplicate: true
+        });
+      }
+      catch (error) {
+        cl(`Error writing select_event slot for ${selectedEventId}: ${error}`);
+      }
+    }
     // all field data is now prepared for saving
 
     // check for actions needed leaving or entering stages
-
+    let this_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.current_formStage);
     if ((reactData.previous_formStage !== reactData.current_formStage) && reactData.formRec.stages) {
       // log stage change
       cl(`Form ${document_id} stage changed from ${reactData.previous_formStage} to ${reactData.current_formStage}`);
 
       // check stage exit
       let previous_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.previous_formStage);
-      if (previous_stageIndex >= 0) {
+      for (let stage_we_finished = previous_stageIndex; stage_we_finished < this_stageIndex; stage_we_finished++) {
         // send message on stage exit /  complete     
-        let messageInstructions_onStageExit = reactData.formRec.stages[previous_stageIndex].on_complete_message;
+        let messageInstructions_onStageExit = reactData.formRec.stages[stage_we_finished].on_complete_message;
         if (messageInstructions_onStageExit) {
           await send_stageMessage(messageInstructions_onStageExit); // send stage complete message
         }
         // remove and add groups from pertains_to account's group list if any
-        let groupInstructions_onStageExit = reactData.formRec.stages[previous_stageIndex].on_complete_groups;
+        let groupInstructions_onStageExit = reactData.formRec.stages[stage_we_finished].on_complete_groups;
         if (groupInstructions_onStageExit) {
           reactData.peopleRec[reactData.pertains_to].groups = update_stageGroups(groupInstructions_onStageExit);
           needsUpdate.peopleRec = true;
@@ -2073,7 +2605,6 @@ export default ({ request = {}, onClose }) => {
     }
 
     //check stage entry
-    let this_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.current_formStage);
     if (this_stageIndex >= 0) {
       // send message on stage entry
       let messageInstructions_onStageEntry = reactData.formRec.stages[this_stageIndex].on_entry_message;
@@ -2093,6 +2624,7 @@ export default ({ request = {}, onClose }) => {
 
 
     let response = { goodPut: true };
+    let peopleUpdated = false;
     // save any changes to peopleRec and sessionRec that were indicated to be
     // done with the fields in the form
     if (needsUpdate.peopleRec || reactData.newPerson) {
@@ -2106,6 +2638,16 @@ export default ({ request = {}, onClose }) => {
           cl(`Bad put to People. Error is: ${error}`);
           response = { goodPut: false, putError: `Bad put to People. Error is: ${error}` };
         });
+      if (response.goodPut) {
+        peopleUpdated = true;
+      }
+    }
+    if (peopleUpdated) {
+      syncPersonToSessionCaches({
+        state,
+        dispatch,
+        personRec: reactData.peopleRec[reactData.pertains_to]
+      });
     }
     if (needsUpdate.sessionRec) {
       await dbClient
@@ -2182,7 +2724,8 @@ export default ({ request = {}, onClose }) => {
     response = Object.assign({}, response, {
       document_status: docData.status,
       status: docData.status,
-      document_id: docData.document_id
+      document_id: docData.document_id,
+      recWritten
     });
     return response;
   };
@@ -2235,13 +2778,19 @@ export default ({ request = {}, onClose }) => {
   function update_stageGroups(groupInstructions) {
     let groupList = reactData.peopleRec[reactData.pertains_to].groups || [];
     if (groupInstructions.remove) {
+      const removeList = (typeof groupInstructions.remove === 'string')
+        ? [groupInstructions.remove]
+        : groupInstructions.remove;
       // if i am removing a group that's a parent, you are also removing that group's children. So we need to check for that and remove those as well
-      const allGroupstoRemove = getAllChildrenOfGroups(groupInstructions.remove, reactData.groupsRec);
+      const allGroupstoRemove = getAllChildrenOfGroups(removeList, reactData.groupsRec);
       groupList = groupList.filter(g => !allGroupstoRemove.includes(g));
     }
     if (groupInstructions.add) {
+      const addList = (typeof groupInstructions.add === 'string')
+        ? [groupInstructions.add]
+        : groupInstructions.add;
       // if i am adding a group that's a child, you are also adding that group's parents. So we need to check for that and add those as well
-      const allGroupstoAdd = getAllParentsOfGroups(groupInstructions.add, reactData.groupsRec);
+      const allGroupstoAdd = getAllParentsOfGroups(addList, reactData.groupsRec);
       for (const this_group of allGroupstoAdd) {
         if (!groupList.includes(this_group)) {
           groupList.push(this_group);
@@ -2539,9 +3088,110 @@ export default ({ request = {}, onClose }) => {
         }
       }));
     }
+    else if (this_sectionObj.hasOwnProperty('show_ifAll') || this_sectionObj.hasOwnProperty('ignore_ifAll')) {
+      const testList = this_sectionObj.show_ifAll || this_sectionObj.ignore_ifAll
+      const response = (testList.every(this_test => {
+        if (this_test.hasOwnProperty('pertainsTo_memberOf')) {
+          return reactData.peopleRec[reactData.pertains_to].groups.some(g => {
+            return [this_test.memberOf].flat().includes(g);
+          });
+        }
+        else if (this_test.hasOwnProperty('memberOf')) {
+          return state.patient.groups.some(g => {
+            return [this_test.memberOf].flat().includes(g);
+          });
+        }
+        else {
+          const this_value = reactData.fields?.[this_test.field]?.value;
+          return (array_in_array(this_test.values, this_value));
+        }
+      }));
+      if (this_sectionObj.hasOwnProperty('show_ifAll')) {
+        return response;
+      }
+      else { return !response; }
+    }
+    else if (this_sectionObj.hasOwnProperty('ignore_if')) {
+      return !(this_sectionObj.ignore_if.some(this_test => {
+        if (this_test.hasOwnProperty('pertainsTo_memberOf')) {
+          return reactData.peopleRec[reactData.pertains_to].groups.some(g => {
+            return [this_test.memberOf].flat().includes(g);
+          });
+        }
+        else if (this_test.hasOwnProperty('memberOf')) {
+          return state.patient.groups.some(g => {
+            return [this_test.memberOf].flat().includes(g);
+          });
+        }
+        else {
+          const this_value = reactData.fields?.[this_test.field]?.value;
+          return (array_in_array(this_test.values, this_value));
+        }
+      }));
+    }
     else {
       return true;
     }
+  };
+
+  const getSectionFieldName = ({ sectionObj, fieldEntry, index }) => {
+    if (isObject(fieldEntry)) {
+      return (
+        fieldEntry.field_name
+        || fieldEntry.field_key
+        || fieldEntry.form_field
+        || fieldEntry.field_id
+        || `${sectionObj.section_name}_field_${index}`
+      );
+    }
+    return fieldEntry;
+  };
+
+  const getDisplayState = () => {
+    const displaySections = [];
+
+    for (const sectionObj of (Array.isArray(reactData.sections) ? reactData.sections : [])) {
+      if (!okToShowSection(sectionObj)) {
+        continue;
+      }
+      const visibleFieldList = makeArray(sectionObj.fields)
+        .map((fieldEntry, index) => getSectionFieldName({ sectionObj, fieldEntry, index }))
+        .filter((fieldName) => (
+          !!fieldName
+          && !!reactData.fields?.[fieldName]
+          && !reactData.fields[fieldName].ignore
+        ));
+      if (visibleFieldList.length > 0) {
+        displaySections.push(Object.assign({}, sectionObj, { fields: visibleFieldList }));
+      }
+    }
+
+    if (displaySections.length > 0) {
+      return {
+        displaySections,
+        hasDisplayableContent: true,
+      };
+    }
+
+    if (reactData.formRec?.noData_section) {
+      const noDataSection = reactData.formRec.noData_section;
+      const noDataFieldList = makeArray(noDataSection.fields)
+        .map((fieldEntry, index) => getSectionFieldName({ sectionObj: noDataSection, fieldEntry, index }))
+        .filter((fieldName) => (
+          !!fieldName
+          && !!reactData.fields?.[fieldName]
+          && !reactData.fields[fieldName].ignore
+        ));
+      return {
+        displaySections: [Object.assign({}, noDataSection, { fields: noDataFieldList })],
+        hasDisplayableContent: false,
+      };
+    }
+
+    return {
+      displaySections: [],
+      hasDisplayableContent: false,
+    };
   };
 
   // **************************
@@ -2602,20 +3252,262 @@ export default ({ request = {}, onClose }) => {
         return;
       }
 
-      for (const fieldName in reactData.fields) {
-        await processFieldForDisplay(fieldName);
-      }
+      const fieldNames = Object.keys(reactData.fields);
+      const changedFlags = await Promise.all(fieldNames.map((fieldName) => processFieldForDisplay(fieldName)));
+      const hasAnyFieldChanges = changedFlags.some(Boolean);
 
-      // Always update state after processing
-      updateReactData({
-        fields: reactData.fields
-      }, true);
+      if (hasAnyFieldChanges) {
+        updateReactData({
+          fields: reactData.fields
+        }, true);
+      }
     }
 
     processAllFields();
-  }, [reactData.formUpdates, reactData.fields, reactData.formRec, reactData.sessionRec, reactData.peopleRec]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reactData.stage, reactData.formUpdates, reactData.formRec, reactData.sessionRec, reactData.peopleRec]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // **************************
+
+  const { displaySections, hasDisplayableContent } = React.useMemo(() => {
+    return getDisplayState();
+  }, [forceRedisplay, reactData.formUpdates, reactData.sections, reactData.formRec, reactData.peopleRec, reactData.pertains_to, reactData.stage, state.patient?.groups]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useEffect(() => {
+    if (sectionRenderTimerRef.current) {
+      clearTimeout(sectionRenderTimerRef.current);
+      sectionRenderTimerRef.current = null;
+    }
+
+    const totalSections = displaySections.length;
+    if (totalSections === 0) {
+      setRenderedSectionCount(0);
+      return undefined;
+    }
+
+    const initialChunk = Math.min(3, totalSections);
+    setRenderedSectionCount(initialChunk);
+
+    if (initialChunk >= totalSections) {
+      return undefined;
+    }
+
+    const renderNextChunk = () => {
+      setRenderedSectionCount((previousCount) => {
+        const nextCount = Math.min(previousCount + 3, totalSections);
+        if (nextCount < totalSections) {
+          sectionRenderTimerRef.current = setTimeout(renderNextChunk, 16);
+        }
+        return nextCount;
+      });
+    };
+
+    sectionRenderTimerRef.current = setTimeout(renderNextChunk, 16);
+
+    return () => {
+      if (sectionRenderTimerRef.current) {
+        clearTimeout(sectionRenderTimerRef.current);
+        sectionRenderTimerRef.current = null;
+      }
+    };
+  }, [displaySections.length, reactData.formUpdates, forceRedisplay]);
+
+  const renderTextLikeField = ({ this_field, occ_index, sectionNdx, fieldNdx }) => {
+    const fieldRec = reactData.fields[this_field];
+    if (!fieldRec) {
+      return null;
+    }
+
+    const fieldType = fieldRec.type;
+    const isTextType = fieldType === 'text';
+    const isPhoneType = fieldType === 'phone';
+    const isDateSelectType = fieldType === 'date_select';
+    const isDateOrTimeType = (fieldType === 'date') || (fieldType === 'time');
+    const isRequiredField = isFieldRequired(fieldRec);
+    const isDisabled = fieldRec.options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked;
+    const promptWidth = fieldRec?.prompt?.width;
+    const longPromptField = isLongPromptField(this_field);
+    const fallbackMinWidth = (isPhoneType || isDateSelectType || isDateOrTimeType) ? '20vw' : '60vw';
+    const textRows = Number(fieldRec.prompt?.rows || fieldRec.value?.rows || 1);
+    const resolvedMinWidth = (longPromptField || (isTextType && (textRows > 1)))
+      ? '60vw'
+      : (promptWidth ? `${promptWidth}px` : fallbackMinWidth);
+    const valueText = (fieldRec && fieldRec.valueText)
+      ? (Array.isArray(fieldRec.valueText) ? fieldRec.valueText[occ_index] : fieldRec.valueText)
+      : '';
+    const hasLongValueText = String(valueText || '').length > 90;
+    const shouldAutoWrapText = isTextType && ((textRows > 1) || longPromptField || hasLongValueText);
+    const resolvedTextRows = (textRows > 1)
+      ? textRows
+      : (shouldAutoWrapText ? 2 : undefined);
+
+    const sharedProps = {
+      id: `field__${this_field}`,
+      variant: 'outlined',
+      size: 'small',
+      className: isRequiredField ? classes.requiredTextField : undefined,
+      key: `field__${this_field}__${sectionNdx}_${(fieldRec && (fieldRec.valueText || fieldRec.value))
+        ? (fieldRec.valueText || fieldRec.value)
+        : ''}`,
+      ...getInlinePromptFieldProps({
+        this_field,
+        helperValue: isDateSelectType ? '' : (fieldRec.prompt?.helper || ''),
+        hidePrompt: occ_index > 0,
+        forceShrink: isDateSelectType,
+        fieldInstanceKey: `${this_field}__${occ_index}`,
+        hasCurrentValue: isDateSelectType
+          ? !!String(fieldRec?.value || '').trim()
+          : !!getFieldOccurrenceTextValue(fieldRec, occ_index)
+      }),
+      required: isRequiredField,
+      disabled: isDisabled,
+      style: {
+        width: resolvedMinWidth,
+        minWidth: `${MIN_FIELD_WIDTH_PX}px`,
+        maxWidth: '90%',
+        margin: '8px 8px 8px 8px'
+      },
+      onFocus: () => {
+        setActivePromptFieldKey(`${this_field}__${occ_index}`);
+      }
+    };
+
+    if (isDateSelectType) {
+      return (
+        <Box
+          display='flex'
+          flexDirection='column'
+          id={`dateBox__${this_field}`}
+          key={`datebox__${fieldNdx}__${sectionNdx}_${(fieldRec && fieldRec.value)
+            ? fieldRec.value
+            : ''}`}
+          justifyContent='flex-start'
+          marginTop={1}
+          marginLeft={0}
+          alignItems='flex-start'
+        >
+          <TextField
+            {...sharedProps}
+            type='date'
+            min={fieldRec.prompt?.min}
+            max={fieldRec.prompt?.max}
+            value={(!isEmpty(fieldRec?.valueText))
+              ? makeDate(fieldRec.value).input
+              : ''
+            }
+            onChange={async (event) => {
+              if (event.target.value) {
+                let dObj = makeDate(event.target.value, { noTime: true, noYearCorrection: true });
+                if (!dObj.error) {
+                  await handleChangeValue({
+                    newText: dObj.absolute,
+                    newValue: dObj.numeric$,
+                    occ_index,
+                    prop: this_field,
+                    sentenceCase: false
+                  });
+                }
+              }
+            }}
+            onBlur={() => {
+              setActivePromptFieldKey('');
+            }}
+          />
+        </Box>
+      );
+    }
+
+    const commonTextField = (
+      <TextField
+        {...sharedProps}
+        multiline={isTextType ? shouldAutoWrapText : undefined}
+        minRows={isTextType ? resolvedTextRows : undefined}
+        autoComplete='off'
+        InputProps={(!isTextType)
+          ? { disableUnderline: isDisabled }
+          : undefined
+        }
+        inputProps={isTextType
+          ? {
+            style: {
+              whiteSpace: 'pre-wrap',
+              overflowWrap: 'anywhere'
+            }
+          }
+          : undefined
+        }
+        defaultValue={valueText}
+        onBlur={async (event) => {
+          setActivePromptFieldKey('');
+          if (isTextType) {
+            await handleChangeValue({
+              newText: event.target.value,
+              prop: this_field,
+              occ_index,
+              sentenceCase: true
+            });
+            return;
+          }
+
+          if (!event.target.value) {
+            return;
+          }
+
+          if (isPhoneType) {
+            let fPhone = formatPhone(event.target.value);
+            await handleChangeValue({
+              newText: fPhone,
+              newValue: `+1${fPhone.replace(/\D/g, '')}`,
+              occ_index,
+              prop: this_field,
+              sentenceCase: false
+            });
+            return;
+          }
+
+          if (fieldType === 'time') {
+            let dObj = makeTime(event.target.value);
+            if (!dObj.error) {
+              await handleChangeValue({
+                newText: dObj.time,
+                newValue: dObj.time,
+                prop: this_field,
+                occ_index,
+                sentenceCase: false
+              });
+            }
+            return;
+          }
+
+          if (isDateOrTimeType) {
+            let dObj = makeDate(event.target.value, { noTime: (fieldType === 'date'), noYearCorrection: true });
+            if (!dObj.error) {
+              await handleChangeValue({
+                newText: dObj.absolute,
+                newValue: ((fieldType === 'date')
+                  ? dObj.numeric$
+                  : dObj.timestamp),
+                prop: this_field,
+                occ_index,
+                sentenceCase: false
+              });
+            }
+          }
+        }}
+      />
+    );
+
+    if (isTextType) {
+      return (
+        <Box flexDirection='column' key={`Box__${this_field}`} className={classes.formControlCheckGroup}>
+          {commonTextField}
+        </Box>
+      );
+    }
+
+    return commonTextField;
+  };
+
+  const disableSaveActions = !hasDisplayableContent;
 
   return (
     <div ref={formContainerRef} id="content-to-export" className="my-form-container">
@@ -2645,37 +3537,39 @@ export default ({ request = {}, onClose }) => {
               </Typography>
             </Box>
             <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
-              {reactData.sections.map((sectionObj, sectionNdx) => (
-                (okToShowSection(sectionObj) &&
-                  <React.Fragment
-                    key={`sectionFrag__${sectionObj.section_name}_${sectionNdx}`}
-                  >
-                    <Typography
-                      key={`section__${sectionObj.section_name}`}
-                      style={AVATextStyle({
-                        size: 1.3, bold: true, margin: {
-                          bottom: 1,
-                          top: ((sectionNdx === 0) ? 1 : 3),
-                        }
-                      })}
+              {displaySections.length > 0
+                ? <React.Fragment>
+                  {displaySections.slice(0, renderedSectionCount || displaySections.length).map((sectionObj, sectionNdx) => (
+                    <React.Fragment
+                      key={`sectionFrag__${sectionObj.section_name}_${sectionNdx}`}
                     >
-                      {sectionObj.section_name}
-                    </Typography>
-                    {sectionObj.fields.map((this_field, fieldNdx) => {
-                      return (
-                        !reactData.fields[this_field].ignore &&
-                        <Box
-                          key={`fieldFrag__${this_field}_${sectionNdx}`}
-                          sx={{
-                            border: reactData.fields[this_field].isError ? '2px solid red' : 'none',
-                            padding: reactData.fields[this_field].isError ? '8px' : '0px',
-                            borderRadius: reactData.fields[this_field].isError ? '30px' : '0px'
-                          }}
-                        >
-                          {new Array(reactData.fields[this_field].prompt?.occurrences || 1).fill(0).map((a_zero, occ_index) => (
-                            <React.Fragment
-                              key={`innerFrag__${this_field}_${occ_index}`}
-                            >
+                      <Typography
+                        key={`section__${sectionObj.section_name}`}
+                        className={classes.sectionStickyTitle}
+                        style={AVATextStyle({
+                          size: 1.3, bold: true, margin: {
+                            bottom: 1,
+                            top: ((sectionNdx === 0) ? 1 : 3),
+                          }
+                        })}
+                      >
+                        {sectionObj.section_name}
+                      </Typography>
+                      {sectionObj.fields.map((this_field, fieldNdx) => {
+                        return (
+                          !reactData.fields[this_field].ignore &&
+                          <Box
+                            key={`fieldFrag__${this_field}_${sectionNdx}`}
+                            sx={{
+                              border: reactData.fields[this_field].isError ? '2px solid red' : 'none',
+                              padding: reactData.fields[this_field].isError ? '8px' : '0px',
+                              borderRadius: reactData.fields[this_field].isError ? '30px' : '0px'
+                            }}
+                          >
+                            {new Array(reactData.fields[this_field].prompt?.occurrences || 1).fill(0).map((a_zero, occ_index) => (
+                              <React.Fragment
+                                key={`innerFrag__${this_field}_${occ_index}`}
+                              >
                               {reactData.fields[this_field].prompt?.newLine && (occ_index === 0) &&
                                 <Typography
                                   key={`section__${sectionObj.section_name}_${reactData.fields[this_field]}-breakRow`}
@@ -2684,64 +3578,24 @@ export default ({ request = {}, onClose }) => {
                                   {''}
                                 </Typography>
                               }
-                              {(reactData.fields[this_field].type === 'text') &&
-                                <Box flexDirection='column' key={`Box__${this_field}`} className={classes.formControlCheckGroup}>
-                                  {occ_index === 0 && (
-                                    <Typography
-                                      className={classes.formControlTitle}
-                                      dangerouslySetInnerHTML={{
-                                        __html: reconcilePrompt({
-                                          rawValue: reactData.fields[this_field].prompt?.value,
-                                          this_field
-                                        })
-                                      }}
-                                    />
-                                  )}
-                                  <TextField
-                                    id={`field__${this_field}`}
-                                    key={`field__${this_field}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                      ? reactData.fields[this_field].valueText
-                                      : ''}`}
-                                    className={classes.inputDisplay}
-                                    multiline={(reactData.fields[this_field].prompt?.rows || reactData.fields[this_field].value?.rows || 1) > 1}
-                                    variant={(reactData.fields[this_field].prompt?.rows || reactData.fields[this_field].value?.rows || 1) > 1 ? 'outlined' : 'standard'}
-                                    disabled={reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
-                                    InputProps={{ disableUnderline: reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked }}
-                                    style={AVATextStyle({
-                                      lineHeight: 1,
-                                      width: `${reactData.fields[this_field].prompt?.width || 200}px`,
-                                      maxWidth: '90%',
-                                      size: 0.75,
-                                      color: 'black',
-                                      margin: { top: 0, bottom: 0.5, left: 0.5, right: 3 }
-                                    })}
-                                    autoComplete='off'
-                                    defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                      ? (Array.isArray(reactData.fields[this_field].valueText) ? reactData.fields[this_field].valueText[occ_index] : reactData.fields[this_field].valueText)
-                                      : ''
-                                    }
-                                    onBlur={async (event) => {
-                                      await handleChangeValue({
-                                        newText: event.target.value,
-                                        prop: this_field,
-                                        occ_index,
-                                        sentenceCase: true
-                                      });
-                                    }}
-                                  />
-                                </Box>
+                              {(['text', 'phone', 'date_select', 'date', 'time'].includes(reactData.fields[this_field].type))
+                                && renderTextLikeField({ this_field, occ_index, sectionNdx, fieldNdx })
                               }
                               {(reactData.fields[this_field].type === 'header') && (occ_index === 0) &&
                                 <Typography
                                   style={AVATextStyle(Object.assign(
                                     {},
                                     {
-                                      size: 0.75,
-                                      margin: { top: 2, bottom: 0.5, right: 3 }
+                                      margin: { top: 1, bottom: 0.5, right: 3 }
                                     },
                                     reactData.fields[this_field].prompt?.style || {}
                                   ))}
-                                  dangerouslySetInnerHTML={{ __html: reactData.fields[this_field].prompt?.value }}
+                                  dangerouslySetInnerHTML={{
+                                    __html: normalizePromptMarkup(reconcilePrompt({
+                                      rawValue: reactData.fields[this_field].prompt?.value,
+                                      this_field
+                                    }))
+                                  }}
                                 />
                               }
                               {(reactData.fields[this_field].type === 'image') &&
@@ -2756,10 +3610,14 @@ export default ({ request = {}, onClose }) => {
                                       reactData.fields[this_field].prompt?.style || {}
                                     ))}
                                   >
-                                    {reconcilePrompt({
-                                      rawValue: reactData.fields[this_field].prompt?.value,
-                                      this_field
-                                    })}
+                                    <span
+                                      dangerouslySetInnerHTML={{
+                                        __html: normalizePromptMarkup(reconcilePrompt({
+                                          rawValue: reactData.fields[this_field].prompt?.value,
+                                          this_field
+                                        }))
+                                      }}
+                                    />
                                   </Typography>
                                   <Box
                                     display='flex'
@@ -2864,10 +3722,14 @@ export default ({ request = {}, onClose }) => {
                                         reactData.fields[this_field].prompt?.style || {}
                                       ))}
                                     >
-                                      {reconcilePrompt({
-                                        rawValue: reactData.fields[this_field].prompt?.value,
-                                        this_field
-                                      })}
+                                      <span
+                                        dangerouslySetInnerHTML={{
+                                          __html: normalizePromptMarkup(reconcilePrompt({
+                                            rawValue: reactData.fields[this_field].prompt?.value,
+                                            this_field
+                                          }))
+                                        }}
+                                      />
                                     </Typography>
                                     {!((reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked))
                                       && uploadIcon(this_field, occ_index)
@@ -2948,163 +3810,6 @@ export default ({ request = {}, onClose }) => {
                                   </Box>
                                 </Box>
                               }
-                              {(reactData.fields[this_field].type === 'phone') &&
-                                <TextField
-                                  id={`field__${fieldNdx}`}
-                                  className={classes.inputDisplay}
-                                  autoComplete='off'
-                                  disabled={reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
-                                  InputProps={{ disableUnderline: reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked }}
-                                  key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                    ? reactData.fields[this_field].valueText
-                                    : ''}`}
-                                  style={AVATextStyle({
-                                    lineHeight: 1,
-                                    width: `${reactData.fields[this_field].prompt?.width || 200}px`,
-                                    size: 0.75,
-                                    padding: { bottom: 0 },
-                                    margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
-                                  })}
-                                  defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                    ? (Array.isArray(reactData.fields[this_field].valueText) ? reactData.fields[this_field].valueText[occ_index] : reactData.fields[this_field].valueText)
-                                    : ''
-                                  }
-                                  onBlur={async (event) => {
-                                    if (event.target.value) {
-                                      let fPhone = formatPhone(event.target.value);
-                                      await handleChangeValue({
-                                        newText: fPhone,
-                                        newValue: `+1${fPhone.replace(/\D/g, '')}`,
-                                        occ_index,
-                                        prop: this_field,
-                                        sentenceCase: false
-                                      });
-                                    }
-                                  }}
-                                  helperText={((occ_index > 0) ? null : reconcilePrompt({
-                                    rawValue: reactData.fields[this_field].prompt?.value,
-                                    this_field
-                                  }))}
-                                />
-                              }
-                              {(reactData.fields[this_field].type === 'date_select') &&
-                                <Box
-                                  display='flex'
-                                  flexDirection='column'
-                                  id={`dateBox__${this_field}`}
-                                  key={`datebox__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
-                                    ? reactData.fields[this_field].value
-                                    : ''}`}
-                                  justifyContent='flex-start'
-                                  marginTop={1}
-                                  marginLeft={0}
-                                  alignItems='flex-start'
-                                >
-                                  <input
-                                    type="date"
-                                    id={`field__${fieldNdx}`}
-                                    key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
-                                      ? reactData.fields[this_field].value
-                                      : ''}`}
-                                    min={reactData.fields[this_field].prompt?.min}
-                                    max={reactData.fields[this_field].prompt?.max}
-                                    value={(!isEmpty(reactData.fields[this_field]?.valueText))
-                                      ? makeDate(reactData.fields[this_field].value).input
-                                      : ''
-                                    }
-                                    onChange={async (event) => {
-                                      if (event.target.value) {
-                                        let dObj = makeDate(event.target.value, { noTime: true, noYearCorrection: true });
-                                        if (!dObj.error) {
-                                          await handleChangeValue({
-                                            newText: dObj.absolute,
-                                            newValue: dObj.numeric$,
-                                            occ_index,
-                                            prop: this_field,
-                                            sentenceCase: false
-                                          });
-                                        }
-                                      }
-                                    }}
-                                  />
-                                  {reactData.fields[this_field].prompt?.newLine && (occ_index === 0) &&
-                                    <Typography
-                                      key={`section__${sectionObj.section_name}_${reactData.fields[this_field]}-breakRow`}
-                                      className={classes.breakRow}
-                                      style={AVATextStyle({
-                                        lineHeight: 1,
-                                        width: `${reactData.fields[this_field].prompt?.width || 200}px`,
-                                        maxWidth: '90%',
-                                        size: 0.75,
-                                        opacity: '60%',
-                                        margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
-                                      })}
-                                    >
-                                      {reconcilePrompt({
-                                        rawValue: reactData.fields[this_field].prompt?.value,
-                                        this_field
-                                      })}
-                                    </Typography>
-                                  }
-                                </Box>
-                              }
-                              {((reactData.fields[this_field].type === 'date')
-                                || (reactData.fields[this_field].type === 'time')) &&
-                                <TextField
-                                  id={`field__${fieldNdx}`}
-                                  className={classes.inputDisplay}
-                                  disabled={reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
-                                  InputProps={{ disableUnderline: reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked }}
-                                  autoComplete='off'
-                                  key={`field__${fieldNdx}__${sectionNdx}_${(reactData.fields[this_field] && reactData.fields[this_field].value)
-                                    ? reactData.fields[this_field].value
-                                    : ''}`}
-                                  style={AVATextStyle({
-                                    lineHeight: 1,
-                                    size: 0.75,
-                                    padding: { bottom: 0 },
-                                    margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
-                                  })}
-                                  defaultValue={(reactData.fields[this_field] && reactData.fields[this_field].valueText)
-                                    ? (Array.isArray(reactData.fields[this_field].valueText) ? reactData.fields[this_field].valueText[occ_index] : reactData.fields[this_field].valueText)
-                                    : ''
-                                  }
-                                  onBlur={async (event) => {
-                                    if (event.target.value) {
-                                      if (reactData.fields[this_field].type === 'time') {
-                                        let dObj = makeTime(event.target.value);
-                                        if (!dObj.error) {
-                                          await handleChangeValue({
-                                            newText: dObj.time,
-                                            newValue: dObj.time,
-                                            prop: this_field,
-                                            occ_index,
-                                            sentenceCase: false
-                                          });
-                                        }
-                                      }
-                                      else {
-                                        let dObj = makeDate(event.target.value, { noTime: (reactData.fields[this_field].type === 'date'), noYearCorrection: true });
-                                        if (!dObj.error) {
-                                          await handleChangeValue({
-                                            newText: dObj.absolute,
-                                            newValue: ((reactData.fields[this_field].type === 'date')
-                                              ? dObj.numeric$
-                                              : dObj.timestamp),
-                                            prop: this_field,
-                                            occ_index,
-                                            sentenceCase: false
-                                          });
-                                        }
-                                      }
-                                    }
-                                  }}
-                                  helperText={((occ_index > 0) ? null : reconcilePrompt({
-                                    rawValue: reactData.fields[this_field].prompt?.value,
-                                    this_field
-                                  }))}
-                                />
-                              }
                               {(reactData.fields[this_field].type.startsWith('select')) &&
                                 <Box
                                   display='flex'
@@ -3179,10 +3884,16 @@ export default ({ request = {}, onClose }) => {
                                       margin: { top: 2, bottom: 0.5, left: 0.5, right: 3 }
                                     }))}
                                   >
-                                    <u>{reactData.fields[this_field].prompt?.helper || `Tap here for ${reconcilePrompt({
-                                      rawValue: reactData.fields[this_field].prompt?.value,
-                                      this_field
-                                    })}`}</u>
+                                    <u>
+                                      <span
+                                        dangerouslySetInnerHTML={{
+                                          __html: normalizePromptMarkup(reactData.fields[this_field].prompt?.helper || `Tap here for ${reconcilePrompt({
+                                            rawValue: reactData.fields[this_field].prompt?.value,
+                                            this_field
+                                          })}`)
+                                        }}
+                                      />
+                                    </u>
                                   </Typography>
                                 </a>
                               }
@@ -3217,16 +3928,20 @@ export default ({ request = {}, onClose }) => {
                                       key={`sigBoxText__${this_field}_${sectionNdx}`}
                                       style={AVATextStyle({
                                         lineHeight: 1,
-                                        width: `${reactData.fields[this_field].prompt?.width || 200}px`,
+                                        minWidth: '60vw',
                                         maxWidth: '90%',
                                         size: 0.75,
                                         margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
                                       })}
                                     >
-                                      {reconcilePrompt({
-                                        rawValue: reactData.fields[this_field].prompt?.value,
-                                        this_field
-                                      })}
+                                      <span
+                                        dangerouslySetInnerHTML={{
+                                          __html: normalizePromptMarkup(reconcilePrompt({
+                                            rawValue: reactData.fields[this_field].prompt?.value,
+                                            this_field
+                                          }))
+                                        }}
+                                      />
                                     </Typography>
                                   }
                                   <Box display='flex' mt={0} mb={0} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
@@ -3247,12 +3962,16 @@ export default ({ request = {}, onClose }) => {
                                 </Box>
                               }
                               {(reactData.fields[this_field].type === 'id') &&
+                                (() => {
+                                  const isRequiredField = isFieldRequired(reactData.fields[this_field]);
+                                  return (
                                 <Box
                                   display='flex'
                                   flexDirection='row'
                                   key={`selectParent-${this_field}_${sectionNdx}`}
                                   id={`selectParent-${this_field}`}
                                   width={`${reactData.fields[this_field].prompt?.width || 200}px`}
+                                  minWidth={`${MIN_FIELD_WIDTH_PX}px`}
                                   flexGrow={1}
                                   marginBottom={0}
                                   justifyContent='flex-start'
@@ -3324,34 +4043,49 @@ export default ({ request = {}, onClose }) => {
                                         <Typography
                                           key={`selectPrompt-${this_field}_${sectionNdx}`}
                                           id={`selectPrompt-${this_field}`}
+                                          className={isRequiredField ? classes.requiredLabel : ''}
                                           style={AVATextStyle({
                                             lineHeight: 1,
-                                            width: `${reactData.fields[this_field].prompt?.width || 200}px`,
+                                            minWidth: '60vw',
                                             maxWidth: '90%',
                                             size: 0.75,
                                             opacity: '60%',
                                             margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
                                           })}
                                         >
-                                          {reconcilePrompt({
-                                            rawValue: reactData.fields[this_field].prompt?.value,
-                                            this_field
-                                          })}
+                                          <span
+                                            dangerouslySetInnerHTML={{
+                                              __html: normalizePromptMarkup(reconcilePrompt({
+                                                rawValue: reactData.fields[this_field].prompt?.value,
+                                                this_field,
+                                                includeRequiredMarker: false
+                                              }))
+                                            }}
+                                          />
+                                          {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
                                         </Typography>
                                       </Box>
                                     }
                                   </Box>
                                 </Box>
+                                  );
+                                })()
                               }
-                            </React.Fragment>
+                              </React.Fragment>
 
-                          ))}
-                        </Box>
-                      );
-                    })}
-                  </React.Fragment>
-                )
-              ))}
+                            ))}
+                          </Box>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
+                  <Box aria-hidden='true' style={{ height: '28vh' }} />
+                </React.Fragment>
+                :
+                <Typography style={AVATextStyle({ size: 0.9, margin: { top: 1, bottom: 1, left: 0.5, right: 3 } })}>
+                  No data available for this form.
+                </Typography>
+              }
             </DialogContent>
             <Box
               display='flex'
@@ -3366,71 +4100,79 @@ export default ({ request = {}, onClose }) => {
                 style={{ backgroundColor: 'red', color: 'white' }}
                 size='small'
                 onClick={() => {
-                  updateReactData({
-                    stage: 'exit'
-                  }, true);
+                  if (disableSaveActions) {
+                    leaveFormNow();
+                  }
+                  else {
+                    updateReactData({
+                      stage: 'exit'
+                    }, true);
+                  }
                 }}
               >
                 {'Exit'}
               </Button>
-              <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-                {reactData.administrative_account &&
-                  <Button
-                    onClick={handleToggleLock}
-                    className={AVAClass.AVAButton}
-                    style={{
-                      color: reactData.docRec?.formLocked ? 'green' : 'red',
-                      borderColor: reactData.docRec?.formLocked ? 'green' : 'red',
-                      borderWidth: 2,
-                      borderStyle: 'solid',
-                    }}
-                    size='small'
-                    startIcon={reactData.docRec?.formLocked ? <LockOpenIcon /> : <LockIcon />}
-                  >
-                    {reactData.docRec?.formLocked ? 'Unlock' : 'Lock/Save'}
-                  </Button>
-                }
-                {!reactData.formRec?.options?.noSaveContinue && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
-                  <Button
-                    onClick={async () => {
-                      const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
-                      await handleSave({
-                        document_id,
-                        final: false
-                      });
-                    }}
-                    className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'lightcyan', color: 'black' }}
-                    size='small'
-                  >
-                    {isMobile() ? 'Save' : 'Save/Continue'}
-                  </Button>
-                }
-                {!reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
-                  <Button
-                    onClick={async () => {
-                      await handleReview();
-                    }}
-                    className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'green', color: 'white' }}
-                    size='small'
-                  >
-                    {'Finish'}
-                  </Button>
-                }
-                {false && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
-                  <PrintIcon
-                    classes={{ root: classes.rowButton }}
-                    size='medium'
-                    aria-label="penciladd_icon"
-                    onClick={async () => {
-                      generateHtmlOutput();
-                      // await printWIP({ document_id: reactData.document_id });
-                    }}
-                    edge="start"
-                  />
-                }
-              </Box>
+              {!disableSaveActions &&
+                <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
+                  {reactData.administrative_account && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode &&
+                    <Button
+                      onClick={handleToggleLock}
+                      disabled={!reactData.docRec?.formLocked}
+                      className={AVAClass.AVAButton}
+                      style={{
+                        color: reactData.docRec?.formLocked ? 'green' : 'red',
+                        borderColor: reactData.docRec?.formLocked ? 'green' : 'red',
+                        borderWidth: 2,
+                        borderStyle: 'solid',
+                      }}
+                      size='small'
+                      startIcon={reactData.docRec?.formLocked ? <LockOpenIcon /> : <LockIcon />}
+                    >
+                      {reactData.docRec?.formLocked ? 'Unlock' : 'Lock/Save'}
+                    </Button>
+                  }
+                  {!reactData.formRec?.options?.noSaveContinue && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
+                    <Button
+                      onClick={async () => {
+                        const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
+                        await handleSave({
+                          document_id,
+                          final: false
+                        });
+                      }}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'lightcyan', color: 'black' }}
+                      size='small'
+                    >
+                      {isMobile() ? 'Save' : 'Save/Continue'}
+                    </Button>
+                  }
+                  {!reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
+                    <Button
+                      onClick={async () => {
+                        await handleReview();
+                      }}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'green', color: 'white' }}
+                      size='small'
+                    >
+                      {'Finish'}
+                    </Button>
+                  }
+                  {false && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
+                    <PrintIcon
+                      classes={{ root: classes.rowButton }}
+                      size='medium'
+                      aria-label="penciladd_icon"
+                      onClick={async () => {
+                        generateHtmlOutput();
+                        // await printWIP({ document_id: reactData.document_id });
+                      }}
+                      edge="start"
+                    />
+                  }
+                </Box>
+              }
             </Box>
           </React.Fragment >
         }
@@ -3581,27 +4323,7 @@ export default ({ request = {}, onClose }) => {
               }, true);
             }}
             onConfirm={async () => {
-              if (reactData.dataSaved) {
-                onClose('docAdded',
-                  {
-                    document_id: reactData.document_id,
-                    document_title: reactData.document_title,
-                    document_status: 'work_in_process',
-                    pertains_to: reactData.pertains_to,
-                    recWritten: reactData.recWritten,
-                    formLocked: reactData.docRec?.formLocked
-                  }
-                );
-              }
-              else {
-                onClose('aborted',
-                  {
-                    document_id: 'n/a',
-                    document_status: 'aborted',
-                    formLocked: reactData.docRec?.formLocked
-                  }
-                );
-              }
+              leaveFormNow();
             }}
             allowCancel={true}
           />

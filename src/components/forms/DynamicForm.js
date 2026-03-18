@@ -202,7 +202,7 @@ export default ({
           person_id={session.patient_id}
           options={defaultValueObj.options}
           onClose={(updatedPerson) => {
-            if (updatedPerson && updatedPerson.saveCompleted) {
+            if (updatedPerson && updatedPerson.changesMade) {
               sessionStorage.removeItem('AVASessionData');
               window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
             }
@@ -858,7 +858,7 @@ export default ({
           options={{
             pSession: session,
             pGroup_id: (defaultObject?.groups || defaultValue),
-            pGroup_name: message,
+            pGroup_name: (message && message.trim().length > 0) ? message : (factName || 'Group'),
             peopleList: values,
             showList: (defaultObject?.mode || 'full'),
             safeMode: defaultObject.safeMode
@@ -881,7 +881,7 @@ export default ({
           options={{
             pSession: session,
             pGroup_id: (defaultObject?.groups || defaultValue),
-            pGroup_name: message,
+            pGroup_name: (message && message.trim().length > 0) ? message : (factName || 'Group'),
             peopleList: values,
             showList: (defaultObject?.mode || 'full'),
             safeMode: defaultObject.safeMode,

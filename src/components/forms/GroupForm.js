@@ -806,11 +806,13 @@ export default ({ options, onReset }) => {
           {showEditPerson && editPersonRec &&
             <PeopleMaintenance
               patient={editPersonRec}
-              onClose={(updatedPerson) => {
-                if (updatedPerson) {
-                  updatedPerson.account_class = determineClass(updatedPerson.groups, state.session.group_assignments);
-                  setSuperSizeData(Object.assign(superSizeData, updatedPerson));
-                  // setUpdatesMade(true);
+              onClose={async (updatedPerson) => {
+                if (updatedPerson?.changesMade) {
+                  const refreshedPerson = await getPerson(editPersonRec?.person_id || updatedPerson?.newID, '*all');
+                  if (refreshedPerson) {
+                    refreshedPerson.account_class = determineClass(refreshedPerson.groups, state.session.group_assignments);
+                    setSuperSizeData(Object.assign(superSizeData, refreshedPerson));
+                  }
                 }
                 setEditPersonRec(null);
                 setShowEditPerson(null);
@@ -1333,11 +1335,13 @@ export default ({ options, onReset }) => {
               sectionList: ['snapshot'],
               sectionToShow: ['snapshot']
             }}
-            onClose={(updatedPerson) => {
-              if (updatedPerson) {
-                updatedPerson.account_class = determineClass(updatedPerson.groups, state.session.group_assignments);
-                setSuperSizeData(Object.assign(superSizeData, updatedPerson));
-                // setUpdatesMade(true);
+            onClose={async (updatedPerson) => {
+              if (updatedPerson?.changesMade) {
+                const refreshedPerson = await getPerson(superSizeData?.person_id || updatedPerson?.newID, '*all');
+                if (refreshedPerson) {
+                  refreshedPerson.account_class = determineClass(refreshedPerson.groups, state.session.group_assignments);
+                  setSuperSizeData(Object.assign(superSizeData, refreshedPerson));
+                }
               }
               setEditPersonRec(null);
               setShowEditPerson(null);

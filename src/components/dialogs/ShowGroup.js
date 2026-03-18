@@ -2,15 +2,12 @@ import React from 'react';
 import { useSnackbar } from 'notistack';
 import { getAllGroups, getGroup, getRole, getMemberList } from '../../util/AVAGroups';
 
-import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import DialogContent from '@material-ui/core/DialogContent';
 import Slide from '@material-ui/core/Slide';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import Typography from '@material-ui/core/Typography';
-
-import GroupForm from '../forms/GroupForm';
+import GroupPhotoDirectory from '../forms/GroupPhotoDirectory';
 import GroupFilter from '../forms/GroupFilter';
 import GroupControl from '../forms/GroupControl';
 import { makeArray, deepCopy } from '../../util/AVAUtilities';
@@ -51,6 +48,15 @@ const useStyles = makeStyles(theme => ({
   dialogBox: {
     minWidth: '100%',
   },
+  dialogBoxDirectory: {
+    minWidth: '100%',
+    height: '100%',
+    minHeight: 0,
+    padding: 0,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+  },
   reject: {
     backgroundColor: theme.palette.reject[theme.palette.type],
   },
@@ -66,14 +72,15 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 
 export default ({ options, defaults, onClose, onAbort }) => {
 
-  let { pSession, pGroup_id, pGroup_name, peopleList, showList, safeMode } = options;
+  let { pSession, pGroup_id, pGroup_name, showList, safeMode } = options;
 
   const [reactData, setReactData] = React.useState({
     groupMemberList: [],
     groupsManagedObject: [],
     showGroupSelect: false,
+    groupControlKey: 0,
     safeMode: safeMode || false,
-    groupName: pGroup_name,
+    groupName: pGroup_name?.trim() || 'Directory',
     groupID: '',
     groupRole: '',
     groupRec: {},
@@ -334,27 +341,14 @@ export default ({ options, defaults, onClose, onAbort }) => {
         fullScreen
       >
         {!reactData.showGroupSelect &&
-          <Box
-            display='flex'
-            grow={1}
-            style={{ width: '90%' }}
-            mb={0}
-            flexDirection='column'
-            justifyContent='center'
-            alignItems='flex-start'
+          <DialogContent
+            dividers={false}
+            className={classes.dialogBoxDirectory}
           >
-            <Typography className={classes.formControl} variant='h5' >
-              {reactData.groupName || 'Group Maintenance'}
-            </Typography>
-          </Box>
-        }
-        {!reactData.showGroupSelect &&
-          <DialogContent dividers={true} className={classes.dialogBox}>
             {(reactData.building === 'done') &&
-              <GroupForm
+              <GroupPhotoDirectory
                 options={Object.assign(options, {
                   groupMemberList: reactData.groupMemberList,
-                  peopleList: peopleList,
                   pPatient: pSession.patient_id,
                   pPatientName: pSession.patient_display_name,
                   pClient: pSession.client_id,
@@ -453,6 +447,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
         }
         {reactData.showGroupSelect && options.groupManagement && (reactData.building === 'done') &&
           <GroupControl
+            key={`group_control_${reactData.groupControlKey}`}
             defaults={defaults}
             pSession={pSession}
             groupsManagedObject={reactData.groupsManagedObject}
@@ -464,20 +459,12 @@ export default ({ options, defaults, onClose, onAbort }) => {
               }, true);
               onClose(reactData.updatesMade);
             }}
-            onSelect={async (selectedGroup, selectedIndex) => {
-              updateReactData({
-                selectedIndex: selectedIndex,
-                showGroupSelect: false,
-                groupName: reactData.groupsManagedObject[selectedGroup].group_name,
-                groupID: reactData.groupsManagedObject[selectedGroup].group_id,
-                groupRole: reactData.groupsManagedObject[selectedGroup].role
-              }, false);
-              await getGroupMemberList([reactData.groupsManagedObject[selectedGroup].group_id]);
-              setForceRedisplay(!forceRedisplay);
-            }}
             onRefresh={async (responseObj) => {
               let { newGroupID, newGroupName } = responseObj || { newGroupID: false, newGroupName: false };
-              let reactUpdObj = { showGroupSelect: true };
+              let reactUpdObj = {
+                showGroupSelect: true,
+                groupControlKey: reactData.groupControlKey + 1
+              };
               let groupList = makeArray(pGroup_id, /[~,;]/);
               if (newGroupID) {
                 let newGroupObj = {

@@ -102,16 +102,16 @@ export default ({ open, roles, onClose }) => {
 
   let tally = 0;
   let onlyClient;
-  Object.keys(accessList).forEach(k => {
-    if (okClient({ candidate_id: k, candidate_name: k.name })) {
-      tally++;
-      onlyClient = k;
-    }
-  });
-  // if (tally === 0) {
-  //  onClose();
-  // }
+  if (accessList && typeof accessList === 'object') {
+    Object.keys(accessList).forEach(k => {
+      if (okClient({ candidate_id: k, candidate_name: k.name })) {
+        tally++;
+        onlyClient = k;
+      }
+    });
+  }
   const multiClient = (tally > 1);
+  const noSwitchableAccounts = (!accessList || (tally === 0));
   const [selectedClient, setSelectedClient] = React.useState((tally === 1) ? onlyClient : '*none');
 
   const classes = useStyles();
@@ -188,7 +188,6 @@ export default ({ open, roles, onClose }) => {
   }, [selectedClient]);
 
   return (
-    accessList &&
     <Dialog open={open || forceRedisplay}
       onScroll={onScroll}
       p={2}
@@ -219,7 +218,12 @@ export default ({ open, roles, onClose }) => {
       <Paper p={2} component={Box} variant='outlined'
         width='100%' maxHeight={256} overflow='auto' square
       >
-        {(selectedClient === '*none') &&
+        {noSwitchableAccounts &&
+          <Box key={'no_accounts_available'} display='flex' flexWrap='wrap' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+            <Typography variant='h5' className={classes.firstName}>{'Loading...'}</Typography>
+          </Box>
+        }
+        {!noSwitchableAccounts && (selectedClient === '*none') &&
           <React.Fragment>
             {Object.keys(accessList).map((client, c) => (
               okClient({ candidate_id: client, candidate_name: accessList[client].name }) &&
@@ -246,7 +250,7 @@ export default ({ open, roles, onClose }) => {
             ))}
           </React.Fragment>
         }
-        {(selectedClient !== '*none') &&
+        {!noSwitchableAccounts && (selectedClient !== '*none') &&
           <React.Fragment>
             <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
               {rowsWritten = 0}

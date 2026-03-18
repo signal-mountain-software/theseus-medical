@@ -5,6 +5,7 @@ import { getPerson, getImage } from '../../util/AVAPeople';
 import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount, titleCase } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle, isDark } from '../../util/AVAStyles';
 import { determineClass, doesPersonMatchGroupRules } from '../../util/AVAGroups';
+import { syncPersonToSessionCaches } from '../../util/AVASessionSync';
 
 import useSession from '../../hooks/useSession';
 
@@ -14,6 +15,7 @@ import Snapshot from '../sections/Snapshot';
 import FormSection from '../sections/FormSection';
 import TechInfoSection from '../sections/TechInfoSection';
 import MessagePreferencesSection from '../sections/MessagePreferencesSection';
+import PeopleDocumentsSection from '../sections/PeopleDocumentsSection';
 import PersonNotes from './PersonNotes';
 import CheckoutHistory from './CheckoutHistory';
 import LinkedAccounts from '../sections/LinkedAccounts';
@@ -50,7 +52,7 @@ const useStyles = makeStyles(theme => ({
 export default ({ patient, person_id, personRec, initialValues, options = {}, onClose }) => {
 
   const isMounted = React.useRef(false);
-  const { state } = useSession();
+  const { state, dispatch } = useSession();
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
@@ -87,6 +89,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     master_account: (state.user.account_class === 'master'),
     OKtoSave: false,
     saveCompleted: false,
+    changesMade: false,
     alert: false,
     myFormListObj: {},
     formsInitialized: false,
@@ -122,6 +125,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       },
       TechInfoSection: {
         component_id: TechInfoSection
+      },
+      PeopleDocumentsSection: {
+        component_id: PeopleDocumentsSection
       },
       FormSection: {
         component_id: FormSection,
@@ -462,6 +468,14 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         component_name: 'FormSection'
       },
       {
+        section_name: 'Archived Documents',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PeopleDocumentsSection')) : false),
+        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('documents') : true)),
+        version_id: 0,
+        component_name: 'PeopleDocumentsSection'
+      },
+      {
         section_name: 'Notes',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PersonNotes')) : false),
@@ -717,16 +731,49 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     }, true);
   };
 
+  const doesUserIdExistInEitherTable = async (candidateId) => {
+    if (!candidateId) {
+      return false;
+    }
+    const normalizedId = String(candidateId).trim().toLowerCase();
+    const [peopleResult, sessionResult] = await Promise.all([
+      dbClient
+        .get({
+          Key: { person_id: normalizedId },
+          TableName: 'People'
+        })
+        .promise()
+        .catch(error => {
+          cl({ [`Error validating People id ${normalizedId}`]: error });
+          return null;
+        }),
+      dbClient
+        .get({
+          Key: { session_id: normalizedId },
+          TableName: 'SessionsV2'
+        })
+        .promise()
+        .catch(error => {
+          cl({ [`Error validating SessionsV2 id ${normalizedId}`]: error });
+          return null;
+        })
+    ]);
+    return recordExists(peopleResult) || recordExists(sessionResult);
+  };
+
   const saveChanges = async () => {
+    let updatedPeopleRecord = false;
+    const originalPersonId = reactData.person_id;
+    const proposedPersonId = reactData.current.peopleRec.person_id;
     const person_id_blank = !reactData.current.peopleRec.person_id;
     const person_id_changed = reactData.current.peopleRec.person_id !== reactData.person_id;
     // Check for errors before moving forward with updates
     if (person_id_blank || person_id_changed) {
       // check person_id just before saving to assure that it hasn't been claimed between setting and saving
       let person_id_exists = false;
-      if (!person_id_blank) (
-        person_id_exists = await getPerson(reactData.current.peopleRec.person_id, 'validate')
-      );
+      if (!person_id_blank) {
+        person_id_exists = await doesUserIdExistInEitherTable(reactData.current.peopleRec.person_id);
+      }
       if (person_id_exists || person_id_blank) {
         // it's a duplicate OR blank; fix it and abort the save with an alert message
         const { proposedID, newID } = await newUserID(reactData.current.peopleRec.person_id);
@@ -803,6 +850,38 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       }, true);
       return false;
     }
+
+    const timeRules = reactData.current.peopleRec.time_based_rules || [];
+    const dayRuleErrors = {};
+    timeRules.forEach((this_rule, ruleIndex) => {
+      if (!this_rule || this_rule.global_rule) {
+        return;
+      }
+      const normalizedDays = Array.from(
+        new Set(String(this_rule.day || '').split('').filter(day => /[0-6]/.test(day)))
+      );
+      if (normalizedDays.length === 0) {
+        dayRuleErrors[`time_based_rules__day_${ruleIndex}`] = {
+          errorField: `time_based_rules__day_${ruleIndex}`,
+          errorValue: this_rule.day || '',
+          isError: true,
+          errorMessage: 'Select at least one day for this rule.'
+        };
+      }
+    });
+    Object.keys(reactData.errorList || {}).forEach(errorKey => {
+      if (errorKey.startsWith('time_based_rules__day_')) {
+        delete reactData.errorList[errorKey];
+      }
+    });
+    if (Object.keys(dayRuleErrors).length > 0) {
+      Object.assign(reactData.errorList, dayRuleErrors);
+      updateReactData({
+        errorList: reactData.errorList,
+      }, true);
+      return false;
+    }
+
     // are there new accounts that need to be created (would have been in LinkedAccounts - which is Family maintenance)
     if (reactData.current.familyRecs && (reactData.current.familyRecs.length > 0) && reactData.current.familyRecs[0].hasOwnProperty('primary')) {
       for (let this_family of reactData.current.familyRecs) {
@@ -887,21 +966,150 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       }
     }
 
-    if (JSON.stringify(reactData.og.peopleRec) !== JSON.stringify(reactData.current.peopleRec)) {
-      // **** NEED TO ADD SPECIAL HANDLING FOR CHANGE OF PRIMARY KEY ***  (likely change to inactive account?)
-      reactData.current.peopleRec.last_update = new Date().toISOString();  // Expected output: "2011-10-05T14:48:00.000Z"
+    const peopleChanged = JSON.stringify(reactData.og.peopleRec) !== JSON.stringify(reactData.current.peopleRec);
+    const sessionChanged = JSON.stringify(reactData.og.sessionRec) !== JSON.stringify(reactData.current.sessionRec);
+    const personIdChangedForSave = !!originalPersonId && !!proposedPersonId && (proposedPersonId !== originalPersonId);
+
+    if (personIdChangedForSave && (!peopleChanged || !sessionChanged)) {
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: 'Unable to Save',
+          message: 'Account ID updates require both People and Session records to change together. Please try again.',
+          action: [
+            {
+              text: 'OK',
+              function: () => {
+                updateReactData({ alert: false }, true);
+              }
+            }
+          ]
+        }
+      }, true);
+      return false;
+    }
+
+    if (peopleChanged) {
+      reactData.current.peopleRec.last_update = new Date().toISOString();
       if (!reactData.current.peopleRec.created_on) {
-        reactData.current.peopleRec.created_on = new Date().toISOString();  // Expected output: "2011-10-05T14:48:00.000Z"
+        reactData.current.peopleRec.created_on = new Date().toISOString();
       }
-      await dbClient
-        .put({
-          TableName: 'People',
-          Item: reactData.current.peopleRec
-        })
-        .promise()
-        .catch(error => {
-          console.log(`caught error putting to People; error is:`, error);
-        });
+    }
+    if (sessionChanged) {
+      reactData.current.sessionRec.last_update = new Date().toISOString();
+    }
+
+    try {
+      if (peopleChanged && sessionChanged) {
+        const transactItems = [
+          {
+            Put: {
+              TableName: 'People',
+              Item: reactData.current.peopleRec
+            }
+          },
+          {
+            Put: {
+              TableName: 'SessionsV2',
+              Item: reactData.current.sessionRec
+            }
+          }
+        ];
+
+        if (personIdChangedForSave) {
+          const oldClientId = reactData.og.peopleRec?.client_id || reactData.og.sessionRec?.client_id || state.session.client_id;
+          const renamedClientId = String(oldClientId || '').endsWith('_RENAMED')
+            ? String(oldClientId || '')
+            : `${oldClientId}_RENAMED`;
+          const renamedOn = new Date().toISOString();
+
+          transactItems.push(
+            {
+              Update: {
+                TableName: 'People',
+                Key: { person_id: originalPersonId },
+                ConditionExpression: 'attribute_exists(person_id)',
+                UpdateExpression: 'set #c = :c, #renamed_to = :renamed_to, #renamed_on = :renamed_on',
+                ExpressionAttributeNames: {
+                  '#c': 'client_id',
+                  '#renamed_to': 'renamed_to',
+                  '#renamed_on': 'renamed_on'
+                },
+                ExpressionAttributeValues: {
+                  ':c': renamedClientId,
+                  ':renamed_to': proposedPersonId,
+                  ':renamed_on': renamedOn
+                }
+              }
+            },
+            {
+              Update: {
+                TableName: 'SessionsV2',
+                Key: { session_id: originalPersonId },
+                ConditionExpression: 'attribute_exists(session_id)',
+                UpdateExpression: 'set #c = :c, #uhc = :c, #renamed_to = :renamed_to, #renamed_on = :renamed_on',
+                ExpressionAttributeNames: {
+                  '#c': 'client_id',
+                  '#uhc': 'user_homeClient',
+                  '#renamed_to': 'renamed_to',
+                  '#renamed_on': 'renamed_on'
+                },
+                ExpressionAttributeValues: {
+                  ':c': renamedClientId,
+                  ':renamed_to': proposedPersonId,
+                  ':renamed_on': renamedOn
+                }
+              }
+            }
+          );
+        }
+
+        await dbClient
+          .transactWrite({
+            TransactItems: transactItems
+          })
+          .promise();
+        updatedPeopleRecord = true;
+      }
+      else if (peopleChanged) {
+        await dbClient
+          .put({
+            TableName: 'People',
+            Item: reactData.current.peopleRec
+          })
+          .promise();
+        updatedPeopleRecord = true;
+      }
+      else if (sessionChanged) {
+        await dbClient
+          .put({
+            TableName: 'SessionsV2',
+            Item: reactData.current.sessionRec
+          })
+          .promise();
+      }
+    }
+    catch (error) {
+      cl({ 'Error saving People/SessionsV2': error });
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: 'Unable to Save',
+          message: 'We could not save account updates to both records. Please try again.',
+          action: [
+            {
+              text: 'OK',
+              function: () => {
+                updateReactData({ alert: false }, true);
+              }
+            }
+          ]
+        }
+      }, true);
+      return false;
+    }
+
+    if (peopleChanged) {
       // update the cross-reference table PeopleAccounts
       // Note here...  we are intentionally NOT removing old records from PeopleAccounts because we want to preserve the history of all accounts that have ever been associated with this person_id
       // This means that a mis-spelled email, phone number, or name will still be a valid cross reference.
@@ -953,18 +1161,12 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       }
       
     }
-    if (JSON.stringify(reactData.og.sessionRec) !== JSON.stringify(reactData.current.sessionRec)) {
-      // **** NEED TO ADD SPECIAL HANDLING FOR CHANGE OF PRIMARY KEY ***  (likely change to inactive account?)
-      reactData.current.sessionRec.last_update = new Date().toISOString();  // Expected output: "2011-10-05T14:48:00.000Z"
-      await dbClient
-        .put({
-          TableName: 'SessionsV2',
-          Item: reactData.current.sessionRec
-        })
-        .promise()
-        .catch(error => {
-          console.log(`caught error putting to People; error is:`, error);
-        });
+    if (updatedPeopleRecord) {
+      syncPersonToSessionCaches({
+        state,
+        dispatch,
+        personRec: reactData.current.peopleRec
+      });
     }
     if (reactData.current.familyRecs) {
       for (let i = 0; i < reactData.current.familyRecs.length; i++) {
@@ -985,58 +1187,61 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
               if (this_member.createAccount) {
                 reactData.current.peopleRec.created_on = new Date().toISOString();  // Expected output: "2011-10-05T14:48:00.000Z"
                 await dbClient
-                  .put({
-                    TableName: 'People',
-                    Item: {
-                      person_id: this_member.id,
-                      clients: {
-                        groups: this_member.groups,
-                        id: state.session.client_id
+                  .transactWrite({
+                    TransactItems: [
+                      {
+                        Put: {
+                          TableName: 'People',
+                          Item: {
+                            person_id: this_member.id,
+                            clients: {
+                              groups: this_member.groups,
+                              id: state.session.client_id
+                            },
+                            client_id: state.session.client_id,
+                            display_name: this_member.name,
+                            address: this_member.address,
+                            family_groups: [
+                              reactData.current.familyRecs[i].family_id
+                            ],
+                            groups: this_member.groups,
+                            name: {
+                              first: this_member.firstName,
+                              last: this_member.lastName
+                            },
+                            preferred_method: "AVA",
+                            preferred_methods: [
+                              "AVA"
+                            ],
+                            search_data: `${this_member.name} ${this_member.name.toLowerCase()} ${this_member.nickname} ${this_member.nickname.toLowerCase()}`,
+                          }
+                        }
                       },
-                      client_id: state.session.client_id,
-                      display_name: this_member.name,
-                      address: this_member.address,
-                      family_groups: [
-                        reactData.current.familyRecs[i].family_id
-                      ],
-                      groups: this_member.groups,
-                      name: {
-                        first: this_member.firstName,
-                        last: this_member.lastName
-                      },
-                      preferred_method: "AVA",
-                      preferred_methods: [
-                        "AVA"
-                      ],
-                      search_data: `${this_member.name} ${this_member.name.toLowerCase()} ${this_member.nickname} ${this_member.nickname.toLowerCase()}`,
-                    }
+                      {
+                        Put: {
+                          TableName: 'SessionsV2',
+                          Item: {
+                            session_id: this_member.id,
+                            client_id: state.session.client_id,
+                            last_login: "password",
+                            method: "added as Family Member",
+                            patient_display_name: this_member.name,
+                            patient_id: this_member.id,
+                            person_id: this_member.id,
+                            requirePassword: false,
+                            storePassword: true,
+                            subscription_status: "na",
+                            user_display_name: this_member.name,
+                            user_homeClient: state.session.client_id,
+                            user_id: this_member.id,
+                          }
+                        }
+                      }
+                    ]
                   })
                   .promise()
                   .catch(error => {
-                    console.log(`caught error putting to People; error is:`, error);
-                  });
-                await dbClient
-                  .put({
-                    TableName: 'SessionsV2',
-                    Item: {
-                      session_id: this_member.id,
-                      client_id: state.session.client_id,
-                      last_login: "password",
-                      method: "added as Family Member",
-                      patient_display_name: this_member.name,
-                      patient_id: this_member.id,
-                      person_id: this_member.id,
-                      requirePassword: false,
-                      storePassword: true,
-                      subscription_status: "na",
-                      user_display_name: this_member.name,
-                      user_homeClient: state.session.client_id,
-                      user_id: this_member.id,
-                    }
-                  })
-                  .promise()
-                  .catch(error => {
-                    console.log(`caught error putting to SessionsV2; error is:`, error);
+                    throw error;
                   });
               }
               else {
@@ -1085,7 +1290,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
   async function newUserID(proposedID) {
     let tryAgain;
     let newID, namePart;
-    let clientPart = state.session.client_id.toLowerCase();
+    let clientPart = state.session.client_style?.client_suffix || state.session.client_id.toLowerCase();
     let numberPart = 1;
     if (proposedID) {
       namePart = (proposedID.match(/([\w-]*[^\d]+)(\d*)$/))[1];
@@ -1112,7 +1317,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     }
     do {
       tryAgain = false;
-      const person_id_exists = await getPerson(newID, 'validate');
+      const person_id_exists = await doesUserIdExistInEitherTable(newID);
       if (person_id_exists) {
         numberPart++;
         if (newID.includes(clientPart)) {
@@ -1126,6 +1331,51 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     } while (tryAgain);
     return { proposedID, newID };
   }
+
+  const flushActiveInput = async () => {
+    if (typeof document !== 'undefined' && document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
+    await new Promise(resolve => setTimeout(resolve, 0));
+  };
+
+  const handleSaveTap = async ({ finish = false }) => {
+    await flushActiveInput();
+    if (!reactData.OKtoSave && isEmpty(reactData.errorList)) {
+      if (finish) {
+        onExit({
+          saveCompleted: reactData.saveCompleted,
+          changesMade: reactData.changesMade,
+          directory_option: reactData.current.peopleRec.directory_option || false,
+          newID: reactData.current.peopleRec.person_id,
+          newName: (`${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`).trim()
+        });
+        return true;
+      }
+      return false;
+    }
+    const result = await saveChanges();
+    if (!result) {
+      return false;
+    }
+    reactData.saveCompleted = true;
+    reactData.changesMade = true;
+    updateReactData({
+      changesMade: reactData.changesMade,
+      saveCompleted: reactData.saveCompleted,
+      OKtoSave: false
+    }, true);
+    if (finish) {
+      onExit({
+        saveCompleted: reactData.saveCompleted,
+        changesMade: reactData.changesMade,
+        directory_option: reactData.current.peopleRec.directory_option || false,
+        newID: reactData.current.peopleRec.person_id,
+        newName: (`${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`).trim()
+      });
+    }
+    return true;
+  };
 
   return (
     (reactData.initialized || reactData.alert) &&
@@ -1146,12 +1396,16 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           if (!reactData.current.peopleRec.person_id) {
             onExit({
               saveCompleted: false,
+              changesMade: false,
+              directory_option: false,
               newID: false
             });
           }
           else {
             onExit({
               saveCompleted: reactData.saveCompleted,
+              changesMade: reactData.changesMade,
+              directory_option: reactData.current.peopleRec.directory_option || false,
               newID: reactData.current.peopleRec.person_id,
               newName: (`${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`).trim()
             });
@@ -1412,12 +1666,16 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                   if (!reactData.current.peopleRec.person_id) {
                     onExit({
                       saveCompleted: false,
+                      changesMade: false,
+                      directory_option: false,
                       newID: false
                     });
                   }
                   else {
                     onExit({
                       saveCompleted: reactData.saveCompleted,
+                      changesMade: reactData.changesMade,
+                      directory_option: reactData.current.peopleRec.directory_option || false,
                       newID: reactData.current.peopleRec.person_id,
                       newName: (`${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`).trim()
                     });
@@ -1427,19 +1685,12 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             >
               {'Exit'}
             </Button>
-            {(reactData.OKtoSave || (!isEmpty(reactData.errorList))) ?
-              (isEmpty(reactData.errorList) ?
+            {(reactData.mode !== 'view') &&
+              <Box display='flex' flexDirection='column' justifyContent='flex-end' alignItems='flex-end'>
                 <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
                   <Button
                     onClick={async () => {
-                      const result = await saveChanges();
-                      if (!!result) {
-                        reactData.saveCompleted = true;
-                      }
-                      updateReactData({
-                        saveCompleted: reactData.saveCompleted,
-                        OKtoSave: !result
-                      }, true);
+                      await handleSaveTap({ finish: false });
                     }}
                     className={AVAClass.AVAButton}
                     style={{ backgroundColor: 'lightcyan', color: 'black' }}
@@ -1449,13 +1700,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                   </Button>
                   <Button
                     onClick={async () => {
-                      let result = await saveChanges();
-                      if (result) {
-                        onExit({
-                          newID: reactData.current.peopleRec.person_id,
-                          newName: (`${reactData.current.peopleRec.name.first || ''} ${reactData.current.peopleRec.name.last || ''}`).trim()
-                        });
-                      }
+                      await handleSaveTap({ finish: true });
                     }}
                     className={AVAClass.AVAButton}
                     style={{ backgroundColor: 'green', color: 'white' }}
@@ -1464,34 +1709,30 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                     {'Save/Finish'}
                   </Button>
                 </Box>
-                :
-                <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-                  <Typography style={{ color: 'red', bold: true }}>
-                    {(Object.keys(reactData.errorList).length === 1)
-                      ? `${reactData.errorList[Object.keys(reactData.errorList)[0]].errorMessage}`
-                      : `${Object.keys(reactData.errorList).length} issues`
-                    }
-                  </Typography>
-                </Box>
-              )
-              :
-              (reactData.current.peopleRec?.name?.first &&
-                <Box display='flex' flexDirection='column' justifyContent='flex-end' alignItems='center'>
-                  <Typography style={{ size: 1.2, bold: true }}>
-                    {`${((reactData.current.peopleRec?.name?.first || 'User') + "'s").replace("s's", "s'")} Profile`}
-                  </Typography>
-                  {(reactData.mode === 'view') &&
-                    <Typography style={{ size: 1.2, bold: true }}>
-                      {`** View only **`}
+                {!isEmpty(reactData.errorList) &&
+                  <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
+                    <Typography style={{ color: 'red', bold: true }}>
+                      {(Object.keys(reactData.errorList).length === 1)
+                        ? `${reactData.errorList[Object.keys(reactData.errorList)[0]].errorMessage}`
+                        : `${Object.keys(reactData.errorList).length} issues`
+                      }
                     </Typography>
-                  }
-                  {(reactData.mode === 'view') &&
-                    <Typography style={{ marginTop: 0, size: 1 }}>
-                      {`No Changes allowed`}
-                    </Typography>
-                  }
-                </Box>
-              )
+                  </Box>
+                }
+              </Box>
+            }
+            {(reactData.mode === 'view') && (reactData.current.peopleRec?.name?.first) &&
+              <Box display='flex' flexDirection='column' justifyContent='flex-end' alignItems='center'>
+                <Typography style={{ size: 1.2, bold: true }}>
+                  {`${((reactData.current.peopleRec?.name?.first || 'User') + "'s").replace("s's", "s'")} Profile`}
+                </Typography>
+                <Typography style={{ size: 1.2, bold: true }}>
+                  {`** View only **`}
+                </Typography>
+                <Typography style={{ marginTop: 0, size: 1 }}>
+                  {`No Changes allowed`}
+                </Typography>
+              </Box>
             }
           </Box>
         </React.Fragment>

@@ -6,6 +6,7 @@ import useSession from '../hooks/useSession';
 
 import AVAMenu from '../components/sections/AVAMenu';
 import ConnectMenu from '../components/sections/ConnectMenu';
+import MainMenuV3 from '../components/sections/MainMenuV3';
 import FormFillB from '../components/forms/FormFillB';
 import MessageForm from '../components/forms/MessageForm';
 import PeopleMaintenance from '../components/dialogs/PeopleMaintenance';
@@ -16,6 +17,7 @@ export default () => {
   const { state } = useSession();
   const { patient, session } = state;
   const [cookies, , removeCookie] = useCookies(['AVAuser', 'AVAaction']);
+  const ava_env = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.ready
@@ -101,9 +103,12 @@ export default () => {
 
   return (
     <Box>
-      {(state.session.client_style && state.session.client_style.ui_tiles)
+      {(state.session.client_style && state.session.client_style.ui_v3 && (ava_env !== 'D' || (state.session.client_style && state.session.client_style.ui_v3Dev)))
+        ? <MainMenuV3 />
+        :
+        ((state.session.client_style && state.session.client_style.ui_tiles)
         ? <ConnectMenu pPerson={patient.person_id} patient={patient} pClient={session.client_id} />
-        : <AVAMenu pPerson={patient.person_id} patient={patient} pClient={session.client_id} />
+        : <AVAMenu pPerson={patient.person_id} patient={patient} pClient={session.client_id} />)
       }
     </Box>
   );

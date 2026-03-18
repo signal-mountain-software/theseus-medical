@@ -50,6 +50,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   const { state } = useSession();
   const isMounted = React.useRef(false);
   const optionsRef = React.useRef(options);
+  const searchInputRef = React.useRef(null);
   const administrative_account = (['admin', 'master'].includes(state.user.account_class));
 
   // Virtual scrolling state
@@ -60,6 +61,18 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   React.useEffect(() => {
     console.log('EFFECT mounted');
   }, [administrative_account]); // should log exactly once (twice in StrictMode dev)
+
+  React.useEffect(() => {
+    const focusTimer = window.setTimeout(() => {
+      if (searchInputRef.current) {
+        searchInputRef.current.focus();
+      }
+    }, 80);
+
+    return () => {
+      window.clearTimeout(focusTimer);
+    };
+  }, []);
 
   React.useEffect(() => {
     function initialize() {
@@ -250,8 +263,8 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   };
 
   const OKtoShow = (this_person) => {
-    this_person.first = this_person.first || this_person.name.first;
-    this_person.last = this_person.last || this_person.name.last;
+    this_person.first = this_person.first || this_person.name?.first || '';
+    this_person.last = this_person.last || this_person.name?.last || '';
 
     // If showOnlySelected is true, only show selected people and group members
     if (showOnlySelected) {
@@ -302,6 +315,8 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
         <TextField
           style={isMobile ? AVATextStyle({ width: '60%' }) : AVATextStyle({ width: '70%' })}
           key={`key_words`}
+          inputRef={searchInputRef}
+          autoFocus
           defaultValue={reactData.linkedPersonFilter?.raw || ''}
           onChange={(event) => {
             // Reset virtual scrolling limit when search changes
@@ -407,7 +422,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
             </Box>
           </Box>
         }
-        {options.withPreferred && (reactData.preferred_recipients.length > 0) &&
+        {options.withPreferred && reactData.preferred_recipients && (reactData.preferred_recipients.length > 0) &&
           (() => {
             // Check if there are any visible preferred recipients
             const visiblePreferred = reactData.preferred_recipients.filter((recipient, idx) => OKtoShowPreferred(recipient, idx));

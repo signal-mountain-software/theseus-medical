@@ -126,6 +126,76 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
     return response;
   };
 
+  const normalizeRuleDays = (dayValue) => {
+    if (!dayValue) {
+      return '';
+    }
+    const uniqueDays = Array.from(new Set(String(dayValue).split('').filter(day => /[0-6]/.test(day))));
+    uniqueDays.sort();
+    return uniqueDays.join('');
+  };
+
+  const getRuleRange = (rule) => {
+    const start = (rule?.time_range?.start !== undefined)
+      ? Number(rule.time_range.start)
+      : (rule?.time_from ? makeTime(rule.time_from).numeric24 : 0);
+    const end = (rule?.time_range?.end !== undefined)
+      ? Number(rule.time_range.end)
+      : (rule?.time_to ? makeTime(rule.time_to).numeric24 : 2359);
+    return {
+      start: Number.isFinite(start) ? start : 0,
+      end: Number.isFinite(end) ? end : 2359
+    };
+  };
+
+  const isTwentyFourSevenRule = (rule) => {
+    if (!rule) {
+      return false;
+    }
+    const normalizedDays = normalizeRuleDays(rule.day);
+    const fullWeek = normalizedDays.length === 7;
+    const { start, end } = getRuleRange(rule);
+    return fullWeek && (start === 0) && (end === 2359);
+  };
+
+  const updateRuleScheduleWithGuard = async ({ ruleIndex, previousRuleSnapshot }) => {
+    const proposedRule = currentValues.peopleRec.time_based_rules?.[ruleIndex];
+    const becameTwentyFourSeven = isTwentyFourSevenRule(proposedRule) && !isTwentyFourSevenRule(previousRuleSnapshot);
+
+    const saveRuleUpdate = async () => {
+      await updateField({
+        updateList:
+          [{
+            tableName: 'peopleRec',
+            fieldName: 'time_based_rules',
+            newData: currentValues.peopleRec.time_based_rules
+          }]
+      });
+    };
+
+    if (!becameTwentyFourSeven) {
+      await saveRuleUpdate();
+      return;
+    }
+
+    updateReactData({
+      alert: {
+        severity: 'warning',
+        title: '24/7 Rule Confirmation',
+        message: 'This rule will apply 24 hours a day, 7 days a week. Tap Acknowledged to continue.',
+        action: [
+          {
+            text: 'Acknowledged',
+            function: async () => {
+              updateReactData({ alert: false }, true);
+              await saveRuleUpdate();
+            }
+          }
+        ]
+      }
+    }, true);
+  };
+
   return (
     <Box
       key={`MessagePrefSection_masterBox`}
@@ -259,7 +329,8 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
             currentValues.peopleRec.time_based_rules.unshift({
               name: `${(currentValues.peopleRec.name?.first ? (currentValues.peopleRec.name?.first + "'s").replace("s's", "s'") : 'My')} New Rule`,
               methods: ['ava'],
-              method: 'ava'
+              method: 'ava',
+              day: ''
             });
             await updateField({
               updateList:
@@ -517,6 +588,7 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
                         : '12:00 am')
                     }
                     onBlur={async (event) => {
+                      const previousRuleSnapshot = Object.assign({}, currentValues.peopleRec.time_based_rules?.[i] || this_rule);
                       let from_time = makeTime(event.target.value);
                       if (from_time.error || from_time.empty) {
                         // This is an error.
@@ -554,8 +626,13 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
                           errorField: `time_based_rules__time_from_${i}`,
                           isError: false
                         };
+                        await updateField(updateObj);
+                        return;
                       }
-                      await updateField(updateObj);
+                      await updateRuleScheduleWithGuard({
+                        ruleIndex: i,
+                        previousRuleSnapshot
+                      });
                     }}
                   />
                   <TextField
@@ -574,6 +651,7 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
                         : '11:59 pm')
                     }
                     onBlur={async (event) => {
+                      const previousRuleSnapshot = Object.assign({}, currentValues.peopleRec.time_based_rules?.[i] || this_rule);
                       let to_time = makeTime(event.target.value);
                       if (to_time.error || to_time.empty) {
                         // This is an error.
@@ -611,8 +689,13 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
                           errorField: `time_based_rules__time_to_${i}`,
                           isError: false
                         };
+                        await updateField(updateObj);
+                        return;
                       }
-                      await updateField(updateObj);
+                      await updateRuleScheduleWithGuard({
+                        ruleIndex: i,
+                        previousRuleSnapshot
+                      });
                     }}
                   />
                 </Box>
@@ -623,13 +706,15 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
                       key={`day_control_${i}__${day_num}_${this_rule.day}`}
                       control={
                         <Checkbox
-                          checked={this_rule.day?.includes(day_num.toString()) || !this_rule.day}
+                          checked={this_rule.day?.includes(day_num.toString()) || false}
                           name={`message_routing_${i}_${day_num}`}
                           key={`day_checkbox_${i}_${day_num}_${this_rule.day}`}
                           disableRipple
                           disabled={this_rule.global_rule}
                           size='small'
                           onClick={async () => {
+                            const previousRuleSnapshot = Object.assign({}, currentValues.peopleRec.time_based_rules?.[i] || this_rule);
+                            const dayErrorField = `time_based_rules__day_${i}`;
                             if (!this_rule.day) {
                               this_rule.day = '';
                             }
@@ -644,13 +729,24 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
                             else {
                               currentValues.peopleRec.time_based_rules[i].day += day_num.toString();
                             }
-                            await updateField({
-                              updateList:
-                                [{
-                                  tableName: 'peopleRec',
-                                  fieldName: 'time_based_rules',
-                                  newData: currentValues.peopleRec.time_based_rules
-                                }]
+                            currentValues.peopleRec.time_based_rules[i].day = normalizeRuleDays(currentValues.peopleRec.time_based_rules[i].day);
+                            if (!currentValues.peopleRec.time_based_rules[i].day) {
+                              setError({
+                                errorField: dayErrorField,
+                                errorValue: '',
+                                isError: true,
+                                errorMessage: 'Select at least one day for this rule.'
+                              });
+                            }
+                            else if (errorList.hasOwnProperty(dayErrorField)) {
+                              setError({
+                                errorField: dayErrorField,
+                                isError: false
+                              });
+                            }
+                            await updateRuleScheduleWithGuard({
+                              ruleIndex: i,
+                              previousRuleSnapshot
                             });
                           }}
                           inputProps={{ 'aria-labelledby': `message_routing_${i}_${day_num}` }}
@@ -666,6 +762,13 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
                     />
                   ))}
                 </Box>
+                {errorList.hasOwnProperty(`time_based_rules__day_${i}`) && (
+                  <Typography
+                    style={AVATextStyle({ margin: { left: 1.5, top: 0.25 }, size: 0.6, color: 'red' })}
+                  >
+                    {errorList[`time_based_rules__day_${i}`].errorMessage}
+                  </Typography>
+                )}
               </Box>
               <TextField
                 multiline

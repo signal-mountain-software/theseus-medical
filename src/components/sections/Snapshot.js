@@ -40,25 +40,41 @@ export default ({ currentValues, reactData, updateReactData }) => {
     else {
       return null;
     }
-  }
+  };
 
   const makeLocation = () => {
     if (currentValues.peopleRec.hasOwnProperty('address') && currentValues.peopleRec.address) {
-      if (currentValues.peopleRec.address.street) {
-        // If 'street' exists, use it as address1
-        currentValues.peopleRec.address.address1 = currentValues.peopleRec.address.street;
-      }
       if ((!currentValues.peopleRec.address || Object.keys(currentValues.peopleRec.address).length === 0) && currentValues.peopleRec.location) {
         return sanitizeLocation(currentValues.peopleRec.location);
       }
       else {
+        // adress is expected to be address.adress, address.adress2, address.city, address.state, address.zip - 
+        // if street exists, convert that to new style - address.address  
+        if (currentValues.peopleRec.address.street) {
+          if (!currentValues.peopleRec.address.address) {
+            currentValues.peopleRec.address.address = currentValues.peopleRec.address.street;
+          }
+           delete currentValues.peopleRec.address.street;
+        }
+        if (currentValues.peopleRec.address.address1) {
+          if (!currentValues.peopleRec.address.address) {
+            currentValues.peopleRec.address.address = currentValues.peopleRec.address.address1;
+          }
+           delete currentValues.peopleRec.address.address1;
+        }
         // Filter out nullish values and join with spaces
         let addressParts = '';
-        if (currentValues.peopleRec.address.address1
-          && currentValues.peopleRec.address.address1.trim() !== ''
-          && currentValues.peopleRec.address.address1.includes('undefined') !== true
+        if (currentValues.peopleRec.address.address
+          && currentValues.peopleRec.address.address.trim() !== ''
+          && currentValues.peopleRec.address.address.includes('undefined') !== true
         ) {
-          addressParts += titleCase(currentValues.peopleRec.address.address1) + "; ";
+          addressParts += titleCase(currentValues.peopleRec.address.address) + " ";
+        }
+        if (currentValues.peopleRec.address.address2
+          && currentValues.peopleRec.address.address2.trim() !== ''
+          && currentValues.peopleRec.address.address2.includes('undefined') !== true
+        ) {
+          addressParts += titleCase(currentValues.peopleRec.address.address2) + " ";
         }
         if (currentValues.peopleRec.address.city
           && currentValues.peopleRec.address.city.trim() !== ''
@@ -347,23 +363,42 @@ export default ({ currentValues, reactData, updateReactData }) => {
           {currentValues.peopleRec.emergency_contact.contact2}
         </Typography>
       }
-      {(currentValues.peopleRec.myFamilyMembers &&
-        (currentValues.peopleRec.myFamilyMembers.length > 0)) &&
+      {(currentValues.familyRecs && currentValues.familyRecs.length > 0) &&
         <React.Fragment>
           <Typography
             style={AVATextStyle({ margin: { top: 1 } })}
           >
             {`${currentValues.peopleRec.name?.first}'s family:`}
           </Typography>
-          {currentValues.peopleRec.myFamilyMembers.sort((p1, p2) => {
-            if (p1.type !== p2.type) {
-              return ((p1.type > p2.type) ? 1 : -1);
+          <Box
+            display='flex'
+            flexDirection='row'
+            alignItems={'flex-start'}
+
+            key={`family_primary`}
+          >
+            <Typography
+              style={AVATextStyle({ margin: { top: 0, left: 1 }, bold: true })}
+              onClick={async () => {
+                updateReactData({
+                  viewFamilyMember: currentValues.familyRecs[0].primary_contact.id
+                }, true);
+              }}
+            >
+              {`${makeName(currentValues.familyRecs[0].primary_contact.id) || currentValues.familyRecs[0].primary_contact.name.trim() || currentValues.familyRecs[0].primary_contact.id || 'Unknown Person'}`}
+            </Typography>
+            <Typography style={AVATextStyle({ margin: { top: 0, left: 0.5, right: -0.8 }, bold: true })}>
+              {'- Primary'}
+            </Typography>
+          </Box>
+          {currentValues.familyRecs[0]?.other_members && currentValues.familyRecs[0].other_members.sort((p1, p2) => {
+            if (p1.role !== p2.role) {
+              return ((p1.role > p2.role) ? 1 : -1);
             }
             else {
               return ((p1.name > p2.name) ? 1 : -1);
             }
           }).map((this_member, memberNdx) => (
-            (this_member.id !== currentValues.peopleRec.person_id) &&
             <Box
               display='flex'
               flexDirection='row'

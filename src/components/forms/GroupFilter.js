@@ -252,7 +252,7 @@ export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, on
         ?
         <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
           <Typography className={classes.formControl} variant='h5' >
-            {`No Groups to show for ${pSession.user_display_name}`}
+            {`No Groups to show for ${pSession.patient_display_name || 'your account'}`}
           </Typography>
         </Box>
         :
