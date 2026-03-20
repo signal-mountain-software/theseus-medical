@@ -1599,6 +1599,53 @@ export default ({ onClose, options = {} }) => {
    * @param {string} formatType - The format type (e.g., "sentenceCase")
    * @returns {string} - The formatted value
    */
+  /**
+   * Send on_complete_message notifications after a People record is saved.
+   * @param {Object} member - The saved family member with proposed_user_id and field_values
+   */
+  const sendOnCompleteMessages = async (member) => {
+    const messages = member.account_config?.on_complete_message;
+    if (!messages || !Array.isArray(messages) || messages.length === 0) { return; }
+
+    const person_id = member.proposed_user_id;
+    const fieldValues = member.field_values || {};
+    const firstName = fieldValues.first_name || fieldValues.firstName || fieldValues.fname || fieldValues['first name'] || '';
+    const lastName = fieldValues.last_name || fieldValues.lastName || fieldValues.lname || fieldValues.surname || fieldValues['last name'] || '';
+    const fullName = `${firstName} ${lastName}`.trim();
+
+    const resolveText = (text) => {
+      if (!text) { return text; }
+      // Replace {{user_id}} and {{name}}
+      let result = text
+        .replace(/\{\{user_id\}\}/gi, person_id)
+        .replace(/\{\{name\}\}/gi, fullName);
+      // Replace {{href:...}} with an HTML hyperlink
+      result = result.replace(/\{\{href:([^}]+)\}\}/gi, (match, url) => {
+        return `<a href="${url.trim()}">this link</a>`;
+      });
+      return result;
+    };
+
+    for (const msgInstructions of messages) {
+      try {
+        const rawRecipients = msgInstructions.recipientList?.people || [];
+        const recipientList = rawRecipients.map(r => (r === '*user_id' ? person_id : r));
+        if (recipientList.length === 0) { continue; }
+
+        await sendMessages({
+          client: reactData.client_id,
+          author: msgInstructions.author || state?.session?.user_id || person_id,
+          person_id: msgInstructions.author || state?.session?.user_id || person_id,
+          messageText: resolveText(msgInstructions.messageText || ''),
+          recipientList,
+          subject: resolveText(msgInstructions.subject || '')
+        });
+      } catch (error) {
+        console.error('Error sending on_complete_message:', error);
+      }
+    }
+  };
+
   const applyFieldFormat = (value, formatType) => {
     if (!value || !formatType) {
       return value;
@@ -2793,6 +2840,9 @@ export default ({ onClose, options = {} }) => {
                     try {
                       // Save People record first
                       await savePeopleRecord(member);
+
+                      // Send on_complete_message notifications if configured
+                      await sendOnCompleteMessages(member);
 
                       // Then save SessionsV2 record
                       await saveSessionsV2Record(member);
