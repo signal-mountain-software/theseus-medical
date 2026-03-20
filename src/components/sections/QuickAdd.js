@@ -1363,6 +1363,11 @@ export default ({ onClose, options = {} }) => {
 
       // Add any additional field values to the record
       Object.entries(fieldValues).forEach(([fieldName, fieldValue]) => {
+        // Skip fields that were already handled by the saveAs loop above
+        const formRec = reactData.form_fields[fieldName];
+        const hasSaveAs = !!(formRec?.saveAs || formRec?.value?.saveAs || formRec?.prompt?.saveAs);
+        if (hasSaveAs) { return; }
+
         if (fieldValue && !['first_name', 'firstName', 'fname', 'first name',
           'last_name', 'lastName', 'lname', 'surname', 'last name',
           'email', 'email_address', 'email address',
@@ -1639,7 +1644,21 @@ export default ({ onClose, options = {} }) => {
     const firstInitial = firstName.charAt(0).toLowerCase();
     const cleanLastName = lastName.toLowerCase().replace(/[^a-z]/g, ''); // Remove non-alphabetic characters
     const clientId = reactData.client_id;
-    const useNameOnly = (state.session.client_style?.client_suffix === '*none');
+
+    let clientStyle = state?.session?.client_style || null;
+    if (!clientStyle && clientId) {
+      const clientStyleRec = await dbClient
+        .get({
+          Key: { client_id: clientId, custom_key: 'client_style' },
+          TableName: 'Customizations'
+        })
+        .promise()
+        .catch(() => null);
+      if (clientStyleRec?.Item?.customization_value) {
+        clientStyle = clientStyleRec.Item.customization_value;
+      }
+    }
+    const useNameOnly = (clientStyle?.client_suffix === '*none');
 
     let counter = '';
     let proposedId = '';
