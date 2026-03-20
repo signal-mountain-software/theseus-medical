@@ -45,7 +45,6 @@ export default Component => props => {
 
   const [platform] = useIosCheck();
   const isTestEnv = ['L', 'T'].includes(window.location.href.split('//')[1]?.slice(0, 1)?.toUpperCase());
-
   const AVA_default_user = process.env.REACT_APP_AVA_PU;
   const AVA_default_password = process.env.REACT_APP_AVA_PP;
 
@@ -81,13 +80,33 @@ export default Component => props => {
   };
 
   React.useEffect(() => {
-    if (isTestEnv) {
-      return;
-    }
     let checkUser = (
       async () => {
         // Check URL parameters first - these override any existing session
         let urlData = await getParamsFromURL();
+
+        // If ?create=<client_id> is in the URL, launch QuickAdd for that client
+        if (urlData && urlData.create && !(urlData.user || urlData.user_id)) {
+          const clientId = urlData.create;
+          let cData = await getCustomizations('*all', clientId);
+          updateReactData({
+            customizationData: Object.assign({}, cData, urlData, { client_id: clientId }),
+            currentClientLogo: cData.logo,
+            urlData: Object.assign({}, urlData, {
+              client_id: clientId,
+              launch_quickadd: true,
+              quickadd_source: 'url_parameter'
+            })
+          });
+          setAVAFollowUpData({ 'Completed': true });
+          setAVAReady(true);
+          return;
+        }
+
+        // On localhost/test servers, skip auto-login and show the login screen
+        if (isTestEnv) {
+          return;
+        }
 
         // Handle ?user= parameter - force login as specific user
         if (urlData && urlData.user) {
@@ -146,8 +165,8 @@ export default Component => props => {
         }
 
         // If a client is provided via URL, always prompt for user and ignore session/cookie
-        if (urlData && (urlData.client || urlData.client_id || urlData.create) && !(urlData.user || urlData.user_id)) {
-          const clientId = urlData.client || urlData.client_id || urlData.create;
+        if (urlData && (urlData.client || urlData.client_id) && !(urlData.user || urlData.user_id)) {
+          const clientId = urlData.client || urlData.client_id;
           updateReactData({
             urlData: Object.assign({}, urlData, {
               client_id: clientId
@@ -519,7 +538,8 @@ export default Component => props => {
           }
         }}
         options={{
-          source: reactData.urlData?.quickadd_source || 'normal'
+          source: reactData.urlData?.quickadd_source || 'normal',
+          client_id: reactData.urlData?.client_id || null
         }}
       />
     );
