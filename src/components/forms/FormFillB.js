@@ -2745,6 +2745,27 @@ export default ({ request = {}, onClose }) => {
     return response;
   };
 
+  function resolveMessageTokens(text) {
+    if (!text) { return text; }
+    const person_id = reactData.pertains_to;
+    const personRec = reactData.peopleRec?.[person_id] || {};
+    const fullName = personRec.display_name || `${personRec.name?.first || ''} ${personRec.name?.last || ''}`.trim();
+    return text.replace(/\{\{([^}]+)\}\}/gi, (match, token) => {
+      const key = token.trim();
+      if (/^user_id$/i.test(key)) { return person_id; }
+      if (/^name$/i.test(key)) { return fullName; }
+      const hrefMatch = key.match(/^href:(.+)$/i);
+      if (hrefMatch) { return `<a href="${hrefMatch[1].trim()}">this link</a>`; }
+      const fieldRec = reactData.fields?.[key];
+      const valueText = formatValue({
+        rawValue: fieldRec?.value,
+        type: fieldRec?.type
+      });
+      if (fieldRec) { return String(valueText || fieldRec.value || ''); }
+      return match;
+    });
+  }
+
   async function send_stageMessage(messageInstructions) {
     let final_messageText = '';
     let final_html = '';
@@ -2777,6 +2798,8 @@ export default ({ request = {}, onClose }) => {
       }
     }
     final_html = final_messageText;
+    final_messageText = resolveMessageTokens(final_messageText);
+    final_html = resolveMessageTokens(final_html);
     await sendMessages({
       client: state.session.client_id,
       author: state.session.user_id,
@@ -2785,7 +2808,7 @@ export default ({ request = {}, onClose }) => {
       htmlText: final_html,
       recipientList: recipientList,
       subject: messageInstructions.subject
-        ? await resolveVariables(messageInstructions.subject)
+        ? resolveMessageTokens(await resolveVariables(messageInstructions.subject))
         : `A message from ${reactData.peopleRec[reactData.pertains_to].display_name || 'AVA Document Management'}`
     });
   }
@@ -2829,12 +2852,12 @@ export default ({ request = {}, onClose }) => {
         client_id: state.session.client_id,
         deliver_time: postTime,
         from: state.session.patient_id,
-        message_text: send_instructions.text,
+        message_text: resolveMessageTokens(send_instructions.text),
         patient_id: state.session.patient_id,
         preferred_method: null,
         recipient_base: 'list',
         recipient_key,
-        subject: send_instructions.subject || ``,
+        subject: resolveMessageTokens(send_instructions.subject) || ``,
         reply_to
       },
       TableName: 'PostOffice'
