@@ -3347,7 +3347,7 @@ export default ({ request = {}, onClose }) => {
         sectionRenderTimerRef.current = null;
       }
     };
-  }, [displaySections.length, reactData.formUpdates, forceRedisplay]);
+  }, [displaySections.length]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Restore saved signature images into SignatureCanvas after each render batch
   React.useEffect(() => {
