@@ -268,6 +268,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     sectionOpen: {},
     current_time: new Date(),
     showPersonSelect: false,
+    showClientSelect: false,
     popupMenuOpen: false,
     showProfileEdit: false,
     showNewFactDialog: -1,
@@ -287,6 +288,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     marqueeData: [],
     marqueeVersion: 0,
     alert: false,
+    is_master: state.user?.account_class && (state.user.account_class === 'master'),
     testMode: ["T", "L"].includes(window.location.href.split('//')[1].slice(0, 1).toUpperCase())
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -777,11 +779,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       return (m.criticalMessage);
     });
     if (reactData.testMode) {
-      let m = `--- TEST MODE ACTIVE --- User: ${state.session.user_id} Client: ${state.session.client_id}`
+      let m = `--- TEST MODE ACTIVE --- User: ${state.session.user_id} Client: ${state.session.client_id}`;
       if (state.session.user_id !== state.session.patient_id) {
         m += ` Proxy: ${state.session.patient_id}`;
       }
-      marqueeData.push( { message: m });
+      marqueeData.push({ message: m });
     }
     if (urgentMessage) {
       marqueeData = [urgentMessage];
@@ -917,6 +919,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   }
 
   function proxyAuthority() {
+    if (reactData.is_master) {
+      return true;
+    }
     if (state.accessList && state.accessList.hasOwnProperty(session.client_id) && state.accessList[session.client_id].hasOwnProperty('count')) {
       if ((state.accessList[session.client_id].count.proxy > 1) || (state.accessList[session.client_id].count.full > 1)) {
         return true;
@@ -1173,6 +1178,23 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     >
                       <SwapHorizIcon />
                       <Typography className={classes.popUpMenuRow} >{'Switch Account'}</Typography>
+                    </Box>
+                  </MenuItem>
+                }
+                {proxyAuthority() && reactData.is_master
+                  &&
+                  <MenuItem onClick={() => {
+                    updateReactData({
+                      showClientSelect: true,
+                      popupMenuOpen: false
+                    }, true);
+                  }}>
+                    <Box
+                      display='flex' flexDirection='row' alignItems={'center'}
+                      key={'vRowSwitch'}
+                    >
+                      <SwapHorizIcon />
+                      <Typography className={classes.popUpMenuRow} >{'Switch Client'}</Typography>
                     </Box>
                   </MenuItem>
                 }
@@ -1624,6 +1646,19 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               onClose={() => {
                 updateReactData({
                   showPersonSelect: false
+                }, true);
+              }}
+            />
+          }
+
+          {reactData.showClientSelect &&
+            <SwitchPatientDialog
+              open={reactData.showClientSelect}
+              options={{ mode: 'client' }}
+              roles={roles}
+              onClose={() => {
+                updateReactData({
+                  showClientSelect: false
                 }, true);
               }}
             />
