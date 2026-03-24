@@ -176,6 +176,7 @@ export default ({ start_at }) => {
     loading: 'Initializing',
     current_time: new Date(),
     showPersonSelect: false,
+    showClientSelect: false,
     popupMenuOpen: false,
     showProfileEdit: false,
     showAddAccount: false,
@@ -1531,7 +1532,7 @@ export default ({ start_at }) => {
 
   async function handleAddMenuItem() {
     const titleText = (reactData.addMenuDialogTitle || '').trim();
-    const itemType = reactData.addMenuDialogType;
+    const itemType = reactData.addMenuDialogType || (!reactData.is_support ? 'link' : null);
     const linkSource = reactData.addMenuDialogLinkSource || 'url';
     const urlText = (reactData.addMenuDialogUrl || '').trim();
     const uploadFile = reactData.addMenuDialogUploadFile;
@@ -2517,6 +2518,23 @@ export default ({ start_at }) => {
                     </Box>
                   </MenuItem>
                 }
+                {proxyAuthority() && reactData.is_master
+                  &&
+                  <MenuItem onClick={() => {
+                    updateReactData({
+                      showClientSelect: true,
+                      popupMenuOpen: false
+                    }, true);
+                  }}>
+                    <Box
+                      display='flex' flexDirection='row' alignItems={'center'}
+                      key={'vRowSwitch'}
+                    >
+                      <SwapHorizIcon />
+                      <Typography className={classes.popUpMenuRow} >{'Switch Client'}</Typography>
+                    </Box>
+                  </MenuItem>
+                }
                 {createAccountAuthority()
                   &&
                   <MenuItem onClick={async () => {
@@ -2811,6 +2829,19 @@ export default ({ start_at }) => {
             />
           }
 
+   {reactData.showClientSelect &&
+            <SwitchPatientDialog
+              open={reactData.showClientSelect}
+              options={{mode: 'client'}}
+              roles={roles}
+              onClose={() => {
+                updateReactData({
+                  showClientSelect: false
+                }, true);
+              }}
+            />
+          }
+
           {reactData.showProfileEdit &&
             <PeopleMaintenance
               patient={state.patient}
@@ -3041,26 +3072,30 @@ export default ({ start_at }) => {
                     updateReactData({ addMenuDialogTitle: e.target.value }, true);
                   }}
                 />
-                <Typography style={AVATextStyle({ size: 0.95, margin: { top: 1.5, bottom: 0.25 } })}>
-                  {'Type'}
-                </Typography>
-                <RadioGroup
-                  row
-                  value={reactData.addMenuDialogType || ''}
-                  onChange={(e) => {
-                    updateReactData({
-                      addMenuDialogType: e.target.value,
-                      addMenuDialogTargets: (e.target.value === 'message_target') ? reactData.addMenuDialogTargets : [],
-                      selections: (e.target.value === 'message_target') ? reactData.selections : []
-                    }, true);
-                  }}
-                >
-                  <FormControlLabel value='menu' control={<Radio color='primary' />} label='Sub-Menu' />
-                  <FormControlLabel value='link' control={<Radio color='primary' />} label='Document, Video, or Link' />
-                  {reactData.is_admin && <FormControlLabel value='message_target' control={<Radio color='primary' />} label='Message Target' />}
-                </RadioGroup>
+                {reactData.is_support &&
+                  <React.Fragment>
+                    <Typography style={AVATextStyle({ size: 0.95, margin: { top: 1.5, bottom: 0.25 } })}>
+                      {'Type'}
+                    </Typography>
+                    <RadioGroup
+                      row
+                      value={reactData.addMenuDialogType || ''}
+                      onChange={(e) => {
+                        updateReactData({
+                          addMenuDialogType: e.target.value,
+                          addMenuDialogTargets: (e.target.value === 'message_target') ? reactData.addMenuDialogTargets : [],
+                          selections: (e.target.value === 'message_target') ? reactData.selections : []
+                        }, true);
+                      }}
+                    >
+                      <FormControlLabel value='menu' control={<Radio color='primary' />} label='Sub-Menu' />
+                      <FormControlLabel value='link' control={<Radio color='primary' />} label='Document, Video, Picture, or Link' />
+                      {reactData.is_admin && <FormControlLabel value='message_target' control={<Radio color='primary' />} label='Message Target' />}
+                    </RadioGroup>
+                  </React.Fragment>
+                }
 
-                {reactData.addMenuDialogType === 'link' &&
+                {(reactData.addMenuDialogType === 'link' || !reactData.is_support) &&
                   <React.Fragment>
                     <Typography style={AVATextStyle({ size: 0.95, margin: { top: 2, bottom: 0.25 } })}>
                       {`Where can we find the Item you're adding?`}

@@ -12,8 +12,9 @@ import CloseIcon from '@material-ui/icons/Close';
 import TextField from '@material-ui/core/TextField';
 
 import Paper from '@material-ui/core/Paper';
-import { switchActiveAccount, cl, array_in_array } from '../../util/AVAUtilities';
-import { getImage } from '../../util/AVAPeople';
+import { switchActiveAccount, cl, array_in_array, getCustomizations } from '../../util/AVAUtilities';
+import { getAllClients } from '../../util/AVAGroups';
+import { getImage, getPerson } from '../../util/AVAPeople';
 
 import useSession from '../../hooks/useSession';
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -90,7 +91,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ open, roles, onClose }) => {
+export default ({ open, roles, onClose, options = {} }) => {
 
   const { state } = useSession();
   const { accessList } = state;
@@ -99,6 +100,7 @@ export default ({ open, roles, onClose }) => {
   const [client_filter, setClientFilter] = React.useState('');
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
   const [rowLimit, setRowLimit] = React.useState(20);
+  const [allClientData, setAllClientData] = React.useState([]);
 
   let tally = 0;
   let onlyClient;
@@ -110,9 +112,28 @@ export default ({ open, roles, onClose }) => {
       }
     });
   }
-  const multiClient = (tally > 1);
-  const noSwitchableAccounts = (!accessList || (tally === 0));
-  const [selectedClient, setSelectedClient] = React.useState((tally === 1) ? onlyClient : '*none');
+  const multiClient = (state.profile?.account_class === 'master') && (options && options.mode === 'client');
+  const noSwitchableAccounts = !multiClient && (!accessList || (tally === 0));
+  const [selectedClient, setSelectedClient] = React.useState(!multiClient ? onlyClient : '*none');
+
+  React.useEffect(() => {
+    if (!multiClient) { return; }
+    async function loadClients() {
+      const clientIds = await getAllClients();
+      const clientDataArray = await Promise.all(clientIds.map(async (client_id) => {
+        const nameRec = await getCustomizations('client_name', client_id);
+        const logoRec = await getCustomizations('logo', client_id);
+        return {
+          id: client_id,
+          name: nameRec?.customization_value || client_id,
+          logo: logoRec?.icon || '',
+        };
+      }));
+      setAllClientData(clientDataArray);
+    }
+    loadClients();
+  }, [multiClient]);
+
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -225,14 +246,13 @@ export default ({ open, roles, onClose }) => {
         }
         {!noSwitchableAccounts && (selectedClient === '*none') &&
           <React.Fragment>
-            {Object.keys(accessList).map((client, c) => (
-              okClient({ candidate_id: client, candidate_name: accessList[client].name }) &&
+            {allClientData.filter(c => !client_filter || c.name.toLowerCase().includes(client_filter)).map((client, c) => (
               <ListItem
                 key={`client_master_line_${c}`}
-                onClick={() => {
-                  setSelectedClient(client);
-                  setRowLimit(scrollValue);
-                  setForceRedisplay(!forceRedisplay);
+                onClick={async () => {
+                  const user_from_customizations = await getCustomizations('master_account', client.id);
+                  const gotPerson = await getPerson(user_from_customizations?.customization_value || `ava-${client.id.toLowerCase()}`);
+                  await onSelect(client.id, gotPerson);
                 }}
               >
                 <Box display='flex' height={50} flexDirection='row' my='16px' justifyContent='flex-start' alignItems='center'>
@@ -242,9 +262,9 @@ export default ({ open, roles, onClose }) => {
                     minWidth={50}
                     maxWidth={50}
                     alt=''
-                    src={accessList[client].logo}
+                    src={client.logo}
                   />
-                  <Typography variant='h5' className={classes.lastName}>{accessList[client].name}</Typography>
+                  <Typography variant='h5' className={classes.lastName}>{client.name}</Typography>
                 </Box>
               </ListItem>
             ))}

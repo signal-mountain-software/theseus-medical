@@ -81,16 +81,17 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     addAccountList: [],
     familyFormsObj: {},
     inactive_groups: (state.session.group_assignments ? state.session.group_assignments.inactive : []),
-    new_messaging_required: !state.session.client_style.allow_old_messaging,
-    mandatory_passwords: state.session.client_style.mandatory_passwords,
+    new_messaging_required: !state.session?.client_style?.allow_old_messaging,
+    mandatory_passwords: state.session?.client_style?.mandatory_passwords,
     local_customFields: ((state.session.local_data && (Object.keys(state.session.local_data).length > 0)) ? state.session.local_data : {}),
-    user_class: state.user.account_class,
+    user_class: state.user.account_class || 'local',
     administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
     master_account: (state.user.account_class === 'master'),
     OKtoSave: false,
     saveCompleted: false,
     changesMade: false,
     alert: false,
+    has_been_saved: false,
     myFormListObj: {},
     formsInitialized: false,
     myImage: (options.mode === 'add') ? '' : getImage(person_id || patient?.person_id || personRec?.person_id || state.session.patient_id),
@@ -1291,10 +1292,15 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     let tryAgain;
     let newID, namePart;
     let clientPart = state.session.client_style?.client_suffix || state.session.client_id.toLowerCase();
+    let useNameOnly = (state.session.client_style?.client_suffix === '*none');
     let numberPart = 1;
     if (proposedID) {
       namePart = (proposedID.match(/([\w-]*[^\d]+)(\d*)$/))[1];
-      newID = proposedID.toLowerCase().replace(/\W/g, '').replace(clientPart, `-${clientPart}`);
+      if (useNameOnly) {
+        newID = proposedID.toLowerCase().replace(/\W/g, '');
+      } else {
+        newID = proposedID.toLowerCase().replace(/\W/g, '').replace(clientPart, `-${clientPart}`);
+      }
     }
     else {
       if (!reactData.current.peopleRec?.name?.last) {
@@ -1313,14 +1319,21 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         const lastName = reactData.current.peopleRec.name.last || '';
         namePart = `${firstName.trim().charAt(0) || 'X'}${lastName.trim()}`;
       }
-      newID = `${namePart.toLowerCase().replace(/\W/g, '')}-${clientPart}`;
+      if (useNameOnly) {
+        newID = `${namePart.toLowerCase().replace(/\W/g, '')}`;
+      } else {
+        newID = `${namePart.toLowerCase().replace(/\W/g, '')}-${clientPart}`;
+      }
     }
     do {
       tryAgain = false;
       const person_id_exists = await doesUserIdExistInEitherTable(newID);
       if (person_id_exists) {
         numberPart++;
-        if (newID.includes(clientPart)) {
+        if (useNameOnly) {
+          newID = `${namePart.toLowerCase().replace(/\W/g, '')}${numberPart}`;
+        }
+        else if (newID.includes(clientPart)) {
           newID = `${namePart.toLowerCase().split(clientPart)[0].replace('-', '')}${numberPart}-${clientPart}`;
         }
         else {
@@ -1360,9 +1373,11 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     }
     reactData.saveCompleted = true;
     reactData.changesMade = true;
+    reactData.has_been_saved = true;
     updateReactData({
       changesMade: reactData.changesMade,
       saveCompleted: reactData.saveCompleted,
+      has_been_saved: reactData.has_been_saved,
       OKtoSave: false
     }, true);
     if (finish) {

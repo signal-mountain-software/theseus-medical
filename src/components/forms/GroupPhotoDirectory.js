@@ -545,11 +545,14 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                         const suppressContact = (person?.directory_option === 'no_contact');
                         const rawCellPhoneValue = suppressContact ? '' : (person.contact_info?.cell?.number || person?.messaging?.sms || '');
                         const rawHomePhoneValue = suppressContact ? '' : (person.contact_info?.landline?.number || person?.messaging?.voice || '');
+                        const rawWorkPhoneValue = suppressContact ? '' : (person.contact_info?.work?.number || person?.messaging?.office || '');
                         const emailValue = suppressContact ? '' : (person?.messaging?.email || '');
                         const cellPhoneValue = suppressContact ? '' : formatPhone(rawCellPhoneValue);
                         const homePhoneValue = suppressContact ? '' : formatPhone(rawHomePhoneValue);
+                        const workPhoneValue = suppressContact ? '' : formatPhone(rawWorkPhoneValue);
                         const cellPhoneHref = suppressContact ? '' : toTelHref(rawCellPhoneValue);
                         const homePhoneHref = suppressContact ? '' : toTelHref(rawHomePhoneValue);
+                        const workPhoneHref = suppressContact ? '' : toTelHref(rawWorkPhoneValue);
                         const emailHref = suppressContact ? '' : toMailtoHref(emailValue);
                         const imageSrc = getImage(person.person_id);
                         const showPortraitImage = Boolean(imageSrc) && !hiddenImagePeople[person?.person_id];
@@ -624,6 +627,14 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                                 <a href={homePhoneHref} className={classes.contactLink} onClick={stopCardClick}>
                                                     <PhoneInTalkIcon className={classes.contactIcon} />
                                                     {`Home: ${homePhoneValue}`}
+                                                </a>
+                                            </Typography>
+                                        }
+                                        {workPhoneValue &&
+                                            <Typography variant='body2' color='textSecondary' className={classes.cardSubtext}>
+                                                <a href={workPhoneHref} className={classes.contactLink} onClick={stopCardClick}>
+                                                    <PhoneInTalkIcon className={classes.contactIcon} />
+                                                    {`Work: ${workPhoneValue}`}
                                                 </a>
                                             </Typography>
                                         }

@@ -1155,7 +1155,7 @@ export default ({ request = {}, onClose }) => {
       formRec.stages = [{ stage_name: 'default' }];
     }
     else {
-      if (formRec.stages[0].stage_name !== 'default') { 
+      if (formRec.stages[0].stage_name !== 'default') {
         formRec.stages.unshift({ stage_name: 'default' });
       }
       // Remove any 'complete' stage(s) from the stages array
@@ -2248,18 +2248,23 @@ export default ({ request = {}, onClose }) => {
             }
 
             // this is a required field
-            const signature_ok = (thisFieldRec.type === 'signature')
-              ? (signatureRef[thisFieldRec.options.sigRefNumber].current
-                && (!signatureRef[thisFieldRec.options.sigRefNumber].current.isEmpty()))
-              : null;
-            if (
-              ((thisFieldRec.type === 'signature') && !signature_ok)
-              || ((thisFieldRec.type !== 'signature') && isEmpty(thisFieldRec.value))
-            ) {
+            let is_error = false;
+            if (thisFieldRec.type === 'signature') {
+              const sigRefNumber = thisFieldRec.options?.sigRefNumber ?? 0;
+              const canvasHasSig = signatureRef[sigRefNumber]
+                && signatureRef[sigRefNumber].current
+                && !signatureRef[sigRefNumber].current.isEmpty();
+              const fieldHasSavedSig = thisFieldRec.value && String(thisFieldRec.value).startsWith('data:image/');
+              is_error = !canvasHasSig && !fieldHasSavedSig;
+            }
+            else {
+              is_error = isEmpty(thisFieldRec.value);
+            }
+            if (is_error) {
               thisFieldRec.errorMessage = `${reconcilePrompt({
                 rawValue: thisFieldRec.prompt?.value,
                 this_field
-              }).replace("*","").trim()} is required`;
+              }).replace("*", "").trim()} is required`;
               thisFieldRec.isError = true;
               messageList.push(thisFieldRec.errorMessage);
               number_of_errorsOnForm++;
@@ -2521,8 +2526,7 @@ export default ({ request = {}, onClose }) => {
         }
       }
       if (reactData.fields[this_field].saveAs) {
-        const save_instructions = reactData.fields[this_field].saveAs;
-        const save_file = save_instructions.shift();
+        const [save_file, ...save_instructions] = reactData.fields[this_field].saveAs;
         if ((save_file === 'peopleRec') || (save_file === 'personRec')) {
           reactData.peopleRec[reactData.pertains_to] = resolveValue(
             reactData.peopleRec[reactData.pertains_to],
@@ -2540,9 +2544,20 @@ export default ({ request = {}, onClose }) => {
           needsUpdate.sessionRec = true;
         }
       }
-      if ((reactData.fields[this_field].type === 'signature')
-        && (signatureRef[reactData.fields[this_field].options.sigRefNumber].current)) {  // we have a valid signature to save
-        signatures[reactData.fields[this_field].options.sigRefNumber] = signatureRef[reactData.fields[this_field].options.sigRefNumber].current.getTrimmedCanvas().toDataURL('image/png');
+      if (reactData.fields[this_field].type === 'signature') {
+        const sigRefNumber = reactData.fields[this_field].options.sigRefNumber ?? 0;
+        let sigData = null;
+        if (signatureRef[sigRefNumber] && signatureRef[sigRefNumber].current && !signatureRef[sigRefNumber].current.isEmpty()) {
+          sigData = signatureRef[sigRefNumber].current.getTrimmedCanvas().toDataURL('image/png');
+        }
+        else if (reactData.fields[this_field].value && String(reactData.fields[this_field].value).startsWith('data:image/')) {
+          sigData = reactData.fields[this_field].value;  // canvas unmounted but value was captured onEnd
+        }
+        if (sigData) {
+          signatures[sigRefNumber] = sigData;
+          field_values[this_field] = sigData;
+          reactData.fields[this_field].value = sigData;
+        }
       }
     }
 
@@ -2730,6 +2745,27 @@ export default ({ request = {}, onClose }) => {
     return response;
   };
 
+  function resolveMessageTokens(text) {
+    if (!text) { return text; }
+    const person_id = reactData.pertains_to;
+    const personRec = reactData.peopleRec?.[person_id] || {};
+    const fullName = personRec.display_name || `${personRec.name?.first || ''} ${personRec.name?.last || ''}`.trim();
+    return text.replace(/\{\{([^}]+)\}\}/gi, (match, token) => {
+      const key = token.trim();
+      if (/^user_id$/i.test(key)) { return person_id; }
+      if (/^name$/i.test(key)) { return fullName; }
+      const hrefMatch = key.match(/^href:(.+)$/i);
+      if (hrefMatch) { return `<a href="${hrefMatch[1].trim()}">this link</a>`; }
+      const fieldRec = reactData.fields?.[key];
+      const valueText = formatValue({
+        rawValue: fieldRec?.value,
+        type: fieldRec?.type
+      });
+      if (fieldRec) { return String(valueText || fieldRec.value || ''); }
+      return match;
+    });
+  }
+
   async function send_stageMessage(messageInstructions) {
     let final_messageText = '';
     let final_html = '';
@@ -2762,6 +2798,8 @@ export default ({ request = {}, onClose }) => {
       }
     }
     final_html = final_messageText;
+    final_messageText = resolveMessageTokens(final_messageText);
+    final_html = resolveMessageTokens(final_html);
     await sendMessages({
       client: state.session.client_id,
       author: state.session.user_id,
@@ -2770,7 +2808,7 @@ export default ({ request = {}, onClose }) => {
       htmlText: final_html,
       recipientList: recipientList,
       subject: messageInstructions.subject
-        ? await resolveVariables(messageInstructions.subject)
+        ? resolveMessageTokens(await resolveVariables(messageInstructions.subject))
         : `A message from ${reactData.peopleRec[reactData.pertains_to].display_name || 'AVA Document Management'}`
     });
   }
@@ -2814,12 +2852,12 @@ export default ({ request = {}, onClose }) => {
         client_id: state.session.client_id,
         deliver_time: postTime,
         from: state.session.patient_id,
-        message_text: send_instructions.text,
+        message_text: resolveMessageTokens(send_instructions.text),
         patient_id: state.session.patient_id,
         preferred_method: null,
         recipient_base: 'list',
         recipient_key,
-        subject: send_instructions.subject || ``,
+        subject: resolveMessageTokens(send_instructions.subject) || ``,
         reply_to
       },
       TableName: 'PostOffice'
@@ -3089,7 +3127,7 @@ export default ({ request = {}, onClose }) => {
       }));
     }
     else if (this_sectionObj.hasOwnProperty('show_ifAll') || this_sectionObj.hasOwnProperty('ignore_ifAll')) {
-      const testList = this_sectionObj.show_ifAll || this_sectionObj.ignore_ifAll
+      const testList = this_sectionObj.show_ifAll || this_sectionObj.ignore_ifAll;
       const response = (testList.every(this_test => {
         if (this_test.hasOwnProperty('pertainsTo_memberOf')) {
           return reactData.peopleRec[reactData.pertains_to].groups.some(g => {
@@ -3309,7 +3347,21 @@ export default ({ request = {}, onClose }) => {
         sectionRenderTimerRef.current = null;
       }
     };
-  }, [displaySections.length, reactData.formUpdates, forceRedisplay]);
+  }, [displaySections.length]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Restore saved signature images into SignatureCanvas after each render batch
+  React.useEffect(() => {
+    if (reactData.stage !== 'fill' || !reactData.fields) { return; }
+    for (const fieldName in reactData.fields) {
+      const fieldRec = reactData.fields[fieldName];
+      if (fieldRec?.type === 'signature' && fieldRec.value && String(fieldRec.value).startsWith('data:image/')) {
+        const sigRefNumber = fieldRec.options?.sigRefNumber ?? 0;
+        if (signatureRef[sigRefNumber]?.current && signatureRef[sigRefNumber].current.isEmpty()) {
+          signatureRef[sigRefNumber].current.fromDataURL(fieldRec.value);
+        }
+      }
+    }
+  }, [renderedSectionCount, reactData.stage]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const renderTextLikeField = ({ this_field, occ_index, sectionNdx, fieldNdx }) => {
     const fieldRec = reactData.fields[this_field];
@@ -3345,9 +3397,7 @@ export default ({ request = {}, onClose }) => {
       variant: 'outlined',
       size: 'small',
       className: isRequiredField ? classes.requiredTextField : undefined,
-      key: `field__${this_field}__${sectionNdx}_${(fieldRec && (fieldRec.valueText || fieldRec.value))
-        ? (fieldRec.valueText || fieldRec.value)
-        : ''}`,
+      key: `field__${this_field}__${sectionNdx}`,
       ...getInlinePromptFieldProps({
         this_field,
         helperValue: isDateSelectType ? '' : (fieldRec.prompt?.helper || ''),
@@ -3388,6 +3438,8 @@ export default ({ request = {}, onClose }) => {
           <TextField
             {...sharedProps}
             type='date'
+            autoComplete='off'
+            inputProps={{ 'data-lpignore': 'true', 'data-form-type': 'other' }}
             min={fieldRec.prompt?.min}
             max={fieldRec.prompt?.max}
             value={(!isEmpty(fieldRec?.valueText))
@@ -3422,18 +3474,19 @@ export default ({ request = {}, onClose }) => {
         multiline={isTextType ? shouldAutoWrapText : undefined}
         minRows={isTextType ? resolvedTextRows : undefined}
         autoComplete='off'
-        InputProps={(!isTextType)
-          ? { disableUnderline: isDisabled }
-          : undefined
-        }
         inputProps={isTextType
           ? {
+            'data-lpignore': 'true',
+            'data-form-type': 'other',
             style: {
               whiteSpace: 'pre-wrap',
               overflowWrap: 'anywhere'
             }
           }
-          : undefined
+          : {
+            'data-lpignore': 'true',
+            'data-form-type': 'other'
+          }
         }
         defaultValue={valueText}
         onBlur={async (event) => {
@@ -3570,154 +3623,42 @@ export default ({ request = {}, onClose }) => {
                               <React.Fragment
                                 key={`innerFrag__${this_field}_${occ_index}`}
                               >
-                              {reactData.fields[this_field].prompt?.newLine && (occ_index === 0) &&
-                                <Typography
-                                  key={`section__${sectionObj.section_name}_${reactData.fields[this_field]}-breakRow`}
-                                  className={classes.breakRow}
-                                >
-                                  {''}
-                                </Typography>
-                              }
-                              {(['text', 'phone', 'date_select', 'date', 'time'].includes(reactData.fields[this_field].type))
-                                && renderTextLikeField({ this_field, occ_index, sectionNdx, fieldNdx })
-                              }
-                              {(reactData.fields[this_field].type === 'header') && (occ_index === 0) &&
-                                <Typography
-                                  style={AVATextStyle(Object.assign(
-                                    {},
-                                    {
-                                      margin: { top: 1, bottom: 0.5, right: 3 }
-                                    },
-                                    reactData.fields[this_field].prompt?.style || {}
-                                  ))}
-                                  dangerouslySetInnerHTML={{
-                                    __html: normalizePromptMarkup(reconcilePrompt({
-                                      rawValue: reactData.fields[this_field].prompt?.value,
-                                      this_field
-                                    }))
-                                  }}
-                                />
-                              }
-                              {(reactData.fields[this_field].type === 'image') &&
-                                <React.Fragment>
+                                {reactData.fields[this_field].prompt?.newLine && (occ_index === 0) &&
+                                  <Typography
+                                    key={`section__${sectionObj.section_name}_${reactData.fields[this_field]}-breakRow`}
+                                    className={classes.breakRow}
+                                  >
+                                    {''}
+                                  </Typography>
+                                }
+                                {(['text', 'phone', 'date_select', 'date', 'time'].includes(reactData.fields[this_field].type))
+                                  && renderTextLikeField({ this_field, occ_index, sectionNdx, fieldNdx })
+                                }
+                                {(reactData.fields[this_field].type === 'header') && (occ_index === 0) &&
                                   <Typography
                                     style={AVATextStyle(Object.assign(
                                       {},
                                       {
-                                        size: 0.75,
-                                        margin: { top: 2, bottom: 0.5, right: 3 }
+                                        margin: { top: 1, bottom: 0.5, right: 3 }
                                       },
                                       reactData.fields[this_field].prompt?.style || {}
                                     ))}
-                                  >
-                                    <span
-                                      dangerouslySetInnerHTML={{
-                                        __html: normalizePromptMarkup(reconcilePrompt({
-                                          rawValue: reactData.fields[this_field].prompt?.value,
-                                          this_field
-                                        }))
-                                      }}
-                                    />
-                                  </Typography>
-                                  <Box
-                                    display='flex'
-                                    mb={0}
-                                    flexDirection='row'
-                                    justifyContent='flex-start'
-                                    alignItems='center'
-                                    padding={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
-                                  >
-                                    {makeArray(reactData.fields[this_field].valueText).map((this_image, imageNdx) => {
-                                      const fileExtension = this_image.split('.').pop().toLowerCase();
-                                      const isImage = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(fileExtension);
-                                      const isPDF = fileExtension === 'pdf';
-
-                                      return (
-                                        <Box
-                                          borderRadius={'20px'}
-                                          border={1}
-                                          marginRight={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
-                                          key={`image_${sectionNdx}_${fieldNdx}_${imageNdx}`}
-                                          onClick={() => {
-                                            window.open(this_image, `${fileExtension} File`);
-                                          }}
-                                          style={{
-                                            minWidth: '150px',
-                                            maxWidth: '450px',
-                                            minHeight: '150px',
-                                            maxHeight: '450px',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            justifyContent: 'center',
-                                            alignItems: 'center',
-                                            cursor: 'pointer',
-                                            backgroundColor: isImage ? 'transparent' : '#f5f5f5',
-                                            overflow: 'hidden'
-                                          }}
-                                        >
-                                          {isImage ? (
-                                            <Box
-                                              component="img"
-                                              alt={`${fileExtension} file`}
-                                              src={this_image}
-                                              style={{
-                                                width: '100%',
-                                                height: '100%',
-                                                objectFit: 'cover'
-                                              }}
-                                            />
-                                          ) : isPDF ? (
-                                            <iframe
-                                              src={`${this_image}#toolbar=0&navpanes=0&scrollbar=0`}
-                                              title={`PDF ${imageNdx}`}
-                                              style={{
-                                                width: '100%',
-                                                height: '100%',
-                                                border: 'none',
-                                                pointerEvents: 'none'
-                                              }}
-                                            />
-                                          ) : (
-                                            <>
-                                              <InsertDriveFileIcon style={{ fontSize: '48px', color: '#666' }} />
-                                              <Typography style={{ fontSize: '0.7rem', marginTop: '8px', textAlign: 'center' }}>
-                                                {fileExtension.toUpperCase()}
-                                              </Typography>
-                                              <Typography style={{ fontSize: '0.6rem', color: '#999', textAlign: 'center' }}>
-                                                Tap to view
-                                              </Typography>
-                                            </>
-                                          )}
-                                        </Box>
-                                      );
-                                    })}
-                                  </Box>
-                                </React.Fragment>
-                              }
-                              {(reactData.fields[this_field].type === 'upload') &&
-                                <Box
-                                  display='flex'
-                                  mb={0}
-                                  flexDirection='column'
-                                  justifyContent='flex-start'
-                                  alignItems='flex-start'
-                                  style={{
-                                    paddingTop: '16px',
-                                  }}
-                                >
-                                  <Box
-                                    display='flex'
-                                    mb={0}
-                                    flexDirection='column'
-                                    justifyContent='flex-start'
-                                    alignItems='flex-start'
-                                  >
+                                    dangerouslySetInnerHTML={{
+                                      __html: normalizePromptMarkup(reconcilePrompt({
+                                        rawValue: reactData.fields[this_field].prompt?.value,
+                                        this_field
+                                      }))
+                                    }}
+                                  />
+                                }
+                                {(reactData.fields[this_field].type === 'image') &&
+                                  <React.Fragment>
                                     <Typography
                                       style={AVATextStyle(Object.assign(
                                         {},
                                         {
                                           size: 0.75,
-                                          margin: { top: 2, bottom: 0.75, right: 3 }
+                                          margin: { top: 2, bottom: 0.5, right: 3 }
                                         },
                                         reactData.fields[this_field].prompt?.style || {}
                                       ))}
@@ -3731,346 +3672,464 @@ export default ({ request = {}, onClose }) => {
                                         }}
                                       />
                                     </Typography>
-                                    {!((reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked))
-                                      && uploadIcon(this_field, occ_index)
-                                    }
+                                    <Box
+                                      display='flex'
+                                      mb={0}
+                                      flexDirection='row'
+                                      justifyContent='flex-start'
+                                      alignItems='center'
+                                      padding={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
+                                    >
+                                      {makeArray(reactData.fields[this_field].valueText).map((this_image, imageNdx) => {
+                                        const fileExtension = this_image.split('.').pop().toLowerCase();
+                                        const isImage = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(fileExtension);
+                                        const isPDF = fileExtension === 'pdf';
+
+                                        return (
+                                          <Box
+                                            borderRadius={'20px'}
+                                            border={1}
+                                            marginRight={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
+                                            key={`image_${sectionNdx}_${fieldNdx}_${imageNdx}`}
+                                            onClick={() => {
+                                              window.open(this_image, `${fileExtension} File`);
+                                            }}
+                                            style={{
+                                              minWidth: '150px',
+                                              maxWidth: '450px',
+                                              minHeight: '150px',
+                                              maxHeight: '450px',
+                                              display: 'flex',
+                                              flexDirection: 'column',
+                                              justifyContent: 'center',
+                                              alignItems: 'center',
+                                              cursor: 'pointer',
+                                              backgroundColor: isImage ? 'transparent' : '#f5f5f5',
+                                              overflow: 'hidden'
+                                            }}
+                                          >
+                                            {isImage ? (
+                                              <Box
+                                                component="img"
+                                                alt={`${fileExtension} file`}
+                                                src={this_image}
+                                                style={{
+                                                  width: '100%',
+                                                  height: '100%',
+                                                  objectFit: 'cover'
+                                                }}
+                                              />
+                                            ) : isPDF ? (
+                                              <iframe
+                                                src={`${this_image}#toolbar=0&navpanes=0&scrollbar=0`}
+                                                title={`PDF ${imageNdx}`}
+                                                style={{
+                                                  width: '100%',
+                                                  height: '100%',
+                                                  border: 'none',
+                                                  pointerEvents: 'none'
+                                                }}
+                                              />
+                                            ) : (
+                                              <>
+                                                <InsertDriveFileIcon style={{ fontSize: '48px', color: '#666' }} />
+                                                <Typography style={{ fontSize: '0.7rem', marginTop: '8px', textAlign: 'center' }}>
+                                                  {fileExtension.toUpperCase()}
+                                                </Typography>
+                                                <Typography style={{ fontSize: '0.6rem', color: '#999', textAlign: 'center' }}>
+                                                  Tap to view
+                                                </Typography>
+                                              </>
+                                            )}
+                                          </Box>
+                                        );
+                                      })}
+                                    </Box>
+                                  </React.Fragment>
+                                }
+                                {(reactData.fields[this_field].type === 'upload') &&
+                                  <Box
+                                    display='flex'
+                                    mb={0}
+                                    flexDirection='column'
+                                    justifyContent='flex-start'
+                                    alignItems='flex-start'
+                                    style={{
+                                      paddingTop: '16px',
+                                    }}
+                                  >
+                                    <Box
+                                      display='flex'
+                                      mb={0}
+                                      flexDirection='column'
+                                      justifyContent='flex-start'
+                                      alignItems='flex-start'
+                                    >
+                                      <Typography
+                                        style={AVATextStyle(Object.assign(
+                                          {},
+                                          {
+                                            size: 0.75,
+                                            margin: { top: 2, bottom: 0.75, right: 3 }
+                                          },
+                                          reactData.fields[this_field].prompt?.style || {}
+                                        ))}
+                                      >
+                                        <span
+                                          dangerouslySetInnerHTML={{
+                                            __html: normalizePromptMarkup(reconcilePrompt({
+                                              rawValue: reactData.fields[this_field].prompt?.value,
+                                              this_field
+                                            }))
+                                          }}
+                                        />
+                                      </Typography>
+                                      {!((reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked))
+                                        && uploadIcon(this_field, occ_index)
+                                      }
+                                    </Box>
+                                    <Box
+                                      display='flex'
+                                      mb={0}
+                                      flexDirection='row'
+                                      justifyContent='center'
+                                      alignItems='center'
+                                      padding={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
+                                    >
+                                      {makeArray(reactData.fields[this_field].valueText).map((this_image, imageNdx) => {
+                                        const fileExtension = this_image.split('.').pop().toLowerCase();
+                                        const isImage = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(fileExtension);
+                                        const isPDF = fileExtension === 'pdf';
+
+                                        return (
+                                          <Box
+                                            borderRadius={'20px'}
+                                            border={1}
+                                            marginRight={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
+                                            key={`image_${sectionNdx}_${fieldNdx}_${imageNdx}`}
+                                            onClick={() => {
+                                              window.open(this_image, `${fileExtension} File`);
+                                            }}
+                                            style={{
+                                              minWidth: '150px',
+                                              maxWidth: '450px',
+                                              minHeight: '150px',
+                                              maxHeight: '450px',
+                                              display: 'flex',
+                                              flexDirection: 'column',
+                                              justifyContent: 'center',
+                                              alignItems: 'center',
+                                              cursor: 'pointer',
+                                              backgroundColor: isImage ? 'transparent' : '#f5f5f5',
+                                              overflow: 'hidden'
+                                            }}
+                                          >
+                                            {isImage ? (
+                                              <Box
+                                                component="img"
+                                                alt={`${fileExtension} file`}
+                                                src={this_image}
+                                                style={{
+                                                  width: '100%',
+                                                  height: '100%',
+                                                  objectFit: 'cover'
+                                                }}
+                                              />
+                                            ) : isPDF ? (
+                                              <iframe
+                                                src={`${this_image}#toolbar=0&navpanes=0&scrollbar=0`}
+                                                title={`PDF ${imageNdx}`}
+                                                style={{
+                                                  width: '100%',
+                                                  height: '100%',
+                                                  border: 'none',
+                                                  pointerEvents: 'none'
+                                                }}
+                                              />
+                                            ) : (
+                                              <>
+                                                <InsertDriveFileIcon style={{ fontSize: '48px', color: '#666' }} />
+                                                <Typography style={{ fontSize: '0.7rem', marginTop: '8px', textAlign: 'center' }}>
+                                                  {fileExtension.toUpperCase()}
+                                                </Typography>
+                                                <Typography style={{ fontSize: '0.6rem', color: '#999', textAlign: 'center' }}>
+                                                  Tap to view
+                                                </Typography>
+                                              </>
+                                            )}
+                                          </Box>
+                                        );
+                                      })}
+                                    </Box>
                                   </Box>
+                                }
+                                {(reactData.fields[this_field].type.startsWith('select')) &&
+                                  <Box
+                                    display='flex'
+                                    mb={1}
+                                    flexDirection='row'
+                                    justifyContent='flex-start'
+                                    alignItems='center'
+                                  >
+                                    <AVACheckBoxGroup
+                                      prop={this_field}
+                                      text={reactData.fields[this_field].selectionObj.selectionList}
+                                      withPrompt={(reactData.fields[this_field].type === 'select&text')
+                                        ? reactData.fields[this_field].prompt?.other || 'other'
+                                        : null
+                                      }
+                                      column={reactData.fields[this_field].selectionObj.column || false}
+                                    />
+                                  </Box>
+                                }
+                                {(reactData.fields[this_field].type.startsWith('drop')) &&
                                   <Box
                                     display='flex'
                                     mb={0}
                                     flexDirection='row'
-                                    justifyContent='center'
+                                    justifyContent='flex-start'
                                     alignItems='center'
-                                    padding={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
                                   >
-                                    {makeArray(reactData.fields[this_field].valueText).map((this_image, imageNdx) => {
-                                      const fileExtension = this_image.split('.').pop().toLowerCase();
-                                      const isImage = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(fileExtension);
-                                      const isPDF = fileExtension === 'pdf';
-
-                                      return (
-                                        <Box
-                                          borderRadius={'20px'}
-                                          border={1}
-                                          marginRight={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
-                                          key={`image_${sectionNdx}_${fieldNdx}_${imageNdx}`}
-                                          onClick={() => {
-                                            window.open(this_image, `${fileExtension} File`);
-                                          }}
-                                          style={{
-                                            minWidth: '150px',
-                                            maxWidth: '450px',
-                                            minHeight: '150px',
-                                            maxHeight: '450px',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            justifyContent: 'center',
-                                            alignItems: 'center',
-                                            cursor: 'pointer',
-                                            backgroundColor: isImage ? 'transparent' : '#f5f5f5',
-                                            overflow: 'hidden'
-                                          }}
-                                        >
-                                          {isImage ? (
-                                            <Box
-                                              component="img"
-                                              alt={`${fileExtension} file`}
-                                              src={this_image}
-                                              style={{
-                                                width: '100%',
-                                                height: '100%',
-                                                objectFit: 'cover'
-                                              }}
-                                            />
-                                          ) : isPDF ? (
-                                            <iframe
-                                              src={`${this_image}#toolbar=0&navpanes=0&scrollbar=0`}
-                                              title={`PDF ${imageNdx}`}
-                                              style={{
-                                                width: '100%',
-                                                height: '100%',
-                                                border: 'none',
-                                                pointerEvents: 'none'
-                                              }}
-                                            />
-                                          ) : (
-                                            <>
-                                              <InsertDriveFileIcon style={{ fontSize: '48px', color: '#666' }} />
-                                              <Typography style={{ fontSize: '0.7rem', marginTop: '8px', textAlign: 'center' }}>
-                                                {fileExtension.toUpperCase()}
-                                              </Typography>
-                                              <Typography style={{ fontSize: '0.6rem', color: '#999', textAlign: 'center' }}>
-                                                Tap to view
-                                              </Typography>
-                                            </>
-                                          )}
-                                        </Box>
-                                      );
-                                    })}
+                                    <AVADropDown
+                                      prop={this_field}
+                                      text={reactData.fields[this_field].selectionObj.selectionList}
+                                    />
                                   </Box>
-                                </Box>
-                              }
-                              {(reactData.fields[this_field].type.startsWith('select')) &&
-                                <Box
-                                  display='flex'
-                                  mb={1}
-                                  flexDirection='row'
-                                  justifyContent='flex-start'
-                                  alignItems='center'
-                                >
-                                  <AVACheckBoxGroup
-                                    prop={this_field}
-                                    text={reactData.fields[this_field].selectionObj.selectionList}
-                                    withPrompt={(reactData.fields[this_field].type === 'select&text')
-                                      ? reactData.fields[this_field].prompt?.other || 'other'
-                                      : null
-                                    }
-                                    column={reactData.fields[this_field].selectionObj.column || false}
-                                  />
-                                </Box>
-                              }
-                              {(reactData.fields[this_field].type.startsWith('drop')) &&
-                                <Box
-                                  display='flex'
-                                  mb={0}
-                                  flexDirection='row'
-                                  justifyContent='flex-start'
-                                  alignItems='center'
-                                >
-                                  <AVADropDown
-                                    prop={this_field}
-                                    text={reactData.fields[this_field].selectionObj.selectionList}
-                                  />
-                                </Box>
-                              }
-                              {(reactData.fields[this_field].type === 'family') &&
-                                <Box
-                                  display='flex'
-                                  mb={1}
-                                  flexDirection='row'
-                                  justifyContent='flex-start'
-                                  alignItems='center'
-                                >
-                                  <AVAFamilyCheckBoxGroup
-                                    prop={this_field}
-                                    familyMembers={reactData.fields[this_field].familyMembers || []}
-                                  />
-                                </Box>
-                              }
-                              {(reactData.fields[this_field].type === 'html') &&
-                                <Box>
-                                  <div
-                                    dangerouslySetInnerHTML={{ '__html': reactData.fields[this_field].value }}
-                                  />
-                                </Box>
-                              }
-                              {(reactData.fields[this_field].type === 'image') &&
-                                <img
-                                  className={classes.imageArea}
-                                  alt=''
-                                  src={reactData.fields[this_field].value}
-                                />
-                              }
-                              {(reactData.fields[this_field].type === 'url') &&
-                                <a
-                                  href={reactData.fields[this_field].value}
-                                  style={{ color: 'inherit', textDecoration: 'none' }}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
-                                  <Typography
-                                    style={AVATextStyle(Object.assign({}, {
-                                      size: 0.75,
-                                      margin: { top: 2, bottom: 0.5, left: 0.5, right: 3 }
-                                    }))}
-                                  >
-                                    <u>
-                                      <span
-                                        dangerouslySetInnerHTML={{
-                                          __html: normalizePromptMarkup(reactData.fields[this_field].prompt?.helper || `Tap here for ${reconcilePrompt({
-                                            rawValue: reactData.fields[this_field].prompt?.value,
-                                            this_field
-                                          })}`)
-                                        }}
-                                      />
-                                    </u>
-                                  </Typography>
-                                </a>
-                              }
-                              {(reactData.fields[this_field].type === 'signature') &&
-                                <Box
-                                  display='flex'
-                                  flexDirection='column'
-                                  id={`sigBox__${this_field}`}
-                                  key={`sigBox__${this_field}_${sectionNdx}`}
-                                  justifyContent='flex-start'
-                                  marginTop={2}
-                                  marginBottom={2}
-                                  alignItems='flex-start'
-                                  width='97%'
-                                >
-                                  <SignatureCanvas
-                                    ref={signatureRef[reactData.fields[this_field].options.sigRefNumber || 0]}
-                                    canvasProps={{
-                                      style: {
-                                        backgroundColor: 'beige',
-                                        width: '75%',
-                                        marginLeft: '10px',
-                                        marginRight: '10px',
-                                        marginTop: '2px',
-                                        height: '88px'
-                                      }
-                                    }}
-                                  />
-                                  {(occ_index === 0) &&
-                                    <Typography
-                                      id={`sigBoxText__${this_field}`}
-                                      key={`sigBoxText__${this_field}_${sectionNdx}`}
-                                      style={AVATextStyle({
-                                        lineHeight: 1,
-                                        minWidth: '60vw',
-                                        maxWidth: '90%',
-                                        size: 0.75,
-                                        margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
-                                      })}
-                                    >
-                                      <span
-                                        dangerouslySetInnerHTML={{
-                                          __html: normalizePromptMarkup(reconcilePrompt({
-                                            rawValue: reactData.fields[this_field].prompt?.value,
-                                            this_field
-                                          }))
-                                        }}
-                                      />
-                                    </Typography>
-                                  }
-                                  <Box display='flex' mt={0} mb={0} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
-                                    {signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current &&
-                                      <Button
-                                        className={AVAClass.AVAMicroButton}
-                                        style={{ backgroundColor: 'white', color: 'red' }}
-                                        size='small'
-                                        onClick={() => {
-                                          signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current.clear();
-                                          setForceRedisplay(!forceRedisplay);
-                                        }}
-                                      >
-                                        {'Clear'}
-                                      </Button>
-                                    }
-                                  </Box>
-                                </Box>
-                              }
-                              {(reactData.fields[this_field].type === 'id') &&
-                                (() => {
-                                  const isRequiredField = isFieldRequired(reactData.fields[this_field]);
-                                  return (
-                                <Box
-                                  display='flex'
-                                  flexDirection='row'
-                                  key={`selectParent-${this_field}_${sectionNdx}`}
-                                  id={`selectParent-${this_field}`}
-                                  width={`${reactData.fields[this_field].prompt?.width || 200}px`}
-                                  minWidth={`${MIN_FIELD_WIDTH_PX}px`}
-                                  flexGrow={1}
-                                  marginBottom={0}
-                                  justifyContent='flex-start'
-                                  alignItems='flex-start'
-                                >
+                                }
+                                {(reactData.fields[this_field].type === 'family') &&
                                   <Box
-                                    key={`selectBox-${this_field}_${sectionNdx}`}
-                                    display='flex' marginLeft={1} flexGrow={1} flexDirection='column'
+                                    display='flex'
+                                    mb={1}
+                                    flexDirection='row'
+                                    justifyContent='flex-start'
+                                    alignItems='center'
                                   >
-                                    <Select
-                                      options={reactData.peopleList[reactData.fields[this_field].choose.ref]}
-                                      searchBy={'label'}
-                                      dropdownHandle={true}
-                                      clearOnSelect={true}
-                                      clearOnBlur={true}
-                                      disabled={reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
-                                      key={`selectOptions-${this_field}_${sectionNdx}`}
-                                      searchable={true}
-                                      create={false}
-                                      closeOnClickInput={true}
-                                      closeOnSelect={true}
-                                      style={{
-                                        lineHeight: 1,
-                                        fontSize: `${reactData.user_fontSize * (1.05)}rem`,
-                                        marginLeft: '-5px',
-                                        marginBottom: '-4px',
-                                        borderWidth: 0
+                                    <AVAFamilyCheckBoxGroup
+                                      prop={this_field}
+                                      familyMembers={reactData.fields[this_field].familyMembers || []}
+                                    />
+                                  </Box>
+                                }
+                                {(reactData.fields[this_field].type === 'html') &&
+                                  <Box>
+                                    <div
+                                      dangerouslySetInnerHTML={{ '__html': reactData.fields[this_field].value }}
+                                    />
+                                  </Box>
+                                }
+                                {(reactData.fields[this_field].type === 'image') &&
+                                  <img
+                                    className={classes.imageArea}
+                                    alt=''
+                                    src={reactData.fields[this_field].value}
+                                  />
+                                }
+                                {(reactData.fields[this_field].type === 'url') &&
+                                  <a
+                                    href={reactData.fields[this_field].value}
+                                    style={{ color: 'inherit', textDecoration: 'none' }}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    <Typography
+                                      style={AVATextStyle(Object.assign({}, {
+                                        size: 0.75,
+                                        margin: { top: 2, bottom: 0.5, left: 0.5, right: 3 }
+                                      }))}
+                                    >
+                                      <u>
+                                        <span
+                                          dangerouslySetInnerHTML={{
+                                            __html: normalizePromptMarkup(reactData.fields[this_field].prompt?.helper || `Tap here for ${reconcilePrompt({
+                                              rawValue: reactData.fields[this_field].prompt?.value,
+                                              this_field
+                                            })}`)
+                                          }}
+                                        />
+                                      </u>
+                                    </Typography>
+                                  </a>
+                                }
+                                {(reactData.fields[this_field].type === 'signature') &&
+                                  <Box
+                                    display='flex'
+                                    flexDirection='column'
+                                    id={`sigBox__${this_field}`}
+                                    key={`sigBox__${this_field}_${sectionNdx}`}
+                                    justifyContent='flex-start'
+                                    marginTop={2}
+                                    marginBottom={2}
+                                    alignItems='flex-start'
+                                    width='97%'
+                                  >
+                                    <SignatureCanvas
+                                      ref={signatureRef[reactData.fields[this_field].options.sigRefNumber || 0]}
+                                      onEnd={() => {
+                                        const sigRefNumber = reactData.fields[this_field].options.sigRefNumber || 0;
+                                        if (signatureRef[sigRefNumber].current && !signatureRef[sigRefNumber].current.isEmpty()) {
+                                          reactData.fields[this_field].value = signatureRef[sigRefNumber].current.getTrimmedCanvas().toDataURL('image/png');
+                                        }
                                       }}
-                                      noDataLabel={`No ${reconcilePrompt({
-                                        rawValue: reactData.fields[this_field].prompt?.value,
-                                        this_field
-                                      })}s match`}
-                                      values={(reactData.fields[this_field]) ?
-                                        (reactData.fields[this_field].valueText
-                                          ? [{ label: reactData.fields[this_field].valueText, value: reactData.fields[this_field].value }]
-                                          : (reactData.fields[this_field].valueList
-                                            ? reactData.fields[this_field].valueList.map(this_value => {
-                                              return {
-                                                label: (reactData.peopleList[reactData.fields[this_field].choose.ref].find(this_person => {
-                                                  return (this_person.value === this_value);
-                                                })).label,
-                                                value: this_value
-                                              };
-                                            })
-                                            : []
-                                          )
-                                        ) : []
-                                      }
-                                      placeholder={``}
-                                      onChange={async (values) => {
-                                        if (values.length > 0) {
-                                          await handleChangeValue({
-                                            newText: values[0].label,
-                                            newValue: values[0].value,
-                                            occ_index,
-                                            prop: this_field,
-                                            sentenceCase: false
-                                          });
+                                      canvasProps={{
+                                        style: {
+                                          backgroundColor: 'beige',
+                                          width: '75%',
+                                          marginLeft: '10px',
+                                          marginRight: '10px',
+                                          marginTop: '2px',
+                                          height: '88px'
                                         }
                                       }}
                                     />
                                     {(occ_index === 0) &&
-                                      <Box display='flex'
-                                        flexDirection='row'
-                                        paddingTop={'4px'}
-                                        borderTop={1}
-                                        key={`selectPromptBox-${this_field}_${sectionNdx}`}
+                                      <Typography
+                                        id={`sigBoxText__${this_field}`}
+                                        key={`sigBoxText__${this_field}_${sectionNdx}`}
+                                        style={AVATextStyle({
+                                          lineHeight: 1,
+                                          minWidth: '60vw',
+                                          maxWidth: '90%',
+                                          size: 0.75,
+                                          margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
+                                        })}
                                       >
-                                        <Typography
-                                          key={`selectPrompt-${this_field}_${sectionNdx}`}
-                                          id={`selectPrompt-${this_field}`}
-                                          className={isRequiredField ? classes.requiredLabel : ''}
-                                          style={AVATextStyle({
-                                            lineHeight: 1,
-                                            minWidth: '60vw',
-                                            maxWidth: '90%',
-                                            size: 0.75,
-                                            opacity: '60%',
-                                            margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
-                                          })}
+                                        <span
+                                          dangerouslySetInnerHTML={{
+                                            __html: normalizePromptMarkup(reconcilePrompt({
+                                              rawValue: reactData.fields[this_field].prompt?.value,
+                                              this_field
+                                            }))
+                                          }}
+                                        />
+                                      </Typography>
+                                    }
+                                    <Box display='flex' mt={0} mb={0} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
+                                      {signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current &&
+                                        <Button
+                                          className={AVAClass.AVAMicroButton}
+                                          style={{ backgroundColor: 'white', color: 'red' }}
+                                          size='small'
+                                          onClick={() => {
+                                            signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current.clear();
+                                            setForceRedisplay(!forceRedisplay);
+                                          }}
                                         >
-                                          <span
-                                            dangerouslySetInnerHTML={{
-                                              __html: normalizePromptMarkup(reconcilePrompt({
-                                                rawValue: reactData.fields[this_field].prompt?.value,
-                                                this_field,
-                                                includeRequiredMarker: false
-                                              }))
+                                          {'Clear'}
+                                        </Button>
+                                      }
+                                    </Box>
+                                  </Box>
+                                }
+                                {(reactData.fields[this_field].type === 'id') &&
+                                  (() => {
+                                    const isRequiredField = isFieldRequired(reactData.fields[this_field]);
+                                    return (
+                                      <Box
+                                        display='flex'
+                                        flexDirection='row'
+                                        key={`selectParent-${this_field}_${sectionNdx}`}
+                                        id={`selectParent-${this_field}`}
+                                        width={`${reactData.fields[this_field].prompt?.width || 200}px`}
+                                        minWidth={`${MIN_FIELD_WIDTH_PX}px`}
+                                        flexGrow={1}
+                                        marginBottom={0}
+                                        justifyContent='flex-start'
+                                        alignItems='flex-start'
+                                      >
+                                        <Box
+                                          key={`selectBox-${this_field}_${sectionNdx}`}
+                                          display='flex' marginLeft={1} flexGrow={1} flexDirection='column'
+                                        >
+                                          <Select
+                                            options={reactData.peopleList[reactData.fields[this_field].choose.ref]}
+                                            searchBy={'label'}
+                                            dropdownHandle={true}
+                                            clearOnSelect={true}
+                                            clearOnBlur={true}
+                                            disabled={reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked}
+                                            key={`selectOptions-${this_field}_${sectionNdx}`}
+                                            searchable={true}
+                                            create={false}
+                                            closeOnClickInput={true}
+                                            closeOnSelect={true}
+                                            style={{
+                                              lineHeight: 1,
+                                              fontSize: `${reactData.user_fontSize * (1.05)}rem`,
+                                              marginLeft: '-5px',
+                                              marginBottom: '-4px',
+                                              borderWidth: 0
+                                            }}
+                                            noDataLabel={`No ${reconcilePrompt({
+                                              rawValue: reactData.fields[this_field].prompt?.value,
+                                              this_field
+                                            })}s match`}
+                                            values={(reactData.fields[this_field]) ?
+                                              (reactData.fields[this_field].valueText
+                                                ? [{ label: reactData.fields[this_field].valueText, value: reactData.fields[this_field].value }]
+                                                : (reactData.fields[this_field].valueList
+                                                  ? reactData.fields[this_field].valueList.map(this_value => {
+                                                    return {
+                                                      label: (reactData.peopleList[reactData.fields[this_field].choose.ref].find(this_person => {
+                                                        return (this_person.value === this_value);
+                                                      })).label,
+                                                      value: this_value
+                                                    };
+                                                  })
+                                                  : []
+                                                )
+                                              ) : []
+                                            }
+                                            placeholder={``}
+                                            onChange={async (values) => {
+                                              if (values.length > 0) {
+                                                await handleChangeValue({
+                                                  newText: values[0].label,
+                                                  newValue: values[0].value,
+                                                  occ_index,
+                                                  prop: this_field,
+                                                  sentenceCase: false
+                                                });
+                                              }
                                             }}
                                           />
-                                          {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
-                                        </Typography>
+                                          {(occ_index === 0) &&
+                                            <Box display='flex'
+                                              flexDirection='row'
+                                              paddingTop={'4px'}
+                                              borderTop={1}
+                                              key={`selectPromptBox-${this_field}_${sectionNdx}`}
+                                            >
+                                              <Typography
+                                                key={`selectPrompt-${this_field}_${sectionNdx}`}
+                                                id={`selectPrompt-${this_field}`}
+                                                className={isRequiredField ? classes.requiredLabel : ''}
+                                                style={AVATextStyle({
+                                                  lineHeight: 1,
+                                                  minWidth: '60vw',
+                                                  maxWidth: '90%',
+                                                  size: 0.75,
+                                                  opacity: '60%',
+                                                  margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
+                                                })}
+                                              >
+                                                <span
+                                                  dangerouslySetInnerHTML={{
+                                                    __html: normalizePromptMarkup(reconcilePrompt({
+                                                      rawValue: reactData.fields[this_field].prompt?.value,
+                                                      this_field,
+                                                      includeRequiredMarker: false
+                                                    }))
+                                                  }}
+                                                />
+                                                {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
+                                              </Typography>
+                                            </Box>
+                                          }
+                                        </Box>
                                       </Box>
-                                    }
-                                  </Box>
-                                </Box>
-                                  );
-                                })()
-                              }
+                                    );
+                                  })()
+                                }
                               </React.Fragment>
 
                             ))}
@@ -4117,7 +4176,6 @@ export default ({ request = {}, onClose }) => {
                   {reactData.administrative_account && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode &&
                     <Button
                       onClick={handleToggleLock}
-                      disabled={!reactData.docRec?.formLocked}
                       className={AVAClass.AVAButton}
                       style={{
                         color: reactData.docRec?.formLocked ? 'green' : 'red',
