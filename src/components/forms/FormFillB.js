@@ -4176,7 +4176,6 @@ export default ({ request = {}, onClose }) => {
                   {reactData.administrative_account && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode &&
                     <Button
                       onClick={handleToggleLock}
-                      disabled={!reactData.docRec?.formLocked}
                       className={AVAClass.AVAButton}
                       style={{
                         color: reactData.docRec?.formLocked ? 'green' : 'red',
