@@ -41,10 +41,9 @@ export default Component => props => {
   const [AVAReady, setAVAReady] = React.useState(false);
   let localAVAReady = false;
   const [AVAFollowUpData, setAVAFollowUpData] = React.useState();
-  console.log(AVAFollowUpData, doneTrying);
 
   const [platform] = useIosCheck();
-  const isTestEnv = ['L', 'T'].includes(window.location.href.split('//')[1]?.slice(0, 1)?.toUpperCase());
+  const isTestEnv = false; // ['L', 'T'].includes(window.location.href.split('//')[1]?.slice(0, 1)?.toUpperCase());
   const AVA_default_user = process.env.REACT_APP_AVA_PU;
   const AVA_default_password = process.env.REACT_APP_AVA_PP;
 
@@ -159,6 +158,15 @@ export default Component => props => {
               urlData: Object.assign({}, urlData, {
                 launch_formFill: true,
                 formFill_documentID: urlData.document_id
+              })
+            });
+          }
+          else if (urlData.form_id) {
+            console.log('Form parameter detected:', urlData.form_id);
+            updateReactData({
+              urlData: Object.assign({}, urlData, {
+                launch_formNew: true,
+                formNew_formID: urlData.form_id
               })
             });
           }
@@ -501,6 +509,10 @@ export default Component => props => {
     return (AVAReady && reactData?.urlData?.launch_formFill);
   }
 
+  function showFormNew() {
+    return (AVAReady && reactData?.urlData?.launch_formNew);
+  }
+
   function showMyForms() {
     return (AVAReady && reactData?.urlData?.launch_myForms);
   }
@@ -549,11 +561,35 @@ export default Component => props => {
       <FormFillB
         onClose={(ignore_me, statusObj) => {
           sessionStorage.removeItem('AVASessionData');
-          let jumpTo = `${window.location.href.replace('refresh', 'theseus').split('?')[0]}?continue`;
-          window.location.replace(jumpTo);
+          if (reactData.urlData?.retain_session === 'true' || reactData.urlData?.retain_session === true) {
+            let jumpTo = `${window.location.href.split('?')[0]}?continue`;
+            window.location.replace(jumpTo);
+          } else {
+            window.location.replace(`${window.location.origin}/thankyou`);
+          }
         }}
         request={{
           document_id: reactData.urlData?.formFill_documentID
+        }}
+      />
+    );
+  }
+  else if (showFormNew()) {
+    return (
+      <FormFillB
+        onClose={(ignore_me, statusObj) => {
+          sessionStorage.removeItem('AVASessionData');
+          if (reactData.urlData?.retain_session === 'true' || reactData.urlData?.retain_session === true) {
+            let jumpTo = `${window.location.href.split('?')[0]}?continue`;
+            window.location.replace(jumpTo);
+          } else {
+            window.location.replace(`${window.location.origin}/thankyou`);
+          }
+        }}
+        request={{
+          form_id: reactData.urlData?.formNew_formID,
+          person_id: state.session?.patient_id,
+          mode: 'new'
         }}
       />
     );
