@@ -136,7 +136,7 @@ const useStyles = makeStyles(theme => ({
     position: 'absolute',
     top: -9,
     left: 10,
-    padding: '0 4px',
+    padding: '3px 0 4px',
     backgroundColor: theme.palette.background.paper,
     color: theme.palette.text.secondary,
     fontSize: theme.typography.fontSize * 0.75,
@@ -1666,9 +1666,10 @@ export default ({ request = {}, onClose }) => {
     const shouldShrink = forceShrink || (!isLongPrompt) || longPromptShouldUseNotch;
 
     if (isLongPrompt && !longPromptShouldUseNotch) {
+      const isRequired = isFieldRequired(reactData.fields?.[this_field]);
       return {
         label: '',
-        placeholder: fullPromptText,
+        placeholder: isRequired ? `${fullPromptText}\u00A0*` : fullPromptText,
         InputLabelProps: shouldShrink ? { shrink: true } : undefined
       };
     }
@@ -1905,7 +1906,10 @@ export default ({ request = {}, onClose }) => {
       width: hasLongPrompt ? '70vw' : `${promptWidth || 320}px`,
       minWidth: `${MIN_FIELD_WIDTH_PX}px`,
       maxWidth: '80vw',
-      margin: '8px 8px 8px 8px'
+      marginTop: '24px',
+      marginLeft: '8px',
+      marginRight: '8px',
+      marginBottom: '8px'
     };
     const selectionMax = fieldRec?.selectionObj?.max;
     const isMulti = Number(selectionMax) > 1;
@@ -2011,13 +2015,19 @@ export default ({ request = {}, onClose }) => {
         width: hasLongPrompt ? '70vw' : `${fieldRec.prompt?.width || 320}px`,
         minWidth: `${MIN_FIELD_WIDTH_PX}px`,
         maxWidth: hasLongPrompt ? '80vw' : '80vw',
-        margin: '8px 8px 8px 8px'
+        marginTop: '24px',
+        marginLeft: '8px',
+        marginRight: '8px',
+        marginBottom: '8px'
       }
       : {
         width: hasLongPrompt ? '70vw' : null,
         minWidth: `${MIN_FIELD_WIDTH_PX}px`,
         maxWidth: hasLongPrompt ? '70vw' : '80vw',
-        margin: '8px 8px 8px 8px'
+        marginTop: '24px',
+        marginLeft: '8px',
+        marginRight: '8px',
+        marginBottom: '8px'
       };
 
     const optionList = normalizeSelectionList(props.text);
@@ -2382,13 +2392,13 @@ export default ({ request = {}, onClose }) => {
       // Run validation
       const validationResult = validateForm();
 
-      // If errors exist, show them and don't lock
+      // If errors exist, warn the user and let them decide whether to lock anyway
       if (validationResult.number_of_errorsOnForm) {
         updateReactData({
-          messageList: validationResult.messageList,
+          messageList: ['Warning: this form has incomplete or invalid fields.', ...validationResult.messageList.slice(1), 'Do you still want to lock the form?'],
           number_of_errorsOnForm: validationResult.number_of_errorsOnForm,
           fields: validationResult.fields,
-          stage: 'confirm'
+          stage: 'confirmLock'
         }, true);
         return;
       }
@@ -4321,6 +4331,38 @@ export default ({ request = {}, onClose }) => {
                   stage: 'fill'
                 }
               });
+            }}
+          />
+        }
+        {(reactData.stage === 'confirmLock') &&
+          <AVAConfirm
+            promptText={reactData.messageList}
+            cancelText={'No, go back'}
+            confirmText={'Yes, lock anyway'}
+            onCancel={() => {
+              updateReactData({
+                stage: 'fill'
+              }, true);
+            }}
+            onConfirm={async () => {
+              const updatedDocRec = Object.assign({}, reactData.docRec, { formLocked: true });
+              updateReactData({ docRec: updatedDocRec }, false);
+              try {
+                await handleSave({
+                  document_id: reactData.document_id,
+                  final: true,
+                  formLocked: true
+                });
+                onClose('complete', {
+                  document_id: reactData.document_id,
+                  document_title: reactData.document_title,
+                  document_status: 'complete',
+                  pertains_to: reactData.pertains_to,
+                  formLocked: true
+                });
+              } catch (error) {
+                cl('Error locking form with warnings:', error);
+              }
             }}
           />
         }
