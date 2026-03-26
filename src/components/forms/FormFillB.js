@@ -136,7 +136,7 @@ const useStyles = makeStyles(theme => ({
     position: 'absolute',
     top: -9,
     left: 10,
-    padding: '0 4px',
+    padding: '3px 0 4px',
     backgroundColor: theme.palette.background.paper,
     color: theme.palette.text.secondary,
     fontSize: theme.typography.fontSize * 0.75,
@@ -1905,7 +1905,10 @@ export default ({ request = {}, onClose }) => {
       width: hasLongPrompt ? '70vw' : `${promptWidth || 320}px`,
       minWidth: `${MIN_FIELD_WIDTH_PX}px`,
       maxWidth: '80vw',
-      margin: '8px 8px 8px 8px'
+      marginTop: '24px',
+      marginLeft: '8px',
+      marginRight: '8px',
+      marginBottom: '8px'
     };
     const selectionMax = fieldRec?.selectionObj?.max;
     const isMulti = Number(selectionMax) > 1;
@@ -2011,13 +2014,19 @@ export default ({ request = {}, onClose }) => {
         width: hasLongPrompt ? '70vw' : `${fieldRec.prompt?.width || 320}px`,
         minWidth: `${MIN_FIELD_WIDTH_PX}px`,
         maxWidth: hasLongPrompt ? '80vw' : '80vw',
-        margin: '8px 8px 8px 8px'
+        marginTop: '24px',
+        marginLeft: '8px',
+        marginRight: '8px',
+        marginBottom: '8px'
       }
       : {
         width: hasLongPrompt ? '70vw' : null,
         minWidth: `${MIN_FIELD_WIDTH_PX}px`,
         maxWidth: hasLongPrompt ? '70vw' : '80vw',
-        margin: '8px 8px 8px 8px'
+        marginTop: '24px',
+        marginLeft: '8px',
+        marginRight: '8px',
+        marginBottom: '8px'
       };
 
     const optionList = normalizeSelectionList(props.text);
