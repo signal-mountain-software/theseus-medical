@@ -37,10 +37,8 @@ export default Component => props => {
 
   const [cookies, setCookie, removeCookie] = useCookies(['AVAuser', 'AVAclient', 'AVAvalidated', 'AVAaction']);
 
-  const [doneTrying, setDoneTrying] = React.useState(false);
   const [AVAReady, setAVAReady] = React.useState(false);
   let localAVAReady = false;
-  const [AVAFollowUpData, setAVAFollowUpData] = React.useState();
 
   const [platform] = useIosCheck();
   const isTestEnv = false; // ['L', 'T'].includes(window.location.href.split('//')[1]?.slice(0, 1)?.toUpperCase());
@@ -97,7 +95,6 @@ export default Component => props => {
               quickadd_source: 'url_parameter'
             })
           });
-          setAVAFollowUpData({ 'Completed': true });
           setAVAReady(true);
           return;
         }
@@ -185,7 +182,6 @@ export default Component => props => {
             customizationData: Object.assign({}, cData, urlData, { client_id: clientId }),
             currentClientLogo: cData.logo
           });
-          setAVAFollowUpData({ 'NeedUser': true });
           return;
         }
 
@@ -206,9 +202,7 @@ export default Component => props => {
             await logAccessAttempt(activeUser, '', true, uMessage);
             let goodLaunch = await launchAVA(activeUser);
             if (goodLaunch) {
-              setAVAFollowUpData({ 'Completed': true });
               await logAccessAttempt(activeUser, '', true, `Good AVA session object found in memory; AVA launched successfully`);
-              setDoneTrying(true);
               return;
             }
           }
@@ -218,9 +212,7 @@ export default Component => props => {
             await logAccessAttempt(activeUser, '', true, uMessage);
             let goodLaunch = await launchAVA(activeUser);
             if (goodLaunch) {
-              setAVAFollowUpData({ 'Completed': true });
               await logAccessAttempt(activeUser, '', true, `No AVA session in memory; Cognito session for known user found; AVA launched successfully`);
-              setDoneTrying(true);
               return;
             }
           }
@@ -232,9 +224,7 @@ export default Component => props => {
               await logAccessAttempt(activeUser, '', true, uMessage);
               let goodLaunch = await launchAVA(activeUser);
               if (goodLaunch) {
-                setAVAFollowUpData({ 'Completed': true });
                 await logAccessAttempt(activeUser, '', true, `Device found in Sessions table; AVA launched successfully`);
-                setDoneTrying(true);
                 return;
               }
             }
@@ -284,7 +274,6 @@ export default Component => props => {
           }
         }
         // No URL data and no cookie
-        setAVAFollowUpData({ 'NeedUser': true });
         return;
       });
     checkUser();
@@ -304,7 +293,6 @@ export default Component => props => {
     }
     else {     // That is not a valid User ID, maybe it's a name?
       if (dbError) {
-        setDoneTrying(true);
         return 'network';
       }
       await logAccessAttempt(pUser, '', false, `${pUser} is not a valid User ID (no SessionV2).`);
@@ -324,15 +312,11 @@ export default Component => props => {
         else {
           enqueueSnackbar(`"${pUser}" matches ${foundPerson.length} accounts.`, { variant: 'error', persist: true });
           updateReactData({ multipleAccountList: foundPerson });
-          setDoneTrying(true);
-          setAVAFollowUpData({ 'NeedUser': false, 'SelectfromList': true });
           return 'ambiguous';
         }
       }
       if (!goodSessionV2) {  // either !accountFound and null returned from getAlternate ID OR (accountFound and !goodSessionV2) will arrive here 
         enqueueSnackbar(`"${pUser}" can't be used to log in. Please try again.`, { variant: 'error', persist: true });
-        setDoneTrying(true);
-        setAVAFollowUpData({ 'NeedUser': true });
         return 'invalid';
       }
       else {
@@ -345,8 +329,6 @@ export default Component => props => {
       await logAccessAttempt(pUser, '', true, 'Good UserID entered, but it was not in the URL Client');
       closeSnackbar();
       enqueueSnackbar(`This account does not exist in ${reactData.customizationData.client_name}.`, { variant: 'error', persist: true });
-      setDoneTrying(true);
-      setAVAFollowUpData({ 'NeedUser': true });
       return 'invalid';
     }
     let tempURLOBj = await getParamsFromURL();
@@ -386,16 +368,13 @@ export default Component => props => {
           recipientList: [foundPatient.person_id],
           subject: `Security message from ${client_name}`
         });
-        setAVAFollowUpData({ 'passwordRequired': true, 'enteredUserID': pUser, 'possibleUserRecs': [foundPatient] });
         return 'password';
       }
       else {
         let eMessage = `When fetching People account for this two factor authentication request, ${pUser} is not found`;
         await logAccessAttempt(pUser, '', false, eMessage);
-        setDoneTrying(true);
         enqueueSnackbar(`${eMessage}.  This is an unusual situation.  AVA Support has been notified.`, { variant: 'error', persist: true });
         sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
-        setAVAFollowUpData({ 'NeedUser': true });
         return 'invalid';
       }
     }
@@ -410,14 +389,11 @@ export default Component => props => {
       if (!goodUser) {
         let eMessage = `When fetching People account for this password-required Session, ${pUser} is not found`;
         await logAccessAttempt(pUser, '', false, eMessage);
-        setDoneTrying(true);
         enqueueSnackbar(`${eMessage}.  This is an unusual situation.  AVA Support has been notified.`, { variant: 'error', persist: true });
         sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
-        setAVAFollowUpData({ 'NeedUser': true });
         return 'invalid';
       }
       foundPatient.sessionRec = foundSession;
-      setAVAFollowUpData({ 'passwordRequired': true, 'forceSetPassword': true, 'enteredUserID': pUser, 'possibleUserRecs': [foundPatient] });
       return 'password';
     }
     else if (
@@ -431,14 +407,11 @@ export default Component => props => {
       if (!goodUser) {
         let eMessage = `When fetching People account for this password-required Session, ${pUser} is not found`;
         await logAccessAttempt(pUser, '', false, eMessage);
-        setDoneTrying(true);
         enqueueSnackbar(`${eMessage}.  This is an unusual situation.  AVA Support has been notified.`, { variant: 'error', persist: true });
         sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
-        setAVAFollowUpData({ 'NeedUser': true });
         return 'invalid';
       }
       foundPatient.sessionRec = foundSession;
-      setAVAFollowUpData({ 'passwordRequired': true, 'enteredUserID': pUser, 'possibleUserRecs': [foundPatient] });
       return 'password';
     }
     else if (foundSession.last_login) {   // Yes!  We have a User and a Password
@@ -450,7 +423,6 @@ export default Component => props => {
       }
       else {
         await logAccessAttempt(pUser, foundSession.last_login, false, `Failed Log-in.  Attempted stored password; user ID supplied from ${pSource}`);
-        setDoneTrying(false);
         // intentionally fall through to attempt default credentials
       }
     }
@@ -464,8 +436,6 @@ export default Component => props => {
     // Let's ask for the password and try to get in that way...
     closeSnackbar();
     enqueueSnackbar(`We're having trouble logging you in automatically.  Please enter your password.`, { variant: 'error', persist: true });
-    setAVAFollowUpData({ 'enteredUserID': pUser, 'NeedUser': false });
-    setDoneTrying(true);
     return 'password';
   }
 
@@ -523,7 +493,6 @@ export default Component => props => {
         <LoginModuleV2
           onReady={() => {
             setAVAReady(true);
-            setAVAFollowUpData({ 'Completed': true });
           }}
         />
       );
@@ -631,7 +600,6 @@ export default Component => props => {
           `Failed login. Attempted ${pUser} and ${pPass.trim()}.  Cognito responded with ${e.code} - ${e.message}`
         );
       }
-      setDoneTrying(false);
       if ((e.code !== 'NotAuthorizedException')
         || (e.message.includes('expired'))
         || (e.message.includes('exceeded'))) {
@@ -656,7 +624,6 @@ export default Component => props => {
         await logAccessAttempt(pUser, `${caseCorrectedPassword} (case corrected)`, false,
           `Failed case corrected login. Reason:${e2.code} Message:${e2.message}`
         );
-        setDoneTrying(true);
         return [false, null, null];
       }
     }
@@ -774,7 +741,6 @@ export default Component => props => {
         goodIO = false;
       });
     if (!goodIO) {
-      setDoneTrying(true);
       return [false, null, true];
     }
     if (!recordExists(sessionRec) && (pSessionID.toLowerCase() !== pSessionID)) {
@@ -791,11 +757,9 @@ export default Component => props => {
         });
     }
     if (!goodIO) {
-      setDoneTrying(true);
       return [false, null, true];
     }
     if (!recordExists(sessionRec)) {
-      setDoneTrying(true);
       return [false, null];
     }
     let user_fontSize = 1;
@@ -821,7 +785,6 @@ export default Component => props => {
         currentClientLogo: sessionRec.Item.client_icon
       });
     }
-    setDoneTrying(true);
     return [true, sessionRec.Item];
   }
 
@@ -998,8 +961,6 @@ export default Component => props => {
       enqueueSnackbar(eMessage, { variant: 'error', persist: true });
       sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
       setAVAReady(false);
-      setAVAFollowUpData();
-      setDoneTrying(true);
       return false;
     }
     if (currentSession.customizations && currentSession.customizations.font_size) {
@@ -1014,8 +975,6 @@ export default Component => props => {
       enqueueSnackbar(eMessage, { variant: 'error', persist: true });
       sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
       setAVAReady(false);
-      setAVAFollowUpData();
-      setDoneTrying(true);
       return false;
     }
     // Get the Patient's profile (info about the active person - usually the same as the logged in user)
@@ -1211,7 +1170,6 @@ export default Component => props => {
     }
     setAVAReady(true);
     localAVAReady = true;
-    setAVAFollowUpData({ 'Completed': true });
     return true;
   }
 
