@@ -1666,9 +1666,10 @@ export default ({ request = {}, onClose }) => {
     const shouldShrink = forceShrink || (!isLongPrompt) || longPromptShouldUseNotch;
 
     if (isLongPrompt && !longPromptShouldUseNotch) {
+      const isRequired = isFieldRequired(reactData.fields?.[this_field]);
       return {
         label: '',
-        placeholder: fullPromptText,
+        placeholder: isRequired ? `${fullPromptText}\u00A0*` : fullPromptText,
         InputLabelProps: shouldShrink ? { shrink: true } : undefined
       };
     }
