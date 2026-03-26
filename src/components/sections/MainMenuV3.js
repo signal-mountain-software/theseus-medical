@@ -63,6 +63,7 @@ import QuickSearch from './QuickSearch';
 
 import { stringToColor, s3 } from '../../util/AVAUtilities';
 import FormManagement from '../dialogs/FormManagement';
+import FormFillB from '../forms/FormFillB';
 import ClientMaintenance from '../dialogs/ClientMaintenance';
 import MessageForm from '../forms/MessageForm';
 import ShowGroup from '../dialogs/ShowGroup';
@@ -1305,6 +1306,7 @@ export default ({ start_at }) => {
   const renderSectionRegistry = {
     ClientMaintenance,
     FormManagement,
+    FormFillB,
     MessageForm,
     ShowGroup,
     ShowCalendar,
@@ -1332,6 +1334,12 @@ export default ({ start_at }) => {
       }
       else if (sourceValue === '<personRec>') {
         return state.patient;
+      }
+      else if (sourceValue === '<patient_id>') {
+        return state.session.patient_id;
+      }
+      else if (sourceValue === '<user_id>') {
+        return state.session.user_id;
       }
       if (Array.isArray(sourceValue)) {
         return sourceValue.map((entry) => replaceTokens(entry));
@@ -1399,6 +1407,7 @@ export default ({ start_at }) => {
         pMessageList={[]}
         defaults={props.defaults || {}}
         options={props.options || {}}
+        request={props.request || {}}
         patient={state.session}
         OGpatient={reactData.OGpatient}
         peopleList={props.options?.peopleList || props.options?.OGvaluesList}
