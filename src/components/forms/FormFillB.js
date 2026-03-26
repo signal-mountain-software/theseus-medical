@@ -2382,13 +2382,13 @@ export default ({ request = {}, onClose }) => {
       // Run validation
       const validationResult = validateForm();
 
-      // If errors exist, show them and don't lock
+      // If errors exist, warn the user and let them decide whether to lock anyway
       if (validationResult.number_of_errorsOnForm) {
         updateReactData({
-          messageList: validationResult.messageList,
+          messageList: ['Warning: this form has incomplete or invalid fields.', ...validationResult.messageList.slice(1), 'Do you still want to lock the form?'],
           number_of_errorsOnForm: validationResult.number_of_errorsOnForm,
           fields: validationResult.fields,
-          stage: 'confirm'
+          stage: 'confirmLock'
         }, true);
         return;
       }
@@ -4321,6 +4321,38 @@ export default ({ request = {}, onClose }) => {
                   stage: 'fill'
                 }
               });
+            }}
+          />
+        }
+        {(reactData.stage === 'confirmLock') &&
+          <AVAConfirm
+            promptText={reactData.messageList}
+            cancelText={'No, go back'}
+            confirmText={'Yes, lock anyway'}
+            onCancel={() => {
+              updateReactData({
+                stage: 'fill'
+              }, true);
+            }}
+            onConfirm={async () => {
+              const updatedDocRec = Object.assign({}, reactData.docRec, { formLocked: true });
+              updateReactData({ docRec: updatedDocRec }, false);
+              try {
+                await handleSave({
+                  document_id: reactData.document_id,
+                  final: true,
+                  formLocked: true
+                });
+                onClose('complete', {
+                  document_id: reactData.document_id,
+                  document_title: reactData.document_title,
+                  document_status: 'complete',
+                  pertains_to: reactData.pertains_to,
+                  formLocked: true
+                });
+              } catch (error) {
+                cl('Error locking form with warnings:', error);
+              }
             }}
           />
         }
