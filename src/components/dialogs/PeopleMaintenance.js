@@ -21,6 +21,7 @@ import CheckoutHistory from './CheckoutHistory';
 import LinkedAccounts from '../sections/LinkedAccounts';
 import PersonalizationSection from '../sections/PersonalizationSection';
 import GroupAssignments from '../sections/GroupAssignments';
+import ActivitiesSection from '../sections/ActivitiesSection';
 import MessageMonitorV3 from '../forms/MessageMonitorV3';
 
 import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
@@ -133,6 +134,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       },
       FormSection: {
         component_id: FormSection,
+      },
+      ActivitiesSection: {
+        component_id: ActivitiesSection,
       },
 
     },
@@ -443,6 +447,15 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           && !(reactUpdObj.mode === 'add'),
         version_id: 0,
         component_name: 'MessagesSection'
+      },
+      {
+        section_name: 'Activities',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('ActivitiesSection')) : false),
+        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('activities') : true))
+          && !(reactUpdObj.mode === 'add'),
+        version_id: 0,
+        component_name: 'ActivitiesSection'
       },
       {
         section_name: 'My Family',
