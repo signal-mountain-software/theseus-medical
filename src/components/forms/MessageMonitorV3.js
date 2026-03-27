@@ -1524,23 +1524,23 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         }
     }, [accessListReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const initialSenderIds = (() => {
-        const explicit = normalizeIdList(defaults.senderIds || defaults.sender_ids);
+    const initialParty1Ids = (() => {
+        const explicit = normalizeIdList(defaults.party1Ids || defaults.party1_ids || defaults.senderIds || defaults.sender_ids);
         if (explicit.length > 0) { return explicit; }
-        if ((defaults.sender || '').toLowerCase() === '*me') {
+        if ((defaults.party1 || defaults.sender || '').toLowerCase() === '*me') {
             return myPatientId ? [myPatientId] : [];
         }
         return [];
     })();
 
-    const initialReceiverIds = normalizeIdList(defaults.receiverIds || defaults.receiver_ids);
+    const initialParty2Ids = normalizeIdList(defaults.party2Ids || defaults.party2_ids || defaults.receiverIds || defaults.receiver_ids);
 
     const defaultDates = getDefaultDateRange();
     const [filters, setFilters] = React.useState({
-        senderIds: initialSenderIds,
-        receiverIds: initialReceiverIds,
-        senderDisplay: defaults.senderDisplay || defaults.sender_display || defaults.sender || '*me',
-        receiverDisplay: defaults.receiverDisplay || defaults.receiver_display || defaults.receiver || '*anyone',
+        party1Ids: initialParty1Ids,
+        party2Ids: initialParty2Ids,
+        party1Display: defaults.party1Display || defaults.party1 || defaults.senderDisplay || defaults.sender || '*me',
+        party2Display: defaults.party2Display || defaults.party2 || defaults.receiverDisplay || defaults.receiver || '*anyone',
         dateFrom: toDateInputValue(defaults.dateFrom) || defaultDates.dateFrom,
         dateTo: toDateInputValue(defaults.dateTo) || defaultDates.dateTo,
         messageSearchText: defaults.messageSearchText || defaults.message_search_text || defaults.messageSearch || defaults.message_search || ''
@@ -1564,20 +1564,23 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         errorText: '',
         message: null
     });
-    const [showSenderQuickSearch, setShowSenderQuickSearch] = React.useState(false);
-    const [showReceiverQuickSearch, setShowReceiverQuickSearch] = React.useState(false);
+    const [showParty1QuickSearch, setShowParty1QuickSearch] = React.useState(false);
+    const [showParty2QuickSearch, setShowParty2QuickSearch] = React.useState(false);
+    const [party1EditText, setParty1EditText] = React.useState(null);
+    const [party2EditText, setParty2EditText] = React.useState(null);
     const [holdActionBusy, setHoldActionBusy] = React.useState(false);
     const [forwardMessageOptions, setForwardMessageOptions] = React.useState(null);
+    const [replyMessageOptions, setReplyMessageOptions] = React.useState(null);
     const [releaseConfirmContext, setReleaseConfirmContext] = React.useState(null);
     const [autoCcForwardNameByRecipientId, setAutoCcForwardNameByRecipientId] = React.useState({});
     const autoCcForwardNameByRecipientIdRef = React.useRef({});
     const autoCcLookupAttemptedRef = React.useRef(new Set());
-    const [senderQuickSearchData, setSenderQuickSearchData] = React.useState({
+    const [party1QuickSearchData, setParty1QuickSearchData] = React.useState({
         selections: [],
         accessList,
         special_values: quickSearchSpecialValues,
     });
-    const [receiverQuickSearchData, setReceiverQuickSearchData] = React.useState({
+    const [party2QuickSearchData, setParty2QuickSearchData] = React.useState({
         selections: [],
         accessList,
         special_values: quickSearchSpecialValues,
@@ -1588,33 +1591,45 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         setFilters(prev => ({ ...prev, [key]: value }));
     };
 
-    const openSenderPicker = () => {
+    const openParty1Picker = (preFilter = '') => {
         if (!accessListReady) {
             onClose({
                 message: 'AVA is still loading.  Please wait a moment.'
             });
             return;
         }
-        setShowSenderQuickSearch(true);
+        if (preFilter) {
+            setParty1QuickSearchData(prev => ({
+                ...prev,
+                linkedPersonFilter: { raw: preFilter, lower: preFilter.toLowerCase() }
+            }));
+        }
+        setShowParty1QuickSearch(true);
     };
 
-    const openReceiverPicker = () => {
+    const openParty2Picker = (preFilter = '') => {
         if (!accessListReady) {
             onClose({
                 message: 'AVA is still loading.  Please wait a moment.'
             });
             return;
         }
-        setShowReceiverQuickSearch(true);
+        if (preFilter) {
+            setParty2QuickSearchData(prev => ({
+                ...prev,
+                linkedPersonFilter: { raw: preFilter, lower: preFilter.toLowerCase() }
+            }));
+        }
+        setShowParty2QuickSearch(true);
     };
 
     React.useEffect(() => {
-        setSenderQuickSearchData(prev => ({
+        setParty1QuickSearchData(prev => ({
             ...prev,
             accessList,
             special_values: quickSearchSpecialValues
         }));
-        setReceiverQuickSearchData(prev => ({
+        setParty2QuickSearchData(prev => ({
             ...prev,
             accessList,
             special_values: quickSearchSpecialValues
@@ -2026,12 +2041,12 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
 
     const summarizeSelectionDisplay = (selections, personIds, type) => {
         if (!selections || selections.length === 0) {
-            return (type === 'sender') ? '*me' : '*anyone';
+            return (type === 'party1') ? '*me' : '*anyone';
         }
         if (selections.length === 1) {
             const [firstSelection] = selections;
             if (firstSelection.person_id) {
-                if ((type === 'sender') && (firstSelection.person_id === myPatientId)) {
+                if (firstSelection.person_id === myPatientId) {
                     return '*me';
                 }
                 return firstSelection.person_name || personNameFromAccessList(firstSelection.person_id);
@@ -2070,34 +2085,34 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         setPendingSearchChanges(true);
         const personIds = extractPersonIds(selections);
         const display = summarizeSelectionDisplay(selections, personIds, type);
-        if (type === 'sender') {
+        if (type === 'party1') {
             setFilters(prev => ({
                 ...prev,
-                senderIds: personIds,
-                senderDisplay: display,
+                party1Ids: personIds,
+                party1Display: display,
             }));
         }
         else {
             setFilters(prev => ({
                 ...prev,
-                receiverIds: personIds,
-                receiverDisplay: display,
+                party2Ids: personIds,
+                party2Display: display,
             }));
         }
     };
 
-    const updateSenderQuickSearchData = (newData, force = false) => {
-        setSenderQuickSearchData(prev => ({ ...prev, ...newData }));
+    const updateParty1QuickSearchData = (newData, force = false) => {
+        setParty1QuickSearchData(prev => ({ ...prev, ...newData }));
         if (newData?.selections) {
-            applyQuickSearchSelections('sender', newData.selections);
+            applyQuickSearchSelections('party1', newData.selections);
         }
         if (force) { }
     };
 
-    const updateReceiverQuickSearchData = (newData, force = false) => {
-        setReceiverQuickSearchData(prev => ({ ...prev, ...newData }));
+    const updateParty2QuickSearchData = (newData, force = false) => {
+        setParty2QuickSearchData(prev => ({ ...prev, ...newData }));
         if (newData?.selections) {
-            applyQuickSearchSelections('receiver', newData.selections);
+            applyQuickSearchSelections('party2', newData.selections);
         }
         if (force) { }
     };
@@ -2347,78 +2362,128 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
             forwardBypassRules: shouldBypassRulesOnForward,
             newMessageSendFrom: forwarderId,
             newMessageSubject: forwardSubject,
-            newMessageText: forwardTextWithContext
+            newMessageText: forwardTextWithContext,
+            sourceMessage: selectedMessage,
+            sourceSenderName: senderName,
+            sourceMessageText: originalText
         });
     }, [selectedMessage, personNameFromAccessList, state, getSignatureKeyForPerson]);
+
+    const handleReplyMessage = React.useCallback(async () => {
+        if (!selectedMessage) {
+            return;
+        }
+
+        const myId = String(myPatientId || '').trim().toLowerCase();
+        const senderId = String(selectedMessage?.sent_from || '').trim().toLowerCase();
+        const selectedDeliveryItems = Array.isArray(selectedMessage.delivery_items)
+            ? selectedMessage.delivery_items
+            : [selectedMessage];
+        const allReceivers = getUniqueReceiversFromDeliveries(selectedDeliveryItems)
+            .map(r => r.toLowerCase());
+
+        const iAmSender = myId && (senderId === myId);
+        const iAmReceiver = myId && allReceivers.includes(myId);
+
+        if (!iAmSender && !iAmReceiver) {
+            return;
+        }
+
+        // Determine the other parties: exclude *me from the full set of participants
+        const allParticipants = Array.from(new Set([senderId, ...allReceivers]));
+        const otherParticipantIds = allParticipants.filter(id => id !== myId && id !== '');
+
+        const recipients = await Promise.all(
+            otherParticipantIds.map(async (personId) => {
+                const nameFromList = String(personNameFromAccessList(personId) || '').trim();
+                const resolvedName = (
+                    nameFromList && (nameFromList.toLowerCase() !== personId.toLowerCase())
+                )
+                    ? nameFromList
+                    : (String((await makeName(personId)) || '').trim() || personId);
+                return { person_id: personId, person_name: resolvedName };
+            })
+        );
+
+        const subject = String(selectedMessage?.subject_line || selectedMessage?.subject || selectedMessage?.title || '').trim();
+        const replySubject = subject ? `Re: ${subject}` : '';
+        const threadId = String(
+            selectedMessage?.thread_id
+            || selectedDeliveryItems.find(d => !!d?.thread_id)?.thread_id
+            || ''
+        ).trim();
+
+        const sourceSenderName = String(personNameFromAccessList(senderId) || '').trim() || senderId;
+        const sourceMessageText = getMessageText(selectedMessage, {
+            signatureKey: getSignatureKeyForPerson(selectedMessage?.sent_from)
+        }) || '';
+
+        setReplyMessageOptions({
+            newMessage: true,
+            sendFrom: myPatientId,
+            subject: replySubject,
+            recipients,
+            ...(threadId ? { newMessageThread: threadId } : {}),
+            sourceMessage: selectedMessage,
+            sourceSenderName,
+            sourceMessageText
+        });
+    }, [selectedMessage, myPatientId, personNameFromAccessList, getSignatureKeyForPerson]);
 
     const runSearch = async (overrideFilters = null) => {
         setLoading(true);
         setErrorText('');
         try {
             const searchFilters = overrideFilters || filters;
-            const senderMatch = (searchFilters.senderDisplay || '').trim().toLowerCase();
-            const receiverMatch = (searchFilters.receiverDisplay || '').trim().toLowerCase();
-            const senderIdMatch = (searchFilters.senderIds || []).map(v => String(v).toLowerCase());
-            const receiverIdMatch = (searchFilters.receiverIds || []).map(v => String(v).toLowerCase());
+            const party1Match = (searchFilters.party1Display || '').trim().toLowerCase();
+            const party2Match = (searchFilters.party2Display || '').trim().toLowerCase();
+            const party1IdMatch = (searchFilters.party1Ids || []).map(v => String(v).toLowerCase());
+            const party2IdMatch = (searchFilters.party2Ids || []).map(v => String(v).toLowerCase());
             const myIdentityList = [state?.session?.patient_id]
                 .filter(Boolean)
                 .map(v => String(v).toLowerCase());
-            const senderHasAnyone = senderIdMatch.includes('*anyone') || (senderMatch === '*anyone');
-            const receiverHasAnyone = receiverIdMatch.includes('*anyone') || (receiverMatch === '*anyone');
-            const senderHasMe = senderIdMatch.includes('*me') || (senderMatch === '*me');
-            const receiverHasMe = receiverIdMatch.includes('*me') || (receiverMatch === '*me');
+            const party1HasAnyone = party1IdMatch.includes('*anyone') || (party1Match === '*anyone');
+            const party2HasAnyone = party2IdMatch.includes('*anyone') || (party2Match === '*anyone');
+            const party1HasMe = party1IdMatch.includes('*me') || (party1Match === '*me');
+            const party2HasMe = party2IdMatch.includes('*me') || (party2Match === '*me');
+
+            if (party1HasAnyone && party2HasAnyone) {
+                setErrorText('Please specify at least one person before searching.');
+                setLoading(false);
+                return;
+            }
+
             const fromDate = searchFilters.dateFrom ? parseDateInputAsLocalDate(searchFilters.dateFrom) : null;
             const toDate = searchFilters.dateTo ? parseDateInputAsLocalDate(searchFilters.dateTo) : null;
             if (toDate) {
                 toDate.setHours(23, 59, 59, 999);
             }
 
-            const effectiveSenderIds = (() => {
-                if (senderIdMatch.length > 0) {
-                    return senderIdMatch;
+            const resolveEffectiveIds = (idMatch, hasMe, hasAnyone) => {
+                if (hasAnyone) { return []; }
+                if (idMatch.length > 0) {
+                    return Array.from(new Set(
+                        idMatch.flatMap(id => {
+                            if (id === '*anyone') { return []; }
+                            if (id === '*me') { return myIdentityList; }
+                            return [id];
+                        })
+                    ));
                 }
-                if (senderMatch === '*me') {
-                    return myIdentityList;
-                }
+                if (hasMe) { return myIdentityList; }
                 return [];
-            })();
+            };
 
-            const effectiveReceiverIds = (() => {
-                if (receiverIdMatch.length > 0) {
-                    return receiverIdMatch;
-                }
-                if (receiverMatch === '*me') {
-                    return myIdentityList;
-                }
-                return [];
-            })();
+            const queryParty1Ids = resolveEffectiveIds(party1IdMatch, party1HasMe, party1HasAnyone);
+            const queryParty2Ids = resolveEffectiveIds(party2IdMatch, party2HasMe, party2HasAnyone);
 
-            const querySenderIds = Array.from(new Set(
-                effectiveSenderIds.flatMap(id => {
-                    if (id === '*anyone') { return []; }
-                    if (id === '*me') { return myIdentityList; }
-                    return [id];
-                })
-            ));
+            const weekList = buildMessageWeekList(searchFilters.dateFrom, searchFilters.dateTo);
+            const startEpochMs = toEpochMsString(searchFilters.dateFrom, false);
+            const endEpochMs = toEpochMsString(searchFilters.dateTo, true);
 
-            const queryReceiverIds = Array.from(new Set(
-                effectiveReceiverIds.flatMap(id => {
-                    if (id === '*anyone') { return []; }
-                    if (id === '*me') { return myIdentityList; }
-                    return [id];
-                })
-            ));
-
-            const canUseSenderWeekIndex = (!senderHasAnyone && (querySenderIds.length > 0));
-            const canUseReceiverWeekIndex = (!canUseSenderWeekIndex && !receiverHasAnyone && (queryReceiverIds.length > 0));
-            let scanResults = [];
-
-            if (canUseSenderWeekIndex) {
-                const weekList = buildMessageWeekList(searchFilters.dateFrom, searchFilters.dateTo);
-                const startEpochMs = toEpochMsString(searchFilters.dateFrom, false);
-                const endEpochMs = toEpochMsString(searchFilters.dateTo, true);
-
-                for (const senderId of querySenderIds) {
+            const queryBySenderIds = async (senderIds) => {
+                const results = [];
+                for (const senderId of senderIds) {
                     for (const messageWeek of weekList) {
                         let lastKey;
                         let pageGuard = 0;
@@ -2442,20 +2507,19 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                 })
                                 .promise();
                             if (Array.isArray(response?.Items) && response.Items.length > 0) {
-                                scanResults.push(...response.Items);
+                                results.push(...response.Items);
                             }
                             lastKey = response?.LastEvaluatedKey;
                             pageGuard++;
                         } while (lastKey && pageGuard < 20);
                     }
                 }
-            }
-            else if (canUseReceiverWeekIndex) {
-                const weekList = buildMessageWeekList(searchFilters.dateFrom, searchFilters.dateTo);
-                const startEpochMs = toEpochMsString(searchFilters.dateFrom, false);
-                const endEpochMs = toEpochMsString(searchFilters.dateTo, true);
+                return results;
+            };
 
-                for (const receiverId of queryReceiverIds) {
+            const queryByReceiverIds = async (receiverIds) => {
+                const results = [];
+                for (const receiverId of receiverIds) {
                     for (const messageWeek of weekList) {
                         let lastKey;
                         let pageGuard = 0;
@@ -2479,31 +2543,33 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                 })
                                 .promise();
                             if (Array.isArray(response?.Items) && response.Items.length > 0) {
-                                scanResults.push(...response.Items);
+                                results.push(...response.Items);
                             }
                             lastKey = response?.LastEvaluatedKey;
                             pageGuard++;
                         } while (lastKey && pageGuard < 20);
                     }
                 }
+                return results;
+            };
+
+            let scanResults = [];
+            if (!party1HasAnyone && !party2HasAnyone) {
+                // Both parties specified: fetch messages sent by each party; cross-filter applied below
+                const [p1AsSender, p2AsSender] = await Promise.all([
+                    queryBySenderIds(queryParty1Ids),
+                    queryBySenderIds(queryParty2Ids)
+                ]);
+                scanResults = [...p1AsSender, ...p2AsSender];
             }
             else {
-                let lastKey;
-                let pageCount = 0;
-                do {
-                    const response = await dbClient
-                        .scan({
-                            TableName: 'TheseusMessages',
-                            ExclusiveStartKey: lastKey,
-                            Limit: 250
-                        })
-                        .promise();
-                    if (Array.isArray(response?.Items) && response.Items.length > 0) {
-                        scanResults.push(...response.Items);
-                    }
-                    lastKey = response?.LastEvaluatedKey;
-                    pageCount++;
-                } while (lastKey && pageCount < 8);
+                // One party is *anyone: fetch all messages involving the specified party
+                const specifiedIds = party1HasAnyone ? queryParty2Ids : queryParty1Ids;
+                const [asSender, asReceiver] = await Promise.all([
+                    queryBySenderIds(specifiedIds),
+                    queryByReceiverIds(specifiedIds)
+                ]);
+                scanResults = [...asSender, ...asReceiver];
             }
 
             const dedupeMap = {};
@@ -2663,79 +2729,24 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                 });
             };
 
-            const filtered = scanResults.filter(message => {
-                const sender = message.sent_from;
-                if (!senderHasAnyone) {
-                    if (senderIdMatch.length > 0) {
-                        const senderIdFilters = new Set(
-                            senderIdMatch.flatMap(id => (id === '*me' ? myIdentityList : (id === '*anyone' ? [] : [id])))
-                        );
-                        if (senderHasMe) {
-                            myIdentityList.forEach(id => senderIdFilters.add(id));
-                        }
-                        if (!senderIdFilters.has(sender)) {
-                            logFilteredOut('senderIdMatch_miss', message, {
-                                sender,
-                                senderIdMatch,
-                                senderIdFilters: Array.from(senderIdFilters)
-                            });
-                            return false;
-                        }
-                    }
-                    else if (senderMatch) {
-                        if (senderMatch === '*me') {
-                            if ((myIdentityList.length > 0) && !myIdentityList.some(myId => (sender === myId) || sender.includes(myId))) {
-                                logFilteredOut('senderMatch_me_miss', message, {
-                                    sender,
-                                    myIdentityList
-                                });
-                                return false;
-                            }
-                        }
-                        else if (!sender.includes(senderMatch)) {
-                            logFilteredOut('senderMatch_text_miss', message, {
-                                sender,
-                                senderMatch
-                            });
-                            return false;
-                        }
-                    }
-                }
+            const party1IdSet = new Set(queryParty1Ids);
+            const party2IdSet = new Set(queryParty2Ids);
 
+            const filtered = scanResults.filter(message => {
+                const sender = String(message.sent_from || '').toLowerCase();
                 const receivers = normalizeReceivers(message).map(r => r.toLowerCase());
-                if (!receiverHasAnyone) {
-                    if (receiverIdMatch.length > 0) {
-                        const receiverIdFilters = new Set(
-                            receiverIdMatch.flatMap(id => (id === '*me' ? myIdentityList : (id === '*anyone' ? [] : [id])))
-                        );
-                        if (receiverHasMe) {
-                            myIdentityList.forEach(id => receiverIdFilters.add(id));
-                        }
-                        if (!receivers.some(r => receiverIdFilters.has(r))) {
-                            logFilteredOut('receiverIdMatch_miss', message, {
-                                receivers,
-                                receiverIdMatch,
-                                receiverIdFilters: Array.from(receiverIdFilters)
-                            });
-                            return false;
-                        }
-                    }
-                    else if (receiverMatch) {
-                        if ((receiverMatch === '*me') && !receivers.some(r => myIdentityList.includes(r))) {
-                            logFilteredOut('receiverMatch_me_miss', message, {
-                                receivers,
-                                myIdentityList
-                            });
-                            return false;
-                        }
-                        if ((receiverMatch !== '*me') && !receivers.some(r => r.includes(receiverMatch))) {
-                            logFilteredOut('receiverMatch_text_miss', message, {
-                                receivers,
-                                receiverMatch
-                            });
-                            return false;
-                        }
-                    }
+
+                const senderInParty1 = party1HasAnyone || party1IdSet.has(sender);
+                const senderInParty2 = party2HasAnyone || party2IdSet.has(sender);
+                const receiverInParty1 = party1HasAnyone || receivers.some(r => party1IdSet.has(r));
+                const receiverInParty2 = party2HasAnyone || receivers.some(r => party2IdSet.has(r));
+
+                const direction1Valid = senderInParty1 && receiverInParty2;
+                const direction2Valid = senderInParty2 && receiverInParty1;
+
+                if (!direction1Valid && !direction2Valid) {
+                    logFilteredOut('party_mismatch', message, { sender, receivers });
+                    return false;
                 }
 
                 const dateValue = normalizeDateValue(message);
@@ -2868,13 +2879,13 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                 };
             });
 
-            groupedMessages.sort((a, b) => {
-                const aValue = normalizeDateValue(a);
-                const bValue = normalizeDateValue(b);
-                const aTime = new Date(aValue || 0).getTime();
-                const bTime = new Date(bValue || 0).getTime();
-                return bTime - aTime;
-            });
+            const toSortMs = (v) => {
+                const n = Number(v);
+                if (!Number.isNaN(n) && n > 0) { return n; }
+                const d = new Date(v || 0).getTime();
+                return Number.isNaN(d) ? 0 : d;
+            };
+            groupedMessages.sort((a, b) => toSortMs(normalizeDateValue(b)) - toSortMs(normalizeDateValue(a)));
 
             setBaseMessages(groupedMessages);
         }
@@ -2961,55 +2972,6 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         return textFilteredMessages.filter((message) => messageMatchesStatusKey(message, activeStatusFilter));
     }, [textFilteredMessages, activeStatusFilter]);
 
-    const normalizedMyPatientId = String(myPatientId || '').trim().toLowerCase();
-    const normalizedSenderDisplay = String(filters.senderDisplay || '').trim().toLowerCase();
-    const normalizedReceiverDisplay = String(filters.receiverDisplay || '').trim().toLowerCase();
-    const normalizedSenderIds = (filters.senderIds || []).map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
-    const normalizedReceiverIds = (filters.receiverIds || []).map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
-
-    const senderIsAnyoneConfig = normalizedSenderDisplay === '*anyone' || normalizedSenderIds.includes('*anyone');
-    const receiverIsAnyoneConfig = normalizedReceiverDisplay === '*anyone' || normalizedReceiverIds.includes('*anyone');
-    const senderIsMeConfig = (
-        normalizedSenderDisplay === '*me'
-        || normalizedSenderIds.includes('*me')
-        || (!!normalizedMyPatientId && (normalizedSenderIds.length === 1) && (normalizedSenderIds[0] === normalizedMyPatientId))
-    );
-    const receiverIsMeConfig = (
-        normalizedReceiverDisplay === '*me'
-        || normalizedReceiverIds.includes('*me')
-        || (!!normalizedMyPatientId && (normalizedReceiverIds.length === 1) && (normalizedReceiverIds[0] === normalizedMyPatientId))
-    );
-
-    const sentScopePresetActive = senderIsMeConfig && receiverIsAnyoneConfig;
-    const receivedScopePresetActive = senderIsAnyoneConfig && receiverIsMeConfig;
-
-    const applyScopePreset = (scopePreset) => {
-        const presetValues = scopePreset === 'received'
-            ? {
-                senderIds: ['*anyone'],
-                receiverIds: ['*me'],
-                senderDisplay: '*anyone',
-                receiverDisplay: '*me'
-            }
-            : {
-                senderIds: ['*me'],
-                receiverIds: ['*anyone'],
-                senderDisplay: '*me',
-                receiverDisplay: '*anyone'
-            };
-
-        const nextFilters = {
-            ...filters,
-            ...presetValues
-        };
-
-        setFilters(nextFilters);
-        setPendingSearchChanges(false);
-        setHasSearchedOnce(true);
-        hasManualSearchRef.current = true;
-        runSearchRef.current(nextFilters);
-    };
-
     return (
         <Dialog
             open={true}
@@ -3027,63 +2989,36 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                         >
                             {'Message Monitor'}
                         </Typography>
-                        <Box className={classes.scopePresetRow}>
-                            <Typography variant='caption' color='textSecondary' className={classes.muted}>
-                                {'Filters'}
-                            </Typography>
-                            <Box className={classes.scopePresetActions}>
-                                <Typography variant='caption' color='textSecondary'>Quick scope:</Typography>
-                                <Button
-                                    variant='outlined'
-                                    size='small'
-                                    disableRipple
-                                    disableFocusRipple
-                                    className={`${classes.statusPillButton} ${classes.flagPill} ${sentScopePresetActive ? classes.statusPillActive : ''}`}
-                                    onClick={() => applyScopePreset('sent')}
-                                    style={{ opacity: sentScopePresetActive ? 1 : 0.8 }}
-                                >
-                                    {'Sent by Me'}
-                                </Button>
-                                <Button
-                                    variant='outlined'
-                                    size='small'
-                                    disableRipple
-                                    disableFocusRipple
-                                    className={`${classes.statusPillButton} ${classes.flagPill} ${receivedScopePresetActive ? classes.statusPillActive : ''}`}
-                                    onClick={() => applyScopePreset('received')}
-                                    style={{ opacity: receivedScopePresetActive ? 1 : 0.8 }}
-                                >
-                                    {'Received by Me'}
-                                </Button>
-                            </Box>
-                        </Box>
+                        <Typography variant='caption' color='textSecondary' className={classes.muted}>
+                            {'Filters'}
+                        </Typography>
 
                         <Box className={classes.filters}>
-                            <TextField
-                                label='Sender'
-                                variant='outlined'
-                                size='small'
-                                value={filters.senderDisplay}
-                                onChange={event => {
-                                    updateFilter('senderDisplay', event.target.value);
-                                    updateFilter('senderIds', []);
-                                }}
-                                onClick={openSenderPicker}
-                                InputProps={{ readOnly: true }}
-                            />
-
-                            <TextField
-                                label='Receiver'
-                                variant='outlined'
-                                size='small'
-                                value={filters.receiverDisplay}
-                                onChange={event => {
-                                    updateFilter('receiverDisplay', event.target.value);
-                                    updateFilter('receiverIds', []);
-                                }}
-                                onClick={openReceiverPicker}
-                                InputProps={{ readOnly: true }}
-                            />
+                            <Box style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <TextField
+                                    label='Person'
+                                    variant='outlined'
+                                    size='small'
+                                    value={party1EditText !== null ? party1EditText : filters.party1Display}
+                                    onChange={(e) => setParty1EditText(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') { openParty1Picker(party1EditText || ''); } }}
+                                    onBlur={() => { if (!showParty1QuickSearch) { setParty1EditText(null); } }}
+                                    onClick={() => openParty1Picker(party1EditText || '')}
+                                    style={{ flex: 1 }}
+                                />
+                                <Typography color='textSecondary' style={{ flexShrink: 0, fontSize: '1.1rem' }}>{'⇄'}</Typography>
+                                <TextField
+                                    label='Person'
+                                    variant='outlined'
+                                    size='small'
+                                    value={party2EditText !== null ? party2EditText : filters.party2Display}
+                                    onChange={(e) => setParty2EditText(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') { openParty2Picker(party2EditText || ''); } }}
+                                    onBlur={() => { if (!showParty2QuickSearch) { setParty2EditText(null); } }}
+                                    onClick={() => openParty2Picker(party2EditText || '')}
+                                    style={{ flex: 1 }}
+                                />
+                            </Box>
 
                             <TextField
                                 label='From'
@@ -3297,10 +3232,10 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                 </Box>
             </DialogContent>
 
-            {showSenderQuickSearch && (
+            {showParty1QuickSearch && (
                 <QuickSearch
-                    reactData={senderQuickSearchData}
-                    updateReactData={updateSenderQuickSearchData}
+                    reactData={party1QuickSearchData}
+                    updateReactData={updateParty1QuickSearchData}
                     options={{
                         pickAndGo: true,
                         keepSelections: true,
@@ -3308,24 +3243,25 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                         withPreferred: false,
                         hidePeople: false,
                         withSpecialValues: true,
-                        title: 'Select Sender',
+                        title: 'Select Person',
                         showAll: true,
                         restrictGroups: false,
-                        buttonText: 'Apply Sender'
+                        buttonText: 'Apply'
                     }}
                     onClose={(selections) => {
                         const finalSelections = selections || [];
-                        setShowSenderQuickSearch(false);
-                        setSenderQuickSearchData(prev => ({ ...prev, selections: finalSelections }));
-                        applyQuickSearchSelections('sender', finalSelections);
+                        setShowParty1QuickSearch(false);
+                        setParty1EditText(null);
+                        setParty1QuickSearchData(prev => ({ ...prev, selections: finalSelections, linkedPersonFilter: { raw: '', lower: '' } }));
+                        applyQuickSearchSelections('party1', finalSelections);
                     }}
                 />
             )}
 
-            {showReceiverQuickSearch && (
+            {showParty2QuickSearch && (
                 <QuickSearch
-                    reactData={receiverQuickSearchData}
-                    updateReactData={updateReceiverQuickSearchData}
+                    reactData={party2QuickSearchData}
+                    updateReactData={updateParty2QuickSearchData}
                     options={{
                         pickAndGo: true,
                         keepSelections: true,
@@ -3333,16 +3269,17 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                         withPreferred: false,
                         hidePeople: false,
                         withSpecialValues: true,
-                        title: 'Select Receiver',
+                        title: 'Select Person',
                         showAll: true,
                         restrictGroups: false,
-                        buttonText: 'Apply Receiver'
+                        buttonText: 'Apply'
                     }}
                     onClose={(selections) => {
                         const finalSelections = selections || [];
-                        setShowReceiverQuickSearch(false);
-                        setReceiverQuickSearchData(prev => ({ ...prev, selections: finalSelections }));
-                        applyQuickSearchSelections('receiver', finalSelections);
+                        setShowParty2QuickSearch(false);
+                        setParty2EditText(null);
+                        setParty2QuickSearchData(prev => ({ ...prev, selections: finalSelections, linkedPersonFilter: { raw: '', lower: '' } }));
+                        applyQuickSearchSelections('party2', finalSelections);
                     }}
                 />
             )}
@@ -3578,7 +3515,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                             })()}
                         </Box>
                         <Box className={classes.detailDialogFooter}>
-                            <Box>
+                            <Box style={{ display: 'flex', gap: 8 }}>
                                 <Button
                                     className={AVAClass.AVAButton}
                                     size='small'
@@ -3590,6 +3527,27 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                 >
                                     {'Forward'}
                                 </Button>
+                                {(() => {
+                                    const myId = String(myPatientId || '').trim().toLowerCase();
+                                    if (!myId) { return null; }
+                                    const senderId = String(selectedMessage?.sent_from || '').trim().toLowerCase();
+                                    const delivItems = Array.isArray(selectedMessage.delivery_items) ? selectedMessage.delivery_items : [selectedMessage];
+                                    const receivers = getUniqueReceiversFromDeliveries(delivItems).map(r => r.toLowerCase());
+                                    const iAmSender = senderId === myId;
+                                    const iAmReceiver = receivers.includes(myId);
+                                    if (!iAmSender && !iAmReceiver) { return null; }
+                                    const buttonLabel = iAmReceiver ? 'Reply' : 'Follow-up';
+                                    return (
+                                        <Button
+                                            className={AVAClass.AVAButton}
+                                            size='small'
+                                            variant='outlined'
+                                            onClick={() => { handleReplyMessage(); }}
+                                        >
+                                            {buttonLabel}
+                                        </Button>
+                                    );
+                                })()}
                             </Box>
                             <Button
                                 className={AVAClass.AVAButton}
@@ -3645,6 +3603,19 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                         setForwardMessageOptions(null);
                     }}
                     options={forwardMessageOptions}
+                />
+            )}
+
+            {!!replyMessageOptions && (
+                <MessageForm
+                    pPerson={state?.session?.user_id || state?.session?.patient_id || ''}
+                    pClient={state.session.client_id}
+                    pMessageList={[]}
+                    pSession={state.session}
+                    onReset={() => {
+                        setReplyMessageOptions(null);
+                    }}
+                    options={replyMessageOptions}
                 />
             )}
         </Dialog>
