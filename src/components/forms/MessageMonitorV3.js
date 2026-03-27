@@ -1524,6 +1524,14 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         }
     }, [accessListReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    React.useEffect(() => {
+        if (defaults.autoSearch && accessListReady) {
+            hasManualSearchRef.current = true;
+            setHasSearchedOnce(true);
+            runSearchRef.current();
+        }
+    }, [accessListReady]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const initialParty1Ids = (() => {
         const explicit = normalizeIdList(defaults.party1Ids || defaults.party1_ids || defaults.senderIds || defaults.sender_ids);
         if (explicit.length > 0) { return explicit; }
@@ -1533,7 +1541,10 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         return [];
     })();
 
-    const initialParty2Ids = normalizeIdList(defaults.party2Ids || defaults.party2_ids || defaults.receiverIds || defaults.receiver_ids);
+    const initialParty2Ids = normalizeIdList(
+        defaults.party2Ids || defaults.party2_ids || defaults.receiverIds || defaults.receiver_ids ||
+        defaults.party2 || defaults.receiver
+    );
 
     const defaultDates = getDefaultDateRange();
     const [filters, setFilters] = React.useState({
