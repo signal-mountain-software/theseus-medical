@@ -533,7 +533,7 @@ export async function getCalendarEntries(body, statusUpdate) {
         switch (rT[t]) {
           case 'all': {
             qQ.KeyConditionExpression += ' and begins_with(event_key, :rV)';
-            qQ.ExpressionAttributeValues[':rV'] = `${rV.split('#')[0]}#`;
+            qQ.ExpressionAttributeValues[':rV'] = `${rV.split('#')[0]}`;
             break;
           }
           case 'template': {

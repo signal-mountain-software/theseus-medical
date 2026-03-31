@@ -3,7 +3,7 @@ import React from 'react';
 import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { formatPhone, makeName } from '../../util/AVAPeople';
-import { makeDate, makeTime } from '../../util/AVADateTime';
+import { makeDate, makeTime, addDays } from '../../util/AVADateTime';
 import AVAConfirm from './AVAConfirm';
 import AVAUploadFile from '../../util/AVAUploadFile';
 
@@ -28,7 +28,7 @@ import useSession from '../../hooks/useSession';
 import { syncPersonToSessionCaches } from '../../util/AVASessionSync';
 import { useIdleTimer } from 'react-idle-timer';
 import { updateDocument, createDocument } from '../../util/AVADocuments';
-import { writeSlot } from '../../util/AVACalendars';
+import { writeSlot, getCalendarEntries } from '../../util/AVACalendars';
 
 const useStyles = makeStyles(theme => ({
   dialogBox: {
@@ -367,7 +367,7 @@ export default ({ request = {}, onClose }) => {
     lastActiveTime: nowObj,
     version: 1,
     idleState: false,
-    pertains_to: options.person_id,
+    pertains_to: options.person_id || state.session.patient_id,
     clientSampleMode: (!options.document_id && (options.person_id === state.session.client_id))
   });
 
@@ -1066,6 +1066,182 @@ export default ({ request = {}, onClose }) => {
         field_variables.value,
         field_variables.value?.selection
       );
+    }
+
+    // For select_event type, dynamically populate selectionList from future calendar occurrences
+    if (returnObj.type === 'select_event' && returnObj.selectionObj?.event_id) {
+      const todayNumeric = makeDate('today').numeric;
+
+      // Normalize event_id to an array to support single or multiple events
+      const rawEventIds = returnObj.selectionObj.event_id;
+      const eventIds = Array.isArray(rawEventIds) ? rawEventIds : [rawEventIds];
+
+      // Fetch calendar records for all event IDs in parallel
+      const perEventResults = await Promise.all(
+        eventIds.map(eid => getCalendarEntries({
+          client_id: state.session.client_id,
+          event_id: eid,
+          type: 'all'
+        }))
+      );
+
+      // Format hhmm (24h integer, e.g. 830, 1400) → "h:mm AM/PM"
+      const formatHHMM = (hhmm) => {
+        const n = Number(hhmm);
+        const h = Math.floor(n / 100);
+        const m = n % 100;
+        const ampm = h < 12 ? 'AM' : 'PM';
+        const h12 = h % 12 || 12;
+        return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+      };
+
+      // Format minutes-since-midnight → "h:mm AM/PM"
+      const formatMins = (mins) => {
+        const h = Math.floor(Number(mins) / 60);
+        const m = Number(mins) % 60;
+        const ampm = h < 12 ? 'AM' : 'PM';
+        const h12 = h % 12 || 12;
+        return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+      };
+
+      // Build a flat list of future occurrences, each tagged with its parent event's metadata
+      const allFutureOccurrences = [];
+      for (let i = 0; i < eventIds.length; i++) {
+        const allCalRecords = perEventResults[i];
+        const eventRec = allCalRecords.find(rec =>
+          rec.record_type === 'event' || !rec.event_key?.includes('#')
+        );
+        const rawType = eventRec?.eventData?.event_data?.type || eventRec?.eventData?.sign_up?.type || '';
+        const eventType = (rawType === 'time') ? 'time' : (rawType === 'seats') ? 'seats' : 'open';
+        const eventStartMins = eventRec?.eventData?.event_data?.time?.from_minutesSinceMidnight;
+        const eventLocation = eventRec?.eventData?.event_data?.location?.description;
+        const baseSlotPattern = eventRec?.eventData?.slotPattern || [];
+        const signUpWindow = eventRec?.eventData?.sign_up?.window;
+        allCalRecords
+          .filter(rec => {
+            const keyParts = rec.event_key?.split('#');
+            if (keyParts?.length !== 2 || !rec.occurrence_date || rec.occurrence_date < todayNumeric) return false;
+            if (signUpWindow) {
+              const occDate = makeDate(rec.occurrence_date).date;
+              if (signUpWindow.start) {
+                // Registration opens `start` days before the occurrence
+                const windowOpenNumeric = makeDate(addDays(occDate, -Number(signUpWindow.start))).numeric;
+                if (todayNumeric < windowOpenNumeric) return false;
+              }
+              if (signUpWindow.end) {
+                // Registration closes `end` days before the occurrence
+                const windowCloseNumeric = makeDate(addDays(occDate, -Number(signUpWindow.end))).numeric;
+                if (todayNumeric > windowCloseNumeric) return false;
+              }
+            }
+            return true;
+          })
+          .forEach(occRec => {
+            allFutureOccurrences.push({ occRec, eventType, eventStartMins, eventLocation, baseSlotPattern });
+          });
+      }
+
+      // Sort all occurrences chronologically: date first, then event start time
+      allFutureOccurrences.sort((a, b) => {
+        const dateDiff = (a.occRec.occurrence_date || 0) - (b.occRec.occurrence_date || 0);
+        if (dateDiff !== 0) return dateDiff;
+        return (a.eventStartMins || 0) - (b.eventStartMins || 0);
+      });
+
+      // Apply event_filter if present; occurrence/occurrence_id wins over count
+      const eventFilter = returnObj.selectionObj?.event_filter;
+      let filteredOccurrences = allFutureOccurrences;
+      if (eventFilter) {
+        const filterByOcc = eventFilter.occurrence ?? eventFilter.occurrence_id;
+        if (filterByOcc != null) {
+          const filterSet = new Set([].concat(filterByOcc));
+          filteredOccurrences = allFutureOccurrences.filter(({ occRec }) => filterSet.has(occRec.event_key));
+        } else if (eventFilter.count != null) {
+          filteredOccurrences = allFutureOccurrences.slice(0, Number(eventFilter.count));
+        }
+      }
+
+      const selectionList = [];
+      const preSelectedValues = [];  // values to pre-populate as already selected
+
+      for (const { occRec, eventType, eventStartMins, eventLocation, baseSlotPattern } of filteredOccurrences) {
+        const occEventKey = occRec.event_key;  // <event_id>#<occurrence_date>
+        const occSlotPattern = occRec.occData?.slotPattern || baseSlotPattern;
+        const occDateDisplay = makeDate(occRec.occurrence_date).absolute_full;
+
+        if (eventType === 'open') {
+          // Open events: one entry per occurrence, no slot interrogation needed
+          const displayParts = [occDateDisplay];
+          if (eventStartMins != null) { displayParts.push(`at ${formatMins(eventStartMins)}`); }
+          if (eventLocation) { displayParts.push(`@ ${eventLocation}`); }
+          selectionList.push({
+            value: occEventKey,
+            display: displayParts.join(' '),
+            event_type: eventType,
+            slotPattern: occSlotPattern
+          });
+        }
+        else {
+          // seats or time: interrogate existing slot records to find occupancy
+          const slotQueryResults = await getCalendarEntries({
+            client_id: state.session.client_id,
+            event_id: occEventKey,
+            type: 'slot'
+          });
+          // Actual slot records have 3 '#'-separated parts in event_key
+          const actualSlotRecs = slotQueryResults.filter(rec => rec.event_key?.split('#').length === 3);
+          const activeSlotRecs = actualSlotRecs.filter(rec => rec.slotData?.status?.current !== 'released');
+          // A slot is occupied when its record exists and status is not 'released'
+          const occupiedSlots = new Set(activeSlotRecs.map(rec => String(rec.event_key.split('#')[2])));
+          // Find any slot already held by the current user
+          const mySlotRec = activeSlotRecs.find(rec => rec.slot_owner === reactData.pertains_to);
+          const mySlotId = mySlotRec ? String(mySlotRec.event_key.split('#')[2]) : null;
+
+          if (eventType === 'seats') {
+            // Include this occurrence if there's a free seat OR the user already holds a seat here
+            const availableSlots = occSlotPattern.filter(slot => !occupiedSlots.has(String(slot)));
+            const allOccupied = occSlotPattern.length > 0 && availableSlots.length === 0;
+            if (!allOccupied || mySlotId) {
+              const displayParts = [occDateDisplay];
+              if (eventStartMins != null) { displayParts.push(`at ${formatMins(eventStartMins)}`); }
+              if (eventLocation) { displayParts.push(`@ ${eventLocation}`); }
+              selectionList.push({
+                value: occEventKey,
+                display: displayParts.join(' '),
+                event_type: eventType,
+                slotPattern: occSlotPattern,
+                availableSlots,
+                mySlotId   // null when not already registered; slot identifier when already registered
+              });
+              if (mySlotId) { preSelectedValues.push(occEventKey); }
+            }
+          }
+          else {
+            // time-based: one entry per unoccupied slot, plus any slot the user already holds
+            for (const slot of occSlotPattern) {
+              const slotStr = String(slot);
+              const isMySlot = (mySlotId === slotStr);
+              if (!occupiedSlots.has(slotStr) || isMySlot) {
+                selectionList.push({
+                  value: `${occEventKey}#${slotStr}`,
+                  display: `${occDateDisplay} at ${formatHHMM(slot)}`,
+                  event_type: eventType,
+                  slotPattern: occSlotPattern,
+                  slot_id: slotStr,
+                  mySlotId: isMySlot ? slotStr : null
+                });
+                if (isMySlot) { preSelectedValues.push(`${occEventKey}#${slotStr}`); }
+              }
+            }
+          }
+        }
+      }
+
+      returnObj.selectionObj.selectionList = selectionList.slice(0, 20);
+      // Pre-populate field value with any slots the user already holds
+      if (preSelectedValues.length > 0) {
+        returnObj.field_value = preSelectedValues.length === 1 ? preSelectedValues[0] : preSelectedValues;
+      }
     }
 
     // set options
@@ -2501,8 +2677,8 @@ export default ({ request = {}, onClose }) => {
     let field_values = {};
     let signatures = [];
     let needsUpdate = { peopleRec: false, sessionRec: false };
-    const selectEventAssignments = new Set();
-    const selectEventReleases = new Set();
+    const selectEventAssignments = new Map(); // Map<valueKey, {event, slot}>
+    const selectEventReleases = new Map();    // Map<valueKey, {event, slot}>
     const normalizeSelectEventList = (rawValue) => {
       return [rawValue].flat()
         .map(v => (isObject(v) ? (v.value || v.event || v.event_id || v.id || null) : v))
@@ -2522,16 +2698,35 @@ export default ({ request = {}, onClose }) => {
       }
       if (reactData.fields[this_field].ignore) { continue; }  // load the values, but don't save them anywhere
       if ((reactData.fields[this_field].type === 'select_event') && !reactData.fields[this_field].options?.viewOnly) {
+        const participantId = reactData.pertains_to || state.session.patient_id;
+        const selectionList = reactData.fields[this_field].selectionObj?.selectionList || [];
         const selectedEventList = normalizeSelectEventList(reactData.fields[this_field].value);
         const previousEventList = normalizeSelectEventList(reactData.docRec?.field_values?.[this_field]);
 
         const selectedSet = new Set(selectedEventList);
-        for (const this_event of selectedEventList) {
-          selectEventAssignments.add(this_event);
+        for (const selectedValue of selectedEventList) {
+          const valueParts = selectedValue.split('#');
+          // For time type, value encodes the slot as the 3rd part; strip it for the event key
+          const eventKey = valueParts.length >= 3 ? `${valueParts[0]}#${valueParts[1]}` : selectedValue;
+          const matchingEntry = selectionList.find(entry => entry.value === selectedValue);
+          const entryEventType = matchingEntry?.event_type || 'open';
+          let slot;
+          if (entryEventType === 'time') {
+            slot = valueParts[2] || null;
+          } else if (entryEventType === 'seats') {
+            // prefer the user's existing slot (re-registration); fall back to first available seat
+            slot = matchingEntry?.mySlotId ?? matchingEntry?.availableSlots?.[0] ?? null;
+          } else {
+            slot = participantId;
+          }
+          selectEventAssignments.set(selectedValue, { event: eventKey, slot });
         }
-        for (const previous_event of previousEventList) {
-          if (!selectedSet.has(previous_event)) {
-            selectEventReleases.add(previous_event);
+        for (const previousValue of previousEventList) {
+          if (!selectedSet.has(previousValue)) {
+            const valueParts = previousValue.split('#');
+            const eventKey = valueParts.length >= 3 ? `${valueParts[0]}#${valueParts[1]}` : previousValue;
+            const slot = valueParts.length >= 3 ? valueParts[2] : participantId;
+            selectEventReleases.set(previousValue, { event: eventKey, slot });
           }
         }
       }
@@ -2571,37 +2766,37 @@ export default ({ request = {}, onClose }) => {
       }
     }
 
-    for (const releasedEventId of selectEventReleases) {
+    for (const [, { event: releasedEvent, slot: releasedSlot }] of selectEventReleases) {
       try {
         await writeSlot({
           client: state.session.client_id,
-          event: releasedEventId,
+          event: releasedEvent,
           owner: state.session.patient_id,
-          slot: state.session.patient_id,
+          slot: releasedSlot,
           status: 'released',
           show_this_slot: false,
           no_messaging: false
         });
       }
       catch (error) {
-        cl(`Error releasing select_event slot for ${releasedEventId}: ${error}`);
+        cl(`Error releasing select_event slot for ${releasedEvent}: ${error}`);
       }
     }
 
-    for (const selectedEventId of selectEventAssignments) {
+    for (const [, { event: selectedEvent, slot: selectedSlot }] of selectEventAssignments) {
       try {
         await writeSlot({
           client: state.session.client_id,
-          event: selectedEventId,
+          event: selectedEvent,
           owner: state.session.patient_id,
-          slot: state.session.patient_id,
+          slot: selectedSlot,
           show_this_slot: true,
           no_messaging: false,
           rejectDuplicate: true
         });
       }
       catch (error) {
-        cl(`Error writing select_event slot for ${selectedEventId}: ${error}`);
+        cl(`Error writing select_event slot for ${selectedEvent}: ${error}`);
       }
     }
     // all field data is now prepared for saving
@@ -3055,6 +3250,36 @@ export default ({ request = {}, onClose }) => {
     // If a form_id is sent in, create a new document from that form
     // Otherwise the call returns an error.
 
+    // mode === 'update': look up the most recent editable document for this person+form before doing anything else
+    if (!reactData.document_id && options.mode === 'update' && reactData.form_id && reactData.pertains_to) {
+      const gsiResult = await dbClient
+        .query({
+          TableName: 'DocumentMaster',
+          IndexName: 'person_form-index',
+          KeyConditionExpression: 'pertains_to = :p and form_type = :f',
+          ExpressionAttributeValues: {
+            ':p': reactData.pertains_to,
+            ':f': reactData.form_id
+          }
+        })
+        .promise()
+        .catch(error => {
+          cl(`in FormFillB -> initialize (update mode), bad query to DocumentMaster. Error is: ${error}`);
+        });
+
+      if (recordExists(gsiResult) && gsiResult.Items.length > 0) {
+        let candidates = [...gsiResult.Items].sort((a, b) =>
+          (b.document_id || '').localeCompare(a.document_id || '')  // newest first
+        );
+        // Prefer the most recent document that is still editable
+        const editable = candidates.find(d => d.status !== 'complete' && !d.formLocked);
+        const chosen = editable || candidates[0];
+        // Inject the resolved document_id so the existing lookup path handles it
+        updateReactData({ document_id: chosen.document_id }, false);
+        reactData.document_id = chosen.document_id;
+      }
+    }
+
     if (reactData.document_id) {
       // first, look to see if the referenced document_id is completed.  If it is, show it and leave
       let docRec = await dbClient
@@ -3080,8 +3305,10 @@ export default ({ request = {}, onClose }) => {
         });
         await processAllFieldsForDisplay();
         let setviewOnlyMode = false;
-        if (!options.hasOwnProperty('open_complete') || options.open_complete === false) {
-          setviewOnlyMode = (docRec.Item.form_stage === 'complete');
+        if (options.mode !== 'update') {
+          if (!options.hasOwnProperty('open_complete') || options.open_complete === false) {
+            setviewOnlyMode = (docRec.Item.form_stage === 'complete');
+          }
         }
         updateReactData({
           previous_formStage: docRec.Item.form_stage || 'default',
@@ -3106,9 +3333,10 @@ export default ({ request = {}, onClose }) => {
     });
     await processAllFieldsForDisplay();
     let nowTime = new Date().getTime();
+    const resolved_pertains_to = reactData.pertains_to || state.session.patient_id;
     updateReactData({
-      document_id: `${reactData.pertains_to}_${reactData.form_id}_${nowTime}`,
-      pertains_to: reactData.pertains_to,
+      document_id: `${resolved_pertains_to}_${reactData.form_id}_${nowTime}`,
+      pertains_to: resolved_pertains_to,
       form_id: reactData.form_id,
       document_title,
       sections,

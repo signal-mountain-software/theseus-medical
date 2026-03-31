@@ -21,6 +21,8 @@ import CheckoutHistory from './CheckoutHistory';
 import LinkedAccounts from '../sections/LinkedAccounts';
 import PersonalizationSection from '../sections/PersonalizationSection';
 import GroupAssignments from '../sections/GroupAssignments';
+import ActivitiesSection from '../sections/ActivitiesSection';
+import MessageMonitorV3 from '../forms/MessageMonitorV3';
 
 import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -133,6 +135,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       FormSection: {
         component_id: FormSection,
       },
+      ActivitiesSection: {
+        component_id: ActivitiesSection,
+      },
 
     },
     og: {
@@ -154,6 +159,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
   });
 
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
+  const [showMessagesSection, setShowMessagesSection] = React.useState(false);
   const updateReactData = (newData, force = false) => {
     if (isMounted.current) {
       setReactData((prevValues) => (Object.assign(
@@ -432,6 +438,24 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('messaging') : true)),
         version_id: 0,
         component_name: 'MessagePreferencesSection'
+      },
+      {
+        section_name: 'Message History',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('MessagesSection')) : false),
+        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('messages') : true))
+          && !(reactUpdObj.mode === 'add'),
+        version_id: 0,
+        component_name: 'MessagesSection'
+      },
+      {
+        section_name: 'Activities',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('ActivitiesSection')) : false),
+        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('activities') : true))
+          && !(reactUpdObj.mode === 'add'),
+        version_id: 0,
+        component_name: 'ActivitiesSection'
       },
       {
         section_name: 'My Family',
@@ -1574,6 +1598,21 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           <Paper component={Box}
             key={`section_frame`} variant='outlined' overflow={'auto'}
           >
+            {showMessagesSection && (() => {
+              const isSelf = reactData.person_id === state.session.patient_id;
+              const party2Name = (`${reactData.current.peopleRec?.name?.first || ''} ${reactData.current.peopleRec?.name?.last || ''}`).trim() || reactData.person_id;
+              return (
+                <MessageMonitorV3
+                  defaults={{
+                    party1: '*me',
+                    party2: isSelf ? '*anyone' : reactData.person_id,
+                    party2Display: isSelf ? '*anyone' : party2Name,
+                    autoSearch: true
+                  }}
+                  onClose={() => setShowMessagesSection(false)}
+                />
+              );
+            })()}
             {reactData.sections.map((this_section, sectionNdx) => (
               (this_section.isAuthorized &&
                 (!reactData.options?.sectionToShow || reactData.administrative_account
@@ -1605,6 +1644,10 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                     flexDirection='column'
                     minHeight={80}
                     onClick={async () => {
+                      if (this_section.component_name === 'MessagesSection') {
+                        setShowMessagesSection(true);
+                        return;
+                      }
                       reactData.sections[sectionNdx].isOpen = !reactData.sections[sectionNdx].isOpen;
                       updateReactData({
                         focusAt: (reactData.sections[sectionNdx].isOpen ? this_section.component_name : null),

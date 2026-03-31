@@ -2510,13 +2510,56 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
               }
             </Paper>
           }
-          {(Object.keys(reactData.threads).length === 0) &&
+          {(Object.keys(reactData.threads).length === 0) && !(options && options.newMessage) &&
             <Box display='flex' flex={4} justifyContent='center' alignItems='flex-start' overflow='hidden'>
               <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center', margin: { top: 3 } })} >
                 {(reactData.lastReloadTime === 0) ? `Loading!  Please wait...` : `You don't have any message activity yet!`}
               </Typography>
             </Box>
           }
+          {(Object.keys(reactData.threads).length === 0) && (options && options.newMessage) && !!options.sourceMessage && (() => {
+            const src = options.sourceMessage;
+            const subject = String(src.subject_line || src.subject || src.title || '').trim();
+            const bodyText = String(options.sourceMessageText || '').trim();
+            const sentDate = src.created_time ? makeReadableTime(src.created_time) : '';
+            const senderName = options.sourceSenderName || String(src.sent_from || 'Unknown').trim();
+            const previewBody = bodyText.length > 400 ? bodyText.slice(0, 400) + '…' : bodyText;
+            return (
+              <Paper
+                component={Box}
+                key={'source_message_preview'}
+                marginLeft='16px'
+                marginRight='16px'
+                marginTop='8px'
+                padding='16px'
+                style={{ backgroundColor: '#f5f5f5', opacity: 0.9, borderRadius: '8px' }}
+                square
+              >
+                <Typography style={AVATextStyle({ size: 0.75, bold: true, opacity: 0.55, margin: { bottom: 0.5 } })}>
+                  {'In reference to:'}
+                </Typography>
+                <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='baseline'>
+                  <Typography style={AVATextStyle({ size: 0.85, bold: true })}>
+                    {`From: ${senderName}`}
+                  </Typography>
+                  <Typography style={AVATextStyle({ size: 0.8, opacity: 0.7 })}>
+                    {sentDate}
+                  </Typography>
+                </Box>
+                {!!subject &&
+                  <Typography style={AVATextStyle({ size: 0.9, bold: true, margin: { top: 0.5 } })}>
+                    {subject}
+                  </Typography>
+                }
+                {!!previewBody &&
+                  <Typography style={AVATextStyle({ size: 0.85, margin: { top: 0.5 }, opacity: 0.85 })}>
+                    {previewBody}
+                  </Typography>
+                }
+              </Paper>
+            );
+          })()}
+
           {reactData.deletePending &&
             <AVAConfirm
               promptText={reactData.confirmMessage}
