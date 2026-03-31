@@ -832,6 +832,21 @@ export default ({ start_at }) => {
     return ReactPlayer.canPlay(url.trim());
   };
 
+  const getLinkThumbnailUrl = (url, fallbackIcon) => {
+    if (!url || typeof url !== 'string') {
+      return fallbackIcon || null;
+    }
+    const trimmed = url.trim();
+    if (/\.(jpe?g|png|gif|webp|svg|bmp)(\?.*)?$/i.test(trimmed)) {
+      return trimmed;
+    }
+    const ytMatch = trimmed.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?/]+)/i);
+    if (ytMatch) {
+      return `https://img.youtube.com/vi/${ytMatch[1]}/0.jpg`;
+    }
+    return fallbackIcon || null;
+  };
+
   const findMenuCellInHierarchy = (menu_id) => {
     if (!menu_id) {
       return null;
@@ -1947,6 +1962,11 @@ export default ({ start_at }) => {
     );
     const canDropOnThisCard = !!((menuItemType === 'menu') && canManageMenuChildren(this_item));
     const hideCardImage = (!useTileUI) && (accessibleDepth > 0);
+    const isLinkCard = ['link', 'live_link'].includes(normalizedMenuType);
+    const cardImageUrl = isLinkCard
+      ? getLinkThumbnailUrl(this_item.url, this_item.icon)
+      : this_item.icon;
+    const hasLinkThumbnail = isLinkCard && !!(cardImageUrl && cardImageUrl !== this_item.icon);
     const parentColor = (level_index > 0)
       ? reactData.menu_hierarchy[level_index - 1]?.find((parentCell) => parentCell.menu_id === this_cell.parent)?.menuItemRec?.color
       : null;
@@ -2131,27 +2151,34 @@ export default ({ start_at }) => {
               </IconButton>
             </Box>
           }
-          {this_item.icon && !['link', 'live_link'].includes(normalizedMenuType) && !reactData.editFavorites && !hideCardImage &&
+          {cardImageUrl && !reactData.editFavorites && !hideCardImage &&
             <CardMedia
               className={classes.media}
               key={`${keyPrefix}cardMedia_card-${level_index}.${item_index}`}
-              image={this_item.icon}
+              image={cardImageUrl}
               title="Menu Media"
-              style={useTileUI
-                ? undefined
-                : {
-                  width: 64,
-                  minWidth: 64,
-                  maxWidth: 64,
-                  height: 64,
-                  minHeight: 64,
-                  marginLeft: 18,
-                  marginRight: -8,
-                  borderRadius: '16px'
-                }
+              style={hasLinkThumbnail
+                ? (useTileUI
+                  ? { height: 100, width: '100%', borderRadius: '30px 30px 30px 30px' }
+                  : { width: 140, minWidth: 140, maxWidth: 140, height: 86, minHeight: 86, borderRadius: '30px 0 0 30px' }
+                )
+                : (useTileUI
+                  ? undefined
+                  : {
+                    width: 64,
+                    minWidth: 64,
+                    maxWidth: 64,
+                    height: 64,
+                    minHeight: 64,
+                    marginLeft: 18,
+                    marginRight: -8,
+                    borderRadius: '16px'
+                  }
+                )
               }
             />
           }
+          {!(hasLinkThumbnail && !hideCardImage && !reactData.editFavorites) &&
           <CardContent className={classes.cardcontentdetail}
             key={`${keyPrefix}cardContent_card-${level_index}.${item_index}`}
             style={useTileUI
@@ -2200,6 +2227,7 @@ export default ({ start_at }) => {
               })()}
             </Box>
           </CardContent>
+          }
           {canAddFromThisRow &&
             <Box
               display='flex'
