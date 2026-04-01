@@ -2522,7 +2522,7 @@ export default ({ request = {}, onClose }) => {
   const resolveValue = (object, key, value) => {
     const this_key = key.shift();
     if (key.length === 0) {
-      if (isEmpty(object)) {
+      if (isEmpty(object) || typeof object !== 'object' || object === null) {
         return { [this_key]: value };
       }
       else {
