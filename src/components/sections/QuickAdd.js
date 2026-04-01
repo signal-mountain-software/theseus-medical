@@ -103,6 +103,7 @@ export default ({ onClose, options = {} }) => {
     initialized: false,
     errorList: {},
     new_account_prompts: {},
+    all_account_prompts: [], // Unfiltered prompts, used for auto_next_account_type lookup
     administrative_account: (state?.user ? ['admin', 'support', 'master'].includes(state.user.account_class) : false),
     client_id: state?.session?.client_id || options?.client_id || null,
     selected_account_type: '',
@@ -191,6 +192,7 @@ export default ({ onClose, options = {} }) => {
       }
 
       if (newAccountForm) {
+        reactUpd.all_account_prompts = deepCopy(newAccountForm);
         reactUpd.new_account_prompts = deepCopy(newAccountForm).filter(entry => {
           // If restrict_to_admin is true, only include if user is administrative account
           if (entry.restrict_to_admin && (!reactData.administrative_account || options.source === 'url_parameter')) {
@@ -659,8 +661,16 @@ export default ({ onClose, options = {} }) => {
         throw error;
       }
 
-      // If family_role is 'none', go directly to complete stage (skip asking for more members)
-      const nextStage = reactData.selected_account_config?.family_role === 'none' ? 'complete' : 'ask_for_more';
+      // Determine next stage based on family_role and auto_next_account_type
+      const autoNextType = reactData.selected_account_config?.auto_next_account_type;
+      const nextConfig = autoNextType
+        ? (reactData.all_account_prompts || reactData.new_account_prompts || []).find(p => p.account_type === autoNextType) || null
+        : null;
+      const nextStage = reactData.selected_account_config?.family_role === 'none'
+        ? 'complete'
+        : nextConfig
+          ? 'fill_fields'
+          : 'ask_for_more';
 
       // if selected account config includes "on_save" key, store this.  We'll use it on exit.
       if (reactData.selected_account_config?.on_save) {
@@ -670,11 +680,30 @@ export default ({ onClose, options = {} }) => {
         }));
       }
 
-      setReactData(prev => ({
-        ...prev,
-        family_members: [...prev.family_members, familyMember],
-        stage: nextStage
-      }));
+      if (nextConfig) {
+        // Auto-advance: skip ask_for_more and go directly to fill_fields for the next account type
+        setReactData(prev => ({
+          ...prev,
+          family_members: [...prev.family_members, familyMember],
+          stage: 'fill_fields',
+          selected_account_type: autoNextType,
+          selected_account_config: nextConfig,
+          field_values: {},
+          form_fields: {},
+          field_validation_errors: {},
+          loading_fields: false,
+          current_member_index: prev.current_member_index + 1,
+          parsed_first_name: '',
+          parsed_last_name: ''
+        }));
+        await gatherFormFields(nextConfig);
+      } else {
+        setReactData(prev => ({
+          ...prev,
+          family_members: [...prev.family_members, familyMember],
+          stage: nextStage
+        }));
+      }
     };
 
     const fieldValues = familyMember.field_values || {};
@@ -1326,7 +1355,7 @@ export default ({ onClose, options = {} }) => {
       };
 
       // pick-out form_field instructions and place data properly in People rec
-      Object.entries(reactData.form_fields).forEach(([fieldName, formRec]) => {
+      Object.entries(member.form_fields).forEach(([fieldName, formRec]) => {
         if (Object.prototype.hasOwnProperty.call(fieldValues, fieldName)) {
           const rawSaveAs = formRec.saveAs || formRec.value?.saveAs || formRec.prompt?.saveAs || false;
           const saveAs = (typeof rawSaveAs === 'string')
@@ -1364,7 +1393,7 @@ export default ({ onClose, options = {} }) => {
       // Add any additional field values to the record
       Object.entries(fieldValues).forEach(([fieldName, fieldValue]) => {
         // Skip fields that were already handled by the saveAs loop above
-        const formRec = reactData.form_fields[fieldName];
+        const formRec = member.form_fields[fieldName];
         const hasSaveAs = !!(formRec?.saveAs || formRec?.value?.saveAs || formRec?.prompt?.saveAs);
         if (hasSaveAs) { return; }
 
