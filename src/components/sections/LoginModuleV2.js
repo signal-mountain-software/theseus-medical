@@ -585,7 +585,16 @@ const LoginModuleV2 = ({
 
   const loadClientCustomizations = React.useCallback(async (personRec, sessionRec) => {
     if (!personRec?.client_id || !sessionRec) return sessionRec;
-    const customizationsRec = await dbClient
+    const customizationsAllRec = await dbClient
+      .query({
+        KeyConditionExpression: 'client_id = :c',
+        ExpressionAttributeValues: { ':c': '*all' },
+        TableName: 'Customizations',
+      })
+      .promise()
+      .catch(() => null);
+    
+     const customizationsRec = await dbClient
       .query({
         KeyConditionExpression: 'client_id = :c',
         ExpressionAttributeValues: { ':c': personRec.client_id },
@@ -596,6 +605,10 @@ const LoginModuleV2 = ({
 
     if (!customizationsRec || !Array.isArray(customizationsRec.Items)) {
       return sessionRec;
+    }
+
+    if (customizationsAllRec && Array.isArray(customizationsAllRec.Items)) { 
+      customizationsRec.Items.push(...customizationsAllRec.Items);
     }
 
     const updatedSession = { ...sessionRec };
