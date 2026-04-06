@@ -381,11 +381,11 @@ export default ({ currentValues, reactData, updateReactData }) => {
               style={AVATextStyle({ margin: { top: 0, left: 1 }, bold: true })}
               onClick={async () => {
                 updateReactData({
-                  viewFamilyMember: currentValues.familyRecs[0].primary_contact.id
+                  viewFamilyMember: currentValues.familyRecs[0]?.primary_contact?.id || currentValues.peopleRec.person_id
                 }, true);
               }}
             >
-              {`${makeName(currentValues.familyRecs[0].primary_contact.id) || currentValues.familyRecs[0].primary_contact.name.trim() || currentValues.familyRecs[0].primary_contact.id || 'Unknown Person'}`}
+              {`${makeName(currentValues.familyRecs[0]?.primary_contact?.id) || currentValues.familyRecs[0]?.primary_contact?.name?.trim() || currentValues.familyRecs[0]?.primary_contact?.id || 'None Recorded'}`}
             </Typography>
             <Typography style={AVATextStyle({ margin: { top: 0, left: 0.5, right: -0.8 }, bold: true })}>
               {'- Primary'}
