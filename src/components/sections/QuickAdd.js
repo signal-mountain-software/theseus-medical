@@ -1035,7 +1035,7 @@ export default ({ onClose, options = {} }) => {
           // Send verification code
           await sendMessages({
             client: matchedAccount.client_id,
-            author: reactData.user_id,
+            author: reactData.user_id || 'AVA:Notifications',
             person_id: matchedAccount.person_id,
             preferred_method: sendMethod,
             messageText: `To verify your account, use this code: ${tempPass}`,

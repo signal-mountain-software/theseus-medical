@@ -181,7 +181,7 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
       (tempName, currentValue, currentIndex) =>
         (currentValue ? (tempName + '_' + currentValue.charAt(0).toUpperCase() + currentValue.slice(1)) : tempName)
     );
-    source_address += '-' + reactData.client_name.split(' ').reduce(
+    source_address += '-' + (reactData.client_name || currentValues.peopleRec.client_id || '').split(' ').reduce(
       (tempName, currentValue, currentIndex) =>
         tempName + ((currentIndex === 0) ? '' : '_') + currentValue.charAt(0).toUpperCase() + currentValue.slice(1)
     );
