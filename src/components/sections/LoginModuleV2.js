@@ -608,7 +608,7 @@ const LoginModuleV2 = ({
     }
 
     if (customizationsAllRec && Array.isArray(customizationsAllRec.Items)) { 
-      customizationsRec.Items.push(...customizationsAllRec.Items);
+      customizationsRec.Items.unshift(...customizationsAllRec.Items);
     }
 
     const updatedSession = { ...sessionRec };
