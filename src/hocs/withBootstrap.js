@@ -1236,10 +1236,20 @@ export default Component => props => {
       .then(results => {
         console.log(`All resolved; results are ${JSON.stringify(results)}`, 'Launching MakeAVAMenu');
         bootState.groups = Object.assign({}, { belongsTo }, membersObj, groupsObj);
-        MakeAVAMenu(this_patient, pSession.client_id, screenQuiet, null, null, bootState)
-          .then(() => {
-            console.log(`Menu reload complete`);
-          });
+        const ava_env = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
+        const usesNewMenu = (
+          (pSession.client_style?.ui_v3 && (ava_env !== 'D' || pSession.client_style?.ui_v3Dev)) ||
+          pSession.client_style?.ui_tiles
+        );
+        if (!usesNewMenu) {
+          MakeAVAMenu(this_patient, pSession.client_id, screenQuiet, null, null, bootState)
+            .then(() => {
+              console.log(`Menu reload complete`);
+            });
+        }
+        else {
+          console.log(`Skipping MakeAVAMenu - client uses new menu (ui_v3=${pSession.client_style?.ui_v3}, ui_tiles=${pSession.client_style?.ui_tiles})`);
+        }
         /*
         let last_state = {
           list: deepCopy(bootState.accessList[pSession.client_id].list)

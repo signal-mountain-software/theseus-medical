@@ -75,6 +75,7 @@ import MessageMonitorV3 from '../forms/MessageMonitorV3';
 import CheckInCheckOut from '../forms/CheckInCheckOut';
 import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
 import GroupPhotoDirectory from '../forms/GroupPhotoDirectory';
+import TaskManager from '../dialogs/TaskManager';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -237,6 +238,8 @@ export default ({ start_at }) => {
   const msBeforeSleeping = 1 * oneMinute;
 
   const addMenuUploadInputRef = React.useRef(null);
+  const tileContainerRef = React.useRef(null);
+  const prevMenuDepthRef = React.useRef(0);
   const activePersonId = state.session?.patient_id || state.session?.person_id;
 
   const loadUserUiTilesOverride = async () => {
@@ -315,6 +318,15 @@ export default ({ start_at }) => {
 
   const rebuildMenuHierarchy = async ({ includeLoadingState = false } = {}) => {
     if (!state.session) {
+      updateReactData({
+        loading: false,
+        alert: {
+          severity: 'warning',
+          title: 'Log-in not yet complete',
+          message: `Sign-in hasn't completed yet.  Please tap here to reload your AVA Menu.`,
+          action: [{ text: 'Reload Menu', function: () => { rebuildMenuHierarchy({ includeLoadingState: true }); } }]
+        }
+      }, true);
       return [];
     }
     if (includeLoadingState) {
@@ -495,6 +507,7 @@ export default ({ start_at }) => {
         console.error('Error fetching menu item:', error.message);
       });
     if (recordExists(menuItemRec)) {
+      console.log(`Fetched menu item ${itemCode} from database.`);
       const this_item = menuItemRec.Item;
       if (!this_item.available_to || authorizedToMenuItem(this_item.available_to)) {
         if (!reactData.menu_hierarchy[menu_level]) { reactData.menu_hierarchy[menu_level] = []; }
@@ -517,7 +530,7 @@ export default ({ start_at }) => {
           });
         }
         if (this_item.hidden && this_item.menu_itemType === 'menu') {  // hidden menu item? process childen immediately
-          for (const childItem of this_item.children) {
+          for (const childItem of (this_item.children || [])) {
             await getMenuItem(childItem, menu_level + 1, this_item);
           }
         }
@@ -526,6 +539,9 @@ export default ({ start_at }) => {
           renderFunction(this_item.call_instructions);
         }
       }
+    }
+    else {
+      console.log(`Menu item ${itemCode} not found in database.`);
     }
     return reactData.menu_hierarchy;
   };
@@ -1297,26 +1313,60 @@ export default ({ start_at }) => {
     async function initialize() {
       if (state.session) {
         const tempName = (state.patient?.name ? state.patient.name.first : (state.session?.patient_display_name || state.session?.person_id));
-        const userUiTilesOverride = await loadUserUiTilesOverride();
+        // Set greeting fields and mark loaded immediately — do NOT await the DB call first,
+        // since that can hang and would prevent the menu from ever building.
         updateReactData({
           greetingName: tempName || 'AVA User',
           greetingWords: makeGreeting(),
           uiTilesOverrideLoaded: true,
-          uiTilesOverride: userUiTilesOverride
         }, true);
+        // Build the menu now (uses the current default tile mode from clientUseTileUI).
+        await rebuildMenuHierarchy({ includeLoadingState: true });
+        // Load the user's stored tile-mode preference in the background.
+        // If it differs from the default null, updating uiTilesOverride will trigger
+        // the second useEffect to rebuild the menu in the correct mode.
+        const userUiTilesOverride = await loadUserUiTilesOverride();
+        if (userUiTilesOverride !== null) {
+          updateReactData({ uiTilesOverride: userUiTilesOverride }, true);
+        }
         await updateMarquee();
+      }
+      else {
+        updateReactData({
+          loading: false,
+          alert: {
+            severity: 'warning',
+            title: 'Log-in not yet complete',
+            message: `Sign-in hasn't completed yet.  Please tap here to reload your AVA Menu.`,
+            action: [{ text: 'Reload Menu', function: () => { rebuildMenuHierarchy({ includeLoadingState: true }); } }]
+          }
+        }, true);
       }
     }
     initialize();
     return () => { };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // This effect only handles CHANGES to uiTilesOverride after initial load
+  // (i.e. when the user's stored tile-mode preference loads in, or when they toggle the mode).
+  // The initial menu build is now done directly inside initialize() above.
   React.useEffect(() => {
     if (!reactData.uiTilesOverrideLoaded) {
       return;
     }
     rebuildMenuHierarchy({ includeLoadingState: true });
-  }, [reactData.uiTilesOverrideLoaded, reactData.uiTilesOverride]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reactData.uiTilesOverride]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useEffect(() => {
+    if (!useTileUI || !tileContainerRef.current) { return; }
+    const currentDepth = reactData.menu_hierarchy.filter(
+      (level) => Array.isArray(level) && level.some((c) => !c.menuItemRec?.hidden)
+    ).length;
+    if (currentDepth > prevMenuDepthRef.current) {
+      tileContainerRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+    prevMenuDepthRef.current = currentDepth;
+  }, [forceRedisplay]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const renderSectionRegistry = {
     ClientMaintenance,
@@ -1333,6 +1383,7 @@ export default ({ start_at }) => {
     CheckInCheckOut,
     MarqueeMaintenance,
     GroupPhotoDirectory,
+    TaskManager,
     QuickAdd,
     QuickSearch,
   };
@@ -2179,54 +2230,54 @@ export default ({ start_at }) => {
             />
           }
           {!(hasLinkThumbnail && !hideCardImage && !reactData.editFavorites) &&
-          <CardContent className={classes.cardcontentdetail}
-            key={`${keyPrefix}cardContent_card-${level_index}.${item_index}`}
-            style={useTileUI
-              ? undefined
-              : {
-                justifyContent: 'flex-start',
-                alignItems: 'center',
-                textAlign: 'left',
-                paddingRight: 12,
-                flexGrow: 1,
+            <CardContent className={classes.cardcontentdetail}
+              key={`${keyPrefix}cardContent_card-${level_index}.${item_index}`}
+              style={useTileUI
+                ? undefined
+                : {
+                  justifyContent: 'flex-start',
+                  alignItems: 'center',
+                  textAlign: 'left',
+                  paddingRight: 12,
+                  flexGrow: 1,
+                }
               }
-            }
-          >
-            <Box
-              display='flex' flexDirection='column'
-              alignItems={'center'} justifyContent={'center'}
-              key={`${keyPrefix}cardContentBox-${level_index}.${item_index}`}
             >
-              {(() => {
-                const menuLabel = useTileUI
-                  ? (this_item.description?.short || this_item.menu_id)
-                  : (this_item.description?.long || this_item.description?.short || this_item.menu_id);
-                const labelContent = (
-                  <Typography
-                    key={`${keyPrefix}cardContentLink-${level_index}.${item_index}`}
-                    style={AVATextStyle({ align: 'center', margin: { left: useTileUI ? 0 : (hideCardImage ? 2 : 1) }, size: useTileUI ? 1 : 1.8, bold: true, color: (isDark(tileColor) ? 'cornsilk' : 'black') })}
-                  >
-                    {menuLabel}
-                  </Typography>
-                );
-                if (normalizedMenuType === 'link') {
-                  return (
-                    <a
-                      href={this_item.url + (!this_item.url?.includes('?') ? ('?a=' + new Date().getTime()) : '')}
-                      style={{ color: 'inherit', textDecoration: 'none' }}
-                      target="_blank"
-                      rel="noopener noreferrer"
+              <Box
+                display='flex' flexDirection='column'
+                alignItems={'center'} justifyContent={'center'}
+                key={`${keyPrefix}cardContentBox-${level_index}.${item_index}`}
+              >
+                {(() => {
+                  const menuLabel = useTileUI
+                    ? (this_item.description?.short || this_item.menu_id)
+                    : (this_item.description?.long || this_item.description?.short || this_item.menu_id);
+                  const labelContent = (
+                    <Typography
+                      key={`${keyPrefix}cardContentLink-${level_index}.${item_index}`}
+                      style={AVATextStyle({ align: 'center', margin: { left: useTileUI ? 0 : (hideCardImage ? 2 : 1) }, size: useTileUI ? 1 : 1.8, bold: true, color: (isDark(tileColor) ? 'cornsilk' : 'black') })}
                     >
-                      {labelContent}
-                    </a>
+                      {menuLabel}
+                    </Typography>
                   );
-                }
-                else {
-                  return <div>{labelContent}</div>;
-                }
-              })()}
-            </Box>
-          </CardContent>
+                  if (normalizedMenuType === 'link') {
+                    return (
+                      <a
+                        href={this_item.url + (!this_item.url?.includes('?') ? ('?a=' + new Date().getTime()) : '')}
+                        style={{ color: 'inherit', textDecoration: 'none' }}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {labelContent}
+                      </a>
+                    );
+                  }
+                  else {
+                    return <div>{labelContent}</div>;
+                  }
+                })()}
+              </Box>
+            </CardContent>
           }
           {canAddFromThisRow &&
             <Box
@@ -2732,6 +2783,7 @@ export default ({ start_at }) => {
                   }
                   const level_visible = this_level.some(c => !c.menuItemRec.hidden);
                   const firstVisibleCell = this_level.find(c => !c.menuItemRec.hidden);
+                  const levelHasVisibleChildren = reactData.menu_hierarchy[level_index + 1]?.some(c => !c.menuItemRec.hidden);
                   const parentMenuId = firstVisibleCell?.parent || reactData.start_at;
                   const parentCell = reactData.menu_hierarchy
                     .flat()
@@ -2742,63 +2794,67 @@ export default ({ start_at }) => {
                     authorizedToMenuItem(parentCell.menuItemRec.allow_add)
                   );
                   return (
-                    level_visible &&
+                    (level_visible || levelHasVisibleChildren) &&
                     <React.Fragment key={`menuLevelFrag${level_index}`}>
-                      <Box
-                        display='flex'
-                        flexDirection='row'
-                        alignItems='center'
-                        width='100%'
-                        key={`menuLevelRow${level_index}`}
-                      >
+                      {level_visible &&
                         <Box
-                          display='flex' flexDirection='row'
-                          key={`menuLevel${level_index}`}
-                          flexWrap={useTileUI ? 'wrap' : 'nowrap'}
-                          mt={2} mb={2} ml={1} mr={1}
-                          style={{ flexGrow: 1, rowGap: useTileUI ? '10px' : '0px', flexDirection: useTileUI ? 'row' : 'column' }}
-                        >
-                          {this_level.filter(c => !c.menuItemRec.hidden).map((this_cell, item_index) => {
-                            return renderMenuCardCell(this_cell, level_index, item_index);
-                          })}
-                        </Box>
-                        <Box
+                          ref={tileContainerRef}  // by rule, this will apply only to the final element actually rendered
                           display='flex'
-                          flexDirection='column'
-                          justifyContent='center'
+                          flexDirection='row'
                           alignItems='center'
-                          key={`menuLevelActions${level_index}`}
-                          mr={0.5}
+                          style={{ scrollMarginTop: '60px', paddingTop: (level_index === firstVisibleLevelIndex ? '16px' : null) }}
+                          width='100%'
+                          key={`menuLevelRow${level_index}`}
                         >
-                          {level_addButton &&
-                            <IconButton
-                              size='small'
-                              aria-label={`add_card_level_${level_index}`}
-                              onClick={() => {
-                                updateReactData({
-                                  addMenuDialog: true,
-                                  addMenuDialogLevel: level_index,
-                                  addMenuDialogParent: parentMenuId,
-                                  addMenuDialogType: null,
-                                  addMenuDialogLinkSource: 'url',
-                                  addMenuDialogTitle: '',
-                                  addMenuDialogUrl: '',
-                                  addMenuDialogUploadFile: null,
-                                  addMenuDialogUploadFileName: '',
-                                  addMenuDialogUploadProgress: 0,
-                                  addMenuDialogSaving: false,
-                                  addMenuDialogTargets: [],
-                                  showAddMessageTargetSearch: false,
-                                  selections: [],
-                                }, true);
-                              }}
-                            >
-                              <AddCircleOutlineIcon fontSize='small' />
-                            </IconButton>
-                          }
-                        </Box>
-                      </Box >
-                      {(reactData.menu_hierarchy.length > 1) && (level_index > 0) &&
+                          <Box
+                            display='flex' flexDirection='row'
+                            key={`menuLevel${level_index}`}
+                            flexWrap={useTileUI ? 'wrap' : 'nowrap'}
+                            mt={2} mb={2} ml={1} mr={1}
+                            style={{ flexGrow: 1, rowGap: useTileUI ? '10px' : '0px', flexDirection: useTileUI ? 'row' : 'column' }}
+                          >
+                            {this_level.filter(c => !c.menuItemRec.hidden).map((this_cell, item_index) => {
+                              return renderMenuCardCell(this_cell, level_index, item_index);
+                            })}
+                          </Box>
+                          <Box
+                            display='flex'
+                            flexDirection='column'
+                            justifyContent='center'
+                            alignItems='center'
+                            key={`menuLevelActions${level_index}`}
+                            mr={0.5}
+                          >
+                            {level_addButton &&
+                              <IconButton
+                                size='small'
+                                aria-label={`add_card_level_${level_index}`}
+                                onClick={() => {
+                                  updateReactData({
+                                    addMenuDialog: true,
+                                    addMenuDialogLevel: level_index,
+                                    addMenuDialogParent: parentMenuId,
+                                    addMenuDialogType: null,
+                                    addMenuDialogLinkSource: 'url',
+                                    addMenuDialogTitle: '',
+                                    addMenuDialogUrl: '',
+                                    addMenuDialogUploadFile: null,
+                                    addMenuDialogUploadFileName: '',
+                                    addMenuDialogUploadProgress: 0,
+                                    addMenuDialogSaving: false,
+                                    addMenuDialogTargets: [],
+                                    showAddMessageTargetSearch: false,
+                                    selections: [],
+                                  }, true);
+                                }}
+                              >
+                                <AddCircleOutlineIcon fontSize='small' />
+                              </IconButton>
+                            }
+                          </Box>
+                        </Box >
+                      }
+                      {levelHasVisibleChildren && (level_index >= firstVisibleLevelIndex) &&
                         <Box
                           key={`menuLevelDivider${level_index}`}
                           width='100%'
@@ -2866,10 +2922,10 @@ export default ({ start_at }) => {
             />
           }
 
-   {reactData.showClientSelect &&
+          {reactData.showClientSelect &&
             <SwitchPatientDialog
               open={reactData.showClientSelect}
-              options={{mode: 'client'}}
+              options={{ mode: 'client' }}
               roles={roles}
               onClose={() => {
                 updateReactData({
