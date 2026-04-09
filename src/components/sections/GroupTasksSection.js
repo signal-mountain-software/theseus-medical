@@ -1,20 +1,11 @@
 import React from 'react';
 
-import { Box, Button, CircularProgress, Typography } from '@material-ui/core';
+import { Box, CircularProgress, Typography, Button } from '@material-ui/core';
 
-import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
+import { AVAclasses } from '../../util/AVAStyles';
 import { getMemberList } from '../../util/AVAGroups';
 import TaskCompletionRound from '../dialogs/TaskCompletionRound';
 
-/**
- * GroupTasksSection
- *
- * Section for GroupMaintenance that lets an admin record activity completions
- * for all members of this group.
- *
- * Receives standard GroupMaintenance section props:
- *   currentValues, reactData
- */
 export default function GroupTasksSection({ currentValues, reactData }) {
   const AVAClass = AVAclasses();
 
@@ -23,53 +14,57 @@ export default function GroupTasksSection({ currentValues, reactData }) {
   const viewer_id = reactData?.user_id;
   const isAdmin = !!reactData?.administrative_account;
 
+  const [personIds, setPersonIds] = React.useState(null);  // null = loading
   const [open, setOpen] = React.useState(false);
-  const [personIds, setPersonIds] = React.useState(null); // null = not yet loaded
-  const [loading, setLoading] = React.useState(false);
   const isMounted = React.useRef(false);
 
+  // Auto-load members on mount and auto-open when ready
   React.useEffect(() => {
     isMounted.current = true;
-    return () => { isMounted.current = false; };
-  }, []);
-
-  const handleOpen = async () => {
-    if (personIds) {
-      setOpen(true);
-      return;
-    }
-    setLoading(true);
-    const result = await getMemberList(group_id, client_id, { nameOnly: true });
-    const ids = (result?.peopleList || []).map(p => p.person_id).filter(Boolean);
-    if (isMounted.current) {
+    if (!group_id) { return; }
+    async function load() {
+      const result = await getMemberList(group_id, client_id, { nameOnly: true });
+      const ids = (result?.peopleList || []).map(p => p.person_id).filter(Boolean);
+      if (!isMounted.current) { return; }
       setPersonIds(ids);
-      setLoading(false);
       setOpen(true);
     }
-  };
+    load();
+    return () => { isMounted.current = false; };
+  }, [group_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Still loading
+  if (personIds === null) {
+    return (
+      <Box p={2} display='flex' alignItems='center' style={{ gap: 8 }}>
+        <CircularProgress size={20} />
+        <Typography variant='body2' color='textSecondary'>Loading group members…</Typography>
+      </Box>
+    );
+  }
+
+  // No members
+  if (personIds.length === 0) {
+    return (
+      <Box p={2}>
+        <Typography variant='body2' color='textSecondary'>No members found in this group.</Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box p={2}>
-      <Typography style={AVATextStyle({ size: 1.1, bold: true })} gutterBottom>
-        {'Daily Activities & Tasks'}
-      </Typography>
-      <Typography variant='body2' color='textSecondary' gutterBottom>
-        {'Record activity completions for all members of this group.'}
-      </Typography>
-      <Box mt={1}>
+      {!open && (
         <Button
           className={AVAClass.AVAButton}
           style={{ backgroundColor: 'teal', color: 'white' }}
           size='small'
-          disabled={loading || !group_id}
-          onClick={handleOpen}
-          startIcon={loading ? <CircularProgress size={14} style={{ color: 'white' }} /> : null}
+          onClick={() => setOpen(true)}
         >
-          {loading ? 'Loading members…' : 'Record Completions'}
+          {'Re-open'}
         </Button>
-      </Box>
-
-      {open && personIds && personIds.length > 0 && (
+      )}
+      {open && (
         <TaskCompletionRound
           personIds={personIds}
           client_id={client_id}
@@ -77,12 +72,6 @@ export default function GroupTasksSection({ currentValues, reactData }) {
           isAdmin={isAdmin}
           onClose={() => setOpen(false)}
         />
-      )}
-
-      {open && personIds && personIds.length === 0 && (
-        <Typography variant='body2' color='textSecondary' style={{ marginTop: 8 }}>
-          {'No members found in this group.'}
-        </Typography>
       )}
     </Box>
   );

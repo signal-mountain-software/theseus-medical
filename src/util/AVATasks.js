@@ -706,24 +706,32 @@ export async function getTasksForPeopleList(client_id, personIds, viewer_id, dat
     t.status !== 'inactive' && isTaskDueOnDate(t, dateStr)
   );
 
-  // Fetch viewer's groups once
-  let viewerRec = await dbClient
-    .get({ TableName: 'People', Key: { person_id: viewer_id } })
-    .promise()
-    .catch(() => null);
-  const viewerGroups = (viewerRec && viewerRec.Item && Array.isArray(viewerRec.Item.groups))
-    ? viewerRec.Item.groups
-    : [];
-
-  const result = {};
-  await Promise.all(personIds.map(async (person_id) => {
-    let personRec = await dbClient
-      .get({ TableName: 'People', Key: { person_id } })
+  // Batch-fetch all person records (viewer + all subjects) in one round-trip per 100 items.
+  // DynamoDB batchGet supports up to 100 keys per request.
+  const allIdsToFetch = [...new Set([viewer_id, ...personIds])];
+  const personGroupsMap = {};  // { [person_id]: string[] }
+  for (let i = 0; i < allIdsToFetch.length; i += 100) {
+    const chunk = allIdsToFetch.slice(i, i + 100);
+    const batchResult = await dbClient
+      .batchGet({
+        RequestItems: {
+          People: {
+            Keys: chunk.map(id => ({ person_id: id })),
+            ProjectionExpression: 'person_id, groups',
+          },
+        },
+      })
       .promise()
       .catch(() => null);
-    const subjectGroups = (personRec && personRec.Item && Array.isArray(personRec.Item.groups))
-      ? personRec.Item.groups
-      : [];
+    for (const rec of (batchResult?.Responses?.People || [])) {
+      personGroupsMap[rec.person_id] = Array.isArray(rec.groups) ? rec.groups : [];
+    }
+  }
+  const viewerGroups = personGroupsMap[viewer_id] || [];
+
+  const result = {};
+  for (const person_id of personIds) {
+    const subjectGroups = personGroupsMap[person_id] || [];
     const myViewerGroups = (viewer_id === person_id) ? subjectGroups : viewerGroups;
 
     result[person_id] = activeTasks.filter(t => {
@@ -745,7 +753,7 @@ export async function getTasksForPeopleList(client_id, personIds, viewer_id, dat
     }).sort((a, b) =>
       timeOfDaySortKey(a.schedule?.times_of_day) - timeOfDaySortKey(b.schedule?.times_of_day)
     );
-  }));
+  }
 
   return result;
 }

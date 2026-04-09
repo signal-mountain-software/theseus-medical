@@ -6,13 +6,11 @@ import {
 } from '@material-ui/core';
 import AddIcon from '@material-ui/icons/Add';
 import EditIcon from '@material-ui/icons/Edit';
-import PauseCircleOutlineIcon from '@material-ui/icons/PauseCircleOutline';
-import PlayCircleOutlineIcon from '@material-ui/icons/PlayCircleOutline';
 import SaveIcon from '@material-ui/icons/Save';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
-import { getTasksForPerson, setTaskStatus, calculateStreaks, describeSchedule, putTask } from '../../util/AVATasks';
+import { getTasksForPerson, calculateStreaks, describeSchedule, putTask } from '../../util/AVATasks';
 import useSession from '../../hooks/useSession';
 import TaskEditor from '../dialogs/TaskEditor';
 import TaskCompletion from '../dialogs/TaskCompletion';
@@ -148,16 +146,6 @@ export default function TaskManagerSection({
   }, [refreshTrigger]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
-
-  const handleToggleStatus = async (taskRec) => {
-    let newStatus = taskRec.status === 'active' ? 'inactive' : 'active';
-    await setTaskStatus(taskRec.client_id, taskRec.task_id, newStatus);
-    updateData({
-      tasks: data.tasks.map(t =>
-        t.task_id === taskRec.task_id ? Object.assign({}, t, { status: newStatus }) : t
-      )
-    }, true);
-  };
 
   const handleTaskSaved = () => {
     updateData({ editingTask: null });
@@ -420,17 +408,6 @@ export default function TaskManagerSection({
                 <EditIcon fontSize='small' />
               </IconButton>
             </Tooltip>
-
-            {data.administrative && (
-              <Tooltip title={isActive ? 'Deactivate' : 'Activate'}>
-                <IconButton size='small' onClick={() => handleToggleStatus(taskRec)}>
-                  {isActive
-                    ? <PauseCircleOutlineIcon fontSize='small' />
-                    : <PlayCircleOutlineIcon fontSize='small' />
-                  }
-                </IconButton>
-              </Tooltip>
-            )}
           </Box>
         </Box>
 
@@ -470,7 +447,7 @@ export default function TaskManagerSection({
               style={{ backgroundColor: 'teal', color: 'white' }}
               onClick={() => setShowCompletionRound(true)}
             >
-              {'Record Completions'}
+              {'Record Activity'}
             </Button>
           )}
           {data.allowCreate && (
