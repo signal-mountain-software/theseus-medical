@@ -1060,6 +1060,14 @@ async function resolveDataByDictionary({ client_id, person_id, field_id, diction
     });
 
     if (sourceRecord) {
+      if (sourceRecord._constantValue !== undefined) {
+        return {
+          rawValue: sourceRecord._constantValue,
+          pathUsed: null,
+          status: 'resolved_from_constant',
+          dictionaryRec: candidateRec
+        };
+      }
       for (const pathSpec of pathList) {
         const pathValue = resolvePathSpecValue(sourceRecord, pathSpec);
         if (isGoodResolvedValue(pathValue)) {
@@ -1382,6 +1390,9 @@ async function getSourceRecord({ client_id, person_id, dictionaryRec, options = 
   }
 
   const locatorField = dictionaryRec.locator || 'person_id';
+  if (locatorField === 'constant') {
+    return { _constantValue: dictionaryRec.source };
+  }
   const locatorValue = getLocatorValue({ client_id, person_id, locatorField, options });
   if (!locatorValue) {
     return null;
@@ -1830,6 +1841,13 @@ async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_
           values: listObj,
           count: listObj.length
         }
+      };
+    }
+    case 'string_list_0': {
+      const listObj = normalizeStringListInput(rawValue);
+      return {
+        formatted: listObj.length > 0 ? listObj[0] : null,
+        details: null
       };
     }
     case 'string': {
