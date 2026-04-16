@@ -506,6 +506,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
         return returnArray;
     }
 
+    /*
     function formatLocalData(ldKey, inData) {
         switch (state.session.local_data?.[ldKey]) {
             case 'phone': { return formatPhone(inData); }
@@ -515,6 +516,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
             default: { return inData; }
         }
     }
+    */
 
     function handleGridScroll(event) {
         const target = event.currentTarget;
