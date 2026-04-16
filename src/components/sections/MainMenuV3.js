@@ -76,6 +76,7 @@ import CheckInCheckOut from '../forms/CheckInCheckOut';
 import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
 import GroupPhotoDirectory from '../forms/GroupPhotoDirectory';
 import TaskManager from '../dialogs/TaskManager';
+import MultiObservationFormD from '../forms/MultiObservationFormD';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -1384,6 +1385,7 @@ export default ({ start_at }) => {
     MarqueeMaintenance,
     GroupPhotoDirectory,
     TaskManager,
+    MultiObservationFormD,
     QuickAdd,
     QuickSearch,
   };
@@ -1404,8 +1406,17 @@ export default ({ start_at }) => {
       else if (sourceValue === '<patient_id>') {
         return state.session.patient_id;
       }
+      else if (sourceValue === '<patient_name>') {
+        return state.session.patient_display_name || state.patient?.name?.first || '';
+      }
       else if (sourceValue === '<user_id>') {
         return state.session.user_id;
+      }
+      else if (sourceValue === '<client_id>') {
+        return state.session.client_id;
+      }
+      else if (sourceValue === '<today_ymd>') {
+        return makeDate(reactData.current_time, { timeZone: state.session.client_timezone }).ymd
       }
       if (Array.isArray(sourceValue)) {
         return sourceValue.map((entry) => replaceTokens(entry));
@@ -1463,26 +1474,32 @@ export default ({ start_at }) => {
     const props = replaceTokens(call_instructions.params || {});
     return (
       <SectionToRender
+        calendarMode={props.options?.mode || 'signUp'}
         client={state.session.client_id}
         client_id={state.session.client_id}
-        person_id={state.session.person_id}
-        pPerson={state.session.patient_id}
-        pClient={state.session.client_id}
-        pSession={state.session}
-        personRec={state.patient}
-        pMessageList={[]}
-        defaults={props.defaults || {}}
-        options={props.options || {}}
-        request={props.request || {}}
-        patient={state.session}
-        OGpatient={reactData.OGpatient}
-        peopleList={props.options?.peopleList || props.options?.OGvaluesList}
         defaultObject={props.defaults || []}
+        defaults={props.defaults || {}}
+        defaultValue={props.defaults || null}
         eventClient={props.options?.client_id || state.session.client_id}
-        calendarMode={props.options?.mode || 'signUp'}
+        fact={props.fact || null}
+        factName={props.factName || null}
         isAppointment={props.options?.isAppointment}
+        listValues={props.options?.listValues || []}
+        OGpatient={reactData.OGpatient}
+        options={props.options || {}}
+        patient={state.session}
+        pClient={state.session.client_id}
+        peopleList={props.options?.peopleList || props.options?.OGvaluesList}
         personalEvent={props.options?.personalEvent}
+        person_id={state.session.person_id}
+        personRec={state.patient}
         picture={props.options?.picture || null}
+        pMessageList={[]}
+        pPerson={state.session.patient_id}
+        prompt={props.options?.prompt || null}
+        pSession={state.session}
+        qualifiers={props.options?.qualifiers || null}
+        request={props.request || {}}
         showNewEvent={props.options?.showNewEvent}
         onReset={() => {
           start();
@@ -1495,6 +1512,17 @@ export default ({ start_at }) => {
           updateReactData({
             renderFunctionCall: false
           }, true);
+        }}
+        onSave={(saveResponse) => { 
+          const closeAlert = buildAlertFromCloseResponse(saveResponse);
+          start();
+          const reactUpd = {
+            renderFunctionCall: false
+          };
+          if (closeAlert) {
+            reactUpd.alert = closeAlert;
+          }
+          updateReactData(reactUpd, true);
         }}
         onClose={(closeResponse) => {
           const closeAlert = buildAlertFromCloseResponse(closeResponse);
