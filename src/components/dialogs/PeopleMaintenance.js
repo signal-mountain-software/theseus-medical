@@ -70,7 +70,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     isMobile: (window.window.innerWidth < 800),
     client_name: state.session.client_name,
     linkedPersonFilter: {},
-    mode: options.mode || 'edit',
+    mode: options.mode || ((['admin', 'support', 'master'].includes(state.user.account_class)) ? 'edit'
+      : ((state.session.user_id === (person_id || patient?.person_id || personRec?.person_id || state.session.patient_id)) ? 'edit' : 'view')),
     sectionList: options.sectionList || false,
     addFamilyMember: false,
     viewFamilyMember: false,
