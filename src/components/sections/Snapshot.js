@@ -88,11 +88,12 @@ export default ({ currentValues, reactData, updateReactData }) => {
         ) {
           addressParts += currentValues.peopleRec.address.state + " ";
         }
-        if (currentValues.peopleRec.address.zip
-          && currentValues.peopleRec.address.zip.trim() !== ''
-          && currentValues.peopleRec.address.zip.includes('undefined') !== true
+        const zipValue = currentValues.peopleRec.address.zip_code || currentValues.peopleRec.address.zip;
+        if (zipValue
+          && zipValue.trim() !== ''
+          && zipValue.includes('undefined') !== true
         ) {
-          addressParts += currentValues.peopleRec.address.zip;
+          addressParts += zipValue;
         }
         return sanitizeLocation(addressParts);
       }

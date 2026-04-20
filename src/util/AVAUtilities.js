@@ -2465,7 +2465,7 @@ function mergeAddressDetails(baseAddress = {}, resolvedAddress = {}, options = {
     line2: firstNonBlank([resolvedAddress.line2, baseAddress.line2]),
     city: firstNonBlank([resolvedAddress.city, baseAddress.city]),
     state: firstNonBlank([resolvedAddress.state, baseAddress.state]),
-    zip: firstNonBlank([resolvedAddress.zip, baseAddress.zip]),
+    zip: firstNonBlank([resolvedAddress.zip_code, resolvedAddress.zip, baseAddress.zip_code, baseAddress.zip]),
     source: resolvedAddress.source || null,
     validated: !!resolvedAddress.validated,
     is_resolved_address: true,

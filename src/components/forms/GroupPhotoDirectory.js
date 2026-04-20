@@ -716,7 +716,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                 else if (person.city) { returnValue += `<br />${person.city}`; }
                                 if (person.address?.state) { returnValue += `, ${person.address.state}`; }
                                 else if (person.state) { returnValue += `, ${person.state}`; }
-                                if (person.address?.zip) { returnValue += ` ${person.address.zip}`; }
+                                if (person.address?.zip_code || person.address?.zip) { returnValue += ` ${person.address.zip_code || person.address.zip}`; }
                                 else if (person.zip) { returnValue += ` ${person.zip}`; }
                                 addressValue = returnValue;
                             }
