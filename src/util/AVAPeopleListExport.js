@@ -117,7 +117,11 @@ export async function saveExportFieldSelections({ sessionId, clientId, exportSco
     });
 }
 
-export async function getExportFieldPickerData({ sessionId, clientId, exportScope, logLabel = 'export' }) {
+export async function getExportFieldPickerData({ sessionId, clientId, exportScope, excludeFieldKeys = [], logLabel = 'export' }) {
+  const normalizedExclusions = new Set(
+    [excludeFieldKeys].flat().map(k => `${k}`.trim().toLowerCase()).filter(Boolean)
+  );
+
   const formFieldsRec = await dbClient
     .query({
       KeyConditionExpression: 'client_id = :c',
@@ -134,7 +138,7 @@ export async function getExportFieldPickerData({ sessionId, clientId, exportScop
   let exportFieldOptions = [];
   if (recordExists(formFieldsRec)) {
     exportFieldOptions = formFieldsRec.Items
-      .filter((fieldRec) => !!fieldRec?.field_key)
+      .filter((fieldRec) => !!fieldRec?.field_key && !normalizedExclusions.has(`${fieldRec.field_key}`.trim().toLowerCase()))
       .map((fieldRec) => ({
         field_key: fieldRec.field_key,
         description: fieldRec.description || fieldRec.field_key,
@@ -387,4 +391,60 @@ export async function downloadPeopleListWithPreselectedFields({
     header,
     rows
   };
+}
+
+export async function listSavedReports({ clientId, exportScope }) {
+  if (!clientId || !exportScope) {
+    return [];
+  }
+
+  const result = await dbClient
+    .query({
+      TableName: 'ReportDefinitions',
+      KeyConditionExpression: 'client_id = :c',
+      FilterExpression: 'export_scope = :s',
+      ExpressionAttributeValues: {
+        ':c': clientId,
+        ':s': exportScope
+      }
+    })
+    .promise()
+    .catch((error) => {
+      cl({ 'Error listing ReportDefinitions': error });
+    });
+
+  if (!recordExists(result)) {
+    return [];
+  }
+
+  return result.Items
+    .map((item) => ({
+      report_id: item.report_id,
+      report_name: item.report_name,
+      selected_fields: Array.isArray(item.selected_fields) ? item.selected_fields : []
+    }))
+    .sort((a, b) => (a.report_name || '').localeCompare(b.report_name || ''));
+}
+
+export async function saveReport({ clientId, exportScope, reportId, reportName, selectedFieldNames = [] }) {
+  if (!clientId || !exportScope || !reportId || !reportName) {
+    return;
+  }
+
+  await dbClient
+    .put({
+      TableName: 'ReportDefinitions',
+      Item: {
+        client_id: clientId,
+        report_id: reportId,
+        report_name: reportName,
+        export_scope: exportScope,
+        selected_fields: [...selectedFieldNames],
+        updated_at: new Date().toISOString()
+      }
+    })
+    .promise()
+    .catch((error) => {
+      cl({ 'Error saving ReportDefinitions': error });
+    });
 }
