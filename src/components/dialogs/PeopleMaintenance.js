@@ -22,6 +22,7 @@ import LinkedAccounts from '../sections/LinkedAccounts';
 import PersonalizationSection from '../sections/PersonalizationSection';
 import GroupAssignments from '../sections/GroupAssignments';
 import ActivitiesSection from '../sections/ActivitiesSection';
+import TaskManagerSection from '../sections/TaskManagerSection';
 import MessageMonitorV3 from '../forms/MessageMonitorV3';
 
 import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
@@ -69,7 +70,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     isMobile: (window.window.innerWidth < 800),
     client_name: state.session.client_name,
     linkedPersonFilter: {},
-    mode: options.mode || 'edit',
+    mode: options.mode || ((['admin', 'support', 'master'].includes(state.user.account_class)) ? 'edit'
+      : ((state.session.user_id === (person_id || patient?.person_id || personRec?.person_id || state.session.patient_id)) ? 'edit' : 'view')),
     sectionList: options.sectionList || false,
     addFamilyMember: false,
     viewFamilyMember: false,
@@ -137,6 +139,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       },
       ActivitiesSection: {
         component_id: ActivitiesSection,
+      },
+      TaskManagerSection: {
+        component_id: TaskManagerSection,
       },
 
     },
@@ -449,13 +454,22 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         component_name: 'MessagesSection'
       },
       {
-        section_name: 'Activities',
+        section_name: 'Events & Participation',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('ActivitiesSection')) : false),
         isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('activities') : true))
           && !(reactUpdObj.mode === 'add'),
         version_id: 0,
         component_name: 'ActivitiesSection'
+      },
+      {
+        section_name: 'Daily Activities & Tasks',
+        color: initialValues?.color || 'orange',
+        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('TaskManagerSection')) : false),
+        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('task_manager') : true))
+          && !(reactUpdObj.mode === 'add'),
+        version_id: 0,
+        component_name: 'TaskManagerSection'
       },
       {
         section_name: 'My Family',

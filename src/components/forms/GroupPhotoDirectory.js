@@ -19,10 +19,16 @@ import SendIcon from '@material-ui/icons/Send';
 import PictureAsPdfIcon from '@material-ui/icons/PictureAsPdf';
 
 import useSession from '../../hooks/useSession';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
 import { AVAclasses } from '../../util/AVAStyles';
-import { isEmpty } from '../../util/AVAUtilities';
+import { isEmpty, sentenceCase } from '../../util/AVAUtilities';
+import { makeDate } from '../../util/AVADateTime';
+import { getPublicGroupList, getPrivateGroupList, determineClass, getRole } from '../../util/AVAGroups';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
+import MakeMessage from './MakeMessage';
+
+import List from '@material-ui/core/List';
 
 const INITIAL_RENDER_COUNT = 30;
 const RENDER_BATCH_COUNT = 30;
@@ -151,6 +157,63 @@ const useStyles = makeStyles(theme => ({
         paddingBottom: theme.spacing(1.5),
         backgroundColor: theme.palette.background.paper,
     },
+    superSizeLast: {
+        marginTop: theme.spacing(0),
+        fontWeight: 'bold',
+        fontSize: theme.typography.fontSize * 2.8,
+    },
+    superSizeFirst: {
+        marginTop: theme.spacing(-2.5),
+        fontSize: theme.typography.fontSize * 2.8,
+    },
+    upSizeLast: {
+        marginTop: theme.spacing(0),
+        fontSize: theme.typography.fontSize * 2.0,
+    },
+    upSizeLocation: {
+        marginTop: theme.spacing(2),
+        fontSize: theme.typography.fontSize * 2.0,
+        flexGrow: 1,
+        textAlign: 'center',
+        lineHeight: `${theme.spacing(3)}px`,
+    },
+    upSizePreferenceBox: {
+        marginTop: theme.spacing(2),
+        lineHeight: `${theme.spacing(3)}px`,
+    },
+    superSizePreferenceLine2: {
+        marginTop: theme.spacing(0.5),
+        lineHeight: `${theme.spacing(3)}px`,
+        fontSize: theme.typography.fontSize * 2.0,
+        fontWeight: 'bold',
+    },
+    superSizePreferenceLine3: {
+        marginTop: 0,
+        lineHeight: `${theme.spacing(3)}px`,
+        fontSize: theme.typography.fontSize * 1.5,
+        fontWeight: 'bold',
+        marginBottom: theme.spacing(0.5),
+    },
+    adName: {
+        fontSize: '1.1rem',
+    },
+    giveSpace: {
+        marginTop: theme.spacing(2),
+    },
+    giveSpaceBoth: {
+        marginTop: theme.spacing(2),
+        marginBottom: theme.spacing(1),
+    },
+    giveMoreSpace: {
+        marginTop: theme.spacing(4),
+    },
+    superSizeArea: {
+        flex: 1,
+        minHeight: 0,
+        overflowY: 'auto',
+        paddingLeft: 0,
+        paddingRight: 0,
+    },
 }));
 
 const normalizeList = ({ groupMemberList, pClient }) => {
@@ -205,7 +268,14 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
 
     const AVAClass = AVAclasses();
 
-    const { groupMemberList, pClient, pGroupName, pStyle } = options;
+    const { groupMemberList, pClient, pGroupName, pStyle, pRole, pPatient, pPatientName } = options;
+
+    const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm'));
+
+    const adminAccount =
+        ['master', 'support', 'admin'].includes(state.profile.account_class)
+        || (pRole === 'admin')
+        || (pRole === 'responsible');
 
     const [searchValue, setSearchValue] = React.useState('');
     const [personCache, setPersonCache] = React.useState({});
@@ -214,6 +284,11 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
     const [renderCount, setRenderCount] = React.useState(INITIAL_RENDER_COUNT);
     const [downloadingPdf, setDownloadingPdf] = React.useState(false);
     const [viewPeopleMaintenance, setViewPeopleMaintenance] = React.useState(false);
+    const [showSuperSize, setShowSuperSize] = React.useState(false);
+    const [superSizeData, setSuperSizeData] = React.useState(false);
+    const [promptForMessage, setPromptForMessage] = React.useState(false);
+    const [recipient, setRecipient] = React.useState('');
+    const [messageType, setMessageType] = React.useState('');
 
     const rawMembers = React.useMemo(() => {
         return normalizeList({ groupMemberList, pClient });
@@ -373,6 +448,76 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
         return directoryPeople.slice(0, renderCount);
     }, [directoryPeople, renderCount]);
 
+    function makeContactLines(pMessaging, pPreference, pPerson) {
+        let returnArray = [];
+        for (const msgType in pMessaging) {
+            switch (msgType) {
+                case 'sms': {
+                    if (pMessaging.sms && (!pMessaging.sms_private || adminAccount)) {
+                        returnArray.push({
+                            action: [`sms:${pMessaging.sms}`, `tel:${pMessaging.sms}`],
+                            button: ['Send Text', 'Call Cell'],
+                            type: 'cell',
+                            display: [formatPhone(pMessaging.sms)],
+                            private: pMessaging.sms_private
+                        });
+                    }
+                    break;
+                }
+                case 'voice': {
+                    if (pMessaging.voice && (!pMessaging.voice_private || adminAccount)) {
+                        returnArray.push({
+                            action: [`tel:${pMessaging.voice}`],
+                            button: ['Call Home'],
+                            type: 'home',
+                            display: [formatPhone(pMessaging.voice)],
+                            private: pMessaging.voice_private
+                        });
+                    }
+                    break;
+                }
+                case 'office': {
+                    if (pMessaging.office && (!pMessaging.office_private || adminAccount)) {
+                        returnArray.push({
+                            action: [`tel:${pMessaging.office}`],
+                            button: ['Call Work'],
+                            type: 'work',
+                            display: [formatPhone(pMessaging.office)],
+                            private: pMessaging.office_private
+                        });
+                    }
+                    break;
+                }
+                case 'email': {
+                    if (pMessaging.email && (!pMessaging.email_private || adminAccount)) {
+                        returnArray.push({
+                            action: [`mailto:${pMessaging.email}`],
+                            button: ['e-Mail'],
+                            type: 'e-Mail',
+                            display: (((pMessaging.email.length < 20) || !isMobile) ? [pMessaging.email] : pMessaging.email.split('@')),
+                            private: pMessaging.email_private
+                        });
+                    }
+                    break;
+                }
+                default: { break; }
+            }
+        }
+        return returnArray;
+    }
+
+    /*
+    function formatLocalData(ldKey, inData) {
+        switch (state.session.local_data?.[ldKey]) {
+            case 'phone': { return formatPhone(inData); }
+            case 'boolean': { return (inData ? 'Yes' : 'No'); }
+            case 'date': { return makeDate(inData).dateOnly; }
+            case 'fulldate': { return makeDate(inData).absolute; }
+            default: { return inData; }
+        }
+    }
+    */
+
     function handleGridScroll(event) {
         const target = event.currentTarget;
         const nearBottom = (target.scrollTop + target.clientHeight) >= (target.scrollHeight - 120);
@@ -484,7 +629,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
 
     return (
         <Box className={classes.wrapper} ref={wrapperRef}>
-            <Box className={classes.fixedHeader}>
+            {!showSuperSize && <Box className={classes.fixedHeader}>
 
                 <Box className={classes.titleRow}>
                     <Typography variant='h6' className={classes.titleText}>
@@ -528,131 +673,253 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                         This is a filtered list. {directoryPeople.length} match{directoryPeople.length !== 1 ? 'es' : ''} found.
                     </Typography>
                 )}
-            </Box>
+            </Box>}
 
-            <Box className={classes.gridScroller} onScroll={handleGridScroll} ref={gridScrollerRef}>
-                {directoryPeople.length === 0 && (
-                    <Paper className={classes.emptyState} variant='outlined'>
-                        <Typography variant='body1'>No people match your search.</Typography>
-                    </Paper>
-                )}
+            {!showSuperSize &&
+                <Box className={classes.gridScroller} onScroll={handleGridScroll} ref={gridScrollerRef}>
+                    {directoryPeople.length === 0 && (
+                        <Paper className={classes.emptyState} variant='outlined'>
+                            <Typography variant='body1'>No people match your search.</Typography>
+                        </Paper>
+                    )}
 
-                <Grid container spacing={2}>
-                    {visiblePeople.map(person => {
-                        let personLast, addressValue;
-                        let imbeddedTitle;
-                        [personLast, imbeddedTitle] = person.name?.last?.split('~');
-                        const suppressContact = (person?.directory_option === 'no_contact');
-                        const rawCellPhoneValue = suppressContact ? '' : (person.contact_info?.cell?.number || person?.messaging?.sms || '');
-                        const rawHomePhoneValue = suppressContact ? '' : (person.contact_info?.landline?.number || person?.messaging?.voice || '');
-                        const rawWorkPhoneValue = suppressContact ? '' : (person.contact_info?.work?.number || person?.messaging?.office || '');
-                        const emailValue = suppressContact ? '' : (person?.messaging?.email || '');
-                        const cellPhoneValue = suppressContact ? '' : formatPhone(rawCellPhoneValue);
-                        const homePhoneValue = suppressContact ? '' : formatPhone(rawHomePhoneValue);
-                        const workPhoneValue = suppressContact ? '' : formatPhone(rawWorkPhoneValue);
-                        const cellPhoneHref = suppressContact ? '' : toTelHref(rawCellPhoneValue);
-                        const homePhoneHref = suppressContact ? '' : toTelHref(rawHomePhoneValue);
-                        const workPhoneHref = suppressContact ? '' : toTelHref(rawWorkPhoneValue);
-                        const emailHref = suppressContact ? '' : toMailtoHref(emailValue);
-                        const imageSrc = getImage(person.person_id);
-                        const showPortraitImage = Boolean(imageSrc) && !hiddenImagePeople[person?.person_id];
-                        if (!isEmpty(person.address)) {
-                            let returnValue = '';
-                            let splitAddress = person.address?.address?.split('~') || [''];
-                            if (splitAddress) {
-                                returnValue = splitAddress[0];
-                                if (splitAddress.length > 1) {
-                                    imbeddedTitle = splitAddress[1];
-                                };
+                    <Grid container spacing={2}>
+                        {visiblePeople.map(person => {
+                            let personLast, addressValue;
+                            let imbeddedTitle;
+                            [personLast, imbeddedTitle] = person.name?.last?.split('~');
+                            const suppressContact = (person?.directory_option === 'no_contact');
+                            const rawCellPhoneValue = suppressContact ? '' : (person.contact_info?.cell?.number || person?.messaging?.sms || '');
+                            const rawHomePhoneValue = suppressContact ? '' : (person.contact_info?.landline?.number || person?.messaging?.voice || '');
+                            const rawWorkPhoneValue = suppressContact ? '' : (person.contact_info?.work?.number || person?.messaging?.office || '');
+                            const emailValue = suppressContact ? '' : (person?.messaging?.email || '');
+                            const cellPhoneValue = suppressContact ? '' : formatPhone(rawCellPhoneValue);
+                            const homePhoneValue = suppressContact ? '' : formatPhone(rawHomePhoneValue);
+                            const workPhoneValue = suppressContact ? '' : formatPhone(rawWorkPhoneValue);
+                            const cellPhoneHref = suppressContact ? '' : toTelHref(rawCellPhoneValue);
+                            const homePhoneHref = suppressContact ? '' : toTelHref(rawHomePhoneValue);
+                            const workPhoneHref = suppressContact ? '' : toTelHref(rawWorkPhoneValue);
+                            const emailHref = suppressContact ? '' : toMailtoHref(emailValue);
+                            const imageSrc = getImage(person.person_id);
+                            const showPortraitImage = Boolean(imageSrc) && !hiddenImagePeople[person?.person_id];
+                            if (!isEmpty(person.address)) {
+                                let returnValue = '';
+                                let splitAddress = person.address?.address?.split('~') || [''];
+                                if (splitAddress) {
+                                    returnValue = splitAddress[0];
+                                    if (splitAddress.length > 1) {
+                                        imbeddedTitle = splitAddress[1];
+                                    };
+                                }
+                                if (person.address?.address2) { returnValue += `; ${person.address.address2}`; }
+                                if (person.address?.city) { returnValue += `<br/ >${person.address.city}`; }
+                                else if (person.city) { returnValue += `<br />${person.city}`; }
+                                if (person.address?.state) { returnValue += `, ${person.address.state}`; }
+                                else if (person.state) { returnValue += `, ${person.state}`; }
+                                if (person.address?.zip_code || person.address?.zip) { returnValue += ` ${person.address.zip_code || person.address.zip}`; }
+                                else if (person.zip) { returnValue += ` ${person.zip}`; }
+                                addressValue = returnValue;
                             }
-                            if (person.address?.address2) { returnValue += `; ${person.address.address2}`; }
-                            if (person.address?.city) { returnValue += `<br/ >${person.address.city}`; }
-                            else if (person.city) { returnValue += `<br />${person.city}`; }
-                            if (person.address?.state) { returnValue += `, ${person.address.state}`; }
-                            else if (person.state) { returnValue += `, ${person.state}`; }
-                            if (person.address?.zip) { returnValue += ` ${person.address.zip}`; }
-                            else if (person.zip) { returnValue += ` ${person.zip}`; }
-                            addressValue = returnValue;
-                        }
-                        else if (!isEmpty(person.location)) {
-                            [addressValue, imbeddedTitle] = person.location.split('~');
-                        }
-                        return (
-                            <Grid item xs={12} sm={6} md={4} lg={3} key={person?.person_id}>
-                                <Paper
-                                    variant='outlined'
-                                    className={classes.card}
-                                    onClick={() => {
-                                        if (pStyle === 'select' && typeof options?.onSelectPerson === 'function') {
-                                            options.onSelectPerson(person);
-                                            onReset({ updatesMade: false });
-                                            return;
+                            else if (!isEmpty(person.location)) {
+                                [addressValue, imbeddedTitle] = person.location.split('~');
+                            }
+                            return (
+                                <Grid item xs={12} sm={6} md={4} lg={3} key={person?.person_id}>
+                                    <Paper
+                                        variant='outlined'
+                                        className={classes.card}
+                                        onClick={async () => {
+                                            if (pStyle === 'select' && typeof options?.onSelectPerson === 'function') {
+                                                options.onSelectPerson(person);
+                                                onReset({ updatesMade: false });
+                                                return;
+                                            }
+                                            if (adminAccount) {
+                                                setViewPeopleMaintenance(person?.person_id || false);
+                                            } else {
+                                                const personData = { ...person };
+                                                personData.role = await getRole(options.pGroup, person.person_id);
+                                                personData.public_groups = await getPublicGroupList(state.session.client_id, person.person_id);
+                                                personData.private_groups = await getPrivateGroupList(state.session.client_id, person.person_id);
+                                                if (!personData.account_class) {
+                                                    personData.account_class = determineClass(personData.groups, state.session.group_assignments);
+                                                }
+                                                setSuperSizeData(personData);
+                                                setShowSuperSize(true);
+                                            }
+                                        }}
+                                    >
+                                        {showPortraitImage &&
+                                            <Box
+                                                component='img'
+                                                src={imageSrc}
+                                                alt={`${person.name?.first || ''} ${personLast || ''}`.trim()}
+                                                className={classes.portraitMedia}
+                                                onError={() => hideImageForPerson(person?.person_id)}
+                                            />
                                         }
-                                        setViewPeopleMaintenance(person?.person_id || false);
-                                    }}
-                                >
-                                    {showPortraitImage &&
-                                        <Box
-                                            component='img'
-                                            src={imageSrc}
-                                            alt={`${person.name?.first || ''} ${personLast || ''}`.trim()}
-                                            className={classes.portraitMedia}
-                                            onError={() => hideImageForPerson(person?.person_id)}
-                                        />
-                                    }
-                                    <Box className={classes.cardBody}>
-                                        <Typography variant='subtitle1' className={classes.cardName}>
-                                            {`${person.name?.first || ''} ${personLast || ''}`}
+                                        <Box className={classes.cardBody}>
+                                            <Typography variant='subtitle1' className={classes.cardName}>
+                                                {`${person.name?.first || ''} ${personLast || ''}`}
+                                            </Typography>
+                                            {imbeddedTitle && (
+                                                <Typography variant='caption' color='textSecondary'>
+                                                    {imbeddedTitle}
+                                                </Typography>
+                                            )}
+                                            {addressValue && (
+                                                <Typography variant='caption' color='textSecondary'>
+                                                    {addressValue}
+                                                </Typography>
+                                            )}
+                                            {cellPhoneValue &&
+                                                <Typography variant='body2' color='textSecondary' className={classes.cardSubtext}>
+                                                    <a href={cellPhoneHref} className={classes.contactLink} onClick={stopCardClick}>
+                                                        <PhoneInTalkIcon className={classes.contactIcon} />
+                                                        {`Cell: ${cellPhoneValue}`}
+                                                    </a>
+                                                </Typography>
+                                            }
+                                            {homePhoneValue &&
+                                                <Typography variant='body2' color='textSecondary' className={classes.cardSubtext}>
+                                                    <a href={homePhoneHref} className={classes.contactLink} onClick={stopCardClick}>
+                                                        <PhoneInTalkIcon className={classes.contactIcon} />
+                                                        {`Home: ${homePhoneValue}`}
+                                                    </a>
+                                                </Typography>
+                                            }
+                                            {workPhoneValue &&
+                                                <Typography variant='body2' color='textSecondary' className={classes.cardSubtext}>
+                                                    <a href={workPhoneHref} className={classes.contactLink} onClick={stopCardClick}>
+                                                        <PhoneInTalkIcon className={classes.contactIcon} />
+                                                        {`Work: ${workPhoneValue}`}
+                                                    </a>
+                                                </Typography>
+                                            }
+                                            {emailValue &&
+                                                <Typography variant='body2' color='textSecondary' className={classes.cardSubtext}>
+                                                    <a href={emailHref} className={classes.contactLink} onClick={stopCardClick}>
+                                                        <SendIcon className={classes.contactIcon} />
+                                                        {emailValue}
+                                                    </a>
+                                                </Typography>
+                                            }
+                                        </Box>
+                                    </Paper>
+                                </Grid>
+                            );
+                        })}
+                    </Grid>
+                </Box>
+            }
+
+            {showSuperSize && superSizeData &&
+                <List classes={{ root: classes.superSizeArea }}>
+                    <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+                        <Box>
+                            <Box
+                                component="img"
+                                mt={5}
+                                minWidth={250}
+                                maxWidth={250}
+                                alt=''
+                                src={getImage(superSizeData.person_id)}
+                            />
+                        </Box>
+                        <Typography className={classes.superSizeLast}>{superSizeData.name?.last || superSizeData.display_name}</Typography>
+                        <Typography className={classes.superSizeFirst}>{superSizeData.name?.first}</Typography>
+                        {(superSizeData.member_of) &&
+                            <Typography key='member_of-superSize' className={classes.upSizeLast}>{superSizeData.member_of}</Typography>
+                        }
+                        {superSizeData.location && superSizeData.location.split('~').map((locLine, locIndex) => (
+                            <Typography key={`locationLine-superSize_${locIndex}`} className={classes.upSizeLocation}>{locLine.trim()}</Typography>
+                        ))}
+                        {(superSizeData.directory_option === 'exclude') &&
+                            <Typography key='excluded-superSize' className={classes.upSizeLocation}>{'** Excluded from Directory **'}</Typography>
+                        }
+                        {(makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData)
+                            .map((prefLine, prefIndex) => (
+                                <a href={prefLine.action[0]}
+                                    key={`prefLink-superSize.${prefIndex}`}
+                                    style={{ color: 'inherit', textDecoration: 'none' }}>
+                                    <Box className={classes.upSizePreferenceBox} display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+                                        <Typography key={`prefLine-superSize.${prefIndex}a`} className={classes.adName}>
+                                            {sentenceCase(prefLine.type)}
                                         </Typography>
-                                        {imbeddedTitle && (
-                                            <Typography variant='caption' color='textSecondary'>
-                                                {imbeddedTitle}
-                                            </Typography>
-                                        )}
-                                        {addressValue && (
-                                            <Typography variant='caption' color='textSecondary'>
-                                                {addressValue}
-                                            </Typography>
-                                        )}
-                                        {cellPhoneValue &&
-                                            <Typography variant='body2' color='textSecondary' className={classes.cardSubtext}>
-                                                <a href={cellPhoneHref} className={classes.contactLink} onClick={stopCardClick}>
-                                                    <PhoneInTalkIcon className={classes.contactIcon} />
-                                                    {`Cell: ${cellPhoneValue}`}
-                                                </a>
-                                            </Typography>
-                                        }
-                                        {homePhoneValue &&
-                                            <Typography variant='body2' color='textSecondary' className={classes.cardSubtext}>
-                                                <a href={homePhoneHref} className={classes.contactLink} onClick={stopCardClick}>
-                                                    <PhoneInTalkIcon className={classes.contactIcon} />
-                                                    {`Home: ${homePhoneValue}`}
-                                                </a>
-                                            </Typography>
-                                        }
-                                        {workPhoneValue &&
-                                            <Typography variant='body2' color='textSecondary' className={classes.cardSubtext}>
-                                                <a href={workPhoneHref} className={classes.contactLink} onClick={stopCardClick}>
-                                                    <PhoneInTalkIcon className={classes.contactIcon} />
-                                                    {`Work: ${workPhoneValue}`}
-                                                </a>
-                                            </Typography>
-                                        }
-                                        {emailValue &&
-                                            <Typography variant='body2' color='textSecondary' className={classes.cardSubtext}>
-                                                <a href={emailHref} className={classes.contactLink} onClick={stopCardClick}>
-                                                    <SendIcon className={classes.contactIcon} />
-                                                    {emailValue}
-                                                </a>
-                                            </Typography>
-                                        }
+                                        <Typography key={`prefLine-superSize.${prefIndex}b`} className={classes.superSizePreferenceLine2}>
+                                            {(!adminAccount && prefLine.private) ? 'unpublished' : prefLine.display[0]}
+                                        </Typography>
                                     </Box>
-                                </Paper>
-                            </Grid>
-                        );
-                    })}
-                </Grid>
-            </Box>
+                                    {(prefLine.display.length > 1) && (adminAccount || !prefLine.private) &&
+                                        <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+                                            <Typography key={`prefLine-superSize.${prefIndex}c`} className={classes.superSizePreferenceLine2}>
+                                                @{prefLine.display[1]}
+                                            </Typography>
+                                        </Box>
+                                    }
+                                </a>
+                            )))}
+                        <Box display='flex' className={classes.giveMoreSpace} flexDirection='row' justifyContent='center' alignItems='center'>
+                            <Button
+                                className={AVAClass.AVAButton}
+                                style={{ backgroundColor: 'red', color: 'white' }}
+                                size='small'
+                                startIcon={<CloseIcon size="small" />}
+                                onClick={() => {
+                                    setShowSuperSize(false);
+                                }}
+                            >
+                                {'Back'}
+                            </Button>
+                            <Button
+                                className={AVAClass.AVAButton}
+                                style={{ backgroundColor: 'blue', color: 'white' }}
+                                size='small'
+                                startIcon={<SendIcon size="small" />}
+                                onClick={() => {
+                                    setPromptForMessage(true);
+                                    setMessageType('');
+                                    let rKey = `${superSizeData.name?.first} ${superSizeData.name?.last}:${superSizeData.person_id}`;
+                                    setRecipient(rKey.trim());
+                                }}
+                            >
+                                {`AVA Msg`}
+                            </Button>
+                        </Box>
+                        <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                            {(makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData)
+                                .map((prefLine, prefIndex) => (
+                                    <React.Fragment key={`Frag_${prefIndex}`}>
+                                        <a href={prefLine.action[0]}
+                                            key={`aRefButtonLine0.${prefIndex}`}
+                                            style={{ textDecoration: 'none' }}>
+                                            <Button
+                                                className={AVAClass.AVAButton}
+                                                style={{ backgroundColor: 'blue', color: 'white' }}
+                                                size='small'
+                                            >
+                                                {prefLine.button[0]}
+                                            </Button>
+                                        </a>
+                                        {(prefLine.action.length > 1) &&
+                                            <a href={prefLine.action[1]}
+                                                key={`aRefButtonLine1.${prefIndex}`}
+                                                style={{ textDecoration: 'none' }}>
+                                                <Button
+                                                    className={AVAClass.AVAButton}
+                                                    style={{ backgroundColor: 'blue', color: 'white' }}
+                                                    size='small'
+                                                >
+                                                    {prefLine.button[1]}
+                                                </Button>
+                                            </a>
+                                        }
+                                    </React.Fragment>
+                                )))}
+                        </Box>
+                    </Box>
+                </List>
+            }
 
             <Box className={classes.bottomActionBar}>
                 <Button
@@ -689,6 +956,25 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                         }
                         setViewPeopleMaintenance(false);
                     }}
+                />
+            }
+            {promptForMessage &&
+                <MakeMessage
+                    titleText={(messageType && messageType.includes('URGENT')) ? 'AVA will attempt to voice call all phones' : null}
+                    promptText={['Subject', `What should your message to ${recipient ? recipient.split(':')[0] : ''} say?`, `(Optional) Alternate message if leaving Voice Mail`]}
+                    promptUse={['subject', 'message', 'voicemail']}
+                    buttonText={'Send'}
+                    sender={{
+                        "client_id": pClient,
+                        "patient_id": pPatient,
+                        "patient_display_name": pPatientName
+                    }}
+                    pRecipientID={recipient ? recipient.split(':')[1] : ''}
+                    pRecipientName={recipient ? recipient.split(':')[0] : ''}
+                    onCancel={() => { setPromptForMessage(false); }}
+                    onComplete={() => { setPromptForMessage(false); }}
+                    setMethod={(messageType === 'AVA') ? 'AVA' : (messageType && messageType.includes('URGENT') ? 'voice' : null)}
+                    allowCancel={true}
                 />
             }
         </Box>

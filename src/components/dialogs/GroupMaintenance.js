@@ -10,6 +10,7 @@ import GroupProfileSection from '../sections/GroupProfileSection';
 import GroupSecuritySection from '../sections/GroupSecuritySection';
 import GroupHierarchySection from '../sections/GroupHierarchySection';
 import GroupFormsSection from '../sections/GroupFormsSection';
+import GroupTasksSection from '../sections/GroupTasksSection';
 
 import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -26,6 +27,9 @@ const useStyles = makeStyles(theme => ({
   paperPallette: {
     borderRadius: '30px 30px 30px 30px',
     width: '95%',
+    margin: 0,
+    maxHeight: '98%',
+    maxWidth: '800px'
   },
   padRight: {
     marginRight: theme.spacing(2),
@@ -62,7 +66,7 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
     groupsManagedObject: deepCopy(options.groupsManagedObject || {}),
     familyFormsObj: {},
     user_class: state.session.account_class,
-    administrative_account: (['admin', 'support', 'master'].includes(state.session.account_class)),
+    administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
     unsavedChanges: false,
     alert: false,
     myFormListObj: {},
@@ -113,6 +117,9 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
       },
       GroupFormsSection: {
         component_id: GroupFormsSection,
+      },
+      GroupTasksSection: {
+        component_id: GroupTasksSection,
       }
     },
     og: {
@@ -172,6 +179,14 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
           isAuthorized: true,
           version_id: 0,
           component_name: 'GroupFormsSection'
+        },
+        {
+          section_name: 'Daily Activities & Tasks',
+          color: options?.color || 'orange',
+          isOpen: false,
+          isAuthorized: reactData.administrative_account,
+          version_id: 0,
+          component_name: 'GroupTasksSection'
         }]
       };
 
@@ -241,7 +256,7 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
 
   function buildExitResponse() {
     let responseObj = { response: {} };
-   if (reactData.reload_onExit) {
+    if (reactData.reload_onExit) {
       responseObj.response = { reload: true };
     }
     else if (reactData.refresh_onExit) {
