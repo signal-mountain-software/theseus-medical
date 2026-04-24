@@ -812,7 +812,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
     }, true);
 
     const [
-      { exportFieldOptions, selectedExportFieldNames },
+      { exportFieldOptions, },
       savedReports
     ] = await Promise.all([
       getExportFieldPickerData({

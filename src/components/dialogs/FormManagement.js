@@ -304,7 +304,7 @@ export default ({ defaults, onClose }) => {
     }, true);
 
     const [
-      { exportFieldOptions, selectedExportFieldNames },
+      { exportFieldOptions, },
       savedReports
     ] = await Promise.all([
       getExportFieldPickerData({
