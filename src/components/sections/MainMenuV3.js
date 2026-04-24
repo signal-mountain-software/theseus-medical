@@ -4,6 +4,7 @@ import { recordExists, getObject, cl, switchActiveAccount, dbClient, lambda, get
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { AVATextStyle, AVAclasses, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
+import { clearPushSubscriptionFromDB, initPushNotifications, unsubscribeFromPush, isPushSupported, isPushOptedIn } from '../../util/AVAPushNotifications';
 import QuickAdd from './QuickAdd';
 
 import Card from '@material-ui/core/Card';
@@ -55,6 +56,8 @@ import SearchIcon from '@material-ui/icons/Search';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import FavoriteIcon from '@material-ui/icons/Favorite';
 import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder';
+import NotificationsActiveIcon from '@material-ui/icons/NotificationsActive';
+import NotificationsOffIcon from '@material-ui/icons/NotificationsOff';
 
 import Tooltip from '@material-ui/core/Tooltip';
 import QuickSearch from './QuickSearch';
@@ -2722,9 +2725,65 @@ export default ({ start_at }) => {
                     </Box>
                   </MenuItem>
                 }
+                {!isPushSupported() &&
+                  <MenuItem disabled>
+                    <Box display='flex' flexDirection='row' alignItems='center' key={'vRowPushUnsupported'}>
+                      <NotificationsOffIcon />
+                      <Typography className={classes.popUpMenuRow}>
+                        {`Alerts unavailable SW:${'serviceWorker' in navigator ? 1 : 0} PM:${'PushManager' in window ? 1 : 0} N:${'Notification' in window ? 1 : 0} SA:${navigator.standalone ? 1 : 0}`}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                }
+                {isPushSupported() && Notification.permission === 'denied' &&
+                  <MenuItem disabled>
+                    <Box display='flex' flexDirection='row' alignItems='center' key={'vRowPushDenied'}>
+                      <NotificationsOffIcon />
+                      <Typography className={classes.popUpMenuRow}>{'Alerts blocked'}</Typography>
+                    </Box>
+                  </MenuItem>
+                }
+                {isPushSupported() && Notification.permission !== 'denied' &&
+                  <MenuItem onClick={async () => {
+                    if (isPushOptedIn(session.user_id)) {
+                      await unsubscribeFromPush(session.user_id);
+                      updateReactData({
+                        popupMenuOpen: false,
+                        alert: { severity: 'info', message: 'Alert messaging has been disabled for your account on this device.' }
+                      }, true);
+                    } else {
+                      const result = await initPushNotifications(session.user_id);
+                      if (result.success) {
+                        updateReactData({
+                          popupMenuOpen: false,
+                          alert: { severity: 'success', message: 'Alert messaging is now enabled for your account on this device.' }
+                        }, true);
+                      } else {
+                        const message = result.reason === 'storage_error'
+                          ? 'Push notification storage needs to be cleared. In Chrome: click the lock icon in the address bar → Site settings → Clear data, then reload AVA and try again. (Or in DevTools: Application → Storage → Clear site data.)'
+                          : 'Notifications could not be enabled. Please check your browser settings and try again.';
+                        updateReactData({
+                          popupMenuOpen: false,
+                          alert: { severity: 'warning', message }
+                        }, true);
+                      }
+                    }
+                  }}>
+                    <Box
+                      display='flex' flexDirection='row' alignItems={'center'}
+                      key={'vRowPushNotify'}
+                    >
+                      {isPushOptedIn(session.user_id) ? <NotificationsOffIcon /> : <NotificationsActiveIcon />}
+                      <Typography className={classes.popUpMenuRow}>
+                        {isPushOptedIn(session.user_id) ? 'Disable Alert Notifications' : 'Enable Alert Notifications'}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                }
                 <MenuItem onClick={async () => {
                   await accessLog(session.user_id, `*na*`, `Manual sign-out`);
                   removeCookie("AVAuser", { path: '/' });
+                  await clearPushSubscriptionFromDB(session.user_id);
                   Auth.signOut().then(() => {
                     let jumpTo = window.location.origin;
                     window.location.replace(`${jumpTo}?client=${state.session.client_id}`);

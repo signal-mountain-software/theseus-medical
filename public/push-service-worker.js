@@ -1,61 +1,32 @@
 // AVA Push Notification Service Worker
 // Handles background push events and notification display.
-// This file lives in public/ so CRA copies it to build/ unchanged,
-// separate from the Workbox-generated service-worker.js.
-
-const CACHE_NAME = 'ava-push-sw-v1';
-const STATIC_URLS = ['/', '/index.html', '/manifest.json'];
+// This file lives in public/ so CRA copies it to build/ unchanged.
+// Intentionally does NOT do any caching — that keeps installation
+// trivial and avoids conflicts with the CRA app shell.
 
 // ---------- Lifecycle ----------
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_URLS))
-  );
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    Promise.all([
-      caches.keys().then((names) =>
-        Promise.all(names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n)))
-      ),
-      clients.claim(),
-    ])
-  );
-});
-
-// Network-first fetch; fall back to cache for GET requests only.
-// Skip AWS/API calls so they are never served stale.
-self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  const url = event.request.url;
-  if (url.includes('amazonaws.com') || url.includes('execute-api') || url.includes('cognito')) return;
-
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // Cache successful responses for static assets
-        if (response && response.status === 200 && response.type === 'basic') {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-        }
-        return response;
-      })
-      .catch(() => caches.match(event.request))
-  );
+  // Do not call clients.claim() — we don't need to control any page clients.
+  // Claiming causes 'InvalidStateError: Only the active worker can claim clients'
+  // when competing with the CRA dev service worker at the same scope.
+  event.waitUntil(Promise.resolve());
 });
 
 // ---------- Push ----------
 
 self.addEventListener('push', (event) => {
+  const rawText = event.data ? event.data.text() : '(no data)';
   let data = { title: 'AVA', body: '' };
   if (event.data) {
     try {
-      data = Object.assign(data, event.data.json());
+      data = Object.assign(data, JSON.parse(rawText));
     } catch (_) {
-      data.body = event.data.text();
+      data.body = rawText;
     }
   }
 

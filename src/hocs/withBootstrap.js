@@ -8,7 +8,7 @@ import { useSnackbar } from 'notistack';
 import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
 import { AVADefaults } from '../util/AVAStyles';
-import { initPushNotifications } from '../util/AVAPushNotifications';
+
 import MakeAVAMenu from '../util/MakeAVAMenu';
 import QuickAdd from '../components/sections/QuickAdd';
 import LoginModuleV2 from '../components/sections/LoginModuleV2';
@@ -1169,10 +1169,6 @@ export default Component => props => {
         subject: (URLmsg.subject || null),
       }), { path: '/' });
     }
-    // Register this device for push notifications (fire-and-forget — never blocks login)
-    initPushNotifications(currentSession.user_id).catch(e => {
-      console.warn('AVAPush: initPushNotifications failed silently', e);
-    });
     setAVAReady(true);
     localAVAReady = true;
     return true;
