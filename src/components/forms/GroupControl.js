@@ -17,7 +17,9 @@ import {
   resolveSelectedFieldValuesForPeople,
   downloadRowsAsCsv,
   downloadRowsAsXlsx,
-  sanitizeExportBaseName
+  sanitizeExportBaseName,
+  listSavedReports,
+  saveReport
 } from '../../util/AVAPeopleListExport';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -192,6 +194,11 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
     exportProgressLabel: '',
     exportFieldOptions: [],
     selectedExportFieldNames: [],
+    savedReports: [],
+    selectedReportId: null,
+    reportNameInput: '',
+    hasUnsavedSelections: false,
+    showDownloadConfirm: null,
     updatesMade: false,
     viewPeopleMaintenance: false,
     viewGroupMaintenance: false
@@ -804,20 +811,32 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
       loadingExportFields: true,
     }, true);
 
-    const {
-      exportFieldOptions,
-      selectedExportFieldNames
-    } = await getExportFieldPickerData({
-      sessionId: state?.session?.user_id,
-      clientId: pSession?.client_id,
-      exportScope: 'group_management',
-      logLabel: 'group csv export'
-    });
+    const [
+      { exportFieldOptions, selectedExportFieldNames },
+      savedReports
+    ] = await Promise.all([
+      getExportFieldPickerData({
+        sessionId: state?.session?.user_id,
+        clientId: pSession?.client_id,
+        exportScope: 'group_management',
+        excludeFieldKeys: ['person_id', 'id', 'user_id', 'name', 'first_name', 'last_name', 'full_name', 'display_name', 'person_name'],
+        logLabel: 'group csv export'
+      }),
+      listSavedReports({
+        clientId: pSession?.client_id,
+        exportScope: 'group_management'
+      })
+    ]);
 
     updateReactData({
       loadingExportFields: false,
       exportFieldOptions,
-      selectedExportFieldNames
+      selectedExportFieldNames: [],
+      savedReports,
+      selectedReportId: null,
+      reportNameInput: '',
+      hasUnsavedSelections: false,
+      showDownloadConfirm: null
     }, true);
   }
 
@@ -855,7 +874,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
       ? reactData.selectedExportFieldNames.filter((this_field) => this_field !== field_name)
       : [...reactData.selectedExportFieldNames, field_name];
     updateReactData({
-      selectedExportFieldNames
+      selectedExportFieldNames,
+      hasUnsavedSelections: true
     }, true);
   }
 
@@ -945,9 +965,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
       return false;
     }
 
-    const selectedFieldOptions = reactData.exportFieldOptions.filter((fieldRec) => {
-      return reactData.selectedExportFieldNames.includes(fieldRec.field_key);
-    });
+    const selectedFieldOptions = reactData.selectedExportFieldNames
+      .map(key => reactData.exportFieldOptions.find(opt => opt.field_key === key))
+      .filter(Boolean);
 
     const selectedFieldKeys = selectedFieldOptions.map((fieldRec) => fieldRec.field_key);
 
@@ -1627,7 +1647,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
       {reactData.showFieldPicker &&
         <Dialog
           open={reactData.showFieldPicker}
-          PaperProps={{ style: { padding: '20px', borderRadius: '30px' } }}
+          PaperProps={{ style: { borderRadius: '30px', display: 'flex', flexDirection: 'column', maxHeight: '80vh', overflow: 'hidden' } }}
           onClose={() => {
             updateReactData({
               showFieldPicker: false
@@ -1636,7 +1656,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
           maxWidth='sm'
           fullWidth
         >
-          <Box p={2}>
+          <Box px={2} pt={2} pb={1} style={{ flexShrink: 0 }}>
             <Typography
               style={AVATextStyle({ size: 1.3, bold: true, margin: { bottom: 0.5 } })}
             >
@@ -1647,6 +1667,71 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
             >
               Select data to include in export columns.<br />(Report always includes User ID and Name.)
             </Typography>
+
+            <Box display='flex' flexDirection='row' alignItems='center' flexWrap='wrap' mb={1.5} style={{ gap: '8px' }}>
+              <TextField
+                select
+                SelectProps={{ native: true }}
+                InputLabelProps={{ shrink: true }}
+                label='Saved report'
+                value={reactData.selectedReportId || ''}
+                onChange={(e) => {
+                  const reportId = e.target.value;
+                  if (!reportId) {
+                    updateReactData({ selectedReportId: null, reportNameInput: '', selectedExportFieldNames: [], hasUnsavedSelections: false }, true);
+                    return;
+                  }
+                  const report = reactData.savedReports.find(r => r.report_id === reportId);
+                  if (report) {
+                    const validFields = report.selected_fields.filter(f =>
+                      reactData.exportFieldOptions.some(opt => opt.field_key === f)
+                    );
+                    updateReactData({
+                      selectedReportId: reportId,
+                      reportNameInput: report.report_name,
+                      selectedExportFieldNames: validFields,
+                      hasUnsavedSelections: false
+                    }, true);
+                  }
+                }}
+                size='small'
+                variant='outlined'
+                style={{ minWidth: '180px' }}
+              >
+                <option value=''>— Select saved report —</option>
+                {reactData.savedReports.map(r => (
+                  <option key={r.report_id} value={r.report_id}>{r.report_name}</option>
+                ))}
+              </TextField>
+              <TextField
+                label='Report name'
+                value={reactData.reportNameInput || ''}
+                onChange={(e) => {
+                  updateReactData({ reportNameInput: e.target.value, selectedReportId: null }, true);
+                }}
+                size='small'
+                variant='outlined'
+                style={{ minWidth: '160px' }}
+              />
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'blue', color: 'white' }}
+                size='small'
+                disabled={!reactData.reportNameInput?.trim() || reactData.loadingExportFields || reactData.exportInProgress}
+                onClick={async () => {
+                  const reportName = reactData.reportNameInput.trim();
+                  const clientId = pSession?.client_id;
+                  const exportScope = 'group_management';
+                  const reportId = reactData.selectedReportId
+                    || (sanitizeExportBaseName(reportName, 'report') + '_' + Date.now());
+                  await saveReport({ clientId, exportScope, reportId, reportName, selectedFieldNames: reactData.selectedExportFieldNames });
+                  const savedReports = await listSavedReports({ clientId, exportScope });
+                  updateReactData({ savedReports, selectedReportId: reportId, hasUnsavedSelections: false }, true);
+                }}
+              >
+                {'Save Report'}
+              </Button>
+            </Box>
 
             {reactData.exportInProgress && (reactData.exportProgressTotal > 0) &&
               <Box mb={1.5}>
@@ -1659,7 +1744,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                 />
               </Box>
             }
-
+          </Box>
+          <Box px={2} pb={1} style={{ flexGrow: 1, overflowY: 'auto' }}>
             {reactData.loadingExportFields
               ?
               <Typography style={AVATextStyle({ size: 1 })}>
@@ -1669,7 +1755,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
               <Box
                 display='flex'
                 flexDirection='column'
-                style={{ maxHeight: '360px', overflowY: 'auto' }}
               >
                 {reactData.exportFieldOptions.length === 0
                   ?
@@ -1695,23 +1780,36 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                         >
                           {categoryKey}
                         </Typography>
-                        {groupedFields.map((fieldRec) => (
-                          <FormControlLabel
-                            key={`csv_field_${fieldRec.field_key}`}
-                            control={
-                              <Checkbox
-                                color='primary'
-                                style={{ marginLeft: '1rem' }}
-                                checked={reactData.selectedExportFieldNames.includes(fieldRec.field_key)}
-                                disabled={reactData.exportInProgress}
-                                onChange={() => {
-                                  toggleExportFieldSelection(fieldRec.field_key);
-                                }}
+                        {groupedFields.map((fieldRec) => {
+                            const posIndex = reactData.selectedExportFieldNames.indexOf(fieldRec.field_key);
+                            const isChecked = posIndex !== -1;
+                            return (
+                              <FormControlLabel
+                                key={`csv_field_${fieldRec.field_key}`}
+                                control={
+                                  <Checkbox
+                                    color='primary'
+                                    style={{ marginLeft: '1rem' }}
+                                    checked={isChecked}
+                                    disabled={reactData.exportInProgress}
+                                    onChange={() => {
+                                      toggleExportFieldSelection(fieldRec.field_key);
+                                    }}
+                                  />
+                                }
+                                label={
+                                  <span>
+                                    {fieldRec.description}
+                                    {isChecked &&
+                                      <span style={{ marginLeft: '6px', fontSize: '0.75em', color: '#888', fontWeight: 'bold' }}>
+                                        {`#${posIndex + 1}`}
+                                      </span>
+                                    }
+                                  </span>
+                                }
                               />
-                            }
-                            label={fieldRec.description}
-                          />
-                        ))}
+                            );
+                          })}
                       </Box>
                     );
                   })
@@ -1720,11 +1818,56 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
             }
           </Box>
           <DialogActions className={classes.buttonArea} style={{ marginBottom: '0' }} >
+            {reactData.showDownloadConfirm
+              ?
+              <Box display='flex' flexDirection='column' alignItems='center' style={{ width: '100%', gap: '8px' }}>
+                <Typography style={AVATextStyle({ size: 0.95, bold: true, margin: { bottom: 0.5 } })}>
+                  {'These selections haven\u2019t been saved as a report.'}
+                </Typography>
+                <Box display='flex' flexDirection='row' style={{ gap: '8px' }}>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'blue', color: 'white' }}
+                    size='small'
+                    onClick={() => updateReactData({ showDownloadConfirm: null }, true)}
+                  >
+                    {'Go back and save'}
+                  </Button>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'green', color: 'white' }}
+                    size='small'
+                    onClick={async () => {
+                      const fmt = reactData.showDownloadConfirm;
+                      updateReactData({ showDownloadConfirm: null }, true);
+                      const fn = fmt === 'xlsx' ? downloadCurrentPeopleListXlsx : downloadCurrentPeopleListCsv;
+                      const result = await fn();
+                      if (result) updateReactData({ showFieldPicker: false }, true);
+                    }}
+                  >
+                    {`Download ${reactData.showDownloadConfirm === 'xlsx' ? 'Excel' : 'CSV'} anyway`}
+                  </Button>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'red', color: 'white' }}
+                    size='small'
+                    onClick={() => updateReactData({ showFieldPicker: false }, true)}
+                  >
+                    {'Cancel'}
+                  </Button>
+                </Box>
+              </Box>
+              :
+              <React.Fragment>
             <Button
               className={AVAClass.AVAButton}
               style={{ backgroundColor: 'green', color: 'white' }}
               size='small'
               onClick={async () => {
+                if (reactData.hasUnsavedSelections && reactData.selectedExportFieldNames.length > 0) {
+                  updateReactData({ showDownloadConfirm: 'csv' }, true);
+                  return;
+                }
                 const result = await downloadCurrentPeopleListCsv();
                 if (result) {
                   updateReactData({
@@ -1741,6 +1884,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
               style={{ backgroundColor: 'green', color: 'white' }}
               size='small'
               onClick={async () => {
+                if (reactData.hasUnsavedSelections && reactData.selectedExportFieldNames.length > 0) {
+                  updateReactData({ showDownloadConfirm: 'xlsx' }, true);
+                  return;
+                }
                 const result = await downloadCurrentPeopleListXlsx();
                 if (result) {
                   updateReactData({
@@ -1765,6 +1912,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
             >
               {'Close'}
             </Button>
+              </React.Fragment>
+            }
           </DialogActions>
         </Dialog>
       }

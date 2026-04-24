@@ -1754,6 +1754,41 @@ async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_
         details: addressObj
       };
     }
+    case 'address-city':
+    case 'address-state':
+    case 'address-zip':
+    case 'address-county': {
+      const subfield = dataType.split('-')[1];
+      const addressObj = normalizeAddressInput(rawValue);
+      if (!addressObj) {
+        return { formatted: null, details: null };
+      }
+      let details = addressObj;
+      if (isMarkedResolvedAddress(rawValue)) {
+        details = mergeAddressDetails(addressObj, rawValue, options);
+      } else {
+        const lookupEnabled = (options.address_lookup !== false) && (options.resolve_address !== false);
+        if (lookupEnabled) {
+          const resolvedAddress = await resolveAddressWithPublicApi(addressObj.full, options);
+          if (resolvedAddress) {
+            details = mergeAddressDetails(addressObj, resolvedAddress, options);
+            if (details && details.full) {
+              await persistResolvedAddressToPerson({
+                client_id,
+                person_id,
+                dictionaryRec,
+                options,
+                resolvedAddress: details
+              });
+            }
+          }
+        }
+      }
+      return {
+        formatted: details[subfield] || null,
+        details
+      };
+    }
     case 'name': {
       const nameObj = normalizeNameInput(rawValue);
       if (!nameObj) {
@@ -2378,9 +2413,9 @@ async function resolveAddressWithPublicApi(addressString, options = {}) {
       addr.town,
       addr.village,
       addr.hamlet,
-      addr.municipality,
-      addr.county
+      addr.municipality
     ]);
+    const county = firstNonBlank([addr.county, addr.district]);
     const state = firstNonBlank([addr.state, addr.state_district]);
     const zip = firstNonBlank([addr.postcode]);
 
@@ -2402,6 +2437,7 @@ async function resolveAddressWithPublicApi(addressString, options = {}) {
       line1,
       line2: '',
       city,
+      county,
       state,
       zip,
       full,
@@ -2464,6 +2500,7 @@ function mergeAddressDetails(baseAddress = {}, resolvedAddress = {}, options = {
     line1: firstNonBlank([resolvedAddress.line1, baseAddress.line1]),
     line2: firstNonBlank([resolvedAddress.line2, baseAddress.line2]),
     city: firstNonBlank([resolvedAddress.city, baseAddress.city]),
+    county: firstNonBlank([resolvedAddress.county, baseAddress.county]),
     state: firstNonBlank([resolvedAddress.state, baseAddress.state]),
     zip: firstNonBlank([resolvedAddress.zip_code, resolvedAddress.zip, baseAddress.zip_code, baseAddress.zip]),
     source: resolvedAddress.source || null,
