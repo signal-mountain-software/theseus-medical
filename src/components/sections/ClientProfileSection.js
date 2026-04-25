@@ -1,9 +1,12 @@
 import React from 'react';
-import { Box, Typography, TextField, Button, Avatar, Switch } from '@material-ui/core/';
+import { Box, Typography, TextField, Button, Avatar, Switch, RadioGroup, Radio, FormControlLabel } from '@material-ui/core/';
 
 import { AVATextStyle } from '../../util/AVAStyles';
 import { AVAclasses } from '../../util/AVAStyles';
 import AVAUploadFile from '../../util/AVAUploadFile';
+
+import * as XLSX from 'xlsx';
+import { dbClient } from '../../util/AVAUtilities';
 
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
@@ -12,6 +15,46 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
   const AVAClass = AVAclasses();
   let localColor = currentValues.customizationRecs?.client_style?.customization_value?.backgroundColor;
+
+  const preauthFileInputRef = React.useRef(null);
+  const [preauthImportStatus, setPreauthImportStatus] = React.useState(null);
+
+  const handlePreauthUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    event.target.value = '';  // allow re-selecting same file
+    const clientId = currentValues.customizationRecs.client_name.client_id;
+    setPreauthImportStatus('Reading file\u2026');
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      let imported = 0;
+      let skipped = 0;
+      for (const row of rows) {
+        const rawKey = row['preauth_key'];
+        const preauth_key = rawKey != null ? String(rawKey).trim() : '';
+        if (!preauth_key) { skipped++; continue; }
+        const rawOTU = row['one_time_use'];
+        const one_time_use = /^(y(es)?|true|1)$/i.test(String(rawOTU ?? '').trim());
+        const preauth_data = {};
+        for (const [key, value] of Object.entries(row)) {
+          if (key === 'preauth_key' || key === 'one_time_use') continue;
+          if (value !== '') preauth_data[key] = value;
+        }
+        await dbClient.put({
+          TableName: 'PreAuthorization',
+          Item: { client_id: clientId, preauth_key, one_time_use, preauth_data }
+        }).promise();
+        imported++;
+      }
+      setPreauthImportStatus(`Done: ${imported} imported, ${skipped} skipped.`);
+    } catch (err) {
+      console.error('PreAuth import error:', err);
+      setPreauthImportStatus(`Error: ${err.message}`);
+    }
+  };
 
   return (
     <Box
@@ -618,6 +661,119 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
 
 
+
+      <Typography
+        style={AVATextStyle({ margin: { top: 1 } })}
+      >
+        {'Web Account Registration'}
+      </Typography>
+      <Box flexGrow={2} display='flex' alignItems='center'
+        justifyContent='flex-start' marginBottom={1} flexDirection='row'>
+        <Typography
+          style={AVATextStyle({
+            size: 0.8, margin: { right: 0.8 },
+            bold: !currentValues.customizationRecs.client_style.customization_value.preAuth?.require_pre_auth
+          })}
+        >
+          {'Open to Anyone'}
+        </Typography>
+        <Switch
+          checked={currentValues.customizationRecs.client_style.customization_value?.preAuth?.require_pre_auth || false}
+          onClick={async () => {
+            const currentPreAuth = currentValues.customizationRecs.client_style.customization_value?.preAuth || {};
+            await updateField({
+              updateList: [{
+                tableName: 'customizationRecs',
+                fieldName: 'client_style.customization_value.preAuth',
+                newData: { ...currentPreAuth, require_pre_auth: !currentPreAuth.require_pre_auth }
+              }]
+            });
+          }}
+          name="PreAuthRequired"
+          color="primary"
+        />
+        <Typography
+          style={AVATextStyle({
+            size: 0.8, margin: { left: 0.8 },
+            bold: currentValues.customizationRecs.client_style.customization_value.preAuth?.require_pre_auth
+          })}
+        >
+          {'Pre-Authorization Required'}
+        </Typography>
+      </Box>
+
+      {currentValues.customizationRecs.client_style.customization_value?.preAuth?.require_pre_auth &&
+        <React.Fragment>
+          <Typography
+            style={AVATextStyle({ size: 0.8, margin: { left: 0.5, top: 0.5, bottom: -0.3 } })}
+          >
+            {'Authorize by matching the applicant on:'}
+          </Typography>
+          <RadioGroup
+            value={currentValues.customizationRecs.client_style.customization_value?.preAuth?.preauth_match_on || 'code'}
+            onChange={async (event) => {
+              const currentPreAuth = currentValues.customizationRecs.client_style.customization_value?.preAuth || {};
+              await updateField({
+                updateList: [{
+                  tableName: 'customizationRecs',
+                  fieldName: 'client_style.customization_value.preAuth',
+                  newData: { ...currentPreAuth, preauth_match_on: event.target.value }
+                }]
+              });
+            }}
+            style={{ marginLeft: '16px', marginBottom: '8px', flexDirection: 'row' }}
+          >
+            {[['code', 'Code'], ['name', 'Name'], ['email', 'Email'], ['phone', 'Phone']].map(([val, label]) => (
+              <FormControlLabel key={val} value={val} control={<Radio color='primary' size='small' />} label={
+                <Typography style={AVATextStyle({ size: 0.8, margin: { left: -0.5, top: 0.175 } })}>{label}</Typography>
+              } />
+            ))}
+          </RadioGroup>
+
+          {(currentValues.customizationRecs.client_style.customization_value?.preAuth?.preauth_match_on || 'code') === 'code' &&
+            <TextField
+              autoComplete='off'
+              style={{ width: '60%', marginBottom: '16px', marginLeft: '8px' }}
+              defaultValue={currentValues.customizationRecs.client_style.customization_value?.preAuth?.preauth_code_prompt || ''}
+              helperText='Prompt text shown to applicant when asking for their code'
+              onBlur={async (event) => {
+                const currentPreAuth = currentValues.customizationRecs.client_style.customization_value?.preAuth || {};
+                await updateField({
+                  updateList: [{
+                    tableName: 'customizationRecs',
+                    fieldName: 'client_style.customization_value.preAuth',
+                    newData: { ...currentPreAuth, preauth_code_prompt: event.target.value }
+                  }]
+                });
+              }}
+            />
+          }
+
+          <Box display='flex' alignItems='center' style={{ marginLeft: '8px', marginTop: '4px', marginBottom: '8px' }}>
+            <input
+              type='file'
+              accept='.csv,.xlsx,.xls,.ods'
+              ref={preauthFileInputRef}
+              style={{ display: 'none' }}
+              onChange={handlePreauthUpload}
+            />
+            <Button
+              variant='outlined'
+              size='small'
+              startIcon={<CloudUploadIcon />}
+              onClick={() => preauthFileInputRef.current?.click()}
+              style={AVATextStyle({ size: 0.8 })}
+            >
+              {'Import Pre-Auth Records'}
+            </Button>
+            {preauthImportStatus &&
+              <Typography style={AVATextStyle({ size: 0.75, margin: { left: 1 } })}>
+                {preauthImportStatus}
+              </Typography>
+            }
+          </Box>
+        </React.Fragment>
+      }
 
       <Box display='flex' alignItems='center'
         justifyContent='flex-end' flexDirection='row'>
