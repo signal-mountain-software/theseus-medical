@@ -244,6 +244,7 @@ export default ({ start_at }) => {
   const addMenuUploadInputRef = React.useRef(null);
   const tileContainerRef = React.useRef(null);
   const prevMenuDepthRef = React.useRef(0);
+  const deferredStartAtRef = React.useRef(null);
   const activePersonId = state.session?.patient_id || state.session?.person_id;
 
   const loadUserUiTilesOverride = async () => {
@@ -338,11 +339,16 @@ export default ({ start_at }) => {
         loading: 'Building your AVA menu'
       }, true);
     }
+
+    // Capture start_at before any resets so we can act on it after the build
+    const savedStartAt = reactData.start_at;
+
     reactData.menu_hierarchy = [];
-    const new_menuHierarchy = await getMenuItem(reactData.start_at, 0);
+    const new_menuHierarchy = await getMenuItem('__top__', 0);
     let reactUpd = {
       menu_hierarchy: new_menuHierarchy,
-      loading: false
+      loading: false,
+      ...(savedStartAt && savedStartAt !== '__top__' ? { start_at: '__top__' } : {})
     };
     const favoriteList = normalizeFavorites(state.patient?.v3_favorites || []);
     if (favoriteList && favoriteList.length > 0) {
@@ -354,6 +360,62 @@ export default ({ start_at }) => {
     const persistedOpenMenuIds = await loadPersistedOpenMenuIds();
     if (persistedOpenMenuIds.length > 0) {
       reactUpd.menu_hierarchy = await applyPersistedOpenMenuIds(reactUpd.menu_hierarchy, persistedOpenMenuIds);
+    }
+
+    // Auto-activate start_at after the full hierarchy is built.
+    // The item may be at any depth, so we first search the hierarchy then fall back to a direct DB fetch.
+    if (savedStartAt && savedStartAt !== '__top__') {
+      // Resolve the item — search the built hierarchy first, then fall back to a direct DB fetch
+      let startAtItem = null;
+      let startAtLevel = 1;
+
+      for (let li = 0; li < reactUpd.menu_hierarchy.length; li++) {
+        const cell = (reactUpd.menu_hierarchy[li] || []).find((c) => c.menu_id === savedStartAt);
+        if (cell) { startAtItem = cell.menuItemRec; startAtLevel = li; break; }
+      }
+
+      if (!startAtItem) {
+        const startAtRec = await dbClient
+          .get({
+            TableName: 'MenuV3',
+            Key: { client_id: state.session.client_id, menu_id: savedStartAt }
+          })
+          .promise()
+          .catch((error) => {
+            cl({ 'Error fetching start_at menu item': error });
+          });
+        if (recordExists(startAtRec)) {
+          startAtItem = startAtRec.Item;
+          startAtLevel = 1;
+          if (startAtItem.menu_itemType === 'menu') {
+            if (!reactUpd.menu_hierarchy[1]) { reactUpd.menu_hierarchy[1] = []; }
+            if (!reactUpd.menu_hierarchy[1].some((c) => c.menu_id === savedStartAt)) {
+              reactUpd.menu_hierarchy[1].push({ menu_id: savedStartAt, menuItemRec: startAtItem, parent: '__top__' });
+            }
+          }
+        }
+      }
+
+      if (startAtItem) {
+        if (state.groups && state.accessList) {
+          // Background data is ready — activate now
+          if (startAtItem.menu_itemType === 'function') {
+            void activityLog(startAtItem.menu_id, `Auto-run on load: ${startAtItem.description?.long}`);
+            reactUpd.renderFunctionCall = startAtItem.call || false;
+          }
+          else if (startAtItem.menu_itemType === 'menu') {
+            reactData.menu_hierarchy = reactUpd.menu_hierarchy;
+            for (const childItem of (startAtItem.children || [])) {
+              await getMenuItem(childItem, startAtLevel + 1, startAtItem);
+            }
+            reactUpd.menu_hierarchy = reactData.menu_hierarchy;
+          }
+        }
+        else {
+          // Background data (groups/accessList) not yet loaded — defer until useEffect fires
+          deferredStartAtRef.current = { item: startAtItem, level: startAtLevel };
+        }
+      }
     }
 
     updateReactData(reactUpd, true);
@@ -453,6 +515,25 @@ export default ({ start_at }) => {
     }
   }, [reactData.renderFunctionCall, pause, start]);
 
+  // Fire any start_at activation that was deferred because groups/accessList weren't loaded yet
+  React.useEffect(() => {
+    if (!state.groups || !state.accessList || !deferredStartAtRef.current) { return; }
+    const { item: deferredItem, level: deferredLevel } = deferredStartAtRef.current;
+    deferredStartAtRef.current = null;
+    if (deferredItem.menu_itemType === 'function') {
+      void activityLog(deferredItem.menu_id, `Auto-run on load: ${deferredItem.description?.long}`);
+      updateReactData({ renderFunctionCall: deferredItem.call || false }, true);
+    }
+    else if (deferredItem.menu_itemType === 'menu') {
+      (async () => {
+        for (const childItem of (deferredItem.children || [])) {
+          await getMenuItem(childItem, deferredLevel + 1, deferredItem);
+        }
+        updateReactData({ menu_hierarchy: reactData.menu_hierarchy }, true);
+      })();
+    }
+  }, [state.groups, state.accessList]); // eslint-disable-line react-hooks/exhaustive-deps
+
   let nowTime = new Date().getTime();
 
   /**** NEW V3 CODE ****/
@@ -533,14 +614,10 @@ export default ({ start_at }) => {
             parent: targetParentId
           });
         }
-        if (this_item.hidden && this_item.menu_itemType === 'menu') {  // hidden menu item? process childen immediately
+        if (this_item.hidden && this_item.menu_itemType === 'menu') {  // hidden menu item? process children immediately
           for (const childItem of (this_item.children || [])) {
             await getMenuItem(childItem, menu_level + 1, this_item);
           }
-        }
-        else if (this_item.menu_itemType === 'function' && itemCode === reactData.start_at) {
-          void activityLog(this_item.menu_id, `Auto-run on load: ${this_item.description?.long}`);
-          renderFunction(this_item.call_instructions);
         }
       }
     }

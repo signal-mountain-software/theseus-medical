@@ -90,10 +90,12 @@ export default () => {
     window.location.replace(`${jumpTo}?client=${session.client_id}`);
   }
 
+  const startAt = state.session.url_parameters?.start || null;
+
   return (
     <Box>
       {(state.session.client_style && state.session.client_style.ui_v3 && (ava_env !== 'D' || (state.session.client_style && state.session.client_style.ui_v3Dev)))
-        ? <MainMenuV3 />
+        ? <MainMenuV3 {...(startAt ? { start_at: startAt } : {})} />
         :
         ((state.session.client_style && state.session.client_style.ui_tiles)
         ? <ConnectMenu pPerson={patient.person_id} patient={patient} pClient={session.client_id} />
