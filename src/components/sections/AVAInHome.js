@@ -1737,7 +1737,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               setShowNewFactDialog(-1);
               if (session?.url_parameters && ('activity' in session.url_parameters) && ('user' in session.url_parameters)) {
                 let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
-                jumpTo += `?user=${session.url_parameters.user}`;
+                jumpTo += `?user=${session.url_parameters.user}&client=${session.client_id}`;
                 window.location.replace(jumpTo);
               }
             }}

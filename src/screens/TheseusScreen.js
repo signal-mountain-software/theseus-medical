@@ -19,17 +19,6 @@ export default () => {
   const [cookies, , removeCookie] = useCookies(['AVAuser', 'AVAaction']);
   const ava_env = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
 
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.ready
-      .then(registration => {
-        registration.update();
-      })
-      .catch(error => {
-        console.error(error.message);
-        throw error.message;
-      });
-  }
-
   if (cookies.AVAaction) {
     if (cookies.AVAaction.document) {
       return (
@@ -52,7 +41,7 @@ export default () => {
               }
             }
             let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
-            window.location.replace(jumpTo);
+            window.location.replace(`${jumpTo}?client=${session.client_id}`);
           }}
         />
       );
@@ -98,7 +87,7 @@ export default () => {
       );
     }
     let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
-    window.location.replace(jumpTo);
+    window.location.replace(`${jumpTo}?client=${session.client_id}`);
   }
 
   return (

@@ -1802,7 +1802,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 let reactUpdObj = {};
                 if (session?.url_parameters && ('activity' in session.url_parameters) && ('user' in session.url_parameters)) {
                   let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
-                  jumpTo += `?user=${session.url_parameters.user}`;
+                  jumpTo += `?user=${session.url_parameters.user}&client=${session.client_id}`;
                   window.location.replace(jumpTo);
                 }
                 else if ((['continue', 'next'].includes(response))
