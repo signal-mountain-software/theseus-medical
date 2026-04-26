@@ -4,7 +4,7 @@ import { recordExists, getObject, cl, switchActiveAccount, dbClient, lambda, get
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { AVATextStyle, AVAclasses, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
-import { clearPushSubscriptionFromDB, initPushNotifications, unsubscribeFromPush, isPushSupported, isPushOptedIn } from '../../util/AVAPushNotifications';
+import { clearPushSubscriptionFromDB, initPushNotifications, unsubscribeFromPush, isPushSupported, isPushOptedIn, syncAlertDeliveryMethod } from '../../util/AVAPushNotifications';
 import QuickAdd from './QuickAdd';
 
 import Card from '@material-ui/core/Card';
@@ -2824,6 +2824,15 @@ export default ({ start_at }) => {
                   <MenuItem onClick={async () => {
                     if (isPushOptedIn(session.user_id)) {
                       await unsubscribeFromPush(session.user_id);
+                      // Check if any active subscriptions remain for this person
+                      const remaining = await dbClient.query({
+                        TableName: 'PushSubscriptions',
+                        IndexName: 'person-index',
+                        KeyConditionExpression: 'person_id = :pid',
+                        FilterExpression: 'sub_status = :active',
+                        ExpressionAttributeValues: { ':pid': session.user_id, ':active': 'active' },
+                      }).promise().catch(() => ({ Items: [] }));
+                      await syncAlertDeliveryMethod(session.user_id, (remaining.Items?.length || 0) > 0);
                       updateReactData({
                         popupMenuOpen: false,
                         alert: { severity: 'info', message: 'Alert messaging has been disabled for your account on this device.' }
@@ -2831,6 +2840,7 @@ export default ({ start_at }) => {
                     } else {
                       const result = await initPushNotifications(session.user_id);
                       if (result.success) {
+                        await syncAlertDeliveryMethod(session.user_id, true);
                         updateReactData({
                           popupMenuOpen: false,
                           alert: { severity: 'success', message: 'Alert messaging is now enabled for your account on this device.' }

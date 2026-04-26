@@ -5,17 +5,46 @@ import FormControlLabel from '@material-ui/core/FormControlLabel';
 import { Box, Checkbox, IconButton, TextField, Button } from '@material-ui/core';
 
 import { formatPhone } from '../../util/AVAPeople';
-import { isEmpty, isMobile, lambda } from '../../util/AVAUtilities';
+import { isEmpty, isMobile, lambda, dbClient } from '../../util/AVAUtilities';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
+import { isPushSupported, isPushOptedIn, initPushNotifications, unsubscribeFromPush, unsubscribeFromPushAllDevices, syncAlertDeliveryMethod } from '../../util/AVAPushNotifications';
 import { makeTime } from '../../util/AVADateTime';
 
 import DeleteIcon from '@material-ui/icons/Delete';
 import ArrowDownwardIcon from '@material-ui/icons/ArrowDownward';
 import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
 
-export default ({ currentValues, errorList, setError, updateField, updateReactData }) => {
+export default ({ currentValues, errorList, setError, updateField, updateReactData, reactData }) => {
 
   const AVAClass = AVAclasses();
+
+  const profilePersonId = currentValues.peopleRec?.person_id || null;
+  const isSelf = !!profilePersonId && (profilePersonId === reactData?.user_id);
+
+  const [pushStatus, setPushStatus] = React.useState({ checked: false, activeCount: 0, optedInHere: false });
+
+  React.useEffect(() => {
+    let cancelled = false;
+    async function checkPushStatus() {
+      const optedInHere = isSelf ? isPushOptedIn(profilePersonId) : false;
+      let activeCount = 0;
+      try {
+        const result = await dbClient.query({
+          TableName: 'PushSubscriptions',
+          IndexName: 'person-index',
+          KeyConditionExpression: 'person_id = :pid',
+          FilterExpression: 'sub_status = :active',
+          ExpressionAttributeValues: { ':pid': profilePersonId, ':active': 'active' },
+        }).promise();
+        activeCount = result.Items?.length || 0;
+      } catch (_) { /* silent — push status is informational only */ }
+      if (!cancelled) {
+        setPushStatus({ checked: true, activeCount, optedInHere });
+      }
+    }
+    if (profilePersonId) { checkPushStatus(); }
+    return () => { cancelled = true; };
+  }, [profilePersonId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isFamilyMember = currentValues.familyRecs && currentValues.familyRecs.some(famRec => {
     return (famRec.hasOwnProperty('primary_contact'));
@@ -414,6 +443,125 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
           </Button>
         </Box>
       </Box>
+
+      {pushStatus.checked && (() => {
+        const supported = isPushSupported();
+        const denied = supported && 'Notification' in window && Notification.permission === 'denied';
+        const { activeCount, optedInHere } = pushStatus;
+        const otherCount = activeCount - (optedInHere ? 1 : 0);
+
+        let deviceLine;
+        if (!supported) {
+          deviceLine = activeCount > 0
+            ? `Alert notifications are not available on this device, but active on ${activeCount} other device${activeCount > 1 ? 's' : ''}.`
+            : 'Alert notifications are not available on this device.';
+        } else if (denied) {
+          deviceLine = activeCount > 0
+            ? `Alert notifications are blocked by your browser settings, but active on ${activeCount} other device${activeCount > 1 ? 's' : ''}.`
+            : 'Alert notifications are blocked by your browser settings.';
+        } else if (optedInHere) {
+          deviceLine = otherCount > 0
+            ? `Alert notifications are active on this device and ${otherCount} other${otherCount > 1 ? 's' : ''}.`
+            : 'Alert notifications are active on this device.';
+        } else {
+          deviceLine = activeCount > 0
+            ? `Alert notifications are active on ${activeCount} other device${activeCount > 1 ? 's' : ''}, but not this device.`
+            : 'Alert notifications are not currently active on any device.';
+        }
+
+        // Syncs the 'alert' entry in preferred_methods to match whether push is active anywhere.
+        // updateField keeps the in-memory state consistent with a pending Save;
+        // syncAlertDeliveryMethod does a fresh DB read-modify-write so no dirty changes leak through.
+        async function syncAlertPreference(willBeActiveAnywhere) {
+          const methods = currentValues.peopleRec.preferred_methods || [];
+          const hasAlert = methods.includes('alert');
+          if (willBeActiveAnywhere && !hasAlert) {
+            const newMethods = [...methods, 'alert'];
+            await updateField({ updateList: [{ tableName: 'peopleRec', fieldName: 'preferred_methods', newData: newMethods }] });
+          } else if (!willBeActiveAnywhere && hasAlert) {
+            const newMethods = methods.filter(m => m !== 'alert');
+            await updateField({ updateList: [{ tableName: 'peopleRec', fieldName: 'preferred_methods', newData: newMethods }] });
+          }
+          await syncAlertDeliveryMethod(profilePersonId, willBeActiveAnywhere);
+        }
+
+        const showButtons = isSelf && supported && !denied;
+
+        return (
+          <Box
+            display='flex'
+            flexDirection='column'
+            alignItems='flex-start'
+            marginTop={0}
+            marginBottom={1}
+          >
+            <Typography style={AVATextStyle({ italic: true, margin: { bottom: 0 } })}>
+              {deviceLine}
+            </Typography>
+            {showButtons &&
+              <Box display='flex' flexDirection='row' flexWrap='wrap' style={{ gap: '8px', marginTop: '8px' }}>
+                {/* Enable on this device — shown when not opted in here */}
+                {!optedInHere &&
+                  <Button
+                    onClick={async () => {
+                      const result = await initPushNotifications(profilePersonId);
+                      if (result.success) {
+                        const newCount = activeCount + 1;
+                        setPushStatus(prev => ({ ...prev, optedInHere: true, activeCount: newCount }));
+                        await syncAlertPreference(true);
+                        updateReactData({ alert: { severity: 'success', message: 'Alert messaging is now enabled for your account on this device.' } }, true);
+                      } else {
+                        const message = result.reason === 'storage_error'
+                          ? 'Push notification storage needs to be cleared. In Chrome: click the lock icon → Site settings → Clear data, then reload AVA and try again.'
+                          : 'Notifications could not be enabled. Please check your browser settings and try again.';
+                        updateReactData({ alert: { severity: 'warning', message } }, true);
+                      }
+                    }}
+                    className={AVAClass.AVAButton}
+                    style={{ marginLeft: 0, backgroundColor: 'white', color: 'black' }}
+                    size='small'
+                  >
+                    {'Enable on this device'}
+                  </Button>
+                }
+                {/* Disable on this device — shown when opted in here */}
+                {optedInHere &&
+                  <Button
+                    onClick={async () => {
+                      await unsubscribeFromPush(profilePersonId);
+                      const newCount = Math.max(0, activeCount - 1);
+                      setPushStatus(prev => ({ ...prev, optedInHere: false, activeCount: newCount }));
+                      await syncAlertPreference(newCount > 0);
+                      updateReactData({ alert: { severity: 'info', message: 'Alert messaging has been disabled for your account on this device.' } }, true);
+                    }}
+                    className={AVAClass.AVAButton}
+                    style={{ marginLeft: 0, backgroundColor: 'white', color: 'black' }}
+                    size='small'
+                  >
+                    {'Disable on this device'}
+                  </Button>
+                }
+                {/* Disable on all devices — shown when any device is active */}
+                {activeCount > 0 &&
+                  <Button
+                    onClick={async () => {
+                      await unsubscribeFromPushAllDevices(profilePersonId);
+                      setPushStatus(prev => ({ ...prev, optedInHere: false, activeCount: 0 }));
+                      await syncAlertPreference(false);
+                      updateReactData({ alert: { severity: 'info', message: 'Alert messaging has been disabled for your account on all devices.' } }, true);
+                    }}
+                    className={AVAClass.AVAButton}
+                    style={{ marginLeft: 0, backgroundColor: 'white', color: 'black' }}
+                    size='small'
+                  >
+                    {'Disable on all devices'}
+                  </Button>
+                }
+              </Box>
+            }
+          </Box>
+        );
+      })()}
 
       <React.Fragment>
         {currentValues.peopleRec.time_based_rules

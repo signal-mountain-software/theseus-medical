@@ -276,6 +276,78 @@ export async function unsubscribeFromPush(personId) {
 }
 
 /**
+ * Disables push notifications for this person on ALL devices.
+ * Queries PushSubscriptions via person-index GSI and marks every active row as
+ * 'disabled'. Also removes this person from the localStorage opt-in list on the
+ * current device.
+ *
+ * @param {string} personId
+ * @returns {Promise<{ success: boolean, reason?: string }>}
+ */
+export async function unsubscribeFromPushAllDevices(personId) {
+  try {
+    const result = await dbClient.query({
+      TableName: 'PushSubscriptions',
+      IndexName: 'person-index',
+      KeyConditionExpression: 'person_id = :pid',
+      FilterExpression: 'sub_status = :active',
+      ExpressionAttributeValues: { ':pid': personId, ':active': 'active' },
+    }).promise();
+
+    const rows = result.Items || [];
+    await Promise.all(rows.map(row =>
+      dbClient.update({
+        TableName: 'PushSubscriptions',
+        Key: { endpoint: row.endpoint, person_id: personId },
+        UpdateExpression: 'set sub_status = :disabled',
+        ExpressionAttributeValues: { ':disabled': 'disabled' },
+      }).promise().catch(err => console.error('AVAPush: error disabling row', row.endpoint, err))
+    ));
+
+    removePushOptedInUser(personId);
+    return { success: true };
+  } catch (error) {
+    console.error(`AVAPush: unsubscribeAllDevices error for ID ${personId}`, error);
+    return { success: false, reason: error.message };
+  }
+}
+
+/**
+ * Reads the People record for personId and adds or removes 'alert' from
+ * preferred_methods based on whether push is active anywhere for that person.
+ * Rule: 'alert' must be present iff activeCount > 0.
+ * Uses a fresh DB read so no dirty in-memory state can leak through.
+ *
+ * @param {string} personId
+ * @param {boolean} willBeActiveAnywhere  — pass true after enable, false when last subscription disabled
+ * @returns {Promise<void>}
+ */
+export async function syncAlertDeliveryMethod(personId, willBeActiveAnywhere) {
+  try {
+    const rec = await dbClient.get({ TableName: 'People', Key: { person_id: personId } }).promise();
+    const current = rec?.Item?.preferred_methods || [];
+    const hasAlert = current.includes('alert');
+    if (willBeActiveAnywhere && !hasAlert) {
+      await dbClient.update({
+        TableName: 'People',
+        Key: { person_id: personId },
+        UpdateExpression: 'set preferred_methods = :m',
+        ExpressionAttributeValues: { ':m': [...current, 'alert'] },
+      }).promise();
+    } else if (!willBeActiveAnywhere && hasAlert) {
+      await dbClient.update({
+        TableName: 'People',
+        Key: { person_id: personId },
+        UpdateExpression: 'set preferred_methods = :m',
+        ExpressionAttributeValues: { ':m': current.filter(m => m !== 'alert') },
+      }).promise();
+    }
+  } catch (err) {
+    console.error(`AVAPush: syncAlertDeliveryMethod error for ${personId}`, err);
+  }
+}
+
+/**
  * Shows a local (foreground) notification immediately using the Notification API.
  * Works only if the app IS active and permission has been granted.
  * No server or push subscription required.
