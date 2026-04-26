@@ -28,7 +28,9 @@ import Button from '@material-ui/core/Button';
 import { Snackbar } from '@material-ui/core';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
+import DialogContent from '@material-ui/core/DialogContent';
 import DialogContentText from '@material-ui/core/DialogContentText';
+import IconButton from '@material-ui/core/IconButton';
 
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
@@ -39,7 +41,9 @@ import TextField from '@material-ui/core/TextField';
 
 import DeleteIcon from '@material-ui/icons/Delete';
 import SendIcon from '@material-ui/icons/Send';
+import ZoomInIcon from '@material-ui/icons/ZoomIn';
 import AVAConfirm from './AVAConfirm';
+import MessageDetailDialog from '../dialogs/MessageDetailDialog';
 
 import { AVAclasses } from '../../util/AVAStyles';
 
@@ -205,7 +209,6 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     confirmessage_index: false,
     deletePending: false,
     expanded_composite_key: false,
-    forceReloadTime: 0,
     idleState: false,
     imageTable: {},
     inOut_filter: (options && options.inOut_filter) || false,
@@ -255,13 +258,23 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     threads: {},
     user_fontSize: AVADefaults({ fontSize: 'get' }) || 1.5,
     viewOnly: (options && options.viewOnly) || false,
+    viewMessageDialog: false,
     viewPeopleMaintenance: false,
     warning: false,
     window_width: window.window.innerWidth,
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const isMountedRef = React.useRef(true);
+  const refreshIntervalRef = React.useRef(null);
+  React.useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (refreshIntervalRef.current) { clearInterval(refreshIntervalRef.current); }
+    };
+  }, []);
   const updateReactData = (newData, force = false) => {
+    if (!isMountedRef.current) { return; }
     setReactData((prevValues) => (Object.assign(
       prevValues,
       newData
@@ -472,45 +485,23 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   const oneMinute = 1000 * 60;
   const msBeforeSleeping = 1 * oneMinute;
 
-  const onAction = async () => {
-    if (reactData.forceReloadTime) {
-      let now = new Date().getTime();
-      if (reactData.forceReloadTime < now) {
-        await initialize();
-      }
-    }
+  // Feature flags — set in state.session.client_style to opt OUT (default is ON)
+  const hideMessageImages = !state.session.client_style || (state.session.client_style.messages_hide_images !== false);
+  const forceMessagePlainText = !state.session.client_style || (state.session.client_style.messages_plain_text_only !== false);
+  const truncateMessageText = !state.session.client_style || (state.session.client_style.messages_truncate_body !== false);
+  const MESSAGE_TRUNCATE_LENGTH = 500;
+
+  const onAction = () => {
     if (reactData.idleState) {
-      updateReactData({
-        idleState: false,
-      }, false);
+      updateReactData({ idleState: false }, false);
     }
     reset();
   };
 
-  const onIdle = async () => {
-    let now = new Date();
-    let minutesSinceActive = 0;
-    if (reactData.forceReloadTime) {
-      let now = new Date().getTime();
-      if (reactData.forceReloadTime < now) {
-        await initialize();
-      }
-    }
-    if (!reactData.idleState) {    // if we weren't previously in an idle state and we are now...
-      cl(`Went idle at ${now.toLocaleString()}.  Idle for ${minutesSinceActive} minutes.`);
-      updateReactData({
-        idleState: true,
-        enteredIdleStateTime: now,
-      }, true);
-    }
-    else {   // we are still in an idle state
-      minutesSinceActive = Math.floor((now.getTime() - reactData.enteredIdleStateTime.getTime()) / oneMinute);
-      if (minutesSinceActive > 2) {
-        await initialize();
-      }
-      else {
-        cl(`Still idle at ${now.toLocaleString()}.  Idle for ${minutesSinceActive} minutes.`);
-      }
+  const onIdle = () => {
+    if (!reactData.idleState) {
+      cl(`Went idle at ${new Date().toLocaleString()}.`);
+      updateReactData({ idleState: true, enteredIdleStateTime: new Date() }, true);
     }
     reset();
   };
@@ -851,13 +842,14 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         attachments_to_send: [],
         is_public: false,
         is_reply: false,
-        forceReloadTime: new Date().getTime() + (1000 * 30),
         alert: {
           severity: 'success',
           title: 'Your Message',
           message: `Your message is on the way to ${recipientMessageText}`
         }
       }, true);
+      // Re-refresh after Lambda delivery latency (~30s for processing)
+      setTimeout(() => { if (isMountedRef.current) { refreshMessages(); } }, 30 * 1000);
     }
     else {
       updateReactData({
@@ -1367,6 +1359,48 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     }
   }
 
+  function buildDialogRecipients(recipients) {
+    return (recipients || []).map((r) => {
+      const methodEntries = Object.entries(r.methods || {});
+      const resultLines = methodEntries.map(([method, data]) => {
+        return `via ${method}${data.result ? ` — ${data.result}` : ''}`;
+      });
+      const allResults = methodEntries.map(([, d]) => String(d.result || '').toLowerCase());
+      const flagLabels = [];
+      if (allResults.some(res => res.startsWith('opened') || res.startsWith('replied') || res.startsWith('call responded'))) {
+        flagLabels.push('Opened');
+      }
+      if (allResults.some(res => res.includes('duplicate'))) { flagLabels.push('Duplicate'); }
+      if (allResults.some(res => res.startsWith('delivery confirmed by') || res.includes('carrier ok'))) {
+        flagLabels.push('Carrier OK');
+      }
+      if (allResults.some(res => res.includes('machine') || res.includes('beep'))) { flagLabels.push('Machine'); }
+      if (r.wasHeld) { flagLabels.push('Held'); }
+      if (r.status_blocked) { flagLabels.push('Blocked'); }
+      if (r.status_redirected) { flagLabels.push('Redirected'); }
+      return { personId: r.recipient_id, personName: r.recipient_name, resultLines, flagLabels };
+    });
+  }
+
+  async function enrichMessageRecipients(message, thread_id) {
+    for (let this_recipient of (message.recipients || [])) {
+      for (let this_method in (this_recipient.methods || {})) {
+        const composite_key = this_recipient.methods[this_method].composite_key;
+        if (!composite_key) { continue; }
+        let this_status = await dbClient.get({
+          Key: { thread_id, composite_key },
+          TableName: 'TheseusMessages',
+        }).promise().catch(() => null);
+        if (recordExists(this_status)) {
+          this_recipient.methods[this_method].result = makeResultText({
+            resultArray: this_status.Item.results,
+            currentValue: this_recipient.methods[this_method].result
+          });
+        }
+      }
+    }
+  }
+
   function makeRecipientLines(this_recipient) {
     let response = [];
     let this_line = `${this_recipient.recipient_name}`;
@@ -1535,24 +1569,24 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     return response;
   }
 
-  async function initialize() {
-    // housekeeping
-    updateReactData({
-      myImage: await getImage(pPerson),
-      myName: await makeName(pPerson),
-      templateList: await getTemplateList()
-    }, true);
+  function resetRefreshTimer() {
+    if (refreshIntervalRef.current) { clearInterval(refreshIntervalRef.current); }
+    refreshIntervalRef.current = setInterval(async () => {
+      if (isMountedRef.current) { await refreshMessages(); }
+    }, 3 * oneMinute);
+  }
 
+  async function refreshMessages() {
     if (reactData.newMessageMode && options && options.newMessage) {
       updateReactData({
         threads: {},
         sorted_threads: [],
         lastReloadTime: new Date(),
         lastActiveTime: new Date(),
-        forceReloadTime: 0,
         idleState: false,
         statusMessage: false
       }, true);
+      resetRefreshTimer();
       return;
     }
 
@@ -1577,13 +1611,11 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       } while (this_start > loop_until);
       await allMessages({ person_id: pPerson, start_time: loop_until, end_time: this_end });
     }
-    start();  // idle timer
 
     // If in reply mode, check if replying to a public thread
     let replyModeUpdate = {
       lastReloadTime: new Date(),
       lastActiveTime: new Date(),
-      forceReloadTime: 0,
       idleState: false,
       statusMessage: false
     };
@@ -1592,8 +1624,19 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       replyModeUpdate.is_public = threadIsPublic;
       replyModeUpdate.newMessage_isPublic = threadIsPublic;
     }
-
     updateReactData(replyModeUpdate, true);
+    resetRefreshTimer();
+  }
+
+  async function initialize() {
+    // housekeeping — load once-per-session data, then fetch messages
+    updateReactData({
+      myImage: await getImage(pPerson),
+      myName: await makeName(pPerson),
+      templateList: await getTemplateList()
+    }, true);
+    start();  // idle timer
+    await refreshMessages();
   }
 
   function standardizeMethod(raw_method) {
@@ -2068,7 +2111,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                     onReset();
                                   }
                                   else {
-                                    await initialize();
+                                    await refreshMessages();
                                   }
                                 }
                               }
@@ -2268,7 +2311,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                       }}
                                     >
                                       {/* Author Image */}
-                                      {isFirstMessage &&
+                                      {isFirstMessage && !hideMessageImages &&
                                         <Box display='flex'
                                           key={`${thread_index}_r3a_${message_index}`}
                                           flexDirection='row'
@@ -2310,8 +2353,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                         }
                                         <Box display='flex'
                                           key={`${thread_index}_c3a_${message_index}`}
-                                          flexDirection={isFirstMessage ? 'column' : 'row'}
-                                          justifyContent={isFirstMessage ? 'flex-start' : 'space-between'}
+                                          flexDirection='column'
                                           style={{ flexGrow: 1, minWidth: 0 }}
                                         >
                                           <Typography
@@ -2363,71 +2405,128 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                           </Typography>
                                         </Box>
                                       </Box>
-                                      {/* Reply To and Delete icons */}
-                                      {isFirstMessage &&
-                                        !reactData.viewOnly &&
-                                        <React.Fragment>
-                                          <ReplyIcon
-                                            onClick={async () => {
-                                              let newMessageRecipients = [];
-                                              let replyToList = [];
-                                              if (this_message.inOut === 'held') {
-                                                newMessageRecipients.push({ person_id: this_message.author_id, person_name: this_message.author_name });
+                                      {/* Right-margin icons: ZoomIn + Attachments (all messages), Reply/Delete/Send (first message only) */}
+                                      <Box display='flex' flexDirection='row' alignItems='center' style={{ flexShrink: 0, marginLeft: '4px' }}>
+                                        <IconButton
+                                          size='small'
+                                          title='View full message'
+                                          onClick={async () => {
+                                            if (this_message.inOut !== 'in') {
+                                              await enrichMessageRecipients(this_message, this_thread);
+                                            }
+                                            updateReactData({
+                                              viewMessageDialog: {
+                                                subject: this_message.subject,
+                                                message_text: this_message.message_text,
+                                                html_message_text: this_message.html_message_text,
+                                                author_name: this_message.author_name,
+                                                sent_time: this_message.sent_time,
+                                                recipients: buildDialogRecipients(this_message.recipients),
+                                                deliveryCount: (this_message.recipients || []).length,
+                                                replyEnabled: isFirstMessage && !reactData.viewOnly,
+                                                replyMessage: this_message,
+                                                replyThread: this_thread,
                                               }
-                                              else {
-                                                for (const this_person of this_message.partner_id) {
-                                                  newMessageRecipients.push({ person_id: this_person, person_name: await makeName(this_person) });
+                                            }, true);
+                                          }}
+                                        >
+                                          <ZoomInIcon fontSize='small' />
+                                        </IconButton>
+                                        {this_message.attachments && this_message.attachments.map((aLine, aIndex) => (
+                                          <a
+                                            href={aLine}
+                                            key={`attach_${message_index}-${aIndex}-href`}
+                                            target='_blank'
+                                            rel='noopener noreferrer'
+                                            style={{ color: 'inherit' }}
+                                          >
+                                            <AttachmentIcon fontSize='small' />
+                                          </a>
+                                        ))}
+                                        {isFirstMessage &&
+                                          !reactData.viewOnly &&
+                                          <React.Fragment>
+                                            <ReplyIcon
+                                              onClick={async () => {
+                                                let newMessageRecipients = [];
+                                                let replyToList = [];
+                                                if (this_message.inOut === 'held') {
+                                                  newMessageRecipients.push({ person_id: this_message.author_id, person_name: this_message.author_name });
                                                 }
-                                                if (this_message.reply_to && (this_message.reply_to.length > 0)) {
-                                                  for (const this_recipient of this_message.reply_to) {
-                                                    replyToList.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
+                                                else {
+                                                  for (const this_person of this_message.partner_id) {
+                                                    newMessageRecipients.push({ person_id: this_person, person_name: await makeName(this_person) });
+                                                  }
+                                                  if (this_message.reply_to && (this_message.reply_to.length > 0)) {
+                                                    for (const this_recipient of this_message.reply_to) {
+                                                      replyToList.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
+                                                    }
                                                   }
                                                 }
-                                              }
-                                              updateReactData({
-                                                newMessageRecipients,
-                                                replyToList,
-                                                newMessageThread: this_message.thread_id || (this_message.composite_key ? this_message.composite_key.split('~')[0].replace('T:', '') : ''),
-                                                newMessageSubject: this_message.subject,
-                                                newMessageMode: true,
-                                                is_reply: true,
-                                                is_public: (reactData.threads[this_thread].is_public ?? false),
-                                                newMessage_isPublic: (reactData.threads[this_thread].is_public ?? false)
-                                              }, true);
-                                            }}
-                                          />
-                                          <DeleteIcon
-                                            onClick={() => {
-                                              updateReactData({
-                                                deletePending: {
-                                                  composite_key: this_message.composite_key,
-                                                  thread_id: this_thread
-                                                },
-                                                confirmMessage: `Delete this message?`
-                                              }, true);
-                                            }}
-                                          />
-                                          {(pPerson === '*allHeld') &&
-                                            <SendIcon
-                                              onClick={async () => {
-                                                await releaseMessage(this_message);
-                                                await initialize();
+                                                updateReactData({
+                                                  newMessageRecipients,
+                                                  replyToList,
+                                                  newMessageThread: this_message.thread_id || (this_message.composite_key ? this_message.composite_key.split('~')[0].replace('T:', '') : ''),
+                                                  newMessageSubject: this_message.subject,
+                                                  newMessageMode: true,
+                                                  is_reply: true,
+                                                  is_public: (reactData.threads[this_thread].is_public ?? false),
+                                                  newMessage_isPublic: (reactData.threads[this_thread].is_public ?? false)
+                                                }, true);
                                               }}
                                             />
-                                          }
-                                        </React.Fragment>
-                                      }
+                                            <DeleteIcon
+                                              onClick={() => {
+                                                updateReactData({
+                                                  deletePending: {
+                                                    composite_key: this_message.composite_key,
+                                                    thread_id: this_thread
+                                                  },
+                                                  confirmMessage: `Delete this message?`
+                                                }, true);
+                                              }}
+                                            />
+                                            {(pPerson === '*allHeld') &&
+                                              <SendIcon
+                                                onClick={async () => {
+                                                  await releaseMessage(this_message);
+                                                  await refreshMessages();
+                                                }}
+                                              />
+                                            }
+                                          </React.Fragment>
+                                        }
+                                      </Box>
                                     </Box>
-                                    {/* Message body */}
+                                    {/* Message body — tap to view full message */}
                                     <Box
                                       display='flex'
                                       key={`message_body_box_${message_index}`}
                                       flexDirection='column'
                                       marginTop={isFirstMessage ? '8px' : '0'}
-                                      style={{ width: '100%', boxSizing: 'border-box', minWidth: 0 }}
+                                      style={{ width: '100%', boxSizing: 'border-box', minWidth: 0, cursor: 'pointer' }}
+                                      onClick={async () => {
+                                        if (this_message.inOut !== 'in') {
+                                          await enrichMessageRecipients(this_message, this_thread);
+                                        }
+                                        updateReactData({
+                                          viewMessageDialog: {
+                                            subject: this_message.subject,
+                                            message_text: this_message.message_text,
+                                            html_message_text: this_message.html_message_text,
+                                            author_name: this_message.author_name,
+                                            sent_time: this_message.sent_time,
+                                            recipients: buildDialogRecipients(this_message.recipients),
+                                            deliveryCount: (this_message.recipients || []).length,
+                                            replyEnabled: isFirstMessage && !reactData.viewOnly,
+                                            replyMessage: this_message,
+                                            replyThread: this_thread,
+                                          }
+                                        }, true);
+                                      }}
                                     >
-                                      {/* Plain text message */}
-                                      {(!this_message.html_message_text || !this_message.html_message_text.startsWith('<')) &&
+                                      {/* Plain text message (always shown when forced; also shown when no HTML available) */}
+                                      {(forceMessagePlainText || !this_message.html_message_text || !this_message.html_message_text.startsWith('<')) &&
                                         <div
                                           style={{
                                             fontSize: `${reactData.user_fontSize * 0.9}rem`,
@@ -2437,35 +2536,18 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                             wordWrap: 'break-word',
                                           }}
                                         >
-                                          {this_message.message_text}
+                                          {truncateMessageText && this_message.message_text && (this_message.message_text.length > MESSAGE_TRUNCATE_LENGTH)
+                                            ? `${this_message.message_text.slice(0, MESSAGE_TRUNCATE_LENGTH)}\u2026`
+                                            : this_message.message_text
+                                          }
                                         </div>
                                       }
-                                      {/* HTML message */}
-                                      {(this_message.html_message_text && this_message.html_message_text.startsWith('<')) &&
+                                      {/* HTML message — suppressed when plain text flag is on */}
+                                      {(!forceMessagePlainText && this_message.html_message_text && this_message.html_message_text.startsWith('<')) &&
                                         <div
                                           style={{ border: '1px solid #ccc', margin: { top: '8px' }, padding: '8px', borderRadius: '30px' }}
                                           dangerouslySetInnerHTML={{ '__html': this_message.html_message_text }}
                                         />
-                                      }
-                                      {/* Actions that pertain to a specific message */}
-                                      {/* Attachments Icon(s) */}
-                                      {this_message.attachments &&
-                                        <Box display='flex'
-                                          key={`attachments_${message_index}`}
-                                          flexDirection='row'
-                                          style={{ marginBottom: '8px', marginTop: '8px' }}
-                                        >
-                                          {this_message.attachments.map((aLine, aIndex) => (
-                                            <a
-                                              href={aLine}
-                                              key={`attach_${message_index}-${aIndex}-href`}
-                                              target='_blank'
-                                              rel='noopener noreferrer'
-                                              style={{ color: 'inherit', textDecoration: 'underline' }}>
-                                              <AttachmentIcon />
-                                            </a>
-                                          ))}
-                                        </Box>
                                       }
                                     </Box>
                                   </Box>
@@ -2861,6 +2943,51 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                 {reactData.alert.message}
               </Alert>
             </Snackbar >
+          }
+          {/* Full message viewer pop-up */}
+          {reactData.viewMessageDialog &&
+            <MessageDetailDialog
+              open={true}
+              subject={reactData.viewMessageDialog.subject}
+              messageText={reactData.viewMessageDialog.message_text}
+              authorName={reactData.viewMessageDialog.author_name}
+              sentTime={reactData.viewMessageDialog.sent_time}
+              deliveryCount={reactData.viewMessageDialog.deliveryCount || 0}
+              recipients={reactData.viewMessageDialog.recipients || []}
+              onClose={() => { updateReactData({ viewMessageDialog: false }, true); }}
+              onReply={reactData.viewMessageDialog.replyEnabled
+                ? async () => {
+                  const msg = reactData.viewMessageDialog.replyMessage;
+                  const thread = reactData.viewMessageDialog.replyThread;
+                  let newMessageRecipients = [];
+                  let replyToList = [];
+                  if (msg.inOut === 'held') {
+                    newMessageRecipients.push({ person_id: msg.author_id, person_name: msg.author_name });
+                  } else {
+                    for (const this_person of msg.partner_id) {
+                      newMessageRecipients.push({ person_id: this_person, person_name: await makeName(this_person) });
+                    }
+                    if (msg.reply_to && msg.reply_to.length > 0) {
+                      for (const this_recipient of msg.reply_to) {
+                        replyToList.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
+                      }
+                    }
+                  }
+                  updateReactData({
+                    viewMessageDialog: false,
+                    newMessageRecipients,
+                    replyToList,
+                    newMessageThread: msg.thread_id || (msg.composite_key ? msg.composite_key.split('~')[0].replace('T:', '') : ''),
+                    newMessageSubject: msg.subject,
+                    newMessageMode: true,
+                    is_reply: true,
+                    is_public: (reactData.threads[thread].is_public ?? false),
+                    newMessage_isPublic: (reactData.threads[thread].is_public ?? false)
+                  }, true);
+                }
+                : null
+              }
+            />
           }
         </React.Fragment >
       }

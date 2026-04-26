@@ -592,7 +592,7 @@ export default ({ start_at }) => {
         console.error('Error fetching menu item:', error.message);
       });
     if (recordExists(menuItemRec)) {
-      console.log(`Fetched menu item ${itemCode} from database.`);
+      // console.log(`Fetched menu item ${itemCode} from database.`);
       const this_item = menuItemRec.Item;
       if (!this_item.available_to || authorizedToMenuItem(this_item.available_to)) {
         if (!reactData.menu_hierarchy[menu_level]) { reactData.menu_hierarchy[menu_level] = []; }
