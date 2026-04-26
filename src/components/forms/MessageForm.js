@@ -185,6 +185,62 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
+// Pure utility functions — module-level so they are not recreated on every render
+function makeReadableTime(pJavaDate) {
+  const d = new Date(Number(pJavaDate));
+  return d.toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true
+  });
+}
+
+function standardizeMethod(raw_method) {
+  if (raw_method === 'email') { return 'e-Mail'; }
+  if (raw_method === 'sms') { return 'text'; }
+  if (raw_method === 'voice') { return 'phone'; }
+  if (raw_method === 'hold') { return 'held'; }
+  if (raw_method === 'alert') { return 'Alert'; }
+  return 'AVA';
+}
+
+/**
+ * Returns an array of { start, end } millisecond ranges — one per week — working
+ * backwards from `fromTime`.  Newest range first.
+ */
+function buildWeekBoundaries(fromTime, weeksBack) {
+  const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+  const boundaries = [];
+  let end = fromTime;
+  for (let i = 0; i < weeksBack; i++) {
+    const start = end - oneWeekMs;
+    boundaries.push({ start, end });
+    end = start;
+  }
+  return boundaries;
+}
+
+/**
+ * Runs a DynamoDB query to completion, following LastEvaluatedKey pagination.
+ * Returns a flat array of all items across all pages.
+ */
+async function queryAllPages(queryParams) {
+  const items = [];
+  let params = { ...queryParams };
+  let pageGuard = 0;
+  do {
+    const result = await dbClient.query(params).promise().catch(() => null);
+    if (!result || !result.Items) { break; }
+    items.push(...result.Items);
+    if (result.LastEvaluatedKey) {
+      params = { ...params, ExclusiveStartKey: result.LastEvaluatedKey };
+    } else {
+      break;
+    }
+    pageGuard++;
+  } while (pageGuard < 20);
+  return items;
+}
+
 export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options }) => {
 
   const { state } = useSession();
@@ -251,6 +307,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     showVMAlt: ((options && options.hasOwnProperty('hideVMAlt') && options.hideVMAlt) ? true : false),
     singleFilterDigit: false,
     start_time: (options && options.hasOwnProperty('start_time')) ? makeDate(options.start_time).timestamp : false,
+    loadedWeeksOldest: null,  // timestamp of the oldest week-start we have fetched
+    loadingOlder: false,
     statusFilter: (options && options.statusFilter) || false,
     statusMessage: false,
     sorted_threads: [],
@@ -282,6 +340,19 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
 
+  // Shared DB error handler — shows an appropriate alert for network vs. server errors
+  function handleDbError(error, context) {
+    updateReactData({
+      alert: {
+        severity: 'error',
+        title: error.code === 'NetworkingError' ? 'No Internet' : 'Database problem',
+        message: error.code === 'NetworkingError'
+          ? 'There is no internet connection'
+          : `Error reading ${context}: ${error}`,
+      }
+    }, true);
+    return null;
+  }
 
   let status_filter_result = false;
 
@@ -321,18 +392,6 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       window.removeEventListener("popstate", onPopState);
     };
   }, [onReset]);
-
-  function makeReadableTime(pJavaDate) {
-    let dDate = new Date(Number(pJavaDate));
-    return dDate.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
-  }
 
   function makeSubject(this_thread, message_number) {
     let response = reactData.threads[this_thread].messages[message_number].subject || `Conversation originated by ${reactData.threads[this_thread].messages[message_number].author_name}`;
@@ -527,26 +586,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       templateRecs = await dbClient
         .query(queryObj)
         .promise()
-        .catch(error => {
-          if (error.code === 'NetworkingError') {
-            updateReactData({
-              alert: {
-                severity: 'error',
-                title: 'No Internet',
-                message: `There is no internet connection`,
-              }
-            }, true);
-          }
-          else {
-            updateReactData({
-              alert: {
-                severity: 'error',
-                title: 'Database problem',
-                message: `Error reading Templates: ${error}`,
-              }
-            }, true);
-          }
-        });
+        .catch(error => handleDbError(error, 'Templates'));
       if (templateRecs && templateRecs.LastEvaluatedKey) {
         queryObj.ExclusiveStartKey = templateRecs.LastEvaluatedKey;
       }
@@ -873,165 +913,85 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
 
   const oneDay = 24 * 60 * 60 * 1000;
 
-  async function allMessages({ person_id, start_time, end_time }) {
-    if (!start_time) {
-      let nowTime = new Date().getTime();
-      start_time = nowTime - (7 * oneDay);
-      end_time = nowTime + oneDay;
-    }
-    let queryObj;
-    // Get messages to me
-    if (!reactData.inOut_filter || (reactData.inOut_filter === 'in')) {
-      let inRecs;
-      let allInRecs = [];
-      let publicThreadIds = new Set();
+  /**
+   * Fetch all messages for `person_id` across the given week boundaries in parallel.
+   * Each entry in `weekBoundaries` is { start: ms, end: ms }.
+   * All per-week DB queries are fired simultaneously; results are merged and
+   * processed together so processDeliveryRecs is called at most twice (in / out).
+   */
+  async function allMessagesByWeeks(person_id, weekBoundaries) {
+    if (!weekBoundaries || weekBoundaries.length === 0) { return; }
 
-      queryObj = {
-        KeyConditionExpression: 'deliver_to = :p AND created_time between :s and :e',
-        ExpressionAttributeValues: {
-          ':p': person_id,
-          ':s': start_time.toString(),
-          ':e': end_time.toString()
-        },
-        TableName: "TheseusMessages",
-        IndexName: 'deliver_to-index',
-        ScanIndexForward: false,
-      };
-      do {
-        inRecs = await dbClient
-          .query(queryObj)
-          .promise()
-          .catch(error => {
-            if (error.code === 'NetworkingError') {
-              updateReactData({
-                alert: {
-                  severity: 'error',
-                  title: 'No Internet',
-                  message: `There is no internet connection`,
-                }
-              }, true);
-            }
-            else {
-              updateReactData({
-                alert: {
-                  severity: 'error',
-                  title: 'Database problem',
-                  message: `Error reading inbound Messages: ${error}`,
-                }
-              }, true);
-            }
-          });
-        if (inRecs && inRecs.LastEvaluatedKey) {
-          queryObj.ExclusiveStartKey = inRecs.LastEvaluatedKey;
-        }
-        else {
-          delete queryObj.ExclusiveStartKey;
-        }
-        if (recordExists(inRecs)) {
-          // Collect all inbound records and identify public threads
-          allInRecs.push(...inRecs.Items);
-          for (let rec of inRecs.Items) {
-            if (rec.is_public) {
-              publicThreadIds.add(rec.thread_id);
-            }
-          }
-        }
-      } while (queryObj.ExclusiveStartKey);
-
-      // For each public thread, fetch supplemental records from all messages in that thread
-      let supplementalRecs = [];
-      for (let threadId of publicThreadIds) {
-        let allThreadMessages = await dbClient
-          .query({
-            KeyConditionExpression: 'thread_id = :k',
+    // --- INBOUND (deliver_to-index, parallel per week) ---
+    if (!reactData.inOut_filter || reactData.inOut_filter === 'in') {
+      const inboundPageArrays = await Promise.all(
+        weekBoundaries.map(({ start, end }) =>
+          queryAllPages({
+            KeyConditionExpression: 'deliver_to = :p AND created_time between :s and :e',
             ExpressionAttributeValues: {
-              ':k': threadId
+              ':p': person_id,
+              ':s': start.toString(),
+              ':e': end.toString(),
             },
-            TableName: "TheseusMessages",
+            TableName: 'TheseusMessages',
+            IndexName: 'deliver_to-index',
+            ScanIndexForward: false,
           })
-          .promise()
-          .catch(error => {
-            cl(`Error reading all thread messages for thread ${threadId}. Error is ${error}`);
-          });
+        )
+      );
+      const allInRecs = inboundPageArrays.flat();
+      const publicThreadIds = new Set(
+        allInRecs.filter(r => r.is_public).map(r => r.thread_id)
+      );
 
-        if (recordExists(allThreadMessages)) {
-          // Filter to exclude records we already have and records delivered to current user
-          for (let rec of allThreadMessages.Items) {
-            const recDeliverId = rec.composite_key; // full composite_key for lookup
-            const alreadyHave = allInRecs.some(existing => existing.composite_key === recDeliverId);
+      // Fetch supplemental public-thread records in parallel
+      const supplementalArrays = await Promise.all(
+        [...publicThreadIds].map(threadId =>
+          queryAllPages({
+            KeyConditionExpression: 'thread_id = :k',
+            ExpressionAttributeValues: { ':k': threadId },
+            TableName: 'TheseusMessages',
+          }).catch(error => {
+            cl(`Error reading thread ${threadId}: ${error}`);
+            return [];
+          })
+        )
+      );
+      const supplementalRecs = supplementalArrays.flat().filter(rec => {
+        const alreadyHave = allInRecs.some(existing => existing.composite_key === rec.composite_key);
+        return !alreadyHave && rec.deliver_to !== person_id && rec.record_type === 'delivery';
+      });
 
-            if (!alreadyHave && rec.deliver_to !== person_id && rec.record_type === 'delivery') {
-              supplementalRecs.push(rec);
-            }
-          }
-        }
-      }
-
-      // Combine all records and process once
       const finalInRecs = allInRecs.concat(supplementalRecs);
       if (finalInRecs.length > 0) {
         await processDeliveryRecs(finalInRecs, '', person_id);
       }
     }
-    // Get messages from me
-    if (!reactData.inOut_filter || (reactData.inOut_filter === 'out')) {
-      let outRecs;
-      queryObj = {
-        KeyConditionExpression: 'sent_from = :p AND created_time between :s and :e',
-        FilterExpression: 'record_type = :t',
-        ExpressionAttributeValues: {
-          ':p': person_id,
-          ':s': start_time.toString(),
-          ':e': end_time.toString(),
-          //      ':t': 'delivery',
-          ':t': 'message',
-        },
-        TableName: "TheseusMessages",
-        IndexName: 'sent_from-index',
-        ScanIndexForward: false,
-      };
-      do {
-        outRecs = await dbClient
-          .query(queryObj)
-          .promise()
-          .catch(error => {
-            if (error.code === 'NetworkingError') {
-              updateReactData({
-                alert: {
-                  severity: 'error',
-                  title: 'No Internet',
-                  message: `There is no internet connection`,
-                }
-              }, true);
-            }
-            else {
-              updateReactData({
-                alert: {
-                  severity: 'error',
-                  title: 'Database problem',
-                  message: `Error reading outbound Messages: ${error}`,
-                }
-              }, true);
-            }
-          });
-        if (outRecs && outRecs.LastEvaluatedKey) {
-          queryObj.ExclusiveStartKey = outRecs.LastEvaluatedKey;
-        }
-        else {
-          delete queryObj.ExclusiveStartKey;
-        }
-        if (recordExists(outRecs)) {
-          await processDeliveryRecs(outRecs.Items, '', person_id);
-        }
-      } while (queryObj.ExclusiveStartKey);
-    }
-    /*  if (autoFocus && autoFocus.current) {
-        autoFocus.current.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
-        });
+
+    // --- OUTBOUND (sent_from-index, parallel per week) ---
+    if (!reactData.inOut_filter || reactData.inOut_filter === 'out') {
+      const outboundPageArrays = await Promise.all(
+        weekBoundaries.map(({ start, end }) =>
+          queryAllPages({
+            KeyConditionExpression: 'sent_from = :p AND created_time between :s and :e',
+            FilterExpression: 'record_type = :t',
+            ExpressionAttributeValues: {
+              ':p': person_id,
+              ':s': start.toString(),
+              ':e': end.toString(),
+              ':t': 'message',
+            },
+            TableName: 'TheseusMessages',
+            IndexName: 'sent_from-index',
+            ScanIndexForward: false,
+          })
+        )
+      );
+      const allOutRecs = outboundPageArrays.flat();
+      if (allOutRecs.length > 0) {
+        await processDeliveryRecs(allOutRecs, '', person_id);
       }
-      */
+    }
   }
 
   async function getSenderNames(senderList) {
@@ -1059,26 +1019,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       actionRecs = await dbClient
         .query(queryObj)
         .promise()
-        .catch(error => {
-          if (error.code === 'NetworkingError') {
-            updateReactData({
-              alert: {
-                severity: 'error',
-                title: 'No Internet',
-                message: `There is no internet connection`,
-              }
-            }, true);
-          }
-          else {
-            updateReactData({
-              alert: {
-                severity: 'error',
-                title: 'Database problem',
-                message: `Error reading inbound Messages: ${error}`,
-              }
-            }, true);
-          }
-        });
+        .catch(error => handleDbError(error, 'held Messages'));
       if (actionRecs && actionRecs.LastEvaluatedKey) {
         queryObj.ExclusiveStartKey = actionRecs.LastEvaluatedKey;
       }
@@ -1086,25 +1027,22 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         delete queryObj.ExclusiveStartKey;
       }
       if (recordExists(actionRecs)) {
-        let mailRecs = [];
-        for (let this_heldMessage of actionRecs.Items) {
-          let mailRec = await dbClient
-            .query({
+        // Fetch all held message records in parallel instead of serially
+        const mailRecs = (await Promise.all(
+          actionRecs.Items.map(heldMsg =>
+            dbClient.query({
               KeyConditionExpression: 'composite_key = :k',
-              ExpressionAttributeValues: {
-                ':k': this_heldMessage.content.composite_key
-              },
-              TableName: "TheseusMessages",
+              ExpressionAttributeValues: { ':k': heldMsg.content.composite_key },
+              TableName: 'TheseusMessages',
               IndexName: 'composite_key-index'
-            })
-            .promise()
-            .catch(error => {
-              cl(`Error reading TheseusMessages for composite key ${this_heldMessage.content.composite_key}.  Error is ${error}`);
-            });
-          if (recordExists(mailRec)) {
-            mailRecs.push(Object.assign({}, mailRec.Items[0], { actionRec: this_heldMessage }));
-          }
-        }
+            }).promise()
+              .catch(error => {
+                cl(`Error reading TheseusMessages for composite key ${heldMsg.content.composite_key}. Error is ${error}`);
+                return null;
+              })
+              .then(result => recordExists(result) ? Object.assign({}, result.Items[0], { actionRec: heldMsg }) : null)
+          )
+        )).filter(Boolean);
         await processDeliveryRecs(mailRecs, 'held', '*any');
       }
     } while (queryObj.ExclusiveStartKey);
@@ -1118,6 +1056,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   }
 
   async function processDeliveryRecs(deliveryRecs, inOut, my_id) {
+    // Cache parent message record lookups: same T:xxx~M:yyy key is shared by all D: delivery records
+    const messageCache = {};
     let totalProcessed = 0;
     let totalCount = deliveryRecs.length;
     for (let this_deliveryRec of deliveryRecs) {
@@ -1283,26 +1223,28 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.add(this_deliveryRec.author.author_id);
 
           // For incoming messages, populate other_recipients from the message record
-          // Extract thread_id and message_number from composite_key: T:<thread_id>~M:<message_number>~D:<recipient>
+          // composite_key shape: T:<thread_id>~M:<msg_number>~D:<recipient>
           const composite_parts = this_deliveryRec.composite_key.split('~');
-          const message_composite_key = `${composite_parts[0]}~${composite_parts[1]}`; // T:<thread_id>~M:<message_number>
+          const message_composite_key = `${composite_parts[0]}~${composite_parts[1]}`; // T:<thread_id>~M:<msg_number>
 
-          let messageRec = await dbClient
-            .query({
-              KeyConditionExpression: 'composite_key = :k',
-              ExpressionAttributeValues: {
-                ':k': message_composite_key
-              },
-              TableName: "TheseusMessages",
-              IndexName: 'composite_key-index'
-            })
-            .promise()
-            .catch(error => {
-              cl(`Error reading message record for composite key ${message_composite_key}. Error is ${error}`);
-            });
+          // Use a .get() (point-read by primary key) instead of a GSI query, and cache
+          // to avoid re-fetching the same parent record for every delivery row in a thread
+          if (!messageCache[message_composite_key]) {
+            messageCache[message_composite_key] = await dbClient
+              .get({
+                Key: { thread_id: this_deliveryRec.thread_id, composite_key: message_composite_key },
+                TableName: 'TheseusMessages',
+              })
+              .promise()
+              .catch(error => {
+                cl(`Error reading message record for composite key ${message_composite_key}. Error is ${error}`);
+                return null;
+              });
+          }
+          const messageRec = messageCache[message_composite_key];
 
-          if (recordExists(messageRec) && messageRec.Items[0]) {
-            const messageRecord = messageRec.Items[0];
+          if (recordExists(messageRec)) {
+            const messageRecord = messageRec.Item;
 
             // Populate other_recipients from recipient_list
             if (messageRecord.recipient_list) {
@@ -1318,9 +1260,40 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
               }
             }
           }
+          // Add this delivery as a structured recipient entry so the detail dialog can show delivery status.
+          // composite_key on this inbound delivery record IS the D: key — enrichMessageRecipients uses it
+          // to .get() the delivery record and populate `result` with opened/replied text.
+          if (my_id && my_id !== '*any') {
+            const deliveryMethod = standardizeMethod(this_deliveryRec.deliver_method || 'AVA');
+            reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients.push({
+              recipient_id: this_deliveryRec.deliver_to,
+              recipient_name: this_deliveryRec.deliver_to === my_id
+                ? (reactData.myName || this_deliveryRec.deliver_to)
+                : this_deliveryRec.deliver_to,
+              wasHeld: false,
+              methods: {
+                [deliveryMethod]: {
+                  composite_key: this_deliveryRec.composite_key,
+                  result: '',  // enriched at dialog-open time via enrichMessageRecipients
+                }
+              }
+            });
+          }
         }
         else if (this_deliveryRec.record_type === 'delivery') {
           reactData.threads[this_deliveryRec.thread_id].messages[message_number].partner_id.add(this_deliveryRec.deliver_to);
+        }
+      }
+      else if (inOut === 'in' && recipient_number >= 0) {
+        // Recipient entry already exists — this is a second (or third) delivery channel
+        // for the same person (e.g. email already added, now SMS arrives).
+        // Merge the new method into the existing recipient entry.
+        const extraMethod = standardizeMethod(this_deliveryRec.deliver_method || 'AVA');
+        if (!reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].methods[extraMethod]) {
+          reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].methods[extraMethod] = {
+            composite_key: this_deliveryRec.composite_key,
+            result: '',  // enriched at dialog-open time via enrichMessageRecipients
+          };
         }
       }
       if (reactData.threads[this_deliveryRec.thread_id].delete_flag && (reactData.threads[this_deliveryRec.thread_id].delete_time < this_deliveryRec.created_time)) {
@@ -1363,12 +1336,16 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     return (recipients || []).map((r) => {
       const methodEntries = Object.entries(r.methods || {});
       const resultLines = methodEntries.map(([method, data]) => {
-        return `via ${method}${data.result ? ` — ${data.result}` : ''}`;
+        const suffix = data.result ? ` — ${data.result}` : '';
+        return method === 'Alert' ? `Alert sent${suffix}` : `via ${method}${suffix}`;
       });
       const allResults = methodEntries.map(([, d]) => String(d.result || '').toLowerCase());
       const flagLabels = [];
-      if (allResults.some(res => res.startsWith('opened') || res.startsWith('replied') || res.startsWith('call responded'))) {
+      if (allResults.some(res => res.startsWith('opened'))) {
         flagLabels.push('Opened');
+      }
+      if (allResults.some(res => res.startsWith('replied') || res.startsWith('call responded'))) {
+        flagLabels.push('Responded');
       }
       if (allResults.some(res => res.includes('duplicate'))) { flagLabels.push('Duplicate'); }
       if (allResults.some(res => res.startsWith('delivery confirmed by') || res.includes('carrier ok'))) {
@@ -1572,7 +1549,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   function resetRefreshTimer() {
     if (refreshIntervalRef.current) { clearInterval(refreshIntervalRef.current); }
     refreshIntervalRef.current = setInterval(async () => {
-      if (isMountedRef.current) { await refreshMessages(); }
+      if (isMountedRef.current) { await refreshMessages(true); }
     }, 3 * oneMinute);
   }
 
@@ -1590,30 +1567,35 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       return;
     }
 
-    let nowTime = new Date().getTime();
-    let loop_until;
-    if (!reactData.start_time) {
-      loop_until = nowTime - (30 * oneDay);
-    }
-    else {
-      loop_until = reactData.start_time;
-    }
-    let this_start = Math.max((nowTime - (2 * oneDay)), loop_until);
-    let this_end = nowTime + oneDay;
+    const nowTime = new Date().getTime();
     if (pPerson === '*allHeld') {
       await heldMessages();
     }
     else {
-      do {
-        await allMessages({ person_id: pPerson, start_time: this_start, end_time: this_end });
-        this_end = this_start;
-        this_start -= (7 * oneDay);
-      } while (this_start > loop_until);
-      await allMessages({ person_id: pPerson, start_time: loop_until, end_time: this_end });
+      const oneWeekMs = 7 * oneDay;
+      // Tier 1: most recent 7 days — awaited so the user sees messages immediately
+      const week1 = [{ start: nowTime - oneWeekMs, end: nowTime + oneDay }];
+      const week1Trimmed = reactData.start_time ? week1.filter(b => b.end > reactData.start_time) : week1;
+      if (week1Trimmed.length > 0) {
+        await allMessagesByWeeks(pPerson, week1Trimmed);
+      }
+      const week1Oldest = week1Trimmed.length > 0 ? week1Trimmed[week1Trimmed.length - 1].start : nowTime - oneWeekMs;
+      updateReactData({ loadedWeeksOldest: week1Oldest }, false);
+
+      // Tier 2: previous 7 days — fire and forget; appends to thread list when ready
+      const week2 = [{ start: nowTime - (2 * oneWeekMs), end: nowTime - oneWeekMs }];
+      const week2Trimmed = reactData.start_time ? week2.filter(b => b.end > reactData.start_time) : week2;
+      if (week2Trimmed.length > 0) {
+        allMessagesByWeeks(pPerson, week2Trimmed).then(() => {
+          if (isMountedRef.current) {
+            updateReactData({ loadedWeeksOldest: week2Trimmed[week2Trimmed.length - 1].start }, true);
+          }
+        });
+      }
     }
 
     // If in reply mode, check if replying to a public thread
-    let replyModeUpdate = {
+    const replyModeUpdate = {
       lastReloadTime: new Date(),
       lastActiveTime: new Date(),
       idleState: false,
@@ -1628,6 +1610,38 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     resetRefreshTimer();
   }
 
+  async function loadOlderMessages() {
+    if (reactData.loadingOlder) { return; }
+    updateReactData({ loadingOlder: true, statusMessage: 'Loading older messages...' }, true);
+    const OLDER_WEEKS = 4;
+    const fromTime = reactData.loadedWeeksOldest || (new Date().getTime() - (14 * oneDay));
+    const weekBoundaries = buildWeekBoundaries(fromTime, OLDER_WEEKS);
+    const trimmed = reactData.start_time
+      ? weekBoundaries.filter(b => b.end > reactData.start_time)
+      : weekBoundaries;
+    if (trimmed.length > 0) {
+      await allMessagesByWeeks(pPerson, trimmed);
+    }
+    const newOldest = trimmed.length > 0 ? trimmed[trimmed.length - 1].start : fromTime - (OLDER_WEEKS * 7 * oneDay);
+    updateReactData({ loadingOlder: false, loadedWeeksOldest: newOldest, statusMessage: false }, true);
+  }
+
+  async function loadOlderMessages() {
+    if (reactData.loadingOlder) { return; }
+    updateReactData({ loadingOlder: true, statusMessage: 'Loading older messages...' }, true);
+    const OLDER_WEEKS = 4;
+    const fromTime = reactData.loadedWeeksOldest || (new Date().getTime() - (14 * oneDay));
+    const weekBoundaries = buildWeekBoundaries(fromTime, OLDER_WEEKS);
+    const trimmed = reactData.start_time
+      ? weekBoundaries.filter(b => b.end > reactData.start_time)
+      : weekBoundaries;
+    if (trimmed.length > 0) {
+      await allMessagesByWeeks(pPerson, trimmed);
+    }
+    const newOldest = trimmed.length > 0 ? trimmed[trimmed.length - 1].start : fromTime - (OLDER_WEEKS * 7 * oneDay);
+    updateReactData({ loadingOlder: false, loadedWeeksOldest: newOldest, statusMessage: false }, true);
+  }
+
   async function initialize() {
     // housekeeping — load once-per-session data, then fetch messages
     updateReactData({
@@ -1637,24 +1651,6 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     }, true);
     start();  // idle timer
     await refreshMessages();
-  }
-
-  function standardizeMethod(raw_method) {
-    if (raw_method === 'email') {
-      return 'e-Mail';
-    }
-    else if (raw_method === 'sms') {
-      return 'text';
-    }
-    else if (raw_method === 'voice') {
-      return 'phone';
-    }
-    else if (raw_method === 'hold') {
-      return 'held';
-    }
-    else {
-      return 'AVA';
-    }
   }
 
   React.useEffect(() => {
@@ -2411,9 +2407,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                           size='small'
                                           title='View full message'
                                           onClick={async () => {
-                                            if (this_message.inOut !== 'in') {
-                                              await enrichMessageRecipients(this_message, this_thread);
-                                            }
+                                            await enrichMessageRecipients(this_message, this_thread);
+                                            const prevMessage = message_index > 0 ? reactData.threads[this_thread].messages[message_index - 1] : null;
                                             updateReactData({
                                               viewMessageDialog: {
                                                 subject: this_message.subject,
@@ -2423,9 +2418,14 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                                 sent_time: this_message.sent_time,
                                                 recipients: buildDialogRecipients(this_message.recipients),
                                                 deliveryCount: (this_message.recipients || []).length,
-                                                replyEnabled: isFirstMessage && !reactData.viewOnly,
+                                                replyEnabled: !reactData.viewOnly,
                                                 replyMessage: this_message,
                                                 replyThread: this_thread,
+                                                replyingTo: prevMessage ? {
+                                                  authorName: prevMessage.author_name,
+                                                  sentTime: prevMessage.sent_time,
+                                                  messageText: prevMessage.message_text,
+                                                } : null,
                                               }
                                             }, true);
                                           }}
@@ -2506,9 +2506,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                       marginTop={isFirstMessage ? '8px' : '0'}
                                       style={{ width: '100%', boxSizing: 'border-box', minWidth: 0, cursor: 'pointer' }}
                                       onClick={async () => {
-                                        if (this_message.inOut !== 'in') {
-                                          await enrichMessageRecipients(this_message, this_thread);
-                                        }
+                                        await enrichMessageRecipients(this_message, this_thread);
+                                        const prevMessage = message_index > 0 ? reactData.threads[this_thread].messages[message_index - 1] : null;
                                         updateReactData({
                                           viewMessageDialog: {
                                             subject: this_message.subject,
@@ -2518,9 +2517,14 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                             sent_time: this_message.sent_time,
                                             recipients: buildDialogRecipients(this_message.recipients),
                                             deliveryCount: (this_message.recipients || []).length,
-                                            replyEnabled: isFirstMessage && !reactData.viewOnly,
+                                            replyEnabled: !reactData.viewOnly,
                                             replyMessage: this_message,
                                             replyThread: this_thread,
+                                            replyingTo: prevMessage ? {
+                                              authorName: prevMessage.author_name,
+                                              sentTime: prevMessage.sent_time,
+                                              messageText: prevMessage.message_text,
+                                            } : null,
                                           }
                                         }, true);
                                       }}
@@ -2592,6 +2596,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
               }
             </Paper>
           }
+          {/* Load older messages button removed from thread list — now in DialogActions */}
           {(Object.keys(reactData.threads).length === 0) && !(options && options.newMessage) &&
             <Box display='flex' flex={4} justifyContent='center' alignItems='flex-start' overflow='hidden'>
               <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center', margin: { top: 3 } })} >
@@ -2835,6 +2840,16 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                   >
                     {'Close'}
                   </Button>
+                  {(Object.keys(reactData.threads).length > 0) && !(options && options.newMessage) && pPerson !== '*allHeld' &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      size='small'
+                      disabled={reactData.loadingOlder}
+                      onClick={loadOlderMessages}
+                    >
+                      {reactData.loadingOlder ? 'Loading...' : 'Load older'}
+                    </Button>
+                  }
                   {!reactData.viewOnly &&
                     <Button
                       onClick={async () => {
@@ -2859,7 +2874,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                         updateReactData(reactUpd, true);
                       }}
                       className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'green', color: 'white' }}
+                      style={{ backgroundColor: 'green', color: 'white', marginLeft: '16px' }}
                       size='small'
                       startIcon={<SendIcon size='small' />}
                     >
@@ -2954,6 +2969,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
               sentTime={reactData.viewMessageDialog.sent_time}
               deliveryCount={reactData.viewMessageDialog.deliveryCount || 0}
               recipients={reactData.viewMessageDialog.recipients || []}
+              replyingTo={reactData.viewMessageDialog.replyingTo || null}
               onClose={() => { updateReactData({ viewMessageDialog: false }, true); }}
               onReply={reactData.viewMessageDialog.replyEnabled
                 ? async () => {

@@ -151,7 +151,7 @@ const useStyles = makeStyles((theme) => ({
 
 function getFlagPillClass(label, classes) {
     const labelLower = String(label || '').toLowerCase();
-    if (labelLower === 'opened') { return classes.flagPillGreenSolid; }
+    if (labelLower === 'opened' || labelLower === 'responded') { return classes.flagPillGreenSolid; }
     if (['ava only', 'auto cc', 'carrier ok', 'duplicate', 'machine', 'held', 'redirected'].includes(labelLower)) {
         return classes.flagPillOrangeOutline;
     }
@@ -196,6 +196,7 @@ export default function MessageDetailDialog({
     recipients = [],
     onReply = null,
     onForward = null,
+    replyingTo = null,
 }) {
     const classes = useStyles();
     const AVAClass = AVAclasses();
@@ -246,6 +247,19 @@ export default function MessageDetailDialog({
                     <Typography variant='body2' style={{ fontSize: '0.95rem', fontWeight: 700, flexShrink: 0 }}>
                         {'Message'}
                     </Typography>
+
+                    {/* Replying-to context box — shown when this message is a reply in a thread */}
+                    {replyingTo && (
+                        <Box className={classes.messageBox} style={{ flexShrink: 0 }}>
+                            <Typography className={classes.messageBoxLabel}>{'Replying to'}</Typography>
+                            <Typography className={classes.messageBoxMeta}>
+                                {[formatSentTime(replyingTo.sentTime), replyingTo.authorName].filter(Boolean).join(' \u2022 ')}
+                            </Typography>
+                            <Typography className={classes.messageBoxBody} style={{ maxHeight: '4.6em', opacity: 0.7 }}>
+                                {replyingTo.messageText || '(No message text)'}
+                            </Typography>
+                        </Box>
+                    )}
 
                     {/* This Message box */}
                     <Box className={classes.messageBox}>
