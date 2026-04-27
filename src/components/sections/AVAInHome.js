@@ -6,6 +6,7 @@ import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { getActivityDetail } from '../../util/AVAActivityLoader';
 import { AVATextStyle, AVADefaults, hexToRgb } from '../../util/AVAStyles';
+import { clearPushSubscriptionFromDB } from '../../util/AVAPushNotifications';
 import AVACarousel from '../dialogs/AVACarousel';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -1204,6 +1205,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               <MenuItem onClick={async () => {
                 await accessLog(session.user_id, `*na*`, `Manual sign-out`);
                 removeCookie("AVAuser", { path: '/' });
+                await clearPushSubscriptionFromDB(session.user_id);
                 Auth.signOut().then(() => {
                   let jumpTo = window.location.origin;
                   window.location.replace(jumpTo);
@@ -1735,7 +1737,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               setShowNewFactDialog(-1);
               if (session?.url_parameters && ('activity' in session.url_parameters) && ('user' in session.url_parameters)) {
                 let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
-                jumpTo += `?user=${session.url_parameters.user}`;
+                jumpTo += `?user=${session.url_parameters.user}&client=${session.client_id}`;
                 window.location.replace(jumpTo);
               }
             }}

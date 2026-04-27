@@ -17,6 +17,58 @@ let attachments = [];
 
 // Functions
 
+// --- Message-week utilities ---
+// These are used by the delivery_receiver_week and delivery_sender_week GSIs
+// which bucket delivery records by ISO week number (YYWW format, e.g. 2618 = 2026 week 18).
+
+export function parseDateInputAsLocalDate(input) {
+  if (!input) { return null; }
+  if (input instanceof Date) { return new Date(input.getTime()); }
+  if (typeof input === 'string') {
+    const trimmed = input.trim();
+    const ymdMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (ymdMatch) {
+      const [, y, m, d] = ymdMatch;
+      return new Date(Number(y), Number(m) - 1, Number(d), 0, 0, 0, 0);
+    }
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) { return parsed; }
+    return null;
+  }
+  const parsed = new Date(input);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export function getWeekNumberFromMessageTime(messageTime) {
+  const ms = Number(messageTime);
+  if (Number.isNaN(ms)) { return null; }
+  const date = new Date(ms);
+  const utcDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const isoDay = utcDate.getUTCDay() || 7;
+  utcDate.setUTCDate(utcDate.getUTCDate() + 4 - isoDay);
+  const isoYear = utcDate.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+  const isoWeek = Math.ceil((((utcDate - yearStart) / 86400000) + 1) / 7);
+  return ((isoYear % 100) * 100) + isoWeek;
+}
+
+export function buildMessageWeekList(dateFromInput, dateToInput) {
+  const fromDate = parseDateInputAsLocalDate(dateFromInput);
+  const toDate = parseDateInputAsLocalDate(dateToInput);
+  if (!fromDate || !toDate || Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
+    return [];
+  }
+  fromDate.setHours(0, 0, 0, 0);
+  toDate.setHours(23, 59, 59, 999);
+  const weeks = new Set();
+  for (let cursor = new Date(fromDate); cursor <= toDate; cursor.setDate(cursor.getDate() + 1)) {
+    const weekNum = getWeekNumberFromMessageTime(cursor.getTime());
+    if (weekNum !== null) { weeks.add(weekNum); }
+  }
+  return Array.from(weeks);
+}
+// --- end Message-week utilities ---
+
 export async function getMessages(body) {
   let qT = body.thread_id || body.thread;
   let qQ = {

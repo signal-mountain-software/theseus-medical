@@ -141,7 +141,15 @@ export default ({ onClose, options = {} }) => {
     // Family group fields
     family_id: options?.family_id || null, // If passed in options, use existing family_id
     existing_family_rec: null, // Store existing FamilyGroups record if adding to existing family
-    available_to_groups: []
+    available_to_groups: [],
+    // Pre-authorization fields
+    require_pre_auth: false,      // from client_style: gates URL-driven account creation
+    preauth_match_on: null,       // 'name'|'email'|'phone'|'code'
+    preauth_code_prompt: 'Enter your authorization code', // label from client_style
+    preauth_code_input: '',       // user input on prompt_for_preauth_code stage
+    matched_preauth_rec: null,    // PreAuthorization record found; held until account is written
+    preauth_person_id: null,      // person_id of existing account found in code-mode name lookup
+    preauth_lookup_type: null,    // lookupType used to find the existing account ('user_id'|'name'|'email'|'phone')
   });
 
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
@@ -177,17 +185,33 @@ export default ({ onClose, options = {} }) => {
       reactUpd.available_to_groups = availableToGroups;
 
       // Grab the new_account_form object from session or Customizations table
+      // Also load client_style for pre-auth settings — both reads in parallel
       let newAccountForm = state.session?.new_account_form || null;
-      if (!newAccountForm && reactData.client_id) {
-        const customizationsRec = await dbClient
-          .get({
-            Key: { client_id: reactData.client_id, custom_key: 'new_account_form' },
-            TableName: 'Customizations'
-          })
-          .promise()
-          .catch(() => null);
-        if (customizationsRec?.Item?.customization_value) {
-          newAccountForm = customizationsRec.Item.customization_value;
+      let clientStyle = state?.session?.client_style || null;
+      if (reactData.client_id) {
+        const [newAccountFormRec, clientStyleRec] = await Promise.all([
+          !newAccountForm
+            ? dbClient.get({ Key: { client_id: reactData.client_id, custom_key: 'new_account_form' }, TableName: 'Customizations' }).promise().catch(() => null)
+            : Promise.resolve(null),
+          !clientStyle
+            ? dbClient.get({ Key: { client_id: reactData.client_id, custom_key: 'client_style' }, TableName: 'Customizations' }).promise().catch(() => null)
+            : Promise.resolve(null),
+        ]);
+        if (newAccountFormRec?.Item?.customization_value) {
+          newAccountForm = newAccountFormRec.Item.customization_value;
+        }
+        if (clientStyleRec?.Item?.customization_value) {
+          clientStyle = clientStyleRec.Item.customization_value;
+        }
+      }
+
+      // Apply pre-auth settings from client_style.preAuth object
+      if (clientStyle?.preAuth) {
+        const preAuth = clientStyle.preAuth;
+        reactUpd.require_pre_auth = preAuth.require_pre_auth === true;
+        reactUpd.preauth_match_on = preAuth.preauth_match_on || null;
+        if (preAuth.preauth_code_prompt) {
+          reactUpd.preauth_code_prompt = preAuth.preauth_code_prompt;
         }
       }
 
@@ -639,12 +663,32 @@ export default ({ onClose, options = {} }) => {
   };
 
   const saveCurrentFamilyMember = async () => {
+    // Compute preauth_extra_fields: keys in preauth_data that are not in this account_type's field_list
+    // These will be written directly onto the People record without prompting the user.
+    // Only applies to the primary (first) account — subsequent family members only get default_groups.
+    let preauthExtraFields = {};
+    if (reactData.matched_preauth_rec && !reactData.preauth_person_id && reactData.current_member_index === 0) {
+      const preauthData = reactData.matched_preauth_rec.preauth_data || {};
+      const fieldList = reactData.selected_account_config?.field_list || [];
+      const reservedKeys = new Set(['account_type', 'first_name', 'last_name', 'groups']);
+      Object.entries(preauthData).forEach(([key, value]) => {
+        if (!reservedKeys.has(key) && !fieldList.includes(key)) {
+          preauthExtraFields[key] = value;
+        }
+      });
+      // Stash groups separately under a reserved key so savePeopleRecord can merge them
+      if (preauthData.groups !== undefined) {
+        preauthExtraFields._preauth_groups = preauthData.groups;
+      }
+    }
+
     const familyMember = {
       index: reactData.current_member_index,
       account_type: reactData.selected_account_type,
       account_config: reactData.selected_account_config,
       form_fields: reactData.form_fields,
       field_values: reactData.field_values,
+      preauth_extra_fields: preauthExtraFields,
       timestamp: new Date().toISOString()
     };
 
@@ -826,6 +870,101 @@ export default ({ onClose, options = {} }) => {
     }));
   };
 
+  // ── Pre-Authorization helpers ─────────────────────────────────────────────
+
+  /**
+   * Fetch a single PreAuthorization record by its normalized key.
+   * Table: PreAuthorization  PK: client_id  SK: preauth_key
+   */
+  const lookupPreAuth = async (preauthKey) => {
+    try {
+      const result = await dbClient
+        .get({
+          Key: { client_id: reactData.client_id, preauth_key: preauthKey },
+          TableName: 'PreAuthorization'
+        })
+        .promise()
+        .catch(() => null);
+      return result?.Item || null;
+    } catch (err) {
+      console.error('lookupPreAuth error:', err);
+      return null;
+    }
+  };
+
+  /**
+   * Apply a successful PreAuthorization record:
+   * - Extracts account_type from preauth_data
+   * - Seeds field_values with the remaining preauth_data keys
+   * - Skips select_account_type and transitions directly to fill_fields
+   */
+  const applyPreAuthResult = async (preAuthRec) => {
+    const preauthData = preAuthRec.preauth_data || {};
+    const accountType = preauthData.account_type || '';
+    // Search unfiltered prompts so admin-restricted types still work
+    const allPrompts = reactData.all_account_prompts || reactData.new_account_prompts || [];
+    const selectedConfig = allPrompts.find(p => p.account_type === accountType) || null;
+
+    // Fatal: account_type is required for the create-account flow
+    if (!accountType || !selectedConfig) {
+      showAlert({
+        severity: 'error',
+        title: 'Authorization Error',
+        message: accountType
+          ? `This authorization code specifies account type "${accountType}", which is not available for this client. Please contact support.`
+          : 'This authorization code is missing an account type. Please contact support.',
+        autoHide: false
+      });
+      return;
+    }
+
+    // Seed values are everything except account_type and groups
+    // (groups is handled separately via preauthExtraFields._preauth_groups in saveCurrentFamilyMember)
+    const { account_type: _at, groups: _g, ...seedValues } = preauthData;
+    updateReactData({
+      selected_account_type: accountType,
+      selected_account_config: selectedConfig,
+      field_values: seedValues,
+      form_fields: {},
+      field_validation_errors: {},
+      loading_fields: false,
+      stage: 'fill_fields',
+      matched_preauth_rec: preAuthRec,
+      alert: false,
+      ...(seedValues.first_name ? { parsed_first_name: seedValues.first_name } : {}),
+      ...(seedValues.last_name  ? { parsed_last_name:  seedValues.last_name  } : {}),
+    }, true);
+    await gatherFormFields(selectedConfig);
+  };
+
+  /**
+   * Append personId to the PreAuthorization record's used_by list.
+   * Also stamps used_at on first use.  Non-fatal if this write fails.
+   */
+  const recordPreAuthUse = async (preAuthRec, personId) => {
+    try {
+      await dbClient
+        .update({
+          TableName: 'PreAuthorization',
+          Key: { client_id: reactData.client_id, preauth_key: preAuthRec.preauth_key },
+          UpdateExpression:
+            'SET used_by = list_append(if_not_exists(used_by, :empty), :newEntry), ' +
+            'used_at = if_not_exists(used_at, :now)',
+          ExpressionAttributeValues: {
+            ':newEntry': [personId],
+            ':empty':    [],
+            ':now':      new Date().toISOString()
+          }
+        })
+        .promise();
+    } catch (err) {
+      // Non-fatal: account was already created; log but don't surface to user
+      console.error('recordPreAuthUse failed (non-fatal):', err);
+    }
+  };
+
+  // ── End Pre-Authorization helpers ─────────────────────────────────────────
+
   // Name validation function based on CheckInCheckOut.js validateUser pattern
   const validateUser = async (IDString, client_id, nonRes, restricted_to = false) => {
     if (!IDString) { return { result: 'invalid', error_field: 0, reason: 'The ID field is empty' }; }
@@ -850,11 +989,19 @@ export default ({ onClose, options = {} }) => {
       lookupString = digitsOnly.slice(-10);
       lookupType = 'phone';
     }
-    // Otherwise treat as name
+    // Otherwise treat as name or user_id
     else {
       const wordList = trimmedInput.split(/\s+/);
       if (wordList.length === 1) {
-        return { result: 'warning', error_field: 0, reason: 'Please enter both first and last names' };
+        // Single word — try a direct person_id lookup before giving up
+        const directPerson = await getDb({
+          Key: { person_id: trimmedInput },
+          TableName: 'People'
+        });
+        if (directPerson && directPerson.client_id === client_id && !directPerson.inactive_account) {
+          return { result: 'match', person_id: directPerson.person_id, personRec: directPerson, lookupString: trimmedInput, lookupType: 'user_id' };
+        }
+        return { result: 'warning', error_field: 0, reason: 'Please enter your name, email, phone, or user ID' };
       }
       else {
         lookupString = (`${wordList.join(' ')} ${client_id}`).toLowerCase();
@@ -908,14 +1055,26 @@ export default ({ onClose, options = {} }) => {
 
     switch (validation.result) {
       case 'match':
-        // Single match found - show verification stage
-        setReactData(prev => ({
-          ...prev,
-          candidates: [validation.personRec],
-          verification_stage: true,
-          verification_message: `${validation.lookupType !== 'email' ? 'e-Mail Address' : ''}${validation.lookupType === 'name' ? ' or ' : ''}${validation.lookupType !== 'phone' ? 'Cell Phone Number' : ''}`,
-          select_user: false
-        }));
+        if (reactData.require_pre_auth && reactData.preauth_match_on === 'code') {
+          // Code mode: existing account found — capture person_id, advance to code prompt
+          updateReactData({
+            candidates: [validation.personRec],
+            preauth_person_id: validation.person_id,
+            preauth_lookup_type: validation.lookupType,
+            verification_stage: false,
+            alert: false,
+            stage: 'prompt_for_preauth_code'
+          }, true);
+        } else {
+          // Default: show verification stage
+          setReactData(prev => ({
+            ...prev,
+            candidates: [validation.personRec],
+            verification_stage: true,
+            verification_message: `${validation.lookupType !== 'email' ? 'e-Mail Address' : ''}${(validation.lookupType === 'name' || validation.lookupType === 'user_id') ? ' or ' : ''}${validation.lookupType !== 'phone' ? 'Cell Phone Number' : ''}`,
+            select_user: false
+          }));
+        }
         break;
       case 'warning':
         // Not enough information to determine a single match, send message and retry
@@ -927,50 +1086,94 @@ export default ({ onClose, options = {} }) => {
         });
         break;
       case 'invalid':
-        // No matches found - can proceed with new account creation
-        // Parse the entered name for pre-filling form fields
-        showAlert({
-          severity: 'info',
-          title: 'No Match Found',
-          message: 'We didn\'t find a match.  What would you like to do?',
-          autoHide: false,
-          action: [
-            {
-              text: `Try Again`,
-              function: () => {
-                setReactData(prev => ({
-                  ...prev,
-                  entered_name: '',
-                  alert: false,
-                  name_validation_result: null,
-                  candidates: [],
-                  verification_stage: false,
-                  select_user: false
-                }));
-              }
-            },
-            {
-              text: `Create a New Account`,
-              function: () => {
-                const nameParts = enteredName.trim().split(/\s+/);
-                const firstName = nameParts[0] || '';
-                const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
-                setReactData(prev => ({
-                  ...prev,
-                  stage: 'select_account_type',
-                  verification_stage: false,
-                  // Store parsed name parts for pre-filling
-                  parsed_first_name: firstName,
-                  parsed_last_name: lastName,
-                  alert: false,
-                  name_validation_result: null,
-                  candidates: [],
-                  select_user: false
-                }));
-              }
+        // No matches found
+        if (reactData.require_pre_auth) {
+          if (reactData.preauth_match_on === 'code') {
+            // Code mode: no existing account — go straight to code prompt
+            updateReactData({
+              preauth_person_id: null,
+              alert: false,
+              stage: 'prompt_for_preauth_code'
+            }, true);
+          } else {
+            // Non-code pre-auth: use the normalized lookup string as the preauth_key.
+            // Strip the client_id suffix that validateUser appended for PeopleAccounts.
+            const preauthKey = validation.lookupType === 'name'
+              ? validation.lookupString.replace(` ${reactData.client_id.toLowerCase()}`, '').trim()
+              : validation.lookupString;
+            const preAuthRec = await lookupPreAuth(preauthKey);
+            if (!preAuthRec) {
+              showAlert({
+                severity: 'error',
+                title: 'Not Authorized',
+                message: "You're not on our authorized list. Please contact us if you believe this is an error.",
+                autoHide: false
+              });
+            } else if (preAuthRec.one_time_use && Array.isArray(preAuthRec.used_by) && preAuthRec.used_by.length > 0) {
+              showAlert({
+                severity: 'error',
+                title: 'Already Used',
+                message: 'This invitation has already been used to create an account.',
+                autoHide: false
+              });
+            } else {
+              // Valid pre-auth: parse name for pre-fill then apply result
+              const nameParts = enteredName.trim().split(/\s+/);
+              updateReactData({
+                parsed_first_name: nameParts[0] || '',
+                parsed_last_name: nameParts.length > 1 ? nameParts.slice(1).join(' ') : '',
+                name_validation_result: validation,
+                candidates: [],
+                select_user: false
+              }, false);
+              await applyPreAuthResult(preAuthRec);
             }
-          ]
-        });
+          }
+        } else {
+          // No pre-auth required: offer the standard create-new-account path
+          showAlert({
+            severity: 'info',
+            title: 'No Match Found',
+            message: "We didn't find a match.  What would you like to do?",
+            autoHide: false,
+            action: [
+              {
+                text: `Try Again`,
+                function: () => {
+                  setReactData(prev => ({
+                    ...prev,
+                    entered_name: '',
+                    alert: false,
+                    name_validation_result: null,
+                    candidates: [],
+                    verification_stage: false,
+                    select_user: false
+                  }));
+                }
+              },
+              {
+                text: `Create a New Account`,
+                function: () => {
+                  const nameParts = enteredName.trim().split(/\s+/);
+                  const firstName = nameParts[0] || '';
+                  const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+                  setReactData(prev => ({
+                    ...prev,
+                    stage: 'select_account_type',
+                    verification_stage: false,
+                    // Store parsed name parts for pre-filling
+                    parsed_first_name: firstName,
+                    parsed_last_name: lastName,
+                    alert: false,
+                    name_validation_result: null,
+                    candidates: [],
+                    select_user: false
+                  }));
+                }
+              }
+            ]
+          });
+        }
         break;
       default:
         showAlert({
@@ -1111,7 +1314,12 @@ export default ({ onClose, options = {} }) => {
       field_validation_errors: {},
       loading_fields: false,
       family_members: [],
-      current_member_index: 0
+      current_member_index: 0,
+      // Pre-auth reset
+      preauth_code_input: '',
+      matched_preauth_rec: null,
+      preauth_person_id: null,
+      preauth_lookup_type: null,
     }));
   };
 
@@ -1145,6 +1353,7 @@ export default ({ onClose, options = {} }) => {
     });
 
     // Use URL-based login approach (same pattern as TheseusScreen.js)
+    // No &password=check here — the user already proved identity via the TFA code above
     sessionStorage.removeItem('AVASessionData');
     const baseUrl = window.location.href.split('?')[0];
     let loginUrl = `${baseUrl}?user=${reactData.matched_account.person_id}`;
@@ -1155,6 +1364,151 @@ export default ({ onClose, options = {} }) => {
     setTimeout(() => {
       window.location.replace(loginUrl);
     }, 1000);
+  };
+
+  /**
+   * Handle the authorization code entered on the prompt_for_preauth_code stage.
+   *
+   * Two sub-paths:
+   *   a) preauth_person_id is set   → existing account found at prompt_for_name.
+   *      Check if already enrolled; if not, stub for future "add to group" work.
+   *   b) preauth_person_id is null  → brand-new user path.
+   *      Check one-time-use gate, then apply preauth_data to kick off account creation.
+   */
+  const handlePreAuthCodeInput = async (code) => {
+    if (!code || code.trim() === '') {
+      showAlert({
+        severity: 'error',
+        title: 'Code Required',
+        message: 'Please enter an authorization code to continue.',
+        autoHide: true
+      });
+      return;
+    }
+
+    const normalizedCode = code.trim().toLowerCase();
+    const preAuthRec = await lookupPreAuth(normalizedCode);
+
+    if (!preAuthRec) {
+      showAlert({
+        severity: 'error',
+        title: 'Invalid Code',
+        message: 'That code is not recognized. Please check it and try again.',
+        autoHide: false
+      });
+      return;
+    }
+
+    const usedBy = Array.isArray(preAuthRec.used_by) ? preAuthRec.used_by : [];
+
+    if (reactData.preauth_person_id) {
+      // ── Existing-account path ────────────────────────────────────────────
+      if (usedBy.includes(reactData.preauth_person_id)) {
+        // Already enrolled with this code — skip group update and go straight to AVA
+        sessionStorage.removeItem('AVASessionData');
+        const baseUrl = window.location.href.split('?')[0];
+        showAlert({
+          severity: 'success',
+          title: 'Welcome Back',
+          message: 'You\'re already enrolled. Logging you in...',
+          autoHide: false
+        });
+        setTimeout(() => {
+          window.location.replace(`${baseUrl}?user=${reactData.preauth_person_id}`);
+        }, 1000);
+        return;
+      }
+      // Normalize preauth_data.groups to an array (handle string, array, or missing)
+      const rawGroups = preAuthRec.preauth_data?.groups;
+      let newGroups = [];
+      if (Array.isArray(rawGroups)) {
+        newGroups = rawGroups.map(g => String(g).trim()).filter(Boolean);
+      } else if (typeof rawGroups === 'string' && rawGroups.trim()) {
+        newGroups = rawGroups.split(',').map(g => g.trim()).filter(Boolean);
+      }
+
+      if (newGroups.length > 0) {
+        // Read the existing People record
+        const existingPerson = await getDb({
+          Key: { person_id: reactData.preauth_person_id },
+          TableName: 'People'
+        });
+
+        if (existingPerson) {
+          // Merge into People.groups (deduplicate)
+          const currentGroups = Array.isArray(existingPerson.groups) ? existingPerson.groups : [];
+          const mergedGroups = [...new Set([...currentGroups, ...newGroups])];
+
+          // Merge into People.clients — follow the same shape as GroupControl.js
+          let clientsObj = existingPerson.clients
+            ? JSON.parse(JSON.stringify(existingPerson.clients))
+            : { id: reactData.client_id, groups: mergedGroups };
+
+          if (Object.prototype.hasOwnProperty.call(clientsObj, 'id')) {
+            if (clientsObj.id === reactData.client_id) {
+              // Standard case: this is the active client entry
+              const currentClientGroups = Array.isArray(clientsObj.groups) ? clientsObj.groups : [];
+              clientsObj.groups = [...new Set([...currentClientGroups, ...newGroups])];
+            } else {
+              // The top-level id is a different client — check for a sub-key for our client
+              if (Object.prototype.hasOwnProperty.call(clientsObj, reactData.client_id)) {
+                const currentClientGroups = Array.isArray(clientsObj[reactData.client_id].groups) ? clientsObj[reactData.client_id].groups : [];
+                clientsObj[reactData.client_id].groups = [...new Set([...currentClientGroups, ...newGroups])];
+              }
+              // else: our client has no entry in clients — don't touch it, groups update is enough
+            }
+          } else if (Object.prototype.hasOwnProperty.call(clientsObj, reactData.client_id)) {
+            // clients is keyed by client_id only (no top-level id)
+            const currentClientGroups = Array.isArray(clientsObj[reactData.client_id].groups) ? clientsObj[reactData.client_id].groups : [];
+            clientsObj[reactData.client_id].groups = [...new Set([...currentClientGroups, ...newGroups])];
+          }
+
+          await dbClient
+            .update({
+              Key: { person_id: reactData.preauth_person_id },
+              UpdateExpression: 'set #g = :g, #c = :c',
+              ExpressionAttributeValues: { ':g': mergedGroups, ':c': clientsObj },
+              ExpressionAttributeNames: { '#g': 'groups', '#c': 'clients' },
+              TableName: 'People'
+            })
+            .promise()
+            .catch(err => console.error('Failed to update People groups for preauth enrollment:', err));
+        }
+      }
+
+      await recordPreAuthUse(preAuthRec, reactData.preauth_person_id);
+
+      // Valid code proven — redirect without password=check
+      showAlert({
+        severity: 'success',
+        title: 'Enrollment Complete',
+        message: 'Your enrollment has been recorded. Logging you in...',
+        autoHide: false
+      });
+      sessionStorage.removeItem('AVASessionData');
+      const baseUrl = window.location.href.split('?')[0];
+      setTimeout(() => {
+        window.location.replace(`${baseUrl}?user=${reactData.preauth_person_id}`);
+      }, 1000);
+    } else {
+      // ── New-account path ─────────────────────────────────────────────────
+      if (preAuthRec.one_time_use && usedBy.length > 0) {
+        showAlert({
+          severity: 'error',
+          title: 'Code Already Used',
+          message: 'This authorization code has already been used to create an account.',
+          autoHide: false
+        });
+        return;
+      }
+      // Pre-fill name from preauth_data if available; fall back to entered name
+      const nameParts = (reactData.entered_name || '').trim().split(/\s+/);
+      updateReactData({
+        parsed_first_name: preAuthRec.preauth_data?.first_name || nameParts[0] || '',
+        parsed_last_name:  preAuthRec.preauth_data?.last_name  || (nameParts.length > 1 ? nameParts.slice(1).join(' ') : ''),
+      }, false);
+      await applyPreAuthResult(preAuthRec);
+    }
   };
 
   const goBackToEdit = () => {
@@ -1253,7 +1607,17 @@ export default ({ onClose, options = {} }) => {
 
       // Get default groups from account_config
       const defaultGroups = member.account_config?.default_groups || [];
-      const groups = ["__TOP__", "ALL"].concat(defaultGroups);
+
+      // Merge preauth_data.groups (same normalization as the existing-account enrollment path)
+      const rawPreauthGroups = member.preauth_extra_fields?._preauth_groups;
+      let preauthGroups = [];
+      if (Array.isArray(rawPreauthGroups)) {
+        preauthGroups = rawPreauthGroups.map(g => String(g).trim()).filter(Boolean);
+      } else if (typeof rawPreauthGroups === 'string' && rawPreauthGroups.trim()) {
+        preauthGroups = rawPreauthGroups.split(',').map(g => g.trim()).filter(Boolean);
+      }
+
+      const groups = [...new Set(["__TOP__", "ALL", ...defaultGroups, ...preauthGroups])];
 
       // Extract contact info for preferred methods
       const email = fieldValues.email || fieldValues.eMail || fieldValues['e-Mail'] || fieldValues.email_address || fieldValues['email address'] || '';
@@ -1401,7 +1765,8 @@ export default ({ onClose, options = {} }) => {
           'last_name', 'lastName', 'lname', 'surname', 'last name',
           'email', 'email_address', 'email address',
           'phone', 'phone_number', 'phone number',
-          'cell', 'cell_phone', 'cell phone'].includes(fieldName)) {
+          'cell', 'cell_phone', 'cell phone',
+          'groups'].includes(fieldName)) {
 
           // Check if this is a date field and convert to numeric$ format for storage
           const fieldData = member.form_fields[fieldName];
@@ -1434,6 +1799,16 @@ export default ({ onClose, options = {} }) => {
           } else {
             peopleRecord[fieldName] = fieldValue;
           }
+        }
+      });
+
+      // Write preauth_extra_fields directly onto the People record (fields not in form_fields/field_list)
+      // Skip _preauth_groups — already consumed above when building the groups array
+      const extraFields = member.preauth_extra_fields || {};
+      Object.entries(extraFields).forEach(([key, value]) => {
+        if (key === '_preauth_groups') { return; }
+        if (value !== undefined && value !== null && value !== '') {
+          peopleRecord[key] = value;
         }
       });
 
@@ -1947,7 +2322,13 @@ export default ({ onClose, options = {} }) => {
   const proceedWithExit = async () => {
     // Handle dialog close (X button) based on how QuickAdd was invoked
     if (options.source === 'url_parameter') {
-      if (reactData.stage !== 'prompt_for_name') {
+      if (reactData.require_pre_auth) {
+        // Preauth mode: no going back — there is no valid state to return to.
+        // Note: recordPreAuthUse is only called after People records are fully saved,
+        // so there is nothing to clean up in the used_by list at this point.
+        sessionStorage.removeItem('AVASessionData');
+        window.location.replace(`${window.location.origin}/thankyou?client=${reactData.client_id}`);
+      } else if (reactData.stage !== 'prompt_for_name') {
         resetToNamePrompt();
       }
       else {
@@ -2012,23 +2393,25 @@ export default ({ onClose, options = {} }) => {
         <span>
           {reactData.stage === 'prompt_for_name' ?
             "Let's Get Started" :
-            reactData.stage === 'ask_for_more' ?
-              `${getFamilyMemberName(reactData.family_members[reactData.current_member_index])}` :
-              reactData.stage === 'complete' ?
-                (reactData.family_members.length === 1 ?
-                  `${getFamilyMemberName(reactData.family_members[0])} Ready` :
-                  `All Family Members Ready (${reactData.family_members.length} total)`) :
-                reactData.selected_account_type ?
-                  (reactData.current_member_index > 0 ?
-                    `${titleCase(reactData.selected_account_type)} - Family Member ${reactData.current_member_index + 1}` :
-                    titleCase(reactData.selected_account_type)) :
-                  (reactData.current_member_index > 0 ?
-                    `Select Account Type - Family Member ${reactData.current_member_index + 1}` :
-                    'Select Account Type')
+            reactData.stage === 'prompt_for_preauth_code' ?
+              'Authorization Required' :
+              reactData.stage === 'ask_for_more' ?
+                `${getFamilyMemberName(reactData.family_members[reactData.current_member_index])}` :
+                reactData.stage === 'complete' ?
+                  (reactData.family_members.length === 1 ?
+                    `${getFamilyMemberName(reactData.family_members[0])} Ready` :
+                    `All Family Members Ready (${reactData.family_members.length} total)`) :
+                  reactData.selected_account_type ?
+                    (reactData.current_member_index > 0 ?
+                      `${titleCase(reactData.selected_account_type)} - Family Member ${reactData.current_member_index + 1}` :
+                      titleCase(reactData.selected_account_type)) :
+                    (reactData.current_member_index > 0 ?
+                      `Select Account Type - Family Member ${reactData.current_member_index + 1}` :
+                      'Select Account Type')
           }
         </span>
-        {/* Show client logo on the right side when in prompt_for_name stage */}
-        {reactData.stage === 'prompt_for_name' && state.session?.client_logo && (
+        {/* Show client logo on the right side during name/code prompt stages */}
+        {(reactData.stage === 'prompt_for_name' || reactData.stage === 'prompt_for_preauth_code') && state.session?.client_logo && (
           <img
             src={state.session.client_logo}
             alt="Client Logo"
@@ -2057,11 +2440,11 @@ export default ({ onClose, options = {} }) => {
         {reactData.stage === 'prompt_for_name' && !reactData.verification_stage && (
           <Box style={{ marginTop: '16px' }}>
             <Typography variant="h6" style={{ marginBottom: '16px' }}>
-              First, let's check to see if you already have an account. Please enter your name, e-Mail address, or phone number.  If we find a match, we'll ask you to verify your account.  If not, we'll help you create a new one.
+              First, let's check to see if you already have an account. Please enter your name, e-Mail address, phone number, or User ID.  If we find a match, we'll ask you to verify your account.  If not, we'll help you create a new one.
             </Typography>
             <TextField
               fullWidth
-              label="Name (first and last), e-Mail, or Phone Number"
+              label="Name (first and last), e-Mail, Phone Number, or User ID"
               value={reactData.entered_name}
               onChange={(event) => {
                 const value = event?.target?.value || '';
@@ -2102,6 +2485,64 @@ export default ({ onClose, options = {} }) => {
                 }}
               >
                 Cancel
+              </Button>
+            </Box>
+          </Box>
+        )}
+
+        {/* Pre-Authorization Code Prompt Stage */}
+        {reactData.stage === 'prompt_for_preauth_code' && (
+          <Box style={{ marginTop: '16px' }}>
+            <Typography variant="h6" style={{ marginBottom: '16px' }}>
+              {reactData.preauth_code_prompt}
+            </Typography>
+            <TextField
+              fullWidth
+              label="Authorization Code"
+              value={reactData.preauth_code_input}
+              onChange={(event) => {
+                const value = event?.target?.value || '';
+                setReactData(prev => ({ ...prev, preauth_code_input: value }));
+              }}
+              style={{ marginBottom: '16px' }}
+              onKeyPress={(event) => {
+                if (event?.key === 'Enter') {
+                  handlePreAuthCodeInput(reactData.preauth_code_input);
+                }
+              }}
+            />
+            <Box style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => handlePreAuthCodeInput(reactData.preauth_code_input)}
+                disabled={!reactData.preauth_code_input.trim()}
+              >
+                Continue
+              </Button>
+              {reactData.preauth_person_id && (
+                <Button
+                  variant="contained"
+                  style={{ backgroundColor: '#388e3c', color: 'white' }}
+                  onClick={() => {
+                    sessionStorage.removeItem('AVASessionData');
+                    const baseUrl = window.location.href.split('?')[0];
+                    if (reactData.preauth_lookup_type === 'user_id') {
+                      window.location.replace(`${baseUrl}?user=${reactData.preauth_person_id}&password=check`);
+                    } else {
+                      window.location.replace(baseUrl);
+                    }
+                  }}
+                >
+                  Log in to AVA
+                </Button>
+              )}
+              <Button
+                variant="contained"
+                style={{ backgroundColor: '#9c27b0', color: 'white' }}
+                onClick={resetToNamePrompt}
+              >
+                Start Over
               </Button>
             </Box>
           </Box>
@@ -2616,7 +3057,7 @@ export default ({ onClose, options = {} }) => {
         {(reactData.stage === 'select_account_type' || reactData.stage === 'fill_fields') && (
           <Box style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
             {/* Exit button - only show when an account type is selected */}
-            {/* Tap will return you to Account Type Selection */}
+            {/* In preauth flow, exit is game-over; otherwise return to account type selection */}
             {reactData.selected_account_type && (
               <Button
                 className={AVAClass.AVAButton}
@@ -2626,7 +3067,7 @@ export default ({ onClose, options = {} }) => {
                   color: 'white'
                 }}
                 size='small'
-                onClick={handleChangeAccountType}
+                onClick={reactData.require_pre_auth ? proceedWithExit : handleChangeAccountType}
               >
                 Exit
               </Button>
@@ -2901,6 +3342,12 @@ export default ({ onClose, options = {} }) => {
                       console.error('Failed to save FamilyGroups records:', error);
                       // Don't add to failedMembers since this is a family-level operation
                     }
+                  }
+
+                  // Record pre-authorization use (new-account path only; existing-account path
+                  // is handled immediately inside handlePreAuthCodeInput)
+                  if (reactData.matched_preauth_rec && !reactData.preauth_person_id && membersWithUserIds.length > 0) {
+                    await recordPreAuthUse(reactData.matched_preauth_rec, membersWithUserIds[0].proposed_user_id);
                   }
 
                   // Final summary data for logging

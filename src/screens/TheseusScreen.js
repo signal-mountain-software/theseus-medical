@@ -19,17 +19,6 @@ export default () => {
   const [cookies, , removeCookie] = useCookies(['AVAuser', 'AVAaction']);
   const ava_env = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
 
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.ready
-      .then(registration => {
-        registration.update();
-      })
-      .catch(error => {
-        console.error(error.message);
-        throw error.message;
-      });
-  }
-
   if (cookies.AVAaction) {
     if (cookies.AVAaction.document) {
       return (
@@ -52,7 +41,7 @@ export default () => {
               }
             }
             let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
-            window.location.replace(jumpTo);
+            window.location.replace(`${jumpTo}?client=${session.client_id}`);
           }}
         />
       );
@@ -98,13 +87,15 @@ export default () => {
       );
     }
     let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
-    window.location.replace(jumpTo);
+    window.location.replace(`${jumpTo}?client=${session.client_id}`);
   }
+
+  const startAt = state.session.url_parameters?.start || null;
 
   return (
     <Box>
       {(state.session.client_style && state.session.client_style.ui_v3 && (ava_env !== 'D' || (state.session.client_style && state.session.client_style.ui_v3Dev)))
-        ? <MainMenuV3 />
+        ? <MainMenuV3 {...(startAt ? { start_at: startAt } : {})} />
         :
         ((state.session.client_style && state.session.client_style.ui_tiles)
         ? <ConnectMenu pPerson={patient.person_id} patient={patient} pClient={session.client_id} />

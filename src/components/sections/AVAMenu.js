@@ -6,6 +6,7 @@ import { getImage } from '../../util/AVAPeople';
 import { getActivity } from '../../util/AVAObservations';
 import { getActivityDetail } from '../../util/AVAActivityLoader';
 import { AVATextStyle, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
+import { clearPushSubscriptionFromDB } from '../../util/AVAPushNotifications';
 import QuickAdd from './QuickAdd';
 
 import { Snackbar } from '@material-ui/core';
@@ -1235,6 +1236,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 <MenuItem onClick={async () => {
                   await accessLog(session.user_id, `*na*`, `Manual sign-out`);
                   removeCookie("AVAuser", { path: '/' });
+                  await clearPushSubscriptionFromDB(session.user_id);
                   Auth.signOut().then(() => {
                     let jumpTo = window.location.origin;
                     window.location.replace(`${jumpTo}?client=${state.session.client_id}`);
@@ -1800,7 +1802,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 let reactUpdObj = {};
                 if (session?.url_parameters && ('activity' in session.url_parameters) && ('user' in session.url_parameters)) {
                   let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
-                  jumpTo += `?user=${session.url_parameters.user}`;
+                  jumpTo += `?user=${session.url_parameters.user}&client=${session.client_id}`;
                   window.location.replace(jumpTo);
                 }
                 else if ((['continue', 'next'].includes(response))

@@ -23,7 +23,6 @@ import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
 import { AVAclasses } from '../../util/AVAStyles';
 import { isEmpty, sentenceCase } from '../../util/AVAUtilities';
-import { makeDate } from '../../util/AVADateTime';
 import { getPublicGroupList, getPrivateGroupList, determineClass, getRole } from '../../util/AVAGroups';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import MakeMessage from './MakeMessage';
@@ -106,9 +105,10 @@ const useStyles = makeStyles(theme => ({
     },
     portraitMedia: {
         width: '100%',
-        height: theme.spacing(26),
-        objectFit: 'cover',
+        height: '100%',
+        objectFit: 'contain',
         objectPosition: 'center',
+        backgroundColor: theme.palette.action.hover,
     },
     cardBody: {
         padding: theme.spacing(1.5),

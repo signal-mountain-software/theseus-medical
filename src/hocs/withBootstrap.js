@@ -8,7 +8,7 @@ import { useSnackbar } from 'notistack';
 import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
 import { AVADefaults } from '../util/AVAStyles';
-import { initPushNotifications } from '../util/AVAPushNotifications';
+
 import MakeAVAMenu from '../util/MakeAVAMenu';
 import QuickAdd from '../components/sections/QuickAdd';
 import LoginModuleV2 from '../components/sections/LoginModuleV2';
@@ -136,7 +136,7 @@ export default Component => props => {
           }
 
           console.log('Trying user login:', urlData.user);
-          let results = await tryUser(urlData.user, urlData.client || urlData.client_id, 'url');
+          let results = await tryUser(urlData.user, urlData.client || urlData.client_id, urlData.password === 'check' ? 'url_check' : 'url');
           if ((Object.keys(urlData).length === 1) || (results !== 'good')) return;
         }
 
@@ -381,7 +381,7 @@ export default Component => props => {
     }
     if (
       (foundSession.forceSetPassword || (reactData.customizationData.client_style?.mandatory_passwords && !foundSession.last_login))
-      && ((pSource === 'entered') || (pSource === 'selection'))
+      && ((pSource === 'entered') || (pSource === 'selection') || (pSource === 'url_check'))
     ) {
       await logAccessAttempt(pUser, '', true, 'Good UserID entered.  Password must be set/reset for this account.');
       closeSnackbar();
@@ -399,7 +399,7 @@ export default Component => props => {
     }
     else if (
       (foundSession.requirePassword || reactData.customizationData.client_style?.mandatory_passwords)
-      && ((pSource === 'entered') || (pSource === 'selection'))
+      && ((pSource === 'entered') || (pSource === 'selection') || (pSource === 'url_check'))
     ) {
       await logAccessAttempt(pUser, '', true, 'Good UserID entered.  Password is required for this account.');
       closeSnackbar();
@@ -489,6 +489,10 @@ export default Component => props => {
   }
 
   if (!AVAReady && !localAVAReady) {
+    // /thankyou is a public dead-end page — no auth needed, render it directly
+    if (window.location.pathname === '/thankyou') {
+      return (<Component {...props} />);
+    }
     if (isTestEnv || true) {
       return (
         <LoginModuleV2
@@ -535,7 +539,7 @@ export default Component => props => {
             let jumpTo = `${window.location.href.split('?')[0]}?continue`;
             window.location.replace(jumpTo);
           } else {
-            window.location.replace(`${window.location.origin}/thankyou`);
+            window.location.replace(`${window.location.origin}/thankyou?client=${reactData.urlData?.client_id}`);
           }
         }}
         request={{
@@ -553,7 +557,7 @@ export default Component => props => {
             let jumpTo = `${window.location.href.split('?')[0]}?continue`;
             window.location.replace(jumpTo);
           } else {
-            window.location.replace(`${window.location.origin}/thankyou`);
+            window.location.replace(`${window.location.origin}/thankyou?client=${reactData.urlData?.client_id}`);
           }
         }}
         request={{
@@ -1169,10 +1173,6 @@ export default Component => props => {
         subject: (URLmsg.subject || null),
       }), { path: '/' });
     }
-    // Register this device for push notifications (fire-and-forget — never blocks login)
-    initPushNotifications(currentSession.user_id).catch(e => {
-      console.warn('AVAPush: initPushNotifications failed silently', e);
-    });
     setAVAReady(true);
     localAVAReady = true;
     return true;

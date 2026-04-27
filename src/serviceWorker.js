@@ -123,9 +123,18 @@ function checkValidServiceWorker(swUrl, config) {
 
 export function unregister() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.ready
-      .then(registration => {
-        registration.unregister();
+    // Use getRegistrations() instead of navigator.serviceWorker.ready.
+    // navigator.serviceWorker.ready leaves a dangling promise that resolves
+    // the next time ANY SW activates (e.g. our push-service-worker.js when the
+    // user taps Enable) and would immediately unregister it.
+    navigator.serviceWorker.getRegistrations()
+      .then(registrations => {
+        for (const registration of registrations) {
+          const worker = registration.active || registration.installing || registration.waiting;
+          // Never unregister the push notification SW — it's managed separately.
+          if (worker && worker.scriptURL && worker.scriptURL.includes('push-service-worker')) continue;
+          registration.unregister();
+        }
       })
       .catch(error => {
         console.error(error.message);

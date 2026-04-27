@@ -9,6 +9,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import useSession from '../hooks/useSession';
 
 import { useCookies } from 'react-cookie';
+import { dbClient } from '../util/AVAUtilities';
 
 const useStyles = makeStyles(theme => ({
     formControl: {
@@ -89,18 +90,26 @@ export default () => {
 
     const [, , removeCookie] = useCookies(['AVAuser', 'AVAaction']);
 
+    const [clientIcon, setClientIcon] = React.useState(null);
+    const [clientName, setClientName] = React.useState(null);
 
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.ready
-            .then(registration => {
-                registration.update();
-            })
-            .catch(error => {
-                console.error(error.message);
+    React.useEffect(() => {
+        removeCookie('AVAuser', { path: '/' });
+        const params = new URLSearchParams(window.location.search);
+        const clientId = params.get('client');
+        if (clientId) {
+            Promise.all([
+                dbClient.get({ Key: { client_id: clientId, custom_key: 'logo' }, TableName: 'Customizations' }).promise().catch(() => null),
+                dbClient.get({ Key: { client_id: clientId, custom_key: 'client_name' }, TableName: 'Customizations' }).promise().catch(() => null),
+            ]).then(([logoRec, nameRec]) => {
+                if (logoRec?.Item?.customization_value) { setClientIcon(logoRec.Item.customization_value); }
+                if (nameRec?.Item?.customization_value) { setClientName(nameRec.Item.customization_value); }
             });
-    }
+        }
+    }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
-    removeCookie("AVAuser", { path: '/' });
+    const resolvedIcon = clientIcon || session?.client_icon || 'https://ava-icons.s3.amazonaws.com/AVA-logo.jpg';
+    const resolvedName = clientName || session?.client_name || '';
 
     return (
         <Box
@@ -115,13 +124,13 @@ export default () => {
                 >
                     <CardMedia
                         component="img"
-                        image={session?.client_icon || 'https://ava-icons.s3.amazonaws.com/AVA-logo.jpg'}
+                        image={resolvedIcon}
                         alt='AVA'
                     />
                 </Card>
                 <Box display='flex' className={classes.gridList} flexDirection='row' justifyContent='center' alignItems='center'>
                     <Typography  variant='h5'>
-                        {`Thank you from ${session?.client_name}!`}
+                        {`Thank you${resolvedName ? ` from ${resolvedName}` : ''}!`}
                     </Typography>
                 </Box>
             </Grid>
