@@ -9,6 +9,9 @@ let targetArray = [];
 let targetPerson = null;
 let loadedGroupObj = {};
 let loadedPerson = null;
+// Module-level hierarchy cache: populated by getAllGroups at bootstrap, consumed by addMember/removeMember
+// Structure: { adminHierarchy: [{id, belongs_to, level, name}], parent_of: {parentId: [childId, ...]} }
+let cachedHierarchy = null;
 
 /* 
 **********************
@@ -1240,79 +1243,198 @@ export async function createNewGroup({ client_id, group_name, belongs_to, adminL
   return newGroupID;
 }
 
-export async function addMember(pPerson, pClient, pGroup) {
+export async function addMember(pPerson, pClient, pGroup, options = {}) {
+  /*
+    pGroup may be a single group_id string or an array of group_ids.
+    Each group passed should be a LEAF group (no children in the hierarchy).
+    addMember will:
+      1. By default, reject (skip with a warning) any group that has children.
+         Pass options.allowParent = true to bypass this check (e.g. direct UI drag-drop).
+      2. Write PeopleGroups rows for the group AND every ancestor up the chain.
+      3. Update People.groups[] with the same full set.
+  */
+  const leafGroupsRequested = makeArray(pGroup);
+
+  // Ensure hierarchy cache is available; fall back to loading it if called before bootstrap
+  if (!cachedHierarchy) {
+    const h = await getGroupHierarchy(pClient, { sort: true });
+    cachedHierarchy = { adminHierarchy: h.hierarchy, parent_of: h.parent_of };
+  }
+  const { adminHierarchy, parent_of } = cachedHierarchy;
+
+  // Build a quick parent lookup from the hierarchy: child_id → parent_id
+  const parentOf = {};
+  adminHierarchy.forEach(g => { if (g.belongs_to) { parentOf[g.id] = g.belongs_to; } });
+
+  // Helper: walk up from a leaf, return [leaf, parent, grandparent, ...]
+  const ancestorChain = (groupId) => {
+    const chain = [groupId];
+    let current = groupId;
+    while (parentOf[current]) {
+      current = parentOf[current];
+      chain.push(current);
+    }
+    return chain;
+  };
+
+  // Collect all group_ids to write (leaf + full ancestor chains), deduplicated
+  const allGroupsToWrite = new Set();
+  for (const g of leafGroupsRequested) {
+    // Leaf check: reject if this group has children in the hierarchy (unless caller opts out)
+    if (!options.allowParent && parent_of?.[g]?.length > 0) {
+      clt({ 'addMember: skipping non-leaf group (has children)': g, 'use a child group instead': parent_of[g] });
+      continue;
+    }
+    ancestorChain(g).forEach(id => allGroupsToWrite.add(id));
+  }
+
+  if (allGroupsToWrite.size === 0) { return; }
+
+  const groupsArray = Array.from(allGroupsToWrite);
   let peopleRec = await getPerson(pPerson);
+
+  // Single People update: add all new groups in one write
   if (peopleRec?.person_id) {
-    let newGroupList = peopleRec.groups;
-    newGroupList.push(pGroup);
-    let clientGroups = (Array.isArray(peopleRec.clients) ? peopleRec.clients : [peopleRec.clients]);
-    clientGroups.some((cG, ndx) => {
-      if (cG.id === pClient) {
-        clientGroups[ndx].groups = newGroupList;
-        return true;
-      }
-      else { return false; }
-    });
+    let newGroupList = makeArray(peopleRec.groups);
+    let changed = false;
+    for (const g of groupsArray) {
+      if (!newGroupList.includes(g)) { newGroupList.push(g); changed = true; }
+    }
+    if (changed) {
+      await dbClient
+        .update({
+          Key: { person_id: pPerson },
+          UpdateExpression: 'set #g = :g',
+          ExpressionAttributeNames: { '#g': 'groups' },
+          ExpressionAttributeValues: { ':g': newGroupList },
+          TableName: 'People',
+        })
+        .promise()
+        .catch(error => { clt({ 'Bad update to People in addMember - caught error is': error }); });
+    }
+  }
+
+  // PeopleGroups: put/overwrite one record per group in the chain (leaf + all ancestors)
+  const joinDate = makeDate(new Date()).numeric;
+  const displayName = (peopleRec?.person_id
+    ? `${peopleRec.name.last}, ${peopleRec.name.first}`
+    : `${pPerson}, Unknown Account`);
+  for (const g of groupsArray) {
     await dbClient
-      .update({
-        Key: { person_id: pPerson },
-        UpdateExpression: "set groups = :g, clients = :cg",
-        ExpressionAttributeValues: {
-          ":g": newGroupList,
-          ":cg": clientGroups
+      .put({
+        Item: {
+          client_group_id: pClient + '~' + g,
+          person_id: pPerson,
+          display_name: displayName,
+          membership_status: 'active',
+          join_date: joinDate,
+          roles: ['patient']
         },
-        TableName: "People",
+        TableName: 'PeopleGroups'
       })
       .promise()
-      .catch(error => {
-        clt({ 'Bad update to People - caught error is': error });
-      });
+      .catch(error => { clt({ 'Bad put to PeopleGroups in addMember - caught error is': error }); });
   }
-  let peopleGroupRec = {
-    client_group_id: pClient + '~' + pGroup,
-    display_name: (peopleRec?.person_id ? `${peopleRec.name.last}, ${peopleRec.name.first}` : `${pPerson}, Unknown Account`),
-    person_id: pPerson,
-    roles: ["patient"]
-  };
-  await dbClient
-    .put({
-      Item: peopleGroupRec,
-      TableName: "PeopleGroups"
-    })
-    .promise()
-    .catch(error => {
-      clt({ 'Bad put to PeopleGroups - caught error is': error });
-    });
 }
 
 export async function removeMember(pPerson, pClient, pGroup) {
-  let peopleRec = await getPerson(pPerson);
-  if (peopleRec?.person_id) {
-    let newGroupList = peopleRec.groups.filter(g => {
-      return !(g === pGroup);
-    });
-    let clientGroups = (Array.isArray(peopleRec.clients) ? peopleRec.clients : [peopleRec.clients]);
-    clientGroups.some((cG, ndx) => {
-      if (cG.id === pClient) {
-        clientGroups[ndx].groups = newGroupList;
-        return true;
+  /*
+    pGroup may be a single group_id string or an array of group_ids.
+    removeMember will:
+      1. Remove the specified leaf groups from People.groups[] and mark their PeopleGroups rows inactive.
+      2. For each removed group's ancestor chain, check if the person still has any OTHER active leaf
+         membership that still reaches that ancestor. If not, also remove the ancestor row (orphan cleanup).
+  */
+  const leafGroupsToRemove = makeArray(pGroup);
+
+  // Ensure hierarchy cache is available
+  if (!cachedHierarchy) {
+    const h = await getGroupHierarchy(pClient, { sort: true });
+    cachedHierarchy = { adminHierarchy: h.hierarchy, parent_of: h.parent_of };
+  }
+  const { adminHierarchy, parent_of } = cachedHierarchy;
+
+  // Build parent lookup: child_id → parent_id
+  const parentOf = {};
+  adminHierarchy.forEach(g => { if (g.belongs_to) { parentOf[g.id] = g.belongs_to; } });
+
+  const ancestorChain = (groupId) => {
+    const chain = [];
+    let current = parentOf[groupId];
+    while (current) {
+      chain.push(current);
+      current = parentOf[current];
+    }
+    return chain;  // ancestors only (not the leaf itself)
+  };
+
+  // Load the person's current active groups from PeopleGroups (authoritative source via person-index GSI)
+  const pgResult = await dbClient.query({
+    TableName: 'PeopleGroups',
+    IndexName: 'person-index',
+    KeyConditionExpression: 'person_id = :p AND membership_status = :s',
+    ExpressionAttributeValues: { ':p': pPerson, ':s': 'active' }
+  }).promise().catch(error => { clt({ 'Bad query on PeopleGroups in removeMember': error }); });
+  const currentGroups = (pgResult?.Items || [])
+    .filter(row => row.client_group_id.startsWith(pClient + '~'))
+    .map(row => row.client_group_id.split('~')[1]);
+
+  // The remaining leaf groups after this removal (used for orphan ancestor check)
+  const remainingLeafs = currentGroups.filter(g => {
+    // A group is a leaf if it has no children
+    return !parent_of?.[g]?.length && !leafGroupsToRemove.includes(g);
+  });
+
+  // For each ancestor of each removed group, check if any remaining leaf still reaches it
+  const orphanedAncestors = new Set();
+  for (const g of leafGroupsToRemove) {
+    for (const ancestor of ancestorChain(g)) {
+      // Does any remaining leaf group have this ancestor in its own chain?
+      const stillReached = remainingLeafs.some(remainingLeaf => {
+        let current = parentOf[remainingLeaf];
+        while (current) {
+          if (current === ancestor) { return true; }
+          current = parentOf[current];
+        }
+        return false;
+      });
+      if (!stillReached) { orphanedAncestors.add(ancestor); }
+    }
+  }
+
+  const allGroupsToRemove = [...leafGroupsToRemove, ...orphanedAncestors];
+
+  // Single People update: remove all affected groups in one write
+  // ConditionExpression guards against accidentally creating a stub People record for a non-existent person
+  const newGroupList = currentGroups.filter(g => !allGroupsToRemove.includes(g));
+  await dbClient
+    .update({
+      Key: { person_id: pPerson },
+      UpdateExpression: 'set #g = :g',
+      ExpressionAttributeNames: { '#g': 'groups' },
+      ExpressionAttributeValues: { ':g': newGroupList },
+      ConditionExpression: 'attribute_exists(person_id)',
+      TableName: 'People',
+    })
+    .promise()
+    .catch(error => {
+      if (error?.code !== 'ConditionalCheckFailedException') {
+        clt({ 'Bad update to People in removeMember - caught error is': error });
       }
-      else { return false; }
     });
+
+  // PeopleGroups: soft-delete all affected rows (leaf + orphaned ancestors)
+  const removedDate = makeDate(new Date()).numeric;
+  for (const g of allGroupsToRemove) {
     await dbClient
       .update({
-        Key: { person_id: pPerson },
-        UpdateExpression: "set groups = :g, clients = :cg",
-        ExpressionAttributeValues: {
-          ":g": newGroupList,
-          ":cg": clientGroups
-        },
-        TableName: "People",
+        Key: { client_group_id: pClient + '~' + g, person_id: pPerson },
+        UpdateExpression: 'set membership_status = :s, removed_date = :d',
+        ExpressionAttributeValues: { ':s': 'inactive', ':d': removedDate },
+        TableName: 'PeopleGroups'
       })
       .promise()
-      .catch(error => {
-        clt({ 'Bad update to People - caught error is': error });
-      });
+      .catch(error => { clt({ 'Bad update to PeopleGroups in removeMember - caught error is': error }); });
   }
 }
 
@@ -1819,5 +1941,7 @@ export async function getAllGroups(person_id, client_id) {
   // Remove admin groups from privateGroups and publicGroups for consistency
   responseData.adminHierarchy.forEach(a => { delete responseData.privateGroups[a.id]; delete responseData.publicGroups[a.id];});
   for (let gID in responseData.publicGroups) { delete responseData.privateGroups[gID]; }
+  // Populate module-level hierarchy cache for use by addMember/removeMember
+  cachedHierarchy = { adminHierarchy: responseData.adminHierarchy, parent_of: responseData.parent_of };
   return responseData;
 };
