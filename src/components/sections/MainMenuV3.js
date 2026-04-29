@@ -54,6 +54,7 @@ import NewReleasesOutlinedIcon from '@material-ui/icons/NewReleasesOutlined';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 import SearchIcon from '@material-ui/icons/Search';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
+import GetAppIcon from '@material-ui/icons/GetApp';
 import FavoriteIcon from '@material-ui/icons/Favorite';
 import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder';
 import NotificationsActiveIcon from '@material-ui/icons/NotificationsActive';
@@ -80,6 +81,9 @@ import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
 import GroupPhotoDirectory from '../forms/GroupPhotoDirectory';
 import TaskManager from '../dialogs/TaskManager';
 import MultiObservationFormD from '../forms/MultiObservationFormD';
+import IosInstall from '../dialogs/IosInstall';
+import useIosCheck from '../../hooks/useIosCheck';
+import useWebPrompt from '../../hooks/useWebPrompt';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -157,6 +161,11 @@ const useStyles = makeStyles(theme => ({
 
 export default ({ start_at }) => {
 
+  const [, isIOS] = useIosCheck();
+  const [webInstallPrompt, , onWebInstall] = useWebPrompt();
+  const isAlreadyInstalled = !!(window.matchMedia?.('(display-mode: standalone)').matches || window.navigator?.standalone);
+  const canInstall = !isAlreadyInstalled && (isIOS || !!webInstallPrompt);
+
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
@@ -170,6 +179,7 @@ export default ({ start_at }) => {
   const [reactData, setReactData] = React.useState({
     /**** NEW V3 CODE ****/
     menu_hierarchy: [],
+    level_active_parent: [],
     v3_favorites: [],
     start_at: start_at || '__top__',
     is_master: state.user?.account_class && (state.user.account_class === 'master'),
@@ -217,6 +227,7 @@ export default ({ start_at }) => {
     showLiveLink: false,
     liveLinkUrl: '',
     liveLinkTitle: '',
+    showIosInstall: false,
     alert: false,
     testMode: ["T", "L"].includes(window.location.href.split('//')[1].slice(0, 1).toUpperCase())
   });
@@ -2194,6 +2205,11 @@ export default ({ start_at }) => {
               for (let levelToClear = level_index + 1; levelToClear < reactData.menu_hierarchy.length; levelToClear++) {
                 reactData.menu_hierarchy[levelToClear] = [];
               }
+              // Ensure the next level slot always exists, even if no children load (e.g. empty addable menu)
+              if (!reactData.menu_hierarchy[level_index + 1]) {
+                reactData.menu_hierarchy[level_index + 1] = [];
+              }
+              reactData.level_active_parent[level_index + 1] = this_item.menu_id;
 
               for (let this_child of this_item.children) {
                 await getMenuItem(this_child, level_index + 1, this_item);
@@ -2231,7 +2247,8 @@ export default ({ start_at }) => {
             }
 
             updateReactData({
-              menu_hierarchy: reactData.menu_hierarchy
+              menu_hierarchy: reactData.menu_hierarchy,
+              level_active_parent: reactData.level_active_parent
             }, true);
             void persistOpenMenusFromHierarchy(reactData.menu_hierarchy);
           }
@@ -2241,7 +2258,7 @@ export default ({ start_at }) => {
               renderFunctionCall: this_item.call || false
             }, true);
           }
-          else if (normalizedMenuType === 'live_link') {
+          else if (normalizedMenuType === 'live_link' || (useTileUI && hasLinkThumbnail && normalizedMenuType === 'link')) {
             const frameUrl = buildLiveLinkEmbedUrl(this_item.url);
             if (!frameUrl) {
               updateReactData({
@@ -2284,6 +2301,7 @@ export default ({ start_at }) => {
             flexDirection: useTileUI ? 'column' : 'row',
             alignItems: useTileUI ? 'stretch' : 'center',
             minHeight: useTileUI ? undefined : 86,
+            height: useTileUI ? 100 : 'auto',
           }}
         >
           {useTileUI && reactData.editFavorites && !isFavoriteCard &&
@@ -2344,7 +2362,7 @@ export default ({ start_at }) => {
                 ? undefined
                 : {
                   justifyContent: 'flex-start',
-                  alignItems: 'center',
+                  alignItems: 'flex-start',
                   textAlign: 'left',
                   paddingRight: 12,
                   flexGrow: 1,
@@ -2353,7 +2371,7 @@ export default ({ start_at }) => {
             >
               <Box
                 display='flex' flexDirection='column'
-                alignItems={'center'} justifyContent={'center'}
+                alignItems={useTileUI ? 'center' : 'flex-start'} justifyContent={'center'}
                 key={`${keyPrefix}cardContentBox-${level_index}.${item_index}`}
               >
                 {(() => {
@@ -2363,7 +2381,7 @@ export default ({ start_at }) => {
                   const labelContent = (
                     <Typography
                       key={`${keyPrefix}cardContentLink-${level_index}.${item_index}`}
-                      style={AVATextStyle({ align: 'center', margin: { left: useTileUI ? 0 : (hideCardImage ? 2 : 1) }, size: useTileUI ? 1 : 1.8, bold: true, color: (isDark(tileColor) ? 'cornsilk' : 'black') })}
+                      style={AVATextStyle({ align: useTileUI ? 'center' : 'left', margin: { left: useTileUI ? 0 : (hideCardImage ? 2 : 1) }, size: useTileUI ? 1 : 1.8, bold: true, color: (isDark(tileColor) ? 'cornsilk' : 'black') })}
                     >
                       {menuLabel}
                     </Typography>
@@ -2867,6 +2885,24 @@ export default ({ start_at }) => {
                     </Box>
                   </MenuItem>
                 }
+                {canInstall &&
+                  <MenuItem onClick={() => {
+                    updateReactData({ popupMenuOpen: false }, true);
+                    if (isIOS) {
+                      updateReactData({ showIosInstall: true }, true);
+                    } else {
+                      onWebInstall();
+                    }
+                  }}>
+                    <Box
+                      display='flex' flexDirection='row' alignItems={'center'}
+                      key={'vRowInstall'}
+                    >
+                      <GetAppIcon />
+                      <Typography className={classes.popUpMenuRow} >{'Install to Home Screen'}</Typography>
+                    </Box>
+                  </MenuItem>
+                }
                 <MenuItem onClick={async () => {
                   await accessLog(session.user_id, `*na*`, `Manual sign-out`);
                   removeCookie("AVAuser", { path: '/' });
@@ -2958,7 +2994,17 @@ export default ({ start_at }) => {
                   const level_visible = this_level.some(c => !c.menuItemRec.hidden);
                   const firstVisibleCell = this_level.find(c => !c.menuItemRec.hidden);
                   const levelHasVisibleChildren = reactData.menu_hierarchy[level_index + 1]?.some(c => !c.menuItemRec.hidden);
-                  const parentMenuId = firstVisibleCell?.parent || reactData.start_at;
+                  // Also show divider when the next level is empty but will display an add tile
+                  const nextLevelParentId = reactData.level_active_parent?.[level_index + 1];
+                  const nextLevelParentCell = nextLevelParentId
+                    ? reactData.menu_hierarchy.flat().find(c => c.menu_id === nextLevelParentId)
+                    : null;
+                  const nextLevelIsEmptyAddable = useTileUI && !levelHasVisibleChildren && !!(
+                    nextLevelParentCell?.menuItemRec &&
+                    Object.prototype.hasOwnProperty.call(nextLevelParentCell.menuItemRec, 'allow_add') &&
+                    authorizedToMenuItem(nextLevelParentCell.menuItemRec.allow_add)
+                  );
+                  const parentMenuId = firstVisibleCell?.parent || reactData.level_active_parent?.[level_index] || reactData.start_at;
                   const parentCell = reactData.menu_hierarchy
                     .flat()
                     .find((candidateCell) => candidateCell.menu_id === parentMenuId);
@@ -2967,8 +3013,55 @@ export default ({ start_at }) => {
                     Object.prototype.hasOwnProperty.call(parentCell.menuItemRec, 'allow_add') &&
                     authorizedToMenuItem(parentCell.menuItemRec.allow_add)
                   );
+                  const addTile = (useTileUI && level_addButton) ? (
+                    <Card
+                      key={`addTile_${level_index}`}
+                      style={{
+                        marginRight: '8px',
+                        marginLeft: '8px',
+                        borderRadius: '30px 30px 30px 30px',
+                        backgroundColor: 'rgba(0, 0, 0, 0.06)',
+                        border: '2px dashed rgba(0, 0, 0, 0.25)',
+                        marginBottom: 10,
+                        cursor: 'pointer',
+                        boxShadow: 'none',
+                      }}
+                      onClick={() => {
+                        updateReactData({
+                          addMenuDialog: true,
+                          addMenuDialogLevel: level_index,
+                          addMenuDialogParent: parentMenuId,
+                          addMenuDialogType: null,
+                          addMenuDialogLinkSource: 'url',
+                          addMenuDialogTitle: '',
+                          addMenuDialogUrl: '',
+                          addMenuDialogUploadFile: null,
+                          addMenuDialogUploadFileName: '',
+                          addMenuDialogUploadProgress: 0,
+                          addMenuDialogSaving: false,
+                          addMenuDialogTargets: [],
+                          showAddMessageTargetSearch: false,
+                          selections: [],
+                        }, true);
+                      }}
+                    >
+                      <CardActionArea
+                        className={classes.wholeCard}
+                        style={{ flexDirection: 'column', alignItems: 'stretch' }}
+                      >
+                        <Box
+                          display='flex'
+                          justifyContent='center'
+                          alignItems='center'
+                          style={{ minHeight: 60, minWidth: 90, padding: 8 }}
+                        >
+                          <AddCircleOutlineIcon style={{ fontSize: 40, opacity: 0.55 }} />
+                        </Box>
+                      </CardActionArea>
+                    </Card>
+                  ) : null;
                   return (
-                    (level_visible || levelHasVisibleChildren) &&
+                    (level_visible || levelHasVisibleChildren || (!level_visible && level_addButton)) &&
                     <React.Fragment key={`menuLevelFrag${level_index}`}>
                       {level_visible &&
                         <Box
@@ -2990,45 +3083,32 @@ export default ({ start_at }) => {
                             {this_level.filter(c => !c.menuItemRec.hidden).map((this_cell, item_index) => {
                               return renderMenuCardCell(this_cell, level_index, item_index);
                             })}
+                            {addTile}
                           </Box>
-                          <Box
-                            display='flex'
-                            flexDirection='column'
-                            justifyContent='center'
-                            alignItems='center'
-                            key={`menuLevelActions${level_index}`}
-                            mr={0.5}
-                          >
-                            {level_addButton &&
-                              <IconButton
-                                size='small'
-                                aria-label={`add_card_level_${level_index}`}
-                                onClick={() => {
-                                  updateReactData({
-                                    addMenuDialog: true,
-                                    addMenuDialogLevel: level_index,
-                                    addMenuDialogParent: parentMenuId,
-                                    addMenuDialogType: null,
-                                    addMenuDialogLinkSource: 'url',
-                                    addMenuDialogTitle: '',
-                                    addMenuDialogUrl: '',
-                                    addMenuDialogUploadFile: null,
-                                    addMenuDialogUploadFileName: '',
-                                    addMenuDialogUploadProgress: 0,
-                                    addMenuDialogSaving: false,
-                                    addMenuDialogTargets: [],
-                                    showAddMessageTargetSearch: false,
-                                    selections: [],
-                                  }, true);
-                                }}
-                              >
-                                <AddCircleOutlineIcon fontSize='small' />
-                              </IconButton>
-                            }
-                          </Box>
-                        </Box >
+                        </Box>
                       }
-                      {levelHasVisibleChildren && (level_index >= firstVisibleLevelIndex) &&
+                      {!level_visible && level_addButton && (
+                        <Box
+                          ref={tileContainerRef}
+                          display='flex'
+                          flexDirection='row'
+                          alignItems='center'
+                          style={{ scrollMarginTop: '60px', paddingTop: (level_index === firstVisibleLevelIndex ? '16px' : null) }}
+                          width='100%'
+                          key={`menuLevelEmptyAddRow${level_index}`}
+                        >
+                          <Box
+                            display='flex' flexDirection='row'
+                            key={`menuLevelEmpty${level_index}`}
+                            flexWrap='wrap'
+                            mt={2} mb={2} ml={1} mr={1}
+                            style={{ flexGrow: 1, rowGap: '10px' }}
+                          >
+                            {addTile}
+                          </Box>
+                        </Box>
+                      )}
+                      {(levelHasVisibleChildren || nextLevelIsEmptyAddable) && (level_index >= firstVisibleLevelIndex) &&
                         <Box
                           key={`menuLevelDivider${level_index}`}
                           width='100%'
@@ -3567,6 +3647,12 @@ export default ({ start_at }) => {
           options={{
             bgColor: 'white'
           }}
+        />
+      }
+      {reactData.showIosInstall &&
+        <IosInstall
+          open={reactData.showIosInstall}
+          onClose={() => updateReactData({ showIosInstall: false }, true)}
         />
       }
     </React.Fragment >
