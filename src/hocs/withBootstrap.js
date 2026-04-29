@@ -1,6 +1,6 @@
 import React from 'react';
 import { dbClient, lambda, makeArray, getCustomizations, deepCopy, uuid } from '../util/AVAUtilities';
-import { accountAccess, getAllGroups, getGroupsBelongTo } from '../util/AVAGroups';
+import { accountAccess, getAllGroups, getGroupsBelongTo, getPersonGroups } from '../util/AVAGroups';
 import { getAllOccurrences, v2buildCalendar, createNewOccurrences } from '../util/AVACalendars';
 import { sendMessages } from '../util/AVAMessages';
 import { addDays } from '../util/AVADateTime';
@@ -1093,7 +1093,8 @@ export default Component => props => {
 
     belongsTo = await getGroupsBelongTo(currentSession.client_id, currentSession.patient_id, { sort: true });
     let group_structure = await getAllGroups(currentSession.patient_id, currentSession.client_id);
-    dispatch({ type: SET_GROUPS, payload: Object.assign({}, group_structure, { belongsTo }) });
+    const memberGroupIds = await getPersonGroups(currentSession.patient_id, currentSession.client_id);
+    dispatch({ type: SET_GROUPS, payload: Object.assign({}, group_structure, { belongsTo, memberGroupIds }) });
 
     currentSession.adminAccount = false;
     if (currentProfile.account_class) {

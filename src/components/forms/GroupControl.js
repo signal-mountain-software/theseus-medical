@@ -3,7 +3,7 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 
 import { createNewGroup, getGroupMembers, getMemberList, addMember, removeMember } from '../../util/AVAGroups';
-import { dbClient, sentenceCase, isObject, recordExists, deepCopy, listFromArray, cl } from '../../util/AVAUtilities';
+import { dbClient, sentenceCase, isObject, listFromArray, cl } from '../../util/AVAUtilities';
 import AVATextInput from '../forms/AVATextInput';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import GroupMaintenance from '../dialogs/GroupMaintenance';
@@ -478,13 +478,17 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     }
 
     // delegate all DB writes to addMember (People.groups + PeopleGroups chain)
-    await addMember(person_id, pSession.client_id, droppedOn.group_id, { allowParent: true });
+    const newGroupList = await addMember(person_id, pSession.client_id, droppedOn.group_id, { allowParent: true });
 
     // update in-memory accessList cache
-    const newGroupList = [...currentGroups, ...addedGroups];
+    const updatedGroupList = [...currentGroups, ...addedGroups];
     if (accessEntry) {
-      accessEntry.groups = newGroupList;
+      accessEntry.groups = updatedGroupList;
       dispatch({ type: SET_ACCESSLIST, payload: Object.assign({}, state.accessList) });
+    }
+    // if this change affects the current patient, update memberGroupIds
+    if (person_id === state.session.patient_id && newGroupList) {
+      dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups, { memberGroupIds: newGroupList }) });
     }
 
     // update right-panel member list if the currently selected group is in the new set
@@ -531,20 +535,24 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       .map(g => groupsManagedObject[g]?.group_name || g);
 
     // delegate DB writes: add destination then remove source (removeMember handles orphan cleanup)
-    await addMember(person_id, pSession.client_id, droppedOn.group_id, { allowParent: true });
-    await removeMember(person_id, pSession.client_id, draggedFrom.personGroup);
+    const addedGroupList = await addMember(person_id, pSession.client_id, droppedOn.group_id, { allowParent: true });
+    const newGroupList = await removeMember(person_id, pSession.client_id, draggedFrom.personGroup);
 
     // get fresh groups from DB — removeMember may have pruned orphaned ancestors
     const freshPerson = await getPerson(person_id);
-    const newGroupList = freshPerson?.groups || [];
+    const freshGroupList = freshPerson?.groups || [];
     const removedGroupNames = currentGroups
-      .filter(g => !newGroupList.includes(g))
+      .filter(g => !freshGroupList.includes(g))
       .map(g => groupsManagedObject[g]?.group_name || g);
 
     // update accessList cache
     if (accessEntry) {
-      accessEntry.groups = newGroupList;
+      accessEntry.groups = freshGroupList;
       dispatch({ type: SET_ACCESSLIST, payload: Object.assign({}, state.accessList) });
+    }
+    // if this change affects the current patient, update memberGroupIds
+    if (person_id === state.session.patient_id && newGroupList) {
+      dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups, { memberGroupIds: newGroupList }) });
     }
 
     // remove person from right-panel member list
@@ -569,19 +577,23 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     const currentGroups = [...(accessEntry?.groups || [])];
 
     // delegate DB write to removeMember (handles orphan cleanup + PeopleGroups soft-delete)
-    await removeMember(person_id, pSession.client_id, draggedFrom.personGroup);
+    const newGroupList = await removeMember(person_id, pSession.client_id, draggedFrom.personGroup);
 
     // get fresh groups from DB — removeMember may have pruned orphaned ancestors
     const freshPerson = await getPerson(person_id);
-    const newGroupList = freshPerson?.groups || [];
+    const freshGroupList = freshPerson?.groups || [];
     const removedGroupNames = currentGroups
-      .filter(g => !newGroupList.includes(g))
+      .filter(g => !freshGroupList.includes(g))
       .map(g => groupsManagedObject[g]?.group_name || g);
 
     // update accessList cache
     if (accessEntry) {
-      accessEntry.groups = newGroupList;
+      accessEntry.groups = freshGroupList;
       dispatch({ type: SET_ACCESSLIST, payload: Object.assign({}, state.accessList) });
+    }
+    // if this change affects the current patient, update memberGroupIds
+    if (person_id === state.session.patient_id && newGroupList) {
+      dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups, { memberGroupIds: newGroupList }) });
     }
 
     // remove person from right-panel member list

@@ -4,7 +4,8 @@ import React from 'react';
 import { getPerson, getImage } from '../../util/AVAPeople';
 import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount, titleCase } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle, isDark } from '../../util/AVAStyles';
-import { determineClass, doesPersonMatchGroupRules, addMember, removeMember } from '../../util/AVAGroups';
+import { determineClass, doesPersonMatchGroupRules, addMember, removeMember, getPersonGroups } from '../../util/AVAGroups';
+import { SET_GROUPS } from '../../contexts/Session/actions';
 import { syncPersonToSessionCaches } from '../../util/AVASessionSync';
 
 import useSession from '../../hooks/useSession';
@@ -1143,6 +1144,11 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         }
         if (groupsToRemove.length > 0) {
           await removeMember(personId, clientId, groupsToRemove);
+        }
+        // if the edited person is the current patient, refresh memberGroupIds in session state
+        if (personId === state.session.patient_id) {
+          const memberGroupIds = await getPersonGroups(personId, clientId);
+          dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups, { memberGroupIds }) });
         }
       }
       else if (sessionChanged) {

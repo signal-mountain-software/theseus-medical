@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { getAllGroups, getRole } from '../../util/AVAGroups';
+import { getRole } from '../../util/AVAGroups';
 
 import Dialog from '@material-ui/core/Dialog';
 import Slide from '@material-ui/core/Slide';
@@ -42,9 +42,9 @@ export default ({ options, defaults, onClose, onAbort }) => {
     let selectOpen = pGroupList.includes('*all_open') || pGroupList.includes('*all_public');
     let selectPrivate = pGroupList.includes('*all_closed') || pGroupList.includes('*all_private');
     const selectMine = !pGroupList || (pGroupList.length === 0) || (pGroupList.includes('*user'));
-    let allGroups = await getAllGroups(state.session.person_id || state.session.patient_id, state.session.client_id);
+    // Use already-loaded state.groups instead of re-fetching all groups from the DB
     const authorized_groups = state.accessList?.[state.session.client_id]?.groups || [];
-    let gList = allGroups.adminHierarchy.filter(g => authorized_groups.includes(g.id));
+    let gList = (state.groups?.adminHierarchy || []).filter(g => authorized_groups.includes(g.id));
     let response = {};
     for (let this_group of gList) {
       if ((this_group.level > 0)

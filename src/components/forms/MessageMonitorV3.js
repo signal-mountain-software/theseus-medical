@@ -26,7 +26,7 @@ import ForwardIcon from '@material-ui/icons/Forward';
 import useSession from '../../hooks/useSession';
 import { dbClient, sentenceCase } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
-import { parseDateInputAsLocalDate, getWeekNumberFromMessageTime, buildMessageWeekList } from '../../util/AVAMessages';
+import { parseDateInputAsLocalDate, buildMessageWeekList } from '../../util/AVAMessages';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { makeName } from '../../util/AVAPeople';
 import QuickSearch from '../sections/QuickSearch';

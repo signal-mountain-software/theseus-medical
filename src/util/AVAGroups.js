@@ -1335,6 +1335,8 @@ export async function addMember(pPerson, pClient, pGroup, options = {}) {
       .promise()
       .catch(error => { clt({ 'Bad put to PeopleGroups in addMember - caught error is': error }); });
   }
+  // Return the person's complete new group list (leaf + ancestors) for caller use
+  return peopleRec?.person_id ? makeArray(peopleRec.groups).concat(groupsArray.filter(g => !makeArray(peopleRec.groups).includes(g))) : groupsArray;
 }
 
 export async function removeMember(pPerson, pClient, pGroup) {
@@ -1436,6 +1438,44 @@ export async function removeMember(pPerson, pClient, pGroup) {
       .promise()
       .catch(error => { clt({ 'Bad update to PeopleGroups in removeMember - caught error is': error }); });
   }
+  // Return the person's complete new group list for caller use
+  return newGroupList;
+}
+
+/**
+ * Returns all active group_ids for person_id in the given client from the PeopleGroups table.
+ */
+export async function getPersonGroups(person_id, client_id) {
+  const pgResult = await dbClient.query({
+    TableName: 'PeopleGroups',
+    IndexName: 'person-index',
+    KeyConditionExpression: 'person_id = :p AND membership_status = :s',
+    ExpressionAttributeValues: { ':p': person_id, ':s': 'active' }
+  }).promise().catch(error => { clt({ 'Bad query on PeopleGroups in getPersonGroups': error }); });
+  return (pgResult?.Items || [])
+    .filter(row => row.client_group_id.startsWith(client_id + '~'))
+    .map(row => row.client_group_id.split('~')[1]);
+}
+
+/**
+ * Returns true if group_id is a leaf group for the given person — i.e., the person belongs to
+ * none of group_id's children. Groups containing '_top_' always return false.
+ * Loads and persists cachedHierarchy if not already available (using client_id).
+ *
+ * @param {string}   group_id        The group to test.
+ * @param {string[]} personGroupIds  All group_ids the person belongs to (e.g., from getPersonGroups).
+ * @param {string}   client_id       Used to load the hierarchy cache if not yet populated.
+ */
+export async function isLeaf(group_id, personGroupIds, client_id) {
+  if (!group_id || group_id.toLowerCase().includes('_top_')) { return false; }
+  if (!cachedHierarchy) {
+    const h = await getGroupHierarchy(client_id, { sort: true });
+    cachedHierarchy = { adminHierarchy: h.hierarchy, parent_of: h.parent_of };
+  }
+  const { parent_of } = cachedHierarchy;
+  const hasChildren = parent_of?.[group_id]?.length > 0;
+  const belongsToChild = hasChildren && parent_of[group_id].some(child_id => personGroupIds.includes(child_id));
+  return !belongsToChild;
 }
 
 export async function addAdministrator(pPerson, pGroup) {

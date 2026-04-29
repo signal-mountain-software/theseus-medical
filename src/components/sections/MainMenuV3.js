@@ -552,12 +552,10 @@ export default ({ start_at }) => {
   const getSubjectContextForMenu = () => {
     const subjectRec = state.patient || state.user || {};
     const subjectAccountClass = subjectRec?.account_class || '';
-    const subjectGroups = Array.isArray(subjectRec?.groups) ? subjectRec.groups : [];
     const subjectPersonId = subjectRec?.person_id || state.session?.patient_id || state.session?.person_id;
 
     return {
       subjectAccountClass,
-      subjectGroups,
       subjectPersonId,
       isSubjectAdmin: ['master', 'admin'].includes(subjectAccountClass),
       isSubjectSupport: ['master', 'support', 'admin'].includes(subjectAccountClass)
@@ -568,7 +566,6 @@ export default ({ start_at }) => {
     const {
       isSubjectAdmin,
       isSubjectSupport,
-      subjectGroups,
       subjectPersonId
     } = getSubjectContextForMenu();
 
@@ -580,10 +577,7 @@ export default ({ start_at }) => {
         case '*support': { if (isSubjectSupport) { return true; } break; }
         case 'group': {
           const check_group = this_rule.split(':')[1];
-          if ((state.groups?.belongsTo
-            && state.groups.belongsTo.hasOwnProperty(check_group)
-            && state.groups.belongsTo[check_group].belongs_to === true
-          ) || subjectGroups.includes(check_group)) { return true; } break;
+          if (state.groups?.memberGroupIds?.includes(check_group)) { return true; } break;
         }
         case 'person': { if (subjectPersonId === this_rule.split(':')[1]) { return true; } break; }
         default: { }

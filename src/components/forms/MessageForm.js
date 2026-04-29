@@ -28,7 +28,6 @@ import Button from '@material-ui/core/Button';
 import { Snackbar } from '@material-ui/core';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
-import DialogContent from '@material-ui/core/DialogContent';
 import DialogContentText from '@material-ui/core/DialogContentText';
 import IconButton from '@material-ui/core/IconButton';
 
@@ -1608,22 +1607,6 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     }
     updateReactData(replyModeUpdate, true);
     resetRefreshTimer();
-  }
-
-  async function loadOlderMessages() {
-    if (reactData.loadingOlder) { return; }
-    updateReactData({ loadingOlder: true, statusMessage: 'Loading older messages...' }, true);
-    const OLDER_WEEKS = 4;
-    const fromTime = reactData.loadedWeeksOldest || (new Date().getTime() - (14 * oneDay));
-    const weekBoundaries = buildWeekBoundaries(fromTime, OLDER_WEEKS);
-    const trimmed = reactData.start_time
-      ? weekBoundaries.filter(b => b.end > reactData.start_time)
-      : weekBoundaries;
-    if (trimmed.length > 0) {
-      await allMessagesByWeeks(pPerson, trimmed);
-    }
-    const newOldest = trimmed.length > 0 ? trimmed[trimmed.length - 1].start : fromTime - (OLDER_WEEKS * 7 * oneDay);
-    updateReactData({ loadingOlder: false, loadedWeeksOldest: newOldest, statusMessage: false }, true);
   }
 
   async function loadOlderMessages() {
