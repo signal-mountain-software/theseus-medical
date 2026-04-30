@@ -22,6 +22,8 @@ import { alpha } from '@material-ui/core/styles/colorManipulator';
 import CloseIcon from '@material-ui/icons/ExitToApp';
 import LockOpenIcon from '@material-ui/icons/LockOpen';
 import ForwardIcon from '@material-ui/icons/Forward';
+import ForumIcon from '@material-ui/icons/Forum';
+import MoreHorizIcon from '@material-ui/icons/MoreHoriz';
 
 import useSession from '../../hooks/useSession';
 import { dbClient, sentenceCase } from '../../util/AVAUtilities';
@@ -1074,6 +1076,144 @@ function getMessageText(message, options = {}) {
     return stripSignatureBlock(getRawMessageText(message), options);
 }
 
+/**
+ * Like stripSignatureBlock but returns { body, signature } instead of just the body.
+ *
+ * Phase 1 — detect the signature boundary using the same heuristics as before.
+ * Phase 2 — anchor to the sender's first name inside the detected block:
+ *   • If the first name is NOT found → false positive, return full text as body, no suppression.
+ *   • If found → body = everything up to (not including) the first whitespace after the name;
+ *                signature = everything from that whitespace onwards.
+ * When no senderFirstName is provided, the entire detected block is suppressed (legacy behavior).
+ */
+function splitSignatureFromText(rawText, options = {}) {
+    const text = String(rawText || '').replace(/\r\n/g, '\n');
+    if (!text.trim()) { return { body: text, signature: '' }; }
+
+    // --- Phase 1: locate the signature boundary ---
+    let bodyBefore = text.trim();
+    let sigBlock = '';
+
+    // 1a. signatureKey exact match
+    const signatureKey = String(options?.signatureKey || '').trim();
+    if (signatureKey) {
+        const idx = text.toLowerCase().indexOf(signatureKey.toLowerCase());
+        if (idx >= 0) {
+            bodyBefore = text.slice(0, idx).trim();
+            sigBlock = text.slice(idx).trim();
+        }
+    }
+
+    // 1b. RFC "-- " delimiter
+    if (!sigBlock) {
+        const rfcMatch = /\n-- ?\n/.exec(text);
+        if (rfcMatch) {
+            bodyBefore = text.slice(0, rfcMatch.index).trim();
+            sigBlock = text.slice(rfcMatch.index + rfcMatch[0].length).trim();
+        }
+    }
+
+    // 1c. Paragraph-split heuristic
+    if (!sigBlock) {
+        const PHONE = /\+?\d[\d\s().-]{7,}\d/;
+        const EMAIL_OR_URL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|https?:\/\/|\bwww\./i;
+        const CONTACT_LABEL = /\b(cell|office|fax|phone|mobile|tel|direct)\b/i;
+        const PRONOUNS = /\(\s*(she|he|they)[/|\\, ](her|him|them)[^)]*\)/i;
+        const looksLikeSignature = (tail) =>
+            PHONE.test(tail) || EMAIL_OR_URL.test(tail) || CONTACT_LABEL.test(tail) || PRONOUNS.test(tail);
+
+        const paragraphs = text.split(/\n{2,}/);
+        for (let i = 1; i < paragraphs.length; i++) {
+            const tail = paragraphs.slice(i).join('\n\n').trim();
+            if (tail && looksLikeSignature(tail)) {
+                const body = paragraphs.slice(0, i).join('\n\n').trim();
+                if (body) { bodyBefore = body; sigBlock = tail; break; }
+            }
+        }
+    }
+
+    // 1d. Fall back to stripSignatureBlock boundary
+    if (!sigBlock) {
+        const stripped = stripSignatureBlock(rawText, options);
+        if (stripped.length < text.trim().length - 10) {
+            bodyBefore = stripped;
+            sigBlock = text.trim().slice(stripped.length).trim();
+        }
+    }
+
+    if (!sigBlock) { return { body: text.trim(), signature: '' }; }
+
+    // --- Phase 2: anchor to sender's first name ---
+    const senderFirstName = String(options?.senderFirstName || '').trim();
+    if (senderFirstName) {
+        const sigLower = sigBlock.toLowerCase();
+        const nameLower = senderFirstName.toLowerCase();
+        const nameIdx = sigLower.indexOf(nameLower);
+
+        if (nameIdx < 0) {
+            // Sender's first name absent from detected block → false positive, show everything
+            return { body: text.trim(), signature: '' };
+        }
+
+        // Find first whitespace after the end of the name
+        const nameEnd = nameIdx + senderFirstName.length;
+        let spaceIdx = -1;
+        for (let i = nameEnd; i < sigBlock.length; i++) {
+            if (/\s/.test(sigBlock[i])) { spaceIdx = i; break; }
+        }
+
+        if (spaceIdx < 0) {
+            // Name found but nothing follows → nothing to suppress
+            return { body: text.trim(), signature: '' };
+        }
+
+        const visibleSigPart = sigBlock.slice(0, spaceIdx);
+        const suppressedPart = sigBlock.slice(spaceIdx).trim();
+        const newBody = [bodyBefore, visibleSigPart].filter(Boolean).join('\n');
+        return { body: newBody, signature: suppressedPart };
+    }
+
+    // No senderFirstName provided → suppress the entire detected block (legacy behavior)
+    return { body: bodyBefore, signature: sigBlock };
+}
+
+/**
+ * Attempt to split an HTML message into { bodyHtml, signatureHtml }.
+ * Uses DOMParser to look for well-known signature container classes.
+ * If senderFirstName is provided, only suppresses when the sender's first name
+ * appears in the detected signature element's text content.
+ * Returns { bodyHtml: html, signatureHtml: '' } when nothing is found.
+ */
+function splitHtmlSignature(html, senderFirstName) {
+    if (!html || !html.trim().startsWith('<')) { return { bodyHtml: html, signatureHtml: '' }; }
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const bodyEl = doc.body;
+        const selectors = [
+            '.gmail_signature', '.moz-signature', '.yahoo-signature',
+            '[class*="signature" i]', '[id*="signature" i]'
+        ];
+        for (const sel of selectors) {
+            let sigEl = null;
+            try { sigEl = bodyEl.querySelector(sel); } catch (_) { /* bad selector */ }
+            if (sigEl) {
+                // Validate: sender's first name must appear in the signature element
+                if (senderFirstName) {
+                    const sigText = String(sigEl.textContent || '').trim();
+                    if (!sigText.toLowerCase().includes(senderFirstName.toLowerCase())) {
+                        return { bodyHtml: html, signatureHtml: '' };
+                    }
+                }
+                const signatureHtml = sigEl.outerHTML;
+                sigEl.remove();
+                return { bodyHtml: bodyEl.innerHTML, signatureHtml };
+            }
+        }
+    } catch (_) { /* DOMParser unavailable or malformed HTML */ }
+    return { bodyHtml: html, signatureHtml: '' };
+}
+
 function toSingleLinePreview(text) {
     return String(text || '').replace(/\s+/g, ' ').trim();
 }
@@ -1518,6 +1658,8 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
     const [forwardMessageOptions, setForwardMessageOptions] = React.useState(null);
     const [replyMessageOptions, setReplyMessageOptions] = React.useState(null);
     const [releaseConfirmContext, setReleaseConfirmContext] = React.useState(null);
+    const [threadViewData, setThreadViewData] = React.useState(null);
+    const [threadSigExpanded, setThreadSigExpanded] = React.useState({});
     const [autoCcForwardNameByRecipientId, setAutoCcForwardNameByRecipientId] = React.useState({});
     const autoCcForwardNameByRecipientIdRef = React.useRef({});
     const autoCcLookupAttemptedRef = React.useRef(new Set());
@@ -1984,6 +2126,70 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
             cancelled = true;
         };
     }, [selectedMessage]);
+
+    React.useEffect(() => {
+        if (!threadViewData || !threadViewData.loading) { return; }
+        const { threadId } = threadViewData;
+        let cancelled = false;
+
+        const doLoad = async () => {
+            try {
+                const allItems = [];
+                let lastKey;
+                do {
+                    const resp = await dbClient
+                        .query({
+                            TableName: 'TheseusMessages',
+                            KeyConditionExpression: 'thread_id = :tid',
+                            ExpressionAttributeValues: { ':tid': threadId },
+                            ScanIndexForward: true,
+                            ...(lastKey ? { ExclusiveStartKey: lastKey } : {})
+                        })
+                        .promise();
+                    if (Array.isArray(resp?.Items)) { allItems.push(...resp.Items); }
+                    lastKey = resp?.LastEvaluatedKey;
+                } while (lastKey);
+
+                if (cancelled) { return; }
+
+                const deliveryItems = allItems.filter((item) => item.record_type === 'delivery');
+                const groupedMap = new Map();
+                deliveryItems.forEach((item) => {
+                    const key = getMessageIdentityKey(item);
+                    const existing = groupedMap.get(key);
+                    if (!existing) {
+                        groupedMap.set(key, { ...item, message_identity_key: key, delivery_items: [item] });
+                    } else {
+                        existing.delivery_items.push(item);
+                    }
+                });
+
+                const toMs = (v) => {
+                    const n = Number(v);
+                    if (!Number.isNaN(n) && n > 0) { return n; }
+                    const d = new Date(v || 0).getTime();
+                    return Number.isNaN(d) ? 0 : d;
+                };
+
+                const messages = Array.from(groupedMap.values())
+                    .sort((a, b) => toMs(normalizeDateValue(a)) - toMs(normalizeDateValue(b)));
+
+                setThreadViewData((prev) => {
+                    if (!prev || prev.threadId !== threadId) { return prev; }
+                    return { ...prev, loading: false, messages };
+                });
+            } catch (err) {
+                if (cancelled) { return; }
+                setThreadViewData((prev) => {
+                    if (!prev || prev.threadId !== threadId) { return prev; }
+                    return { ...prev, loading: false, messages: [], error: err?.message || String(err) };
+                });
+            }
+        };
+
+        doLoad();
+        return () => { cancelled = true; };
+    }, [threadViewData]);
 
     const summarizeSelectionDisplay = (selections, personIds, type) => {
         if (!selections || selections.length === 0) {
@@ -3102,9 +3308,17 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                                             secondaryTypographyProps={{ component: 'div' }}
                                                             secondary={(
                                                                 <Box>
-                                                                    <Typography variant='body2' color='textSecondary'>
-                                                                        {secondary}
+                                                                    <Typography variant='body2' color='textSecondary' component='span'>
+                                                                        {`${dateText}${dateText ? ' \u2022 ' : ''}`}
                                                                     </Typography>
+                                                                    <Typography variant='body2' color='textSecondary' component='span' style={{ fontWeight: 700 }}>
+                                                                        {directionText}
+                                                                    </Typography>
+                                                                    {deliveryCount > 1 && (
+                                                                        <Typography variant='body2' color='textSecondary' component='span'>
+                                                                            {` \u2022 ${deliveryCount} deliveries`}
+                                                                        </Typography>
+                                                                    )}
                                                                     {!!previewText && (
                                                                         <Typography
                                                                             variant='body2'
@@ -3473,6 +3687,24 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                 >
                                     {'Forward'}
                                 </Button>
+                                <Button
+                                    className={AVAClass.AVAButton}
+                                    size='small'
+                                    variant='outlined'
+                                    startIcon={<ForumIcon fontSize='small' />}
+                                    onClick={() => {
+                                        const threadId = String(selectedMessage?.thread_id || '').trim();
+                                        if (!threadId) { return; }
+                                        setThreadSigExpanded({});
+                                        setThreadViewData({
+                                            loading: true,
+                                            threadId,
+                                            subject: getMessageSubject(selectedMessage)
+                                        });
+                                    }}
+                                >
+                                    {'View Thread'}
+                                </Button>
                                 {(() => {
                                     const myId = String(myPatientId || '').trim().toLowerCase();
                                     if (!myId) { return null; }
@@ -3502,6 +3734,123 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                 onClick={() => {
                                     setSelectedMessage(null);
                                 }}
+                            >
+                                {'Close'}
+                            </Button>
+                        </Box>
+                    </DialogContent>
+                </Dialog>
+            )}
+
+            {!!threadViewData && (
+                <Dialog
+                    open={!!threadViewData}
+                    onClose={() => { setThreadViewData(null); }}
+                    maxWidth='md'
+                    fullWidth
+                    PaperProps={{ style: { overflow: 'hidden', borderRadius: '30px', display: 'flex', flexDirection: 'column', height: '90vh', maxHeight: '90vh' } }}
+                >
+                    <DialogContent className={classes.detailDialogContent}>
+                        <Box className={classes.detailDialogBody}>
+                            <Typography style={{ ...AVATextStyle({ size: 1.2, bold: true }), flexShrink: 0 }}>
+                                {`Thread: ${threadViewData.subject || ''}`}
+                            </Typography>
+                            {threadViewData.loading && (
+                                <Box p={2} display='flex' alignItems='center' gridGap={8}>
+                                    <CircularProgress size={18} />
+                                    <Typography variant='body2'>{'Loading thread\u2026'}</Typography>
+                                </Box>
+                            )}
+                            {!threadViewData.loading && !!threadViewData.error && (
+                                <Alert severity='error'>{threadViewData.error}</Alert>
+                            )}
+                            {!threadViewData.loading && !threadViewData.error && (
+                                <Box style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+                                    {(!threadViewData.messages || threadViewData.messages.length === 0) && (
+                                        <Typography variant='body2' className={classes.muted}>
+                                            {'No messages found in this thread.'}
+                                        </Typography>
+                                    )}
+                                    {(threadViewData.messages || []).map((msg, idx) => {
+                                        const senderName = personNameFromAccessList(msg.sent_from || '');
+                                        const senderFirstName = String(senderName || '').split(/\s+/)[0].trim();
+                                        const delivItems = Array.isArray(msg.delivery_items) ? msg.delivery_items : [msg];
+                                        const receivers = getUniqueReceiversFromDeliveries(delivItems);
+                                        const receiverText = summarizeReceivers(receivers, personNameFromAccessList, 5);
+                                        const dateText = formatMessageDate(normalizeDateValue(msg));
+                                        const sigOptions = { signatureKey: getSignatureKeyForPerson(msg?.sent_from), senderFirstName };
+                                        const htmlText = String(msg.html_message_text || '').trim();
+                                        const isHtml = htmlText.startsWith('<');
+
+                                        // Split body from signature
+                                        const { bodyHtml, signatureHtml } = isHtml
+                                            ? splitHtmlSignature(htmlText, senderFirstName)
+                                            : { bodyHtml: '', signatureHtml: '' };
+                                        const { body: plainBody, signature: plainSig } = !isHtml
+                                            ? splitSignatureFromText(getRawMessageText(msg), sigOptions)
+                                            : { body: '', signature: '' };
+                                        const hasSig = isHtml ? !!signatureHtml : !!plainSig;
+                                        const sigExpanded = !!threadSigExpanded[idx];
+
+                                        return (
+                                            <Box key={`thread_msg_${idx}`} style={{ marginBottom: 12 }}>
+                                                <Box className={classes.messageBox}>
+                                                    <Typography className={classes.messageBoxLabel}>
+                                                        {`${idx + 1} of ${threadViewData.messages.length}`}
+                                                    </Typography>
+                                                    <Typography className={classes.messageBoxMeta} component='div' style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                                                        {dateText && <span>{dateText}</span>}
+                                                        {dateText && <span>{'\u2022'}</span>}
+                                                        <span style={{ fontWeight: 700 }}>{`${senderName} \u2192 ${receiverText}`}</span>
+                                                    </Typography>
+                                                    {isHtml ? (
+                                                        <div
+                                                            style={{ fontSize: '0.9rem', lineHeight: 1.42, wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                                                            dangerouslySetInnerHTML={{ __html: bodyHtml }}
+                                                        />
+                                                    ) : (
+                                                        <Typography className={classes.messageBoxBody} style={{ maxHeight: 'none' }}>
+                                                            {plainBody || '[No message text]'}
+                                                        </Typography>
+                                                    )}
+                                                    {hasSig && (
+                                                        <Box style={{ marginTop: 4 }}>
+                                                            <IconButton
+                                                                size='small'
+                                                                title={sigExpanded ? 'Hide signature' : 'Show signature'}
+                                                                onClick={() => setThreadSigExpanded((prev) => ({ ...prev, [idx]: !prev[idx] }))}
+                                                            >
+                                                                <MoreHorizIcon fontSize='small' />
+                                                            </IconButton>
+                                                            {sigExpanded && (
+                                                                isHtml ? (
+                                                                    <div
+                                                                        style={{ fontSize: '0.85rem', lineHeight: 1.4, opacity: 0.6, wordBreak: 'break-word', overflowWrap: 'anywhere', marginTop: 4 }}
+                                                                        dangerouslySetInnerHTML={{ __html: signatureHtml }}
+                                                                    />
+                                                                ) : (
+                                                                    <Typography style={{ fontSize: '0.85rem', lineHeight: 1.4, opacity: 0.6, whiteSpace: 'pre-wrap', marginTop: 4 }}>
+                                                                        {plainSig}
+                                                                    </Typography>
+                                                                )
+                                                            )}
+                                                        </Box>
+                                                    )}
+                                                </Box>
+                                                {idx < (threadViewData.messages.length - 1) && <Divider style={{ marginBottom: 12 }} />}
+                                            </Box>
+                                        );
+                                    })}
+                                </Box>
+                            )}
+                        </Box>
+                        <Box className={classes.detailDialogFooter}>
+                            <Box />
+                            <Button
+                                className={AVAClass.AVAButton}
+                                style={{ backgroundColor: 'red', color: 'white' }}
+                                size='small'
+                                onClick={() => { setThreadViewData(null); }}
                             >
                                 {'Close'}
                             </Button>

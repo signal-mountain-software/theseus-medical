@@ -308,6 +308,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     start_time: (options && options.hasOwnProperty('start_time')) ? makeDate(options.start_time).timestamp : false,
     loadedWeeksOldest: null,  // timestamp of the oldest week-start we have fetched
     loadingOlder: false,
+    showSinceDatePicker: false,
     statusFilter: (options && options.statusFilter) || false,
     statusMessage: false,
     sorted_threads: [],
@@ -397,7 +398,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     if (reactData.threads[this_thread].messages[message_number].subject.startsWith('Message from')) {
       response = reactData.threads[this_thread].messages[message_number].subject.replace('Message from', 'Conversation originated by');
     }
-    return titleCase(response);
+    return response;
+    // return titleCase(response);
   }
 
   function searchButtonText() {
@@ -1314,7 +1316,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           return ((reactData.threads[a].last_update > reactData.threads[b].last_update) ? -1 : 1);
         });
         updateReactData({
-          statusMessage: `Processing inbound - ${totalProcessed} of ${totalCount}`,
+          statusMessage: `Processing ${inOut} - ${totalProcessed} of ${totalCount}`,
           threads: reactData.threads,
           sorted_threads
         }, true);
@@ -1545,14 +1547,23 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     return response;
   }
 
+  async function pollRecentMessages() {
+    if (!isMountedRef.current || reactData.newMessageMode) { return; }
+    const nowTime = new Date().getTime();
+    const fiveMinMs = 5 * 60 * 1000;
+    await allMessagesByWeeks(pPerson, [{ start: nowTime - fiveMinMs, end: nowTime + oneDay }]);
+    updateReactData({ lastReloadTime: new Date() }, true);
+    resetRefreshTimer();
+  }
+
   function resetRefreshTimer() {
     if (refreshIntervalRef.current) { clearInterval(refreshIntervalRef.current); }
     refreshIntervalRef.current = setInterval(async () => {
-      if (isMountedRef.current) { await refreshMessages(true); }
+      if (isMountedRef.current) { await pollRecentMessages(); }
     }, 3 * oneMinute);
   }
 
-  async function refreshMessages() {
+  async function refreshMessages(overrideStartTime) {
     if (reactData.newMessageMode && options && options.newMessage) {
       updateReactData({
         threads: {},
@@ -1566,30 +1577,36 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       return;
     }
 
+    const effectiveStartTime = (typeof overrideStartTime === 'number') ? overrideStartTime : reactData.start_time;
+    const isDateChange = (typeof overrideStartTime === 'number');
     const nowTime = new Date().getTime();
     if (pPerson === '*allHeld') {
       await heldMessages();
     }
     else {
       const oneWeekMs = 7 * oneDay;
-      // Tier 1: most recent 7 days — awaited so the user sees messages immediately
-      const week1 = [{ start: nowTime - oneWeekMs, end: nowTime + oneDay }];
-      const week1Trimmed = reactData.start_time ? week1.filter(b => b.end > reactData.start_time) : week1;
-      if (week1Trimmed.length > 0) {
-        await allMessagesByWeeks(pPerson, week1Trimmed);
+      const alreadyLoadedOlderWeeks = !isDateChange && (reactData.loadedWeeksOldest !== null);
+      if (alreadyLoadedOlderWeeks) {
+        // Prior weeks already loaded — only refresh the current week
+        await allMessagesByWeeks(pPerson, [{ start: nowTime - oneWeekMs, end: nowTime + oneDay }]);
       }
-      const week1Oldest = week1Trimmed.length > 0 ? week1Trimmed[week1Trimmed.length - 1].start : nowTime - oneWeekMs;
-      updateReactData({ loadedWeeksOldest: week1Oldest }, false);
-
-      // Tier 2: previous 7 days — fire and forget; appends to thread list when ready
-      const week2 = [{ start: nowTime - (2 * oneWeekMs), end: nowTime - oneWeekMs }];
-      const week2Trimmed = reactData.start_time ? week2.filter(b => b.end > reactData.start_time) : week2;
-      if (week2Trimmed.length > 0) {
-        allMessagesByWeeks(pPerson, week2Trimmed).then(() => {
-          if (isMountedRef.current) {
-            updateReactData({ loadedWeeksOldest: week2Trimmed[week2Trimmed.length - 1].start }, true);
-          }
-        });
+      else {
+        // Initial load or date change — fetch all weeks back to effectiveStartTime
+        const weeksNeeded = effectiveStartTime
+          ? Math.max(2, Math.ceil((nowTime + oneDay - effectiveStartTime) / oneWeekMs))
+          : 2;
+        const allBoundaries = buildWeekBoundaries(nowTime + oneDay, weeksNeeded);
+        // Tier 1: most recent week — awaited so user sees messages immediately
+        await allMessagesByWeeks(pPerson, [allBoundaries[0]]);
+        updateReactData({ loadedWeeksOldest: allBoundaries[0].start }, false);
+        // Tier 2+: all prior weeks — fire and forget, only done once
+        if (allBoundaries.length > 1) {
+          allMessagesByWeeks(pPerson, allBoundaries.slice(1)).then(() => {
+            if (isMountedRef.current) {
+              updateReactData({ loadedWeeksOldest: allBoundaries[allBoundaries.length - 1].start }, true);
+            }
+          });
+        }
       }
     }
 
@@ -1720,6 +1737,22 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
               >
                 {`${reactData.myName ? (reactData.myName + "'" + (reactData.myName.endsWith('s') ? '' : 's')) : 'My'} Messages`}
               </DialogContentText>
+              <Box display='flex' flexDirection='row' alignItems='center' style={{ marginTop: '-8px', marginLeft: '16px' }}>
+                <Typography variant='caption' color='textSecondary' style={{ fontSize: '0.75rem' }}>
+                  {`Message activity since ${reactData.loadedWeeksOldest
+                    ? makeDate(reactData.loadedWeeksOldest).dateOnly
+                    : reactData.start_time
+                      ? makeDate(reactData.start_time).dateOnly
+                      : '2 weeks ago'}`}
+                </Typography>
+                <Button
+                  size='small'
+                  style={{ minWidth: 'auto', padding: '0 4px', fontSize: '0.7rem', textTransform: 'none', marginLeft: '4px' }}
+                  onClick={() => updateReactData({ showSinceDatePicker: true }, true)}
+                >
+                  {'change'}
+                </Button>
+              </Box>
               <TextField
                 id='List Filter'
                 value={reactData.messageFilter || ''}
@@ -2333,7 +2366,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                         <Box display='flex'
                                           key={`${thread_index}_c3a_${message_index}`}
                                           flexDirection='column'
-                                          style={{ flexGrow: 1, minWidth: 0 }}
+                                          style={{ marginLeft: (isFirstMessage ? 0 : 10), flexGrow: 1, minWidth: 0 }}
                                         >
                                           <Typography
                                             style={AVATextStyle({ size: 0.8, bold: true, color: (status_filter_result ? 'red' : null) })}
@@ -2487,7 +2520,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                       key={`message_body_box_${message_index}`}
                                       flexDirection='column'
                                       marginTop={isFirstMessage ? '8px' : '0'}
-                                      style={{ width: '100%', boxSizing: 'border-box', minWidth: 0, cursor: 'pointer' }}
+                                      style={{ marginLeft: (isFirstMessage ? 0 : 10), width: '100%', boxSizing: 'border-box', minWidth: 0, cursor: 'pointer' }}
                                       onClick={async () => {
                                         await enrichMessageRecipients(this_message, this_thread);
                                         const prevMessage = message_index > 0 ? reactData.threads[this_thread].messages[message_index - 1] : null;
@@ -2823,15 +2856,44 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                   >
                     {'Close'}
                   </Button>
-                  {(Object.keys(reactData.threads).length > 0) && !(options && options.newMessage) && pPerson !== '*allHeld' &&
-                    <Button
-                      className={AVAClass.AVAButton}
-                      size='small'
-                      disabled={reactData.loadingOlder}
-                      onClick={loadOlderMessages}
-                    >
-                      {reactData.loadingOlder ? 'Loading...' : 'Load older'}
-                    </Button>
+                  {reactData.showSinceDatePicker &&
+                    <Dialog open onClose={() => updateReactData({ showSinceDatePicker: false }, true)} maxWidth='xs'>
+                      <Box p={3} display='flex' flexDirection='column' style={{ gap: '16px' }}>
+                        <Typography variant='subtitle1' style={{ fontWeight: 600 }}>{'Show messages since…'}</Typography>
+                        <TextField
+                          type='date'
+                          label='Start date'
+                          InputLabelProps={{ shrink: true }}
+                          defaultValue={reactData.start_time
+                            ? new Date(reactData.start_time).toISOString().slice(0, 10)
+                            : new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}
+                          inputProps={{ max: new Date().toISOString().slice(0, 10) }}
+                          id='since_date_input'
+                        />
+                        <Box display='flex' flexDirection='row' justifyContent='flex-end' style={{ gap: '8px' }}>
+                          <Button size='small' onClick={() => updateReactData({ showSinceDatePicker: false }, true)}>{'Cancel'}</Button>
+                          <Button
+                            size='small'
+                            variant='contained'
+                            color='primary'
+                            onClick={() => {
+                              const val = document.getElementById('since_date_input').value;
+                              if (!val) { return; }
+                              const [y, m, d] = val.split('-').map(Number);
+                              const newStart = new Date(y, m - 1, d).getTime();
+                              updateReactData({
+                                showSinceDatePicker: false,
+                                start_time: newStart,
+                                threads: {},
+                                sorted_threads: [],
+                                loadedWeeksOldest: null,
+                              }, true);
+                              setTimeout(() => refreshMessages(newStart), 0);
+                            }}
+                          >{'Apply'}</Button>
+                        </Box>
+                      </Box>
+                    </Dialog>
                   }
                   {!reactData.viewOnly &&
                     <Button

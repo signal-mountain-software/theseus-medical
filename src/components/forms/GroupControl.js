@@ -535,7 +535,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       .map(g => groupsManagedObject[g]?.group_name || g);
 
     // delegate DB writes: add destination then remove source (removeMember handles orphan cleanup)
-    const addedGroupList = await addMember(person_id, pSession.client_id, droppedOn.group_id, { allowParent: true });
+    await addMember(person_id, pSession.client_id, droppedOn.group_id, { allowParent: true });
     const newGroupList = await removeMember(person_id, pSession.client_id, draggedFrom.personGroup);
 
     // get fresh groups from DB — removeMember may have pruned orphaned ancestors

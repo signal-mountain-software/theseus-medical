@@ -49,7 +49,8 @@ const useStyles = makeStyles((theme) => ({
         marginTop: theme.spacing(0.5),
         backgroundColor: theme.palette.background.paper,
         minWidth: 0,
-        flexShrink: 0
+        flexShrink: 1,
+        minHeight: 0,
     },
     messageBoxLabel: {
         position: 'absolute',
@@ -77,8 +78,8 @@ const useStyles = makeStyles((theme) => ({
         overflowWrap: 'anywhere',
         minWidth: 0,
         maxWidth: '100%',
-        minHeight: '4.6em',
-        maxHeight: '10.8em'
+        minHeight: '2.8em',
+        maxHeight: '6em'
     },
     recipientScrollArea: {
         flex: 1,
@@ -250,7 +251,7 @@ export default function MessageDetailDialog({
 
                     {/* Replying-to context box — shown when this message is a reply in a thread */}
                     {replyingTo && (
-                        <Box className={classes.messageBox} style={{ flexShrink: 0 }}>
+                        <Box className={classes.messageBox} style={{ flexShrink: 0, overflow: 'visible' }}>
                             <Typography className={classes.messageBoxLabel}>{'Replying to'}</Typography>
                             <Typography className={classes.messageBoxMeta}>
                                 {[formatSentTime(replyingTo.sentTime), replyingTo.authorName].filter(Boolean).join(' \u2022 ')}
