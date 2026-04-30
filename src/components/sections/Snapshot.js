@@ -112,7 +112,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
       const allGroups = await getPersonGroups(personId, clientId);
       const personLeafGroups = [];
       for (const g of allGroups) {
-        if (await isLeaf(g, allGroups, clientId)) { personLeafGroups.push(g); }
+        if (await isLeaf(g, allGroups, clientId)) { personLeafGroups.push(g.trim()); }
       }
       reactUpdObj.personLeafGroups = personLeafGroups;
       if (!reactData.accessList) {
