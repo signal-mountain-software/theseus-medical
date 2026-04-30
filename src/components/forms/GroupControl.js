@@ -181,6 +181,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     showGroupSelect: false,
     showQuickSearch: false,
     selectedGroup_id: null,
+    selectedGroupIds: [],
+    selectedGroupMembersPerGroup: {},
     selectedGroupRec: false,
     selectedGroupMembers: false,
     sortedGroupMembers: [],
@@ -960,11 +962,32 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         delete state.groups.publicGroups[draggedFrom.groupObj.group_id];
         delete state.groups.privateGroups[draggedFrom.groupObj.group_id];
         dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups) });
-        if (reactData.selectedGroup_id === draggedFrom.groupObj.group_id) {
-          reactUpdObj.selectedGroupRec = false;
-          reactUpdObj.selectedGroup_id = false;
-          reactUpdObj.selectedGroupMembers = false;
-          reactUpdObj.sortedGroupMembers = [];
+        const deletedId = draggedFrom.groupObj.group_id;
+        if ((reactData.selectedGroupIds || []).includes(deletedId)) {
+          const newIds = (reactData.selectedGroupIds || []).filter(id => id !== deletedId);
+          const newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
+          delete newMembersPerGroup[deletedId];
+          // Also prune ancestors that no longer have all their descendants selected
+          const toPrune = newIds.filter(id =>
+            getDescendants(id).some(d => groupsManagedObject[d] && !newIds.includes(d))
+          );
+          for (const id of toPrune) { delete newMembersPerGroup[id]; }
+          const prunedIds = newIds.filter(id => !toPrune.includes(id));
+          const newGroupMembers = {};
+          for (const id of prunedIds) { Object.assign(newGroupMembers, newMembersPerGroup[id] || {}); }
+          const titledIds = prunedIds.filter(id => Object.keys(newMembersPerGroup[id] || {}).length > 0);
+          const titleSource = titledIds.length > 0 ? titledIds : prunedIds;
+          const singleGroup = titleSource.length === 1;
+          reactUpdObj.selectedGroupIds = prunedIds;
+          reactUpdObj.selectedGroupMembersPerGroup = newMembersPerGroup;
+          reactUpdObj.selectedGroup_id = singleGroup ? titleSource[0] : null;
+          reactUpdObj.selectedGroupRec = prunedIds.length === 0
+            ? false
+            : singleGroup
+              ? groupsManagedObject[titleSource[0]]
+              : { group_id: null, group_name: 'Multiple Groups', multi: true };
+          reactUpdObj.selectedGroupMembers = Object.keys(newGroupMembers).length > 0 ? newGroupMembers : false;
+          reactUpdObj.sortedGroupMembers = sortGroupMembers(newGroupMembers);
         }
         updateReactData(reactUpdObj, true);
       }
@@ -980,6 +1003,23 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       return false;
     }
   };
+
+  // Returns all descendant group IDs (children, grandchildren, etc.) that are in groupsManagedObject.
+  const getDescendants = (groupId) => {
+    const result = [];
+    const queue = [...(state.groups.parent_of?.[groupId] || [])];
+    while (queue.length > 0) {
+      const id = queue.shift();
+      if (groupsManagedObject[id]) {
+        result.push(id);
+        queue.push(...(state.groups.parent_of?.[id] || []));
+      }
+    }
+    return result;
+  };
+
+  // A leaf group has no children in the managed hierarchy — it is the only source of members.
+  const isLeafGroup = (groupId) => getDescendants(groupId).length === 0;
 
   // const autoFocus = (element) => element?.focus();
 
@@ -1210,12 +1250,53 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                             <Typography
                               key={`g_text_${listIndex}_${(listIndex === focusAt) ? 'selected' : ''}`}
                               onClick={async () => {
-                                let selectedGroupMembers = await selectMembers(listEntry);
+                                const currentIds = reactData.selectedGroupIds || [];
+                                // Subtree = this group + all its descendants (recursive)
+                                const subtree = [listEntry, ...getDescendants(listEntry)];
+                                const allSelected = subtree.every(id => currentIds.includes(id));
+                                let newIds, newMembersPerGroup;
+                                if (allSelected) {
+                                  // All in subtree selected → deselect all of them
+                                  newIds = currentIds.filter(id => !subtree.includes(id));
+                                  newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
+                                  for (const id of subtree) { delete newMembersPerGroup[id]; }
+                                  // Prune any ancestor that no longer has all its descendants selected.
+                                  // A parent is only valid when its entire subtree is selected.
+                                  const toPrune = newIds.filter(id =>
+                                    getDescendants(id).some(d => groupsManagedObject[d] && !newIds.includes(d))
+                                  );
+                                  for (const id of toPrune) { delete newMembersPerGroup[id]; }
+                                  newIds = newIds.filter(id => !toPrune.includes(id));
+                                } else {
+                                  // Some or none selected → select all missing in subtree
+                                  const toAdd = subtree.filter(id => !currentIds.includes(id));
+                                  newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
+                                  for (const id of toAdd) { newMembersPerGroup[id] = await selectMembers(id); }
+                                  newIds = [...currentIds, ...toAdd];
+                                }
+                                // Every selected group contributes its members.
+                                // Object.assign deduplicates by person_id, so overlap between
+                                // parent and child lists is handled automatically.
+                                const newGroupMembers = {};
+                                for (const id of newIds) { Object.assign(newGroupMembers, newMembersPerGroup[id] || {}); }
+                                // Title reflects which groups have members; if none do yet (all empty),
+                                // fall back to all selected groups so the panel still shows.
+                                const titledIds = newIds.filter(id => Object.keys(newMembersPerGroup[id] || {}).length > 0);
+                                const titleSource = titledIds.length > 0 ? titledIds : newIds;
+                                const singleGroup = titleSource.length === 1;
+                                const newSelectedGroupRec = newIds.length === 0
+                                  ? false
+                                  : singleGroup
+                                    ? groupsManagedObject[titleSource[0]]
+                                    : { group_id: null, group_name: 'Multiple Groups', multi: true };
+                                const newSelectedGroup_id = singleGroup ? titleSource[0] : null;
                                 updateReactData({
-                                  selectedGroup_id: listEntry,
-                                  selectedGroupRec: groupsManagedObject[listEntry],
-                                  selectedGroupMembers,
-                                  sortedGroupMembers: sortGroupMembers(selectedGroupMembers),
+                                  selectedGroupIds: newIds,
+                                  selectedGroupMembersPerGroup: newMembersPerGroup,
+                                  selectedGroup_id: newSelectedGroup_id,
+                                  selectedGroupRec: newSelectedGroupRec,
+                                  selectedGroupMembers: Object.keys(newGroupMembers).length > 0 ? newGroupMembers : false,
+                                  sortedGroupMembers: sortGroupMembers(newGroupMembers),
                                   selectedPerson_id: false,
                                   selectedPersonRec: false,
                                   selectedPersonFirstName: false,
@@ -1228,7 +1309,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                   ? 'orange'
                                   : null
                                 ),
-                                weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry)) || (reactData.selectedGroup_id === listEntry)) ? 'bold' : null),
+                                weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry)) || [listEntry, ...getDescendants(listEntry)].every(id => (reactData.selectedGroupIds || []).includes(id))) ? 'bold' : null),
                                 cursor: canDragManage ? 'grab' : null,
                                 userSelect: 'none',
                                 margin: { left: (groupsManagedObject[listEntry].level ? ((groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) - 1) * 1.5 : 0), top: 0.35, bottom: 0.65, right: 0.8 },
@@ -1315,7 +1396,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
               >
                 <Typography
                   key={`g_name`}
-                  onClick={() => {
+                  onClick={reactData.selectedGroupRec.multi ? undefined : () => {
                     updateReactData({
                       viewGroupMaintenance: reactData.selectedGroupRec.group_id
                     }, true);
@@ -1324,6 +1405,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     size: 1.5,
                     overflow: 'visible',
                     bold: true,
+                    cursor: reactData.selectedGroupRec.multi ? 'default' : null,
                     margin: { top: 1, bottom: 0 },
                   })}>
                   {reactData.selectedGroupRec.group_name}
@@ -1336,7 +1418,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     overflow: 'visible'
                   })}
                 >
-                  {`${reactData.sortedGroupMembers?.length || 0} people in the group`}
+                  {`${reactData.sortedGroupMembers?.length || 0} ${(reactData.selectedGroupIds || []).length > 1 ? 'people across selected groups' : 'people in the group'}`}
                 </Typography>
                 {reactData.lower_people_filter &&
                   <Box display='flex' flexDirection='row'
