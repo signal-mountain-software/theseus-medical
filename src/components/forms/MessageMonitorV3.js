@@ -1643,6 +1643,8 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
     const hasManualSearchRef = React.useRef(false);
     const loadingRef = React.useRef(false);
     const pendingSearchRef = React.useRef(false);
+    const lastRefreshTimeRef = React.useRef(null);   // epoch ms of last auto-refresh
+    const silentRefreshRef = React.useRef(() => { }); // updated each render cycle
     const [signatureKeyByPersonId, setSignatureKeyByPersonId] = React.useState({});
     const signatureKeyFetchAttemptedRef = React.useRef(new Set());
     const [replyToContext, setReplyToContext] = React.useState({
@@ -3040,6 +3042,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
             groupedMessages.sort((a, b) => toSortMs(normalizeDateValue(b)) - toSortMs(normalizeDateValue(a)));
 
             setBaseMessages(groupedMessages);
+            lastRefreshTimeRef.current = Date.now(); // anchor for subsequent silent refreshes
         }
         catch (error) {
             setErrorText(`Unable to load messages: ${error?.message || error}`);
@@ -3049,6 +3052,111 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
     };
 
     runSearchRef.current = runSearch;
+
+    // Silent incremental refresh: only queries from lastRefreshTime → now for the current week.
+    // Does not show the loading spinner and only updates state when new records arrive.
+    const runSilentRefresh = async () => {
+        if (loadingRef.current || pendingSearchRef.current) { return; }
+
+        // Only refresh when today falls within the current date range
+        const todayStr = toDateInputValue(new Date());
+        if (filters.dateTo < todayStr || filters.dateFrom > todayStr) { return; }
+
+        const sinceMs = lastRefreshTimeRef.current || Date.now() - 5 * 60 * 1000;
+        const nowMs = Date.now();
+        lastRefreshTimeRef.current = nowMs;
+
+        const sinceEpochMs = String(sinceMs);
+        const nowEpochMs = String(nowMs);
+        const currentWeekList = buildMessageWeekList(todayStr, todayStr);
+
+        try {
+            const freshItems = [];
+            const searchFilters = filters;
+            const party1IdMatch = (searchFilters.party1Ids || []).map(v => String(v).toLowerCase());
+            const party2IdMatch = (searchFilters.party2Ids || []).map(v => String(v).toLowerCase());
+            const myIdentityList = [state?.session?.patient_id].filter(Boolean).map(v => String(v).toLowerCase());
+            const party1HasAnyone = party1IdMatch.includes('*anyone') || (searchFilters.party1Display || '').trim().toLowerCase() === '*anyone';
+            const party2HasAnyone = party2IdMatch.includes('*anyone') || (searchFilters.party2Display || '').trim().toLowerCase() === '*anyone';
+            const resolveIds = (idMatch, hasMe, hasAnyone) => {
+                if (hasAnyone) { return []; }
+                return Array.from(new Set(idMatch.flatMap(id => id === '*me' ? myIdentityList : id === '*anyone' ? [] : [id])));
+            };
+            const senderIds = resolveIds(party1IdMatch, party1IdMatch.includes('*me'), party1HasAnyone);
+            const receiverIds = resolveIds(party2IdMatch, party2IdMatch.includes('*me'), party2HasAnyone);
+
+            const queryIds = senderIds.length > 0 ? senderIds : receiverIds;
+            const indexName = senderIds.length > 0 ? 'delivery_sender_week' : 'delivery_receiver_week';
+            const keyAttr = senderIds.length > 0 ? 'sent_from' : 'deliver_to';
+
+            for (const id of queryIds) {
+                for (const messageWeek of currentWeekList) {
+                    let lastKey;
+                    let pageGuard = 0;
+                    do {
+                        const response = await dbClient
+                            .query({
+                                TableName: 'TheseusMessages',
+                                IndexName: indexName,
+                                KeyConditionExpression: `${keyAttr} = :id AND messageWeek = :mw AND created_time BETWEEN :start AND :end`,
+                                ExpressionAttributeValues: {
+                                    ':id': id,
+                                    ':mw': Number(messageWeek),
+                                    ':start': sinceEpochMs,
+                                    ':end': nowEpochMs,
+                                    ':rt': 'delivery'
+                                },
+                                FilterExpression: 'record_type = :rt',
+                                ExclusiveStartKey: lastKey,
+                                ScanIndexForward: false,
+                                Limit: 250
+                            })
+                            .promise();
+                        if (Array.isArray(response?.Items) && response.Items.length > 0) {
+                            freshItems.push(...response.Items);
+                        }
+                        lastKey = response?.LastEvaluatedKey;
+                        pageGuard++;
+                    } while (lastKey && pageGuard < 20);
+                }
+            }
+
+            if (freshItems.length === 0) { return; } // nothing new — leave screen alone
+
+            // Merge new delivery items into the existing grouped messages
+            setBaseMessages(prev => {
+                const groupedMap = new Map(prev.map(m => [m.message_identity_key, { ...m, delivery_items: [...(m.delivery_items || [m])] }]));
+                freshItems.forEach(item => {
+                    const messageKey = getMessageIdentityKey(item);
+                    const derivedFlags = { ...getResultFlags(item), ...getRecipientFlags(item), ...(item.derived_flags || {}) };
+                    const enriched = { ...item, derived_flags: derivedFlags };
+                    const existing = groupedMap.get(messageKey);
+                    if (!existing) {
+                        groupedMap.set(messageKey, { ...enriched, message_identity_key: messageKey, delivery_items: [enriched] });
+                    } else {
+                        const alreadyHas = existing.delivery_items.some(d => d.composite_key === item.composite_key);
+                        if (!alreadyHas) {
+                            existing.delivery_items.push(enriched);
+                            existing.derived_flags = mergeDerivedFlags(existing.derived_flags, derivedFlags);
+                            const existingTime = new Date(normalizeDateValue(existing) || 0).getTime();
+                            const candidateTime = new Date(normalizeDateValue(item) || 0).getTime();
+                            if (candidateTime > existingTime) {
+                                existing.created_time = item.created_time;
+                                existing.message_date = item.message_date;
+                                existing.created_at = item.created_at;
+                                existing.sent_at = item.sent_at;
+                                existing.timestamp = item.timestamp;
+                            }
+                        }
+                    }
+                });
+                const toSortMs = (v) => { const n = Number(v); if (!Number.isNaN(n) && n > 0) { return n; } const d = new Date(v || 0).getTime(); return Number.isNaN(d) ? 0 : d; };
+                return Array.from(groupedMap.values()).sort((a, b) => toSortMs(normalizeDateValue(b)) - toSortMs(normalizeDateValue(a)));
+            });
+        }
+        catch (_) { /* silent — don't disrupt the user on background refresh failure */ }
+    };
+    silentRefreshRef.current = runSilentRefresh;
 
     const handleManualSearch = React.useCallback(() => {
         hasManualSearchRef.current = true;
@@ -3067,10 +3175,8 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
 
     React.useEffect(() => {
         const autoRefreshId = window.setInterval(() => {
-            if (!hasManualSearchRef.current || loadingRef.current || pendingSearchRef.current) {
-                return;
-            }
-            runSearchRef.current();
+            if (!hasManualSearchRef.current) { return; }
+            silentRefreshRef.current();
         }, 5 * 60 * 1000);
 
         return () => {
