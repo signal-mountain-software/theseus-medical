@@ -2161,7 +2161,8 @@ export default ({ start_at }) => {
       ? reactData.menu_hierarchy[level_index - 1]?.find((parentCell) => parentCell.menu_id === this_cell.parent)?.menuItemRec?.color
       : null;
     const tileColor = this_item.color || parentColor || stringToColor(this_item.menu_id);
-    const tileOpacity = Math.max(0.5, 1 - (level_index * 0.2));
+    // const tileOpacity = Math.max(0.5, 1 - (level_index * 0.2));
+    const tileOpacity = 1; 
     const isActiveParent = (menuItemType === 'menu') &&
       (reactData.level_active_parent?.[level_index + 1] === this_item.menu_id);
 
@@ -2181,7 +2182,7 @@ export default ({ start_at }) => {
           minHeight: useTileUI ? undefined : 86,
           maxHeight: useTileUI ? undefined : 'none',
           marginBottom: useTileUI ? 10 : 10,
-          ...(isActiveParent ? {
+          ...((isActiveParent && useTileUI) ? {
             outline: `8px solid black`,
             filter: 'brightness(1.18)',
           } : {}),
@@ -2377,7 +2378,11 @@ export default ({ start_at }) => {
                     minHeight: 64,
                     marginLeft: 18,
                     marginRight: -8,
-                    borderRadius: '16px'
+                    borderRadius: '16px',
+                    backgroundSize: '80%',
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'center',
+                    backgroundColor: isDark(tileColor) ? 'rgba(255,255,255,0.85)' : undefined,
                   }
                 )
               }
@@ -3007,7 +3012,7 @@ export default ({ start_at }) => {
                     display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                     key={'menu_footer'}
                   >
-                    <Typography className={classes.popUpFooter} >{`AVA vers ${reactData.AVA_version}`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`AVA vers ${reactData.AVA_version} - menu v3`}</Typography>
                     <Typography className={classes.popUpFooter} >{makeExpiration()}
                     </Typography>
                     <Typography className={classes.popUpFooter} >{`User ${state.session?.user_id}${state.session?.patient_id !== state.session?.user_id ? (' (' + state.session?.patient_id + ')') : ''}`}</Typography>
