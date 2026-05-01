@@ -1027,9 +1027,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
-  async function selectMembers(this_group) {
+  async function selectMembers(this_group, { live = false } = {}) {
     let response = {};
-    let memberList = await getMemberList(this_group, state.session.client_id, { "name_and_search": true, state });
+    let memberList = await getMemberList(this_group, state.session.client_id, {
+      name_and_search: true,
+      state: live ? null : state,
+    });
     for (const this_member of memberList.peopleList) {
       response[this_member.person_id] = this_member;
     }
@@ -1895,10 +1898,23 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
               viewPeopleMaintenance: false
             };
             if (reactData.selectedGroup_id) {
-              reactUpd.selectedGroupMembers = await selectMembers(reactData.selectedGroup_id);
+              // Live DB fetch (bypass cache) so edits are visible immediately
+              reactUpd.selectedGroupMembers = await selectMembers(reactData.selectedGroup_id, { live: true });
               reactUpd.sortedGroupMembers = sortGroupMembers(reactUpd.selectedGroupMembers);
             }
             updateReactData(reactUpd, true);
+            // Silent background re-check after Lambda has had time to run
+            if (reactData.selectedGroup_id) {
+              const groupIdAtClose = reactData.selectedGroup_id;
+              setTimeout(async () => {
+                if (!isMounted.current) return;
+                const freshMembers = await selectMembers(groupIdAtClose, { live: true });
+                updateReactData({
+                  selectedGroupMembers: freshMembers,
+                  sortedGroupMembers: sortGroupMembers(freshMembers),
+                }, true);
+              }, 4000);
+            }
           }}
         />
       }

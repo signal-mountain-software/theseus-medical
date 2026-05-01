@@ -1252,6 +1252,7 @@ export async function addMember(pPerson, pClient, pGroup, options = {}) {
          Pass options.allowParent = true to bypass this check (e.g. direct UI drag-drop).
       2. Write PeopleGroups rows for the group AND every ancestor up the chain.
       3. Update People.groups[] with the same full set.
+      4. Fire onAdd group_rules for each leaf group written (unless options._ruleDepth > 0).
   */
   const leafGroupsRequested = makeArray(pGroup);
 
@@ -1327,6 +1328,7 @@ export async function addMember(pPerson, pClient, pGroup, options = {}) {
           person_id: pPerson,
           display_name: displayName,
           membership_status: 'active',
+          membership_source: options.membershipSource || 'manual',
           join_date: joinDate,
           roles: ['patient']
         },
@@ -1336,16 +1338,28 @@ export async function addMember(pPerson, pClient, pGroup, options = {}) {
       .catch(error => { clt({ 'Bad put to PeopleGroups in addMember - caught error is': error }); });
   }
   // Return the person's complete new group list (leaf + ancestors) for caller use
-  return peopleRec?.person_id ? makeArray(peopleRec.groups).concat(groupsArray.filter(g => !makeArray(peopleRec.groups).includes(g))) : groupsArray;
+  const finalGroupList = peopleRec?.person_id ? makeArray(peopleRec.groups).concat(groupsArray.filter(g => !makeArray(peopleRec.groups).includes(g))) : groupsArray;
+
+  // Fire onAdd rules for each leaf group written (only at top-level calls, not recursive rule-triggered calls)
+  if (!options._ruleDepth) {
+    for (const g of leafGroupsRequested) {
+      if (allGroupsToWrite.has(g)) {  // only groups that actually passed the leaf check
+        await applyGroupRules('onAdd', pPerson, pClient, g, 1);
+      }
+    }
+  }
+
+  return finalGroupList;
 }
 
-export async function removeMember(pPerson, pClient, pGroup) {
+export async function removeMember(pPerson, pClient, pGroup, options = {}) {
   /*
     pGroup may be a single group_id string or an array of group_ids.
     removeMember will:
       1. Remove the specified leaf groups from People.groups[] and mark their PeopleGroups rows inactive.
       2. For each removed group's ancestor chain, check if the person still has any OTHER active leaf
          membership that still reaches that ancestor. If not, also remove the ancestor row (orphan cleanup).
+      3. Fire onRemove group_rules for each leaf group removed (unless options._ruleDepth > 0).
   */
   const leafGroupsToRemove = makeArray(pGroup);
 
@@ -1431,15 +1445,100 @@ export async function removeMember(pPerson, pClient, pGroup) {
     await dbClient
       .update({
         Key: { client_group_id: pClient + '~' + g, person_id: pPerson },
-        UpdateExpression: 'set membership_status = :s, removed_date = :d',
-        ExpressionAttributeValues: { ':s': 'inactive', ':d': removedDate },
+        UpdateExpression: 'set membership_status = :s, removed_date = :d, membership_source = :src',
+        ExpressionAttributeValues: { ':s': 'inactive', ':d': removedDate, ':src': 'manual' },
         TableName: 'PeopleGroups'
       })
       .promise()
       .catch(error => { clt({ 'Bad update to PeopleGroups in removeMember - caught error is': error }); });
   }
+
+  // Fire onRemove rules for each leaf group removed (only at top-level calls)
+  if (!options._ruleDepth) {
+    for (const g of leafGroupsToRemove) {
+      await applyGroupRules('onRemove', pPerson, pClient, g, 1);
+    }
+  }
+
   // Return the person's complete new group list for caller use
   return newGroupList;
+}
+
+/**
+ * Resolves the family_id for a person: People.family_groups[0] || People.family_id.
+ * Then queries FamilyGroups to return { primary_id, all_ids[] }.
+ * Returns null if no family record found.
+ */
+async function getFamilyMembers(person_id, client_id) {
+  const personRec = await getPerson(person_id);
+  const family_id = (personRec?.family_groups?.[0]) || personRec?.family_id;
+  if (!family_id) { return null; }
+  const fgRec = await dbClient
+    .get({
+      TableName: 'FamilyGroups',
+      Key: { client_id, composite_key: family_id },
+    })
+    .promise()
+    .catch(error => { clt({ 'getFamilyMembers error reading FamilyGroups': error }); });
+  if (!recordExists(fgRec)) { return null; }
+  const primary_id = fgRec.Item?.primary_contact?.id || null;
+  const other_ids = (fgRec.Item?.other_members || []).map(m => m.id).filter(Boolean);
+  return { primary_id, all_ids: [primary_id, ...other_ids].filter(Boolean) };
+}
+
+/**
+ * Loads the group record for group_id, finds rules matching triggerType ('onAdd' | 'onRemove'),
+ * resolves the who-list for each rule/action, and calls addMember or removeMember as appropriate.
+ * ruleDepth is passed through as options._ruleDepth to prevent infinite recursion.
+ */
+async function applyGroupRules(triggerType, person_id, client_id, group_id, ruleDepth) {
+  // Load the group record to get group_rules
+  const gRec = await dbClient
+    .get({
+      TableName: 'Groups',
+      Key: { client_id, group_id },
+    })
+    .promise()
+    .catch(error => { clt({ 'applyGroupRules error reading Groups': error }); });
+  if (!recordExists(gRec)) { return; }
+  const group_rules = gRec.Item?.group_rules;
+  if (!group_rules?.length) { return; }
+
+  const matchingRules = group_rules.filter(r => r.rule_type === triggerType);
+  if (!matchingRules.length) { return; }
+
+  for (const rule of matchingRules) {
+    for (const action of (rule.actions || [])) {
+      // Resolve who-list
+      let whoIds = [];
+      const who = action.who || 'self';
+      if (who === 'self') {
+        whoIds = [person_id];
+      } else {
+        // allFamily or primary: look up the family record
+        const family = await getFamilyMembers(person_id, client_id);
+        if (!family) {
+          clt({ 'applyGroupRules: no family record found for who rule': { person_id, who, group_id } });
+          continue;
+        }
+        whoIds = (who === 'primary')
+          ? (family.primary_id ? [family.primary_id] : [])
+          : family.all_ids;
+      }
+
+      const where = action.where?.length ? action.where : [group_id];
+
+      for (const targetPerson of whoIds) {
+        for (const targetGroup of where) {
+          if (action.action === 'addMember') {
+            await addMember(targetPerson, client_id, targetGroup, { _ruleDepth: ruleDepth });
+          } else if (action.action === 'removeMember') {
+            await removeMember(targetPerson, client_id, targetGroup, { _ruleDepth: ruleDepth });
+          }
+        }
+      }
+    }
+  }
 }
 
 /**
