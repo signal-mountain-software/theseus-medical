@@ -7,7 +7,7 @@ import { html_to_pdf } from '../../util/AVAMessages';
 import Select from "react-dropdown-select";
 
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
-import { extract, dbClient, titleCase, sentenceCase, listFromArray, cl, uuid, recordExists, array_in_array } from '../../util/AVAUtilities';
+import { extract, dbClient, sentenceCase, listFromArray, cl, uuid, recordExists, array_in_array } from '../../util/AVAUtilities';
 import { getMemberList } from '../../util/AVAGroups';
 import { AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 import { makeDate } from '../../util/AVADateTime';
@@ -1624,22 +1624,6 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     }
     updateReactData(replyModeUpdate, true);
     resetRefreshTimer();
-  }
-
-  async function loadOlderMessages() {
-    if (reactData.loadingOlder) { return; }
-    updateReactData({ loadingOlder: true, statusMessage: 'Loading older messages...' }, true);
-    const OLDER_WEEKS = 4;
-    const fromTime = reactData.loadedWeeksOldest || (new Date().getTime() - (14 * oneDay));
-    const weekBoundaries = buildWeekBoundaries(fromTime, OLDER_WEEKS);
-    const trimmed = reactData.start_time
-      ? weekBoundaries.filter(b => b.end > reactData.start_time)
-      : weekBoundaries;
-    if (trimmed.length > 0) {
-      await allMessagesByWeeks(pPerson, trimmed);
-    }
-    const newOldest = trimmed.length > 0 ? trimmed[trimmed.length - 1].start : fromTime - (OLDER_WEEKS * 7 * oneDay);
-    updateReactData({ loadingOlder: false, loadedWeeksOldest: newOldest, statusMessage: false }, true);
   }
 
   async function initialize() {

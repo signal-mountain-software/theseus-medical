@@ -57,6 +57,7 @@ import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import GetAppIcon from '@material-ui/icons/GetApp';
 import FavoriteIcon from '@material-ui/icons/Favorite';
 import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder';
+import PhoneIcon from '@material-ui/icons/Phone';
 import NotificationsActiveIcon from '@material-ui/icons/NotificationsActive';
 import NotificationsOffIcon from '@material-ui/icons/NotificationsOff';
 
@@ -219,6 +220,7 @@ export default ({ start_at }) => {
     addMenuDialogUploadProgress: 0,
     addMenuDialogSaving: false,
     addMenuDialogTargets: [],
+    addMenuDialogPhone: '',
     deleteMenuConfirm: false,
     deleteMenuTarget: null,
     showAddMessageTargetSearch: false,
@@ -428,6 +430,15 @@ export default ({ start_at }) => {
         }
       }
     }
+
+    // Derive level_active_parent from the built hierarchy so active-parent
+    // highlighting is correct on entry, not only after a tile is tapped.
+    const derivedActiveParent = [];
+    for (let L = 1; L < (reactUpd.menu_hierarchy || []).length; L++) {
+      const firstCell = (reactUpd.menu_hierarchy[L] || []).find(c => c.parent);
+      if (firstCell) { derivedActiveParent[L] = firstCell.parent; }
+    }
+    reactUpd.level_active_parent = derivedActiveParent;
 
     updateReactData(reactUpd, true);
     return reactUpd.menu_hierarchy || [];
@@ -1399,22 +1410,21 @@ export default ({ start_at }) => {
     async function initialize() {
       if (state.session) {
         const tempName = (state.patient?.name ? state.patient.name.first : (state.session?.patient_display_name || state.session?.person_id));
-        // Set greeting fields and mark loaded immediately — do NOT await the DB call first,
-        // since that can hang and would prevent the menu from ever building.
+        // Load the user's stored tile-mode preference FIRST so the menu renders
+        // in the correct mode from the start — eliminates the accessibility→tile flash.
+        // We set uiTilesOverride now but keep uiTilesOverrideLoaded=false so the
+        // second useEffect's guard won't trigger a redundant rebuild.
+        const userUiTilesOverride = await loadUserUiTilesOverride();
         updateReactData({
           greetingName: tempName || 'AVA User',
           greetingWords: makeGreeting(),
-          uiTilesOverrideLoaded: true,
+          ...(userUiTilesOverride !== null ? { uiTilesOverride: userUiTilesOverride } : {}),
         }, true);
-        // Build the menu now (uses the current default tile mode from clientUseTileUI).
+        // Build the menu directly (uiTilesOverride is now set so useTileUI is correct).
         await rebuildMenuHierarchy({ includeLoadingState: true });
-        // Load the user's stored tile-mode preference in the background.
-        // If it differs from the default null, updating uiTilesOverride will trigger
-        // the second useEffect to rebuild the menu in the correct mode.
-        const userUiTilesOverride = await loadUserUiTilesOverride();
-        if (userUiTilesOverride !== null) {
-          updateReactData({ uiTilesOverride: userUiTilesOverride }, true);
-        }
+        // Mark loaded AFTER the build — this arms the second useEffect so it will
+        // rebuild when the user later toggles the display mode.
+        updateReactData({ uiTilesOverrideLoaded: true }, false);
         await updateMarquee();
       }
       else {
@@ -1433,9 +1443,9 @@ export default ({ start_at }) => {
     return () => { };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // This effect only handles CHANGES to uiTilesOverride after initial load
-  // (i.e. when the user's stored tile-mode preference loads in, or when they toggle the mode).
-  // The initial menu build is now done directly inside initialize() above.
+  // Rebuild the menu when the user toggles the display mode after initial load.
+  // The guard on uiTilesOverrideLoaded prevents a redundant rebuild during
+  // initialization (the direct call in initialize() covers the first build).
   React.useEffect(() => {
     if (!reactData.uiTilesOverrideLoaded) {
       return;
@@ -1721,6 +1731,7 @@ export default ({ start_at }) => {
   async function handleAddMenuItem() {
     const titleText = (reactData.addMenuDialogTitle || '').trim();
     const itemType = reactData.addMenuDialogType || (!reactData.is_support ? 'link' : null);
+    const phoneDigits = (reactData.addMenuDialogPhone || '').replace(/\D/g, '');
     const linkSource = reactData.addMenuDialogLinkSource || 'url';
     const urlText = (reactData.addMenuDialogUrl || '').trim();
     const uploadFile = reactData.addMenuDialogUploadFile;
@@ -1786,7 +1797,18 @@ export default ({ start_at }) => {
         alert: {
           severity: 'warning',
           title: 'Missing targets',
-          message: 'Choose one or more people or groups for this Message Target.'
+          message: 'Choose one or more people or groups for this one-tap Message.'
+        }
+      }, true);
+      return;
+    }
+
+    if ((itemType === 'phone_dial') && (phoneDigits.length !== 10)) {
+      updateReactData({
+        alert: {
+          severity: 'warning',
+          title: 'Invalid phone number',
+          message: 'Please enter a 10-digit US phone number.'
         }
       }, true);
       return;
@@ -1864,7 +1886,7 @@ export default ({ start_at }) => {
     }
 
     const newMenuId = await deriveUniqueMenuId(titleText);
-    const newMenuItemType = (itemType === 'message_target') ? 'function' : itemType;
+    const newMenuItemType = (itemType === 'message_target') ? 'function' : (itemType === 'phone_dial') ? 'link' : itemType;
     const newMenuRec = {
       client_id: state.session.client_id,
       menu_id: newMenuId,
@@ -1893,6 +1915,9 @@ export default ({ start_at }) => {
     if (itemType === 'link') {
       newMenuRec.url = finalLinkUrl;
     }
+    else if (itemType === 'phone_dial') {
+      newMenuRec.url = `tel:+1${phoneDigits}`;
+    }
     else if (itemType === 'message_target') {
       const callObj = {
         target: 'MessageForm',
@@ -1904,7 +1929,6 @@ export default ({ start_at }) => {
         }
       };
       newMenuRec.call = callObj;
-      newMenuRec.call_instructions = callObj;
     }
     else {
       newMenuRec.children = ['add_item_instructions'];
@@ -1975,6 +1999,7 @@ export default ({ start_at }) => {
       addMenuDialogUploadProgress: 0,
       addMenuDialogSaving: false,
       addMenuDialogTargets: [],
+      addMenuDialogPhone: '',
       showAddMessageTargetSearch: false,
       selections: [],
       menu_hierarchy: updatedMenuHierarchy,
@@ -2127,15 +2152,19 @@ export default ({ start_at }) => {
     const canDropOnThisCard = !!((menuItemType === 'menu') && canManageMenuChildren(this_item));
     const hideCardImage = (!useTileUI) && (accessibleDepth > 0);
     const isLinkCard = ['link', 'live_link'].includes(normalizedMenuType);
-    const cardImageUrl = isLinkCard
+    const isTelLink = isLinkCard && String(this_item.url || '').trim().toLowerCase().startsWith('tel:');
+    const cardImageUrl = (isLinkCard && !isTelLink)
       ? getLinkThumbnailUrl(this_item.url, this_item.icon)
       : this_item.icon;
-    const hasLinkThumbnail = isLinkCard && !!(cardImageUrl && cardImageUrl !== this_item.icon);
+    const hasLinkThumbnail = (isLinkCard && !isTelLink) && !!(cardImageUrl && cardImageUrl !== this_item.icon);
     const parentColor = (level_index > 0)
       ? reactData.menu_hierarchy[level_index - 1]?.find((parentCell) => parentCell.menu_id === this_cell.parent)?.menuItemRec?.color
       : null;
     const tileColor = this_item.color || parentColor || stringToColor(this_item.menu_id);
     const tileOpacity = Math.max(0.5, 1 - (level_index * 0.2));
+    const isActiveParent = (menuItemType === 'menu') &&
+      (reactData.level_active_parent?.[level_index + 1] === this_item.menu_id);
+
     const cardTile = (
       <Card className={classes.root}
         key={`${keyPrefix}${level_index}_card${item_index}`}
@@ -2152,6 +2181,10 @@ export default ({ start_at }) => {
           minHeight: useTileUI ? undefined : 86,
           maxHeight: useTileUI ? undefined : 'none',
           marginBottom: useTileUI ? 10 : 10,
+          ...(isActiveParent ? {
+            outline: `8px solid black`,
+            filter: 'brightness(1.18)',
+          } : {}),
         }}
         onContextMenu={async (e) => {
           e.preventDefault();
@@ -2252,7 +2285,7 @@ export default ({ start_at }) => {
               renderFunctionCall: this_item.call || false
             }, true);
           }
-          else if (normalizedMenuType === 'live_link' || (useTileUI && hasLinkThumbnail && normalizedMenuType === 'link')) {
+          else if (!isTelLink && (normalizedMenuType === 'live_link' || (useTileUI && hasLinkThumbnail && normalizedMenuType === 'link'))) {
             const frameUrl = buildLiveLinkEmbedUrl(this_item.url);
             if (!frameUrl) {
               updateReactData({
@@ -2307,6 +2340,7 @@ export default ({ start_at }) => {
               style={{ minHeight: 20 }}
             >
               <IconButton
+                component='div'
                 size='small'
                 onClick={async (event) => {
                   event.preventDefault();
@@ -2381,6 +2415,17 @@ export default ({ start_at }) => {
                     </Typography>
                   );
                   if (normalizedMenuType === 'link') {
+                    if (isTelLink) {
+                      return (
+                        <a href={this_item.url} style={{ color: 'inherit', textDecoration: 'none' }}>
+                          <Box display='flex' flexDirection={useTileUI ? 'column' : 'row'} alignItems='center'
+                            justifyContent={useTileUI ? 'center' : 'flex-start'}>
+                            <PhoneIcon style={{ fontSize: useTileUI ? '2rem' : '1.4rem', marginBottom: useTileUI ? 4 : 0, marginRight: useTileUI ? 0 : 6 }} />
+                            {labelContent}
+                          </Box>
+                        </a>
+                      );
+                    }
                     return (
                       <a
                         href={this_item.url + (!this_item.url?.includes('?') ? ('?a=' + new Date().getTime()) : '')}
@@ -2407,6 +2452,7 @@ export default ({ start_at }) => {
               style={{ minHeight: 20, marginRight: reactData.editFavorites ? 0 : 8 }}
             >
               <IconButton
+                component='div'
                 size='small'
                 aria-label={`add_card_row_${this_item.menu_id}`}
                 onClick={(event) => {
@@ -2425,6 +2471,7 @@ export default ({ start_at }) => {
                     addMenuDialogUploadProgress: 0,
                     addMenuDialogSaving: false,
                     addMenuDialogTargets: [],
+                    addMenuDialogPhone: '',
                     showAddMessageTargetSearch: false,
                     selections: [],
                   }, true);
@@ -2442,6 +2489,7 @@ export default ({ start_at }) => {
               style={{ minHeight: 20, marginRight: 8 }}
             >
               <IconButton
+                component='div'
                 size='small'
                 onClick={async (event) => {
                   event.preventDefault();
@@ -3034,6 +3082,7 @@ export default ({ start_at }) => {
                           addMenuDialogUploadProgress: 0,
                           addMenuDialogSaving: false,
                           addMenuDialogTargets: [],
+                          addMenuDialogPhone: '',
                           showAddMessageTargetSearch: false,
                           selections: [],
                         }, true);
@@ -3252,7 +3301,7 @@ export default ({ start_at }) => {
               reactData={reactData}
               updateReactData={updateReactData}
               options={{
-                title: 'Select Message Targets',
+                title: 'Select One-tap Message Targets',
                 withGroups: true,
                 withPreferred: true,
                 showAll: true,
@@ -3384,6 +3433,7 @@ export default ({ start_at }) => {
                     addMenuDialogUploadProgress: 0,
                     addMenuDialogSaving: false,
                     addMenuDialogTargets: [],
+                    addMenuDialogPhone: '',
                     showAddMessageTargetSearch: false,
                     selections: [],
                   }, true);
@@ -3425,13 +3475,15 @@ export default ({ start_at }) => {
                         updateReactData({
                           addMenuDialogType: e.target.value,
                           addMenuDialogTargets: (e.target.value === 'message_target') ? reactData.addMenuDialogTargets : [],
-                          selections: (e.target.value === 'message_target') ? reactData.selections : []
+                          selections: (e.target.value === 'message_target') ? reactData.selections : [],
+                          addMenuDialogPhone: (e.target.value === 'phone_dial') ? (reactData.addMenuDialogPhone || '') : ''
                         }, true);
                       }}
                     >
                       <FormControlLabel value='menu' control={<Radio color='primary' />} label='Sub-Menu' />
                       <FormControlLabel value='link' control={<Radio color='primary' />} label='Document, Video, Picture, or Link' />
-                      {reactData.is_admin && <FormControlLabel value='message_target' control={<Radio color='primary' />} label='Message Target' />}
+                      {reactData.is_admin && <FormControlLabel value='message_target' control={<Radio color='primary' />} label='One-tap Message' />}
+                      {reactData.is_admin && <FormControlLabel value='phone_dial' control={<Radio color='primary' />} label='Auto-dial Phone' />}
                     </RadioGroup>
                   </React.Fragment>
                 }
@@ -3513,10 +3565,33 @@ export default ({ start_at }) => {
                   </React.Fragment>
                 }
 
+                {reactData.addMenuDialogType === 'phone_dial' &&
+                  <React.Fragment>
+                    <Typography style={AVATextStyle({ size: 0.95, margin: { top: 2, bottom: 0.25 } })}>
+                      {'Phone number to dial (10 digits, US only)'}
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      margin='dense'
+                      label='Phone Number'
+                      value={reactData.addMenuDialogPhone || ''}
+                      inputProps={{ maxLength: 14 }}
+                      onChange={(e) => {
+                        const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                        updateReactData({ addMenuDialogPhone: digits }, true);
+                      }}
+                      helperText={(reactData.addMenuDialogPhone || '').length === 10
+                        ? `Will dial: +1-${(reactData.addMenuDialogPhone).slice(0,3)}-${(reactData.addMenuDialogPhone).slice(3,6)}-${(reactData.addMenuDialogPhone).slice(6)}`
+                        : `${(reactData.addMenuDialogPhone || '').length}/10 digits entered`
+                      }
+                    />
+                  </React.Fragment>
+                }
+
                 {reactData.addMenuDialogType === 'message_target' &&
                   <React.Fragment>
                     <Typography style={AVATextStyle({ size: 0.95, margin: { top: 2, bottom: 0.25 } })}>
-                      {'Who should this message target include?'}
+                      {'Who should this one-tap message send to?'}
                     </Typography>
                     <Box display='flex' flexDirection='row' alignItems='center' justifyContent='space-between'>
                       <Button
@@ -3572,6 +3647,7 @@ export default ({ start_at }) => {
                           addMenuDialogUploadProgress: 0,
                           addMenuDialogSaving: false,
                           addMenuDialogTargets: [],
+                          addMenuDialogPhone: '',
                           showAddMessageTargetSearch: false,
                           selections: [],
                         }, true);

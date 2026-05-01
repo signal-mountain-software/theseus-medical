@@ -3393,7 +3393,6 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                             const directionText = isReplyMessage
                                                 ? `${senderText} → reply to ${receiverText}`
                                                 : `${senderText} → ${receiverText}`;
-                                            const secondary = `${dateText} • ${directionText}${deliveryCount > 1 ? ` • ${deliveryCount} deliveries` : ''}`;
                                             const previewText = toSingleLinePreview(
                                                 getMessageText(message, {
                                                     signatureKey: getSignatureKeyForPerson(message?.sent_from)

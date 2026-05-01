@@ -1018,11 +1018,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     return result;
   };
 
-  // A leaf group has no children in the managed hierarchy — it is the only source of members.
-  const isLeafGroup = (groupId) => getDescendants(groupId).length === 0;
-
-  // const autoFocus = (element) => element?.focus();
-
   var rowsDisplayed;
 
   const canDragManage = !!(pSession?.adminAccount || reactData.administrative_account);
