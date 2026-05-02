@@ -1075,22 +1075,39 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     };
     // Pre-select a group if requested
     let preSelectUpdates = {};
-    if (preSelectedGroup && groupsManagedObject[preSelectedGroup]) {
-      const selectedGroupMembers = await selectMembers(preSelectedGroup);
-      const sortedGroupMembers = sortGroupMembers(selectedGroupMembers);
+    const preGroups = preSelectedGroup
+      ? (Array.isArray(preSelectedGroup) ? preSelectedGroup : [preSelectedGroup]).filter(id => groupsManagedObject[id])
+      : [];
+    if (preGroups.length > 0) {
+      const newMembersPerGroup = {};
+      for (const id of preGroups) {
+        newMembersPerGroup[id] = await selectMembers(id);
+      }
+      const newGroupMembers = {};
+      for (const id of preGroups) { Object.assign(newGroupMembers, newMembersPerGroup[id] || {}); }
+      const titledIds = preGroups.filter(id => Object.keys(newMembersPerGroup[id] || {}).length > 0);
+      const titleSource = titledIds.length > 0 ? titledIds : preGroups;
+      const singleGroup = titleSource.length === 1;
+      const selectedGroupRec = singleGroup
+        ? groupsManagedObject[titleSource[0]]
+        : { group_id: null, group_name: 'Multiple Groups', multi: true };
+      const selectedGroup_id = singleGroup ? titleSource[0] : null;
+      const sortedGroupMembers = sortGroupMembers(newGroupMembers);
       preSelectUpdates = {
-        selectedGroup_id: preSelectedGroup,
-        selectedGroupRec: groupsManagedObject[preSelectedGroup],
-        selectedGroupMembers,
+        selectedGroupIds: preGroups,
+        selectedGroupMembersPerGroup: newMembersPerGroup,
+        selectedGroup_id,
+        selectedGroupRec,
+        selectedGroupMembers: Object.keys(newGroupMembers).length > 0 ? newGroupMembers : false,
         sortedGroupMembers,
       };
-      if (preSelectedFunction === 'directory') {
+      if (preGroups.length > 0 && preSelectedFunction === 'directory') {
         const visiblePeople = state.accessList[state.session.client_id].list
           .filter(p => sortedGroupMembers.includes(p.person_id));
         preSelectUpdates.showPhotoDirectory = (visiblePeople.length > 0);
         preSelectUpdates.photoDirectoryPeople = visiblePeople;
-      } else if (preSelectedFunction === 'maintenance') {
-        preSelectUpdates.viewGroupMaintenance = preSelectedGroup;
+      } else if (preGroups.length > 0 && preSelectedFunction === 'maintenance') {
+        preSelectUpdates.viewGroupMaintenance = preGroups[0];
       }
     }
     updateReactData({ assignmentList, ...preSelectUpdates }, true);
