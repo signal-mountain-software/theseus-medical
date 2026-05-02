@@ -124,20 +124,19 @@ export default ({ options, defaults, onClose, onAbort }) => {
     const groupList = makeArray(pGroup_id, /[~,;]/);
     const groupsManagedObject = await prepareGroupObject(groupList.length > 0 ? [...groupList] : []);
 
-    // Determine pre-selection: a single specific group + not in 'select' mode
+    // Determine pre-selection: explicit group IDs that exist in groupsManagedObject, not in 'select' mode
     let preSelectedGroup = null;
     let preSelectedFunction = null;
-    if (groupList.length === 1 && showList !== 'select') {
-      const candidateGroup = groupList[0];
-      if (groupsManagedObject[candidateGroup]) {
-        preSelectedGroup = candidateGroup;
-        // Auto-launch the function
-        if (options.preSelectedFunction) {
-          preSelectedFunction = options.preSelectedFunction;
-        }
-        else if (!options.groupManagement) {
-          preSelectedFunction = 'directory';
-        }
+    const wildcards = ['*all', '*all_open', '*all_public', '*all_closed', '*all_private', '*user', '*responsible'];
+    const explicitGroups = groupList.filter(id => !wildcards.includes(id) && groupsManagedObject[id]);
+    if (explicitGroups.length > 0 && showList !== 'select') {
+      preSelectedGroup = explicitGroups.length === 1 ? explicitGroups[0] : explicitGroups;
+      // Auto-launch the function (only meaningful for a single group)
+      if (options.preSelectedFunction) {
+        preSelectedFunction = options.preSelectedFunction;
+      }
+      else if (explicitGroups.length > 0 && !options.groupManagement) {
+        preSelectedFunction = 'directory';
       }
     }
 
