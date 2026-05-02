@@ -5,6 +5,7 @@ import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { Box, Typography, Button } from '@material-ui/core/';
 import { formatPhone } from '../../util/AVAPeople';
+import { getPersonGroups, isLeaf } from '../../util/AVAGroups';
 import { deepCopy, titleCase } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
@@ -106,6 +107,14 @@ export default ({ currentValues, reactData, updateReactData }) => {
   React.useEffect(() => {
     async function initialize() {
       let reactUpdObj = {};
+      const personId = currentValues.peopleRec.person_id;
+      const clientId = state.session.client_id;
+      const allGroups = await getPersonGroups(personId, clientId);
+      const personLeafGroups = [];
+      for (const g of allGroups) {
+        if (await isLeaf(g, allGroups, clientId)) { personLeafGroups.push(g.trim()); }
+      }
+      reactUpdObj.personLeafGroups = personLeafGroups;
       if (!reactData.accessList) {
         if (!state.accessList) {
           if (isMounted.current) {
@@ -198,20 +207,9 @@ export default ({ currentValues, reactData, updateReactData }) => {
             </Typography>
           }
 
-          {/* Display leaf groups (groups with no children) */}
-          {currentValues.peopleRec.groups && currentValues.peopleRec.groups.length > 0 && (() => {
-            // Filter to only show groups with no children (leaf nodes)
-            const leafGroups = currentValues.peopleRec.groups.filter(group_id => {
-              // Exclude if this group is '_top_'
-              if (group_id.toLowerCase().includes('_top_')) { return false; }
-              // Exclude if this group has children (exists in parent_of and has entries) AND I belong to at least one of those children
-              let hasChildren = state.groups?.parent_of?.[group_id] && (state.groups.parent_of[group_id].length > 0);
-              let belongsToChild = hasChildren && state.groups.parent_of[group_id].some(child_id => currentValues.peopleRec.groups.includes(child_id));
-              return !belongsToChild;
-            });
-
-            if (leafGroups.length === 0) return null;
-
+          {/* Display leaf groups sourced from PeopleGroups table */}
+          {reactData.personLeafGroups && reactData.personLeafGroups.length > 0 && (() => {
+            const leafGroups = reactData.personLeafGroups;
             return (
               <Box display='flex' flexDirection='column' style={{ marginTop: '12px' }}>
                 <Typography style={AVATextStyle({ size: 0.8 })}>

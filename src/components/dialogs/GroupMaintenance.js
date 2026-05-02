@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { deepCopy, isEmpty, dbClient, cl, recordExists } from '../../util/AVAUtilities';
+import { deepCopy, isEmpty, dbClient, lambda, cl, recordExists } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle, isDark } from '../../util/AVAStyles';
 import { makeName } from '../../util/AVAPeople';
 
@@ -11,6 +11,7 @@ import GroupSecuritySection from '../sections/GroupSecuritySection';
 import GroupHierarchySection from '../sections/GroupHierarchySection';
 import GroupFormsSection from '../sections/GroupFormsSection';
 import GroupTasksSection from '../sections/GroupTasksSection';
+import GroupRulesSection from '../sections/GroupRulesSection';
 
 import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -120,6 +121,9 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
       },
       GroupTasksSection: {
         component_id: GroupTasksSection,
+      },
+      GroupRulesSection: {
+        component_id: GroupRulesSection,
       }
     },
     og: {
@@ -187,6 +191,14 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
           isAuthorized: reactData.administrative_account,
           version_id: 0,
           component_name: 'GroupTasksSection'
+        },
+        {
+          section_name: 'Group Rules',
+          color: options?.color || 'orange',
+          isOpen: false,
+          isAuthorized: reactData.administrative_account,
+          version_id: 0,
+          component_name: 'GroupRulesSection'
         }]
       };
 
@@ -418,6 +430,19 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
             return false;
           });
         reactData.og[tableName] = deepCopy(reactData.current[tableName]);
+        // If the saved group has withData rules, trigger an async resync so the
+        // condition is applied to all existing people immediately
+        const savedRules = reactData.current[tableName]?.group_rules || [];
+        const hasWithDataRules = savedRules.some(
+          r => r.rule_type === 'withData' && r.data_test?.field_path
+        );
+        if (hasWithDataRules) {
+          lambda.invoke({
+            FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:evaluate-with-data-rules',
+            InvocationType: 'Event',  // async fire-and-forget
+            Payload: JSON.stringify({ action: 'resyncAll', client_id: state.session.client_id, group_id: reactData.current[tableName]?.group_id }),
+          }).promise().catch(e => cl('GroupMaintenance: withData resync invoke failed', e));
+        }
       }
     }
     // add any new groups to the database

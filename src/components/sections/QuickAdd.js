@@ -68,7 +68,7 @@ import useSession from '../../hooks/useSession';
 import { useCookies } from 'react-cookie';
 
 import { deepCopy, titleCase, getDb, putDb, isEmpty, uuid, recordExists, dbClient } from '../../util/AVAUtilities';
-import { getGroupAccess } from '../../util/AVAGroups';
+import { getGroupAccess, addMember } from '../../util/AVAGroups';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import { sendMessages } from '../../util/AVAMessages';
@@ -1428,52 +1428,7 @@ export default ({ onClose, options = {} }) => {
       }
 
       if (newGroups.length > 0) {
-        // Read the existing People record
-        const existingPerson = await getDb({
-          Key: { person_id: reactData.preauth_person_id },
-          TableName: 'People'
-        });
-
-        if (existingPerson) {
-          // Merge into People.groups (deduplicate)
-          const currentGroups = Array.isArray(existingPerson.groups) ? existingPerson.groups : [];
-          const mergedGroups = [...new Set([...currentGroups, ...newGroups])];
-
-          // Merge into People.clients — follow the same shape as GroupControl.js
-          let clientsObj = existingPerson.clients
-            ? JSON.parse(JSON.stringify(existingPerson.clients))
-            : { id: reactData.client_id, groups: mergedGroups };
-
-          if (Object.prototype.hasOwnProperty.call(clientsObj, 'id')) {
-            if (clientsObj.id === reactData.client_id) {
-              // Standard case: this is the active client entry
-              const currentClientGroups = Array.isArray(clientsObj.groups) ? clientsObj.groups : [];
-              clientsObj.groups = [...new Set([...currentClientGroups, ...newGroups])];
-            } else {
-              // The top-level id is a different client — check for a sub-key for our client
-              if (Object.prototype.hasOwnProperty.call(clientsObj, reactData.client_id)) {
-                const currentClientGroups = Array.isArray(clientsObj[reactData.client_id].groups) ? clientsObj[reactData.client_id].groups : [];
-                clientsObj[reactData.client_id].groups = [...new Set([...currentClientGroups, ...newGroups])];
-              }
-              // else: our client has no entry in clients — don't touch it, groups update is enough
-            }
-          } else if (Object.prototype.hasOwnProperty.call(clientsObj, reactData.client_id)) {
-            // clients is keyed by client_id only (no top-level id)
-            const currentClientGroups = Array.isArray(clientsObj[reactData.client_id].groups) ? clientsObj[reactData.client_id].groups : [];
-            clientsObj[reactData.client_id].groups = [...new Set([...currentClientGroups, ...newGroups])];
-          }
-
-          await dbClient
-            .update({
-              Key: { person_id: reactData.preauth_person_id },
-              UpdateExpression: 'set #g = :g, #c = :c',
-              ExpressionAttributeValues: { ':g': mergedGroups, ':c': clientsObj },
-              ExpressionAttributeNames: { '#g': 'groups', '#c': 'clients' },
-              TableName: 'People'
-            })
-            .promise()
-            .catch(err => console.error('Failed to update People groups for preauth enrollment:', err));
-        }
+        await addMember(reactData.preauth_person_id, reactData.client_id, newGroups);
       }
 
       await recordPreAuthUse(preAuthRec, reactData.preauth_person_id);

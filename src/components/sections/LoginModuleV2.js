@@ -12,7 +12,7 @@ import useSession from '../../hooks/useSession';
 import { SET_ACCESSLIST, SET_CALENDAR, SET_GROUPS, SET_PATIENT, SET_PROFILE, SET_SESSION, SET_USER } from '../../contexts/Session/actions';
 import { Alert } from '@material-ui/lab';
 import { AVAclasses, AVADefaults } from '../../util/AVAStyles';
-import { accountAccess, getAllGroups, getGroupsBelongTo } from '../../util/AVAGroups';
+import { accountAccess, getAllGroups, getGroupsBelongTo, getPersonGroups } from '../../util/AVAGroups';
 import useIosCheck from '../../hooks/useIosCheck';
 import { getAllOccurrences, v2buildCalendar, createNewOccurrences } from '../../util/AVACalendars';
 import { addDays } from '../../util/AVADateTime';
@@ -478,7 +478,9 @@ const LoginModuleV2 = ({
       .catch(() => ({}));
     const groupStructure = await getAllGroups(pSession.patient_id, pSession.client_id)
       .catch(() => ({}));
-    dispatch({ type: SET_GROUPS, payload: Object.assign({}, groupStructure, { belongsTo }) });
+    const memberGroupIds = await getPersonGroups(pSession.patient_id, pSession.client_id)
+      .catch(() => []);
+    dispatch({ type: SET_GROUPS, payload: Object.assign({}, groupStructure, { belongsTo, memberGroupIds }) });
 
     const accessPromise = accountAccess(pSession.patient_id, pSession.client_id)
       .then(accessList => {

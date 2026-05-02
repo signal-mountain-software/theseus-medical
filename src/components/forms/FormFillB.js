@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile } from '../../util/AVAUtilities';
+import { addMember, removeMember } from '../../util/AVAGroups';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { formatPhone, makeName } from '../../util/AVAPeople';
 import { makeDate, makeTime, addDays } from '../../util/AVADateTime';
@@ -2803,6 +2804,8 @@ export default ({ request = {}, onClose }) => {
 
     // check for actions needed leaving or entering stages
     let this_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.current_formStage);
+    // Capture group list before any stage transitions so we can diff for PeopleGroups sync
+    const groupsBeforeStageTransitions = (reactData.peopleRec[reactData.pertains_to]?.groups || []).slice();
     if ((reactData.previous_formStage !== reactData.current_formStage) && reactData.formRec.stages) {
       // log stage change
       cl(`Form ${document_id} stage changed from ${reactData.previous_formStage} to ${reactData.current_formStage}`);
@@ -2860,6 +2863,16 @@ export default ({ request = {}, onClose }) => {
         });
       if (response.goodPut) {
         peopleUpdated = true;
+        // Sync PeopleGroups for any stage-transition group changes
+        const groupsAfterStageTransitions = reactData.peopleRec[reactData.pertains_to]?.groups || [];
+        const personId = reactData.pertains_to;
+        const clientId = state.session.client_id;
+        const parent_of = state.groups?.parent_of || {};
+        const isLeaf = g => !parent_of[g]?.length;
+        const groupsToAdd = groupsAfterStageTransitions.filter(g => isLeaf(g) && !groupsBeforeStageTransitions.includes(g));
+        const groupsToRemove = groupsBeforeStageTransitions.filter(g => isLeaf(g) && !groupsAfterStageTransitions.includes(g));
+        if (groupsToAdd.length > 0) { await addMember(personId, clientId, groupsToAdd); }
+        if (groupsToRemove.length > 0) { await removeMember(personId, clientId, groupsToRemove); }
       }
     }
     if (peopleUpdated) {

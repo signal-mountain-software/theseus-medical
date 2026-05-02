@@ -2,8 +2,8 @@ import React from 'react';
 
 import useSession from '../../hooks/useSession';
 
-import { createNewGroup, getGroupMembers, getMemberList } from '../../util/AVAGroups';
-import { dbClient, sentenceCase, isObject, recordExists, deepCopy, listFromArray, cl } from '../../util/AVAUtilities';
+import { createNewGroup, getGroupMembers, getMemberList, addMember, removeMember } from '../../util/AVAGroups';
+import { dbClient, sentenceCase, isObject, listFromArray, cl } from '../../util/AVAUtilities';
 import AVATextInput from '../forms/AVATextInput';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import GroupMaintenance from '../dialogs/GroupMaintenance';
@@ -120,7 +120,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = () => { }, onRefresh = () => { }, renderAsDialog = true }) => {
+export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedGroup = null, preSelectedFunction = null, onCancel = () => { }, onRefresh = () => { }, renderAsDialog = true }) => {
 
   const isMounted = React.useRef(false);
   const isExiting = React.useRef(false);
@@ -181,6 +181,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
     showGroupSelect: false,
     showQuickSearch: false,
     selectedGroup_id: null,
+    selectedGroupIds: [],
+    selectedGroupMembersPerGroup: {},
     selectedGroupRec: false,
     selectedGroupMembers: false,
     sortedGroupMembers: [],
@@ -438,332 +440,174 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
   };
 
   const executeDrop_copyPerson = async (draggedFrom, droppedOn) => {
-    // get my peopleRec
-    let peopleRec = await dbClient
-      .get({
-        TableName: 'People',
-        Key: { person_id: draggedFrom.personObj.person_id }
-      })
-      .promise()
-      .catch(error => {
-        console.log(`caught error reading People; error is: `, error);
-      });
-    if (!recordExists(peopleRec)) {
-      updateReactData({
-        alert: {
-          severity: 'error',
-          title: 'Error',
-          message: `Something's not right... we couldn't find ${draggedFrom.personObj.name?.first || 'this person'} in the database.  Contact Support for more assistance`
-        }
-      }, true);
-      return;
-    }
-    // good peopleRec
-    // are you trying to drag this person to an inactive group?   if so, give an error and send them to PeopleMaintenance
-    if (state.session.group_assignments?.inactive && state.session.group_assignments.inactive.includes(droppedOn.group_id)) {
+    const person_id = draggedFrom.personObj.person_id;
+    const firstName = draggedFrom.personObj.name?.first || 'This person';
+
+    // guard against dropping on an inactive group
+    if (state.session.group_assignments?.inactive?.includes(droppedOn.group_id)) {
       updateReactData({
         alert: {
           severity: 'error',
           title: 'Dropped on Inactive Group',
-          message: `You dragged ${peopleRec.Item.name?.first || 'someone'} to a group of Inactive accounts.  
+          message: `You dragged ${firstName} to a group of Inactive accounts.  
             For safety, we don't allow that here.
-            If you mean to make this account inactive, please tap on ${(peopleRec.Item.name?.first + "'s") || 'their'} name.  
+            If you mean to make this account inactive, please tap on ${firstName + "'s"} name.  
             You can make the account inactive in that screen.`
         }
       }, true);
       return;
     }
-    // we are adding the dropped on groups and all its parents to the groupList for this person. Get that list
+
+    // compute the group chain being added (dropped group + all its ancestors) — for alert only
     let addGroupList = [droppedOn.group_id];
-    let this_group = myParent(droppedOn.group_id);
-    for (this_group; !!this_group; this_group = myParent(this_group)) {
-      addGroupList.push(this_group);
-    }
-    let newGroupList = deepCopy([peopleRec.Item.groups].flat());
-    let addedGroups = [];
-    for (let this_group of addGroupList) {
-      if (!newGroupList.includes(this_group)) {
-        newGroupList.push(this_group);
-        addedGroups.push(groupsManagedObject[this_group].group_name);
-      }
-    }
-    let reactUpdObj = {};
+    let pg = myParent(droppedOn.group_id);
+    for (; !!pg; pg = myParent(pg)) { addGroupList.push(pg); }
+
+    // get current groups from the in-memory accessList cache
+    const accessEntry = state.accessList?.[pSession.client_id]?.list?.find(p => p.person_id === person_id);
+    const currentGroups = [...(accessEntry?.groups || [])];
+    const addedGroups = addGroupList.filter(g => !currentGroups.includes(g));
+
     if (addedGroups.length === 0) {
-      reactUpdObj.alert = {
-        severity: 'info',
-        title: `Already a member`,
-        message: `${draggedFrom.personObj.name.first} was already a member of ${groupsManagedObject[droppedOn.group_id].group_name}`
-      };
+      updateReactData({
+        alert: {
+          severity: 'info',
+          title: 'Already a member',
+          message: `${firstName} was already a member of ${groupsManagedObject[droppedOn.group_id]?.group_name || droppedOn.group_id}`
+        }
+      }, true);
+      return;
     }
-    else {
-      reactUpdObj.alert = {
-        severity: 'success',
-        title: `Success!`,
-        message: `${draggedFrom.personObj.name.first} was added to ${listFromArray(addedGroups)}`
-      };
-    }
-    // make the update
-    let newClientGroupsObj;
-    if (peopleRec.Item.clients) {
-      newClientGroupsObj = deepCopy(peopleRec.Item.clients);
-    }
-    else {
-      newClientGroupsObj = {
-        id: pSession.client_id,
-        groups: newGroupList
-      };
-    }
-    if (newClientGroupsObj.hasOwnProperty('id')) {     // expected and standard
-      if (newClientGroupsObj.id !== pSession.client_id) {     // but we are in a client other than the typical one (this should be very rare)
-        newClientGroupsObj[newClientGroupsObj.id] = Object.assign({}, newClientGroupsObj);
-        newClientGroupsObj[pSession.client_id] = {
-          id: pSession.client_id,
-          groups: newGroupList
-        };
-      }
-      newClientGroupsObj.groups = newGroupList;
-      newClientGroupsObj.id = pSession.client_id;
-    }
-    else {
-      newClientGroupsObj[pSession.client_id] = {
-        id: pSession.client_id,
-        groups: newGroupList
-      };
-    }
-    let UpdateExpression = 'set #g = :g, #c = :c';
-    let ExpressionAttributeValues = {
-      ':g': newGroupList,
-      ':c': newClientGroupsObj
-    };
-    let ExpressionAttributeNames = {
-      '#g': 'groups',
-      '#c': 'clients'
-    };
-    await dbClient
-      .update({
-        Key: {
-          person_id: draggedFrom.personObj.person_id
-        },
-        UpdateExpression,
-        ExpressionAttributeValues,
-        ExpressionAttributeNames,
-        TableName: "People",
-      })
-      .promise()
-      .catch(error => {
-        console.log(`caught error updating Group; error is: `, error);
-      });
-    if (reactData.selectedGroupRec) {
-      if (newGroupList.includes(reactData.selectedGroup_id)) {
-        if (!reactData.selectedGroupMembers.hasOwnProperty(draggedFrom.personObj.person_id)) {
-          reactData.selectedGroupMembers[draggedFrom.personObj.person_id] = peopleRec.Item;
-        };
-        reactUpdObj.selectedGroupMembers = reactData.selectedGroupMembers;
-        reactUpdObj.sortedGroupMembers = sortGroupMembers(reactData.selectedGroupMembers);
-      }
-    }
-    // Update cached accessList so selectMembers reflects the change immediately
-    const copyAccessEntry = state.accessList?.[pSession.client_id]?.list?.find(p => p.person_id === draggedFrom.personObj.person_id);
-    if (copyAccessEntry) {
-      copyAccessEntry.groups = newGroupList;
+
+    // delegate all DB writes to addMember (People.groups + PeopleGroups chain)
+    const newGroupList = await addMember(person_id, pSession.client_id, droppedOn.group_id, { allowParent: true });
+
+    // update in-memory accessList cache
+    const updatedGroupList = [...currentGroups, ...addedGroups];
+    if (accessEntry) {
+      accessEntry.groups = updatedGroupList;
       dispatch({ type: SET_ACCESSLIST, payload: Object.assign({}, state.accessList) });
+    }
+    // if this change affects the current patient, update memberGroupIds
+    if (person_id === state.session.patient_id && newGroupList) {
+      dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups, { memberGroupIds: newGroupList }) });
+    }
+
+    // update right-panel member list if the currently selected group is in the new set
+    let reactUpdObj = {
+      alert: {
+        severity: 'success',
+        title: 'Success!',
+        message: `${firstName} was added to ${listFromArray(addedGroups.map(g => groupsManagedObject[g]?.group_name || g))}`
+      }
+    };
+    if (reactData.selectedGroupRec && newGroupList.includes(reactData.selectedGroup_id) && !reactData.selectedGroupMembers[person_id]) {
+      reactData.selectedGroupMembers[person_id] = { ...draggedFrom.personObj, groups: newGroupList };
+      reactUpdObj.selectedGroupMembers = reactData.selectedGroupMembers;
+      reactUpdObj.sortedGroupMembers = sortGroupMembers(reactData.selectedGroupMembers);
     }
     updateReactData(reactUpdObj, true);
   };
 
   const executeMovePerson = async (draggedFrom, droppedOn) => {
-    // Single DB read + single DB write to atomically add the destination group and remove the source group.
-    let peopleRec = await dbClient
-      .get({
-        TableName: 'People',
-        Key: { person_id: draggedFrom.personObj.person_id }
-      })
-      .promise()
-      .catch(error => {
-        console.log(`caught error reading People for move; error is: `, error);
-      });
-    if (!recordExists(peopleRec)) {
-      updateReactData({
-        alert: {
-          severity: 'error',
-          title: 'Error',
-          message: `Something's not right... we couldn't find ${draggedFrom.personObj.name?.first} in the database.  Contact Support for more assistance`
-        }
-      }, true);
-      return;
-    }
-    if (state.session.group_assignments?.inactive && state.session.group_assignments.inactive.includes(droppedOn.group_id)) {
+    const person_id = draggedFrom.personObj.person_id;
+    const firstName = draggedFrom.personObj.name?.first || 'This person';
+
+    if (state.session.group_assignments?.inactive?.includes(droppedOn.group_id)) {
       updateReactData({
         alert: {
           severity: 'error',
           title: 'Dropped on Inactive Group',
-          message: `You dragged ${peopleRec.Item.name?.first || 'someone'} to a group of Inactive accounts.  For safety, we don't allow that here.`
+          message: `You dragged ${firstName} to a group of Inactive accounts.  For safety, we don't allow that here.`
         }
       }, true);
       return;
     }
-    // Build the destination group chain (target + all parents)
+
+    // compute destination chain for the alert
     let addGroupList = [droppedOn.group_id];
-    let this_group = myParent(droppedOn.group_id);
-    for (this_group; !!this_group; this_group = myParent(this_group)) {
-      addGroupList.push(this_group);
-    }
-    // Start from the current DB state, add destination chain
-    let newGroupList = deepCopy([peopleRec.Item.groups].flat());
-    let addedGroups = [];
-    for (const g of addGroupList) {
-      if (!newGroupList.includes(g)) {
-        newGroupList.push(g);
-        addedGroups.push(groupsManagedObject[g].group_name);
-      }
-    }
-    // Now remove the source group and its orphaned relatives
-    let foundAt = newGroupList.indexOf(draggedFrom.personGroup);
-    if (foundAt > -1) { newGroupList.splice(foundAt, 1); }
-    newGroupList = removeChildren(draggedFrom.personGroup, newGroupList);
-    newGroupList = checkEmptyParent(draggedFrom.personGroup, newGroupList);
-    // Build the clients object
-    let newClientGroupsObj = deepCopy(peopleRec.Item.clients) || { id: pSession.client_id, groups: newGroupList };
-    if (newClientGroupsObj.hasOwnProperty('id')) {
-      if (newClientGroupsObj.id !== pSession.client_id) {
-        newClientGroupsObj[newClientGroupsObj.id] = Object.assign({}, newClientGroupsObj);
-        newClientGroupsObj[pSession.client_id] = { id: pSession.client_id, groups: newGroupList };
-      }
-      newClientGroupsObj.groups = newGroupList;
-      newClientGroupsObj.id = pSession.client_id;
-    }
-    else {
-      newClientGroupsObj[pSession.client_id] = { id: pSession.client_id, groups: newGroupList };
-    }
-    // Single DB write
-    await dbClient
-      .update({
-        Key: { person_id: draggedFrom.personObj.person_id },
-        UpdateExpression: 'set #g = :g, #c = :c',
-        ExpressionAttributeValues: { ':g': newGroupList, ':c': newClientGroupsObj },
-        ExpressionAttributeNames: { '#g': 'groups', '#c': 'clients' },
-        TableName: 'People',
-      })
-      .promise()
-      .catch(error => {
-        console.log(`caught error updating People for move; error is: `, error);
-      });
-    // Update UI state
-    delete reactData.selectedGroupMembers[draggedFrom.personObj.person_id];
-    const removedGroups = [peopleRec.Item.groups].flat().filter(g => !newGroupList.includes(g));
-    const movedAlert = {
-      severity: 'success',
-      title: 'Success!',
-      message: `${draggedFrom.personObj.name.first} was ${
-        addedGroups.length ? `added to ${listFromArray(addedGroups)} and ` : ''
-      }removed from ${listFromArray(removedGroups.map(g => groupsManagedObject[g].group_name))}`
-    };
-    // Update cached accessList
-    const accessEntry = state.accessList?.[pSession.client_id]?.list?.find(p => p.person_id === draggedFrom.personObj.person_id);
+    let pg = myParent(droppedOn.group_id);
+    for (; !!pg; pg = myParent(pg)) { addGroupList.push(pg); }
+
+    // get current groups from accessList for alert diff
+    const accessEntry = state.accessList?.[pSession.client_id]?.list?.find(p => p.person_id === person_id);
+    const currentGroups = [...(accessEntry?.groups || [])];
+    const addedGroupNames = addGroupList
+      .filter(g => !currentGroups.includes(g))
+      .map(g => groupsManagedObject[g]?.group_name || g);
+
+    // delegate DB writes: add destination then remove source (removeMember handles orphan cleanup)
+    await addMember(person_id, pSession.client_id, droppedOn.group_id, { allowParent: true });
+    const newGroupList = await removeMember(person_id, pSession.client_id, draggedFrom.personGroup);
+
+    // get fresh groups from DB — removeMember may have pruned orphaned ancestors
+    const freshPerson = await getPerson(person_id);
+    const freshGroupList = freshPerson?.groups || [];
+    const removedGroupNames = currentGroups
+      .filter(g => !freshGroupList.includes(g))
+      .map(g => groupsManagedObject[g]?.group_name || g);
+
+    // update accessList cache
     if (accessEntry) {
-      accessEntry.groups = newGroupList;
+      accessEntry.groups = freshGroupList;
       dispatch({ type: SET_ACCESSLIST, payload: Object.assign({}, state.accessList) });
     }
+    // if this change affects the current patient, update memberGroupIds
+    if (person_id === state.session.patient_id && newGroupList) {
+      dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups, { memberGroupIds: newGroupList }) });
+    }
+
+    // remove person from right-panel member list
+    delete reactData.selectedGroupMembers[person_id];
     updateReactData({
-      alert: movedAlert,
+      alert: {
+        severity: 'success',
+        title: 'Success!',
+        message: `${firstName} was ${addedGroupNames.length ? `added to ${listFromArray(addedGroupNames)} and ` : ''}removed from ${listFromArray(removedGroupNames)}`
+      },
       selectedGroupMembers: reactData.selectedGroupMembers,
-      sortedGroupMembers: sortGroupMembers(reactData.selectedGroupMembers)
+      sortedGroupMembers: sortGroupMembers(reactData.selectedGroupMembers),
     }, true);
   };
 
   const executeRemovePersonFromGroup = async (draggedFrom) => {
-    // get my peopleRec
-    let peopleRec = await dbClient
-      .get({
-        TableName: 'People',
-        Key: { person_id: draggedFrom.personObj.person_id }
-      })
-      .promise()
-      .catch(error => {
-        console.log(`caught error reading People; error is: `, error);
-      });
-    if (!recordExists(peopleRec)) {
-      updateReactData({
-        alert: {
-          severity: 'error',
-          title: 'Error',
-          message: `Something's not right... we couldn't find ${draggedFrom.personObj.name?.first} in the database.  Contact Support for more assistance`
-        }
-      }, true);
-      return;
-    }
-    // we are removing the draggedFrom.personGroup from the group list for draggedFrom.personObj.person_id;  get the current group list
-    let newGroupList = deepCopy([peopleRec.Item.groups].flat());
-    let foundAt = newGroupList.indexOf(draggedFrom.personGroup);
-    if (foundAt > -1) {
-      newGroupList.splice(foundAt, 1);
-    }
-    // if I am removing a group that has children, remove the children
-    newGroupList = removeChildren(draggedFrom.personGroup, newGroupList);
-    // if what is left contains a parent of this group and that parent now has no children remaining, remove it
-    newGroupList = checkEmptyParent(draggedFrom.personGroup, newGroupList);
-    // make the update
-    let newClientGroupsObj = deepCopy(peopleRec.Item.clients) || { id: pSession.client_id, groups: newGroupList };
-    if (newClientGroupsObj.hasOwnProperty('id')) {     // expected and standard
-      if (newClientGroupsObj.id !== pSession.client_id) {     // but we are in a client other than the typical one (this should be very rare)
-        newClientGroupsObj[newClientGroupsObj.id] = Object.assign({}, newClientGroupsObj);
-        newClientGroupsObj[pSession.client_id] = {
-          id: pSession.client_id,
-          groups: newGroupList
-        };
-      }
-      newClientGroupsObj.groups = newGroupList;
-      newClientGroupsObj.id = pSession.client_id;
-    }
-    else {
-      newClientGroupsObj[pSession.client_id] = {
-        id: pSession.client_id,
-        groups: newGroupList
-      };
-    }
-    let UpdateExpression = 'set #g = :g, #c = :c';
-    let ExpressionAttributeValues = {
-      ':g': newGroupList,
-      ':c': newClientGroupsObj
-    };
-    let ExpressionAttributeNames = {
-      '#g': 'groups',
-      '#c': 'clients'
-    };
-    await dbClient
-      .update({
-        Key: {
-          person_id: draggedFrom.personObj.person_id
-        },
-        UpdateExpression,
-        ExpressionAttributeValues,
-        ExpressionAttributeNames,
-        TableName: "People",
-      })
-      .promise()
-      .catch(error => {
-        console.log(`caught error updating Group; error is: `, error);
-      });
-    delete reactData.selectedGroupMembers[draggedFrom.personObj.person_id];
-    let removedGroups = [peopleRec.Item.groups].flat().filter(g => { return !newGroupList.includes(g); });
-    let alertMessage = false;
-    if (removedGroups.length > 0) {
-      alertMessage = {
-        severity: 'success',
-        title: `Success!`,
-        message: `${draggedFrom.personObj.name.first} was removed from ${listFromArray(removedGroups.map(g => { return groupsManagedObject[g].group_name; }))}`
-      };
-    }
-    // Update cached accessList so selectMembers reflects the change immediately
-    const removeAccessEntry = state.accessList?.[pSession.client_id]?.list?.find(p => p.person_id === draggedFrom.personObj.person_id);
-    if (removeAccessEntry) {
-      removeAccessEntry.groups = newGroupList;
+    const person_id = draggedFrom.personObj.person_id;
+    const firstName = draggedFrom.personObj.name?.first || 'This person';
+
+    // get current groups from accessList for alert diff
+    const accessEntry = state.accessList?.[pSession.client_id]?.list?.find(p => p.person_id === person_id);
+    const currentGroups = [...(accessEntry?.groups || [])];
+
+    // delegate DB write to removeMember (handles orphan cleanup + PeopleGroups soft-delete)
+    const newGroupList = await removeMember(person_id, pSession.client_id, draggedFrom.personGroup);
+
+    // get fresh groups from DB — removeMember may have pruned orphaned ancestors
+    const freshPerson = await getPerson(person_id);
+    const freshGroupList = freshPerson?.groups || [];
+    const removedGroupNames = currentGroups
+      .filter(g => !freshGroupList.includes(g))
+      .map(g => groupsManagedObject[g]?.group_name || g);
+
+    // update accessList cache
+    if (accessEntry) {
+      accessEntry.groups = freshGroupList;
       dispatch({ type: SET_ACCESSLIST, payload: Object.assign({}, state.accessList) });
     }
+    // if this change affects the current patient, update memberGroupIds
+    if (person_id === state.session.patient_id && newGroupList) {
+      dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups, { memberGroupIds: newGroupList }) });
+    }
+
+    // remove person from right-panel member list
+    delete reactData.selectedGroupMembers[person_id];
     updateReactData({
-      alert: alertMessage,
+      alert: removedGroupNames.length > 0 ? {
+        severity: 'success',
+        title: 'Success!',
+        message: `${firstName} was removed from ${listFromArray(removedGroupNames)}`
+      } : false,
       selectedGroupMembers: reactData.selectedGroupMembers,
-      sortedGroupMembers: sortGroupMembers(reactData.selectedGroupMembers)
+      sortedGroupMembers: sortGroupMembers(reactData.selectedGroupMembers),
     }, true);
   };
 
@@ -1047,35 +891,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
     return searchString.includes(reactData.lower_people_filter);
   };
 
-  function removeChildren(this_group, newGroupList) {
-    if (!state.groups.parent_of.hasOwnProperty(this_group)) {
-      return newGroupList;
-    }
-    for (let this_child of state.groups.parent_of[this_group]) {
-      let foundAt = newGroupList.indexOf(this_child);
-      if (foundAt > -1) {
-        newGroupList.splice(foundAt, 1);
-      }
-      newGroupList = removeChildren(this_child, newGroupList);
-    }
-    return newGroupList;
-  }
-
-  function checkEmptyParent(this_group, newGroupList) {
-    let this_parent = myParent(this_group);
-    if (!this_parent) {
-      return newGroupList;
-    }
-    let foundAt = newGroupList.indexOf(this_parent);
-    if ((foundAt > -1) && !state.groups.parent_of[this_parent].some(this_child => {
-      return newGroupList.includes(this_child);
-    })) {
-      newGroupList.splice(foundAt, 1);   // remove if no children remaining
-    }
-    newGroupList = checkEmptyParent(this_parent, newGroupList);
-    return newGroupList;
-  }
-
   const handleDrop_removePerson = async (ev) => {
     ev.preventDefault();
     let draggedFrom = JSON.parse(ev.dataTransfer.getData('id'));
@@ -1147,11 +962,32 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
         delete state.groups.publicGroups[draggedFrom.groupObj.group_id];
         delete state.groups.privateGroups[draggedFrom.groupObj.group_id];
         dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups) });
-        if (reactData.selectedGroup_id === draggedFrom.groupObj.group_id) {
-          reactUpdObj.selectedGroupRec = false;
-          reactUpdObj.selectedGroup_id = false;
-          reactUpdObj.selectedGroupMembers = false;
-          reactUpdObj.sortedGroupMembers = [];
+        const deletedId = draggedFrom.groupObj.group_id;
+        if ((reactData.selectedGroupIds || []).includes(deletedId)) {
+          const newIds = (reactData.selectedGroupIds || []).filter(id => id !== deletedId);
+          const newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
+          delete newMembersPerGroup[deletedId];
+          // Also prune ancestors that no longer have all their descendants selected
+          const toPrune = newIds.filter(id =>
+            getDescendants(id).some(d => groupsManagedObject[d] && !newIds.includes(d))
+          );
+          for (const id of toPrune) { delete newMembersPerGroup[id]; }
+          const prunedIds = newIds.filter(id => !toPrune.includes(id));
+          const newGroupMembers = {};
+          for (const id of prunedIds) { Object.assign(newGroupMembers, newMembersPerGroup[id] || {}); }
+          const titledIds = prunedIds.filter(id => Object.keys(newMembersPerGroup[id] || {}).length > 0);
+          const titleSource = titledIds.length > 0 ? titledIds : prunedIds;
+          const singleGroup = titleSource.length === 1;
+          reactUpdObj.selectedGroupIds = prunedIds;
+          reactUpdObj.selectedGroupMembersPerGroup = newMembersPerGroup;
+          reactUpdObj.selectedGroup_id = singleGroup ? titleSource[0] : null;
+          reactUpdObj.selectedGroupRec = prunedIds.length === 0
+            ? false
+            : singleGroup
+              ? groupsManagedObject[titleSource[0]]
+              : { group_id: null, group_name: 'Multiple Groups', multi: true };
+          reactUpdObj.selectedGroupMembers = Object.keys(newGroupMembers).length > 0 ? newGroupMembers : false;
+          reactUpdObj.sortedGroupMembers = sortGroupMembers(newGroupMembers);
         }
         updateReactData(reactUpdObj, true);
       }
@@ -1168,7 +1004,19 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
     }
   };
 
-  // const autoFocus = (element) => element?.focus();
+  // Returns all descendant group IDs (children, grandchildren, etc.) that are in groupsManagedObject.
+  const getDescendants = (groupId) => {
+    const result = [];
+    const queue = [...(state.groups.parent_of?.[groupId] || [])];
+    while (queue.length > 0) {
+      const id = queue.shift();
+      if (groupsManagedObject[id]) {
+        result.push(id);
+        queue.push(...(state.groups.parent_of?.[id] || []));
+      }
+    }
+    return result;
+  };
 
   var rowsDisplayed;
 
@@ -1179,9 +1027,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
-  async function selectMembers(this_group) {
+  async function selectMembers(this_group, { live = false } = {}) {
     let response = {};
-    let memberList = await getMemberList(this_group, state.session.client_id, { "name_and_search": true, state });
+    let memberList = await getMemberList(this_group, state.session.client_id, {
+      name_and_search: true,
+      state: live ? null : state,
+    });
     for (const this_member of memberList.peopleList) {
       response[this_member.person_id] = this_member;
     }
@@ -1222,7 +1073,27 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
         });
       }
     };
-    updateReactData({ assignmentList }, true);
+    // Pre-select a group if requested
+    let preSelectUpdates = {};
+    if (preSelectedGroup && groupsManagedObject[preSelectedGroup]) {
+      const selectedGroupMembers = await selectMembers(preSelectedGroup);
+      const sortedGroupMembers = sortGroupMembers(selectedGroupMembers);
+      preSelectUpdates = {
+        selectedGroup_id: preSelectedGroup,
+        selectedGroupRec: groupsManagedObject[preSelectedGroup],
+        selectedGroupMembers,
+        sortedGroupMembers,
+      };
+      if (preSelectedFunction === 'directory') {
+        const visiblePeople = state.accessList[state.session.client_id].list
+          .filter(p => sortedGroupMembers.includes(p.person_id));
+        preSelectUpdates.showPhotoDirectory = (visiblePeople.length > 0);
+        preSelectUpdates.photoDirectoryPeople = visiblePeople;
+      } else if (preSelectedFunction === 'maintenance') {
+        preSelectUpdates.viewGroupMaintenance = preSelectedGroup;
+      }
+    }
+    updateReactData({ assignmentList, ...preSelectUpdates }, true);
   }
 
   React.useEffect(() => {
@@ -1377,12 +1248,53 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                             <Typography
                               key={`g_text_${listIndex}_${(listIndex === focusAt) ? 'selected' : ''}`}
                               onClick={async () => {
-                                let selectedGroupMembers = await selectMembers(listEntry);
+                                const currentIds = reactData.selectedGroupIds || [];
+                                // Subtree = this group + all its descendants (recursive)
+                                const subtree = [listEntry, ...getDescendants(listEntry)];
+                                const allSelected = subtree.every(id => currentIds.includes(id));
+                                let newIds, newMembersPerGroup;
+                                if (allSelected) {
+                                  // All in subtree selected → deselect all of them
+                                  newIds = currentIds.filter(id => !subtree.includes(id));
+                                  newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
+                                  for (const id of subtree) { delete newMembersPerGroup[id]; }
+                                  // Prune any ancestor that no longer has all its descendants selected.
+                                  // A parent is only valid when its entire subtree is selected.
+                                  const toPrune = newIds.filter(id =>
+                                    getDescendants(id).some(d => groupsManagedObject[d] && !newIds.includes(d))
+                                  );
+                                  for (const id of toPrune) { delete newMembersPerGroup[id]; }
+                                  newIds = newIds.filter(id => !toPrune.includes(id));
+                                } else {
+                                  // Some or none selected → select all missing in subtree
+                                  const toAdd = subtree.filter(id => !currentIds.includes(id));
+                                  newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
+                                  for (const id of toAdd) { newMembersPerGroup[id] = await selectMembers(id); }
+                                  newIds = [...currentIds, ...toAdd];
+                                }
+                                // Every selected group contributes its members.
+                                // Object.assign deduplicates by person_id, so overlap between
+                                // parent and child lists is handled automatically.
+                                const newGroupMembers = {};
+                                for (const id of newIds) { Object.assign(newGroupMembers, newMembersPerGroup[id] || {}); }
+                                // Title reflects which groups have members; if none do yet (all empty),
+                                // fall back to all selected groups so the panel still shows.
+                                const titledIds = newIds.filter(id => Object.keys(newMembersPerGroup[id] || {}).length > 0);
+                                const titleSource = titledIds.length > 0 ? titledIds : newIds;
+                                const singleGroup = titleSource.length === 1;
+                                const newSelectedGroupRec = newIds.length === 0
+                                  ? false
+                                  : singleGroup
+                                    ? groupsManagedObject[titleSource[0]]
+                                    : { group_id: null, group_name: 'Multiple Groups', multi: true };
+                                const newSelectedGroup_id = singleGroup ? titleSource[0] : null;
                                 updateReactData({
-                                  selectedGroup_id: listEntry,
-                                  selectedGroupRec: groupsManagedObject[listEntry],
-                                  selectedGroupMembers,
-                                  sortedGroupMembers: sortGroupMembers(selectedGroupMembers),
+                                  selectedGroupIds: newIds,
+                                  selectedGroupMembersPerGroup: newMembersPerGroup,
+                                  selectedGroup_id: newSelectedGroup_id,
+                                  selectedGroupRec: newSelectedGroupRec,
+                                  selectedGroupMembers: Object.keys(newGroupMembers).length > 0 ? newGroupMembers : false,
+                                  sortedGroupMembers: sortGroupMembers(newGroupMembers),
                                   selectedPerson_id: false,
                                   selectedPersonRec: false,
                                   selectedPersonFirstName: false,
@@ -1395,7 +1307,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                                   ? 'orange'
                                   : null
                                 ),
-                                weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry)) || (reactData.selectedGroup_id === listEntry)) ? 'bold' : null),
+                                weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry)) || [listEntry, ...getDescendants(listEntry)].every(id => (reactData.selectedGroupIds || []).includes(id))) ? 'bold' : null),
                                 cursor: canDragManage ? 'grab' : null,
                                 userSelect: 'none',
                                 margin: { left: (groupsManagedObject[listEntry].level ? ((groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) - 1) * 1.5 : 0), top: 0.35, bottom: 0.65, right: 0.8 },
@@ -1482,7 +1394,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
               >
                 <Typography
                   key={`g_name`}
-                  onClick={() => {
+                  onClick={reactData.selectedGroupRec.multi ? undefined : () => {
                     updateReactData({
                       viewGroupMaintenance: reactData.selectedGroupRec.group_id
                     }, true);
@@ -1491,6 +1403,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                     size: 1.5,
                     overflow: 'visible',
                     bold: true,
+                    cursor: reactData.selectedGroupRec.multi ? 'default' : null,
                     margin: { top: 1, bottom: 0 },
                   })}>
                   {reactData.selectedGroupRec.group_name}
@@ -1503,7 +1416,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
                     overflow: 'visible'
                   })}
                 >
-                  {`${reactData.sortedGroupMembers?.length || 0} people in the group`}
+                  {`${reactData.sortedGroupMembers?.length || 0} ${(reactData.selectedGroupIds || []).length > 1 ? 'people across selected groups' : 'people in the group'}`}
                 </Typography>
                 {reactData.lower_people_filter &&
                   <Box display='flex' flexDirection='row'
@@ -1985,10 +1898,23 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, onCancel = (
               viewPeopleMaintenance: false
             };
             if (reactData.selectedGroup_id) {
-              reactUpd.selectedGroupMembers = await selectMembers(reactData.selectedGroup_id);
+              // Live DB fetch (bypass cache) so edits are visible immediately
+              reactUpd.selectedGroupMembers = await selectMembers(reactData.selectedGroup_id, { live: true });
               reactUpd.sortedGroupMembers = sortGroupMembers(reactUpd.selectedGroupMembers);
             }
             updateReactData(reactUpd, true);
+            // Silent background re-check after Lambda has had time to run
+            if (reactData.selectedGroup_id) {
+              const groupIdAtClose = reactData.selectedGroup_id;
+              setTimeout(async () => {
+                if (!isMounted.current) return;
+                const freshMembers = await selectMembers(groupIdAtClose, { live: true });
+                updateReactData({
+                  selectedGroupMembers: freshMembers,
+                  sortedGroupMembers: sortGroupMembers(freshMembers),
+                }, true);
+              }, 4000);
+            }
           }}
         />
       }

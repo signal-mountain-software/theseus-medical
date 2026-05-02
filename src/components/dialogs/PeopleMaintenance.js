@@ -4,7 +4,8 @@ import React from 'react';
 import { getPerson, getImage } from '../../util/AVAPeople';
 import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount, titleCase } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle, isDark } from '../../util/AVAStyles';
-import { determineClass, doesPersonMatchGroupRules } from '../../util/AVAGroups';
+import { determineClass, doesPersonMatchGroupRules, addMember, removeMember, getPersonGroups } from '../../util/AVAGroups';
+import { SET_GROUPS } from '../../contexts/Session/actions';
 import { syncPersonToSessionCaches } from '../../util/AVASessionSync';
 
 import useSession from '../../hooks/useSession';
@@ -349,6 +350,16 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             peopleRec.proxy_allowed_from = {};
           }
           reactUpdObj.og.peopleRec = Object.assign({}, peopleRec, initialValues?.peopleRec);
+          // Overwrite og groups with PeopleGroups person-index GSI (authoritative source of truth)
+          const pgInit = await dbClient.query({
+            TableName: 'PeopleGroups',
+            IndexName: 'person-index',
+            KeyConditionExpression: 'person_id = :p AND membership_status = :s',
+            ExpressionAttributeValues: { ':p': parm_personRec.person_id, ':s': 'active' }
+          }).promise().catch(error => { cl({ 'PeopleMaintenance init: error reading PeopleGroups': error }); });
+          reactUpdObj.og.peopleRec.groups = (pgInit?.Items || [])
+            .filter(row => row.client_group_id.startsWith(state.session.client_id + '~'))
+            .map(row => row.client_group_id.split('~')[1]);
         }
         else {
           return {
@@ -1118,6 +1129,27 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           })
           .promise();
         updatedPeopleRecord = true;
+        // Sync PeopleGroups: diff current groups vs. PeopleGroups-authoritative og baseline
+        // Only pass leaf groups (no children) to addMember/removeMember — they own the ancestor chain
+        const parent_of = state.groups?.parent_of || {};
+        const isLeaf = g => !parent_of[g]?.length;
+        const ogGroups = reactData.og.peopleRec.groups || [];
+        const newGroups = reactData.current.peopleRec.groups || [];
+        const groupsToAdd = newGroups.filter(g => isLeaf(g) && !ogGroups.includes(g));
+        const groupsToRemove = ogGroups.filter(g => isLeaf(g) && !newGroups.includes(g));
+        const personId = reactData.current.peopleRec.person_id;
+        const clientId = state.session.client_id;
+        if (groupsToAdd.length > 0) {
+          await addMember(personId, clientId, groupsToAdd, { allowParent: false });
+        }
+        if (groupsToRemove.length > 0) {
+          await removeMember(personId, clientId, groupsToRemove);
+        }
+        // if the edited person is the current patient, refresh memberGroupIds in session state
+        if (personId === state.session.patient_id) {
+          const memberGroupIds = await getPersonGroups(personId, clientId);
+          dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups, { memberGroupIds }) });
+        }
       }
       else if (sessionChanged) {
         await dbClient
