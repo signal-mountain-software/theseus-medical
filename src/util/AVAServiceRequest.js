@@ -238,6 +238,7 @@ export async function putServiceRequest(body) {
     "request_id": body.request_id || body.requestID,
     "requestor": body.author || body.requestor,
     "on_behalf_of": body.onBehalfOf || body.author || 'n/a',
+    "pertains_to": body.obo_id || body.author || body.requestor,
     "request_type": body.requestType || body.request_type,
     "request_date": body.requestDate || body.request_date,
     "activity_key": body.activity_key,

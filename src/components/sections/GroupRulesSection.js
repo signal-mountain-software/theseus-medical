@@ -10,6 +10,7 @@ import {
 import { AVATextStyle } from '../../util/AVAStyles';
 import { AVAclasses } from '../../util/AVAStyles';
 import { cl, dbClient, recordExists, deepCopy } from '../../util/AVAUtilities';
+import { backfillOnAddRule } from '../../util/AVAGroups';
 
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import DeleteIcon from '@material-ui/icons/Delete';
@@ -30,17 +31,27 @@ const ACTION_TYPES = [
 ];
 
 const WHO_TYPES = [
-  { value: 'self',      label: 'The person themselves' },
-  { value: 'allFamily', label: 'All family members' },
-  { value: 'primary',   label: 'Primary contact' },
+  { value: 'self',        label: 'The person themselves' },
+  { value: 'allFamily',   label: 'All family members' },
+  { value: 'otherFamily', label: 'Other family members (not self)' },
+  { value: 'primary',     label: 'Primary contact' },
 ];
 
 const TEST_TYPES = [
   { value: 'eq',       label: '= equals' },
   { value: 'ne',       label: '≠ not equals' },
-  { value: 'contains', label: 'contains' },
+  { value: 'contains', label: 'contains (partial match)' },
   { value: 'gt',       label: '> greater than' },
   { value: 'lt',       label: '< less than' },
+];
+
+// Labels used when the selected dictionary field resolves to an array of values
+const TEST_TYPES_ARRAY = [
+  { value: 'eq',       label: 'list includes (exact match)' },
+  { value: 'ne',       label: 'list does not include' },
+  { value: 'contains', label: 'any item contains (partial match)' },
+  { value: 'gt',       label: 'any item > (numeric)' },
+  { value: 'lt',       label: 'any item < (numeric)' },
 ];
 
 const emptyAction = () => ({ action: 'addMember', who: 'self', where: [] });
@@ -52,7 +63,7 @@ const emptyRule   = () => ({
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default ({ currentValues, updateField }) => {
+export default ({ currentValues, updateField, updateReactData: parentUpdateReactData }) => {
 
   const AVAClass = AVAclasses();
   const { state } = useSession();
@@ -62,6 +73,7 @@ export default ({ currentValues, updateField }) => {
     dictionaryFields: [],    // [{field_key, description}] from DataDictionaryV3
     expandedIndex: null,     // null = none; -1 = new rule form; n = editing rule n
     editingRule: null,       // deep copy of the rule being edited (or emptyRule() for new)
+    backfillState: {},       // keyed by ruleIndex: null | { running, done, total }
   });
 
   const update = (newData) => setLocal((prev) => Object.assign({}, prev, newData));
@@ -107,15 +119,20 @@ export default ({ currentValues, updateField }) => {
   const startEdit = (index) => {
     if (local.expandedIndex === index) {
       update({ expandedIndex: null, editingRule: null });
+      if (parentUpdateReactData) { parentUpdateReactData({ unsavedRuleEdit: false }, true); }
     } else {
       update({
         expandedIndex: index,
         editingRule: index === -1 ? emptyRule() : deepCopy(currentRules[index]),
       });
+      if (parentUpdateReactData) { parentUpdateReactData({ unsavedRuleEdit: true }); }
     }
   };
 
-  const cancelEdit = () => update({ expandedIndex: null, editingRule: null });
+  const cancelEdit = () => {
+    update({ expandedIndex: null, editingRule: null });
+    if (parentUpdateReactData) { parentUpdateReactData({ unsavedRuleEdit: false }, true); }
+  };
 
   const saveEdit = async () => {
     if (!local.editingRule) { return; }
@@ -153,11 +170,36 @@ export default ({ currentValues, updateField }) => {
         };
       }
     }
-    const newRules = local.expandedIndex === -1
+    let newRules = local.expandedIndex === -1
       ? [...currentRules, ruleToSave]
       : currentRules.map((r, i) => (i === local.expandedIndex ? ruleToSave : r));
+
+    // Auto-create a mirror onRemove rule whenever a NEW onAdd rule is saved
+    if (local.expandedIndex === -1 && ruleToSave.rule_type === 'onAdd' && Array.isArray(ruleToSave.actions)) {
+      const mirrorActions = ruleToSave.actions.map(a => ({
+        ...a,
+        action: a.action === 'addMember' ? 'removeMember' : 'addMember',
+      }));
+      // Only append if no existing onRemove rule already has the same who+where for every action
+      const alreadyExists = newRules.some(r =>
+        r.rule_type === 'onRemove' &&
+        Array.isArray(r.actions) &&
+        mirrorActions.every(ma =>
+          r.actions.some(ra =>
+            ra.action === ma.action &&
+            ra.who === ma.who &&
+            JSON.stringify((ra.where || []).slice().sort()) === JSON.stringify((ma.where || []).slice().sort())
+          )
+        )
+      );
+      if (!alreadyExists) {
+        newRules = [...newRules, { rule_type: 'onRemove', actions: mirrorActions }];
+      }
+    }
+
     await saveRules(newRules);
     update({ expandedIndex: null, editingRule: null });
+    if (parentUpdateReactData) { parentUpdateReactData({ unsavedRuleEdit: false }, true); }
   };
 
   const patchRule = (updater) => {
@@ -448,6 +490,23 @@ export default ({ currentValues, updateField }) => {
               />
             )}
 
+            {/* Array-field toggle — lets the rule author signal that this field returns a list */}
+            <Box display='flex' alignItems='center' mt={0.5} mb={0.5}>
+              <input
+                type='checkbox'
+                id='is_array_field_cb'
+                checked={!!rule.data_test?.is_array_field}
+                onChange={(e) => patchRule((prev) => ({
+                  ...prev,
+                  data_test: { ...(prev.data_test || {}), is_array_field: e.target.checked },
+                }))}
+                style={{ marginRight: 6 }}
+              />
+              <label htmlFor='is_array_field_cb' style={{ fontSize: '0.85rem', cursor: 'pointer' }}>
+                {'Field stores a list of values (e.g. multiple tags or entries)'}
+              </label>
+            </Box>
+
             <FormControl fullWidth margin='dense'>
               <InputLabel>Comparison</InputLabel>
               <Select
@@ -457,7 +516,7 @@ export default ({ currentValues, updateField }) => {
                   data_test: { ...(prev.data_test || {}), test: e.target.value },
                 }))}
               >
-                {TEST_TYPES.map((t) => (
+                {(rule.data_test?.is_array_field ? TEST_TYPES_ARRAY : TEST_TYPES).map((t) => (
                   <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
                 ))}
               </Select>
@@ -485,6 +544,23 @@ export default ({ currentValues, updateField }) => {
             {(rule.actions || []).map((action, actionIndex) =>
               renderActionEditor(action, actionIndex)
             )}
+
+            {/* Save / Cancel — above Add Action */}
+            <Box display='flex' flexDirection='row' justifyContent='flex-end' mt={1} mb={1} style={{ gap: 8 }}>
+              <Button size='small' className={AVAClass.AVAButton} onClick={cancelEdit}>
+                {'Cancel'}
+              </Button>
+              <Button
+                size='small'
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'green', color: 'white' }}
+                onClick={saveEdit}
+                disabled={!(rule.actions || []).length}
+              >
+                {'Save Rule'}
+              </Button>
+            </Box>
+
             <Button
               size='small'
               className={AVAClass.AVAButton}
@@ -499,25 +575,23 @@ export default ({ currentValues, updateField }) => {
           </Box>
         )}
 
-        {/* Save / Cancel */}
-        <Box display='flex' flexDirection='row' justifyContent='flex-end' mt={2} style={{ gap: 8 }}>
-          <Button size='small' className={AVAClass.AVAButton} onClick={cancelEdit}>
-            {'Cancel'}
-          </Button>
-          <Button
-            size='small'
-            className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'green', color: 'white' }}
-            onClick={saveEdit}
-            disabled={
-              rule.rule_type === 'withData'
-                ? (!rule.data_test?.dictionaryField || !rule.data_test?.testValue)
-                : !(rule.actions || []).length
-            }
-          >
-            {'Save Rule'}
-          </Button>
-        </Box>
+        {/* Save / Cancel — for withData rules (no actions section) */}
+        {rule.rule_type === 'withData' && (
+          <Box display='flex' flexDirection='row' justifyContent='flex-end' mt={2} style={{ gap: 8 }}>
+            <Button size='small' className={AVAClass.AVAButton} onClick={cancelEdit}>
+              {'Cancel'}
+            </Button>
+            <Button
+              size='small'
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'green', color: 'white' }}
+              onClick={saveEdit}
+              disabled={!rule.data_test?.dictionaryField || !rule.data_test?.testValue}
+            >
+              {'Save Rule'}
+            </Button>
+          </Box>
+        )}
       </Box>
     );
   };
@@ -571,6 +645,53 @@ export default ({ currentValues, updateField }) => {
               }
             </Box>
             <Box display='flex' flexDirection='row' alignItems='center'>
+              {/* Backfill button — only for onAdd rules */}
+              {(rule.rule_type === 'onAdd') && (() => {
+                const bf = local.backfillState[ruleIndex];
+                const group_id = currentValues?.Groups?.group_id;
+                const client_id = state.session.client_id;
+                if (bf?.running) {
+                  return (
+                    <Typography
+                      style={AVATextStyle({ size: 0.78, color: 'grey', margin: { right: 1 } })}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {`Running… ${bf.done}/${bf.total}`}
+                    </Typography>
+                  );
+                }
+                if (bf?.done != null && !bf.running) {
+                  return (
+                    <Typography
+                      style={AVATextStyle({ size: 0.78, color: 'green', margin: { right: 1 } })}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {`Done (${bf.total} processed)`}
+                    </Typography>
+                  );
+                }
+                return (
+                  <Button
+                    size='small'
+                    className={AVAClass.AVAButton}
+                    style={{ marginRight: 4, fontSize: '0.72rem' }}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (!group_id) { return; }
+                      update({ backfillState: { ...local.backfillState, [ruleIndex]: { running: true, done: 0, total: 0 } } });
+                      let lastTotal = 0;
+                      await backfillOnAddRule(group_id, client_id, ({ done, total }) => {
+                        lastTotal = total;
+                        update({ backfillState: { ...local.backfillState, [ruleIndex]: { running: true, done, total } } });
+                      });
+                      update({ backfillState: { ...local.backfillState, [ruleIndex]: { running: false, done: lastTotal, total: lastTotal } } });
+                      if (parentUpdateReactData) { parentUpdateReactData({ membershipChange: true }); }
+                    }}
+                  >
+                    {'Run for existing members'}
+                  </Button>
+                );
+              })()}
               <IconButton
                 size='small'
                 onClick={(e) => { e.stopPropagation(); deleteRule(ruleIndex); }}

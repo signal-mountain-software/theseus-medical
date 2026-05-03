@@ -537,9 +537,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         section_name: 'Check-in/Check-out History',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('CheckoutHistory')) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('checkout') : true))
-          && reactUpdObj.og.peopleRec.checkout_recent_history
-          && (reactUpdObj.og.peopleRec.checkout_recent_history.length > 0),
+        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('checkout') : true)),
         version_id: 0,
         component_name: 'CheckoutHistory'
       },

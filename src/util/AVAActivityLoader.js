@@ -218,6 +218,17 @@ export async function resolveDefaults(fact, this_key, this_value) {
 }
 
 export async function buildDisplayRows(listValues, defaults, qualifiers) {
+  // Reset module-level state so successive calls start clean
+  checkbox = true;
+  ignore = false;
+  required = false;
+  rowTestArray = [];
+  multiColumn = false;
+  displayBold = false;
+  displayStyle = false;
+  displayItalic = false;
+  doneWithTopBox = false;
+
   let displayRowList = [];
   for (let vIndex = 0; vIndex < listValues.length; vIndex++) {
     // All rows are evaluated as follows "<instruction[0]>~<instruction[1]>:<instruction[2]>"
