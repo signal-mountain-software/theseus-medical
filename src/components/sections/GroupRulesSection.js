@@ -40,9 +40,18 @@ const WHO_TYPES = [
 const TEST_TYPES = [
   { value: 'eq',       label: '= equals' },
   { value: 'ne',       label: '≠ not equals' },
-  { value: 'contains', label: 'contains' },
+  { value: 'contains', label: 'contains (partial match)' },
   { value: 'gt',       label: '> greater than' },
   { value: 'lt',       label: '< less than' },
+];
+
+// Labels used when the selected dictionary field resolves to an array of values
+const TEST_TYPES_ARRAY = [
+  { value: 'eq',       label: 'list includes (exact match)' },
+  { value: 'ne',       label: 'list does not include' },
+  { value: 'contains', label: 'any item contains (partial match)' },
+  { value: 'gt',       label: 'any item > (numeric)' },
+  { value: 'lt',       label: 'any item < (numeric)' },
 ];
 
 const emptyAction = () => ({ action: 'addMember', who: 'self', where: [] });
@@ -481,6 +490,23 @@ export default ({ currentValues, updateField, updateReactData: parentUpdateReact
               />
             )}
 
+            {/* Array-field toggle — lets the rule author signal that this field returns a list */}
+            <Box display='flex' alignItems='center' mt={0.5} mb={0.5}>
+              <input
+                type='checkbox'
+                id='is_array_field_cb'
+                checked={!!rule.data_test?.is_array_field}
+                onChange={(e) => patchRule((prev) => ({
+                  ...prev,
+                  data_test: { ...(prev.data_test || {}), is_array_field: e.target.checked },
+                }))}
+                style={{ marginRight: 6 }}
+              />
+              <label htmlFor='is_array_field_cb' style={{ fontSize: '0.85rem', cursor: 'pointer' }}>
+                {'Field stores a list of values (e.g. multiple tags or entries)'}
+              </label>
+            </Box>
+
             <FormControl fullWidth margin='dense'>
               <InputLabel>Comparison</InputLabel>
               <Select
@@ -490,7 +516,7 @@ export default ({ currentValues, updateField, updateReactData: parentUpdateReact
                   data_test: { ...(prev.data_test || {}), test: e.target.value },
                 }))}
               >
-                {TEST_TYPES.map((t) => (
+                {(rule.data_test?.is_array_field ? TEST_TYPES_ARRAY : TEST_TYPES).map((t) => (
                   <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
                 ))}
               </Select>
