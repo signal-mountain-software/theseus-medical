@@ -308,6 +308,7 @@ export default ({ onSave, onClose }) => {
   async function checkGuestInput(responses) {
     let errorText = [];
     let obo;
+    let obo_id;
     if (!state.session.guest_checkout_prompts) {
       state.session.guest_checkout_prompts = [{
         prompt: "Who are you visiting today?",
@@ -341,6 +342,7 @@ export default ({ onSave, onClose }) => {
             }
             case 'match': {
               obo = (`${validation.personRec.name.first.trim()} ${validation.personRec.name.last.trim()}${validation.personRec.location ? ' (' + validation.personRec.location + ')' : ''}`).trim();
+              obo_id = validation.personRec.person_id;
               responses[x] = obo;
               break;
             }
@@ -353,7 +355,7 @@ export default ({ onSave, onClose }) => {
         }
       }
     };
-    return { obo, errorText, responses };
+    return { obo, obo_id, errorText, responses };
   }
 
   async function putCheckout(reqRec, options) {
@@ -1000,7 +1002,7 @@ export default ({ onSave, onClose }) => {
                   setForceRedisplay(!forceRedisplay);
                 }}
                 onSave={async (responses) => {
-                  let { obo, errorText } = await checkGuestInput(responses);
+                  let { obo, obo_id, errorText } = await checkGuestInput(responses);
                   reactData.errorText = errorText;
                   if (reactData.errorText.length === 0) {
                     // Everything is good - go ahead and check them in
@@ -1012,6 +1014,7 @@ export default ({ onSave, onClose }) => {
                       request_id: `${reactData.personRec.person_id}_checkout`,
                       requestor: reactData.personRec.person_id,
                       on_behalf_of: obo,
+                      obo_id: obo_id || reactData.personRec.person_id,
                       request_type: 'checkout',
                       request_date: now.timestamp,
                       original_request: (reactData.isVendor ? { "vendor_company": [reactData.personRec.location] } : {}),
@@ -1120,7 +1123,7 @@ export default ({ onSave, onClose }) => {
                 let guestName = returnValues[0];
                 let vendorCompany = returnValues[1];
                 let contactNumber = returnValues[2];
-                let { obo, errorText, responses } = await checkGuestInput(returnValues.slice(3));
+                let { obo, obo_id, errorText, responses } = await checkGuestInput(returnValues.slice(3));
                 returnValues = returnValues.slice(0, 3).concat(responses);
                 if (errorText.length > 0) {
                   reactData.errorText = [null, null, null].concat(errorText);
@@ -1196,6 +1199,7 @@ export default ({ onSave, onClose }) => {
                     request_id: `${addedPerson.personRec.person_id}_checkout`,
                     requestor: addedPerson.personRec.person_id,
                     on_behalf_of: obo,
+                    obo_id: obo_id || addedPerson.personRec.person_id,
                     request_type: 'checkout',
                     request_date: now.timestamp,
                     original_request: (vendorCompany ? { "vendor_company": [addedPerson.personRec.location] } : {}),
