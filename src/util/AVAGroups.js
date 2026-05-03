@@ -1292,11 +1292,26 @@ export async function addMember(pPerson, pClient, pGroup, options = {}) {
   if (allGroupsToWrite.size === 0) { return; }
 
   const groupsArray = Array.from(allGroupsToWrite);
-  let peopleRec = await getPerson(pPerson);
 
-  // Single People update: add all new groups in one write
+  // Cascade context: personGroups accumulates each person's latest known groups so
+  // subsequent rule-triggered calls build on the already-written state.
+  // personRecs caches the full People record to avoid redundant DB reads across hops.
+  const personGroups = options._personGroups || new Map();
+  const personRecs = options._personRecs || new Map();
+  let peopleRec;
+  if (personRecs.has(pPerson)) {
+    peopleRec = personRecs.get(pPerson);
+  } else {
+    peopleRec = await getPerson(pPerson);
+    if (peopleRec?.person_id) { personRecs.set(pPerson, peopleRec); }
+  }
+
+  // Single People update: add all new groups in one write.
+  // Use personGroups (accumulated cascade state) as the base when available.
+  let newGroupList;
   if (peopleRec?.person_id) {
-    let newGroupList = makeArray(peopleRec.groups);
+    const baseGroups = personGroups.has(pPerson) ? personGroups.get(pPerson) : makeArray(peopleRec.groups);
+    newGroupList = [...baseGroups];
     let changed = false;
     for (const g of groupsArray) {
       if (!newGroupList.includes(g)) { newGroupList.push(g); changed = true; }
@@ -1313,14 +1328,31 @@ export async function addMember(pPerson, pClient, pGroup, options = {}) {
         .promise()
         .catch(error => { clt({ 'Bad update to People in addMember - caught error is': error }); });
     }
+    // Keep cascade context current so the next rule-triggered call for this person is accurate
+    personGroups.set(pPerson, newGroupList);
+  } else {
+    newGroupList = groupsArray;
   }
 
-  // PeopleGroups: put/overwrite one record per group in the chain (leaf + all ancestors)
+  // PeopleGroups: write one record per group in the chain (leaf + all ancestors).
+  // For rule-triggered adds (membershipSource === 'withData'):
+  //   - skip if an existing 'manual' record is present (admin override is permanent)
+  //   - skip if already active (preserves the original join_date)
+  // For manual adds: always overwrite (existing behaviour).
+  const isRuleTriggered = options.membershipSource === 'withData';
   const joinDate = makeDate(new Date()).numeric;
   const displayName = (peopleRec?.person_id
     ? `${peopleRec.name.last}, ${peopleRec.name.first}`
     : `${pPerson}, Unknown Account`);
   for (const g of groupsArray) {
+    if (isRuleTriggered) {
+      const existingPG = await dbClient
+        .get({ TableName: 'PeopleGroups', Key: { client_group_id: pClient + '~' + g, person_id: pPerson } })
+        .promise().catch(() => null);
+      const existing = existingPG?.Item;
+      if (existing?.membership_source === 'manual') { continue; }   // admin override — never touch
+      if (existing?.membership_status === 'active') { continue; }    // already set — preserve join_date
+    }
     await dbClient
       .put({
         Item: {
@@ -1337,19 +1369,23 @@ export async function addMember(pPerson, pClient, pGroup, options = {}) {
       .promise()
       .catch(error => { clt({ 'Bad put to PeopleGroups in addMember - caught error is': error }); });
   }
-  // Return the person's complete new group list (leaf + ancestors) for caller use
-  const finalGroupList = peopleRec?.person_id ? makeArray(peopleRec.groups).concat(groupsArray.filter(g => !makeArray(peopleRec.groups).includes(g))) : groupsArray;
 
-  // Fire onAdd rules for each leaf group written (only at top-level calls, not recursive rule-triggered calls)
-  if (!options._ruleDepth) {
-    for (const g of leafGroupsRequested) {
-      if (allGroupsToWrite.has(g)) {  // only groups that actually passed the leaf check
-        await applyGroupRules('onAdd', pPerson, pClient, g, 1);
+  // Fire onAdd rules for each group written — leaf + ancestors.
+  // firedRules tracks (triggerType:group_id:person_id) keys already processed in this cascade,
+  // preventing any group's rules from firing twice for the same person while still allowing
+  // full rule chains (rules triggered by rules) to propagate.
+  {
+    const firedRules = options._firedRules || new Set();
+    for (const g of allGroupsToWrite) {
+      const key = `onAdd:${g}:${pPerson}`;
+      if (!firedRules.has(key)) {
+        firedRules.add(key);
+        await applyGroupRules('onAdd', pPerson, pClient, g, firedRules, personGroups, personRecs);
       }
     }
   }
 
-  return finalGroupList;
+  return newGroupList;
 }
 
 export async function removeMember(pPerson, pClient, pGroup, options = {}) {
@@ -1395,8 +1431,13 @@ export async function removeMember(pPerson, pClient, pGroup, options = {}) {
     .filter(row => row.client_group_id.startsWith(pClient + '~'))
     .map(row => row.client_group_id.split('~')[1]);
 
+  // Cascade context: use accumulated groups and cached People records if available.
+  const personGroups = options._personGroups || new Map();
+  const personRecs = options._personRecs || new Map();
+  const effectiveGroups = personGroups.has(pPerson) ? personGroups.get(pPerson) : currentGroups;
+
   // The remaining leaf groups after this removal (used for orphan ancestor check)
-  const remainingLeafs = currentGroups.filter(g => {
+  const remainingLeafs = effectiveGroups.filter(g => {
     // A group is a leaf if it has no children
     return !parent_of?.[g]?.length && !leafGroupsToRemove.includes(g);
   });
@@ -1422,7 +1463,7 @@ export async function removeMember(pPerson, pClient, pGroup, options = {}) {
 
   // Single People update: remove all affected groups in one write
   // ConditionExpression guards against accidentally creating a stub People record for a non-existent person
-  const newGroupList = currentGroups.filter(g => !allGroupsToRemove.includes(g));
+  const newGroupList = effectiveGroups.filter(g => !allGroupsToRemove.includes(g));
   await dbClient
     .update({
       Key: { person_id: pPerson },
@@ -1439,6 +1480,9 @@ export async function removeMember(pPerson, pClient, pGroup, options = {}) {
       }
     });
 
+  // Keep cascade context current so subsequent rule-triggered calls for this person are accurate
+  personGroups.set(pPerson, newGroupList);
+
   // PeopleGroups: soft-delete all affected rows (leaf + orphaned ancestors)
   const removedDate = makeDate(new Date()).numeric;
   for (const g of allGroupsToRemove) {
@@ -1453,10 +1497,16 @@ export async function removeMember(pPerson, pClient, pGroup, options = {}) {
       .catch(error => { clt({ 'Bad update to PeopleGroups in removeMember - caught error is': error }); });
   }
 
-  // Fire onRemove rules for each leaf group removed (only at top-level calls)
-  if (!options._ruleDepth) {
-    for (const g of leafGroupsToRemove) {
-      await applyGroupRules('onRemove', pPerson, pClient, g, 1);
+  // Fire onRemove rules for each group removed — leaf + orphaned ancestors.
+  // firedRules prevents the same group's rules from firing twice for the same person in a cascade.
+  {
+    const firedRules = options._firedRules || new Set();
+    for (const g of allGroupsToRemove) {
+      const key = `onRemove:${g}:${pPerson}`;
+      if (!firedRules.has(key)) {
+        firedRules.add(key);
+        await applyGroupRules('onRemove', pPerson, pClient, g, firedRules, personGroups, personRecs);
+      }
     }
   }
 
@@ -1489,9 +1539,10 @@ async function getFamilyMembers(person_id, client_id) {
 /**
  * Loads the group record for group_id, finds rules matching triggerType ('onAdd' | 'onRemove'),
  * resolves the who-list for each rule/action, and calls addMember or removeMember as appropriate.
- * ruleDepth is passed through as options._ruleDepth to prevent infinite recursion.
+ * firedRules (a Set) is threaded through all recursive calls to prevent any group's rules from
+ * firing more than once for the same person in a single cascade.
  */
-async function applyGroupRules(triggerType, person_id, client_id, group_id, ruleDepth) {
+async function applyGroupRules(triggerType, person_id, client_id, group_id, firedRules, personGroups = new Map(), personRecs = new Map()) {
   // Load the group record to get group_rules
   const gRec = await dbClient
     .get({
@@ -1523,7 +1574,9 @@ async function applyGroupRules(triggerType, person_id, client_id, group_id, rule
         }
         whoIds = (who === 'primary')
           ? (family.primary_id ? [family.primary_id] : [])
-          : family.all_ids;
+          : (who === 'otherFamily')
+            ? family.all_ids.filter(id => id !== person_id)
+            : family.all_ids;
       }
 
       const where = action.where?.length ? action.where : [group_id];
@@ -1531,9 +1584,9 @@ async function applyGroupRules(triggerType, person_id, client_id, group_id, rule
       for (const targetPerson of whoIds) {
         for (const targetGroup of where) {
           if (action.action === 'addMember') {
-            await addMember(targetPerson, client_id, targetGroup, { _ruleDepth: ruleDepth });
+            await addMember(targetPerson, client_id, targetGroup, { _firedRules: firedRules, _personGroups: personGroups, _personRecs: personRecs, membershipSource: 'withData' });
           } else if (action.action === 'removeMember') {
-            await removeMember(targetPerson, client_id, targetGroup, { _ruleDepth: ruleDepth });
+            await removeMember(targetPerson, client_id, targetGroup, { _firedRules: firedRules, _personGroups: personGroups, _personRecs: personRecs });
           }
         }
       }
@@ -1554,6 +1607,48 @@ export async function getPersonGroups(person_id, client_id) {
   return (pgResult?.Items || [])
     .filter(row => row.client_group_id.startsWith(client_id + '~'))
     .map(row => row.client_group_id.split('~')[1]);
+}
+
+/**
+ * Fires onAdd rules for every current active member of the given group.
+ * Useful for backfilling rules that were created after members were already added.
+ *
+ * @param {string}   group_id         The group whose onAdd rules should be backfilled.
+ * @param {string}   client_id        Client identifier.
+ * @param {function} onProgress       Optional callback({ done, total, person_id }) called after each person.
+ */
+export async function backfillOnAddRule(group_id, client_id, onProgress) {
+  // Load all PeopleGroups records for this group, filter inactive in JS
+  let allItems = [];
+  let lastKey;
+  const cgid = `${client_id}~${group_id}`;
+  cl({ 'backfillOnAddRule: querying': cgid });
+  do {
+    const params = {
+      TableName: 'PeopleGroups',
+      IndexName: 'status-index',
+      KeyConditionExpression: 'client_group_id = :cgid',
+      ExpressionAttributeValues: { ':cgid': cgid },
+    };
+    if (lastKey) { params.ExclusiveStartKey = lastKey; }
+    const result = await dbClient.query(params).promise()
+      .catch(error => { clt({ 'backfillOnAddRule query error': error }); return null; });
+    const page = (result?.Items || []).filter(item =>
+      !item.membership_status || item.membership_status === 'active'
+    );
+    allItems = allItems.concat(page);
+    lastKey = result?.LastEvaluatedKey;
+  } while (lastKey);
+
+  cl({ 'backfillOnAddRule: found members': allItems.length });
+  const total = allItems.length;
+  for (let i = 0; i < allItems.length; i++) {
+    const person_id = allItems[i].person_id;
+    const firedRules = new Set([`onAdd:${group_id}:${person_id}`]);
+    await applyGroupRules('onAdd', person_id, client_id, group_id, firedRules);
+    if (onProgress) { onProgress({ done: i + 1, total, person_id }); }
+  }
+  return total;
 }
 
 /**

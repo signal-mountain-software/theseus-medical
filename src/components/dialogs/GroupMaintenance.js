@@ -691,6 +691,7 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
                 className={AVAClass.AVAButton}
                 style={{ backgroundColor: 'lightcyan', color: 'black' }}
                 size='small'
+                disabled={!!reactData.unsavedRuleEdit}
               >
                 {reactData.isMobile ? 'Save' : 'Save/Continue'}
               </Button>
@@ -709,6 +710,7 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
                 className={AVAClass.AVAButton}
                 style={{ backgroundColor: 'green', color: 'white' }}
                 size='small'
+                disabled={!!reactData.unsavedRuleEdit}
               >
                 {'Save/Finish'}
               </Button>

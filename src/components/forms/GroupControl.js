@@ -120,6 +120,9 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
+// Persists expand/collapse state across GroupControl mounts within the same session
+let _savedLevelHidden = null;
+
 export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedGroup = null, preSelectedFunction = null, onCancel = () => { }, onRefresh = () => { }, renderAsDialog = true }) => {
 
   const isMounted = React.useRef(false);
@@ -161,7 +164,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     groupsManagedObject: Object.keys(groupsManagedObject),
     groupMemberList: [],
     isDarkMode: useMediaQuery('(prefers-color-scheme: dark)'),
-    levelHidden: [],
+    levelHidden: _savedLevelHidden || [],
     loading: false,
     needRef: false,
     newGroups: {},
@@ -493,18 +496,19 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups, { memberGroupIds: newGroupList }) });
     }
 
-    // update right-panel member list if the currently selected group is in the new set
+    // Refresh the current group's member list live (catches rule-triggered side effects)
     let reactUpdObj = {
+      updatesMade: true,
       alert: {
         severity: 'success',
         title: 'Success!',
         message: `${firstName} was added to ${listFromArray(addedGroups.map(g => groupsManagedObject[g]?.group_name || g))}`
       }
     };
-    if (reactData.selectedGroupRec && newGroupList.includes(reactData.selectedGroup_id) && !reactData.selectedGroupMembers[person_id]) {
-      reactData.selectedGroupMembers[person_id] = { ...draggedFrom.personObj, groups: newGroupList };
-      reactUpdObj.selectedGroupMembers = reactData.selectedGroupMembers;
-      reactUpdObj.sortedGroupMembers = sortGroupMembers(reactData.selectedGroupMembers);
+    if (reactData.selectedGroup_id) {
+      const freshMembers = await selectMembers(reactData.selectedGroup_id, { live: true });
+      reactUpdObj.selectedGroupMembers = freshMembers;
+      reactUpdObj.sortedGroupMembers = sortGroupMembers(freshMembers);
     }
     updateReactData(reactUpdObj, true);
   };
@@ -557,16 +561,19 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups, { memberGroupIds: newGroupList }) });
     }
 
-    // remove person from right-panel member list
-    delete reactData.selectedGroupMembers[person_id];
+    // Refresh the current group's member list live (catches rule-triggered side effects)
+    const freshMembersAfterMove = reactData.selectedGroup_id
+      ? await selectMembers(reactData.selectedGroup_id, { live: true })
+      : reactData.selectedGroupMembers;
     updateReactData({
+      updatesMade: true,
       alert: {
         severity: 'success',
         title: 'Success!',
         message: `${firstName} was ${addedGroupNames.length ? `added to ${listFromArray(addedGroupNames)} and ` : ''}removed from ${listFromArray(removedGroupNames)}`
       },
-      selectedGroupMembers: reactData.selectedGroupMembers,
-      sortedGroupMembers: sortGroupMembers(reactData.selectedGroupMembers),
+      selectedGroupMembers: reactData.selectedGroup_id ? freshMembersAfterMove : reactData.selectedGroupMembers,
+      sortedGroupMembers: sortGroupMembers(reactData.selectedGroup_id ? freshMembersAfterMove : reactData.selectedGroupMembers),
     }, true);
   };
 
@@ -598,16 +605,19 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups, { memberGroupIds: newGroupList }) });
     }
 
-    // remove person from right-panel member list
-    delete reactData.selectedGroupMembers[person_id];
+    // Refresh the current group's member list live (catches rule-triggered side effects)
+    const freshMembersAfterRemove = reactData.selectedGroup_id
+      ? await selectMembers(reactData.selectedGroup_id, { live: true })
+      : reactData.selectedGroupMembers;
     updateReactData({
+      updatesMade: true,
       alert: removedGroupNames.length > 0 ? {
         severity: 'success',
         title: 'Success!',
         message: `${firstName} was removed from ${listFromArray(removedGroupNames)}`
       } : false,
-      selectedGroupMembers: reactData.selectedGroupMembers,
-      sortedGroupMembers: sortGroupMembers(reactData.selectedGroupMembers),
+      selectedGroupMembers: reactData.selectedGroup_id ? freshMembersAfterRemove : reactData.selectedGroupMembers,
+      sortedGroupMembers: sortGroupMembers(reactData.selectedGroup_id ? freshMembersAfterRemove : reactData.selectedGroupMembers),
     }, true);
   };
 
@@ -1286,7 +1296,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                   // Some or none selected → select all missing in subtree
                                   const toAdd = subtree.filter(id => !currentIds.includes(id));
                                   newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
-                                  for (const id of toAdd) { newMembersPerGroup[id] = await selectMembers(id); }
+                                  for (const id of toAdd) { newMembersPerGroup[id] = await selectMembers(id, { live: reactData.updatesMade }); }
                                   newIds = [...currentIds, ...toAdd];
                                 }
                                 // Every selected group contributes its members.
@@ -1343,6 +1353,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                         reactData.levelHidden[i] = false;
                                       }
                                     }
+                                    _savedLevelHidden = reactData.levelHidden;
                                     updateReactData({
                                       levelHidden: reactData.levelHidden
                                     }, true);
@@ -1357,6 +1368,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                     for (let i = listIndex + 1; ((i < kLL) && (groupsManagedObject[keyList[i]].level > groupsManagedObject[listEntry].level)); i++) {
                                       reactData.levelHidden[i] = true;
                                     }
+                                    _savedLevelHidden = reactData.levelHidden;
                                     updateReactData({
                                       levelHidden: reactData.levelHidden
                                     }, true);
@@ -1912,7 +1924,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
           }}
           onClose={async () => {
             let reactUpd = {
-              viewPeopleMaintenance: false
+              viewPeopleMaintenance: false,
+              updatesMade: true,
             };
             if (reactData.selectedGroup_id) {
               // Live DB fetch (bypass cache) so edits are visible immediately
@@ -1972,7 +1985,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 groupsManagedObject[reactData.viewGroupMaintenance].group_name = response.rename;
               }
               if (response.membership) {
-                reactUpd.selectedGroupMembers = await selectMembers(reactData.viewGroupMaintenance);
+                reactUpd.updatesMade = true;
+                reactUpd.selectedGroupMembers = await selectMembers(reactData.viewGroupMaintenance, { live: true });
                 reactUpd.sortedGroupMembers = sortGroupMembers(reactUpd.selectedGroupMembers);
               }
             }
