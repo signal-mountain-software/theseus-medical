@@ -438,6 +438,13 @@ export default ({ onClose, options = {} }) => {
         });
       }
 
+      // Pre-populate fixed values for hidden fields
+      Object.entries(fieldData).forEach(([fieldName, fieldRec]) => {
+        if (fieldRec && fieldRec.value?.type === 'hidden' && fieldRec.value?.fixed !== undefined) {
+          updatedFieldValues[fieldName] = fieldRec.value.fixed;
+        }
+      });
+
       return {
         ...prev,
         form_fields: fieldData,
@@ -642,13 +649,14 @@ export default ({ onClose, options = {} }) => {
     }));
   };
 
-  const showAlert = ({ severity = 'info', title, message, action = null, autoHide = true }) => {
+  const showAlert = ({ severity = 'info', title, message, detail = null, action = null, autoHide = true }) => {
     setReactData(prev => ({
       ...prev,
       alert: {
         severity,
         title,
         message,
+        detail,
         action,
         autoHide
       }
@@ -1502,7 +1510,7 @@ export default ({ onClose, options = {} }) => {
       const sessionRecord = {
         session_id: member.proposed_user_id,
         client_id: reactData.client_id,
-        last_login: "password",
+        last_login: null,
         method: "QuickAdd",
         patient_display_name: memberName,
         patient_id: member.proposed_user_id,
@@ -1515,6 +1523,28 @@ export default ({ onClose, options = {} }) => {
         user_id: member.proposed_user_id,
         last_update: new Date().toISOString()
       };
+
+      // Apply any form_fields that specify saveAs with a sessionRec. prefix
+      const fieldValues = member.field_values || {};
+      Object.entries(member.form_fields || {}).forEach(([fieldName, formRec]) => {
+        if (!Object.prototype.hasOwnProperty.call(fieldValues, fieldName)) { return; }
+        const rawSaveAs = formRec.saveAs || formRec.value?.saveAs || formRec.prompt?.saveAs || false;
+        if (!rawSaveAs) { return; }
+        const saveAs = (typeof rawSaveAs === 'string')
+          ? rawSaveAs.trim().replace(/^['"]+|['"]+$/g, '').replace(/[;,]+$/g, '')
+          : String(rawSaveAs);
+        const keys = saveAs.split('.');
+        const rootKey = (keys[0] || '').toLowerCase();
+        if (!rootKey.startsWith('session')) { return; }
+        keys.shift(); // remove 'sessionRec' / 'sessionRecord' prefix
+        if (keys.length === 0) { return; }
+        let obj = sessionRecord;
+        for (let i = 0; i < keys.length - 1; i++) {
+          if (!obj[keys[i]]) { obj[keys[i]] = {}; }
+          obj = obj[keys[i]];
+        }
+        obj[keys[keys.length - 1]] = fieldValues[fieldName];
+      });
 
       console.log('Saving SessionsV2 record:', sessionRecord);
 
@@ -1683,6 +1713,7 @@ export default ({ onClose, options = {} }) => {
           if (saveAs) {
             const keys = String(saveAs).split('.');
             const rootKey = (keys[0] || '').toLowerCase();
+            if (rootKey.startsWith('session')) { return; } // sessionRec fields are handled by saveSessionsV2Record
             if (rootKey.startsWith('person') || rootKey.startsWith('people')) { keys.shift(); } // remove leading 'person' if present
             let obj = peopleRecord;
             for (let i = 0; i < keys.length - 1; i++) {
@@ -1777,6 +1808,13 @@ export default ({ onClose, options = {} }) => {
         TableName: 'People',
         Item: peopleRecord
       });
+
+      // Register group memberships via addMember now that the People record exists
+      const groupsToAdd = groups.filter(g => g !== '__TOP__' && g !== 'ALL');
+      if (groupsToAdd.length > 0) {
+        await addMember(peopleRecord.person_id, reactData.client_id, groupsToAdd)
+          .catch(err => console.error('addMember error during QuickAdd:', err));
+      }
 
       // update the cross-reference table PeopleAccounts
       // Note here...  we are intentionally NOT removing old records from PeopleAccounts because we want to preserve the history of all accounts that have ever been associated with this person_id
@@ -2064,7 +2102,9 @@ export default ({ onClose, options = {} }) => {
         clientStyle = clientStyleRec.Item.customization_value;
       }
     }
-    const useNameOnly = (clientStyle?.client_suffix === '*none');
+    const rawSuffix = clientStyle?.client_suffix;
+    const useNameOnly = (rawSuffix === '*none');
+    const customSuffix = (!useNameOnly && rawSuffix) ? rawSuffix : null;
 
     let counter = '';
     let proposedId = '';
@@ -2075,6 +2115,8 @@ export default ({ onClose, options = {} }) => {
     while (attempts < maxAttempts) {
       if (useNameOnly) {
         proposedId = `${firstInitial}${cleanLastName}${counter}`.toLowerCase();
+      } else if (customSuffix) {
+        proposedId = `${firstInitial}${cleanLastName}${counter}-${customSuffix}`.toLowerCase();
       } else {
         proposedId = `${firstInitial}${cleanLastName}${counter}-${clientId}`.toLowerCase();
       }
@@ -2195,10 +2237,15 @@ export default ({ onClose, options = {} }) => {
         `${getFamilyMemberName(member)}: ${member.proposed_user_id}`
       ).join(', ');
 
+      const primaryAccountConfig = reactData.family_members[0]?.account_config;
+      const assignedDetail = primaryAccountConfig?.on_user_assigned || null;
+
       showAlert({
         severity: 'success',
         title: 'User IDs Generated',
-        message: `User IDs generated: ${userIdList}`
+        message: `User IDs generated: ${userIdList}`,
+        detail: assignedDetail,
+        autoHide: false
       });
     } catch (error) {
       console.error('Error in completeProcess:', error);
@@ -2712,6 +2759,11 @@ export default ({ onClose, options = {} }) => {
                   }
 
                   const fieldType = fieldData.value?.type || 'text';
+
+                  // Hidden fields carry a fixed value but render nothing
+                  if (fieldType === 'hidden') {
+                    return null;
+                  }
 
                   // If field type is header, just display the text
                   if (fieldType === 'header') {
@@ -3483,6 +3535,12 @@ export default ({ onClose, options = {} }) => {
           >
             {reactData.alert.title && <AlertTitle>{reactData.alert.title}</AlertTitle>}
             {reactData.alert.message}
+            {reactData.alert.detail && (
+              <div
+                style={{ marginTop: 6 }}
+                dangerouslySetInnerHTML={{ __html: reactData.alert.detail }}
+              />
+            )}
           </Alert>
         </Snackbar>
       }
