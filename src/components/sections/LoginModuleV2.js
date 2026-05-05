@@ -784,7 +784,9 @@ const LoginModuleV2 = ({
 
   const getNextStepFromSession = (sessionRec) => {
     if (!sessionRec) return 'user';
-    const requiresPassword = !!sessionRec.requirePassword || !!clientStyle?.mandatory_passwords;
+    const requiresPassword = !!sessionRec.requirePassword || !!sessionRec.forceSetPassword
+      || !!clientStyle?.mandatory_passwords
+      || (!!clientStyle?.mandatory_passwords && !sessionRec.last_login);
     return requiresPassword ? 'password' : 'ready';
   };
 
@@ -977,7 +979,8 @@ const LoginModuleV2 = ({
   };
 
   const handleSubmitPassword = async () => {
-    if (resolvedSession && resolvedSession.last_login) {
+    const isForceSet = !!(resolvedSession?.forceSetPassword || (clientStyle?.mandatory_passwords && !resolvedSession?.last_login));
+    if (!isForceSet && resolvedSession && resolvedSession.last_login) {
       const storedPassword = String(resolvedSession.last_login);
       if (String(password) !== storedPassword) {
         setAlertMessage('Incorrect password. Please try again.');
@@ -986,6 +989,17 @@ const LoginModuleV2 = ({
       }
     }
     const finalUserId = resolvedUserId || userId;
+    if (isForceSet) {
+      await dbClient.update({
+        Key: { session_id: finalUserId },
+        UpdateExpression: 'set last_login = :p, forceSetPassword = :f',
+        ExpressionAttributeValues: { ':p': password, ':f': false },
+        TableName: 'SessionsV2',
+      }).promise().catch(() => null);
+      const updatedSession = { ...resolvedSessionRef.current, last_login: password, forceSetPassword: false };
+      resolvedSessionRef.current = updatedSession;
+      setResolvedSession(updatedSession);
+    }
     try {
       await Auth.signIn({
         username: finalUserId,
@@ -1273,6 +1287,11 @@ const LoginModuleV2 = ({
                 className={AVAClass.AVAClientBackground}
                 style={{ backgroundColor: isDarkMode ? 'darkgreen' : 'white', color: clientStyle?.textColor || 'inherit', borderRadius: 30, padding: 16 }}
               >
+                <Typography style={{ marginLeft: 8, marginBottom: 8, fontWeight: 'bold' }}>
+                  {(resolvedSession?.forceSetPassword || (clientStyle?.mandatory_passwords && !resolvedSession?.last_login))
+                    ? 'Create a new Password'
+                    : 'Enter your password'}
+                </Typography>
                 <TextField
                   label='Password'
                   type='password'
