@@ -1230,8 +1230,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                   })}>
                   {`${state.session.client_name} Groups`}
                 </Typography>
-                <Paper component={Box} elevation={0} overflow='auto' square
-                  style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
+                <Paper component={Box} width='100%' elevation={0} overflow='auto' square
+                  style={{ scrollbarWidth: 'thin', flexGrow: 1, display: 'flex' }}
                 >
                   <Box display='flex' flexDirection='column'
                     key={`activity-list_${Object.keys(groupsManagedObject).length}`}
@@ -1419,6 +1419,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 justifyContent='flex-start'
                 alignItems='flex-start'
                 borderLeft={isSmallScreen() ? 0 : 2}
+                marginLeft='16px'
                 paddingLeft={'32px'}
               >
                 <Typography
