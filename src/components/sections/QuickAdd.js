@@ -85,6 +85,15 @@ const useStyles = makeStyles(theme => ({
     minHeight: '450px',
     maxHeight: '80vh',
     overflow: 'auto'
+  },
+  selectFieldset: {
+    borderColor: theme.palette.type === 'dark' ? 'rgba(255, 255, 255, 0.23)' : 'rgba(0, 0, 0, 0.23)',
+  },
+  selectLabel: {
+    color: theme.palette.type === 'dark' ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.54)',
+  },
+  selectOptions: {
+    color: theme.palette.text.primary,
   }
 }));
 
@@ -2800,6 +2809,7 @@ export default ({ onClose, options = {} }) => {
                         >
                           <fieldset
                             aria-hidden="true"
+                            className={classes.selectFieldset}
                             style={{
                               textAlign: 'left',
                               position: 'absolute',
@@ -2815,7 +2825,6 @@ export default ({ onClose, options = {} }) => {
                               borderWidth: '1px',
                               overflow: 'hidden',
                               minWidth: '0%',
-                              borderColor: 'rgba(0, 0, 0, 0.23)'
                             }}
                           >
                             <legend
@@ -2834,19 +2843,18 @@ export default ({ onClose, options = {} }) => {
                                 whiteSpace: 'nowrap'
                               }}
                             >
-                              <span style={{
+                              <span className={classes.selectLabel} style={{
                                 paddingLeft: '5px',
                                 paddingRight: '5px',
                                 display: 'inline-block',
                                 fontSize: '1em',
                                 marginTop: '-16px',
-                                color: 'rgba(0, 0, 0, 0.5)'
                               }}>
                                 {fieldLabel} {isRequired && '*'}
                               </span>
                             </legend>
                           </fieldset>
-                          <Box style={{ display: 'flex', color: 'rgba(0, 0, 0, 0.5)', flexDirection: 'column', gap: '4px', paddingTop: '4px' }}>
+                          <Box className={classes.selectOptions} style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingTop: '4px' }}>
                             {selectOptions.map((option, index) => (
                               <FormControlLabel
                                 key={`${fieldName}_${index}`}
@@ -2862,7 +2870,7 @@ export default ({ onClose, options = {} }) => {
                             ))}
                           </Box>
                           {fieldData.prompt?.help_text && (
-                            <Typography variant="caption" style={{ marginTop: '8px', marginLeft: '14px', marginRight: '14px', display: 'block', color: '#666' }}>
+                            <Typography variant="caption" className={classes.selectLabel} style={{ marginTop: '8px', marginLeft: '14px', marginRight: '14px', display: 'block' }}>
                               {fieldData.prompt.help_text}
                             </Typography>
                           )}
