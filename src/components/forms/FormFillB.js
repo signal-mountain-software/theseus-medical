@@ -8,7 +8,7 @@ import { makeDate, makeTime, addDays } from '../../util/AVADateTime';
 import AVAConfirm from './AVAConfirm';
 import AVAUploadFile from '../../util/AVAUploadFile';
 
-import { printFromHTML, sendMessages } from '../../util/AVAMessages';
+import { printFromHTML, sendMessages, printDocumentB } from '../../util/AVAMessages';
 import { printEmptyDocument } from '../../util/AVAMessages';
 import SignatureCanvas from 'react-signature-canvas';
 import Select from "react-dropdown-select";
@@ -3515,6 +3515,38 @@ export default ({ request = {}, onClose }) => {
         });
         onClose();
       }
+      else if (reactData.options.mode === 'printPDF') {
+        await initialize();
+        // Collect signature data from field values (signature canvases may not be mounted)
+        let signatures = [];
+        for (const fieldName in reactData.fields) {
+          if (reactData.fields[fieldName]?.type === 'signature') {
+            const sigRefNumber = reactData.fields[fieldName].options?.sigRefNumber ?? 0;
+            if (reactData.fields[fieldName].value && String(reactData.fields[fieldName].value).startsWith('data:image/')) {
+              signatures[sigRefNumber] = reactData.fields[fieldName].value;
+            }
+          }
+        }
+        // Use getDisplayState to get the filtered, resolved section/field list
+        const { displaySections } = getDisplayState();
+        await printDocumentB({
+          documentList: [{
+            sections: displaySections,
+            fields: reactData.fields,
+            signatures,
+            docID: reactData.document_id,
+            client_id: state.session.client_id,
+            title: reactData.document_title
+          }]
+        });
+        onClose('print', {
+          document_id: reactData.document_id,
+          document_title: reactData.document_title,
+          document_status: 'aborted',
+          pertains_to: reactData.pertains_to,
+          formLocked: reactData.docRec?.formLocked
+        });
+      }
       else {
         await initialize();
         if (!reactData.sections) {
@@ -3821,10 +3853,12 @@ export default ({ request = {}, onClose }) => {
         onClose={handleAbort}
         classes={{ paper: classes.clientBackground }}
         maxWidth={false}
+        BackdropProps={reactData.options?.mode === 'printPDF' ? { style: { visibility: 'hidden' } } : undefined}
         PaperProps={{
           style: {
             minWidth: '80vw',
-            maxWidth: '80vw'
+            maxWidth: '80vw',
+            ...(reactData.options?.mode === 'printPDF' ? { visibility: 'hidden', pointerEvents: 'none' } : {})
           }
         }}
       >
@@ -4479,6 +4513,42 @@ export default ({ request = {}, onClose }) => {
                       }}
                       edge="start"
                     />
+                  }
+                  {!reactData.clientSampleMode && !reactData.formRec.upload_only &&
+                    <Button
+                      onClick={async () => {
+                        if (valuesChanged()) {
+                          const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
+                          await handleSave({ document_id, final: false });
+                        }
+                        let signatures = [];
+                        for (const fieldName in reactData.fields) {
+                          if (reactData.fields[fieldName]?.type === 'signature') {
+                            const sigRefNumber = reactData.fields[fieldName].options?.sigRefNumber ?? 0;
+                            if (reactData.fields[fieldName].value && String(reactData.fields[fieldName].value).startsWith('data:image/')) {
+                              signatures[sigRefNumber] = reactData.fields[fieldName].value;
+                            }
+                          }
+                        }
+                        const { displaySections } = getDisplayState();
+                        await printDocumentB({
+                          documentList: [{
+                            sections: displaySections,
+                            fields: reactData.fields,
+                            signatures,
+                            docID: reactData.document_id,
+                            client_id: state.session.client_id,
+                            title: reactData.document_title
+                          }]
+                        });
+                      }}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'lightblue', color: 'black' }}
+                      size='small'
+                      startIcon={<PrintIcon />}
+                    >
+                      {'Print'}
+                    </Button>
                   }
                 </Box>
               }
