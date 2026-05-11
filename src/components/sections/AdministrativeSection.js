@@ -50,6 +50,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
       flexGrow={2} px={2} py={4} display='flex' flexDirection='column'
     >
       {(Object.keys(reactData.form_fields).length > 0) && Object.keys(reactData.form_fields).map((this_formField, cFNdx) => (
+        (reactData.form_fields[this_formField].adminSection !== false) &&
         (reactData.administrative_account || reactData.form_fields[this_formField].fieldRec.options?.non_admin) &&
         <React.Fragment
           key={`mainFrag_${cFNdx}`}
@@ -171,8 +172,8 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
               >
                 {reactData.form_fields[this_formField].value.map((this_value, this_valueNDX) => (
                   <Input
-                    id={`field__${this_formField}`}
-                    key={`field__${this_formField}`}
+                    id={`field__${this_formField}-${this_valueNDX}`}
+                    key={`field__${this_formField}-${this_valueNDX}`}
                     variant={'outlined'}
                     disabled={reactData.form_fields[this_formField].fieldRec.options?.viewOnly}
                     style={AVATextStyle({

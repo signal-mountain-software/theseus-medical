@@ -2,7 +2,7 @@
 import React from 'react';
 
 import { getPerson, getImage } from '../../util/AVAPeople';
-import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount, titleCase } from '../../util/AVAUtilities';
+import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount, titleCase, resolveData } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle, isDark } from '../../util/AVAStyles';
 import { determineClass, doesPersonMatchGroupRules, addMember, removeMember, getPersonGroups } from '../../util/AVAGroups';
 import { SET_GROUPS } from '../../contexts/Session/actions';
@@ -397,29 +397,148 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           };
         }
       }
-      let formFieldsRec = await dbClient
-        .query({
-          KeyConditionExpression: 'client_id = :c',
-          TableName: 'Form_Fields',
-          ExpressionAttributeValues: {
-            ':c': reactUpdObj.og.peopleRec.client_id
-          }
-        })
-        .promise()
-        .catch(error => { cl({ 'Error reading Form_Fields': error }); });
-      reactUpdObj.form_fields = {};
-      if (recordExists(formFieldsRec)) {
-        for (const this_fieldRec of formFieldsRec.Items) {
-          if (this_fieldRec.showOnProfile && this_fieldRec.value.saveAs) {
-            if ((this_fieldRec.value.saveAs.startsWith('personRec.')) || (this_fieldRec.value.saveAs.startsWith('peopleRec.'))) {
-              this_fieldRec.value.saveAs = this_fieldRec.value.saveAs.replace('personRec.', 'peopleRec.');
+      const userAccountClass = state.user?.account_class || '';
+      const isAdmin = ['master', 'admin'].includes(userAccountClass);
+      const isSupport = ['master', 'support', 'admin'].includes(userAccountClass);
+      const isMaster = userAccountClass === 'master';
+      const currentPersonId = state.user?.person_id || state.session?.patient_id;
+
+      const isAuthorizedByRules = (rules_input) => {
+        const rules = [rules_input].flat().filter(Boolean);
+        if (!rules.length) { return true; }
+        for (const rule of rules) {
+          switch (rule.split(':')[0]) {
+            case '*all': return true;
+            case '*admin': if (isAdmin) { return true; } break;
+            case '*support': if (isSupport) { return true; } break;
+            case '*master': if (isMaster) { return true; } break;
+            case 'group': {
+              const checkGroup = rule.split(':')[1];
+              if (state.groups?.memberGroupIds?.includes(checkGroup)) { return true; } break;
             }
-            reactUpdObj.form_fields[this_fieldRec.field_name] = {
-              fieldRec: this_fieldRec,
-              prompt: this_fieldRec.prompt.value,
-              value: unresolve({ object: reactUpdObj.og, key: this_fieldRec.value.saveAs.split('.') }),
-              snapshot: this_fieldRec.showOnSnapshot || false
+            case 'person': if (currentPersonId === rule.split(':')[1]) { return true; } break;
+            default: break;
+          }
+        }
+        return false;
+      };
+
+      const localdataFieldsDef = state.session?.profile_style?.localdata_fields;
+      reactUpdObj.form_fields = {};
+
+      if (Array.isArray(localdataFieldsDef) && localdataFieldsDef.length > 0) {
+        // ── localdata_fields path: drive form_fields from DataDictionaryV3 ──
+
+        const dictionaryCache = {};
+        const clientId = reactUpdObj.og.peopleRec.client_id;
+        const personId = reactUpdObj.og.peopleRec.person_id;
+
+        for (const entry of localdataFieldsDef) {
+          const { dd_field_key, show_on = 'both', viewOnly = false, authorized_to = ['*all'] } = entry;
+          if (!dd_field_key) { continue; }
+          if (!isAuthorizedByRules(authorized_to)) { continue; }
+
+          const ddGet = await dbClient
+            .get({
+              TableName: 'DataDictionaryV3',
+              Key: { client_id: clientId, field_key: dd_field_key }
+            })
+            .promise()
+            .catch(error => { cl({ 'Error reading DataDictionaryV3 for localdata_fields': error }); });
+
+          if (!recordExists(ddGet)) { continue; }
+          const ddRec = ddGet.Item;
+          dictionaryCache[`${clientId}::${dd_field_key}`] = ddRec;
+
+          const resolvedEntries = await resolveData(clientId, personId, [dd_field_key], {
+            dictionaryCache,
+            address_lookup: false,
+            resolve_address: false
+          });
+          const resolvedEntry = resolvedEntries[0] || {};
+          const resolvedValue = resolvedEntry.formatted ?? resolvedEntry.raw;
+
+          let fieldRec;
+          let currentValue;
+
+          if (entry.form_field) {
+            // Fetch the Form_Fields record to get prompt/type/saveAs/selection for editing
+            const ffGet = await dbClient
+              .get({
+                TableName: 'Form_Fields',
+                Key: { client_id: clientId, field_name: entry.form_field }
+              })
+              .promise()
+              .catch(error => { cl({ 'Error reading Form_Fields for localdata_fields': error }); });
+
+            if (recordExists(ffGet)) {
+              const ffRec = ffGet.Item;
+              if (ffRec.value?.saveAs) {
+                ffRec.value.saveAs = ffRec.value.saveAs.replace('personRec.', 'peopleRec.');
+              }
+              fieldRec = Object.assign({}, ffRec, {
+                options: Object.assign({}, ffRec.options, {
+                  viewOnly: viewOnly || !!ffRec.options?.viewOnly,
+                  non_admin: true,
+                })
+              });
+              currentValue = ffRec.value?.saveAs
+                ? unresolve({ object: reactUpdObj.og, key: ffRec.value.saveAs.split('.') })
+                : resolvedValue;
+            } else {
+              // form_field key present but record not found — fall back to viewOnly display
+              fieldRec = {
+                field_name: dd_field_key,
+                prompt: { value: ddRec.description || dd_field_key },
+                value: { type: 'text', saveAs: null },
+                options: { viewOnly: true, non_admin: true }
+              };
+              currentValue = resolvedValue;
+            }
+          } else {
+            // No form_field on DD record — display only
+            fieldRec = {
+              field_name: dd_field_key,
+              prompt: { value: ddRec.description || dd_field_key },
+              value: { type: 'text', saveAs: null },
+              options: { viewOnly: true, non_admin: true }
             };
+            currentValue = resolvedValue;
+          }
+
+          reactUpdObj.form_fields[dd_field_key] = {
+            fieldRec,
+            prompt: fieldRec.prompt?.value || ddRec.description || dd_field_key,
+            value: currentValue,
+            snapshot: (show_on === 'snapshot' || show_on === 'both'),
+            adminSection: (show_on === 'local' || show_on === 'both'),
+          };
+        }
+      } else {
+        // ── Legacy path: drive form_fields from Form_Fields table ──
+        let formFieldsRec = await dbClient
+          .query({
+            KeyConditionExpression: 'client_id = :c',
+            TableName: 'Form_Fields',
+            ExpressionAttributeValues: {
+              ':c': reactUpdObj.og.peopleRec.client_id
+            }
+          })
+          .promise()
+          .catch(error => { cl({ 'Error reading Form_Fields': error }); });
+        if (recordExists(formFieldsRec)) {
+          for (const this_fieldRec of formFieldsRec.Items) {
+            if (this_fieldRec.showOnProfile && this_fieldRec.value.saveAs) {
+              if ((this_fieldRec.value.saveAs.startsWith('personRec.')) || (this_fieldRec.value.saveAs.startsWith('peopleRec.'))) {
+                this_fieldRec.value.saveAs = this_fieldRec.value.saveAs.replace('personRec.', 'peopleRec.');
+              }
+              reactUpdObj.form_fields[this_fieldRec.field_name] = {
+                fieldRec: this_fieldRec,
+                prompt: this_fieldRec.prompt.value,
+                value: unresolve({ object: reactUpdObj.og, key: this_fieldRec.value.saveAs.split('.') }),
+                snapshot: this_fieldRec.showOnSnapshot || false
+              };
+            }
           }
         }
       }
@@ -614,6 +733,15 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         }
         if (addAccountList.length > 0) {
           reactUpdObj.addAccountList = addAccountList;
+        }
+      }
+      // Apply section_security overrides from profile_style
+      const sectionSecurity = state.session?.profile_style?.section_security;
+      if (sectionSecurity && typeof sectionSecurity === 'object') {
+        for (const this_section of reactUpdObj.sections) {
+          if (Object.prototype.hasOwnProperty.call(sectionSecurity, this_section.component_name)) {
+            this_section.isAuthorized = isAuthorizedByRules(sectionSecurity[this_section.component_name]);
+          }
         }
       }
       reactUpdObj.current = {
@@ -1701,7 +1829,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                   >
                     <Typography
                       style={AVATextStyle({ size: 1.5, bold: true, align: 'center', color: (isDark(this_section.color) ? 'cornsilk' : 'black') })} >
-                      {this_section.section_name.trim()}
+                      {(state.session?.profile_style?.section_names?.[this_section.component_name] || this_section.section_name).trim()}
                     </Typography>
                   </Box>
                   {this_section.isOpen &&

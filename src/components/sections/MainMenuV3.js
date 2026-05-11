@@ -45,6 +45,7 @@ import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
 
 import EditIcon from '@material-ui/icons/PersonOutlineOutlined';
+import CreateIcon from '@material-ui/icons/Create';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import SubscriptionIcon from '@material-ui/icons/CardMembership';
@@ -223,6 +224,10 @@ export default ({ start_at }) => {
     addMenuDialogPhone: '',
     deleteMenuConfirm: false,
     deleteMenuTarget: null,
+    editDescriptionDialog: false,
+    editDescriptionMenuId: null,
+    editDescriptionShort: '',
+    editDescriptionLong: '',
     showAddMessageTargetSearch: false,
     uiTilesOverrideLoaded: false,
     uiTilesOverride: null,
@@ -1182,6 +1187,51 @@ export default ({ start_at }) => {
         title: 'Item moved',
         message: 'The item was moved successfully.'
       }
+    }, true);
+  };
+
+  const handleSaveDescription = async () => {
+    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong } = reactData;
+    let saveWorked = true;
+    await dbClient
+      .update({
+        TableName: 'MenuV3',
+        Key: {
+          client_id: state.session.client_id,
+          menu_id: editDescriptionMenuId
+        },
+        UpdateExpression: 'set #d = :d',
+        ExpressionAttributeNames: { '#d': 'description' },
+        ExpressionAttributeValues: {
+          ':d': { short: editDescriptionShort, long: editDescriptionLong }
+        }
+      })
+      .promise()
+      .catch((error) => {
+        saveWorked = false;
+        cl({ 'Error updating MenuV3 description': error });
+      });
+
+    if (saveWorked) {
+      for (const level of reactData.menu_hierarchy) {
+        if (!level) { continue; }
+        for (const cell of level) {
+          if (cell.menu_id === editDescriptionMenuId && cell.menuItemRec) {
+            cell.menuItemRec.description = { short: editDescriptionShort, long: editDescriptionLong };
+          }
+        }
+      }
+    }
+
+    updateReactData({
+      editDescriptionDialog: false,
+      editDescriptionMenuId: null,
+      editDescriptionShort: '',
+      editDescriptionLong: '',
+      menu_hierarchy: reactData.menu_hierarchy,
+      alert: saveWorked
+        ? { severity: 'success', title: 'Saved', message: 'Description updated.' }
+        : { severity: 'error', title: 'Save failed', message: 'Unable to update description. Please try again.' }
     }, true);
   };
 
@@ -2192,7 +2242,28 @@ export default ({ start_at }) => {
           updateReactData({
             alert: {
               severity: 'info',
-              title: this_item.description?.short,
+              title: <Box display='flex' alignItems='center' justifyContent='space-between'>
+                <span>{this_item.description?.short}</span>
+                {(reactData.is_admin || reactData.is_support) &&
+                  <IconButton
+                    size='small'
+                    style={{ color: 'white', padding: 2, marginLeft: 8 }}
+                    onClick={(ev) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      updateReactData({
+                        alert: false,
+                        editDescriptionDialog: true,
+                        editDescriptionMenuId: this_item.menu_id,
+                        editDescriptionShort: this_item.description?.short || '',
+                        editDescriptionLong: this_item.description?.long || '',
+                      }, true);
+                    }}
+                  >
+                    <CreateIcon fontSize='small' />
+                  </IconButton>
+                }
+              </Box>,
               message: <div>
                 ID: {this_item.menu_id}<br />
                 Type: {this_item.menu_itemType}{this_item.url && <><br />URL: {this_item.url}</>}<br />
@@ -3723,6 +3794,54 @@ export default ({ start_at }) => {
             bgColor: 'white'
           }}
         />
+      }
+      {reactData.editDescriptionDialog &&
+        <Dialog
+          open={reactData.editDescriptionDialog}
+          onClose={() => updateReactData({ editDescriptionDialog: false }, true)}
+          classes={{ paper: classes.clientPopUp }}
+          fullWidth
+        >
+          <Box p={3} display='flex' flexDirection='column'>
+            <Typography variant='h6' style={{ marginBottom: 16 }}>Edit Description</Typography>
+            <TextField
+              label='Short description'
+              value={reactData.editDescriptionShort}
+              onChange={(e) => updateReactData({ editDescriptionShort: e.target.value }, true)}
+              variant='outlined'
+              fullWidth
+              style={{ marginBottom: 16 }}
+            />
+            <TextField
+              label='Long description'
+              value={reactData.editDescriptionLong}
+              onChange={(e) => updateReactData({ editDescriptionLong: e.target.value }, true)}
+              variant='outlined'
+              fullWidth
+              multiline
+              rows={3}
+              style={{ marginBottom: 24 }}
+            />
+            <Box display='flex' justifyContent='center'>
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'gray', color: 'white', marginRight: 8 }}
+                size='small'
+                onClick={() => updateReactData({ editDescriptionDialog: false }, true)}
+              >
+                Cancel
+              </Button>
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'green', color: 'white' }}
+                size='small'
+                onClick={handleSaveDescription}
+              >
+                Save
+              </Button>
+            </Box>
+          </Box>
+        </Dialog>
       }
       {reactData.showIosInstall &&
         <IosInstall

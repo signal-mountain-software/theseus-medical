@@ -44,6 +44,14 @@ export default ({ currentValues, reactData, updateReactData }) => {
   };
 
   const makeLocation = () => {
+    const addressStyle = state.session?.profile_style?.address_on_snapshot;
+    if (addressStyle === '*none') { return ''; }
+    if (addressStyle === 'short') {
+      const city = currentValues.peopleRec.address?.city || currentValues.peopleRec.address?.address?.city;
+      const stateVal = currentValues.peopleRec.address?.state || currentValues.peopleRec.address?.address?.state;
+      const parts = [city && titleCase(city), stateVal].filter(Boolean);
+      return sanitizeLocation(parts.join(', '));
+    }
     if (currentValues.peopleRec.hasOwnProperty('address') && currentValues.peopleRec.address) {
       if ((!currentValues.peopleRec.address || Object.keys(currentValues.peopleRec.address).length === 0) && currentValues.peopleRec.location) {
         return sanitizeLocation(currentValues.peopleRec.location);
@@ -475,6 +483,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
           </Typography>
           {currentValues.peopleRec.person_notes.filter(n => { return !n.urgent; }).map((this_note, nx) => (
             <Box display='flex' alignItems='flex-start'
+              key={`note_box-${nx}`}
               justifyContent='flex-start' flexDirection='column'>
               <Typography
                 key={`normal_note-${nx}`}

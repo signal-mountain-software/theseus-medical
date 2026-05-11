@@ -991,9 +991,19 @@ export async function resolveData(client_id, person_id, field_ids = [], options 
       options
     });
 
+    // Apply optional prepend/append from the winning source candidate
+    let formattedWithAnnotation = resolvedOutput.formatted;
+    if (isGoodResolvedValue(formattedWithAnnotation)) {
+      const prepend = effectiveDictionaryRec.prepend;
+      const append = effectiveDictionaryRec.append;
+      if (prepend || append) {
+        formattedWithAnnotation = [prepend, formattedWithAnnotation, append].filter(v => v != null && v !== '').join(' ');
+      }
+    }
+
     const resolvedEntry = {
       raw: resolvedRaw,
-      formatted: resolvedOutput.formatted,
+      formatted: formattedWithAnnotation,
       details: resolvedOutput.details,
       meta: {
         field_id,
