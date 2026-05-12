@@ -349,27 +349,6 @@ export default ({ currentValues, reactData, updateReactData }) => {
           </Typography>
         </a>
       }
-      {(currentValues.peopleRec.emergency_contact?.contact1 || currentValues.peopleRec.emergency_contact?.contact2) &&
-        <Typography
-          style={AVATextStyle({ margin: { top: 0.5 } })}
-        >
-          {`Emergency contacts:`}
-        </Typography>
-      }
-      {currentValues.peopleRec.emergency_contact?.contact1 &&
-        <Typography
-          style={AVATextStyle({ margin: { left: 1, top: 0 } })}
-        >
-          {currentValues.peopleRec.emergency_contact.contact1}
-        </Typography>
-      }
-      {currentValues.peopleRec.emergency_contact?.contact2 &&
-        <Typography
-          style={AVATextStyle({ margin: { left: 1, top: 0 } })}
-        >
-          {currentValues.peopleRec.emergency_contact.contact2}
-        </Typography>
-      }
       {(currentValues.familyRecs && currentValues.familyRecs.length > 0) &&
         <React.Fragment>
           <Typography

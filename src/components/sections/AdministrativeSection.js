@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, Checkbox, FormControlLabel, Input, Switch } from '@material-ui/core/';
+import { Box, Typography, Checkbox, FormControlLabel, Input, Switch, Select, MenuItem } from '@material-ui/core/';
 import { isEmpty, deepCopy } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 
@@ -395,6 +395,63 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
               </Box>
             </Box>
 
+          }
+
+          {(reactData.form_fields[this_formField].fieldRec.value.type === 'dropdown') &&
+            <Box
+              display='flex'
+              flexDirection='column'
+              key={`dropdownBox__${cFNdx}`}
+              justifyContent='flex-start'
+              marginLeft={0}
+              paddingBottom={0}
+              alignItems='flex-start'
+            >
+              <Typography style={Object.assign({},
+                {
+                  margin: 0,
+                  marginLeft: 0,
+                  marginRight: '2px',
+                  marginBottom: 0,
+                  paddingTop: '16px',
+                  paddingBottom: 0,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginTop: 0,
+                },
+                (AVATextStyle({ size: 1, bold: true })))
+              }>
+                {reactData.form_fields[this_formField].fieldRec.prompt.value}
+              </Typography>
+              <Select
+                key={`dropdown__${this_formField}`}
+                value={reactData.form_fields[this_formField].value || ''}
+                disabled={reactData.form_fields[this_formField].fieldRec.options?.viewOnly}
+                style={AVATextStyle({ size: 0.95, margin: { top: 0.5, bottom: 0.5 } })}
+                onChange={async (event) => {
+                  const newValue = event.target.value;
+                  let splitSave = reactData.form_fields[this_formField].fieldRec.value.saveAs.split('.');
+                  reactData.form_fields[this_formField].value = newValue;
+                  await updateField({
+                    updateList:
+                      [{
+                        tableName: splitSave.shift(),
+                        fieldName: splitSave.join('.'),
+                        newData: newValue
+                      }],
+                    reactUpd: {
+                      fields: reactData.form_fields
+                    }
+                  });
+                }}
+              >
+                {(reactData.form_fields[this_formField].fieldRec.value.selection?.selectionList || []).map((item, tIndex) => {
+                  const optValue = (item && typeof item === 'object') ? item.value : item;
+                  const optLabel = (item && typeof item === 'object') ? (item.label ?? item.value) : item;
+                  return <MenuItem key={`${this_formField}_opt_${tIndex}`} value={optValue}>{optLabel}</MenuItem>;
+                })}
+              </Select>
+            </Box>
           }
         </React.Fragment>
       ))
