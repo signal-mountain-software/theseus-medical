@@ -97,6 +97,21 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
           let groupList = [];
           let groupList_minLevel = 99;
           loadList('__TOP__', state.groups.groupTree['__TOP__'], 0);
+
+          // Append public/open groups (not in the hierarchy tree) at level 0
+          if (state.groups.publicGroups) {
+            for (const [group_id, groupRec] of Object.entries(state.groups.publicGroups)) {
+              if (administrative_account ||
+                (
+                  state?.accessList?.[state.session?.client_id]?.groups &&
+                  state?.accessList?.[state.session?.client_id]?.groups.includes(group_id) &&
+                  (!options.restrictGroups || state?.patient?.groups?.includes(group_id))
+                )
+              ) {
+                groupList.push({ group_id, group_name: groupRec.group_name, level: 0 });
+              }
+            }
+          }
           function loadList(this_item, my_children, this_level) {
             /* I can "see" a group in this list if:
                 - I am an adminstrative account
