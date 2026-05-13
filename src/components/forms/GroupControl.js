@@ -1247,7 +1247,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                             justifyContent='flex-start'
                             alignItems='center'
                             key={`activity-list_${listIndex}_${((listIndex === focusAt) ? 'selected' : '')}`}
-                            draggable={canDragManage}
+                            draggable={canDragManage && groupsManagedObject[listEntry].group_type !== 'header'}
                             onDragStart={(e) => handleDragStart(e, {
                               group_id: listEntry,
                               groupObj: groupsManagedObject[listEntry],
@@ -1266,6 +1266,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                               });
                             }}
                             onContextMenu={async (e) => {
+                              if (groupsManagedObject[listEntry].group_type === 'header') return;
                               e.preventDefault();
                               updateReactData({
                                 viewGroupMaintenance: listEntry
@@ -1275,6 +1276,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                             <Typography
                               key={`g_text_${listIndex}_${(listIndex === focusAt) ? 'selected' : ''}`}
                               onClick={async () => {
+                                if (groupsManagedObject[listEntry].group_type === 'header') return;
                                 const currentIds = reactData.selectedGroupIds || [];
                                 // Subtree = this group + all its descendants (recursive)
                                 const subtree = [listEntry, ...getDescendants(listEntry)];

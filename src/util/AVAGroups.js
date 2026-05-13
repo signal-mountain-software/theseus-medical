@@ -360,7 +360,7 @@ export async function getGroupAccess(client_id, person_id, options) {
   // example - the "bridge_club" group declares that any member of "independent_living" may access their group
   for (let this_group of everyGroup.Items) {
     let is_accessible = false;
-    if (is_admin) { is_accessible = true; }
+    if (is_admin || this_group.group_type === 'public') { is_accessible = true; }
     else if (this_group.accessible_to) {
       for (let this_access_rule of this_group.accessible_to) {
         switch (this_access_rule.split(':')[0].trim()) {

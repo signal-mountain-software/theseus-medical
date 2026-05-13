@@ -79,34 +79,41 @@ export default ({ options, defaults, onClose, onAbort }) => {
         }
       }
     };
-    let otherGroups = [];
+    let publicGroupList = [];
     for (let gID in state.groups.publicGroups) {
       if (!response[gID] && (authorized_groups.includes(gID)) && (selectAll || pGroupList.includes(gID) || selectOpen)) {
-        otherGroups.push({
+        publicGroupList.push({
           group_name: state.groups.publicGroups[gID].group_name,
           group_id: gID,
           group_type: 'public',
           role: state.groups.publicGroups[gID].role,
-          level: 0
+          level: 2
         });
       }
-    };
+    }
+    publicGroupList.sort((a, b) => (a.group_name < b.group_name) ? -1 : 1);
+
+    let privateGroupList = [];
     for (let gID in state.groups.privateGroups) {
       if (!response[gID] && (authorized_groups.includes(gID)) && (selectAll || pGroupList.includes(gID) || selectPrivate)) {
-        otherGroups.push({
+        privateGroupList.push({
           group_name: state.groups.privateGroups[gID].group_name,
           group_id: gID,
           group_type: 'private',
           role: state.groups.privateGroups[gID].role,
-          level: 0
+          level: 2
         });
       }
-    };
-    otherGroups.sort((a, b) => {
-      return (a.group_name < b.group_name) ? -1 : 1;
-    });
-    for (let this_otherGroup of otherGroups) {
-      response[this_otherGroup.group_id] = this_otherGroup;
+    }
+    privateGroupList.sort((a, b) => (a.group_name < b.group_name) ? -1 : 1);
+
+    if (publicGroupList.length > 0) {
+      response['__PUBLIC_GROUPS__'] = { group_id: '__PUBLIC_GROUPS__', group_name: 'Public Groups', group_type: 'header', role: 'header', level: 1 };
+      for (let g of publicGroupList) { response[g.group_id] = g; }
+    }
+    if (privateGroupList.length > 0) {
+      response['__PRIVATE_GROUPS__'] = { group_id: '__PRIVATE_GROUPS__', group_name: 'Private Groups', group_type: 'header', role: 'header', level: 1 };
+      for (let g of privateGroupList) { response[g.group_id] = g; }
     }
     return response;
   };
