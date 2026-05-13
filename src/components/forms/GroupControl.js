@@ -1861,14 +1861,16 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         </Dialog>
       }
       {reactData.showPhotoDirectory &&
+        (() => {
+          const bypassMode = !!(preSelectedGroup && preSelectedFunction === 'directory');
+          const closeDirectory = () => {
+            updateReactData({ showPhotoDirectory: false, photoDirectoryPeople: [] }, true);
+            if (bypassMode) { onCancel(); }
+          };
+          return (
         <Dialog
           open={reactData.showPhotoDirectory}
-          onClose={() => {
-            updateReactData({
-              showPhotoDirectory: false,
-              photoDirectoryPeople: []
-            }, true);
-          }}
+          onClose={closeDirectory}
           fullScreen
           scroll='paper'
           PaperProps={{
@@ -1888,15 +1890,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 pGroup: reactData.selectedGroup_id,
                 pGroupName: reactData.selectedGroupRec?.group_name || reactData.selectedGroup_id,
               }}
-              onReset={() => {
-                updateReactData({
-                  showPhotoDirectory: false,
-                  photoDirectoryPeople: []
-                }, true);
-              }}
+              onReset={closeDirectory}
             />
           </Box>
         </Dialog>
+          );
+        })()
       }
       {reactData.sendMessage &&
         <MessageForm
