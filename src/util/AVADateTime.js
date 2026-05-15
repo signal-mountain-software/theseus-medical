@@ -389,6 +389,14 @@ export function makeDate(pInput, optionIn = {}) {
                 leftOver_text: ''
             };
         }
+        // ISO 8601 strings (e.g. "2026-03-02T14:45:03.288Z") — pass directly to Date constructor
+        if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(pString)) {
+            const isoDate = new Date(pString);
+            return {
+                date: isDate(isoDate) ? isoDate : null,
+                leftOver_text: ''
+            };
+        }
         // is this a string as yyyy-mm-dd?
         let test_me = pString.split('-');
         if (test_me.length === 3) {
