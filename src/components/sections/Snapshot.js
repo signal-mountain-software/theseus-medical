@@ -157,27 +157,6 @@ export default ({ currentValues, reactData, updateReactData }) => {
       key={`profileSection_masterBox`}
       flexGrow={2} px={2} py={4} display='flex' flexDirection='column'
     >
-      {currentValues.peopleRec.hasOwnProperty('person_notes') &&
-        (currentValues.peopleRec.person_notes.length > 0) &&
-        (currentValues.peopleRec.person_notes.some(n => { return n.urgent; })) &&
-        (currentValues.peopleRec.person_notes.filter(n => { return n.urgent; }).map((this_urgentNote, uNx) => (
-          <Box display='flex' alignItems='flex-start'
-            justifyContent='flex-start' flexDirection='column'>
-            <Typography
-              key={`urgent_note-${uNx}`}
-              style={AVATextStyle({ margin: { top: 0.5, bottom: 0 }, bold: true, color: 'red', size: 1.2 })}
-            >
-              {this_urgentNote.noteText}
-            </Typography>
-            <Typography
-              key={`urgent_note-${uNx}`}
-              style={AVATextStyle({ margin: { top: 0, bottom: 1.5 }, color: 'red', size: 0.8 })}
-            >
-              {`by ${this_urgentNote.user_name} on ${this_urgentNote.last_update}`}
-            </Typography>
-          </Box>
-        )))
-      }
       <Box display='flex' alignItems='center'
         style={{ marginBottom: '16px' }}
         flexWrap={'wrap'}
@@ -195,7 +174,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
         />
         <Box
           key={`profileSection_masterBox`}
-          flexGrow={2} pr={2} py={isMobile ? 2 : 4} display='flex' flexDirection='column'
+          flexGrow={2} pr={2} pt={0} pb={2} display='flex' flexDirection='column'
         >
           <Typography
             style={AVATextStyle({ margin: { top: 1 }, bold: true, size: 2 })}
@@ -451,7 +430,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
       }
       {currentValues.peopleRec.hasOwnProperty('person_notes') &&
         (currentValues.peopleRec.person_notes.length > 0) &&
-        (currentValues.peopleRec.person_notes.some(n => { return !n.urgent; })) &&
+        (currentValues.peopleRec.person_notes.some(n => { return n.urgent; })) &&
         <Box display='flex' alignItems='flex-start'
           justifyContent='flex-start' flexDirection='column'>
           <Typography
@@ -460,24 +439,26 @@ export default ({ currentValues, reactData, updateReactData }) => {
           >
             {`Notes:`}
           </Typography>
-          {currentValues.peopleRec.person_notes.filter(n => { return !n.urgent; }).map((this_note, nx) => (
-            <Box display='flex' alignItems='flex-start'
-              key={`note_box-${nx}`}
-              justifyContent='flex-start' flexDirection='column'>
-              <Typography
-                key={`normal_note-${nx}`}
-                style={AVATextStyle({ margin: { left: 0.5, top: 0.5, bottom: 0 } })}
-              >
-                {this_note.noteText}
-              </Typography>
-              <Typography
-                key={`note-${nx}`}
-                style={AVATextStyle({ margin: { left: 0.5, top: 0, bottom: 0.5 }, size: 0.8 })}
-              >
-                {`by ${this_note.user_name} on ${this_note.last_update}`}
-              </Typography>
-            </Box>
-          ))}
+      {(currentValues.peopleRec.person_notes.filter(n => { return n.urgent; }).map((this_urgentNote, uNx) => (
+          <Box display='flex' alignItems='flex-start'
+          justifyContent='flex-start' flexDirection='column'
+          key={`urgent_note_box-${uNx}`}
+        >
+            <Typography
+              key={`urgent_note_text-${uNx}`}
+              style={AVATextStyle({ margin: { top: 0.5, bottom: 0 }, size: 1.2 })}
+            >
+              {this_urgentNote.noteText}
+            </Typography>
+            <Typography
+              key={`urgent_note_tag-${uNx}`}
+              style={AVATextStyle({ margin: { top: 0, bottom: 1.5 }, size: 0.8 })}
+            >
+              {`by ${this_urgentNote.user_name} on ${this_urgentNote.last_update}`}
+            </Typography>
+          </Box>
+        )))
+      }
         </Box>
       }
       <Box
