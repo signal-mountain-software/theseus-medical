@@ -128,7 +128,7 @@ const useStyles = makeStyles(theme => ({
     border: `1px solid ${theme.palette.divider}`,
     borderRadius: 4,
     boxSizing: 'border-box',
-    paddingTop: theme.spacing(2),
+    paddingTop: theme.spacing(0.5),
     paddingRight: theme.spacing(1),
     paddingBottom: theme.spacing(0.5),
     paddingLeft: theme.spacing(1),
@@ -139,6 +139,12 @@ const useStyles = makeStyles(theme => ({
     left: 10,
     padding: '3px 0 4px',
     backgroundColor: theme.palette.background.paper,
+    color: theme.palette.text.secondary,
+    fontSize: theme.typography.fontSize * 0.75,
+    lineHeight: 1.2,
+  },
+  selectionFieldLabelInline: {
+    padding: '2px 0 4px 0',
     color: theme.palette.text.secondary,
     fontSize: theme.typography.fontSize * 0.75,
     lineHeight: 1.2,
@@ -526,6 +532,12 @@ export default ({ request = {}, onClose }) => {
       const normalizedValues = Array.isArray(valuesToMatch)
         ? valuesToMatch.map(v => typeof v === 'string' ? v.toLowerCase() : v)
         : valuesToMatch;
+
+      // '*' matches any non-blank value
+      if (normalizedValues.includes('*')) {
+        if (Array.isArray(valToCheck)) { return valToCheck.length > 0; }
+        return valToCheck !== null && valToCheck !== undefined && valToCheck !== '';
+      }
 
       if (isEmpty(valToCheck) && normalizedValues.includes('%%no_data%%')) {
         return true;
@@ -1010,9 +1022,12 @@ export default ({ request = {}, onClose }) => {
     else if (returnObj.type === 'yes/no') {
       yesNoType = true;
       returnObj.type = 'select';
+      const yesNoMin = (field_variables.value?.selection?.min !== undefined && field_variables.value?.selection?.min !== null)
+        ? Number(field_variables.value.selection.min)
+        : 1;
       returnObj.selectionObj = {
         selectionList: ['yes', 'no'],
-        min: 1,
+        min: yesNoMin,
         max: 1
       };
     }
@@ -1065,7 +1080,8 @@ export default ({ request = {}, onClose }) => {
       returnObj.selectionObj = Object.assign({},
         { min: 0, max: 999 },
         field_variables.value,
-        field_variables.value?.selection
+        field_variables.value?.selection,
+        field_variables.column !== undefined ? { column: field_variables.column } : {}
       );
     }
 
@@ -1856,18 +1872,16 @@ export default ({ request = {}, onClose }) => {
       placeholder: isLongPrompt ? '' : helperText,
       InputLabelProps: {
         ...(shouldShrink ? { shrink: true } : {}),
-        ...(isLongPrompt
-          ? {
-            title: fullPromptText,
-            style: {
-              maxWidth: 'calc(100% - 10px)',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              display: 'block'
-            }
+        ...(isLongPrompt ? { title: fullPromptText } : {}),
+        ...(shouldShrink ? {
+          style: {
+            maxWidth: 'calc(100% - 10px)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: 'block'
           }
-          : {})
+        } : {})
       }
     };
   };
@@ -2077,10 +2091,9 @@ export default ({ request = {}, onClose }) => {
       includeRequiredMarker: false
     }));
     const helperText = toInlineFieldText(fieldRec.prompt?.helper || '');
-    const hasLongPrompt = isLongPromptField(props.prop);
     const promptWidth = fieldRec.prompt?.width;
     const containerStyle = {
-      width: hasLongPrompt ? '70vw' : `${promptWidth || 320}px`,
+      width: `${promptWidth || 320}px`,
       minWidth: `${MIN_FIELD_WIDTH_PX}px`,
       maxWidth: '80vw',
       marginTop: '24px',
@@ -2099,7 +2112,7 @@ export default ({ request = {}, onClose }) => {
           className={`${classes.selectionFieldBox} ${isRequiredField ? classes.requiredOutline : ''}`}
           style={containerStyle}
         >
-          <Typography className={`${classes.selectionFieldLabel} ${isRequiredField ? classes.requiredLabel : ''}`}>
+          <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}>
             {promptText || props.prop}
             {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
           </Typography>
@@ -2176,11 +2189,6 @@ export default ({ request = {}, onClose }) => {
       this_field: props.prop,
       includeRequiredMarker: false
     }));
-    const hasLongPrompt = getPromptLength(reconcilePrompt({
-      rawValue: fieldRec.prompt?.value,
-      this_field: props.prop,
-      includeRequiredMarker: false
-    })) > 70;
     const helperText = toInlineFieldText(fieldRec.prompt?.helper || '');
     const selectionMax = fieldRec?.selectionObj?.max;
     const shouldUseSingleSelection = Number.isFinite(selectionMax)
@@ -2189,18 +2197,17 @@ export default ({ request = {}, onClose }) => {
 
     const containerStyle = props.useFamilySizing
       ? {
-        width: hasLongPrompt ? '70vw' : `${fieldRec.prompt?.width || 320}px`,
+        width: `${fieldRec.prompt?.width || 320}px`,
         minWidth: `${MIN_FIELD_WIDTH_PX}px`,
-        maxWidth: hasLongPrompt ? '80vw' : '80vw',
+        maxWidth: '80vw',
         marginTop: '24px',
         marginLeft: '8px',
         marginRight: '8px',
         marginBottom: '8px'
       }
       : {
-        width: hasLongPrompt ? '70vw' : null,
         minWidth: `${MIN_FIELD_WIDTH_PX}px`,
-        maxWidth: hasLongPrompt ? '70vw' : '80vw',
+        maxWidth: '80vw',
         marginTop: '24px',
         marginLeft: '8px',
         marginRight: '8px',
@@ -2216,7 +2223,7 @@ export default ({ request = {}, onClose }) => {
           className={`${classes.selectionFieldBox} ${isRequiredField ? classes.requiredOutline : ''}`}
           style={containerStyle}
         >
-          <Typography className={`${classes.selectionFieldLabel} ${isRequiredField ? classes.requiredLabel : ''}`}>
+          <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}>
             {promptText || props.prop}
             {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
           </Typography>
@@ -3358,6 +3365,16 @@ export default ({ request = {}, onClose }) => {
     return;
   }
 
+  // Returns true if the test condition matches the given field value.
+  // If test.values contains '*', matches any non-blank value.
+  const matchesFieldValues = (test, fieldValue) => {
+    if ([test.values].flat().includes('*')) {
+      if (Array.isArray(fieldValue)) { return fieldValue.length > 0; }
+      return fieldValue !== null && fieldValue !== undefined && fieldValue !== '';
+    }
+    return array_in_array([test.values].flat(), [fieldValue].flat());
+  };
+
   const okToShowSection = (this_sectionObj) => {
     if (this_sectionObj.hasOwnProperty('show_if')) {
       return (this_sectionObj.show_if.some(this_test => {
@@ -3373,7 +3390,7 @@ export default ({ request = {}, onClose }) => {
         }
         else {
           const this_value = reactData.fields?.[this_test.field]?.value;
-          return (array_in_array(this_test.values, this_value));
+          return matchesFieldValues(this_test, this_value);
         }
       }));
     }
@@ -3392,7 +3409,7 @@ export default ({ request = {}, onClose }) => {
         }
         else {
           const this_value = reactData.fields?.[this_test.field]?.value;
-          return (array_in_array(this_test.values, this_value));
+          return matchesFieldValues(this_test, this_value);
         }
       }));
       if (this_sectionObj.hasOwnProperty('show_ifAll')) {
@@ -3414,7 +3431,7 @@ export default ({ request = {}, onClose }) => {
         }
         else {
           const this_value = reactData.fields?.[this_test.field]?.value;
-          return (array_in_array(this_test.values, this_value));
+          return matchesFieldValues(this_test, this_value);
         }
       }));
     }
@@ -3660,49 +3677,59 @@ export default ({ request = {}, onClose }) => {
     const isRequiredField = isFieldRequired(fieldRec);
     const isDisabled = fieldRec.options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked;
     const promptWidth = fieldRec?.prompt?.width;
-    const longPromptField = isLongPromptField(this_field);
     const fallbackMinWidth = (isPhoneType || isDateSelectType || isDateOrTimeType) ? '20vw' : '60vw';
     const textRows = Number(fieldRec.prompt?.rows || fieldRec.value?.rows || 1);
-    const resolvedMinWidth = (longPromptField || (isTextType && (textRows > 1)))
-      ? '60vw'
-      : (promptWidth ? `${promptWidth}px` : fallbackMinWidth);
+    const resolvedMinWidth = promptWidth ? `${promptWidth}px` : fallbackMinWidth;
     const valueText = (fieldRec && fieldRec.valueText)
       ? (Array.isArray(fieldRec.valueText) ? fieldRec.valueText[occ_index] : fieldRec.valueText)
       : '';
     const hasLongValueText = String(valueText || '').length > 90;
-    const shouldAutoWrapText = isTextType && ((textRows > 1) || longPromptField || hasLongValueText);
+    const shouldAutoWrapText = isTextType && ((textRows > 1) || hasLongValueText);
     const resolvedTextRows = (textRows > 1)
       ? textRows
       : (shouldAutoWrapText ? 2 : undefined);
 
+    const promptText = occ_index > 0 ? '' : toInlineFieldText(reconcilePrompt({
+      rawValue: fieldRec.prompt?.value,
+      this_field,
+      includeRequiredMarker: false
+    }));
+    const helperText = toInlineFieldText(fieldRec.prompt?.helper || '');
+
+    const containerStyle = {
+      width: resolvedMinWidth,
+      minWidth: `${MIN_FIELD_WIDTH_PX}px`,
+      maxWidth: '90%',
+      marginTop: '24px',
+      marginLeft: '8px',
+      marginRight: '8px',
+      marginBottom: '8px',
+    };
+
     const sharedProps = {
       id: `field__${this_field}`,
-      variant: 'outlined',
+      variant: 'standard',
       size: 'small',
-      className: isRequiredField ? classes.requiredTextField : undefined,
       key: `field__${this_field}__${sectionNdx}`,
-      ...getInlinePromptFieldProps({
-        this_field,
-        helperValue: isDateSelectType ? '' : (fieldRec.prompt?.helper || ''),
-        hidePrompt: occ_index > 0,
-        forceShrink: isDateSelectType,
-        fieldInstanceKey: `${this_field}__${occ_index}`,
-        hasCurrentValue: isDateSelectType
-          ? !!String(fieldRec?.value || '').trim()
-          : !!getFieldOccurrenceTextValue(fieldRec, occ_index)
-      }),
+      placeholder: helperText || undefined,
       required: isRequiredField,
       disabled: isDisabled,
+      InputProps: { disableUnderline: true },
       style: {
-        width: resolvedMinWidth,
-        minWidth: `${MIN_FIELD_WIDTH_PX}px`,
-        maxWidth: '90%',
-        margin: '8px 8px 8px 8px'
+        width: '100%',
+        marginTop: '4px',
       },
       onFocus: () => {
         setActivePromptFieldKey(`${this_field}__${occ_index}`);
       }
     };
+
+    const promptLabel = !!promptText && (
+      <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}>
+        {promptText}
+        {isRequiredField && <span className={classes.requiredAsterisk}>&nbsp;*</span>}
+      </Typography>
+    );
 
     if (isDateSelectType) {
       return (
@@ -3713,11 +3740,10 @@ export default ({ request = {}, onClose }) => {
           key={`datebox__${fieldNdx}__${sectionNdx}_${(fieldRec && fieldRec.value)
             ? fieldRec.value
             : ''}`}
-          justifyContent='flex-start'
-          marginTop={1}
-          marginLeft={0}
-          alignItems='flex-start'
+          className={`${classes.selectionFieldBox} ${isRequiredField ? classes.requiredOutline : ''}`}
+          style={containerStyle}
         >
+          {promptLabel}
           <TextField
             {...sharedProps}
             type='date'
@@ -3832,15 +3858,17 @@ export default ({ request = {}, onClose }) => {
       />
     );
 
-    if (isTextType) {
-      return (
-        <Box flexDirection='column' key={`Box__${this_field}`} className={classes.formControlCheckGroup}>
-          {commonTextField}
-        </Box>
-      );
-    }
-
-    return commonTextField;
+    return (
+      <Box
+        flexDirection='column'
+        key={`Box__${this_field}`}
+        className={`${classes.selectionFieldBox} ${isRequiredField ? classes.requiredOutline : ''}`}
+        style={containerStyle}
+      >
+        {promptLabel}
+        {commonTextField}
+      </Box>
+    );
   };
 
   const disableSaveActions = !hasDisplayableContent;
