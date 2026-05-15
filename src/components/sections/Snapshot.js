@@ -208,7 +208,9 @@ export default ({ currentValues, reactData, updateReactData }) => {
                   const groupName = groupInfo?.name ||
                     state.groups?.publicGroups?.[group_id]?.group_name ||
                     state.groups?.privateGroups?.[group_id]?.group_name ||
-                    group_id;
+                    null;
+
+                  if (!groupName) { return null; }
 
                   return (
                     <Typography
