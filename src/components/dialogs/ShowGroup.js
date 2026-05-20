@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { getRole } from '../../util/AVAGroups';
+import { getRole, getAllGroups, getGroupsBelongTo, getPersonGroups, accountAccess } from '../../util/AVAGroups';
+import { SET_GROUPS, SET_ACCESSLIST } from '../../contexts/Session/actions';
 
 import Dialog from '@material-ui/core/Dialog';
 import Slide from '@material-ui/core/Slide';
@@ -33,18 +34,19 @@ export default ({ options, defaults, onClose, onAbort }) => {
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
 
-  const { state } = useSession();
+  const { state, dispatch } = useSession();
 
   const { enqueueSnackbar } = useSnackbar();
 
-  const prepareGroupObject = async (pGroupList) => {
+  const prepareGroupObject = async (pGroupList, localGroups = null, localAccessList = null) => {
+    const groups = localGroups || state.groups;
+    const accessList = localAccessList || state.accessList;
     let selectAll = pGroupList.includes('*all');
     let selectOpen = pGroupList.includes('*all_open') || pGroupList.includes('*all_public');
     let selectPrivate = pGroupList.includes('*all_closed') || pGroupList.includes('*all_private');
     const selectMine = !pGroupList || (pGroupList.length === 0) || (pGroupList.includes('*user'));
-    // Use already-loaded state.groups instead of re-fetching all groups from the DB
-    const authorized_groups = state.accessList?.[state.session.client_id]?.groups || [];
-    let gList = (state.groups?.adminHierarchy || []).filter(g => authorized_groups.includes(g.id));
+    const authorized_groups = accessList?.[state.session.client_id]?.groups || [];
+    let gList = (groups?.adminHierarchy || []).filter(g => authorized_groups.includes(g.id));
     let response = {};
     for (let this_group of gList) {
       if ((this_group.level > 0)
@@ -54,7 +56,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
           || pGroupList.includes(this_group.belongs_to)
           || pGroupList.includes('*responsible'))
       ) {
-        const foundGroup = state.groups.belongsTo[this_group.id];
+        const foundGroup = groups.belongsTo?.[this_group.id];
         let my_role;
         if (foundGroup) {
           my_role = foundGroup.role;
@@ -80,13 +82,13 @@ export default ({ options, defaults, onClose, onAbort }) => {
       }
     };
     let publicGroupList = [];
-    for (let gID in state.groups.publicGroups) {
+    for (let gID in groups.publicGroups) {
       if (!response[gID] && (authorized_groups.includes(gID)) && (selectAll || pGroupList.includes(gID) || selectOpen)) {
         publicGroupList.push({
-          group_name: state.groups.publicGroups[gID].group_name,
+          group_name: groups.publicGroups[gID].group_name,
           group_id: gID,
           group_type: 'public',
-          role: state.groups.publicGroups[gID].role,
+          role: groups.publicGroups[gID].role,
           level: 2
         });
       }
@@ -94,13 +96,13 @@ export default ({ options, defaults, onClose, onAbort }) => {
     publicGroupList.sort((a, b) => (a.group_name < b.group_name) ? -1 : 1);
 
     let privateGroupList = [];
-    for (let gID in state.groups.privateGroups) {
+    for (let gID in groups.privateGroups) {
       if (!response[gID] && (authorized_groups.includes(gID)) && (selectAll || pGroupList.includes(gID) || selectPrivate)) {
         privateGroupList.push({
-          group_name: state.groups.privateGroups[gID].group_name,
+          group_name: groups.privateGroups[gID].group_name,
           group_id: gID,
           group_type: 'private',
-          role: state.groups.privateGroups[gID].role,
+          role: groups.privateGroups[gID].role,
           level: 2
         });
       }
@@ -123,13 +125,44 @@ export default ({ options, defaults, onClose, onAbort }) => {
   };
 
   async function initialize() {
-    if (!state.groups?.adminHierarchy || !state.groups?.belongsTo || !state.accessList?.hasOwnProperty(state.session.client_id)) {
-      enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
-      onAbort();
-      return;
+    // Always fetch group structure fresh from DB — fast (structure only, no member lists).
+    // This ensures GroupControl shows current groups/hierarchy without requiring an app restart.
+    const [belongsTo, group_structure, memberGroupIds] = await Promise.all([
+      getGroupsBelongTo(state.session.client_id, state.session.patient_id, { sort: true }),
+      getAllGroups(state.session.patient_id, state.session.client_id),
+      getPersonGroups(state.session.patient_id, state.session.client_id)
+    ]);
+    const localGroups = Object.assign({}, group_structure, { belongsTo, memberGroupIds });
+    dispatch({ type: SET_GROUPS, payload: localGroups });
+
+    // Build authorized_groups locally from the fresh hierarchy — avoids the heavyweight
+    // accountAccess() call (which reads all members of all groups).
+    // Admins/support/master see every group; everyone else sees only their member groups.
+    let localAccessList = state.accessList;
+    const isAdminUser = ['admin', 'support', 'master'].includes(state.user?.account_class);
+    if (!localAccessList?.hasOwnProperty(state.session.client_id)) {
+      // First time only: no accessList at all — must call accountAccess to bootstrap the full list
+      localAccessList = await accountAccess(state.session.user_id, state.session.client_id);
+      dispatch({ type: SET_ACCESSLIST, payload: localAccessList });
+    } else {
+      // accessList exists — refresh just the groups slice from the freshly loaded hierarchy
+      const allGroupIds = [
+        ...(localGroups.adminHierarchy || []).map(g => g.id),
+        ...Object.keys(localGroups.publicGroups || {}),
+        ...Object.keys(localGroups.privateGroups || {})
+      ];
+      const authorizedGroupIds = isAdminUser ? allGroupIds : (memberGroupIds || []);
+      localAccessList = {
+        ...localAccessList,
+        [state.session.client_id]: {
+          ...localAccessList[state.session.client_id],
+          groups: authorizedGroupIds
+        }
+      };
     }
+
     const groupList = makeArray(pGroup_id, /[~,;]/);
-    const groupsManagedObject = await prepareGroupObject(groupList.length > 0 ? [...groupList] : []);
+    const groupsManagedObject = await prepareGroupObject(groupList.length > 0 ? [...groupList] : [], localGroups, localAccessList);
 
     // Determine pre-selection: explicit group IDs that exist in groupsManagedObject, not in 'select' mode
     let preSelectedGroup = null;

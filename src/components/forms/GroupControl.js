@@ -260,7 +260,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       if (!reactData.selectedGroupRec) {
         // if no group is selected, then assume selection of the highest group in the list
         let listEntry = Object.keys(groupsManagedObject)[0];
-        let memberList = await selectMembers(listEntry);
+        let memberList = await selectMembers(listEntry, { live: true });
         reactUpdObj.selectedGroup_id = listEntry;
         reactUpdObj.selectedGroupRec = groupsManagedObject[listEntry];
         reactUpdObj.selectedGroupMembers = memberList;
@@ -1038,7 +1038,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
-  async function selectMembers(this_group, { live = false } = {}) {
+  async function selectMembers(this_group, { live = true } = {}) {
     let response = {};
     let memberList = await getMemberList(this_group, state.session.client_id, {
       name_and_search: true,
@@ -1092,7 +1092,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     if (preGroups.length > 0) {
       const newMembersPerGroup = {};
       for (const id of preGroups) {
-        newMembersPerGroup[id] = await selectMembers(id);
+        newMembersPerGroup[id] = await selectMembers(id, { live: true });
       }
       const newGroupMembers = {};
       for (const id of preGroups) { Object.assign(newGroupMembers, newMembersPerGroup[id] || {}); }
