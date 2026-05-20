@@ -495,10 +495,10 @@ export default ({ currentValues }) => {
             })()}
           </Box>
 
-          <Box mt={1.5} display='flex' justifyContent='flex-end'>
+          <Box display='flex' flexDirection='column' alignItems='flex-start' marginTop={2} marginBottom={1}>
             <Button
               className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'white', color: 'black' }}
+              style={{ marginLeft: 0, backgroundColor: 'white', color: 'black' }}
               size='small'
               onClick={openAddDialog}
             >
