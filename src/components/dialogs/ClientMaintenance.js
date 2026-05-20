@@ -10,6 +10,7 @@ import ClientQRSection from '../sections/ClientQRSection';
 import ClientMessagingSection from './ClientMessagingSection';
 import WeatherSection from '../sections/WeatherSection';
 import GlobalMessagePreferencesSection from '../sections/GlobalMessagePreferencesSection';
+import ClientImportSection from '../sections/ClientImportSection';
 
 import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -104,6 +105,9 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
       },
       GlobalMessagePreferencesSection: {
         component_id: GlobalMessagePreferencesSection,
+      },
+      ClientImportSection: {
+        component_id: ClientImportSection,
       }
 
     },
@@ -171,6 +175,14 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
           isAuthorized: true,
           version_id: 0,
           component_name: 'ClientMessagingSection'
+        },
+        {
+          section_name: 'Import Accounts',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'ClientImportSection'
         }]
       };
       // incoming client_id should tell us who we are editing here
