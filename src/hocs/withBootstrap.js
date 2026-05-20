@@ -93,7 +93,8 @@ export default Component => props => {
             urlData: Object.assign({}, urlData, {
               client_id: clientId,
               launch_quickadd: true,
-              quickadd_source: 'url_parameter'
+              quickadd_source: 'url_parameter',
+              preauth_code: urlData.auth || null
             })
           });
           setAVAReady(true);
@@ -525,7 +526,8 @@ export default Component => props => {
         }}
         options={{
           source: reactData.urlData?.quickadd_source || 'normal',
-          client_id: reactData.urlData?.client_id || null
+          client_id: reactData.urlData?.client_id || null,
+          preauth_code: reactData.urlData?.preauth_code || null
         }}
       />
     );
