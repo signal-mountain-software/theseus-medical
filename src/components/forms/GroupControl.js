@@ -186,6 +186,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     selectedGroup_id: null,
     selectedGroupIds: [],
     selectedGroupMembersPerGroup: {},
+    intersectionMode: false,
     selectedGroupRec: false,
     selectedGroupMembers: false,
     sortedGroupMembers: [],
@@ -1275,31 +1276,67 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                           >
                             <Typography
                               key={`g_text_${listIndex}_${(listIndex === focusAt) ? 'selected' : ''}`}
-                              onClick={async () => {
+                              onClick={async (event) => {
                                 if (groupsManagedObject[listEntry].group_type === 'header') return;
                                 const currentIds = reactData.selectedGroupIds || [];
                                 // Subtree = this group + all its descendants (recursive)
                                 const subtree = [listEntry, ...getDescendants(listEntry)];
                                 const allSelected = subtree.every(id => currentIds.includes(id));
-                                let newIds, newMembersPerGroup;
-                                if (allSelected) {
-                                  // All in subtree selected → deselect all of them
-                                  newIds = currentIds.filter(id => !subtree.includes(id));
-                                  newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
-                                  for (const id of subtree) { delete newMembersPerGroup[id]; }
-                                  // Prune any ancestor that no longer has all its descendants selected.
-                                  // A parent is only valid when its entire subtree is selected.
-                                  const toPrune = newIds.filter(id =>
-                                    getDescendants(id).some(d => groupsManagedObject[d] && !newIds.includes(d))
+                                let newIds, newMembersPerGroup, intersectionMode = false;
+                                if (event.ctrlKey || event.metaKey) {
+                                  intersectionMode = true;
+                                  // Ctrl/Cmd+click: intersection — narrow current display to members also in this group's subtree
+                                  const intersectPerGroup = {};
+                                  for (const id of subtree) { intersectPerGroup[id] = await selectMembers(id, { live: reactData.updatesMade }); }
+                                  const intersectPersonIds = new Set(
+                                    subtree.flatMap(id => Object.keys(intersectPerGroup[id] || {}))
                                   );
-                                  for (const id of toPrune) { delete newMembersPerGroup[id]; }
-                                  newIds = newIds.filter(id => !toPrune.includes(id));
+                                  // Filter each currently-selected group's member list to the intersection
+                                  const currentPerGroup = reactData.selectedGroupMembersPerGroup || {};
+                                  newMembersPerGroup = {};
+                                  for (const id of currentIds) {
+                                    const filtered = Object.fromEntries(
+                                      Object.entries(currentPerGroup[id] || {}).filter(([pid]) => intersectPersonIds.has(pid))
+                                    );
+                                    if (Object.keys(filtered).length > 0) newMembersPerGroup[id] = filtered;
+                                  }
+                                  // Add the Ctrl+clicked subtree to selectedGroupIds so it appears highlighted;
+                                  // member filtering is driven by newMembersPerGroup, not newIds
+                                  newIds = [...new Set([...currentIds, ...subtree])];
+                                  // Preserve existing intersectionMode if already active
+                                  intersectionMode = true;
+                                } else if (event.shiftKey) {
+                                  // Shift+click: union/toggle — add this subtree to (or remove from) existing selection
+                                  if (allSelected) {
+                                    // All in subtree selected → deselect all of them
+                                    newIds = currentIds.filter(id => !subtree.includes(id));
+                                    newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
+                                    for (const id of subtree) { delete newMembersPerGroup[id]; }
+                                    // Prune any ancestor that no longer has all its descendants selected.
+                                    const toPrune = newIds.filter(id =>
+                                      getDescendants(id).some(d => groupsManagedObject[d] && !newIds.includes(d))
+                                    );
+                                    for (const id of toPrune) { delete newMembersPerGroup[id]; }
+                                    newIds = newIds.filter(id => !toPrune.includes(id));
+                                  } else {
+                                    // Some or none selected → add missing subtree members to current selection
+                                    const toAdd = subtree.filter(id => !currentIds.includes(id));
+                                    newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
+                                    for (const id of toAdd) { newMembersPerGroup[id] = await selectMembers(id, { live: reactData.updatesMade }); }
+                                    newIds = [...currentIds, ...toAdd];
+                                  }
                                 } else {
-                                  // Some or none selected → select all missing in subtree
-                                  const toAdd = subtree.filter(id => !currentIds.includes(id));
-                                  newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
-                                  for (const id of toAdd) { newMembersPerGroup[id] = await selectMembers(id, { live: reactData.updatesMade }); }
-                                  newIds = [...currentIds, ...toAdd];
+                                  // Plain click: replace selection with only this subtree
+                                  // (toggle off if this subtree is already the entire selection)
+                                  const onlyThisSelected = allSelected && currentIds.every(id => subtree.includes(id));
+                                  if (onlyThisSelected) {
+                                    newIds = [];
+                                    newMembersPerGroup = {};
+                                  } else {
+                                    newMembersPerGroup = {};
+                                    for (const id of subtree) { newMembersPerGroup[id] = await selectMembers(id, { live: reactData.updatesMade }); }
+                                    newIds = [...subtree];
+                                  }
                                 }
                                 // Every selected group contributes its members.
                                 // Object.assign deduplicates by person_id, so overlap between
@@ -1320,6 +1357,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                 updateReactData({
                                   selectedGroupIds: newIds,
                                   selectedGroupMembersPerGroup: newMembersPerGroup,
+                                  intersectionMode,
                                   selectedGroup_id: newSelectedGroup_id,
                                   selectedGroupRec: newSelectedGroupRec,
                                   selectedGroupMembers: Object.keys(newGroupMembers).length > 0 ? newGroupMembers : false,
@@ -1334,7 +1372,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                 size: 1.2,
                                 color: ((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry))
                                   ? 'orange'
-                                  : null
+                                  : (reactData.intersectionMode && [listEntry, ...getDescendants(listEntry)].every(id => (reactData.selectedGroupIds || []).includes(id)))
+                                    ? '#c62828'
+                                    : null
                                 ),
                                 weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry)) || [listEntry, ...getDescendants(listEntry)].every(id => (reactData.selectedGroupIds || []).includes(id))) ? 'bold' : null),
                                 cursor: canDragManage ? 'grab' : null,
@@ -1435,6 +1475,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     size: 1.5,
                     overflow: 'visible',
                     bold: true,
+                    color: reactData.intersectionMode ? '#c62828' : null,
                     cursor: reactData.selectedGroupRec.multi ? 'default' : null,
                     margin: { top: 1, bottom: 0 },
                   })}>
