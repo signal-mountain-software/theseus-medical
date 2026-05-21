@@ -2200,6 +2200,7 @@ export default ({ request = {}, onClose }) => {
               style={{
                 fontSize: '0.8rem',
                 minHeight: '40px',
+                border: 'none',
                 borderRadius: '4px',
                 borderColor: isRequiredField ? '#2e7d32' : undefined
               }}
@@ -2207,13 +2208,20 @@ export default ({ request = {}, onClose }) => {
               variant={'standard'}
               disabled={isDisabled}
               dropdownPosition={'auto'}
-              values={(selectedValueList.length > 0)
-                ? optionList.filter(option => selectedValueList.includes(option.value) || selectedValueList.includes(option.label))
-                : []
-              }
+              values={(() => {
+                if (selectedValueList.length === 0) return [];
+                const matched = optionList.filter(opt =>
+                  selectedValueList.includes(opt.value) || selectedValueList.includes(opt.label)
+                );
+                const matchedValues = matched.map(o => o.value);
+                const custom = selectedValueList
+                  .filter(v => !matchedValues.includes(v))
+                  .map(v => ({ value: v, label: v }));
+                return [...matched, ...custom];
+              })()}
               clearable={true}
               clearOnSelect={false}
-              placeholder={helperText || 'Select an option'}
+              placeholder={helperText || 'Tap to select'}
               clearOnBlur={false}
               key={`selectBox_selectdrop_${props.prop}`}
               searchable={true}
