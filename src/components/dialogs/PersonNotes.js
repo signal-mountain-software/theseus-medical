@@ -31,7 +31,7 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
   // Group notes by category; preserve original array index for saves; sort by timestamp desc
   const notesByCategory = {};
   allNotes.forEach((note, index) => {
-    const cat = note.category || DEFAULT_CATEGORY;
+    const cat = note.category || categories[0];
     if (!notesByCategory[cat]) { notesByCategory[cat] = []; }
     notesByCategory[cat].push({ note, index });
   });
@@ -65,7 +65,7 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
   const handleSaveNote = async () => {
     if (!editingNote) { return; }
     const { index, note, isNew } = editingNote;
-    const categoryToSave = note.category || DEFAULT_CATEGORY;
+    const categoryToSave = note.category || categories[0];
     const updatedNote = {
       ...note,
       category: categoryToSave,
@@ -111,7 +111,7 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
       name: `${(currentValues.peopleRec.name?.first
         ? (currentValues.peopleRec.name?.first + "'s").replace("s's", "s'")
         : 'My')} note #${newIndex + 1}`,
-      category: DEFAULT_CATEGORY,
+      category: categories[0],
     };
     setEditingNote({ index: null, note: newNote, isNew: true });
   };
@@ -229,13 +229,13 @@ export default ({ currentValues, errorList, setError, updateField, reactData }) 
                   <InputLabel id='note-category-label'>Category</InputLabel>
                   <Select
                     labelId='note-category-label'
-                    value={editingNote.note.category || DEFAULT_CATEGORY}
+                    value={editingNote.note.category || categories[0]}
                     onChange={e => {
                       const val = e.target.value;
                       setEditingNote(prev => ({ ...prev, note: { ...prev.note, category: val } }));
                     }}
                   >
-                    {[...new Set([...categories, editingNote.note.category || DEFAULT_CATEGORY])].sort().map(c => (
+                    {[...new Set([...categories, editingNote.note.category || categories[0]])].sort().map(c => (
                       <MenuItem key={c} value={c}>{c}</MenuItem>
                     ))}
                   </Select>

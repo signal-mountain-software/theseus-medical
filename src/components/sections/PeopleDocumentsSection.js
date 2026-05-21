@@ -1,6 +1,8 @@
 import React from 'react';
 
-import { Box, Button, Dialog, FormControl, FormControlLabel, InputLabel, LinearProgress, MenuItem, Radio, RadioGroup, Select, TextField, Typography } from '@material-ui/core';
+import { Box, Button, Dialog, DialogActions, DialogContent, FormControl, FormControlLabel, IconButton, InputLabel, LinearProgress, MenuItem, Radio, RadioGroup, Select, TextField, Typography } from '@material-ui/core';
+import DeleteIcon from '@material-ui/icons/Delete';
+import EditIcon from '@material-ui/icons/Edit';
 
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { cl, dbClient, recordExists, s3, uuid } from '../../util/AVAUtilities';
@@ -11,6 +13,8 @@ import useSession from '../../hooks/useSession';
 export default ({ currentValues }) => {
   const AVAClass = AVAclasses();
   const { state } = useSession();
+
+  const docCategories = [...new Set(['General', ...([state.session?.client_style?.document_categories].flat().filter(Boolean))])].sort();
 
   const [reactData, setReactData] = React.useState({
     documents: [],
@@ -24,12 +28,12 @@ export default ({ currentValues }) => {
     uploadFile: null,
     uploadFileName: '',
     uploadProgress: 0,
-    category: 'General',
+    category: docCategories[0],
   });
 
   const uploadInputRef = React.useRef(null);
   const [expandedCategories, setExpandedCategories] = React.useState(new Set());
-  const docCategories = [...new Set(['General', ...([state.session?.client_style?.document_categories].flat().filter(Boolean))])].sort();
+  const [editingDoc, setEditingDoc] = React.useState(null);
 
   const person_id = currentValues?.peopleRec?.person_id;
 
@@ -143,6 +147,46 @@ export default ({ currentValues }) => {
     loadDocuments();
   }, [loadDocuments]);
 
+  const handleDocEditOpen = (docRec) => {
+    setEditingDoc({ ...docRec });
+  };
+
+  const handleDocEditClose = () => {
+    setEditingDoc(null);
+  };
+
+  const handleDocEditSave = async () => {
+    if (!editingDoc) { return; }
+    await dbClient
+      .update({
+        TableName: 'PeopleDocuments',
+        Key: { person_id, document_id: editingDoc.document_id },
+        UpdateExpression: 'SET description = :d, category = :c, comments = :co',
+        ExpressionAttributeValues: {
+          ':d': editingDoc.description || '',
+          ':c': editingDoc.category || docCategories[0],
+          ':co': editingDoc.comments || '',
+        },
+      })
+      .promise()
+      .catch(error => cl({ 'Error updating PeopleDocuments': error }));
+    setEditingDoc(null);
+    await loadDocuments();
+  };
+
+  const handleDocEditDelete = async () => {
+    if (!editingDoc) { return; }
+    await dbClient
+      .delete({
+        TableName: 'PeopleDocuments',
+        Key: { person_id, document_id: editingDoc.document_id },
+      })
+      .promise()
+      .catch(error => cl({ 'Error deleting PeopleDocuments': error }));
+    setEditingDoc(null);
+    await loadDocuments();
+  };
+
   const openAddDialog = () => {
     updateReactData({ addDialogOpen: true });
   };
@@ -160,7 +204,7 @@ export default ({ currentValues }) => {
       uploadFile: null,
       uploadFileName: '',
       uploadProgress: 0,
-      category: 'General',
+      category: docCategories[0],
     });
   };
 
@@ -237,7 +281,7 @@ export default ({ currentValues }) => {
       uploadFile: null,
       uploadFileName: '',
       uploadProgress: 0,
-      category: 'General',
+      category: docCategories[0],
     });
 
     await loadDocuments();
@@ -422,7 +466,7 @@ export default ({ currentValues }) => {
               const DOCS_PER_CATEGORY = 5;
               const docsByCategory = {};
               reactData.documents.forEach(docRec => {
-                const cat = docRec.category || 'General';
+                const cat = docRec.category || docCategories[0];
                 if (!docsByCategory[cat]) { docsByCategory[cat] = []; }
                 docsByCategory[cat].push(docRec);
               });
@@ -440,28 +484,39 @@ export default ({ currentValues }) => {
                       {visibleDocs.map(docRec => (
                         <Box
                           key={`people_doc_${docRec.document_id}`}
-                          onClick={() => {
-                              if (docRec.url) {
-                                window.open(docRec.url, '_blank', 'noopener,noreferrer');
-                              }
-                            }}
+                          display='flex'
+                          alignItems='center'
                           mb={0.5}
                           pb={0.5}
                           style={{ borderBottom: '1px solid #e0e0e0' }}
                         >
-                          <Typography
-                            style={{ ...AVATextStyle({ size: 0.9, bold: true }), cursor: docRec.url ? 'pointer' : 'default' }}
+                          <Box
+                            flex={1}
+                            onClick={() => {
+                              if (docRec.url) {
+                                window.open(docRec.url, '_blank', 'noopener,noreferrer');
+                              }
+                            }}
+                            style={{ cursor: docRec.url ? 'pointer' : 'default' }}
                           >
-                            {docRec.description || docRec.document_id}
-                          </Typography>
-                          {!!docRec.comments &&
-                            <Typography style={AVATextStyle({ size: 0.6 })}>
-                              {docRec.comments}
+                            <Typography style={AVATextStyle({ size: 0.9, bold: true })}>
+                              {docRec.description || docRec.document_id}
                             </Typography>
-                          }
-                          <Typography style={AVATextStyle({ size: 0.6 })}>
-                            {[docRec.added?.added_by_name, docRec.added?.added_on ? makeDate(docRec.added.added_on).absolute : ''].filter(Boolean).join(' · ')}
-                          </Typography>
+                            {!!docRec.comments &&
+                              <Typography style={AVATextStyle({ size: 0.6 })}>
+                                {docRec.comments}
+                              </Typography>
+                            }
+                            <Typography style={AVATextStyle({ size: 0.6 })}>
+                              {[docRec.added?.added_by_name, docRec.added?.added_on ? makeDate(docRec.added.added_on).absolute : ''].filter(Boolean).join(' · ')}
+                            </Typography>
+                          </Box>
+                          <IconButton
+                            size='small'
+                            onClick={(e) => { e.stopPropagation(); handleDocEditOpen(docRec); }}
+                          >
+                            <EditIcon fontSize='small' />
+                          </IconButton>
                         </Box>
                       ))}
                       {hiddenCount > 0 &&
@@ -505,6 +560,90 @@ export default ({ currentValues }) => {
               Add Document
             </Button>
           </Box>
+
+          {/* ── Edit Document Dialog ── */}
+          {editingDoc &&
+            <Dialog
+              open={true}
+              onClose={handleDocEditClose}
+              fullWidth
+              maxWidth='sm'
+              PaperProps={{ style: { borderRadius: '30px', padding: '8px' } }}
+            >
+              <DialogContent>
+                <Box display='flex' flexDirection='column'>
+
+                  <Box mb={2}>
+                    <FormControl size='small' fullWidth>
+                      <InputLabel id='edit-doc-category-label'>Category</InputLabel>
+                      <Select
+                        labelId='edit-doc-category-label'
+                        value={editingDoc.category || docCategories[0]}
+                        onChange={e => setEditingDoc(prev => ({ ...prev, category: e.target.value }))}
+                      >
+                        {[...new Set([...docCategories, editingDoc.category || docCategories[0]])].sort().map(c => (
+                          <MenuItem key={c} value={c}>{c}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
+
+                  <TextField
+                    label='Document Name'
+                    value={editingDoc.description || ''}
+                    onChange={e => setEditingDoc(prev => ({ ...prev, description: e.target.value }))}
+                    style={{ marginBottom: '16px' }}
+                    fullWidth
+                  />
+
+                  <TextField
+                    label='Comments'
+                    value={editingDoc.comments || ''}
+                    onChange={e => setEditingDoc(prev => ({ ...prev, comments: e.target.value }))}
+                    multiline
+                    minRows={2}
+                    variant='outlined'
+                    fullWidth
+                    style={{ marginBottom: '8px' }}
+                  />
+
+                  <Box mt={1}>
+                    <Typography style={AVATextStyle({ size: 0.5, margin: { top: 1 } })}>
+                      {`Added by: ${editingDoc.added?.added_by_name || editingDoc.added?.added_by || ''}`}
+                    </Typography>
+                    <Typography style={AVATextStyle({ size: 0.5, margin: { top: 0 } })}>
+                      {`Added on: ${editingDoc.added?.added_on ? makeDate(editingDoc.added.added_on).absolute : ''}`}
+                    </Typography>
+                  </Box>
+
+                </Box>
+              </DialogContent>
+
+              <DialogActions style={{ paddingBottom: '16px', paddingLeft: '16px', paddingRight: '16px' }}>
+                <IconButton size='small' onClick={handleDocEditDelete} title='Delete this document'>
+                  <DeleteIcon />
+                </IconButton>
+                <Box flexGrow={1} />
+                <Button
+                  onClick={handleDocEditClose}
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'white', color: 'black' }}
+                  size='small'
+                >
+                  {'Cancel'}
+                </Button>
+                <Button
+                  onClick={handleDocEditSave}
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'white', color: 'black' }}
+                  size='small'
+                >
+                  {'Save'}
+                </Button>
+              </DialogActions>
+            </Dialog>
+          }
+
         </React.Fragment>
       }
     </Box>

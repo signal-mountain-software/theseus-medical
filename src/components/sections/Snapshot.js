@@ -24,6 +24,25 @@ export default ({ currentValues, reactData, updateReactData }) => {
 
   const AVAClass = AVAclasses();
 
+  const getCategoryColor = (categoryName) => {
+    const palette = [
+      '#e3f2fd', // light blue
+      '#e8f5e9', // light green
+      '#fff3e0', // light orange
+      '#f3e5f5', // light purple
+      '#e0f7fa', // light cyan
+      '#fce4ec', // light pink
+      '#f9fbe7', // light lime
+      '#fff8e1', // light amber
+    ];
+    if (!categoryName) { return palette[0]; }
+    let hash = 0;
+    for (let i = 0; i < categoryName.length; i++) {
+      hash = (hash * 31 + categoryName.charCodeAt(i)) & 0xffff;
+    }
+    return palette[hash % palette.length];
+  };
+
   const sanitizeLocation = (value) => {
     if (!value) return '';
     return String(value)
@@ -212,12 +231,17 @@ export default ({ currentValues, reactData, updateReactData }) => {
 
                   if (!groupName) { return null; }
 
+                  // Find the parent's name
+                  const parentId = groupInfo?.belongs_to;
+                  const parentInfo = parentId ? state.groups?.adminHierarchy?.find(g => g.id === parentId) : null;
+                  const parentName = parentInfo?.name || null;
+
                   return (
                     <Typography
                       key={`group__${idx}`}
                       style={AVATextStyle({ size: 0.8, margin: { left: 1 }, bold: true })}
                     >
-                      {groupName}
+                      {parentName ? `${parentName} / ${groupName}` : groupName}
                     </Typography>
                   );
                 })}
@@ -432,35 +456,57 @@ export default ({ currentValues, reactData, updateReactData }) => {
       }
       {currentValues.peopleRec.hasOwnProperty('person_notes') &&
         (currentValues.peopleRec.person_notes.length > 0) &&
-        (currentValues.peopleRec.person_notes.some(n => { return n.urgent; })) &&
-        <Box display='flex' alignItems='flex-start'
-          justifyContent='flex-start' flexDirection='column'>
+        (currentValues.peopleRec.person_notes.some(n => n.urgent)) &&
+        <Box display='flex' alignItems='flex-start' justifyContent='flex-start' flexDirection='column'>
           <Typography
             key={`note_head`}
             style={AVATextStyle({ margin: { top: 1, bottom: 0.2 } })}
           >
             {`Notes:`}
           </Typography>
-      {(currentValues.peopleRec.person_notes.filter(n => { return n.urgent; }).map((this_urgentNote, uNx) => (
-          <Box display='flex' alignItems='flex-start'
-          justifyContent='flex-start' flexDirection='column'
-          key={`urgent_note_box-${uNx}`}
-        >
-            <Typography
-              key={`urgent_note_text-${uNx}`}
-              style={AVATextStyle({ margin: { top: 0.5, bottom: 0 }, size: 1.2 })}
+          {currentValues.peopleRec.person_notes.filter(n => n.urgent).map((this_note, uNx) => (
+            <Box
+              display='flex'
+              alignItems='flex-start'
+              justifyContent='flex-start'
+              flexDirection='column'
+              key={`note_box-${uNx}`}
+              style={{
+                marginTop: '4px',
+                marginBottom: '4px',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                backgroundColor: getCategoryColor(this_note.category),
+                ...(this_note.urgent ? {
+                  borderLeft: '4px solid #f54927',
+                  paddingLeft: '6px',
+                } : {}),
+              }}
             >
-              {this_urgentNote.noteText}
-            </Typography>
-            <Typography
-              key={`urgent_note_tag-${uNx}`}
-              style={AVATextStyle({ margin: { top: 0, bottom: 1.5 }, size: 0.8 })}
-            >
-              {`by ${this_urgentNote.user_name} on ${this_urgentNote.last_update}`}
-            </Typography>
-          </Box>
-        )))
-      }
+              {!!this_note.name &&
+                <Typography
+                  key={`note_name-${uNx}`}
+                  style={AVATextStyle({ margin: { top: 0.25, bottom: 0 }, size: 0.9, bold: this_note.urgent || false })}
+                >
+                  {this_note.name}
+                </Typography>
+              }
+              {!!this_note.noteText &&
+                <Typography
+                  key={`note_text-${uNx}`}
+                  style={AVATextStyle({ margin: { top: 0.25, bottom: 0 }, size: 0.85 })}
+                >
+                  {this_note.noteText}
+                </Typography>
+              }
+              <Typography
+                key={`note_tag-${uNx}`}
+                style={AVATextStyle({ margin: { top: 0, bottom: 0.25 }, size: 0.6 })}
+              >
+                {[this_note.user_name, this_note.last_update].filter(Boolean).join(' \u00b7 ')}
+              </Typography>
+            </Box>
+          ))}
         </Box>
       }
       <Box

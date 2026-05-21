@@ -200,6 +200,7 @@ export default function TaskManagerSection({
     const dayKeys = Object.keys(DAY_NAME_MAP).sort((a, b) => b.length - a.length);
     const dayPattern = new RegExp(`\\b(${dayKeys.join('|')})\\b`, 'gi');
 
+    // Pass 1: explicit "weekly" keyword
     if (/\bweekly\b/i.test(text)) {
       recurrence = 'weekly';
       text = text.replace(/\bweekly(\s+on)?\b/i, '').replace(/\s{2,}/g, ' ').trim();
@@ -220,6 +221,7 @@ export default function TaskManagerSection({
       dow.sort((a, b) => a - b);
     }
 
+    // Pass 2: "every <day>" / "each <day>"
     if (recurrence === 'daily') {
       const everyDayPattern = new RegExp(
         `\\b(every|each)\\s+(${dayKeys.join('|')})((?:\\s*(?:,|and)\\s*(?:${dayKeys.join('|')}))*)\\b`,
@@ -248,8 +250,7 @@ export default function TaskManagerSection({
       }
     }
 
-    // ── Detect "on <day>" → once, due next occurrence of that weekday ─────
-    // Only runs if no recurrence was already detected
+    // Pass 3: "on <day>" → once, due next occurrence of that weekday
     if (recurrence === 'daily') {
       const onDayPattern = new RegExp(`\\bon\\s+(${dayKeys.join('|')})\\b`, 'i');
       const onDayMatch = text.match(onDayPattern);
@@ -264,21 +265,65 @@ export default function TaskManagerSection({
         recurrence = 'once';
         text = text.replace(onDayMatch[0], '');
         text = text.replace(/\s{2,}/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '').trim();
-        // Return early with the once schedule
+        // Extract time before returning early (clock time wins over named time)
+        let early_times = [];
+        const earlyClockRegex = /\bat\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i;
+        const earlyClockMatch = text.match(earlyClockRegex);
+        if (earlyClockMatch) {
+          const normalized = normalizeTime(earlyClockMatch[1].trim());
+          if (normalized) {
+            early_times = [normalized];
+            text = text.replace(earlyClockMatch[0], '').replace(/\s{2,}/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '').trim();
+          }
+        }
+        if (early_times.length === 0) {
+          for (const kw of TIMES_OF_DAY_OPTIONS) {
+            const kwRegex = new RegExp(`\\b${kw}\\b`, 'i');
+            if (kwRegex.test(text)) {
+              early_times = [kw];
+              const withPrep = new RegExp(`\\b(?:at|in)\\s+(?:the\\s+)?${kw}\\b`, 'i');
+              text = withPrep.test(text) ? text.replace(withPrep, '') : text.replace(kwRegex, '');
+              text = text.replace(modifierPrefix, '').replace(/\s{2,}/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '').trim();
+              break;
+            }
+          }
+        }
         text = text.replace(/\b(every|each)\s*$/i, '').replace(/\s{2,}/g, ' ').trim();
         return {
           description: text,
-          schedule: { recurrence: 'once', times_of_day, dow: [], dom: 1, due_date },
+          schedule: { recurrence: 'once', times_of_day: early_times, dow: [], dom: 1, due_date },
           start_date: due_date,
         };
       }
     }
 
+    // Pass 4: bare day names (no keyword) → weekly
+    if (recurrence === 'daily') {
+      const bareDayPattern = new RegExp(`\\b(${dayKeys.join('|')})\\b`, 'gi');
+      let match;
+      while ((match = bareDayPattern.exec(text)) !== null) {
+        const idx = DAY_NAME_MAP[match[1].toLowerCase()];
+        if (!dow.includes(idx)) { dow.push(idx); }
+      }
+      if (dow.length > 0) {
+        recurrence = 'weekly';
+        text = text
+          .replace(new RegExp(`\\b(and)\\b\\s*`, 'gi'), '')
+          .replace(new RegExp(`\\b(${dayKeys.join('|')})\\b`, 'gi'), '')
+          .replace(/[,]+/g, '')
+          .replace(/\s{2,}/g, ' ')
+          .replace(/^[,\s]+|[,\s]+$/g, '')
+          .trim();
+        dow.sort((a, b) => a - b);
+      }
+    }
+
+    // Pass 5: extract time — strip named time from text first, but clock time wins
+    let namedTimeKw = null;
     for (const kw of TIMES_OF_DAY_OPTIONS) {
       const regex = new RegExp(`\\b${kw}\\b`, 'i');
       if (regex.test(text)) {
-        times_of_day = [kw];
-        // Strip optional "at/in (the) <keyword>" or just "<keyword>"
+        namedTimeKw = kw;
         const withPrep = new RegExp(`\\b(?:at|in)\\s+(?:the\\s+)?${kw}\\b`, 'i');
         text = withPrep.test(text) ? text.replace(withPrep, '') : text.replace(regex, '');
         text = text.replace(modifierPrefix, '');
@@ -287,18 +332,20 @@ export default function TaskManagerSection({
       }
     }
 
-    if (times_of_day.length === 0) {
-      const timeRegex = /\bat\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i;
-      const match = text.match(timeRegex);
-      if (match) {
-        const normalized = normalizeTime(match[1].trim());
-        if (normalized) {
-          times_of_day = [normalized];
-          text = text.replace(match[0], '');
-          text = text.replace(modifierPrefix, '');
-          text = text.replace(/\s{2,}/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '').trim();
-        }
+    const timeRegex = /\bat\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i;
+    const clockMatch = text.match(timeRegex);
+    if (clockMatch) {
+      const normalized = normalizeTime(clockMatch[1].trim());
+      if (normalized) {
+        times_of_day = [normalized];
+        text = text.replace(clockMatch[0], '');
+        text = text.replace(modifierPrefix, '');
+        text = text.replace(/\s{2,}/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '').trim();
+      } else {
+        times_of_day = namedTimeKw ? [namedTimeKw] : [];
       }
+    } else {
+      times_of_day = namedTimeKw ? [namedTimeKw] : [];
     }
 
     text = text.replace(/\b(every|each)\s*$/i, '').replace(/\s{2,}/g, ' ').trim();
