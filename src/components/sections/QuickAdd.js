@@ -761,7 +761,10 @@ export default ({ onClose, options = {} }) => {
 
       // Determine next stage based on family_role and auto_next_account_type
       const autoNextType = reactData.selected_account_config?.auto_next_account_type;
-      const nextConfig = autoNextType
+      // Guard against circular auto_next_account_type (e.g. A→B→A): don't auto-advance
+      // to a type that's already been collected in this session.
+      const alreadyCollected = new Set((reactData.family_members || []).map(m => m.account_type));
+      const nextConfig = autoNextType && !alreadyCollected.has(autoNextType)
         ? (reactData.all_account_prompts || reactData.new_account_prompts || []).find(p => p.account_type === autoNextType) || null
         : null;
       const nextStage = reactData.selected_account_config?.family_role === 'none'
