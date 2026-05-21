@@ -28,8 +28,13 @@ const IMPORT_TYPES = [
   },
   {
     value: 'dd_import',
-    label: 'Data dictionary field values',
+    label: 'Add Data to People records via Data Dictionary',
     description: 'Columns: user_id, then one or more Data Dictionary field_key column headers. Stores values directly in the People record at each field\'s defined path.'
+  },
+  {
+    value: 'family_groups',
+    label: 'Add Family Groups',
+    description: 'Columns: primary_id (column A), then one or more user_ids. Always creates a new FamilyGroups record and updates each listed person\'s People record with the family link.'
   }
 ];
 
@@ -72,7 +77,9 @@ const detectImportType = (headers) => {
   const hasContactKeyword = lowerHeaders.some(h =>
     h.includes('phone') || h.includes('cell') || h.includes('home') || h.includes('work') || h.includes('email') || h.includes('mail')
   );
+  const hasPrimaryId = lowerHeaders[0].includes('primary');
   if (hasFirstLast && !hasUserId) return 'create_people';
+  if (hasPrimaryId) return 'family_groups';
   if (hasUserId && hasContactKeyword) return 'update_contact';
   if (hasUserId) return 'append_groups';
   return '';
@@ -511,6 +518,102 @@ export default ({ reactData }) => {
     return { successes, errors, warnings };
   };
 
+  const processFamilyGroups = async (headers, rows) => {
+    const errors = [];
+    const warnings = [];
+    let successes = 0;
+
+    for (let i = 0; i < rows.length; i++) {
+      const rowNum = i + 2;
+      const row = rows[i];
+      const primary_id = String(row[0] || '').trim();
+      if (!primary_id) {
+        errors.push({ rowNum, message: `Row ${rowNum}: missing primary_id — skipped.` });
+        continue;
+      }
+
+      const memberIds = row.slice(1)
+        .map(v => String(v || '').trim())
+        .filter(v => v !== '');
+
+      // Look up primary contact
+      const primaryRec = await dbClient
+        .get({ Key: { person_id: primary_id }, TableName: 'People' })
+        .promise()
+        .catch(() => null);
+
+      if (!primaryRec?.Item) {
+        errors.push({ rowNum, message: `Row ${rowNum}: primary_id "${primary_id}" not found in People — skipped.` });
+        continue;
+      }
+
+      const primaryItem = primaryRec.Item;
+      const primaryName = [primaryItem.name?.first, primaryItem.name?.last].filter(Boolean).join(' ')
+        || primaryItem.display_name
+        || primary_id;
+      const primaryLastName = primaryItem.name?.last || '';
+
+      // Look up other members
+      const otherMembers = [];
+      for (const uid of memberIds) {
+        const memberRec = await dbClient
+          .get({ Key: { person_id: uid }, TableName: 'People' })
+          .promise()
+          .catch(() => null);
+        if (!memberRec?.Item) {
+          warnings.push(`Row ${rowNum}: user_id "${uid}" not found in People — added to family record with id only.`);
+          otherMembers.push({ id: uid, name: uid, role: 'view' });
+        } else {
+          const memberName = [memberRec.Item.name?.first, memberRec.Item.name?.last].filter(Boolean).join(' ')
+            || memberRec.Item.display_name
+            || uid;
+          otherMembers.push({ id: uid, name: memberName, role: 'view' });
+        }
+      }
+
+      const family_id = `family_${new Date().getTime()}_${rowNum}`;
+      const family_name = primaryLastName
+        ? `The ${primaryLastName} Family`
+        : `Family (${primary_id})`;
+
+      const familyRecord = {
+        client_id,
+        composite_key: family_id,
+        family_id,
+        family_name,
+        primary_contact: { id: primary_id, name: primaryName },
+        other_members: otherMembers,
+      };
+
+      try {
+        await putDb({ TableName: 'FamilyGroups', Item: familyRecord });
+
+        // Update People records for primary and all members with the family_id
+        const allIds = [primary_id, ...memberIds];
+        for (const uid of allIds) {
+          const personRec = await dbClient
+            .get({ Key: { person_id: uid }, TableName: 'People' })
+            .promise()
+            .catch(() => null);
+          if (personRec?.Item) {
+            const existingFamilyGroups = Array.isArray(personRec.Item.family_groups) ? personRec.Item.family_groups : [];
+            const updated = Object.assign({}, personRec.Item, {
+              family_id,
+              family_groups: existingFamilyGroups.includes(family_id) ? existingFamilyGroups : [...existingFamilyGroups, family_id],
+              last_update: new Date().toISOString(),
+            });
+            await putDb({ TableName: 'People', Item: updated });
+          }
+        }
+        successes++;
+      } catch (err) {
+        cl({ 'Family groups row error': { rowNum, err } });
+        errors.push({ rowNum, message: `Row ${rowNum} (${primary_id}): ${err.message}` });
+      }
+    }
+    return { successes, errors, warnings };
+  };
+
   // ── download updated spreadsheet ─────────────────────────────────────────
 
   const downloadWithUserIds = () => {
@@ -543,6 +646,8 @@ export default ({ reactData }) => {
         results = await processUpdateContact(headers, rows);
       } else if (importType === 'dd_import') {
         results = await processDDImport(headers, rows);
+      } else if (importType === 'family_groups') {
+        results = await processFamilyGroups(headers, rows);
       } else {
         results = { successes: 0, errors: [{ rowNum: 0, message: 'Unknown import type.' }], warnings: [] };
       }
