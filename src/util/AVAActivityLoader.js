@@ -1,5 +1,5 @@
 
-import { getObservationOptions, getObservationItems, makeObservationList, getActivity } from '../util/AVAObservations';
+import { getObservationOptions, getObservationItems, makeObservationList } from '../util/AVAObservations';
 import { getMemberList, prepareTargets } from '../util/AVAGroups';
 import { recordExists, isObject, resolveVariables, makeArray, dbClient, deepCopy, makeObj } from '../util/AVAUtilities';
 
@@ -34,17 +34,9 @@ export async function getActivityDetail(pActRec, state) {
       return preLoaded.Item.preLoad_data;
     }
   }
-  // Pre-fetch the activity record when only activity_code is provided so that
-  // prepareDefaults can see default_value (and so makeObservationList avoids a second fetch).
-  let actRec = pActRec.activity_rec;
-  if (!actRec && pActRec.activity_code) {
-    actRec = await getActivity(sessionState.session.client_id, pActRec.activity_code);
-  }
-  let [global_default_value, global_default_object] = await prepareDefaults(actRec || pActRec);
-  let resolvedActivity = await makeObservationList(actRec || pActRec.activity_code, sessionState.session, global_default_object);
-  if (pActRec.activity_name) {
-    resolvedActivity.activityRec.name = await resolveVariables(pActRec.activity_name, sessionState.session);
-  }
+  let [global_default_value, global_default_object] = await prepareDefaults(pActRec);
+  let resolvedActivity = await makeObservationList(pActRec.activity_rec || pActRec.activity_code, sessionState.session, global_default_object);
+  resolvedActivity.activityRec.name = await resolveVariables(pActRec.activity_name, sessionState.session);
   resolvedActivity.activityRec.default_value = global_default_value;
   resolvedActivity.activityRec.default_object = global_default_object;
   return resolvedActivity;
@@ -428,10 +420,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
         fee: getQualifier(this_instruction, 'fee'),
         input: instruction[1].trim().toLowerCase(),
         header: false,
-        row_qualifier: this_qualifier,
-        bold: displayBold,
-        style: displayStyle,
-        italic: displayItalic
+        row_qualifier: this_qualifier
       };
       if (instruction[1].trim().toLowerCase() === 'signature') {
         rObj.isChecked = true;
@@ -457,10 +446,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
       desc: getQualifier(instruction[1], 'description'),
       fee: getQualifier(instruction[1], 'fee'),
       input: false,
-      header: true,
-      bold: displayBold,
-      style: displayStyle,
-      italic: displayItalic
+      header: true
     });
     if (observationDefaultValue) {
       defaults[instruction[1]] = observationDefaultValue;
