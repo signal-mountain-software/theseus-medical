@@ -2012,7 +2012,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     key={'vRowRefresh'}
                   >
                     <Typography style={AVATextStyle({ size: 0.5 })} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-                    <Typography style={AVATextStyle({ size: 0.5 })} >{`User ${fact.session.user_id}${fact.patient_id !== fact.session.user_id ? (' (' + fact.patient_id + ')') : ''}`}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.5 })} >{`User ${state.session.user_id}${state.session.patient_id !== state.session.user_id ? (' (' + state.session.patient_id + ')') : ''}`}</Typography>
                     <Typography style={AVATextStyle({ size: 0.5 })} >{`Function: ObservationForm`}</Typography>
                     <Typography style={AVATextStyle({ size: 0.5 })} >{`Activity: ${fact.activity_key}`}</Typography>
                   </Box>
@@ -2148,14 +2148,14 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     borderRadius={'16px'}
                     marginLeft={2}
                     marginRight={2}
-                    maxWidth={(this_item.checkbox && !this_item.isChecked) ? 400 : 'auto'}
-                    width={!this_item.checkbox ? '100%' : 'auto'}
+                    maxWidth={this_item.style?.width || ((this_item.checkbox && !this_item.isChecked) ? 400 : 'auto')}
+                    width={this_item.style?.width || (!this_item.checkbox ? '100%' : 'auto')}
                     marginTop={(this_item.header ? 0 : 2)}
                     marginBottom={(this_item.header ? 1 : 2)}
                     padding={(this_item.header ? 0 : 1)}
                     border={(!reactData.viewOnly && (!!this_item.error || this_item.isChecked || (this_item.textValue && (this_item.textValue !== ''))))
                       ? 4
-                      : (this_item.checkbox ? 4 : 'none')
+                      : ((this_item.checkbox || this_item.input) ? 4 : 'none')
                     }
                     className={!!this_item.error ? classes.backGroundRed : (this_item.isChecked ? classes.backGroundGreen : classes.backGroundNone)}
                     borderColor={!!this_item.error ? 'red' : (this_item.isChecked ? 'green' : 'lightgray')}
@@ -2191,7 +2191,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     }
                     { /* Text prompt line for this row - headers don't have this */}
                     {this_item.input && !reactData.viewOnly &&
-                      <Card elevation={0} sx={{ maxWidth: 345 }} style={{ width: '100%', padding: '4px', paddingBottom: '6px' }}>
+                      <Card elevation={0} sx={this_item.style?.width ? {} : { maxWidth: 345 }} style={{ width: this_item.style?.width || '100%', padding: '4px', paddingBottom: '6px' }}>
                         <TextField
                           style={Object.assign({
                             marginLeft: '8px',
@@ -2207,8 +2207,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                           id={`inputtextprompt_${selectedColumn}.${this_index}-${this_item.version}`}
                           helperText={(this_item.error ? (`${this_item.error} - `) : '') + this_item.text}
                           multiline
-                          inputProps={{ style: AVATextStyle({ size: 1.2 }) }}
-                          InputProps={{ style: AVATextStyle({ size: 1.2 }), }}
+                          inputProps={{ style: AVATextStyle(this_item.style || { size: 1.2 }) }}
+                          InputProps={{ style: AVATextStyle(this_item.style || { size: 1.2 }), }}
                           FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                           onBlur={(event) => {
                             if (!event.target.value) {
@@ -2256,10 +2256,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                   >
                                     {qR.title}
                                   </Typography>
-                                  <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                                  <Box display='flex' flexDirection={qR.layout === 'column' ? 'column' : 'row'} justifyContent='flex-start'
                                     key={`optionbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
                                     id={`optionbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
-                                    alignItems='center' flexWrap='wrap'
+                                    alignItems='flex-start' flexWrap='wrap'
                                   >
                                     {qR.option && qR.option.map((opt, oX) => (
                                       <Box display='flex' flexDirection='row' justifyContent='flex-start'
@@ -2354,14 +2354,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                 flexDirection='column'
                                 justifyContent="flex-start"
                                 alignItems='flex-start'
+                                mt={(!reactData.viewOnly && this_item.noUpdate) ? 2 : 0}
+                                ml={(!reactData.viewOnly && this_item.noUpdate) ? 2 : 0}
                               >
                                 <Typography
                                   key={`textout_${selectedColumn}.${this_index}`}
                                   id={`textout_${selectedColumn}.${this_index}`}
-                                  style={this_item.style
-                                    ? AVATextStyle(this_item.style)
-                                    : AVATextStyle({ size: 1.2, margin: { right: 2 } })
-                                  }
+                                  style={(() => {
+                                    const s = this_item.style
+                                      ? AVATextStyle(this_item.style)
+                                      : AVATextStyle({ size: 1.2, margin: { right: 2 } });
+                                    delete s.width;
+                                    s.overflow = 'visible';
+                                    return s;
+                                  })()}
                                 >
                                   {this_item.text}
                                 </Typography>
@@ -2496,10 +2502,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                       >
                                         {qR.title}
                                       </Typography>
-                                      <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                                      <Box display='flex' flexDirection={qR.layout === 'column' ? 'column' : 'row'} justifyContent='flex-start'
                                         key={`optionbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
                                         id={`optionbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
-                                        alignItems='center' flexWrap='wrap'
+                                        alignItems='flex-start' flexWrap='wrap'
                                       >
                                         {qR.option && qR.option.map((opt, oX) => (
                                           <Box display='flex' flexDirection='row' justifyContent='flex-start'
@@ -2613,7 +2619,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   border={12}
                   borderColor={'green'}
                 >
-                  <Typography 
+                  <Typography
                     style={AVATextStyle({ size: 1.2, margin: { right: 0.5 } })}
                   >
                     {`File${(reactData.attachmentList.length > 1) ? 's' : ''}:`}

@@ -5,6 +5,7 @@ import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { AVATextStyle, AVAclasses, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
 import { clearPushSubscriptionFromDB, initPushNotifications, unsubscribeFromPush, isPushSupported, isPushOptedIn, syncAlertDeliveryMethod } from '../../util/AVAPushNotifications';
+import { getActivityDetail } from '../../util/AVAActivityLoader';
 import QuickAdd from './QuickAdd';
 
 import Card from '@material-ui/core/Card';
@@ -83,6 +84,7 @@ import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
 import GroupPhotoDirectory from '../forms/GroupPhotoDirectory';
 import TaskManager from '../dialogs/TaskManager';
 import MultiObservationFormD from '../forms/MultiObservationFormD';
+import MultiObservationFormC from '../forms/MultiObservationFormC';
 import IosInstall from '../dialogs/IosInstall';
 import useIosCheck from '../../hooks/useIosCheck';
 import useWebPrompt from '../../hooks/useWebPrompt';
@@ -419,7 +421,24 @@ export default ({ start_at }) => {
           // Background data is ready — activate now
           if (startAtItem.menu_itemType === 'function') {
             void activityLog(startAtItem.menu_id, `Auto-run on load: ${startAtItem.description?.long}`);
-            reactUpd.renderFunctionCall = startAtItem.call || false;
+            if (startAtItem.activity) {
+              const activityDetail = await getActivityDetail({ activity_code: startAtItem.activity }, state);
+              reactUpd.renderFunctionCall = {
+                target: 'MultiObservationFormD',
+                params: {
+                  fact: { ...activityDetail.activityRec, activity_key: startAtItem.activity },
+                  factName: activityDetail.activityRec?.name || '',
+                  options: {
+                    listValues: activityDetail.rows,
+                    qualifiers: activityDetail.qualifiers
+                  },
+                  defaults: activityDetail.activityRec?.default_object || {}
+                }
+              };
+            }
+            else {
+              reactUpd.renderFunctionCall = startAtItem.call || false;
+            }
           }
           else if (startAtItem.menu_itemType === 'menu') {
             reactData.menu_hierarchy = reactUpd.menu_hierarchy;
@@ -549,7 +568,28 @@ export default ({ start_at }) => {
     deferredStartAtRef.current = null;
     if (deferredItem.menu_itemType === 'function') {
       void activityLog(deferredItem.menu_id, `Auto-run on load: ${deferredItem.description?.long}`);
-      updateReactData({ renderFunctionCall: deferredItem.call || false }, true);
+      if (deferredItem.activity) {
+        (async () => {
+          const activityDetail = await getActivityDetail({ activity_code: deferredItem.activity }, state);
+          updateReactData({
+            renderFunctionCall: {
+              target: 'MultiObservationFormD',
+              params: {
+                fact: { ...activityDetail.activityRec, activity_key: deferredItem.activity },
+                factName: activityDetail.activityRec?.name || '',
+                options: {
+                  listValues: activityDetail.rows,
+                  qualifiers: activityDetail.qualifiers
+                },
+                defaults: activityDetail.activityRec?.default_object || {}
+              }
+            }
+          }, true);
+        })();
+      }
+      else {
+        updateReactData({ renderFunctionCall: deferredItem.call || false }, true);
+      }
     }
     else if (deferredItem.menu_itemType === 'menu') {
       (async () => {
@@ -1531,6 +1571,7 @@ export default ({ start_at }) => {
     GroupPhotoDirectory,
     TaskManager,
     MultiObservationFormD,
+    MultiObservationFormC,
     QuickAdd,
     QuickSearch,
   };
@@ -1627,9 +1668,9 @@ export default ({ start_at }) => {
         defaultValue={props.defaults || null}
         eventClient={props.options?.client_id || state.session.client_id}
         fact={props.fact || null}
-        factName={props.factName || null}
+        factName={props.factName || props.fact?.factName || null}
         isAppointment={props.options?.isAppointment}
-        listValues={props.options?.listValues || []}
+        listValues={props.options?.listValues || props.fact?.listValues || []}
         OGpatient={reactData.OGpatient}
         options={props.options || {}}
         patient={state.session}
@@ -1641,9 +1682,9 @@ export default ({ start_at }) => {
         picture={props.options?.picture || null}
         pMessageList={[]}
         pPerson={state.session.patient_id}
-        prompt={props.options?.prompt || null}
+        prompt={props.options?.prompt || props.fact?.prompt || null}
         pSession={state.session}
-        qualifiers={props.options?.qualifiers || null}
+        qualifiers={props.options?.qualifiers || props.fact?.qualifiers || null}
         request={props.request || {}}
         showNewEvent={props.options?.showNewEvent}
         onReset={() => {
@@ -2353,9 +2394,28 @@ export default ({ start_at }) => {
           }
           else if (this_item.menu_itemType === 'function') {
             void activityLog(this_item.menu_id, this_item.description?.long);
-            updateReactData({
-              renderFunctionCall: this_item.call || false
-            }, true);
+            if (this_item.activity) {
+              const activityDetail = await getActivityDetail({ activity_code: this_item.activity }, state);
+              updateReactData({
+                renderFunctionCall: {
+                  target: 'MultiObservationFormD',
+                  params: {
+                    fact: { ...activityDetail.activityRec, activity_key: this_item.activity },
+                    factName: activityDetail.activityRec?.name || '',
+                    options: {
+                      listValues: activityDetail.rows,
+                      qualifiers: activityDetail.qualifiers
+                    },
+                    defaults: activityDetail.activityRec?.default_object || {}
+                  }
+                }
+              }, true);
+            }
+            else {
+              updateReactData({
+                renderFunctionCall: this_item.call || false
+              }, true);
+            }
           }
           else if (!isTelLink && (normalizedMenuType === 'live_link' || (useTileUI && hasLinkThumbnail && normalizedMenuType === 'link'))) {
             const frameUrl = buildLiveLinkEmbedUrl(this_item.url);
