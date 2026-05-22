@@ -1,5 +1,4 @@
 import React from 'react';
-import { useSnackbar } from 'notistack';
 import { getRole, getAllGroups, getGroupsBelongTo, getPersonGroups, accountAccess } from '../../util/AVAGroups';
 import { SET_GROUPS, SET_ACCESSLIST } from '../../contexts/Session/actions';
 
@@ -35,8 +34,6 @@ export default ({ options, defaults, onClose, onAbort }) => {
   };
 
   const { state, dispatch } = useSession();
-
-  const { enqueueSnackbar } = useSnackbar();
 
   const prepareGroupObject = async (pGroupList, localGroups = null, localAccessList = null) => {
     const groups = localGroups || state.groups;

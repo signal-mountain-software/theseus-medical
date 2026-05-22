@@ -486,11 +486,21 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     // delegate all DB writes to addMember (People.groups + PeopleGroups chain)
     const newGroupList = await addMember(person_id, pSession.client_id, droppedOn.group_id, { allowParent: true });
 
-    // update in-memory accessList cache
+    // update in-memory accessList cache (immutable)
     const updatedGroupList = [...currentGroups, ...addedGroups];
-    if (accessEntry) {
-      accessEntry.groups = updatedGroupList;
-      dispatch({ type: SET_ACCESSLIST, payload: Object.assign({}, state.accessList) });
+    if (state.accessList?.[pSession.client_id]?.list) {
+      dispatch({
+        type: SET_ACCESSLIST,
+        payload: {
+          ...state.accessList,
+          [pSession.client_id]: {
+            ...state.accessList[pSession.client_id],
+            list: state.accessList[pSession.client_id].list.map(p =>
+              p.person_id === person_id ? { ...p, groups: updatedGroupList } : p
+            )
+          }
+        }
+      });
     }
     // if this change affects the current patient, update memberGroupIds
     if (person_id === state.session.patient_id && newGroupList) {
@@ -552,10 +562,20 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       .filter(g => !freshGroupList.includes(g))
       .map(g => groupsManagedObject[g]?.group_name || g);
 
-    // update accessList cache
-    if (accessEntry) {
-      accessEntry.groups = freshGroupList;
-      dispatch({ type: SET_ACCESSLIST, payload: Object.assign({}, state.accessList) });
+    // update accessList cache (immutable)
+    if (state.accessList?.[pSession.client_id]?.list) {
+      dispatch({
+        type: SET_ACCESSLIST,
+        payload: {
+          ...state.accessList,
+          [pSession.client_id]: {
+            ...state.accessList[pSession.client_id],
+            list: state.accessList[pSession.client_id].list.map(p =>
+              p.person_id === person_id ? { ...p, groups: freshGroupList } : p
+            )
+          }
+        }
+      });
     }
     // if this change affects the current patient, update memberGroupIds
     if (person_id === state.session.patient_id && newGroupList) {
@@ -596,10 +616,20 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       .filter(g => !freshGroupList.includes(g))
       .map(g => groupsManagedObject[g]?.group_name || g);
 
-    // update accessList cache
-    if (accessEntry) {
-      accessEntry.groups = freshGroupList;
-      dispatch({ type: SET_ACCESSLIST, payload: Object.assign({}, state.accessList) });
+    // update accessList cache (immutable)
+    if (state.accessList?.[pSession.client_id]?.list) {
+      dispatch({
+        type: SET_ACCESSLIST,
+        payload: {
+          ...state.accessList,
+          [pSession.client_id]: {
+            ...state.accessList[pSession.client_id],
+            list: state.accessList[pSession.client_id].list.map(p =>
+              p.person_id === person_id ? { ...p, groups: freshGroupList } : p
+            )
+          }
+        }
+      });
     }
     // if this change affects the current patient, update memberGroupIds
     if (person_id === state.session.patient_id && newGroupList) {
@@ -1040,12 +1070,62 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
   async function selectMembers(this_group, { live = true } = {}) {
     let response = {};
-    let memberList = await getMemberList(this_group, state.session.client_id, {
-      name_and_search: true,
-      state: live ? null : state,
-    });
-    for (const this_member of memberList.peopleList) {
-      response[this_member.person_id] = this_member;
+    if (!live) {
+      // Fast path: filter in-memory from accessList cache
+      const memberList = await getMemberList(this_group, state.session.client_id, {
+        name_and_search: true,
+        state,
+      });
+      for (const this_member of memberList.peopleList) {
+        response[this_member.person_id] = this_member;
+      }
+      return response;
+    }
+    // Live path: query PeopleGroups status-index (PK: client_group_id, SK: membership_status)
+    // Returns only active members for this group — excludes deleted/inactive accounts at DB level
+    const cgid = `${state.session.client_id}~${this_group}`;
+    let items = [];
+    let lastKey;
+    do {
+      const params = {
+        TableName: 'PeopleGroups',
+        IndexName: 'status-index',
+        KeyConditionExpression: 'client_group_id = :cgid AND membership_status = :active',
+        ExpressionAttributeValues: { ':cgid': cgid, ':active': 'active' },
+      };
+      if (lastKey) { params.ExclusiveStartKey = lastKey; }
+      const result = await dbClient.query(params).promise()
+        .catch(err => { cl({ 'selectMembers: PeopleGroups query error': err }); return null; });
+      if (result?.Items) {
+        items.push(...result.Items);
+      }
+      lastKey = result?.LastEvaluatedKey;
+    } while (lastKey);
+    // Resolve person details from accessList cache (avoids a second DB scan)
+    const cacheById = {};
+    for (const p of (state.accessList?.[state.session.client_id]?.list || [])) {
+      cacheById[p.person_id] = p;
+    }
+    for (const item of items) {
+      const pid = item.person_id;
+      const cached = cacheById[pid];
+      if (cached) {
+        response[pid] = {
+          person_id: pid,
+          name: cached.name ?? { last: `Unknown ${pid}` },
+          display_name: cached.display_name ?? item.display_name ?? pid,
+          search_data: cached.search_data ?? `${cached.name?.first || ''} ${cached.name?.last || ''}`.trim(),
+        };
+      } else {
+        // Not in cache — parse the "Last, First" display_name stored in PeopleGroups
+        const parts = (item.display_name || pid).split(',');
+        response[pid] = {
+          person_id: pid,
+          name: { last: parts[0]?.trim() || pid, first: parts[1]?.trim() || '' },
+          display_name: item.display_name || pid,
+          search_data: item.display_name || pid,
+        };
+      }
     }
     return response;
   }
@@ -1121,7 +1201,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         preSelectUpdates.viewGroupMaintenance = preGroups[0];
       }
     }
-    updateReactData({ assignmentList, ...preSelectUpdates }, true);
+    updateReactData({ assignmentList, building: 'done', ...preSelectUpdates }, true);
   }
 
   React.useEffect(() => {
@@ -1142,7 +1222,13 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
   const dialogContent = (
     <React.Fragment>
-      {Object.keys(groupsManagedObject).length === 0
+      {reactData.building !== 'done'
+        ?
+        <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' style={{ padding: '32px 16px' }}>
+          <Typography style={{ marginBottom: 16 }}>{reactData.progressMessage || 'Loading...'}</Typography>
+          <LinearProgress style={{ width: '80%' }} />
+        </Box>
+        : Object.keys(groupsManagedObject).length === 0
         ?
         <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
           <Typography
@@ -1286,11 +1372,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                 if (event.ctrlKey || event.metaKey) {
                                   intersectionMode = true;
                                   // Ctrl/Cmd+click: intersection — narrow current display to members also in this group's subtree
+                                  // PeopleGroups hierarchy: querying the root covers all descendants — no need to loop subtree
                                   const intersectPerGroup = {};
-                                  for (const id of subtree) { intersectPerGroup[id] = await selectMembers(id, { live: reactData.updatesMade }); }
-                                  const intersectPersonIds = new Set(
-                                    subtree.flatMap(id => Object.keys(intersectPerGroup[id] || {}))
-                                  );
+                                  intersectPerGroup[listEntry] = await selectMembers(listEntry, { live: true });
+                                  const intersectPersonIds = new Set(Object.keys(intersectPerGroup[listEntry] || {}));
                                   // Filter each currently-selected group's member list to the intersection
                                   const currentPerGroup = reactData.selectedGroupMembersPerGroup || {};
                                   newMembersPerGroup = {};
@@ -1320,9 +1405,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                     newIds = newIds.filter(id => !toPrune.includes(id));
                                   } else {
                                     // Some or none selected → add missing subtree members to current selection
+                                    // PeopleGroups hierarchy: querying the root covers all descendants — no need to loop subtree
                                     const toAdd = subtree.filter(id => !currentIds.includes(id));
                                     newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
-                                    for (const id of toAdd) { newMembersPerGroup[id] = await selectMembers(id, { live: reactData.updatesMade }); }
+                                    if (toAdd.length > 0) {
+                                      newMembersPerGroup[listEntry] = await selectMembers(listEntry, { live: true });
+                                    }
                                     newIds = [...currentIds, ...toAdd];
                                   }
                                 } else {
@@ -1333,8 +1421,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                     newIds = [];
                                     newMembersPerGroup = {};
                                   } else {
+                                    // PeopleGroups hierarchy: querying the root covers all descendants — no need to loop subtree
                                     newMembersPerGroup = {};
-                                    for (const id of subtree) { newMembersPerGroup[id] = await selectMembers(id, { live: reactData.updatesMade }); }
+                                    newMembersPerGroup[listEntry] = await selectMembers(listEntry, { live: true });
                                     newIds = [...subtree];
                                   }
                                 }
