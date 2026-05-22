@@ -5,7 +5,7 @@ import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { AVATextStyle, AVAclasses, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
 import { clearPushSubscriptionFromDB, initPushNotifications, unsubscribeFromPush, isPushSupported, isPushOptedIn, syncAlertDeliveryMethod } from '../../util/AVAPushNotifications';
-import { getActivityDetail } from '../../util/AVAActivityLoader';
+import { getActivityDetail } from '../../util/AVAActivityLoaderV3';
 import QuickAdd from './QuickAdd';
 
 import Card from '@material-ui/core/Card';
@@ -83,7 +83,7 @@ import CheckInCheckOut from '../forms/CheckInCheckOut';
 import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
 import GroupPhotoDirectory from '../forms/GroupPhotoDirectory';
 import TaskManager from '../dialogs/TaskManager';
-import MultiObservationFormD from '../forms/MultiObservationFormD';
+import MultiObservationFormD from '../forms/MultiObservationFormV3';
 import MultiObservationFormC from '../forms/MultiObservationFormC';
 import IosInstall from '../dialogs/IosInstall';
 import useIosCheck from '../../hooks/useIosCheck';
@@ -1668,7 +1668,7 @@ export default ({ start_at }) => {
         defaultValue={props.defaults || null}
         eventClient={props.options?.client_id || state.session.client_id}
         fact={props.fact || null}
-        factName={props.factName || props.fact?.factName || null}
+        factName={props.factName || props.fact?.name || props.fact?.factName || ''}
         isAppointment={props.options?.isAppointment}
         listValues={props.options?.listValues || props.fact?.listValues || []}
         OGpatient={reactData.OGpatient}

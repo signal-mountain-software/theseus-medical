@@ -195,6 +195,16 @@ export async function getServiceRequests(body) {
   });
 }
 
+function sanitizeRequestKeys(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) { return obj; }
+  let result = {};
+  for (let key of Object.keys(obj)) {
+    let safeKey = key.trim() === '' ? 'Selected Option' : key;
+    result[safeKey] = sanitizeRequestKeys(obj[key]);
+  }
+  return result;
+}
+
 export async function putServiceRequest(body) {
   /* request is an object with...
           body: {
@@ -227,6 +237,9 @@ export async function putServiceRequest(body) {
     body.local_key = sDate.slice(2, 6) + '-' + sDate.slice(6, 13);
   }
   body.onBehalfOf = body.onBehalfOf || body.on_behalf_of || await getPerson(body.author, 'name');
+  if (body.request && typeof body.request === 'object') {
+    body.request = sanitizeRequestKeys(body.request);
+  }
   let historyArray = [];
   if (body.history) {
     if (Array.isArray(body.history)) { historyArray.push(...(body.history)); }
