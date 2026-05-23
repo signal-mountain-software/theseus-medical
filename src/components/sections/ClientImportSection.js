@@ -374,6 +374,16 @@ export default ({ reactData }) => {
     // Map each column (after index 0) to a contact path descriptor
     const columnMap = headers.slice(1).map(h => contactHeaderToPath(h));
 
+    // Load client communication preference once for the whole import
+    let client_preference = 'email';
+    const clientStyleRec = await dbClient
+      .get({ Key: { client_id, custom_key: 'client_style' }, TableName: 'Customizations' })
+      .promise()
+      .catch(() => null);
+    if (clientStyleRec?.Item?.customization_value?.preferred_communication) {
+      client_preference = clientStyleRec.Item.customization_value.preferred_communication;
+    }
+
     for (let i = 0; i < rows.length; i++) {
       const rowNum = i + 2;
       const row = rows[i];
@@ -408,6 +418,27 @@ export default ({ reactData }) => {
           const identifier = descriptor.isPhone ? storedVal.slice(-10) : storedVal;
           if (identifier) {
             newAccountEntries.push({ field: identifier, type: descriptor.accountType });
+          }
+        }
+
+        // Recalculate preferred_method and preferred_methods from updated contact info
+        const currentEmail = updatedPerson?.messaging?.email || '';
+        const currentCell = updatedPerson?.messaging?.sms || '';
+        if (client_preference === 'sms' || client_preference === 'text') {
+          if (currentCell) {
+            updatedPerson.preferred_methods = ['sms'];
+            updatedPerson.preferred_method = 'sms';
+          } else if (currentEmail) {
+            updatedPerson.preferred_methods = ['email'];
+            updatedPerson.preferred_method = 'email';
+          }
+        } else {
+          if (currentEmail) {
+            updatedPerson.preferred_methods = ['email'];
+            updatedPerson.preferred_method = 'email';
+          } else if (currentCell) {
+            updatedPerson.preferred_methods = ['sms'];
+            updatedPerson.preferred_method = 'sms';
           }
         }
 
