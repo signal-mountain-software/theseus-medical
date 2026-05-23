@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile } from '../../util/AVAUtilities';
+import { putTask, parseQuickActivity } from '../../util/AVATasks';
 import { addMember, removeMember } from '../../util/AVAGroups';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { formatPhone, makeName } from '../../util/AVAPeople';
@@ -160,10 +161,15 @@ const useStyles = makeStyles(theme => ({
   sectionStickyTitle: {
     position: 'sticky',
     top: 0,
-    zIndex: 3,
+    zIndex: 2,
     backgroundColor: theme.palette.background.paper,
     paddingTop: theme.spacing(0.5),
     marginBottom: theme.spacing(1),
+  },
+  '@global': {
+    '.react-dropdown-select-dropdown': {
+      zIndex: '10 !important',
+    },
   },
   requiredTextField: {
     '& .MuiInputLabel-asterisk': {
@@ -417,6 +423,7 @@ export default ({ request = {}, onClose }) => {
   };
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const [fieldDebugSnack, setFieldDebugSnack] = React.useState(null);
 
   const [renderedSectionCount, setRenderedSectionCount] = React.useState(0);
   const sectionRenderTimerRef = React.useRef(null);
@@ -959,25 +966,34 @@ export default ({ request = {}, onClose }) => {
       loadCommonFieldRec()
     ]);
 
+    let _field_sources = [];
+
     if (formFieldRec) {
       // Found in Form_Fields table
+      _field_sources.push('Form_Fields table');
       field_variables = Object.assign({}, formFieldRec);
     }
 
     if (commonFieldRec) {
       // Found in Common_Fields table
+      _field_sources.push('Common_Fields table');
       field_variables = Object.assign({}, field_variables, commonFieldRec.value, commonFieldRec);
     }
 
     // Now override with any values in formRec.fields[field_name]
     if (formRec.fields && formRec.fields[field_name]) {
+      if (!_field_sources.includes('form spec')) { _field_sources.push('form spec'); }
       field_variables = Object.assign({}, field_variables, formRec.fields[field_name]);
     }
 
     if (isObject(fieldEntry)) {
       // Finally, override with any values in fieldEntry object
+      if (!_field_sources.includes('form spec')) { _field_sources.push('form spec'); }
       field_variables = Object.assign({}, field_variables, fieldEntry);
     }
+
+    field_variables._field_sources = _field_sources.length > 0 ? _field_sources : ['form spec'];
+    field_variables._field_key = field_key;
     return field_variables;
   };
 
@@ -1324,6 +1340,10 @@ export default ({ request = {}, onClose }) => {
 
     // finish initializations
     returnObj.isError = false;
+    returnObj._field_key = field_key;
+    returnObj._field_name = field_name;
+    returnObj._section_name = section?.section_name || '';
+    returnObj._field_sources = field_variables._field_sources || ['form spec'];
 
     formRec.fields[field_name] = Object.assign({}, returnObj);
     response.fields[field_name] = Object.assign({}, returnObj);
@@ -2015,6 +2035,9 @@ export default ({ request = {}, onClose }) => {
           if (table_value) {
             response = response.replace(variable, `${[table_value].flat()[0]}`);
           }
+          else if (reconcile_key.length > 0) {
+            response = response.replace(variable, 'this person');
+          }
           else if (reactData.fields[extracted_field] && reactData.fields[extracted_field].valueText) {
             let vValue = reactData.fields[extracted_field].valueText;
             vValue = listFromArray(formatValue({
@@ -2127,10 +2150,10 @@ export default ({ request = {}, onClose }) => {
       if (isObject(this_option)) {
         const optionValue = this_option.value ?? this_option.id ?? this_option.key ?? this_option.display ?? this_option.label;
         const optionDisplay = this_option.display ?? this_option.label ?? this_option.value ?? this_option.id ?? this_option.key;
-        return {
+        return Object.assign({}, this_option, {
           value: optionValue,
           display: optionDisplay
-        };
+        });
       }
       return {
         value: this_option,
@@ -2159,7 +2182,7 @@ export default ({ request = {}, onClose }) => {
     let optionList = normalizeSelectionList(props.text)
       .map(this_option => ({ value: this_option.value, label: this_option.display }))
       .sort((a, b) => `${a.label}`.localeCompare(`${b.label}`));
-    const promptText = toInlineFieldText(reconcilePrompt({
+    const promptText = normalizePromptMarkup(reconcilePrompt({
       rawValue: fieldRec.prompt?.value,
       this_field: props.prop,
       includeRequiredMarker: false
@@ -2187,7 +2210,7 @@ export default ({ request = {}, onClose }) => {
           style={containerStyle}
         >
           <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}>
-            {promptText || props.prop}
+            <span dangerouslySetInnerHTML={{ __html: promptText || normalizePromptMarkup(props.prop) }} />
             {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
           </Typography>
           {!!helperText && (
@@ -2296,7 +2319,7 @@ export default ({ request = {}, onClose }) => {
 
     const isRequiredField = isFieldRequired(fieldRec);
     const isDisabled = fieldRec.options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked;
-    const promptText = toInlineFieldText(reconcilePrompt({
+    const promptText = normalizePromptMarkup(reconcilePrompt({
       rawValue: fieldRec.prompt?.value,
       this_field: props.prop,
       includeRequiredMarker: false
@@ -2336,7 +2359,7 @@ export default ({ request = {}, onClose }) => {
           style={containerStyle}
         >
           <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}>
-            {promptText || props.prop}
+            <span dangerouslySetInnerHTML={{ __html: promptText || normalizePromptMarkup(props.prop) }} />
             {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
           </Typography>
           {!!helperText && (
@@ -2347,6 +2370,7 @@ export default ({ request = {}, onClose }) => {
             flexDirection={props.column ? 'column' : 'row'}
             alignItems='flex-start'
             flexWrap={props.column ? 'nowrap' : 'wrap'}
+            style={{ marginTop: '8px' }}
           >
             <React.Fragment key={`groupFrag__${props.prop}`}>
               {(optionList).map((text, tIndex) => (
@@ -2367,6 +2391,33 @@ export default ({ request = {}, onClose }) => {
                         optionDisplay: text.display
                       })}
                       onMouseDown={async () => {
+                        if (text.select_all) {
+                          const isCurrentlyChecked = isSelectionOptionSelected({
+                            selectedValue: fieldRec.value,
+                            optionValue: text.value,
+                            optionDisplay: text.display
+                          });
+                          reactData.fields[props.prop].value = isCurrentlyChecked
+                            ? []
+                            : optionList.map(o => o.value);
+                          updateReactData({
+                            formUpdates: ++reactData.formUpdates,
+                            fields: reactData.fields
+                          }, true);
+                          return;
+                        }
+                        const selectAllItem = optionList.find(o => o.select_all);
+                        if (selectAllItem) {
+                          const selectAllChecked = isSelectionOptionSelected({
+                            selectedValue: fieldRec.value,
+                            optionValue: selectAllItem.value,
+                            optionDisplay: selectAllItem.display
+                          });
+                          if (selectAllChecked && Array.isArray(reactData.fields[props.prop].value)) {
+                            const idx = reactData.fields[props.prop].value.indexOf(selectAllItem.value);
+                            if (idx >= 0) { reactData.fields[props.prop].value.splice(idx, 1); }
+                          }
+                        }
                         await handleMakeSelection({
                           clickText: text.value,
                           prop: props.prop,
@@ -2946,6 +2997,11 @@ export default ({ request = {}, onClose }) => {
           reactData.peopleRec[reactData.pertains_to].groups = update_stageGroups(groupInstructions_onStageExit);
           needsUpdate.peopleRec = true;
         }
+        // create tasks on stage exit
+        const taskTemplates_onStageExit = reactData.formRec.stages[stage_we_finished].on_complete_tasks;
+        if (taskTemplates_onStageExit) {
+          await createTasksFromTemplates(taskTemplates_onStageExit);
+        }
       }
     }
 
@@ -3067,6 +3123,11 @@ export default ({ request = {}, onClose }) => {
       }
     }
 
+    // create tasks as indicated in formRec options upon final save
+    if (final && reactData.formRec?.options?.tasks) {
+      await createTasksFromTemplates(reactData.formRec.options.tasks);
+    }
+
     updateReactData({
       saveInProcess: false,
       document_id,
@@ -3177,6 +3238,74 @@ export default ({ request = {}, onClose }) => {
     }
     return groupList;
   }
+
+  // Creates tasks from an array of task-template objects (used by on_complete_tasks and options.tasks).
+  // Each template: { text, iterate_over?, skip_if_blank?, condition?: { field, value } }
+  // All field references use occurrence-1 naming (e.g. med_1_name); iterate_over causes them to
+  // be repeated for each active occurrence of that section template, substituting 1→N.
+  const createTasksFromTemplates = async (templates) => {
+    for (const template of [templates].flat()) {
+      const occTemplate = template.iterate_over;
+      const maxN = occTemplate
+        ? (reactData.activeSectionOccurrences?.[occTemplate] ?? 1)
+        : 1;
+      for (let n = 1; n <= maxN; n++) {
+        // Replace all {{field_1_name}} tokens with {{field_N_name}} for this occurrence
+        const applyN = (str) => {
+          if (!str || n === 1) { return str; }
+          return str.replace(/\{\{([^}]+)\}\}/g, (match, token) => {
+            const replaced = token.replace('1', String(n));
+            return `{{${replaced === token ? `${token}_occ${n}` : replaced}}}`;
+          });
+        };
+        const applyNtoField = (fieldName) => {
+          if (!fieldName || n === 1) { return fieldName; }
+          const replaced = fieldName.replace('1', String(n));
+          return replaced === fieldName ? `${fieldName}_occ${n}` : replaced;
+        };
+        // skip_if_blank: skip this occurrence if the anchor field has no value
+        const skipField = applyNtoField(template.skip_if_blank);
+        if (skipField) {
+          const skipRec = reactData.fields?.[skipField];
+          const skipVal = skipRec?.valueText ?? skipRec?.value;
+          if (!skipVal || String(skipVal).trim() === '') { continue; }
+        }
+        // condition: skip if the field value doesn't match expected
+        if (template.condition) {
+          const condField = applyNtoField(template.condition.field);
+          const condRec = reactData.fields?.[condField];
+          const condVal = condRec?.valueText ?? condRec?.value;
+          if (String(condVal ?? '').trim() !== String(template.condition.value ?? '').trim()) { continue; }
+        }
+        // resolve {{tokens}} then parse the natural-language phrase
+        const resolvedText = resolveMessageTokens(applyN(template.text || ''));
+        if (!resolvedText?.trim()) { continue; }
+        const { description, schedule, start_date } = parseQuickActivity(resolvedText);
+        if (!description?.trim()) { continue; }
+        await putTask({
+          task_id: null,
+          client_id: state.session.client_id,
+          description,
+          status: 'active',
+          start_date,
+          end_date: '',
+          available_to: ['*all'],
+          applies_to: [{
+            type: 'person',
+            id: reactData.pertains_to,
+            name: reactData.peopleRec?.[reactData.pertains_to]?.display_name || reactData.pertains_to
+          }],
+          data_to_collect: [],
+          schedule,
+          remind_who: [],
+          reminders: [],
+          streak_rules: [],
+          created_by: state.session.user_id,
+          source: 'form',
+        });
+      }
+    }
+  };
 
   async function sendMessage(send_instructions) {
     let postTime = new Date().getTime();
@@ -3808,7 +3937,7 @@ export default ({ request = {}, onClose }) => {
       ? textRows
       : (shouldAutoWrapText ? 2 : undefined);
 
-    const promptText = occ_index > 0 ? '' : toInlineFieldText(reconcilePrompt({
+    const promptText = occ_index > 0 ? '' : normalizePromptMarkup(reconcilePrompt({
       rawValue: fieldRec.prompt?.value,
       this_field,
       includeRequiredMarker: false
@@ -3843,7 +3972,7 @@ export default ({ request = {}, onClose }) => {
 
     const promptLabel = !!promptText && (
       <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}>
-        {promptText}
+        <span dangerouslySetInnerHTML={{ __html: promptText }} />
         {isRequiredField && <span className={classes.requiredAsterisk}>&nbsp;*</span>}
       </Typography>
     );
@@ -4020,21 +4149,40 @@ export default ({ request = {}, onClose }) => {
               {displaySections.length > 0
                 ? <React.Fragment>
                   {displaySections.slice(0, renderedSectionCount || displaySections.length).map((sectionObj, sectionNdx) => (
-                    <React.Fragment
+                    <div
                       key={`sectionFrag__${sectionObj.section_name}_${sectionNdx}`}
                     >
-                      <Typography
-                        key={`section__${sectionObj.section_name}`}
-                        className={classes.sectionStickyTitle}
-                        style={AVATextStyle({
-                          size: 1.3, bold: true, margin: {
-                            bottom: 1,
-                            top: ((sectionNdx === 0) ? 1 : 3),
-                          }
-                        })}
-                      >
-                        {sectionObj.section_name}
-                      </Typography>
+                      {sectionObj.section_header
+                        ? <div
+                            key={`section__${sectionObj.section_name}`}
+                            className={classes.sectionStickyTitle}
+                            style={{
+                              ...AVATextStyle({
+                                size: 1.3, bold: true, overflow: 'visible', margin: {
+                                  bottom: 1,
+                                  top: ((sectionNdx === 0) ? 1 : 3),
+                                }
+                              }),
+                              zIndex: 2 + sectionNdx
+                            }}
+                            dangerouslySetInnerHTML={{ __html: sectionObj.section_header }}
+                          />
+                        : <div
+                            key={`section__${sectionObj.section_name}`}
+                            className={classes.sectionStickyTitle}
+                            style={{
+                              ...AVATextStyle({
+                                size: 1.3, bold: true, overflow: 'visible', margin: {
+                                  bottom: 1,
+                                  top: ((sectionNdx === 0) ? 1 : 3),
+                                }
+                              }),
+                              zIndex: 2 + sectionNdx
+                            }}
+                          >
+                            {sectionObj.section_name}
+                          </div>
+                      }
                       {sectionObj.fields.map((this_field, fieldNdx) => {
                         return (
                           !reactData.fields[this_field].ignore &&
@@ -4044,6 +4192,18 @@ export default ({ request = {}, onClose }) => {
                               border: reactData.fields[this_field].isError ? '2px solid red' : 'none',
                               padding: reactData.fields[this_field].isError ? '8px' : '0px',
                               borderRadius: reactData.fields[this_field].isError ? '30px' : '0px'
+                            }}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              const fieldRec = reactData.fields[this_field];
+                              const fieldKey = fieldRec._field_key || this_field;
+                              setFieldDebugSnack({
+                                form_id: reactData.form_id,
+                                section: sectionObj.section_name,
+                                field_name: this_field,
+                                field_key: fieldKey !== this_field ? fieldKey : null,
+                                sources: (fieldRec._field_sources || []).join(', ') || 'form spec'
+                              });
                             }}
                           >
                             {new Array(reactData.fields[this_field].prompt?.occurrences || 1).fill(0).map((a_zero, occ_index) => (
@@ -4589,7 +4749,7 @@ export default ({ request = {}, onClose }) => {
                           </Box>
                         );
                       })()}
-                    </React.Fragment>
+                    </div>
                   ))}
                   <Box aria-hidden='true' style={{ height: '28vh' }} />
                 </React.Fragment>
@@ -4919,6 +5079,33 @@ export default ({ request = {}, onClose }) => {
               }, true);
             }}
           />
+        }
+        {
+          fieldDebugSnack &&
+          <Snackbar
+            open={!!fieldDebugSnack}
+            key={'fieldDebug_snackbar'}
+            autoHideDuration={8000}
+            onClose={() => setFieldDebugSnack(null)}
+            anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+          >
+            <Alert
+              severity='info'
+              variant='filled'
+              key={'fieldDebug_alert'}
+              style={{ borderRadius: '12px' }}
+              onClose={() => setFieldDebugSnack(null)}
+            >
+              <AlertTitle>Field Info</AlertTitle>
+              <Typography style={{ fontSize: '0.85rem' }}>{'form_id: ' + fieldDebugSnack.form_id}</Typography>
+              <Typography style={{ fontSize: '0.85rem' }}>{'section: ' + fieldDebugSnack.section}</Typography>
+              <Typography style={{ fontSize: '0.85rem' }}>{'field_name: ' + fieldDebugSnack.field_name}</Typography>
+              {fieldDebugSnack.field_key &&
+                <Typography style={{ fontSize: '0.85rem' }}>{'field_key: ' + fieldDebugSnack.field_key}</Typography>
+              }
+              <Typography style={{ fontSize: '0.85rem' }}>{'source(s): ' + fieldDebugSnack.sources}</Typography>
+            </Alert>
+          </Snackbar>
         }
         {
           reactData.alert &&
