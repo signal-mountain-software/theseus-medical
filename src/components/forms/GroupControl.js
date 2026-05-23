@@ -9,7 +9,7 @@ import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import GroupMaintenance from '../dialogs/GroupMaintenance';
 import { getPerson } from '../../util/AVAPeople';
 
-import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Checkbox, FormControlLabel, LinearProgress } from '@material-ui/core';
+import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Checkbox, FormControlLabel, LinearProgress, Tooltip } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 import {
   getExportFieldPickerData,
@@ -17,10 +17,14 @@ import {
   resolveSelectedFieldValuesForPeople,
   downloadRowsAsCsv,
   downloadRowsAsXlsx,
+  downloadRowsAsPdf,
   sanitizeExportBaseName,
   listSavedReports,
-  saveReport
+  saveReport,
+  collectPromptSpecs,
 } from '../../util/AVAPeopleListExport';
+
+import ExportFilterPrompt from '../dialogs/ExportFilterPrompt';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -205,6 +209,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     reportNameInput: '',
     hasUnsavedSelections: false,
     showDownloadConfirm: null,
+    showExportFilterPrompt: false,
+    exportFilterPromptSpecs: [],
     updatesMade: false,
     viewPeopleMaintenance: false,
     viewGroupMaintenance: false
@@ -833,6 +839,58 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     }
   }
 
+  async function downloadCurrentPeopleListPdf(resolvedPromptValues = {}) {
+    const selectedFieldObjects = reactData.exportFieldOptions.filter(
+      f => reactData.selectedExportFieldNames.includes(f.field_key));
+    const promptSpecs = collectPromptSpecs(selectedFieldObjects);
+    if (promptSpecs.length > 0 && Object.keys(resolvedPromptValues).length === 0) {
+      updateReactData({ showExportFilterPrompt: true, exportFilterPromptSpecs: promptSpecs }, true);
+      return null;
+    }
+    try {
+      const exportData = await buildCurrentPeopleListExportData();
+      if (!exportData) {
+        return false;
+      }
+
+      const {
+        header,
+        rows,
+        safeGroupName,
+        selectedFieldOptions
+      } = exportData;
+
+      const fieldMeta = selectedFieldOptions.map(opt => ({ value_type: opt.value_type, filters: opt.filters }));
+      const fileName = `${safeGroupName || 'group'}_people_list.pdf`;
+      await downloadRowsAsPdf({
+        header,
+        rows,
+        fileName,
+        personIdColIndex: 0,
+        personNameColIndex: 3,
+        identityColCount: 4,
+        fieldMeta,
+        resolvedPromptValues,
+      });
+      await saveExportFieldSelections({
+        sessionId: state?.session?.user_id,
+        clientId: pSession?.client_id,
+        exportScope: 'group_management',
+        selectedFieldNames: reactData.selectedExportFieldNames || [],
+        logLabel: 'group export selections'
+      });
+      return true;
+    }
+    finally {
+      updateReactData({
+        exportInProgress: false,
+        exportProgressCurrent: 0,
+        exportProgressTotal: 0,
+        exportProgressLabel: ''
+      }, true);
+    }
+  }
+
   async function buildCurrentPeopleListExportData() {
     const visibleMemberIds = (reactData.lower_people_filter
       ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
@@ -887,6 +945,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         clientId: pSession.client_id,
         personIds,
         selectedFieldKeys,
+        selectedFieldOptions,
         onProgress: ({ completedCount, totalCount }) => {
           updateReactData({
             exportProgressCurrent: completedCount,
@@ -915,7 +974,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     return {
       header,
       rows,
-      safeGroupName
+      safeGroupName,
+      selectedFieldOptions
     };
   }
 
@@ -1875,6 +1935,15 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                 label={
                                   <span>
                                     {fieldRec.description}
+                                    {Array.isArray(fieldRec.export_formats) && (
+                                      <span style={{
+                                        marginLeft: '6px', fontSize: '0.65em', color: 'white',
+                                        backgroundColor: (fieldRec.export_formats.includes('pdf') && !fieldRec.export_formats.includes('csv')) ? '#1565C0' : '#2E7D32',
+                                        borderRadius: '8px', padding: '1px 5px',
+                                      }}>
+                                        {(fieldRec.export_formats.includes('pdf') && !fieldRec.export_formats.includes('csv')) ? 'PDF' : 'CSV/XLS'}
+                                      </span>
+                                    )}
                                     {isChecked &&
                                       <span style={{ marginLeft: '6px', fontSize: '0.75em', color: '#888', fontWeight: 'bold' }}>
                                         {`#${posIndex + 1}`}
@@ -1915,12 +1984,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     onClick={async () => {
                       const fmt = reactData.showDownloadConfirm;
                       updateReactData({ showDownloadConfirm: null }, true);
-                      const fn = fmt === 'xlsx' ? downloadCurrentPeopleListXlsx : downloadCurrentPeopleListCsv;
+                      const fn = fmt === 'xlsx' ? downloadCurrentPeopleListXlsx : fmt === 'pdf' ? downloadCurrentPeopleListPdf : downloadCurrentPeopleListCsv;
                       const result = await fn();
                       if (result) updateReactData({ showFieldPicker: false }, true);
                     }}
                   >
-                    {`Download ${reactData.showDownloadConfirm === 'xlsx' ? 'Excel' : 'CSV'} anyway`}
+                    {`Download ${reactData.showDownloadConfirm === 'xlsx' ? 'Excel' : reactData.showDownloadConfirm === 'pdf' ? 'PDF' : 'CSV'} anyway`}
                   </Button>
                   <Button
                     className={AVAClass.AVAButton}
@@ -1933,10 +2002,25 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 </Box>
               </Box>
               :
+              (() => {
+                const selectedFieldObjects = reactData.exportFieldOptions.filter(
+                  f => reactData.selectedExportFieldNames.includes(f.field_key));
+                const csvBlockers = selectedFieldObjects
+                  .filter(f => Array.isArray(f.export_formats) && !f.export_formats.includes('csv'))
+                  .map(f => f.description);
+                const xlsxBlockers = selectedFieldObjects
+                  .filter(f => Array.isArray(f.export_formats) && !f.export_formats.includes('xlsx'))
+                  .map(f => f.description);
+                const pdfBlockers = selectedFieldObjects
+                  .filter(f => Array.isArray(f.export_formats) && !f.export_formats.includes('pdf'))
+                  .map(f => f.description);
+                return (
               <React.Fragment>
+            <Tooltip placement='top' title={csvBlockers.length > 0 ? `Not available with: ${csvBlockers.join(', ')}` : ''}>
+              <span>
             <Button
               className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'green', color: 'white' }}
+              style={{ backgroundColor: csvBlockers.length > 0 ? '#aaa' : 'green', color: 'white' }}
               size='small'
               onClick={async () => {
                 if (reactData.hasUnsavedSelections && reactData.selectedExportFieldNames.length > 0) {
@@ -1950,13 +2034,17 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                   }, true);
                 }
               }}
-              disabled={reactData.loadingExportFields || reactData.exportInProgress}
+              disabled={reactData.loadingExportFields || reactData.exportInProgress || csvBlockers.length > 0}
             >
               {'Download CSV'}
             </Button>
+              </span>
+            </Tooltip>
+            <Tooltip placement='top' title={xlsxBlockers.length > 0 ? `Not available with: ${xlsxBlockers.join(', ')}` : ''}>
+              <span>
             <Button
               className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'green', color: 'white' }}
+              style={{ backgroundColor: xlsxBlockers.length > 0 ? '#aaa' : 'green', color: 'white' }}
               size='small'
               onClick={async () => {
                 if (reactData.hasUnsavedSelections && reactData.selectedExportFieldNames.length > 0) {
@@ -1970,10 +2058,36 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                   }, true);
                 }
               }}
-              disabled={reactData.loadingExportFields || reactData.exportInProgress}
+              disabled={reactData.loadingExportFields || reactData.exportInProgress || xlsxBlockers.length > 0}
             >
               {'Download Excel'}
             </Button>
+              </span>
+            </Tooltip>
+            <Tooltip placement='top' title={pdfBlockers.length > 0 ? `Not available with: ${pdfBlockers.join(', ')}` : ''}>
+              <span>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: pdfBlockers.length > 0 ? '#aaa' : 'blue', color: 'white' }}
+              size='small'
+              onClick={async () => {
+                if (reactData.hasUnsavedSelections && reactData.selectedExportFieldNames.length > 0) {
+                  updateReactData({ showDownloadConfirm: 'pdf' }, true);
+                  return;
+                }
+                const result = await downloadCurrentPeopleListPdf();
+                if (result) {
+                  updateReactData({
+                    showFieldPicker: false
+                  }, true);
+                }
+              }}
+              disabled={reactData.loadingExportFields || reactData.exportInProgress || pdfBlockers.length > 0}
+            >
+              {'Download PDF'}
+            </Button>
+              </span>
+            </Tooltip>
             <Button
               className={AVAClass.AVAButton}
               style={{ backgroundColor: 'red', color: 'white' }}
@@ -1988,10 +2102,23 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
               {'Close'}
             </Button>
               </React.Fragment>
+                );
+              })()
             }
           </DialogActions>
         </Dialog>
       }
+      {reactData.showExportFilterPrompt && (
+        <ExportFilterPrompt
+          promptSpecs={reactData.exportFilterPromptSpecs || []}
+          onComplete={async (resolvedValues) => {
+            updateReactData({ showExportFilterPrompt: false }, true);
+            const result = await downloadCurrentPeopleListPdf(resolvedValues);
+            if (result) { updateReactData({ showFieldPicker: false }, true); }
+          }}
+          onCancel={() => updateReactData({ showExportFilterPrompt: false }, true)}
+        />
+      )}
       {reactData.showPhotoDirectory &&
         (() => {
           const bypassMode = !!(preSelectedGroup && preSelectedFunction === 'directory');

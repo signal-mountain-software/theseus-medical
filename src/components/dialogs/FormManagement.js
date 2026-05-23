@@ -13,7 +13,7 @@ import { createDocument } from '../../util/AVADocuments';
 import AVAUploadFile from '../../util/AVAUploadFile';
 import FormEditor from '../forms/FormEditor';
 
-import { Snackbar, Paper, Box, Dialog, DialogActions, DialogContent, DialogContentText, Button, Typography, Checkbox, FormControlLabel, TextField, LinearProgress } from '@material-ui/core';
+import { Snackbar, Paper, Box, Dialog, DialogActions, DialogContent, DialogContentText, Button, Typography, Checkbox, FormControlLabel, TextField, LinearProgress, Tooltip } from '@material-ui/core';
 import Select from "react-dropdown-select";
 import { Alert, AlertTitle } from '@material-ui/lab/';
 import {
@@ -22,10 +22,14 @@ import {
   resolveSelectedFieldValuesForPeople,
   downloadRowsAsCsv,
   downloadRowsAsXlsx,
+  downloadRowsAsPdf,
   sanitizeExportBaseName,
   listSavedReports,
-  saveReport
+  saveReport,
+  collectPromptSpecs,
 } from '../../util/AVAPeopleListExport';
+
+import ExportFilterPrompt from './ExportFilterPrompt';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -160,6 +164,8 @@ export default ({ defaults, onClose }) => {
     reportNameInput: '',
     hasUnsavedSelections: false,
     showDownloadConfirm: null,
+    showExportFilterPrompt: false,
+    exportFilterPromptSpecs: [],
     updatesMade: false,
     viewPeopleMaintenance: false,
     selectedPersonIds: [],
@@ -405,6 +411,53 @@ export default ({ defaults, onClose }) => {
     return true;
   }
 
+  async function downloadCurrentPeopleListPdf(resolvedPromptValues = {}) {
+    const selectedFieldObjects = reactData.exportFieldOptions.filter(
+      f => reactData.selectedExportFieldNames.includes(f.field_key));
+    const promptSpecs = collectPromptSpecs(selectedFieldObjects);
+    if (promptSpecs.length > 0 && Object.keys(resolvedPromptValues).length === 0) {
+      updateReactData({ showExportFilterPrompt: true, exportFilterPromptSpecs: promptSpecs }, true);
+      return null;
+    }
+    const exportData = await buildCurrentPeopleListExportData();
+    if (!exportData) {
+      return false;
+    }
+
+    const {
+      selectedForm,
+      header,
+      rows,
+      selectedFieldOptions
+    } = exportData;
+
+    const fieldMeta = selectedFieldOptions.map(opt => ({ value_type: opt.value_type, filters: opt.filters }));
+    const safeFormName = sanitizeExportBaseName(
+      selectedForm?.form_name || reactData.selectedForm_id,
+      'form'
+    );
+    const fileName = `${safeFormName || 'form'}_people_list.pdf`;
+
+    await downloadRowsAsPdf({
+      header,
+      rows,
+      fileName,
+      personIdColIndex: 1,
+      personNameColIndex: 0,
+      identityColCount: 2,
+      fieldMeta,
+      resolvedPromptValues,
+    });
+    await saveExportFieldSelections({
+      sessionId: state?.session?.user_id,
+      clientId: state?.session?.client_id,
+      exportScope: 'form_management',
+      selectedFieldNames: reactData.selectedExportFieldNames || [],
+      logLabel: 'form export selections'
+    });
+    return true;
+  }
+
   async function buildCurrentPeopleListExportData() {
     if (!reactData.selectedForm_id) {
       return false;
@@ -443,7 +496,8 @@ export default ({ defaults, onClose }) => {
       const resolvedByPersonId = await resolveSelectedFieldValuesForPeople({
         clientId: state.session.client_id,
         personIds,
-        selectedFieldKeys
+        selectedFieldKeys,
+        selectedFieldOptions
       });
 
       rows.forEach((rowObj, rowIndex) => {
@@ -460,7 +514,8 @@ export default ({ defaults, onClose }) => {
     return {
       selectedForm,
       header,
-      rows
+      rows,
+      selectedFieldOptions
     };
   }
 
@@ -2391,6 +2446,15 @@ export default ({ defaults, onClose }) => {
                                 label={
                                   <span>
                                     {fieldRec.description}
+                                    {Array.isArray(fieldRec.export_formats) && (
+                                      <span style={{
+                                        marginLeft: '6px', fontSize: '0.65em', color: 'white',
+                                        backgroundColor: (fieldRec.export_formats.includes('pdf') && !fieldRec.export_formats.includes('csv')) ? '#1565C0' : '#2E7D32',
+                                        borderRadius: '8px', padding: '1px 5px',
+                                      }}>
+                                        {(fieldRec.export_formats.includes('pdf') && !fieldRec.export_formats.includes('csv')) ? 'PDF' : 'CSV/XLS'}
+                                      </span>
+                                    )}
                                     {isChecked &&
                                       <span style={{ marginLeft: '6px', fontSize: '0.75em', color: '#888', fontWeight: 'bold' }}>
                                         {`#${posIndex + 1}`}
@@ -2430,12 +2494,12 @@ export default ({ defaults, onClose }) => {
                     size='small'
                     onClick={async () => {
                       updateReactData({ showDownloadConfirm: null }, true);
-                      const fn = reactData.showDownloadConfirm === 'xlsx' ? downloadCurrentPeopleListXlsx : downloadCurrentPeopleListCsv;
+                      const fn = reactData.showDownloadConfirm === 'xlsx' ? downloadCurrentPeopleListXlsx : reactData.showDownloadConfirm === 'pdf' ? downloadCurrentPeopleListPdf : downloadCurrentPeopleListCsv;
                       const result = await fn();
                       if (result) updateReactData({ showFieldPicker: false }, true);
                     }}
                   >
-                    {`Download ${reactData.showDownloadConfirm === 'xlsx' ? 'Excel' : 'CSV'} anyway`}
+                    {`Download ${reactData.showDownloadConfirm === 'xlsx' ? 'Excel' : reactData.showDownloadConfirm === 'pdf' ? 'PDF' : 'CSV'} anyway`}
                   </Button>
                   <Button
                     className={AVAClass.AVAButton}
@@ -2448,10 +2512,25 @@ export default ({ defaults, onClose }) => {
                 </Box>
               </Box>
               :
+              (() => {
+                const selectedFieldObjects = reactData.exportFieldOptions.filter(
+                  f => reactData.selectedExportFieldNames.includes(f.field_key));
+                const csvBlockers = selectedFieldObjects
+                  .filter(f => Array.isArray(f.export_formats) && !f.export_formats.includes('csv'))
+                  .map(f => f.description);
+                const xlsxBlockers = selectedFieldObjects
+                  .filter(f => Array.isArray(f.export_formats) && !f.export_formats.includes('xlsx'))
+                  .map(f => f.description);
+                const pdfBlockers = selectedFieldObjects
+                  .filter(f => Array.isArray(f.export_formats) && !f.export_formats.includes('pdf'))
+                  .map(f => f.description);
+                return (
               <React.Fragment>
+            <Tooltip placement='top' title={csvBlockers.length > 0 ? `Not available with: ${csvBlockers.join(', ')}` : ''}>
+              <span>
             <Button
               className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'green', color: 'white' }}
+              style={{ backgroundColor: csvBlockers.length > 0 ? '#aaa' : 'green', color: 'white' }}
               size='small'
               onClick={async () => {
                 if (reactData.hasUnsavedSelections && reactData.selectedExportFieldNames.length > 0) {
@@ -2465,13 +2544,17 @@ export default ({ defaults, onClose }) => {
                   }, true);
                 }
               }}
-              disabled={reactData.loadingExportFields}
+              disabled={reactData.loadingExportFields || csvBlockers.length > 0}
             >
               {'Download CSV'}
             </Button>
+              </span>
+            </Tooltip>
+            <Tooltip placement='top' title={xlsxBlockers.length > 0 ? `Not available with: ${xlsxBlockers.join(', ')}` : ''}>
+              <span>
             <Button
               className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'green', color: 'white' }}
+              style={{ backgroundColor: xlsxBlockers.length > 0 ? '#aaa' : 'green', color: 'white' }}
               size='small'
               onClick={async () => {
                 if (reactData.hasUnsavedSelections && reactData.selectedExportFieldNames.length > 0) {
@@ -2485,10 +2568,36 @@ export default ({ defaults, onClose }) => {
                   }, true);
                 }
               }}
-              disabled={reactData.loadingExportFields}
+              disabled={reactData.loadingExportFields || xlsxBlockers.length > 0}
             >
               {'Download Excel'}
             </Button>
+              </span>
+            </Tooltip>
+            <Tooltip placement='top' title={pdfBlockers.length > 0 ? `Not available with: ${pdfBlockers.join(', ')}` : ''}>
+              <span>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: pdfBlockers.length > 0 ? '#aaa' : 'blue', color: 'white' }}
+              size='small'
+              onClick={async () => {
+                if (reactData.hasUnsavedSelections && reactData.selectedExportFieldNames.length > 0) {
+                  updateReactData({ showDownloadConfirm: 'pdf' }, true);
+                  return;
+                }
+                const result = await downloadCurrentPeopleListPdf();
+                if (result) {
+                  updateReactData({
+                    showFieldPicker: false
+                  }, true);
+                }
+              }}
+              disabled={reactData.loadingExportFields || pdfBlockers.length > 0}
+            >
+              {'Download PDF'}
+            </Button>
+              </span>
+            </Tooltip>
             <Button
               className={AVAClass.AVAButton}
               style={{ backgroundColor: 'red', color: 'white' }}
@@ -2502,10 +2611,23 @@ export default ({ defaults, onClose }) => {
               {'Close'}
             </Button>
               </React.Fragment>
+                );
+              })()
             }
           </DialogActions>
         </Dialog>
       }
+      {reactData.showExportFilterPrompt && (
+        <ExportFilterPrompt
+          promptSpecs={reactData.exportFilterPromptSpecs || []}
+          onComplete={async (resolvedValues) => {
+            updateReactData({ showExportFilterPrompt: false }, true);
+            const result = await downloadCurrentPeopleListPdf(resolvedValues);
+            if (result) { updateReactData({ showFieldPicker: false }, true); }
+          }}
+          onCancel={() => updateReactData({ showExportFilterPrompt: false }, true)}
+        />
+      )}
       {reactData.isUploading &&
         <AVAUploadFile
           options={{
