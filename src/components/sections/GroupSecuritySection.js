@@ -86,6 +86,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
       // this will determine what groups this group has granted access to
       let may_access = new Set();
+      let direct_access_groups = new Set();
       // if there are groups you belongs to that you ALSO have authority to, go ahead and mark may_access
       for (let group_id in groups_person_belongsTo) {
         if (groups_person_belongsTo[group_id].is_accessible) {
@@ -95,9 +96,18 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
       for (let this_access_rule of (currentValues.Groups.accessible_to || [])) {
         switch (this_access_rule.split(':')[0].trim()) {
           case '*support': { may_access.add('*support'); break; }
-          case '*self': { may_access.add(currentValues.Groups.group_id); break; }
+          case '*self': {
+            may_access.add(currentValues.Groups.group_id);
+            direct_access_groups.add(currentValues.Groups.group_id);
+            break;
+          }
           case 'person': { may_access.add(`person:${this_access_rule.split(':')[1].trim()}`); break; }
-          case 'group': { may_access.add(this_access_rule.split(':')[1].trim()); break; }
+          case 'group': {
+            const groupId = this_access_rule.split(':')[1].trim();
+            may_access.add(groupId);
+            direct_access_groups.add(groupId);
+            break;
+          }
           default: { }
         }
       }
@@ -116,7 +126,8 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
       }
       updateReactData({
         accessObj: Object.assign({}, groups_person_belongsTo, rejectObject),
-        may_access: Array.from(may_access)
+        may_access: Array.from(may_access),
+        direct_access_groups: Array.from(direct_access_groups)
       }, true);
     }
 
@@ -194,8 +205,8 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
                   key={`group-list_${listIndex}`}
                 >
                   <Checkbox
-                    checked={reactData.may_access
-                      ? reactData.may_access.includes(reactData.groupsManagedObject[listEntry].group_id)
+                    checked={reactData.direct_access_groups
+                      ? reactData.direct_access_groups.includes(reactData.groupsManagedObject[listEntry].group_id)
                       : false
                     }
                     name={`cbox1_${listIndex}`}
@@ -203,8 +214,8 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
                     disableRipple
                     onChange={async () => {
                       const this_group = reactData.groupsManagedObject[listEntry].group_id;
-                      const current_checkState = reactData.may_access
-                        ? reactData.may_access.includes(this_group)
+                      const current_checkState = reactData.direct_access_groups
+                        ? reactData.direct_access_groups.includes(this_group)
                         : false;
                       // find every group that is a child/grandchild/etc of thie group
                       let my_family = new Set([]);
@@ -219,22 +230,27 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
                       findChildren(this_group);
                       let newAccessList = new Set(currentValues.Groups?.accessible_to || []);
                       let newMayAccess = new Set(reactData.may_access || []);
+                      let newDirectAccess = new Set(reactData.direct_access_groups || []);
                       if (!current_checkState) {
                         // add this group and all its children to the access list
                         newAccessList.add(`group:${this_group}`);
                         newMayAccess.add(this_group);
+                        newDirectAccess.add(this_group);
                         my_family.forEach(g => {
                           newAccessList.add(`group:${g}`);
                           newMayAccess.add(g);
+                          newDirectAccess.add(g);
                         });
                       }
                       else {
                         // remove this group and all its children from the access list
                         newAccessList.delete(`group:${this_group}`);
                         newMayAccess.delete(this_group);
+                        newDirectAccess.delete(this_group);
                         my_family.forEach(g => {
                           newAccessList.delete(`group:${g}`);
                           newMayAccess.delete(g);
+                          newDirectAccess.delete(g);
                         });
                       }
                       await updateField({
@@ -245,7 +261,8 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
                             newData: Array.from(newAccessList)
                           }],
                         reactUpd: {
-                          may_access: Array.from(newMayAccess)
+                          may_access: Array.from(newMayAccess),
+                          direct_access_groups: Array.from(newDirectAccess)
                         }
                       });
 

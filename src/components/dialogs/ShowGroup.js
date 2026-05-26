@@ -121,7 +121,38 @@ export default ({ options, defaults, onClose, onAbort }) => {
     onClose(updatesMade);
   };
 
+  const buildGroupControlData = async (localGroups, localAccessList) => {
+    const groupList = makeArray(pGroup_id, /[~,;]/);
+    const groupsManagedObject = await prepareGroupObject(groupList.length > 0 ? [...groupList] : [], localGroups, localAccessList);
+
+    // Determine pre-selection: explicit group IDs that exist in groupsManagedObject, not in 'select' mode
+    let preSelectedGroup = null;
+    let preSelectedFunction = null;
+    const wildcards = ['*all', '*all_open', '*all_public', '*all_closed', '*all_private', '*user', '*responsible'];
+    const explicitGroups = groupList.filter(id => !wildcards.includes(id) && groupsManagedObject[id]);
+    if (explicitGroups.length > 0 && showList !== 'select') {
+      preSelectedGroup = explicitGroups.length === 1 ? explicitGroups[0] : explicitGroups;
+      // Auto-launch the function (only meaningful for a single group)
+      if (options.preSelectedFunction) {
+        preSelectedFunction = options.preSelectedFunction;
+      }
+      else if (explicitGroups.length > 0 && !options.groupManagement) {
+        preSelectedFunction = 'directory';
+      }
+    }
+
+    updateReactData({ groupsManagedObject, preSelectedGroup, preSelectedFunction }, true);
+  };
+
   async function initialize() {
+    // Fast path: paint GroupControl from in-memory session data first.
+    if (state.groups && state.accessList) {
+      await buildGroupControlData(state.groups, state.accessList);
+    }
+
+    // Background refresh: pull latest hierarchy/access and update GroupControl when ready.
+    // This keeps initial open fast while still converging to fresh data.
+    void (async () => {
     // Always fetch group structure fresh from DB — fast (structure only, no member lists).
     // This ensures GroupControl shows current groups/hierarchy without requiring an app restart.
     const [belongsTo, group_structure, memberGroupIds] = await Promise.all([
@@ -158,26 +189,8 @@ export default ({ options, defaults, onClose, onAbort }) => {
       };
     }
 
-    const groupList = makeArray(pGroup_id, /[~,;]/);
-    const groupsManagedObject = await prepareGroupObject(groupList.length > 0 ? [...groupList] : [], localGroups, localAccessList);
-
-    // Determine pre-selection: explicit group IDs that exist in groupsManagedObject, not in 'select' mode
-    let preSelectedGroup = null;
-    let preSelectedFunction = null;
-    const wildcards = ['*all', '*all_open', '*all_public', '*all_closed', '*all_private', '*user', '*responsible'];
-    const explicitGroups = groupList.filter(id => !wildcards.includes(id) && groupsManagedObject[id]);
-    if (explicitGroups.length > 0 && showList !== 'select') {
-      preSelectedGroup = explicitGroups.length === 1 ? explicitGroups[0] : explicitGroups;
-      // Auto-launch the function (only meaningful for a single group)
-      if (options.preSelectedFunction) {
-        preSelectedFunction = options.preSelectedFunction;
-      }
-      else if (explicitGroups.length > 0 && !options.groupManagement) {
-        preSelectedFunction = 'directory';
-      }
-    }
-
-    updateReactData({ groupsManagedObject, preSelectedGroup, preSelectedFunction }, true);
+      await buildGroupControlData(localGroups, localAccessList);
+    })();
   }
 
 

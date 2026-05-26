@@ -1098,6 +1098,83 @@ export default Component => props => {
     const memberGroupIds = await getPersonGroups(currentSession.patient_id, currentSession.client_id);
     dispatch({ type: SET_GROUPS, payload: Object.assign({}, group_structure, { belongsTo, memberGroupIds }) });
 
+    const bootstrap_ava_env = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
+    const bootstrapUsesV3 = !!(currentSession.client_style?.ui_v3 && (bootstrap_ava_env !== 'D' || currentSession.client_style?.ui_v3Dev));
+    if (bootstrapUsesV3) {
+      const isSubjectAdmin = ['master', 'admin'].includes(currentProfile.account_class);
+      const isSubjectSupport = ['master', 'support', 'admin'].includes(currentProfile.account_class);
+      const subjectPersonId = currentSession.patient_id;
+
+      const v3AuthorizedForMenuItem = (available_to) => {
+        if (!available_to || available_to.length === 0) { return true; }
+        for (const rule of available_to) {
+          const [type, value] = `${rule}`.split(':');
+          if (type === '*all') { return true; }
+          if (type === '*admin' && isSubjectAdmin) { return true; }
+          if (type === '*support' && isSubjectSupport) { return true; }
+          if (type === 'group' && memberGroupIds.includes(value)) { return true; }
+          if (type === 'person' && subjectPersonId === value) { return true; }
+        }
+        return false;
+      };
+
+      // Load MenuV3 preferred recipients in the background so initial boot is not blocked.
+      void (async () => {
+        const v3PreferredObj = {};
+        let v3QueryParams = {
+          KeyConditionExpression: 'client_id = :c',
+          FilterExpression: 'menu_itemType = :f AND #cl.#tg = :m',
+          ProjectionExpression: 'menu_id, available_to, #cl.#pm.#op.#rc, #ds.#sh, #ds.#ln',
+          ExpressionAttributeNames: {
+            '#cl': 'call',
+            '#tg': 'target',
+            '#pm': 'params',
+            '#op': 'options',
+            '#rc': 'recipients',
+            '#ds': 'description',
+            '#sh': 'short',
+            '#ln': 'long'
+          },
+          ExpressionAttributeValues: {
+            ':c': currentSession.client_id,
+            ':f': 'function',
+            ':m': 'MessageForm'
+          },
+          TableName: 'MenuV3'
+        };
+
+        let v3QueryResult;
+        do {
+          v3QueryResult = await dbClient.query(v3QueryParams).promise().catch(err => {
+            console.log(`withBootstrap: error querying MenuV3 for preferred_recipients: ${err.message}`);
+            return null;
+          });
+
+          if (v3QueryResult?.Items) {
+            for (const item of v3QueryResult.Items) {
+              const recipients = item.call?.params?.options?.recipients;
+              if (!Array.isArray(recipients) || recipients.length === 0) { continue; }
+              if (!v3AuthorizedForMenuItem(item.available_to)) { continue; }
+              v3PreferredObj[item.menu_id] = [{
+                personList: recipients.map(r => r.person_id).filter(Boolean),
+                personNames: recipients.map(r => r.person_name || r.person_id).filter(Boolean),
+                objText: item.description?.short || item.description?.long || item.menu_id
+              }];
+            }
+          }
+
+          if (v3QueryResult?.LastEvaluatedKey) {
+            v3QueryParams = Object.assign({}, v3QueryParams, { ExclusiveStartKey: v3QueryResult.LastEvaluatedKey });
+          }
+        } while (v3QueryResult?.LastEvaluatedKey);
+
+        dispatch({
+          type: SET_GROUPS,
+          payload: Object.assign({}, group_structure, { belongsTo, memberGroupIds, preferred_recipients: v3PreferredObj })
+        });
+      })();
+    }
+
     currentSession.adminAccount = false;
     if (currentProfile.account_class) {
       if ((currentProfile.account_class === 'master')

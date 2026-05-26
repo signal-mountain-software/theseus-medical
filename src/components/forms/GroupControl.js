@@ -1193,27 +1193,27 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   async function initialize() {
     let assignmentList = [];
     if (reactData.assignmentView && reactData.allowAssign && !reactData.assignmentList) {
-      if (typeof (reactData.allowAssign) === 'string') {         // string - what is listed is a group ID
-        assignmentList.push(...await getGroupMembers({
-          groupList: [reactData.allowAssign].flat(),
-          short: true
-        }));
+      // Normalize to one deduplicated group list and fetch members in a single call.
+      const assignmentGroupIds = [];
+      if (typeof (reactData.allowAssign) === 'string') {
+        assignmentGroupIds.push(reactData.allowAssign);
       }
-      else {         // array (of objects) - what is listed is an array of group ID objects
+      else {
         for (let this_row of reactData.allowAssign) {
           if (isObject(this_row)) {
-            assignmentList.push(...await getGroupMembers({
-              groupList: [(this_row.groups || this_row.group)].flat(),
-              short: true
-            }));
+            assignmentGroupIds.push(...[(this_row.groups || this_row.group)].flat());
           }
           else {
-            assignmentList.push(...await getGroupMembers({
-              groupList: [this_row].flat(),
-              short: true
-            }));
+            assignmentGroupIds.push(...[this_row].flat());
           }
         }
+      }
+      const uniqueAssignmentGroupIds = [...new Set(assignmentGroupIds.filter(Boolean))];
+      if (uniqueAssignmentGroupIds.length > 0) {
+        assignmentList.push(...await getGroupMembers({
+          groupList: uniqueAssignmentGroupIds,
+          short: true
+        }));
       }
       if (assignmentList.length > 0) {
         assignmentList = assignmentList.sort((a, b) => {
