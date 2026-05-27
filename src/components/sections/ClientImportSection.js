@@ -273,6 +273,7 @@ export default ({ reactData }) => {
 
       const peopleRecord = {
         person_id: user_id,
+        user_id,
         client_id,
         name: { first: firstName, last: lastName },
         display_name: `${firstName} ${lastName}`,
@@ -313,6 +314,7 @@ export default ({ reactData }) => {
       try {
         await putDb({ TableName: 'People', Item: peopleRecord });
         await putDb({ TableName: 'SessionsV2', Item: sessionRecord });
+        await addMember(user_id, client_id, ['__TOP__', 'ALL'], { allowParent: true });
         const putRequests = accountEntries
           .filter(a => !isEmpty(a.field))
           .map(a => ({ PutRequest: { Item: { person_id: user_id, identifier: a.field, account_type: a.type } } }));

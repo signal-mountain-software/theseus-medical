@@ -1187,6 +1187,26 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         };
       }
     }
+
+    // Backfill top-level members from cached People records when legacy or partial
+    // data has People.groups set but is missing PeopleGroups rows for __TOP__/ALL.
+    const normalizedGroup = (this_group || '').toString().toUpperCase();
+    if (normalizedGroup === '__TOP__' || normalizedGroup === 'ALL') {
+      const acceptableTopGroups = ['__TOP__', 'ALL'];
+      for (const cached of Object.values(cacheById)) {
+        const pid = cached?.person_id;
+        const personGroups = Array.isArray(cached?.groups) ? cached.groups.map(g => `${g}`.toUpperCase()) : [];
+        if (!pid || response[pid]) { continue; }
+        if (!personGroups.some(g => acceptableTopGroups.includes(g))) { continue; }
+        response[pid] = {
+          person_id: pid,
+          name: cached.name ?? { last: `Unknown ${pid}` },
+          display_name: cached.display_name ?? pid,
+          search_data: cached.search_data ?? `${cached.name?.first || ''} ${cached.name?.last || ''}`.trim(),
+        };
+      }
+    }
+
     return response;
   }
 
