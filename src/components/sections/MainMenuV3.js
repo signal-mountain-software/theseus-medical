@@ -245,6 +245,29 @@ export default ({ start_at }) => {
     ? clientUseTileUI
     : !!reactData.uiTilesOverride;
 
+  const normalizeHexColor = (value) => {
+    if (!value || typeof value !== 'string') { return null; }
+    const trimmed = value.trim();
+    const shortHex = /^#([0-9a-fA-F]{3})$/;
+    const longHex = /^#([0-9a-fA-F]{6})$/;
+    if (shortHex.test(trimmed)) {
+      const [, hexPart] = trimmed.match(shortHex);
+      return `#${hexPart[0]}${hexPart[0]}${hexPart[1]}${hexPart[1]}${hexPart[2]}${hexPart[2]}`;
+    }
+    if (longHex.test(trimmed)) {
+      return trimmed;
+    }
+    return null;
+  };
+
+  const resolvedClientBackground = state.session?.client_style?.backgroundColor
+    || AVADefaults({ client_style: 'get' })?.backgroundColor
+    || '#ffffff';
+  const resolvedClientBackgroundHex = normalizeHexColor(resolvedClientBackground);
+  const chromeTextColor = resolvedClientBackgroundHex && isDark(resolvedClientBackgroundHex)
+    ? 'cornsilk'
+    : '#111111';
+
   const [forceRedisplay, setForce] = React.useState(false);
   const updateReactData = (newData, force = false) => {
     newData.current_time = new Date();
@@ -2731,13 +2754,13 @@ export default ({ start_at }) => {
                 overflow='auto'
                 flexDirection='column'>
                 <Typography
-                  style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}
+                  style={AVATextStyle({ size: 1.5, margin: { right: 1 }, color: chromeTextColor })}
                   id='scroll-dialog-title'
                 >
                   {`${reactData.greetingWords},`}
                 </Typography>
                 <Typography
-                  style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}
+                  style={AVATextStyle({ size: 1.5, margin: { right: 1 }, color: chromeTextColor })}
                   id='scroll-dialog-title'
                 >
                   {`${reactData.greetingName}!`}
@@ -2775,7 +2798,7 @@ export default ({ start_at }) => {
               {makeDate(reactData.current_time, { timeZone: state.session.client_timezone }).absolute.split(' at ').map((tLine, tX) => (
                 <Typography
                   key={`time_${tX}`}
-                  style={AVATextStyle({ align: 'center', size: 0.8 })}
+                  style={AVATextStyle({ align: 'center', size: 0.8, color: chromeTextColor })}
                   id='scroll-dialog-title'
                 >
                   {tLine}
@@ -3320,8 +3343,8 @@ export default ({ start_at }) => {
                 >
                   {(reactData.loading || !state.hasOwnProperty('groups') || !state.groups.hasOwnProperty('adminHierarchy') || !state.accessList?.[state.session.client_id]) &&
                     <React.Fragment>
-                      <Typography style={AVATextStyle({ size: 1.5, align: 'center' })}  >{`Loading ${reactData.loading ? 'Your Menu' : 'AVA Data'}`}</Typography>
-                      <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >
+                      <Typography style={AVATextStyle({ size: 1.5, align: 'center', color: chromeTextColor })}  >{`Loading ${reactData.loading ? 'Your Menu' : 'AVA Data'}`}</Typography>
+                      <Typography style={AVATextStyle({ size: 0.8, align: 'center', color: chromeTextColor })} >
                         {`AVA version ${reactData.AVA_version}`}
                       </Typography>
                     </React.Fragment>
@@ -3334,7 +3357,7 @@ export default ({ start_at }) => {
                     reactData.marqueeData.map((marqueeLine, marqueeIndex) => (
                       <Typography
                         key={`marquee_${marqueeIndex}_${reactData.marqueeVersion}`}
-                        style={AVATextStyle(Object.assign({ size: 2, margin: { top: 0.6, left: 20, bottom: 1.4 }, bold: true, align: 'center' }, marqueeLine.style))} >
+                        style={AVATextStyle(Object.assign({ size: 2, margin: { top: 0.6, left: 20, bottom: 1.4 }, bold: true, align: 'center', color: chromeTextColor }, marqueeLine.style))} >
                         {marqueeLine.message}
                       </Typography>
                     ))}
