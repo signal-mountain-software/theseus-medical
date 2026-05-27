@@ -7,6 +7,7 @@ import { AVATextStyle, AVAclasses, AVADefaults, hexToRgb, isDark } from '../../u
 import { clearPushSubscriptionFromDB, initPushNotifications, unsubscribeFromPush, isPushSupported, isPushOptedIn, syncAlertDeliveryMethod } from '../../util/AVAPushNotifications';
 import { getActivityDetail } from '../../util/AVAActivityLoaderV3';
 import QuickAdd from './QuickAdd';
+import { isMemberOf } from '../../util/AVAGroups';
 
 import Card from '@material-ui/core/Card';
 import CardActionArea from '@material-ui/core/CardActionArea';
@@ -645,7 +646,7 @@ export default ({ start_at }) => {
     };
   };
 
-  const authorizedToMenuItem = (available_to) => {
+  const authorizedToMenuItem = async (available_to) => {
     const {
       isSubjectAdmin,
       isSubjectSupport,
@@ -660,7 +661,8 @@ export default ({ start_at }) => {
         case '*support': { if (isSubjectSupport) { return true; } break; }
         case 'group': {
           const check_group = this_rule.split(':')[1];
-          if (state.groups?.memberGroupIds?.includes(check_group)) { return true; } break;
+          const isMember = await isMemberOf(state.session.client_id, subjectPersonId, check_group);
+          if (isMember) { return true; } break;
         }
         case 'person': { if (subjectPersonId === this_rule.split(':')[1]) { return true; } break; }
         default: { }
@@ -682,7 +684,7 @@ export default ({ start_at }) => {
     if (recordExists(menuItemRec)) {
       // console.log(`Fetched menu item ${itemCode} from database.`);
       const this_item = menuItemRec.Item;
-      if (!this_item.available_to || authorizedToMenuItem(this_item.available_to)) {
+      if (!this_item.available_to || await authorizedToMenuItem(this_item.available_to)) {
         if (!reactData.menu_hierarchy[menu_level]) { reactData.menu_hierarchy[menu_level] = []; }
         if (!this_item.color) {
           // if I have a parent, use their color.  If not, use the client default color.  If that's not set, use gray
@@ -2525,7 +2527,7 @@ export default ({ start_at }) => {
               </IconButton>
             </Box>
           }
-          {cardImageUrl && !reactData.editFavorites && !hideCardImage &&
+          {cardImageUrl && !hideCardImage && (!useTileUI || !reactData.editFavorites) &&
             <CardMedia
               className={classes.media}
               key={`${keyPrefix}cardMedia_card-${level_index}.${item_index}`}

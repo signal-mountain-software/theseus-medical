@@ -151,7 +151,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     assignmentView: defaults.assignmentView,
     viewOnly: defaults.viewOnly,
     defaultCollapsed: !(defaults.expand_parents || false),
-
+    no_contact_directory: defaults.hideContactInfo,
 
 
     anchorEl: null,
@@ -1398,7 +1398,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                   {`${state.session.client_name} Groups`}
                 </Typography>
                 <Paper component={Box} width='100%' elevation={0} overflow='auto' square
-                  style={{ scrollbarWidth: 'thin', flexGrow: 1, display: 'flex' }}
+                  style={{ paddingRight: '8px', scrollbarWidth: 'thin', flexGrow: 1, display: 'flex' }}
                 >
                   <Box display='flex' flexDirection='column'
                     key={`activity-list_${Object.keys(groupsManagedObject).length}`}
@@ -2167,7 +2167,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 groupMemberList: reactData.photoDirectoryPeople,
                 pClient: pSession.client_id,
                 pGroup: reactData.selectedGroup_id,
-                pGroupName: reactData.selectedGroupRec?.group_name || reactData.selectedGroup_id,
+                    pGroupName: reactData.selectedGroupRec?.group_name || reactData.selectedGroup_id,
+                hideContactInfo: reactData.no_contact_directory
               }}
               onReset={closeDirectory}
             />
