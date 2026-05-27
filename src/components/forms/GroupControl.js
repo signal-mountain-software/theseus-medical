@@ -9,7 +9,7 @@ import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import GroupMaintenance from '../dialogs/GroupMaintenance';
 import { getPerson } from '../../util/AVAPeople';
 
-import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Checkbox, FormControlLabel, LinearProgress } from '@material-ui/core';
+import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Checkbox, FormControlLabel, LinearProgress, Tooltip } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 import {
   getExportFieldPickerData,
@@ -17,10 +17,14 @@ import {
   resolveSelectedFieldValuesForPeople,
   downloadRowsAsCsv,
   downloadRowsAsXlsx,
+  downloadRowsAsPdf,
   sanitizeExportBaseName,
   listSavedReports,
-  saveReport
+  saveReport,
+  collectPromptSpecs,
 } from '../../util/AVAPeopleListExport';
+
+import ExportFilterPrompt from '../dialogs/ExportFilterPrompt';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -186,6 +190,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     selectedGroup_id: null,
     selectedGroupIds: [],
     selectedGroupMembersPerGroup: {},
+    intersectionMode: false,
     selectedGroupRec: false,
     selectedGroupMembers: false,
     sortedGroupMembers: [],
@@ -204,6 +209,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     reportNameInput: '',
     hasUnsavedSelections: false,
     showDownloadConfirm: null,
+    showExportFilterPrompt: false,
+    exportFilterPromptSpecs: [],
     updatesMade: false,
     viewPeopleMaintenance: false,
     viewGroupMaintenance: false
@@ -259,7 +266,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       if (!reactData.selectedGroupRec) {
         // if no group is selected, then assume selection of the highest group in the list
         let listEntry = Object.keys(groupsManagedObject)[0];
-        let memberList = await selectMembers(listEntry);
+        let memberList = await selectMembers(listEntry, { live: true });
         reactUpdObj.selectedGroup_id = listEntry;
         reactUpdObj.selectedGroupRec = groupsManagedObject[listEntry];
         reactUpdObj.selectedGroupMembers = memberList;
@@ -485,11 +492,21 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     // delegate all DB writes to addMember (People.groups + PeopleGroups chain)
     const newGroupList = await addMember(person_id, pSession.client_id, droppedOn.group_id, { allowParent: true });
 
-    // update in-memory accessList cache
+    // update in-memory accessList cache (immutable)
     const updatedGroupList = [...currentGroups, ...addedGroups];
-    if (accessEntry) {
-      accessEntry.groups = updatedGroupList;
-      dispatch({ type: SET_ACCESSLIST, payload: Object.assign({}, state.accessList) });
+    if (state.accessList?.[pSession.client_id]?.list) {
+      dispatch({
+        type: SET_ACCESSLIST,
+        payload: {
+          ...state.accessList,
+          [pSession.client_id]: {
+            ...state.accessList[pSession.client_id],
+            list: state.accessList[pSession.client_id].list.map(p =>
+              p.person_id === person_id ? { ...p, groups: updatedGroupList } : p
+            )
+          }
+        }
+      });
     }
     // if this change affects the current patient, update memberGroupIds
     if (person_id === state.session.patient_id && newGroupList) {
@@ -551,10 +568,20 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       .filter(g => !freshGroupList.includes(g))
       .map(g => groupsManagedObject[g]?.group_name || g);
 
-    // update accessList cache
-    if (accessEntry) {
-      accessEntry.groups = freshGroupList;
-      dispatch({ type: SET_ACCESSLIST, payload: Object.assign({}, state.accessList) });
+    // update accessList cache (immutable)
+    if (state.accessList?.[pSession.client_id]?.list) {
+      dispatch({
+        type: SET_ACCESSLIST,
+        payload: {
+          ...state.accessList,
+          [pSession.client_id]: {
+            ...state.accessList[pSession.client_id],
+            list: state.accessList[pSession.client_id].list.map(p =>
+              p.person_id === person_id ? { ...p, groups: freshGroupList } : p
+            )
+          }
+        }
+      });
     }
     // if this change affects the current patient, update memberGroupIds
     if (person_id === state.session.patient_id && newGroupList) {
@@ -595,10 +622,20 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       .filter(g => !freshGroupList.includes(g))
       .map(g => groupsManagedObject[g]?.group_name || g);
 
-    // update accessList cache
-    if (accessEntry) {
-      accessEntry.groups = freshGroupList;
-      dispatch({ type: SET_ACCESSLIST, payload: Object.assign({}, state.accessList) });
+    // update accessList cache (immutable)
+    if (state.accessList?.[pSession.client_id]?.list) {
+      dispatch({
+        type: SET_ACCESSLIST,
+        payload: {
+          ...state.accessList,
+          [pSession.client_id]: {
+            ...state.accessList[pSession.client_id],
+            list: state.accessList[pSession.client_id].list.map(p =>
+              p.person_id === person_id ? { ...p, groups: freshGroupList } : p
+            )
+          }
+        }
+      });
     }
     // if this change affects the current patient, update memberGroupIds
     if (person_id === state.session.patient_id && newGroupList) {
@@ -802,6 +839,58 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     }
   }
 
+  async function downloadCurrentPeopleListPdf(resolvedPromptValues = {}) {
+    const selectedFieldObjects = reactData.exportFieldOptions.filter(
+      f => reactData.selectedExportFieldNames.includes(f.field_key));
+    const promptSpecs = collectPromptSpecs(selectedFieldObjects);
+    if (promptSpecs.length > 0 && Object.keys(resolvedPromptValues).length === 0) {
+      updateReactData({ showExportFilterPrompt: true, exportFilterPromptSpecs: promptSpecs }, true);
+      return null;
+    }
+    try {
+      const exportData = await buildCurrentPeopleListExportData();
+      if (!exportData) {
+        return false;
+      }
+
+      const {
+        header,
+        rows,
+        safeGroupName,
+        selectedFieldOptions
+      } = exportData;
+
+      const fieldMeta = selectedFieldOptions.map(opt => ({ value_type: opt.value_type, filters: opt.filters }));
+      const fileName = `${safeGroupName || 'group'}_people_list.pdf`;
+      await downloadRowsAsPdf({
+        header,
+        rows,
+        fileName,
+        personIdColIndex: 0,
+        personNameColIndex: 3,
+        identityColCount: 4,
+        fieldMeta,
+        resolvedPromptValues,
+      });
+      await saveExportFieldSelections({
+        sessionId: state?.session?.user_id,
+        clientId: pSession?.client_id,
+        exportScope: 'group_management',
+        selectedFieldNames: reactData.selectedExportFieldNames || [],
+        logLabel: 'group export selections'
+      });
+      return true;
+    }
+    finally {
+      updateReactData({
+        exportInProgress: false,
+        exportProgressCurrent: 0,
+        exportProgressTotal: 0,
+        exportProgressLabel: ''
+      }, true);
+    }
+  }
+
   async function buildCurrentPeopleListExportData() {
     const visibleMemberIds = (reactData.lower_people_filter
       ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
@@ -856,6 +945,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         clientId: pSession.client_id,
         personIds,
         selectedFieldKeys,
+        selectedFieldOptions,
         onProgress: ({ completedCount, totalCount }) => {
           updateReactData({
             exportProgressCurrent: completedCount,
@@ -884,7 +974,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     return {
       header,
       rows,
-      safeGroupName
+      safeGroupName,
+      selectedFieldOptions
     };
   }
 
@@ -1037,42 +1128,112 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
-  async function selectMembers(this_group, { live = false } = {}) {
+  async function selectMembers(this_group, { live = true } = {}) {
     let response = {};
-    let memberList = await getMemberList(this_group, state.session.client_id, {
-      name_and_search: true,
-      state: live ? null : state,
-    });
-    for (const this_member of memberList.peopleList) {
-      response[this_member.person_id] = this_member;
+    if (!live) {
+      // Fast path: filter in-memory from accessList cache
+      const memberList = await getMemberList(this_group, state.session.client_id, {
+        name_and_search: true,
+        state,
+      });
+      for (const this_member of memberList.peopleList) {
+        response[this_member.person_id] = this_member;
+      }
+      return response;
     }
+    // Live path: query PeopleGroups status-index (PK: client_group_id, SK: membership_status)
+    // Returns only active members for this group — excludes deleted/inactive accounts at DB level
+    const cgid = `${state.session.client_id}~${this_group}`;
+    let items = [];
+    let lastKey;
+    do {
+      const params = {
+        TableName: 'PeopleGroups',
+        IndexName: 'status-index',
+        KeyConditionExpression: 'client_group_id = :cgid AND membership_status = :active',
+        ExpressionAttributeValues: { ':cgid': cgid, ':active': 'active' },
+      };
+      if (lastKey) { params.ExclusiveStartKey = lastKey; }
+      const result = await dbClient.query(params).promise()
+        .catch(err => { cl({ 'selectMembers: PeopleGroups query error': err }); return null; });
+      if (result?.Items) {
+        items.push(...result.Items);
+      }
+      lastKey = result?.LastEvaluatedKey;
+    } while (lastKey);
+    // Resolve person details from accessList cache (avoids a second DB scan)
+    const cacheById = {};
+    for (const p of (state.accessList?.[state.session.client_id]?.list || [])) {
+      cacheById[p.person_id] = p;
+    }
+    for (const item of items) {
+      const pid = item.person_id;
+      const cached = cacheById[pid];
+      if (cached) {
+        response[pid] = {
+          person_id: pid,
+          name: cached.name ?? { last: `Unknown ${pid}` },
+          display_name: cached.display_name ?? item.display_name ?? pid,
+          search_data: cached.search_data ?? `${cached.name?.first || ''} ${cached.name?.last || ''}`.trim(),
+        };
+      } else {
+        // Not in cache — parse the "Last, First" display_name stored in PeopleGroups
+        const parts = (item.display_name || pid).split(',');
+        response[pid] = {
+          person_id: pid,
+          name: { last: parts[0]?.trim() || pid, first: parts[1]?.trim() || '' },
+          display_name: item.display_name || pid,
+          search_data: item.display_name || pid,
+        };
+      }
+    }
+
+    // Backfill top-level members from cached People records when legacy or partial
+    // data has People.groups set but is missing PeopleGroups rows for __TOP__/ALL.
+    const normalizedGroup = (this_group || '').toString().toUpperCase();
+    if (normalizedGroup === '__TOP__' || normalizedGroup === 'ALL') {
+      const acceptableTopGroups = ['__TOP__', 'ALL'];
+      for (const cached of Object.values(cacheById)) {
+        const pid = cached?.person_id;
+        const personGroups = Array.isArray(cached?.groups) ? cached.groups.map(g => `${g}`.toUpperCase()) : [];
+        if (!pid || response[pid]) { continue; }
+        if (!personGroups.some(g => acceptableTopGroups.includes(g))) { continue; }
+        response[pid] = {
+          person_id: pid,
+          name: cached.name ?? { last: `Unknown ${pid}` },
+          display_name: cached.display_name ?? pid,
+          search_data: cached.search_data ?? `${cached.name?.first || ''} ${cached.name?.last || ''}`.trim(),
+        };
+      }
+    }
+
     return response;
   }
 
   async function initialize() {
     let assignmentList = [];
     if (reactData.assignmentView && reactData.allowAssign && !reactData.assignmentList) {
-      if (typeof (reactData.allowAssign) === 'string') {         // string - what is listed is a group ID
-        assignmentList.push(...await getGroupMembers({
-          groupList: [reactData.allowAssign].flat(),
-          short: true
-        }));
+      // Normalize to one deduplicated group list and fetch members in a single call.
+      const assignmentGroupIds = [];
+      if (typeof (reactData.allowAssign) === 'string') {
+        assignmentGroupIds.push(reactData.allowAssign);
       }
-      else {         // array (of objects) - what is listed is an array of group ID objects
+      else {
         for (let this_row of reactData.allowAssign) {
           if (isObject(this_row)) {
-            assignmentList.push(...await getGroupMembers({
-              groupList: [(this_row.groups || this_row.group)].flat(),
-              short: true
-            }));
+            assignmentGroupIds.push(...[(this_row.groups || this_row.group)].flat());
           }
           else {
-            assignmentList.push(...await getGroupMembers({
-              groupList: [this_row].flat(),
-              short: true
-            }));
+            assignmentGroupIds.push(...[this_row].flat());
           }
         }
+      }
+      const uniqueAssignmentGroupIds = [...new Set(assignmentGroupIds.filter(Boolean))];
+      if (uniqueAssignmentGroupIds.length > 0) {
+        assignmentList.push(...await getGroupMembers({
+          groupList: uniqueAssignmentGroupIds,
+          short: true
+        }));
       }
       if (assignmentList.length > 0) {
         assignmentList = assignmentList.sort((a, b) => {
@@ -1091,7 +1252,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     if (preGroups.length > 0) {
       const newMembersPerGroup = {};
       for (const id of preGroups) {
-        newMembersPerGroup[id] = await selectMembers(id);
+        newMembersPerGroup[id] = await selectMembers(id, { live: true });
       }
       const newGroupMembers = {};
       for (const id of preGroups) { Object.assign(newGroupMembers, newMembersPerGroup[id] || {}); }
@@ -1120,7 +1281,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         preSelectUpdates.viewGroupMaintenance = preGroups[0];
       }
     }
-    updateReactData({ assignmentList, ...preSelectUpdates }, true);
+    updateReactData({ assignmentList, building: 'done', ...preSelectUpdates }, true);
   }
 
   React.useEffect(() => {
@@ -1141,7 +1302,13 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
   const dialogContent = (
     <React.Fragment>
-      {Object.keys(groupsManagedObject).length === 0
+      {reactData.building !== 'done'
+        ?
+        <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' style={{ padding: '32px 16px' }}>
+          <Typography style={{ marginBottom: 16 }}>{reactData.progressMessage || 'Loading...'}</Typography>
+          <LinearProgress style={{ width: '80%' }} />
+        </Box>
+        : Object.keys(groupsManagedObject).length === 0
         ?
         <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
           <Typography
@@ -1230,8 +1397,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                   })}>
                   {`${state.session.client_name} Groups`}
                 </Typography>
-                <Paper component={Box} elevation={0} overflow='auto' square
-                  style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
+                <Paper component={Box} width='100%' elevation={0} overflow='auto' square
+                  style={{ scrollbarWidth: 'thin', flexGrow: 1, display: 'flex' }}
                 >
                   <Box display='flex' flexDirection='column'
                     key={`activity-list_${Object.keys(groupsManagedObject).length}`}
@@ -1247,7 +1414,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                             justifyContent='flex-start'
                             alignItems='center'
                             key={`activity-list_${listIndex}_${((listIndex === focusAt) ? 'selected' : '')}`}
-                            draggable={canDragManage}
+                            draggable={canDragManage && groupsManagedObject[listEntry].group_type !== 'header'}
                             onDragStart={(e) => handleDragStart(e, {
                               group_id: listEntry,
                               groupObj: groupsManagedObject[listEntry],
@@ -1266,6 +1433,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                               });
                             }}
                             onContextMenu={async (e) => {
+                              if (groupsManagedObject[listEntry].group_type === 'header') return;
                               e.preventDefault();
                               updateReactData({
                                 viewGroupMaintenance: listEntry
@@ -1274,30 +1442,70 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                           >
                             <Typography
                               key={`g_text_${listIndex}_${(listIndex === focusAt) ? 'selected' : ''}`}
-                              onClick={async () => {
+                              onClick={async (event) => {
+                                if (groupsManagedObject[listEntry].group_type === 'header') return;
                                 const currentIds = reactData.selectedGroupIds || [];
                                 // Subtree = this group + all its descendants (recursive)
                                 const subtree = [listEntry, ...getDescendants(listEntry)];
                                 const allSelected = subtree.every(id => currentIds.includes(id));
-                                let newIds, newMembersPerGroup;
-                                if (allSelected) {
-                                  // All in subtree selected → deselect all of them
-                                  newIds = currentIds.filter(id => !subtree.includes(id));
-                                  newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
-                                  for (const id of subtree) { delete newMembersPerGroup[id]; }
-                                  // Prune any ancestor that no longer has all its descendants selected.
-                                  // A parent is only valid when its entire subtree is selected.
-                                  const toPrune = newIds.filter(id =>
-                                    getDescendants(id).some(d => groupsManagedObject[d] && !newIds.includes(d))
-                                  );
-                                  for (const id of toPrune) { delete newMembersPerGroup[id]; }
-                                  newIds = newIds.filter(id => !toPrune.includes(id));
+                                let newIds, newMembersPerGroup, intersectionMode = false;
+                                if (event.ctrlKey || event.metaKey) {
+                                  intersectionMode = true;
+                                  // Ctrl/Cmd+click: intersection — narrow current display to members also in this group's subtree
+                                  // PeopleGroups hierarchy: querying the root covers all descendants — no need to loop subtree
+                                  const intersectPerGroup = {};
+                                  intersectPerGroup[listEntry] = await selectMembers(listEntry, { live: true });
+                                  const intersectPersonIds = new Set(Object.keys(intersectPerGroup[listEntry] || {}));
+                                  // Filter each currently-selected group's member list to the intersection
+                                  const currentPerGroup = reactData.selectedGroupMembersPerGroup || {};
+                                  newMembersPerGroup = {};
+                                  for (const id of currentIds) {
+                                    const filtered = Object.fromEntries(
+                                      Object.entries(currentPerGroup[id] || {}).filter(([pid]) => intersectPersonIds.has(pid))
+                                    );
+                                    if (Object.keys(filtered).length > 0) newMembersPerGroup[id] = filtered;
+                                  }
+                                  // Add the Ctrl+clicked subtree to selectedGroupIds so it appears highlighted;
+                                  // member filtering is driven by newMembersPerGroup, not newIds
+                                  newIds = [...new Set([...currentIds, ...subtree])];
+                                  // Preserve existing intersectionMode if already active
+                                  intersectionMode = true;
+                                } else if (event.shiftKey) {
+                                  // Shift+click: union/toggle — add this subtree to (or remove from) existing selection
+                                  if (allSelected) {
+                                    // All in subtree selected → deselect all of them
+                                    newIds = currentIds.filter(id => !subtree.includes(id));
+                                    newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
+                                    for (const id of subtree) { delete newMembersPerGroup[id]; }
+                                    // Prune any ancestor that no longer has all its descendants selected.
+                                    const toPrune = newIds.filter(id =>
+                                      getDescendants(id).some(d => groupsManagedObject[d] && !newIds.includes(d))
+                                    );
+                                    for (const id of toPrune) { delete newMembersPerGroup[id]; }
+                                    newIds = newIds.filter(id => !toPrune.includes(id));
+                                  } else {
+                                    // Some or none selected → add missing subtree members to current selection
+                                    // PeopleGroups hierarchy: querying the root covers all descendants — no need to loop subtree
+                                    const toAdd = subtree.filter(id => !currentIds.includes(id));
+                                    newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
+                                    if (toAdd.length > 0) {
+                                      newMembersPerGroup[listEntry] = await selectMembers(listEntry, { live: true });
+                                    }
+                                    newIds = [...currentIds, ...toAdd];
+                                  }
                                 } else {
-                                  // Some or none selected → select all missing in subtree
-                                  const toAdd = subtree.filter(id => !currentIds.includes(id));
-                                  newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
-                                  for (const id of toAdd) { newMembersPerGroup[id] = await selectMembers(id, { live: reactData.updatesMade }); }
-                                  newIds = [...currentIds, ...toAdd];
+                                  // Plain click: replace selection with only this subtree
+                                  // (toggle off if this subtree is already the entire selection)
+                                  const onlyThisSelected = allSelected && currentIds.every(id => subtree.includes(id));
+                                  if (onlyThisSelected) {
+                                    newIds = [];
+                                    newMembersPerGroup = {};
+                                  } else {
+                                    // PeopleGroups hierarchy: querying the root covers all descendants — no need to loop subtree
+                                    newMembersPerGroup = {};
+                                    newMembersPerGroup[listEntry] = await selectMembers(listEntry, { live: true });
+                                    newIds = [...subtree];
+                                  }
                                 }
                                 // Every selected group contributes its members.
                                 // Object.assign deduplicates by person_id, so overlap between
@@ -1318,6 +1526,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                 updateReactData({
                                   selectedGroupIds: newIds,
                                   selectedGroupMembersPerGroup: newMembersPerGroup,
+                                  intersectionMode,
                                   selectedGroup_id: newSelectedGroup_id,
                                   selectedGroupRec: newSelectedGroupRec,
                                   selectedGroupMembers: Object.keys(newGroupMembers).length > 0 ? newGroupMembers : false,
@@ -1332,7 +1541,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                 size: 1.2,
                                 color: ((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry))
                                   ? 'orange'
-                                  : null
+                                  : (reactData.intersectionMode && [listEntry, ...getDescendants(listEntry)].every(id => (reactData.selectedGroupIds || []).includes(id)))
+                                    ? '#c62828'
+                                    : null
                                 ),
                                 weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry)) || [listEntry, ...getDescendants(listEntry)].every(id => (reactData.selectedGroupIds || []).includes(id))) ? 'bold' : null),
                                 cursor: canDragManage ? 'grab' : null,
@@ -1419,6 +1630,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 justifyContent='flex-start'
                 alignItems='flex-start'
                 borderLeft={isSmallScreen() ? 0 : 2}
+                marginLeft='16px'
                 paddingLeft={'32px'}
               >
                 <Typography
@@ -1432,6 +1644,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     size: 1.5,
                     overflow: 'visible',
                     bold: true,
+                    color: reactData.intersectionMode ? '#c62828' : null,
                     cursor: reactData.selectedGroupRec.multi ? 'default' : null,
                     margin: { top: 1, bottom: 0 },
                   })}>
@@ -1742,6 +1955,15 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                 label={
                                   <span>
                                     {fieldRec.description}
+                                    {Array.isArray(fieldRec.export_formats) && (
+                                      <span style={{
+                                        marginLeft: '6px', fontSize: '0.65em', color: 'white',
+                                        backgroundColor: (fieldRec.export_formats.includes('pdf') && !fieldRec.export_formats.includes('csv')) ? '#1565C0' : '#2E7D32',
+                                        borderRadius: '8px', padding: '1px 5px',
+                                      }}>
+                                        {(fieldRec.export_formats.includes('pdf') && !fieldRec.export_formats.includes('csv')) ? 'PDF' : 'CSV/XLS'}
+                                      </span>
+                                    )}
                                     {isChecked &&
                                       <span style={{ marginLeft: '6px', fontSize: '0.75em', color: '#888', fontWeight: 'bold' }}>
                                         {`#${posIndex + 1}`}
@@ -1782,12 +2004,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     onClick={async () => {
                       const fmt = reactData.showDownloadConfirm;
                       updateReactData({ showDownloadConfirm: null }, true);
-                      const fn = fmt === 'xlsx' ? downloadCurrentPeopleListXlsx : downloadCurrentPeopleListCsv;
+                      const fn = fmt === 'xlsx' ? downloadCurrentPeopleListXlsx : fmt === 'pdf' ? downloadCurrentPeopleListPdf : downloadCurrentPeopleListCsv;
                       const result = await fn();
                       if (result) updateReactData({ showFieldPicker: false }, true);
                     }}
                   >
-                    {`Download ${reactData.showDownloadConfirm === 'xlsx' ? 'Excel' : 'CSV'} anyway`}
+                    {`Download ${reactData.showDownloadConfirm === 'xlsx' ? 'Excel' : reactData.showDownloadConfirm === 'pdf' ? 'PDF' : 'CSV'} anyway`}
                   </Button>
                   <Button
                     className={AVAClass.AVAButton}
@@ -1800,10 +2022,25 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 </Box>
               </Box>
               :
+              (() => {
+                const selectedFieldObjects = reactData.exportFieldOptions.filter(
+                  f => reactData.selectedExportFieldNames.includes(f.field_key));
+                const csvBlockers = selectedFieldObjects
+                  .filter(f => Array.isArray(f.export_formats) && !f.export_formats.includes('csv'))
+                  .map(f => f.description);
+                const xlsxBlockers = selectedFieldObjects
+                  .filter(f => Array.isArray(f.export_formats) && !f.export_formats.includes('xlsx'))
+                  .map(f => f.description);
+                const pdfBlockers = selectedFieldObjects
+                  .filter(f => Array.isArray(f.export_formats) && !f.export_formats.includes('pdf'))
+                  .map(f => f.description);
+                return (
               <React.Fragment>
+            <Tooltip placement='top' title={csvBlockers.length > 0 ? `Not available with: ${csvBlockers.join(', ')}` : ''}>
+              <span>
             <Button
               className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'green', color: 'white' }}
+              style={{ backgroundColor: csvBlockers.length > 0 ? '#aaa' : 'green', color: 'white' }}
               size='small'
               onClick={async () => {
                 if (reactData.hasUnsavedSelections && reactData.selectedExportFieldNames.length > 0) {
@@ -1817,13 +2054,17 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                   }, true);
                 }
               }}
-              disabled={reactData.loadingExportFields || reactData.exportInProgress}
+              disabled={reactData.loadingExportFields || reactData.exportInProgress || csvBlockers.length > 0}
             >
               {'Download CSV'}
             </Button>
+              </span>
+            </Tooltip>
+            <Tooltip placement='top' title={xlsxBlockers.length > 0 ? `Not available with: ${xlsxBlockers.join(', ')}` : ''}>
+              <span>
             <Button
               className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'green', color: 'white' }}
+              style={{ backgroundColor: xlsxBlockers.length > 0 ? '#aaa' : 'green', color: 'white' }}
               size='small'
               onClick={async () => {
                 if (reactData.hasUnsavedSelections && reactData.selectedExportFieldNames.length > 0) {
@@ -1837,10 +2078,36 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                   }, true);
                 }
               }}
-              disabled={reactData.loadingExportFields || reactData.exportInProgress}
+              disabled={reactData.loadingExportFields || reactData.exportInProgress || xlsxBlockers.length > 0}
             >
               {'Download Excel'}
             </Button>
+              </span>
+            </Tooltip>
+            <Tooltip placement='top' title={pdfBlockers.length > 0 ? `Not available with: ${pdfBlockers.join(', ')}` : ''}>
+              <span>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: pdfBlockers.length > 0 ? '#aaa' : 'blue', color: 'white' }}
+              size='small'
+              onClick={async () => {
+                if (reactData.hasUnsavedSelections && reactData.selectedExportFieldNames.length > 0) {
+                  updateReactData({ showDownloadConfirm: 'pdf' }, true);
+                  return;
+                }
+                const result = await downloadCurrentPeopleListPdf();
+                if (result) {
+                  updateReactData({
+                    showFieldPicker: false
+                  }, true);
+                }
+              }}
+              disabled={reactData.loadingExportFields || reactData.exportInProgress || pdfBlockers.length > 0}
+            >
+              {'Download PDF'}
+            </Button>
+              </span>
+            </Tooltip>
             <Button
               className={AVAClass.AVAButton}
               style={{ backgroundColor: 'red', color: 'white' }}
@@ -1855,19 +2122,34 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
               {'Close'}
             </Button>
               </React.Fragment>
+                );
+              })()
             }
           </DialogActions>
         </Dialog>
       }
+      {reactData.showExportFilterPrompt && (
+        <ExportFilterPrompt
+          promptSpecs={reactData.exportFilterPromptSpecs || []}
+          onComplete={async (resolvedValues) => {
+            updateReactData({ showExportFilterPrompt: false }, true);
+            const result = await downloadCurrentPeopleListPdf(resolvedValues);
+            if (result) { updateReactData({ showFieldPicker: false }, true); }
+          }}
+          onCancel={() => updateReactData({ showExportFilterPrompt: false }, true)}
+        />
+      )}
       {reactData.showPhotoDirectory &&
+        (() => {
+          const bypassMode = !!(preSelectedGroup && preSelectedFunction === 'directory');
+          const closeDirectory = () => {
+            updateReactData({ showPhotoDirectory: false, photoDirectoryPeople: [] }, true);
+            if (bypassMode) { onCancel(); }
+          };
+          return (
         <Dialog
           open={reactData.showPhotoDirectory}
-          onClose={() => {
-            updateReactData({
-              showPhotoDirectory: false,
-              photoDirectoryPeople: []
-            }, true);
-          }}
+          onClose={closeDirectory}
           fullScreen
           scroll='paper'
           PaperProps={{
@@ -1887,15 +2169,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 pGroup: reactData.selectedGroup_id,
                 pGroupName: reactData.selectedGroupRec?.group_name || reactData.selectedGroup_id,
               }}
-              onReset={() => {
-                updateReactData({
-                  showPhotoDirectory: false,
-                  photoDirectoryPeople: []
-                }, true);
-              }}
+              onReset={closeDirectory}
             />
           </Box>
         </Dialog>
+          );
+        })()
       }
       {reactData.sendMessage &&
         <MessageForm

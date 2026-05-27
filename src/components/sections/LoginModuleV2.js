@@ -69,6 +69,16 @@ const LoginModuleV2 = ({
   const resolvedSessionRef = React.useRef(null);
   const resolvedPersonRef = React.useRef(null);
   const isDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
+  const loginPanelStyle = {
+    backgroundColor: isDarkMode ? 'rgba(17, 24, 39, 0.9)' : 'white',
+    color: isDarkMode ? '#f3f4f6' : (clientStyle?.textColor || '#111827'),
+    borderRadius: 30,
+    padding: 16,
+    border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid rgba(17, 24, 39, 0.15)',
+    boxShadow: isDarkMode
+      ? '0 12px 30px rgba(0, 0, 0, 0.35)'
+      : '0 10px 24px rgba(15, 23, 42, 0.12)'
+  };
 
   const namePromptActive = Array.isArray(altMatchOptions) && altMatchOptions.length > 0;
   const namePromptMode = altMatchMode === 'last' ? 'last' : 'first';
@@ -1184,7 +1194,7 @@ const LoginModuleV2 = ({
                 minWidth='40vw'
                 maxWidth='500px'
                 className={AVAClass.AVAClientBackground}
-                style={{ backgroundColor: isDarkMode ? 'darkgreen' : 'white', borderRadius: 30, padding: 16 }}
+                style={loginPanelStyle}
               >
                 <Typography style={{ marginLeft: 8, marginBottom: 8, fontSize: '2em', fontWeight: 'bold' }} >
                   {clientName}
@@ -1285,7 +1295,7 @@ const LoginModuleV2 = ({
                 width='80%'
                 maxWidth='500px'
                 className={AVAClass.AVAClientBackground}
-                style={{ backgroundColor: isDarkMode ? 'darkgreen' : 'white', color: clientStyle?.textColor || 'inherit', borderRadius: 30, padding: 16 }}
+                style={loginPanelStyle}
               >
                 <Typography style={{ marginLeft: 8, marginBottom: 8, fontWeight: 'bold' }}>
                   {(resolvedSession?.forceSetPassword || (clientStyle?.mandatory_passwords && !resolvedSession?.last_login))
@@ -1363,7 +1373,7 @@ const LoginModuleV2 = ({
                 width='80%'
                 maxWidth='500px'
                 className={AVAClass.AVAClientBackground}
-                style={{ backgroundColor: isDarkMode ? 'darkgreen' : 'white', color: clientStyle?.textColor || 'inherit', borderRadius: 30, padding: 16 }}
+                style={loginPanelStyle}
               >
                 {tfaMessage && (
                   <Typography style={{ marginLeft: 8, marginBottom: 8 }}>

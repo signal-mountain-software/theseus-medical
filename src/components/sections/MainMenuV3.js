@@ -5,6 +5,7 @@ import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { AVATextStyle, AVAclasses, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
 import { clearPushSubscriptionFromDB, initPushNotifications, unsubscribeFromPush, isPushSupported, isPushOptedIn, syncAlertDeliveryMethod } from '../../util/AVAPushNotifications';
+import { getActivityDetail } from '../../util/AVAActivityLoaderV3';
 import QuickAdd from './QuickAdd';
 
 import Card from '@material-ui/core/Card';
@@ -45,6 +46,7 @@ import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
 
 import EditIcon from '@material-ui/icons/PersonOutlineOutlined';
+import CreateIcon from '@material-ui/icons/Create';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import SubscriptionIcon from '@material-ui/icons/CardMembership';
@@ -81,7 +83,8 @@ import CheckInCheckOut from '../forms/CheckInCheckOut';
 import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
 import GroupPhotoDirectory from '../forms/GroupPhotoDirectory';
 import TaskManager from '../dialogs/TaskManager';
-import MultiObservationFormD from '../forms/MultiObservationFormD';
+import MultiObservationFormD from '../forms/MultiObservationFormV3';
+import MultiObservationFormC from '../forms/MultiObservationFormC';
 import IosInstall from '../dialogs/IosInstall';
 import useIosCheck from '../../hooks/useIosCheck';
 import useWebPrompt from '../../hooks/useWebPrompt';
@@ -223,6 +226,10 @@ export default ({ start_at }) => {
     addMenuDialogPhone: '',
     deleteMenuConfirm: false,
     deleteMenuTarget: null,
+    editDescriptionDialog: false,
+    editDescriptionMenuId: null,
+    editDescriptionShort: '',
+    editDescriptionLong: '',
     showAddMessageTargetSearch: false,
     uiTilesOverrideLoaded: false,
     uiTilesOverride: null,
@@ -237,6 +244,29 @@ export default ({ start_at }) => {
   const useTileUI = ((reactData.uiTilesOverride === null) || (reactData.uiTilesOverride === undefined))
     ? clientUseTileUI
     : !!reactData.uiTilesOverride;
+
+  const normalizeHexColor = (value) => {
+    if (!value || typeof value !== 'string') { return null; }
+    const trimmed = value.trim();
+    const shortHex = /^#([0-9a-fA-F]{3})$/;
+    const longHex = /^#([0-9a-fA-F]{6})$/;
+    if (shortHex.test(trimmed)) {
+      const [, hexPart] = trimmed.match(shortHex);
+      return `#${hexPart[0]}${hexPart[0]}${hexPart[1]}${hexPart[1]}${hexPart[2]}${hexPart[2]}`;
+    }
+    if (longHex.test(trimmed)) {
+      return trimmed;
+    }
+    return null;
+  };
+
+  const resolvedClientBackground = state.session?.client_style?.backgroundColor
+    || AVADefaults({ client_style: 'get' })?.backgroundColor
+    || '#ffffff';
+  const resolvedClientBackgroundHex = normalizeHexColor(resolvedClientBackground);
+  const chromeTextColor = resolvedClientBackgroundHex && isDark(resolvedClientBackgroundHex)
+    ? 'cornsilk'
+    : '#111111';
 
   const [forceRedisplay, setForce] = React.useState(false);
   const updateReactData = (newData, force = false) => {
@@ -414,7 +444,24 @@ export default ({ start_at }) => {
           // Background data is ready — activate now
           if (startAtItem.menu_itemType === 'function') {
             void activityLog(startAtItem.menu_id, `Auto-run on load: ${startAtItem.description?.long}`);
-            reactUpd.renderFunctionCall = startAtItem.call || false;
+            if (startAtItem.activity) {
+              const activityDetail = await getActivityDetail({ activity_code: startAtItem.activity }, state);
+              reactUpd.renderFunctionCall = {
+                target: 'MultiObservationFormD',
+                params: {
+                  fact: { ...activityDetail.activityRec, activity_key: startAtItem.activity },
+                  factName: activityDetail.activityRec?.name || '',
+                  options: {
+                    listValues: activityDetail.rows,
+                    qualifiers: activityDetail.qualifiers
+                  },
+                  defaults: activityDetail.activityRec?.default_object || {}
+                }
+              };
+            }
+            else {
+              reactUpd.renderFunctionCall = startAtItem.call || false;
+            }
           }
           else if (startAtItem.menu_itemType === 'menu') {
             reactData.menu_hierarchy = reactUpd.menu_hierarchy;
@@ -544,7 +591,28 @@ export default ({ start_at }) => {
     deferredStartAtRef.current = null;
     if (deferredItem.menu_itemType === 'function') {
       void activityLog(deferredItem.menu_id, `Auto-run on load: ${deferredItem.description?.long}`);
-      updateReactData({ renderFunctionCall: deferredItem.call || false }, true);
+      if (deferredItem.activity) {
+        (async () => {
+          const activityDetail = await getActivityDetail({ activity_code: deferredItem.activity }, state);
+          updateReactData({
+            renderFunctionCall: {
+              target: 'MultiObservationFormD',
+              params: {
+                fact: { ...activityDetail.activityRec, activity_key: deferredItem.activity },
+                factName: activityDetail.activityRec?.name || '',
+                options: {
+                  listValues: activityDetail.rows,
+                  qualifiers: activityDetail.qualifiers
+                },
+                defaults: activityDetail.activityRec?.default_object || {}
+              }
+            }
+          }, true);
+        })();
+      }
+      else {
+        updateReactData({ renderFunctionCall: deferredItem.call || false }, true);
+      }
     }
     else if (deferredItem.menu_itemType === 'menu') {
       (async () => {
@@ -1185,6 +1253,51 @@ export default ({ start_at }) => {
     }, true);
   };
 
+  const handleSaveDescription = async () => {
+    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong } = reactData;
+    let saveWorked = true;
+    await dbClient
+      .update({
+        TableName: 'MenuV3',
+        Key: {
+          client_id: state.session.client_id,
+          menu_id: editDescriptionMenuId
+        },
+        UpdateExpression: 'set #d = :d',
+        ExpressionAttributeNames: { '#d': 'description' },
+        ExpressionAttributeValues: {
+          ':d': { short: editDescriptionShort, long: editDescriptionLong }
+        }
+      })
+      .promise()
+      .catch((error) => {
+        saveWorked = false;
+        cl({ 'Error updating MenuV3 description': error });
+      });
+
+    if (saveWorked) {
+      for (const level of reactData.menu_hierarchy) {
+        if (!level) { continue; }
+        for (const cell of level) {
+          if (cell.menu_id === editDescriptionMenuId && cell.menuItemRec) {
+            cell.menuItemRec.description = { short: editDescriptionShort, long: editDescriptionLong };
+          }
+        }
+      }
+    }
+
+    updateReactData({
+      editDescriptionDialog: false,
+      editDescriptionMenuId: null,
+      editDescriptionShort: '',
+      editDescriptionLong: '',
+      menu_hierarchy: reactData.menu_hierarchy,
+      alert: saveWorked
+        ? { severity: 'success', title: 'Saved', message: 'Description updated.' }
+        : { severity: 'error', title: 'Save failed', message: 'Unable to update description. Please try again.' }
+    }, true);
+  };
+
   const handleDeleteMenuItem = async (deleteTarget) => {
     const menuId = deleteTarget?.menu_id;
     const parentId = deleteTarget?.parent_id;
@@ -1481,6 +1594,7 @@ export default ({ start_at }) => {
     GroupPhotoDirectory,
     TaskManager,
     MultiObservationFormD,
+    MultiObservationFormC,
     QuickAdd,
     QuickSearch,
   };
@@ -1577,9 +1691,9 @@ export default ({ start_at }) => {
         defaultValue={props.defaults || null}
         eventClient={props.options?.client_id || state.session.client_id}
         fact={props.fact || null}
-        factName={props.factName || null}
+        factName={props.factName || props.fact?.name || props.fact?.factName || ''}
         isAppointment={props.options?.isAppointment}
-        listValues={props.options?.listValues || []}
+        listValues={props.options?.listValues || props.fact?.listValues || []}
         OGpatient={reactData.OGpatient}
         options={props.options || {}}
         patient={state.session}
@@ -1591,9 +1705,9 @@ export default ({ start_at }) => {
         picture={props.options?.picture || null}
         pMessageList={[]}
         pPerson={state.session.patient_id}
-        prompt={props.options?.prompt || null}
+        prompt={props.options?.prompt || props.fact?.prompt || null}
         pSession={state.session}
-        qualifiers={props.options?.qualifiers || null}
+        qualifiers={props.options?.qualifiers || props.fact?.qualifiers || null}
         request={props.request || {}}
         showNewEvent={props.options?.showNewEvent}
         onReset={() => {
@@ -2192,7 +2306,28 @@ export default ({ start_at }) => {
           updateReactData({
             alert: {
               severity: 'info',
-              title: this_item.description?.short,
+              title: <Box display='flex' alignItems='center' justifyContent='space-between'>
+                <span>{this_item.description?.short}</span>
+                {(reactData.is_admin || reactData.is_support) &&
+                  <IconButton
+                    size='small'
+                    style={{ color: 'white', padding: 2, marginLeft: 8 }}
+                    onClick={(ev) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      updateReactData({
+                        alert: false,
+                        editDescriptionDialog: true,
+                        editDescriptionMenuId: this_item.menu_id,
+                        editDescriptionShort: this_item.description?.short || '',
+                        editDescriptionLong: this_item.description?.long || '',
+                      }, true);
+                    }}
+                  >
+                    <CreateIcon fontSize='small' />
+                  </IconButton>
+                }
+              </Box>,
               message: <div>
                 ID: {this_item.menu_id}<br />
                 Type: {this_item.menu_itemType}{this_item.url && <><br />URL: {this_item.url}</>}<br />
@@ -2282,9 +2417,28 @@ export default ({ start_at }) => {
           }
           else if (this_item.menu_itemType === 'function') {
             void activityLog(this_item.menu_id, this_item.description?.long);
-            updateReactData({
-              renderFunctionCall: this_item.call || false
-            }, true);
+            if (this_item.activity) {
+              const activityDetail = await getActivityDetail({ activity_code: this_item.activity }, state);
+              updateReactData({
+                renderFunctionCall: {
+                  target: 'MultiObservationFormD',
+                  params: {
+                    fact: { ...activityDetail.activityRec, activity_key: this_item.activity },
+                    factName: activityDetail.activityRec?.name || '',
+                    options: {
+                      listValues: activityDetail.rows,
+                      qualifiers: activityDetail.qualifiers
+                    },
+                    defaults: activityDetail.activityRec?.default_object || {}
+                  }
+                }
+              }, true);
+            }
+            else {
+              updateReactData({
+                renderFunctionCall: this_item.call || false
+              }, true);
+            }
           }
           else if (!isTelLink && (normalizedMenuType === 'live_link' || (useTileUI && hasLinkThumbnail && normalizedMenuType === 'link'))) {
             const frameUrl = buildLiveLinkEmbedUrl(this_item.url);
@@ -2600,13 +2754,13 @@ export default ({ start_at }) => {
                 overflow='auto'
                 flexDirection='column'>
                 <Typography
-                  style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}
+                  style={AVATextStyle({ size: 1.5, margin: { right: 1 }, color: chromeTextColor })}
                   id='scroll-dialog-title'
                 >
                   {`${reactData.greetingWords},`}
                 </Typography>
                 <Typography
-                  style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}
+                  style={AVATextStyle({ size: 1.5, margin: { right: 1 }, color: chromeTextColor })}
                   id='scroll-dialog-title'
                 >
                   {`${reactData.greetingName}!`}
@@ -2644,7 +2798,7 @@ export default ({ start_at }) => {
               {makeDate(reactData.current_time, { timeZone: state.session.client_timezone }).absolute.split(' at ').map((tLine, tX) => (
                 <Typography
                   key={`time_${tX}`}
-                  style={AVATextStyle({ align: 'center', size: 0.8 })}
+                  style={AVATextStyle({ align: 'center', size: 0.8, color: chromeTextColor })}
                   id='scroll-dialog-title'
                 >
                   {tLine}
@@ -3189,8 +3343,8 @@ export default ({ start_at }) => {
                 >
                   {(reactData.loading || !state.hasOwnProperty('groups') || !state.groups.hasOwnProperty('adminHierarchy') || !state.accessList?.[state.session.client_id]) &&
                     <React.Fragment>
-                      <Typography style={AVATextStyle({ size: 1.5, align: 'center' })}  >{`Loading ${reactData.loading ? 'Your Menu' : 'AVA Data'}`}</Typography>
-                      <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >
+                      <Typography style={AVATextStyle({ size: 1.5, align: 'center', color: chromeTextColor })}  >{`Loading ${reactData.loading ? 'Your Menu' : 'AVA Data'}`}</Typography>
+                      <Typography style={AVATextStyle({ size: 0.8, align: 'center', color: chromeTextColor })} >
                         {`AVA version ${reactData.AVA_version}`}
                       </Typography>
                     </React.Fragment>
@@ -3203,7 +3357,7 @@ export default ({ start_at }) => {
                     reactData.marqueeData.map((marqueeLine, marqueeIndex) => (
                       <Typography
                         key={`marquee_${marqueeIndex}_${reactData.marqueeVersion}`}
-                        style={AVATextStyle(Object.assign({ size: 2, margin: { top: 0.6, left: 20, bottom: 1.4 }, bold: true, align: 'center' }, marqueeLine.style))} >
+                        style={AVATextStyle(Object.assign({ size: 2, margin: { top: 0.6, left: 20, bottom: 1.4 }, bold: true, align: 'center', color: chromeTextColor }, marqueeLine.style))} >
                         {marqueeLine.message}
                       </Typography>
                     ))}
@@ -3723,6 +3877,54 @@ export default ({ start_at }) => {
             bgColor: 'white'
           }}
         />
+      }
+      {reactData.editDescriptionDialog &&
+        <Dialog
+          open={reactData.editDescriptionDialog}
+          onClose={() => updateReactData({ editDescriptionDialog: false }, true)}
+          classes={{ paper: classes.clientPopUp }}
+          fullWidth
+        >
+          <Box p={3} display='flex' flexDirection='column'>
+            <Typography variant='h6' style={{ marginBottom: 16 }}>Edit Description</Typography>
+            <TextField
+              label='Short description'
+              value={reactData.editDescriptionShort}
+              onChange={(e) => updateReactData({ editDescriptionShort: e.target.value }, true)}
+              variant='outlined'
+              fullWidth
+              style={{ marginBottom: 16 }}
+            />
+            <TextField
+              label='Long description'
+              value={reactData.editDescriptionLong}
+              onChange={(e) => updateReactData({ editDescriptionLong: e.target.value }, true)}
+              variant='outlined'
+              fullWidth
+              multiline
+              rows={3}
+              style={{ marginBottom: 24 }}
+            />
+            <Box display='flex' justifyContent='center'>
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'gray', color: 'white', marginRight: 8 }}
+                size='small'
+                onClick={() => updateReactData({ editDescriptionDialog: false }, true)}
+              >
+                Cancel
+              </Button>
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'green', color: 'white' }}
+                size='small'
+                onClick={handleSaveDescription}
+              >
+                Save
+              </Button>
+            </Box>
+          </Box>
+        </Dialog>
       }
       {reactData.showIosInstall &&
         <IosInstall

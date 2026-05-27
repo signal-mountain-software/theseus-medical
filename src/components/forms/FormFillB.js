@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile } from '../../util/AVAUtilities';
+import { putTask, parseQuickActivity } from '../../util/AVATasks';
 import { addMember, removeMember } from '../../util/AVAGroups';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { formatPhone, makeName } from '../../util/AVAPeople';
@@ -8,7 +9,7 @@ import { makeDate, makeTime, addDays } from '../../util/AVADateTime';
 import AVAConfirm from './AVAConfirm';
 import AVAUploadFile from '../../util/AVAUploadFile';
 
-import { printFromHTML, sendMessages } from '../../util/AVAMessages';
+import { printFromHTML, sendMessages, printDocumentB } from '../../util/AVAMessages';
 import { printEmptyDocument } from '../../util/AVAMessages';
 import SignatureCanvas from 'react-signature-canvas';
 import Select from "react-dropdown-select";
@@ -18,7 +19,7 @@ import PrintIcon from '@material-ui/icons/Print';
 import LockIcon from '@material-ui/icons/Lock';
 import LockOpenIcon from '@material-ui/icons/LockOpen';
 import InsertDriveFileIcon from '@material-ui/icons/InsertDriveFile';
-import { Dialog, DialogContent, Snackbar, Box, Typography, FormControlLabel, Button, TextField, Checkbox, IconButton } from '@material-ui/core';
+import { Dialog, DialogContent, Snackbar, Box, Typography, FormControlLabel, Button, TextField, Checkbox, IconButton, Chip } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -128,7 +129,7 @@ const useStyles = makeStyles(theme => ({
     border: `1px solid ${theme.palette.divider}`,
     borderRadius: 4,
     boxSizing: 'border-box',
-    paddingTop: theme.spacing(2),
+    paddingTop: theme.spacing(0.5),
     paddingRight: theme.spacing(1),
     paddingBottom: theme.spacing(0.5),
     paddingLeft: theme.spacing(1),
@@ -139,6 +140,12 @@ const useStyles = makeStyles(theme => ({
     left: 10,
     padding: '3px 0 4px',
     backgroundColor: theme.palette.background.paper,
+    color: theme.palette.text.secondary,
+    fontSize: theme.typography.fontSize * 0.75,
+    lineHeight: 1.2,
+  },
+  selectionFieldLabelInline: {
+    padding: '2px 0 4px 0',
     color: theme.palette.text.secondary,
     fontSize: theme.typography.fontSize * 0.75,
     lineHeight: 1.2,
@@ -154,10 +161,15 @@ const useStyles = makeStyles(theme => ({
   sectionStickyTitle: {
     position: 'sticky',
     top: 0,
-    zIndex: 3,
+    zIndex: 2,
     backgroundColor: theme.palette.background.paper,
     paddingTop: theme.spacing(0.5),
     marginBottom: theme.spacing(1),
+  },
+  '@global': {
+    '.react-dropdown-select-dropdown': {
+      zIndex: '10 !important',
+    },
   },
   requiredTextField: {
     '& .MuiInputLabel-asterisk': {
@@ -369,7 +381,8 @@ export default ({ request = {}, onClose }) => {
     version: 1,
     idleState: false,
     pertains_to: options.person_id || state.session.patient_id,
-    clientSampleMode: (!options.document_id && (options.person_id === state.session.client_id))
+    clientSampleMode: (!options.document_id && (options.person_id === state.session.client_id)),
+    activeSectionOccurrences: {}
   });
 
   function uploadIcon(this_field, occ_index) {
@@ -410,7 +423,8 @@ export default ({ request = {}, onClose }) => {
   };
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
-  const [activePromptFieldKey, setActivePromptFieldKey] = React.useState('');
+  const [fieldDebugSnack, setFieldDebugSnack] = React.useState(null);
+
   const [renderedSectionCount, setRenderedSectionCount] = React.useState(0);
   const sectionRenderTimerRef = React.useRef(null);
   const formFieldDefinitionCacheRef = React.useRef({});
@@ -527,6 +541,12 @@ export default ({ request = {}, onClose }) => {
         ? valuesToMatch.map(v => typeof v === 'string' ? v.toLowerCase() : v)
         : valuesToMatch;
 
+      // '*' matches any non-blank value
+      if (normalizedValues.includes('*')) {
+        if (Array.isArray(valToCheck)) { return valToCheck.length > 0; }
+        return valToCheck !== null && valToCheck !== undefined && valToCheck !== '';
+      }
+
       if (isEmpty(valToCheck) && normalizedValues.includes('%%no_data%%')) {
         return true;
       }
@@ -542,20 +562,26 @@ export default ({ request = {}, onClose }) => {
     };
     let ignoreResult = false;
     if (ignoreObj) {
-      let field_to_ignore = ignoreObj.data.split('.').slice(-1)[0];
-      let value_to_test = reactData.fields[field_to_ignore]?.value ?? null;
-      const values_to_ignore = makeArray(ignoreObj.values);
-      ignoreResult = matchValues(value_to_test, values_to_ignore);
+      // ignore_if is an array of tests: [{ field: "field_name", values: [...] }, ...]
+      // Also supports legacy scalar form with a .data property for backward compatibility.
+      const testList = Array.isArray(ignoreObj) ? ignoreObj : [ignoreObj];
+      ignoreResult = testList.some(this_test => {
+        const fieldKey = this_test.field || this_test.data?.split('.').slice(-1)[0];
+        const value_to_test = reactData.fields[fieldKey]?.value ?? null;
+        return matchValues(value_to_test, makeArray(this_test.values));
+      });
     }
     else if (showObj) {
-      let field_to_ignore = showObj.data.split('.').slice(-1)[0];
-      let value_to_test = reactData.fields[field_to_ignore]?.value ?? null;
-      if (showObj.data.startsWith('field.')) { // field.field_name
-        const field_name = showObj.data.split('.')[1];
-        value_to_test = reactData.fields[field_name]?.value ?? null;
-      }
-      const values_to_ignore = makeArray(showObj.values);
-      ignoreResult = !matchValues(value_to_test, values_to_ignore);
+      // show_if is an array of tests: [{ field: "field_name", values: [...] }, ...]
+      // (same shape as section-level show_if handled by okToShowSection)
+      // Also supports legacy scalar form with a .data property for backward compatibility.
+      const testList = Array.isArray(showObj) ? showObj : [showObj];
+      const isShown = testList.some(this_test => {
+        const fieldKey = this_test.field || this_test.data?.split('.').slice(-1)[0];
+        const value_to_test = reactData.fields[fieldKey]?.value ?? null;
+        return matchValues(value_to_test, makeArray(this_test.values));
+      });
+      ignoreResult = !isShown;
     }
     return ignoreResult;
   };
@@ -940,25 +966,34 @@ export default ({ request = {}, onClose }) => {
       loadCommonFieldRec()
     ]);
 
+    let _field_sources = [];
+
     if (formFieldRec) {
       // Found in Form_Fields table
+      _field_sources.push('Form_Fields table');
       field_variables = Object.assign({}, formFieldRec);
     }
 
     if (commonFieldRec) {
       // Found in Common_Fields table
+      _field_sources.push('Common_Fields table');
       field_variables = Object.assign({}, field_variables, commonFieldRec.value, commonFieldRec);
     }
 
     // Now override with any values in formRec.fields[field_name]
     if (formRec.fields && formRec.fields[field_name]) {
+      if (!_field_sources.includes('form spec')) { _field_sources.push('form spec'); }
       field_variables = Object.assign({}, field_variables, formRec.fields[field_name]);
     }
 
     if (isObject(fieldEntry)) {
       // Finally, override with any values in fieldEntry object
+      if (!_field_sources.includes('form spec')) { _field_sources.push('form spec'); }
       field_variables = Object.assign({}, field_variables, fieldEntry);
     }
+
+    field_variables._field_sources = _field_sources.length > 0 ? _field_sources : ['form spec'];
+    field_variables._field_key = field_key;
     return field_variables;
   };
 
@@ -1010,9 +1045,12 @@ export default ({ request = {}, onClose }) => {
     else if (returnObj.type === 'yes/no') {
       yesNoType = true;
       returnObj.type = 'select';
+      const yesNoMin = (field_variables.value?.selection?.min !== undefined && field_variables.value?.selection?.min !== null)
+        ? Number(field_variables.value.selection.min)
+        : 1;
       returnObj.selectionObj = {
         selectionList: ['yes', 'no'],
-        min: 1,
+        min: yesNoMin,
         max: 1
       };
     }
@@ -1065,7 +1103,8 @@ export default ({ request = {}, onClose }) => {
       returnObj.selectionObj = Object.assign({},
         { min: 0, max: 999 },
         field_variables.value,
-        field_variables.value?.selection
+        field_variables.value?.selection,
+        field_variables.column !== undefined ? { column: field_variables.column } : {}
       );
     }
 
@@ -1301,6 +1340,10 @@ export default ({ request = {}, onClose }) => {
 
     // finish initializations
     returnObj.isError = false;
+    returnObj._field_key = field_key;
+    returnObj._field_name = field_name;
+    returnObj._section_name = section?.section_name || '';
+    returnObj._field_sources = field_variables._field_sources || ['form spec'];
 
     formRec.fields[field_name] = Object.assign({}, returnObj);
     response.fields[field_name] = Object.assign({}, returnObj);
@@ -1353,6 +1396,10 @@ export default ({ request = {}, onClose }) => {
       }
     }
     formRec.stages.push(complete_stage);
+    // Ensure formRec.fields is initialized — a newly created form may not have this property in the DB
+    if (!formRec.fields || typeof formRec.fields !== 'object') {
+      formRec.fields = {};
+    }
     // We have a person - do they have a familyRec?  If so, go ahead and get it
     updateReactData({
       peopleRec: reactData.peopleRec || {},
@@ -1378,6 +1425,10 @@ export default ({ request = {}, onClose }) => {
         if (isObject(fieldEntry)) {
           if (fieldEntry.field_name) {
             field_name = fieldEntry.field_name || fieldEntry.field_key;
+          } else if (fieldEntry.form_field) {
+            // When field_name isn't explicit, treat form_field as the field_name so that
+            // reactData.fields is keyed by the Form_Fields table key (not an auto-generated name)
+            field_name = fieldEntry.form_field;
           }
           if (fieldEntry.field_key) {
             field_key = fieldEntry.field_key;
@@ -1516,19 +1567,77 @@ export default ({ request = {}, onClose }) => {
       sections: [],
       document_title: reactData.document_title || tempTitle
     };
+    const docFieldValues = documentRec.field_values || {};
+    const activeSectionOccurrences = {};
     for (let this_section of formRec.sections) {
       if (this_section.occurrences && !isNaN(this_section.occurrences)) {
-        for (let section_number = 1; section_number <= this_section.occurrences; section_number++) {
+        const templateName = this_section.section_name;
+        const maxOccurrences = Number(this_section.occurrences);
+        // Determine how many occurrences have saved data (used to restore expanded state on reload)
+        let highestActive = 1;
+        for (let n = maxOccurrences; n >= 2; n--) {
+          const hasValue = this_section.fields.some(f => {
+            const baseFn = typeof f === 'string' ? f : (f.field_name || f.form_field || f.field_key || f.field_id);
+            const replaced = baseFn?.replace('1', String(n));
+            // When '1' is not in the field name, fall back to the _occN suffix scheme
+            const fn = (replaced === baseFn && n !== 1) ? `${baseFn}_occ${n}` : replaced;
+            return fn && docFieldValues[fn] != null;
+          });
+          if (hasValue) { highestActive = n; break; }
+        }
+        activeSectionOccurrences[templateName] = highestActive;
+        for (let section_number = 1; section_number <= maxOccurrences; section_number++) {
           let sectionIndex = response.sections.push(deepCopy(this_section)) - 1;
           response.sections[sectionIndex].section_name = this_section.section_name.replace('1', section_number);
+          response.sections[sectionIndex].occurrence_template = templateName;
+          response.sections[sectionIndex].occurrence_number = section_number;
+          response.sections[sectionIndex].occurrence_max = maxOccurrences;
           for (let [field_index, this_field] of this_section.fields.entries()) {
-            response.sections[sectionIndex].fields[field_index].field_name = this_field.field_name.replace('1', section_number);
-            response.sections[sectionIndex].fields[field_index].default_source = this_field.default_source
-              ? (this_field.default_source.replace('1', section_number))
+            // Resolve the base field name regardless of entry format (string, {field_name}, {form_field}, etc.)
+            const baseFieldName = typeof this_field === 'string'
+              ? this_field
+              : (this_field.field_name || this_field.form_field || this_field.field_key || this_field.field_id);
+            const newFieldName = baseFieldName.replace('1', String(section_number));
+            // When the base field name has no '1' placeholder, replace() is a no-op and every
+            // occurrence would share the same in-memory field key — causing all dropdowns to
+            // display the same selected value.  Generate a unique key for occurrences beyond
+            // the first so each occurrence has independent state in reactData.fields.
+            const resolvedFieldName = (newFieldName === baseFieldName && section_number !== 1)
+              ? `${baseFieldName}_occ${section_number}`
+              : newFieldName;
+            // Ensure the deep-copied entry is an object with field_name set
+            if (typeof response.sections[sectionIndex].fields[field_index] !== 'object'
+              || response.sections[sectionIndex].fields[field_index] === null) {
+              response.sections[sectionIndex].fields[field_index] = {};
+            }
+            response.sections[sectionIndex].fields[field_index].field_name = resolvedFieldName;
+            // default_source is an inline-only property on the raw section field entry
+            const rawDefaultSource = isObject(this_field) ? this_field.default_source : undefined;
+            response.sections[sectionIndex].fields[field_index].default_source = rawDefaultSource
+              ? rawDefaultSource.replace('1', String(section_number))
               : null;
-            response.sections[sectionIndex].fields[field_index].saveAs = this_field.saveAs
-              ? (this_field.saveAs.replace('1', section_number))
-              : null;
+            // saveAs is a processed array on the enriched field record (from Form_Fields lookup);
+            // replace '1' in each path segment for this occurrence number
+            const enrichedField = reactData.fields[baseFieldName];
+            const baseSaveAs = enrichedField?.saveAs;
+            response.sections[sectionIndex].fields[field_index].saveAs = baseSaveAs
+              ? (Array.isArray(baseSaveAs)
+                ? baseSaveAs.map(s => typeof s === 'string' ? s.replace('1', String(section_number)) : s)
+                : false)
+              : false;
+            // For occurrences beyond the first, reactData.fields was never initialized for the
+            // expanded field name.  Deep-copy the base field definition and apply the doc value.
+            if (section_number > 1) {
+              if (enrichedField) {
+                const docFieldValue = docFieldValues.hasOwnProperty(resolvedFieldName)
+                  ? docFieldValues[resolvedFieldName]
+                  : null;
+                reactData.fields[resolvedFieldName] = Object.assign({}, deepCopy(reactData.fields[baseFieldName]), {
+                  value: docFieldValue,
+                  valueText: formatValue({ rawValue: docFieldValue, type: reactData.fields[baseFieldName].type })
+                });
+              }
+            }
           }
         }
       }
@@ -1536,6 +1645,7 @@ export default ({ request = {}, onClose }) => {
         response.sections.push(this_section);
       }
     }
+    updateReactData({ activeSectionOccurrences }, false);
 
     return response;
   };
@@ -1774,91 +1884,90 @@ export default ({ request = {}, onClose }) => {
       .replace(/\s+/g, ' ')
       .trim();
   };
-
+  /*
   const getPromptLength = (value) => {
-    const inlineText = toInlineFieldText(value);
-    const inlineLength = inlineText.length;
-
-    if (typeof value !== 'string') {
-      return inlineLength;
-    }
-
-    const rawTextLength = value
-      .replace(/<br\s*\/?>/gi, ' ')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/&amp;/gi, '&')
-      .replace(/&lt;/gi, '<')
-      .replace(/&gt;/gi, '>')
-      .replace(/&quot;/gi, '"')
-      .replace(/&#39;/gi, "'")
-      .replace(/\s+/g, ' ')
-      .trim()
-      .length;
-
-    return Math.max(inlineLength, rawTextLength);
-  };
-
+      const inlineText = toInlineFieldText(value);
+      const inlineLength = inlineText.length;
+  
+      if (typeof value !== 'string') {
+        return inlineLength;
+      }
+  
+      const rawTextLength = value
+        .replace(/<br\s*\/?>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/\s+/g, ' ')
+        .trim()
+        .length;
+  
+      return Math.max(inlineLength, rawTextLength);
+    };
+    
   const getFieldOccurrenceTextValue = (fieldRec, occ_index = 0) => {
-    if (!fieldRec) {
-      return '';
-    }
-    const valueText = fieldRec.valueText;
-    if (Array.isArray(valueText)) {
-      return String(valueText[occ_index] || '').trim();
-    }
-    return String(valueText || '').trim();
-  };
-
-  const isLongPromptField = (this_field) => {
-    const fullPromptText = reconcilePrompt({
-      rawValue: reactData.fields?.[this_field]?.prompt?.value,
-      this_field,
-      includeRequiredMarker: false
-    });
-    return getPromptLength(fullPromptText) > 70;
-  };
-
-  const getInlinePromptFieldProps = ({ this_field, helperValue = '', hidePrompt = false, forceShrink = false, fieldInstanceKey = '', hasCurrentValue = false }) => {
-    if (hidePrompt) {
+      if (!fieldRec) {
+        return '';
+      }
+      const valueText = fieldRec.valueText;
+      if (Array.isArray(valueText)) {
+        return String(valueText[occ_index] || '').trim();
+      }
+      return String(valueText || '').trim();
+    };
+  
+    const isLongPromptField = (this_field) => {
+      const fullPromptText = reconcilePrompt({
+        rawValue: reactData.fields?.[this_field]?.prompt?.value,
+        this_field,
+        includeRequiredMarker: false
+      });
+      return getPromptLength(fullPromptText) > 70;
+    };
+  
+    const getInlinePromptFieldProps = ({ this_field, helperValue = '', hidePrompt = false, forceShrink = false, fieldInstanceKey = '', hasCurrentValue = false }) => {
+      if (hidePrompt) {
+        return {
+          label: '',
+          placeholder: '',
+          InputLabelProps: forceShrink ? { shrink: true } : undefined
+        };
+      }
+  
+      const fullPromptText = toInlineFieldText(reconcilePrompt({
+        rawValue: reactData.fields?.[this_field]?.prompt?.value,
+        this_field,
+        includeRequiredMarker: false
+      }));
+      const isLongPrompt = fullPromptText.length > 70;
+      const truncatedPromptText = isLongPrompt
+        ? `${fullPromptText.slice(0, 87).trimEnd()}…`
+        : fullPromptText;
+  
+      const helperText = toInlineFieldText(helperValue || '');
+      const longPromptShouldUseNotch = isLongPrompt && (forceShrink || hasCurrentValue || (fieldInstanceKey === activePromptFieldKey));
+      const shouldShrink = forceShrink || (!isLongPrompt) || longPromptShouldUseNotch;
+  
+      if (isLongPrompt && !longPromptShouldUseNotch) {
+        const isRequired = isFieldRequired(reactData.fields?.[this_field]);
+        return {
+          label: '',
+          placeholder: isRequired ? `${fullPromptText}\u00A0*` : fullPromptText,
+          InputLabelProps: shouldShrink ? { shrink: true } : undefined
+        };
+      }
+  
       return {
-        label: '',
-        placeholder: '',
-        InputLabelProps: forceShrink ? { shrink: true } : undefined
-      };
-    }
-
-    const fullPromptText = toInlineFieldText(reconcilePrompt({
-      rawValue: reactData.fields?.[this_field]?.prompt?.value,
-      this_field,
-      includeRequiredMarker: false
-    }));
-    const isLongPrompt = fullPromptText.length > 70;
-    const truncatedPromptText = isLongPrompt
-      ? `${fullPromptText.slice(0, 87).trimEnd()}…`
-      : fullPromptText;
-
-    const helperText = toInlineFieldText(helperValue || '');
-    const longPromptShouldUseNotch = isLongPrompt && (forceShrink || hasCurrentValue || (fieldInstanceKey === activePromptFieldKey));
-    const shouldShrink = forceShrink || (!isLongPrompt) || longPromptShouldUseNotch;
-
-    if (isLongPrompt && !longPromptShouldUseNotch) {
-      const isRequired = isFieldRequired(reactData.fields?.[this_field]);
-      return {
-        label: '',
-        placeholder: isRequired ? `${fullPromptText}\u00A0*` : fullPromptText,
-        InputLabelProps: shouldShrink ? { shrink: true } : undefined
-      };
-    }
-
-    return {
-      label: truncatedPromptText,
-      placeholder: isLongPrompt ? '' : helperText,
-      InputLabelProps: {
-        ...(shouldShrink ? { shrink: true } : {}),
-        ...(isLongPrompt
-          ? {
-            title: fullPromptText,
+        label: truncatedPromptText,
+        placeholder: isLongPrompt ? '' : helperText,
+        InputLabelProps: {
+          ...(shouldShrink ? { shrink: true } : {}),
+          ...(isLongPrompt ? { title: fullPromptText } : {}),
+          ...(shouldShrink ? {
             style: {
               maxWidth: 'calc(100% - 10px)',
               whiteSpace: 'nowrap',
@@ -1866,12 +1975,11 @@ export default ({ request = {}, onClose }) => {
               textOverflow: 'ellipsis',
               display: 'block'
             }
-          }
-          : {})
-      }
+          } : {})
+        }
+      };
     };
-  };
-
+  */
   const addRequiredPromptMarker = (promptText) => {
     if (typeof promptText !== 'string') {
       return promptText;
@@ -1926,6 +2034,9 @@ export default ({ request = {}, onClose }) => {
           });
           if (table_value) {
             response = response.replace(variable, `${[table_value].flat()[0]}`);
+          }
+          else if (reconcile_key.length > 0) {
+            response = response.replace(variable, 'this person');
           }
           else if (reactData.fields[extracted_field] && reactData.fields[extracted_field].valueText) {
             let vValue = reactData.fields[extracted_field].valueText;
@@ -2039,10 +2150,10 @@ export default ({ request = {}, onClose }) => {
       if (isObject(this_option)) {
         const optionValue = this_option.value ?? this_option.id ?? this_option.key ?? this_option.display ?? this_option.label;
         const optionDisplay = this_option.display ?? this_option.label ?? this_option.value ?? this_option.id ?? this_option.key;
-        return {
+        return Object.assign({}, this_option, {
           value: optionValue,
           display: optionDisplay
-        };
+        });
       }
       return {
         value: this_option,
@@ -2071,16 +2182,15 @@ export default ({ request = {}, onClose }) => {
     let optionList = normalizeSelectionList(props.text)
       .map(this_option => ({ value: this_option.value, label: this_option.display }))
       .sort((a, b) => `${a.label}`.localeCompare(`${b.label}`));
-    const promptText = toInlineFieldText(reconcilePrompt({
+    const promptText = normalizePromptMarkup(reconcilePrompt({
       rawValue: fieldRec.prompt?.value,
       this_field: props.prop,
       includeRequiredMarker: false
     }));
     const helperText = toInlineFieldText(fieldRec.prompt?.helper || '');
-    const hasLongPrompt = isLongPromptField(props.prop);
     const promptWidth = fieldRec.prompt?.width;
     const containerStyle = {
-      width: hasLongPrompt ? '70vw' : `${promptWidth || 320}px`,
+      width: `${promptWidth || 320}px`,
       minWidth: `${MIN_FIELD_WIDTH_PX}px`,
       maxWidth: '80vw',
       marginTop: '24px',
@@ -2099,8 +2209,8 @@ export default ({ request = {}, onClose }) => {
           className={`${classes.selectionFieldBox} ${isRequiredField ? classes.requiredOutline : ''}`}
           style={containerStyle}
         >
-          <Typography className={`${classes.selectionFieldLabel} ${isRequiredField ? classes.requiredLabel : ''}`}>
-            {promptText || props.prop}
+          <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}>
+            <span dangerouslySetInnerHTML={{ __html: promptText || normalizePromptMarkup(props.prop) }} />
             {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
           </Typography>
           {!!helperText && (
@@ -2113,6 +2223,7 @@ export default ({ request = {}, onClose }) => {
               style={{
                 fontSize: '0.8rem',
                 minHeight: '40px',
+                border: 'none',
                 borderRadius: '4px',
                 borderColor: isRequiredField ? '#2e7d32' : undefined
               }}
@@ -2120,19 +2231,38 @@ export default ({ request = {}, onClose }) => {
               variant={'standard'}
               disabled={isDisabled}
               dropdownPosition={'auto'}
-              values={(selectedValueList.length > 0)
-                ? optionList.filter(option => selectedValueList.includes(option.value) || selectedValueList.includes(option.label))
-                : []
-              }
+              values={(() => {
+                if (selectedValueList.length === 0) return [];
+                const matched = optionList.filter(opt =>
+                  selectedValueList.includes(opt.value) || selectedValueList.includes(opt.label)
+                );
+                const matchedValues = matched.map(o => o.value);
+                const custom = selectedValueList
+                  .filter(v => !matchedValues.includes(v))
+                  .map(v => ({ value: v, label: v }));
+                return [...matched, ...custom];
+              })()}
               clearable={true}
               clearOnSelect={false}
-              placeholder={helperText || 'Select an option'}
+              placeholder={helperText || 'Tap to select'}
               clearOnBlur={false}
               key={`selectBox_selectdrop_${props.prop}`}
               searchable={true}
               multi={isMulti}
               closeOnClickInput={isMulti}
               closeOnSelect={isMulti}
+              optionRenderer={isMulti ? ({ item, methods }) => (
+                <Chip
+                  label={item.label}
+                  size='small'
+                  color='primary'
+                  onDelete={isDisabled ? undefined : (e) => {
+                    e.stopPropagation();
+                    methods.removeItem(e, item, false);
+                  }}
+                  style={{ margin: '2px 3px', fontSize: '0.72rem', maxWidth: '200px' }}
+                />
+              ) : undefined}
               create={true}
               keepSelectedInList={true}
               noDataLabel={''}
@@ -2147,14 +2277,32 @@ export default ({ request = {}, onClose }) => {
                 });
               }}
               onChange={async (values) => {
-                if (!values || values.length === 0) {
-                  return;
+                if (isMulti) {
+                  // For multi-select, react-dropdown-select passes the COMPLETE new selection
+                  // list on every change — not just the newly clicked item.  Set the value
+                  // directly rather than toggling through handleMakeSelection (which would
+                  // treat values[0] as a toggle and remove an already-selected item).
+                  const newValue = (values || []).map(v => v.value);
+                  reactData.fields[props.prop].value = newValue;
+                  reactData.fields[props.prop].valueText = formatValue({
+                    rawValue: newValue,
+                    type: reactData.fields[props.prop].type
+                  });
+                  updateReactData({
+                    formUpdates: ++reactData.formUpdates,
+                    fields: reactData.fields
+                  }, true);
                 }
-                await handleMakeSelection({
-                  clickText: values[0].value,
-                  prop: props.prop,
-                  singleValue: !isMulti
-                });
+                else {
+                  if (!values || values.length === 0) {
+                    return;
+                  }
+                  await handleMakeSelection({
+                    clickText: values[0].value,
+                    prop: props.prop,
+                    singleValue: true
+                  });
+                }
               }}
             />
           </Box>
@@ -2171,16 +2319,11 @@ export default ({ request = {}, onClose }) => {
 
     const isRequiredField = isFieldRequired(fieldRec);
     const isDisabled = fieldRec.options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked;
-    const promptText = toInlineFieldText(reconcilePrompt({
+    const promptText = normalizePromptMarkup(reconcilePrompt({
       rawValue: fieldRec.prompt?.value,
       this_field: props.prop,
       includeRequiredMarker: false
     }));
-    const hasLongPrompt = getPromptLength(reconcilePrompt({
-      rawValue: fieldRec.prompt?.value,
-      this_field: props.prop,
-      includeRequiredMarker: false
-    })) > 70;
     const helperText = toInlineFieldText(fieldRec.prompt?.helper || '');
     const selectionMax = fieldRec?.selectionObj?.max;
     const shouldUseSingleSelection = Number.isFinite(selectionMax)
@@ -2189,18 +2332,17 @@ export default ({ request = {}, onClose }) => {
 
     const containerStyle = props.useFamilySizing
       ? {
-        width: hasLongPrompt ? '70vw' : `${fieldRec.prompt?.width || 320}px`,
+        width: `${fieldRec.prompt?.width || 320}px`,
         minWidth: `${MIN_FIELD_WIDTH_PX}px`,
-        maxWidth: hasLongPrompt ? '80vw' : '80vw',
+        maxWidth: '80vw',
         marginTop: '24px',
         marginLeft: '8px',
         marginRight: '8px',
         marginBottom: '8px'
       }
       : {
-        width: hasLongPrompt ? '70vw' : null,
         minWidth: `${MIN_FIELD_WIDTH_PX}px`,
-        maxWidth: hasLongPrompt ? '70vw' : '80vw',
+        maxWidth: '80vw',
         marginTop: '24px',
         marginLeft: '8px',
         marginRight: '8px',
@@ -2216,8 +2358,8 @@ export default ({ request = {}, onClose }) => {
           className={`${classes.selectionFieldBox} ${isRequiredField ? classes.requiredOutline : ''}`}
           style={containerStyle}
         >
-          <Typography className={`${classes.selectionFieldLabel} ${isRequiredField ? classes.requiredLabel : ''}`}>
-            {promptText || props.prop}
+          <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}>
+            <span dangerouslySetInnerHTML={{ __html: promptText || normalizePromptMarkup(props.prop) }} />
             {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
           </Typography>
           {!!helperText && (
@@ -2228,6 +2370,7 @@ export default ({ request = {}, onClose }) => {
             flexDirection={props.column ? 'column' : 'row'}
             alignItems='flex-start'
             flexWrap={props.column ? 'nowrap' : 'wrap'}
+            style={{ marginTop: '8px' }}
           >
             <React.Fragment key={`groupFrag__${props.prop}`}>
               {(optionList).map((text, tIndex) => (
@@ -2248,6 +2391,33 @@ export default ({ request = {}, onClose }) => {
                         optionDisplay: text.display
                       })}
                       onMouseDown={async () => {
+                        if (text.select_all) {
+                          const isCurrentlyChecked = isSelectionOptionSelected({
+                            selectedValue: fieldRec.value,
+                            optionValue: text.value,
+                            optionDisplay: text.display
+                          });
+                          reactData.fields[props.prop].value = isCurrentlyChecked
+                            ? []
+                            : optionList.map(o => o.value);
+                          updateReactData({
+                            formUpdates: ++reactData.formUpdates,
+                            fields: reactData.fields
+                          }, true);
+                          return;
+                        }
+                        const selectAllItem = optionList.find(o => o.select_all);
+                        if (selectAllItem) {
+                          const selectAllChecked = isSelectionOptionSelected({
+                            selectedValue: fieldRec.value,
+                            optionValue: selectAllItem.value,
+                            optionDisplay: selectAllItem.display
+                          });
+                          if (selectAllChecked && Array.isArray(reactData.fields[props.prop].value)) {
+                            const idx = reactData.fields[props.prop].value.indexOf(selectAllItem.value);
+                            if (idx >= 0) { reactData.fields[props.prop].value.splice(idx, 1); }
+                          }
+                        }
                         await handleMakeSelection({
                           clickText: text.value,
                           prop: props.prop,
@@ -2401,8 +2571,11 @@ export default ({ request = {}, onClose }) => {
       }
       if (okToShowSection(sectionObj)) {
         for (const this_field of sectionObj.fields) {
-          const thisFieldRec = reactData.fields[this_field];
-          if (thisFieldRec.ignore) {
+          // this_field may be a plain string or an object with a field_name property
+          // (repeating sections store objects so each occurrence has its own resolved field_name)
+          const field_name = isObject(this_field) ? this_field.field_name : this_field;
+          const thisFieldRec = reactData.fields[field_name];
+          if (!thisFieldRec || thisFieldRec.ignore) {
             continue;
           }
           thisFieldRec.isError = false;
@@ -2410,7 +2583,7 @@ export default ({ request = {}, onClose }) => {
             // if there is a specific rule regarding empty value, apply it now
             thisFieldRec.value = reconcilePrompt({
               rawValue: thisFieldRec.options.ifEmpty,
-              this_field
+              this_field: field_name
             });
           }
           if (isFieldRequired(thisFieldRec)) {
@@ -2421,7 +2594,7 @@ export default ({ request = {}, onClose }) => {
               if (numberOfSelections < minSelectionRequired) {
                 const prompt_part = reconcilePrompt({
                   rawValue: thisFieldRec.prompt?.value,
-                  this_field
+                  this_field: field_name
                 });
                 thisFieldRec.errorMessage = numberOfSelections === 0
                   ? `Please make a selection for ${prompt_part}`
@@ -2450,7 +2623,7 @@ export default ({ request = {}, onClose }) => {
             if (is_error) {
               thisFieldRec.errorMessage = `${reconcilePrompt({
                 rawValue: thisFieldRec.prompt?.value,
-                this_field
+                this_field: field_name
               }).replace("*", "").trim()} is required`;
               thisFieldRec.isError = true;
               messageList.push(thisFieldRec.errorMessage);
@@ -2824,6 +2997,11 @@ export default ({ request = {}, onClose }) => {
           reactData.peopleRec[reactData.pertains_to].groups = update_stageGroups(groupInstructions_onStageExit);
           needsUpdate.peopleRec = true;
         }
+        // create tasks on stage exit
+        const taskTemplates_onStageExit = reactData.formRec.stages[stage_we_finished].on_complete_tasks;
+        if (taskTemplates_onStageExit) {
+          await createTasksFromTemplates(taskTemplates_onStageExit);
+        }
       }
     }
 
@@ -2945,6 +3123,11 @@ export default ({ request = {}, onClose }) => {
       }
     }
 
+    // create tasks as indicated in formRec options upon final save
+    if (final && reactData.formRec?.options?.tasks) {
+      await createTasksFromTemplates(reactData.formRec.options.tasks);
+    }
+
     updateReactData({
       saveInProcess: false,
       document_id,
@@ -3055,6 +3238,74 @@ export default ({ request = {}, onClose }) => {
     }
     return groupList;
   }
+
+  // Creates tasks from an array of task-template objects (used by on_complete_tasks and options.tasks).
+  // Each template: { text, iterate_over?, skip_if_blank?, condition?: { field, value } }
+  // All field references use occurrence-1 naming (e.g. med_1_name); iterate_over causes them to
+  // be repeated for each active occurrence of that section template, substituting 1→N.
+  const createTasksFromTemplates = async (templates) => {
+    for (const template of [templates].flat()) {
+      const occTemplate = template.iterate_over;
+      const maxN = occTemplate
+        ? (reactData.activeSectionOccurrences?.[occTemplate] ?? 1)
+        : 1;
+      for (let n = 1; n <= maxN; n++) {
+        // Replace all {{field_1_name}} tokens with {{field_N_name}} for this occurrence
+        const applyN = (str) => {
+          if (!str || n === 1) { return str; }
+          return str.replace(/\{\{([^}]+)\}\}/g, (match, token) => {
+            const replaced = token.replace('1', String(n));
+            return `{{${replaced === token ? `${token}_occ${n}` : replaced}}}`;
+          });
+        };
+        const applyNtoField = (fieldName) => {
+          if (!fieldName || n === 1) { return fieldName; }
+          const replaced = fieldName.replace('1', String(n));
+          return replaced === fieldName ? `${fieldName}_occ${n}` : replaced;
+        };
+        // skip_if_blank: skip this occurrence if the anchor field has no value
+        const skipField = applyNtoField(template.skip_if_blank);
+        if (skipField) {
+          const skipRec = reactData.fields?.[skipField];
+          const skipVal = skipRec?.valueText ?? skipRec?.value;
+          if (!skipVal || String(skipVal).trim() === '') { continue; }
+        }
+        // condition: skip if the field value doesn't match expected
+        if (template.condition) {
+          const condField = applyNtoField(template.condition.field);
+          const condRec = reactData.fields?.[condField];
+          const condVal = condRec?.valueText ?? condRec?.value;
+          if (String(condVal ?? '').trim() !== String(template.condition.value ?? '').trim()) { continue; }
+        }
+        // resolve {{tokens}} then parse the natural-language phrase
+        const resolvedText = resolveMessageTokens(applyN(template.text || ''));
+        if (!resolvedText?.trim()) { continue; }
+        const { description, schedule, start_date } = parseQuickActivity(resolvedText);
+        if (!description?.trim()) { continue; }
+        await putTask({
+          task_id: null,
+          client_id: state.session.client_id,
+          description,
+          status: 'active',
+          start_date,
+          end_date: '',
+          available_to: ['*all'],
+          applies_to: [{
+            type: 'person',
+            id: reactData.pertains_to,
+            name: reactData.peopleRec?.[reactData.pertains_to]?.display_name || reactData.pertains_to
+          }],
+          data_to_collect: [],
+          schedule,
+          remind_who: [],
+          reminders: [],
+          streak_rules: [],
+          created_by: state.session.user_id,
+          source: 'form',
+        });
+      }
+    }
+  };
 
   async function sendMessage(send_instructions) {
     let postTime = new Date().getTime();
@@ -3358,6 +3609,16 @@ export default ({ request = {}, onClose }) => {
     return;
   }
 
+  // Returns true if the test condition matches the given field value.
+  // If test.values contains '*', matches any non-blank value.
+  const matchesFieldValues = (test, fieldValue) => {
+    if ([test.values].flat().includes('*')) {
+      if (Array.isArray(fieldValue)) { return fieldValue.length > 0; }
+      return fieldValue !== null && fieldValue !== undefined && fieldValue !== '';
+    }
+    return array_in_array([test.values].flat(), [fieldValue].flat());
+  };
+
   const okToShowSection = (this_sectionObj) => {
     if (this_sectionObj.hasOwnProperty('show_if')) {
       return (this_sectionObj.show_if.some(this_test => {
@@ -3373,7 +3634,7 @@ export default ({ request = {}, onClose }) => {
         }
         else {
           const this_value = reactData.fields?.[this_test.field]?.value;
-          return (array_in_array(this_test.values, this_value));
+          return matchesFieldValues(this_test, this_value);
         }
       }));
     }
@@ -3392,7 +3653,7 @@ export default ({ request = {}, onClose }) => {
         }
         else {
           const this_value = reactData.fields?.[this_test.field]?.value;
-          return (array_in_array(this_test.values, this_value));
+          return matchesFieldValues(this_test, this_value);
         }
       }));
       if (this_sectionObj.hasOwnProperty('show_ifAll')) {
@@ -3414,7 +3675,7 @@ export default ({ request = {}, onClose }) => {
         }
         else {
           const this_value = reactData.fields?.[this_test.field]?.value;
-          return (array_in_array(this_test.values, this_value));
+          return matchesFieldValues(this_test, this_value);
         }
       }));
     }
@@ -3441,6 +3702,10 @@ export default ({ request = {}, onClose }) => {
 
     for (const sectionObj of (Array.isArray(reactData.sections) ? reactData.sections : [])) {
       if (!okToShowSection(sectionObj)) {
+        continue;
+      }
+      // Skip inactive occurrences for dynamic sections
+      if (sectionObj.occurrence_template && sectionObj.occurrence_number > (reactData.activeSectionOccurrences?.[sectionObj.occurrence_template] ?? 1)) {
         continue;
       }
       const visibleFieldList = makeArray(sectionObj.fields)
@@ -3514,6 +3779,38 @@ export default ({ request = {}, onClose }) => {
           }]
         });
         onClose();
+      }
+      else if (reactData.options.mode === 'printPDF') {
+        await initialize();
+        // Collect signature data from field values (signature canvases may not be mounted)
+        let signatures = [];
+        for (const fieldName in reactData.fields) {
+          if (reactData.fields[fieldName]?.type === 'signature') {
+            const sigRefNumber = reactData.fields[fieldName].options?.sigRefNumber ?? 0;
+            if (reactData.fields[fieldName].value && String(reactData.fields[fieldName].value).startsWith('data:image/')) {
+              signatures[sigRefNumber] = reactData.fields[fieldName].value;
+            }
+          }
+        }
+        // Use getDisplayState to get the filtered, resolved section/field list
+        const { displaySections } = getDisplayState();
+        await printDocumentB({
+          documentList: [{
+            sections: displaySections,
+            fields: reactData.fields,
+            signatures,
+            docID: reactData.document_id,
+            client_id: state.session.client_id,
+            title: reactData.document_title
+          }]
+        });
+        onClose('print', {
+          document_id: reactData.document_id,
+          document_title: reactData.document_title,
+          document_status: 'aborted',
+          pertains_to: reactData.pertains_to,
+          formLocked: reactData.docRec?.formLocked
+        });
       }
       else {
         await initialize();
@@ -3628,49 +3925,57 @@ export default ({ request = {}, onClose }) => {
     const isRequiredField = isFieldRequired(fieldRec);
     const isDisabled = fieldRec.options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked;
     const promptWidth = fieldRec?.prompt?.width;
-    const longPromptField = isLongPromptField(this_field);
     const fallbackMinWidth = (isPhoneType || isDateSelectType || isDateOrTimeType) ? '20vw' : '60vw';
     const textRows = Number(fieldRec.prompt?.rows || fieldRec.value?.rows || 1);
-    const resolvedMinWidth = (longPromptField || (isTextType && (textRows > 1)))
-      ? '60vw'
-      : (promptWidth ? `${promptWidth}px` : fallbackMinWidth);
+    const resolvedMinWidth = promptWidth ? `${promptWidth}px` : fallbackMinWidth;
     const valueText = (fieldRec && fieldRec.valueText)
       ? (Array.isArray(fieldRec.valueText) ? fieldRec.valueText[occ_index] : fieldRec.valueText)
       : '';
     const hasLongValueText = String(valueText || '').length > 90;
-    const shouldAutoWrapText = isTextType && ((textRows > 1) || longPromptField || hasLongValueText);
+    const shouldAutoWrapText = isTextType && ((textRows > 1) || hasLongValueText);
     const resolvedTextRows = (textRows > 1)
       ? textRows
       : (shouldAutoWrapText ? 2 : undefined);
 
+    const promptText = occ_index > 0 ? '' : normalizePromptMarkup(reconcilePrompt({
+      rawValue: fieldRec.prompt?.value,
+      this_field,
+      includeRequiredMarker: false
+    }));
+    const helperText = toInlineFieldText(fieldRec.prompt?.helper || '');
+
+    const containerStyle = {
+      width: resolvedMinWidth,
+      minWidth: `${MIN_FIELD_WIDTH_PX}px`,
+      maxWidth: '90%',
+      marginTop: '24px',
+      marginLeft: '8px',
+      marginRight: '8px',
+      marginBottom: '8px',
+    };
+
     const sharedProps = {
       id: `field__${this_field}`,
-      variant: 'outlined',
+      variant: 'standard',
       size: 'small',
-      className: isRequiredField ? classes.requiredTextField : undefined,
       key: `field__${this_field}__${sectionNdx}`,
-      ...getInlinePromptFieldProps({
-        this_field,
-        helperValue: isDateSelectType ? '' : (fieldRec.prompt?.helper || ''),
-        hidePrompt: occ_index > 0,
-        forceShrink: isDateSelectType,
-        fieldInstanceKey: `${this_field}__${occ_index}`,
-        hasCurrentValue: isDateSelectType
-          ? !!String(fieldRec?.value || '').trim()
-          : !!getFieldOccurrenceTextValue(fieldRec, occ_index)
-      }),
+      placeholder: helperText || undefined,
       required: isRequiredField,
       disabled: isDisabled,
+      InputProps: { disableUnderline: true },
       style: {
-        width: resolvedMinWidth,
-        minWidth: `${MIN_FIELD_WIDTH_PX}px`,
-        maxWidth: '90%',
-        margin: '8px 8px 8px 8px'
+        width: '100%',
+        marginTop: '4px',
       },
-      onFocus: () => {
-        setActivePromptFieldKey(`${this_field}__${occ_index}`);
-      }
+      onFocus: () => {}
     };
+
+    const promptLabel = !!promptText && (
+      <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}>
+        <span dangerouslySetInnerHTML={{ __html: promptText }} />
+        {isRequiredField && <span className={classes.requiredAsterisk}>&nbsp;*</span>}
+      </Typography>
+    );
 
     if (isDateSelectType) {
       return (
@@ -3681,11 +3986,10 @@ export default ({ request = {}, onClose }) => {
           key={`datebox__${fieldNdx}__${sectionNdx}_${(fieldRec && fieldRec.value)
             ? fieldRec.value
             : ''}`}
-          justifyContent='flex-start'
-          marginTop={1}
-          marginLeft={0}
-          alignItems='flex-start'
+          className={`${classes.selectionFieldBox} ${isRequiredField ? classes.requiredOutline : ''}`}
+          style={containerStyle}
         >
+          {promptLabel}
           <TextField
             {...sharedProps}
             type='date'
@@ -3711,9 +4015,7 @@ export default ({ request = {}, onClose }) => {
                 }
               }
             }}
-            onBlur={() => {
-              setActivePromptFieldKey('');
-            }}
+            onBlur={() => {}}
           />
         </Box>
       );
@@ -3741,7 +4043,6 @@ export default ({ request = {}, onClose }) => {
         }
         defaultValue={valueText}
         onBlur={async (event) => {
-          setActivePromptFieldKey('');
           if (isTextType) {
             await handleChangeValue({
               newText: event.target.value,
@@ -3800,15 +4101,17 @@ export default ({ request = {}, onClose }) => {
       />
     );
 
-    if (isTextType) {
-      return (
-        <Box flexDirection='column' key={`Box__${this_field}`} className={classes.formControlCheckGroup}>
-          {commonTextField}
-        </Box>
-      );
-    }
-
-    return commonTextField;
+    return (
+      <Box
+        flexDirection='column'
+        key={`Box__${this_field}`}
+        className={`${classes.selectionFieldBox} ${isRequiredField ? classes.requiredOutline : ''}`}
+        style={containerStyle}
+      >
+        {promptLabel}
+        {commonTextField}
+      </Box>
+    );
   };
 
   const disableSaveActions = !hasDisplayableContent;
@@ -3821,10 +4124,12 @@ export default ({ request = {}, onClose }) => {
         onClose={handleAbort}
         classes={{ paper: classes.clientBackground }}
         maxWidth={false}
+        BackdropProps={reactData.options?.mode === 'printPDF' ? { style: { visibility: 'hidden' } } : undefined}
         PaperProps={{
           style: {
             minWidth: '80vw',
-            maxWidth: '80vw'
+            maxWidth: '80vw',
+            ...(reactData.options?.mode === 'printPDF' ? { visibility: 'hidden', pointerEvents: 'none' } : {})
           }
         }}
       >
@@ -3844,21 +4149,40 @@ export default ({ request = {}, onClose }) => {
               {displaySections.length > 0
                 ? <React.Fragment>
                   {displaySections.slice(0, renderedSectionCount || displaySections.length).map((sectionObj, sectionNdx) => (
-                    <React.Fragment
+                    <div
                       key={`sectionFrag__${sectionObj.section_name}_${sectionNdx}`}
                     >
-                      <Typography
-                        key={`section__${sectionObj.section_name}`}
-                        className={classes.sectionStickyTitle}
-                        style={AVATextStyle({
-                          size: 1.3, bold: true, margin: {
-                            bottom: 1,
-                            top: ((sectionNdx === 0) ? 1 : 3),
-                          }
-                        })}
-                      >
-                        {sectionObj.section_name}
-                      </Typography>
+                      {sectionObj.section_header
+                        ? <div
+                            key={`section__${sectionObj.section_name}`}
+                            className={classes.sectionStickyTitle}
+                            style={{
+                              ...AVATextStyle({
+                                size: 1.3, bold: true, overflow: 'visible', margin: {
+                                  bottom: 1,
+                                  top: ((sectionNdx === 0) ? 1 : 3),
+                                }
+                              }),
+                              zIndex: 2 + sectionNdx
+                            }}
+                            dangerouslySetInnerHTML={{ __html: sectionObj.section_header }}
+                          />
+                        : <div
+                            key={`section__${sectionObj.section_name}`}
+                            className={classes.sectionStickyTitle}
+                            style={{
+                              ...AVATextStyle({
+                                size: 1.3, bold: true, overflow: 'visible', margin: {
+                                  bottom: 1,
+                                  top: ((sectionNdx === 0) ? 1 : 3),
+                                }
+                              }),
+                              zIndex: 2 + sectionNdx
+                            }}
+                          >
+                            {sectionObj.section_name}
+                          </div>
+                      }
                       {sectionObj.fields.map((this_field, fieldNdx) => {
                         return (
                           !reactData.fields[this_field].ignore &&
@@ -3868,6 +4192,18 @@ export default ({ request = {}, onClose }) => {
                               border: reactData.fields[this_field].isError ? '2px solid red' : 'none',
                               padding: reactData.fields[this_field].isError ? '8px' : '0px',
                               borderRadius: reactData.fields[this_field].isError ? '30px' : '0px'
+                            }}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              const fieldRec = reactData.fields[this_field];
+                              const fieldKey = fieldRec._field_key || this_field;
+                              setFieldDebugSnack({
+                                form_id: reactData.form_id,
+                                section: sectionObj.section_name,
+                                field_name: this_field,
+                                field_key: fieldKey !== this_field ? fieldKey : null,
+                                sources: (fieldRec._field_sources || []).join(', ') || 'form spec'
+                              });
                             }}
                           >
                             {new Array(reactData.fields[this_field].prompt?.occurrences || 1).fill(0).map((a_zero, occ_index) => (
@@ -4387,7 +4723,33 @@ export default ({ request = {}, onClose }) => {
                           </Box>
                         );
                       })}
-                    </React.Fragment>
+                      {sectionObj.occurrence_template && !reactData.viewOnlyMode && !reactData.docRec?.formLocked && (() => {
+                        const nextSection = displaySections[sectionNdx + 1];
+                        const isLastInGroup = !nextSection || nextSection.occurrence_template !== sectionObj.occurrence_template;
+                        const canAddMore = sectionObj.occurrence_number < sectionObj.occurrence_max;
+                        if (!isLastInGroup || !canAddMore) return null;
+                        const addMoreLabel = reactData.formRec?.sections?.find(s => s.section_name === sectionObj.occurrence_template)?.add_more_label
+                          || 'Add another';
+                        return (
+                          <Box key={`more_btn__${sectionObj.occurrence_template}`} display='flex' justifyContent='flex-start' marginTop={1} marginBottom={1} marginLeft={1}>
+                            <Button
+                              size='small'
+                              className={AVAClass.AVAButton}
+                              style={{ color: 'white', backgroundColor: '#1976d2' }}
+                              onClick={() => {
+                                updateReactData({
+                                  activeSectionOccurrences: Object.assign({}, reactData.activeSectionOccurrences, {
+                                    [sectionObj.occurrence_template]: sectionObj.occurrence_number + 1
+                                  })
+                                }, true);
+                              }}
+                            >
+                              {`+ ${addMoreLabel}`}
+                            </Button>
+                          </Box>
+                        );
+                      })()}
+                    </div>
                   ))}
                   <Box aria-hidden='true' style={{ height: '28vh' }} />
                 </React.Fragment>
@@ -4479,6 +4841,42 @@ export default ({ request = {}, onClose }) => {
                       }}
                       edge="start"
                     />
+                  }
+                  {!reactData.clientSampleMode && !reactData.formRec.upload_only &&
+                    <Button
+                      onClick={async () => {
+                        if (valuesChanged()) {
+                          const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
+                          await handleSave({ document_id, final: false });
+                        }
+                        let signatures = [];
+                        for (const fieldName in reactData.fields) {
+                          if (reactData.fields[fieldName]?.type === 'signature') {
+                            const sigRefNumber = reactData.fields[fieldName].options?.sigRefNumber ?? 0;
+                            if (reactData.fields[fieldName].value && String(reactData.fields[fieldName].value).startsWith('data:image/')) {
+                              signatures[sigRefNumber] = reactData.fields[fieldName].value;
+                            }
+                          }
+                        }
+                        const { displaySections } = getDisplayState();
+                        await printDocumentB({
+                          documentList: [{
+                            sections: displaySections,
+                            fields: reactData.fields,
+                            signatures,
+                            docID: reactData.document_id,
+                            client_id: state.session.client_id,
+                            title: reactData.document_title
+                          }]
+                        });
+                      }}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'lightblue', color: 'black' }}
+                      size='small'
+                      startIcon={<PrintIcon />}
+                    >
+                      {'Print'}
+                    </Button>
                   }
                 </Box>
               }
@@ -4681,6 +5079,33 @@ export default ({ request = {}, onClose }) => {
               }, true);
             }}
           />
+        }
+        {
+          fieldDebugSnack &&
+          <Snackbar
+            open={!!fieldDebugSnack}
+            key={'fieldDebug_snackbar'}
+            autoHideDuration={8000}
+            onClose={() => setFieldDebugSnack(null)}
+            anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+          >
+            <Alert
+              severity='info'
+              variant='filled'
+              key={'fieldDebug_alert'}
+              style={{ borderRadius: '12px' }}
+              onClose={() => setFieldDebugSnack(null)}
+            >
+              <AlertTitle>Field Info</AlertTitle>
+              <Typography style={{ fontSize: '0.85rem' }}>{'form_id: ' + fieldDebugSnack.form_id}</Typography>
+              <Typography style={{ fontSize: '0.85rem' }}>{'section: ' + fieldDebugSnack.section}</Typography>
+              <Typography style={{ fontSize: '0.85rem' }}>{'field_name: ' + fieldDebugSnack.field_name}</Typography>
+              {fieldDebugSnack.field_key &&
+                <Typography style={{ fontSize: '0.85rem' }}>{'field_key: ' + fieldDebugSnack.field_key}</Typography>
+              }
+              <Typography style={{ fontSize: '0.85rem' }}>{'source(s): ' + fieldDebugSnack.sources}</Typography>
+            </Alert>
+          </Snackbar>
         }
         {
           reactData.alert &&

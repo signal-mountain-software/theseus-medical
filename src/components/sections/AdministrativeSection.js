@@ -1,9 +1,93 @@
 import React from 'react';
-import { Box, Typography, Checkbox, FormControlLabel, Input, Switch } from '@material-ui/core/';
+import { Box, Typography, Checkbox, FormControlLabel, Input, Switch, Select, MenuItem, Chip } from '@material-ui/core/';
 import { isEmpty, deepCopy } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 
 import { AVATextStyle } from '../../util/AVAStyles';
+
+const DONE_SENTINEL = '__AVA_DONE__';
+
+const DropdownField = ({ fieldKey, fieldEntry, allFields, updateField }) => {
+  const ddSelection = fieldEntry.fieldRec.value.selection || {};
+  const isMultiple = (ddSelection.max > 1);
+  const minWidth = ddSelection.minWidth || fieldEntry.fieldRec.prompt?.width || 160;
+
+  const toSelectValue = (raw) => isMultiple
+    ? (Array.isArray(raw) ? raw : (raw ? [raw] : []))
+    : (raw || '');
+
+  const [pendingValue, setPendingValue] = React.useState(() => toSelectValue(fieldEntry.value));
+  const [isDirty, setIsDirty] = React.useState(false);
+  const [open, setOpen] = React.useState(false);
+
+  const doSave = async (valueToSave) => {
+    let splitSave = fieldEntry.fieldRec.value.saveAs.split('.');
+    fieldEntry.value = valueToSave;
+    await updateField({
+      updateList: [{ tableName: splitSave.shift(), fieldName: splitSave.join('.'), newData: valueToSave }],
+      reactUpd: { fields: allFields }
+    });
+    setIsDirty(false);
+  };
+
+  return (
+    <Box display='flex' flexDirection='column' justifyContent='flex-start' marginLeft={0} paddingBottom={0} alignItems='flex-start'>
+      <Typography style={Object.assign({},
+        { margin: 0, marginLeft: 0, marginRight: '2px', marginBottom: 0, paddingTop: '16px', paddingBottom: 0, marginTop: 0 },
+        AVATextStyle({ size: 1, bold: true }))
+      }>
+        {fieldEntry.fieldRec.prompt.value}
+      </Typography>
+      <Select
+        multiple={isMultiple}
+        value={pendingValue}
+        disabled={fieldEntry.fieldRec.options?.viewOnly}
+        open={open}
+        onOpen={() => setOpen(true)}
+        input={<Input disableUnderline={fieldEntry.fieldRec.options?.viewOnly} />}
+        style={Object.assign(AVATextStyle({ size: 0.95, margin: { top: 0.5, bottom: 0.5 } }), { minWidth })}
+        MenuProps={{ PaperProps: { style: { maxHeight: 300 } } }}
+        renderValue={isMultiple
+          ? (selected) => (
+            <Box display='flex' flexWrap='wrap' style={{ gap: '4px' }}>
+              {selected.map((val) => <Chip key={val} label={val} size='small' />)}
+            </Box>
+          )
+          : undefined
+        }
+        onChange={(event) => {
+          const raw = event.target.value;
+          if (isMultiple && Array.isArray(raw) && raw.includes(DONE_SENTINEL)) {
+            // Done tapped — close and save with current pending (ignore sentinel)
+            setOpen(false);
+            if (isDirty) { doSave(pendingValue); }
+            return;
+          }
+          setPendingValue(raw);
+          setIsDirty(true);
+        }}
+        onClose={async () => {
+          setOpen(false);
+          if (isDirty) { await doSave(pendingValue); }
+        }}
+      >
+        {(ddSelection.selectionList || []).map((item, tIndex) => {
+          const optValue = (item && typeof item === 'object') ? item.value : item;
+          const optLabel = (item && typeof item === 'object') ? (item.label ?? item.value) : item;
+          return <MenuItem key={`${fieldKey}_opt_${tIndex}`} value={optValue}>{optLabel}</MenuItem>;
+        })}
+        {isMultiple && (
+          <MenuItem
+            value={DONE_SENTINEL}
+            style={{ position: 'sticky', bottom: 0, borderTop: '1px solid #e0e0e0', backgroundColor: '#f1f8e9', color: '#2e7d32', fontWeight: 'bold', justifyContent: 'center', zIndex: 1 }}
+          >
+            {'✓  Done'}
+          </MenuItem>
+        )}
+      </Select>
+    </Box>
+  );
+};
 
 export default ({ currentValues, ogValues, errorList, setError, reactData, updateField }) => {
 
@@ -50,6 +134,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
       flexGrow={2} px={2} py={4} display='flex' flexDirection='column'
     >
       {(Object.keys(reactData.form_fields).length > 0) && Object.keys(reactData.form_fields).map((this_formField, cFNdx) => (
+        (reactData.form_fields[this_formField].adminSection !== false) &&
         (reactData.administrative_account || reactData.form_fields[this_formField].fieldRec.options?.non_admin) &&
         <React.Fragment
           key={`mainFrag_${cFNdx}`}
@@ -171,17 +256,20 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
               >
                 {reactData.form_fields[this_formField].value.map((this_value, this_valueNDX) => (
                   <Input
-                    id={`field__${this_formField}`}
-                    key={`field__${this_formField}`}
+                    id={`field__${this_formField}-${this_valueNDX}`}
+                    key={`field__${this_formField}-${this_valueNDX}`}
                     variant={'outlined'}
                     disabled={reactData.form_fields[this_formField].fieldRec.options?.viewOnly}
+                    disableUnderline={reactData.form_fields[this_formField].fieldRec.options?.viewOnly}
                     style={AVATextStyle({
-                      lineHeight: 1,
-                      width: `${reactData.form_fields[this_formField].fieldRec.prompt.width || 200}px`,
+                      width: `${reactData.form_fields[this_formField].fieldRec.prompt?.width || 200}px`,
                       maxWidth: '90%',
                       size: 0.95,
                       color: 'black',
-                      margin: { top: 0.5, bottom: 0.5, left: 1.5, right: 3 }
+                      margin: 
+                        reactData.form_fields[this_formField].fieldRec.options?.viewOnly
+                          ? { top: 0, bottom: 0, left: 1.5, right: 3 }
+                          : { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
                     })}
                     autoComplete='off'
                     defaultValue={this_value || ''}
@@ -212,7 +300,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
             <Box
               key={`local_box__${cFNdx}`}
               display='flex' flexDirection='row'
-              alignItems={'center'}
+              alignItems={'baseline'}
             >
               <Typography
                 key={`local_prompt__${cFNdx}`}
@@ -225,6 +313,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                 key={`field__${this_formField}`}
                 variant={'outlined'}
                 disabled={reactData.form_fields[this_formField].fieldRec.options?.viewOnly || Array.isArray(reactData.form_fields[this_formField].value)}
+                disableUnderline={reactData.form_fields[this_formField].fieldRec.options?.viewOnly}
                 multiline={Array.isArray(reactData.form_fields[this_formField].value)}
                 style={AVATextStyle({
                   lineHeight: 1,
@@ -394,6 +483,16 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
               </Box>
             </Box>
 
+          }
+
+          {(reactData.form_fields[this_formField].fieldRec.value.type === 'dropdown') &&
+            <DropdownField
+              key={`dropdown__${this_formField}`}
+              fieldKey={this_formField}
+              fieldEntry={reactData.form_fields[this_formField]}
+              allFields={reactData.form_fields}
+              updateField={updateField}
+            />
           }
         </React.Fragment>
       ))

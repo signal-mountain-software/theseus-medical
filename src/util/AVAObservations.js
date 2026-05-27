@@ -177,7 +177,10 @@ export async function makeObservationList(pObs, pSession, variables = {}, option
   if (activityRec?.validation?.values) {
     let listLength = activityRec.validation.values.length;
     for (let v = 0; v < listLength; v++) {
-      let this_entry = await resolveVariables(activityRec.validation.values[v], pSession, variables);
+      let raw = activityRec.validation.values[v];
+      // Control instructions (~[...]) use text labels as lookup keys, not resolvable variables;
+      // skip resolveVariables to prevent default-object keys from being unintentionally substituted.
+      let this_entry = raw.startsWith('~[') ? raw : await resolveVariables(raw, pSession, variables);
       if (!this_entry.startsWith('~')) { returnList.push(this_entry); }
       else {
         // deconstruct this_entry as ~<oType>.<oKey>  

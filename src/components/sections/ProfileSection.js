@@ -586,52 +586,6 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
           helperText={'Zip'}
         />
       </Box>
-      <TextField style={{ width: '550px', maxWidth: '100%' }}
-        id='email'
-        multiline
-        key={`profileSection__eContact1__${currentValues.peopleRec.emergency_contact?.contact1 || 0}`}
-        autoComplete='off'
-        onBlur={async (event) => {
-          if (!currentValues.peopleRec.hasOwnProperty('emergency_contact')) {
-            currentValues.peopleRec.emergency_contact = {};
-          }
-          currentValues.peopleRec.emergency_contact.contact1 = event.target.value;
-          let updateObj = {
-            updateList:
-              [{
-                tableName: 'peopleRec',
-                fieldName: 'emergency_contact.contact1',
-                newData: event.target.value
-              }]
-          };
-          await updateField(updateObj);
-        }}
-        defaultValue={currentValues.peopleRec.emergency_contact?.contact1 || ''}
-        helperText={'Emergency Contact 1 - Name & Phone'}
-      />
-      <TextField style={{ width: '550px', maxWidth: '100%' }}
-        id='email'
-        multiline
-        key={`profileSection__eContact2__${currentValues.peopleRec.emergency_contact?.contact2 || 0}`}
-        autoComplete='off'
-        onBlur={async (event) => {
-          if (!currentValues.peopleRec.hasOwnProperty('emergency_contact')) {
-            currentValues.peopleRec.emergency_contact = {};
-          }
-          currentValues.peopleRec.emergency_contact.contact2 = event.target.value;
-          let updateObj = {
-            updateList:
-              [{
-                tableName: 'peopleRec',
-                fieldName: 'emergency_contact.contact2',
-                newData: event.target.value
-              }]
-          };
-          await updateField(updateObj);
-        }}
-        defaultValue={currentValues.peopleRec.emergency_contact?.contact2 || ''}
-        helperText={'Emergency Contact 2 - Name & Phone'}
-      />
 
       <Box display='flex' alignItems='center'
         justifyContent='flex-end' flexDirection='row'>

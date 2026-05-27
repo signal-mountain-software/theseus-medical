@@ -757,3 +757,211 @@ export async function getTasksForPeopleList(client_id, personIds, viewer_id, dat
 
   return result;
 }
+
+// ── Task text parsing ─────────────────────────────────────────────────────────
+// parseQuickActivity converts a natural-language phrase into a structured task
+// schedule.  It is shared by TaskManagerSection (interactive quick-add) and
+// FormFillB (rule-driven task creation on form save / stage completion).
+
+const _TIMES_OF_DAY = ['morning', 'midday', 'afternoon', 'breakfast', 'lunch', 'dinner', 'bedtime'];
+
+const _DAY_MAP = {
+  sunday: 0, sun: 0,
+  monday: 1, mon: 1,
+  tuesday: 2, tue: 2, tues: 2,
+  wednesday: 3, wed: 3,
+  thursday: 4, thu: 4, thur: 4, thurs: 4,
+  friday: 5, fri: 5,
+  saturday: 6, sat: 6,
+};
+
+function _normTime(raw) {
+  const m = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (!m) { return null; }
+  let hours = parseInt(m[1], 10);
+  const minutes = parseInt(m[2] || '0', 10);
+  const meridiem = (m[3] || '').toLowerCase();
+  if (meridiem === 'pm' && hours < 12) { hours += 12; }
+  if (meridiem === 'am' && hours === 12) { hours = 0; }
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+export function parseQuickActivity(rawText) {
+  let text = rawText.trim();
+  let times_of_day = [];
+  let recurrence = 'daily';
+  let dow = [];
+
+  const modifierPrefix = /\b(every|each|daily|nightly|weekly|monthly)\s+/i;
+
+  const dayKeys = Object.keys(_DAY_MAP).sort((a, b) => b.length - a.length);
+  const dayPattern = new RegExp(`\\b(${dayKeys.join('|')})\\b`, 'gi');
+
+  // Pass 1: explicit "weekly" keyword
+  if (/\bweekly\b/i.test(text)) {
+    recurrence = 'weekly';
+    text = text.replace(/\bweekly(\s+on)?\b/i, '').replace(/\s{2,}/g, ' ').trim();
+    let match;
+    dayPattern.lastIndex = 0;
+    while ((match = dayPattern.exec(text)) !== null) {
+      const idx = _DAY_MAP[match[1].toLowerCase()];
+      if (!dow.includes(idx)) { dow.push(idx); }
+    }
+    text = text
+      .replace(new RegExp(`\\b(on|and)\\b\\s*`, 'gi'), '')
+      .replace(new RegExp(`\\b(${dayKeys.join('|')})\\b`, 'gi'), '')
+      .replace(/[,]+/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .replace(/^[,\s]+|[,\s]+$/g, '')
+      .trim();
+    if (dow.length === 0) { dow = [new Date().getDay()]; }
+    dow.sort((a, b) => a - b);
+  }
+
+  // Pass 2: "every <day>" / "each <day>"
+  if (recurrence === 'daily') {
+    const everyDayPattern = new RegExp(
+      `\\b(every|each)\\s+(${dayKeys.join('|')})((?:\\s*(?:,|and)\\s*(?:${dayKeys.join('|')}))*)\\b`,
+      'gi'
+    );
+    const everyMatch = everyDayPattern.exec(text);
+    if (everyMatch) {
+      recurrence = 'weekly';
+      const firstDay = _DAY_MAP[everyMatch[2].toLowerCase()];
+      if (!dow.includes(firstDay)) { dow.push(firstDay); }
+      const extras = everyMatch[3] || '';
+      let extraMatch;
+      const extraDayPattern = new RegExp(`\\b(${dayKeys.join('|')})\\b`, 'gi');
+      while ((extraMatch = extraDayPattern.exec(extras)) !== null) {
+        const idx = _DAY_MAP[extraMatch[1].toLowerCase()];
+        if (!dow.includes(idx)) { dow.push(idx); }
+      }
+      text = text
+        .replace(everyDayPattern, '')
+        .replace(/\b(on|and)\b\s*/gi, '')
+        .replace(/[,]+/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .replace(/^[,\s]+|[,\s]+$/g, '')
+        .trim();
+      dow.sort((a, b) => a - b);
+    }
+  }
+
+  // Pass 3: "on <day>" → once, due next occurrence of that weekday
+  if (recurrence === 'daily') {
+    const onDayPattern = new RegExp(`\\bon\\s+(${dayKeys.join('|')})\\b`, 'i');
+    const onDayMatch = text.match(onDayPattern);
+    if (onDayMatch) {
+      const targetDow = _DAY_MAP[onDayMatch[1].toLowerCase()];
+      const today = new Date();
+      const todayDow = today.getDay();
+      const daysAhead = (targetDow - todayDow + 7) % 7 || 0;
+      const due = new Date(today);
+      due.setDate(today.getDate() + daysAhead);
+      const due_date = due.toISOString().split('T')[0];
+      recurrence = 'once';
+      text = text.replace(onDayMatch[0], '');
+      text = text.replace(/\s{2,}/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '').trim();
+      let early_times = [];
+      const earlyClockRegex = /\bat\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i;
+      const earlyClockMatch = text.match(earlyClockRegex);
+      if (earlyClockMatch) {
+        const normalized = _normTime(earlyClockMatch[1].trim());
+        if (normalized) {
+          early_times = [normalized];
+          text = text.replace(earlyClockMatch[0], '').replace(/\s{2,}/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '').trim();
+        }
+      }
+      if (early_times.length === 0) {
+        for (const kw of _TIMES_OF_DAY) {
+          const kwRegex = new RegExp(`\\b${kw}\\b`, 'i');
+          if (kwRegex.test(text)) {
+            early_times = [kw];
+            const withPrep = new RegExp(`\\b(?:at|in)\\s+(?:the\\s+)?${kw}\\b`, 'i');
+            text = withPrep.test(text) ? text.replace(withPrep, '') : text.replace(kwRegex, '');
+            text = text.replace(modifierPrefix, '').replace(/\s{2,}/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '').trim();
+            break;
+          }
+        }
+      }
+      text = text.replace(/\b(every|each)\s*$/i, '').replace(/\s{2,}/g, ' ').trim();
+      return {
+        description: text,
+        schedule: { recurrence: 'once', times_of_day: early_times, dow: [], dom: 1, due_date },
+        start_date: due_date,
+      };
+    }
+  }
+
+  // Pass 4: bare day names (no keyword) → weekly
+  if (recurrence === 'daily') {
+    const bareDayPattern = new RegExp(`\\b(${dayKeys.join('|')})\\b`, 'gi');
+    let match;
+    while ((match = bareDayPattern.exec(text)) !== null) {
+      const idx = _DAY_MAP[match[1].toLowerCase()];
+      if (!dow.includes(idx)) { dow.push(idx); }
+    }
+    if (dow.length > 0) {
+      recurrence = 'weekly';
+      text = text
+        .replace(new RegExp(`\\b(and)\\b\\s*`, 'gi'), '')
+        .replace(new RegExp(`\\b(${dayKeys.join('|')})\\b`, 'gi'), '')
+        .replace(/[,]+/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .replace(/^[,\s]+|[,\s]+$/g, '')
+        .trim();
+      dow.sort((a, b) => a - b);
+    }
+  }
+
+  // Normalize: if all 7 days were collected, that's just "daily"
+  if (dow.length === 7 && dow.every((d, i) => d === i)) {
+    recurrence = 'daily';
+    dow = [];
+  }
+
+  // Strip the literal word "all" that may appear as a multi-select option value
+  // (e.g. when a days-of-week field includes an "all" option)
+  if (recurrence === 'daily') {
+    text = text.replace(/\ball\b/gi, '').replace(/[",]+/g, '').replace(/\s{2,}/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '').trim();
+  }
+
+  // Pass 5: extract time — strip named time from text first, but clock time wins
+  let namedTimeKw = null;
+  for (const kw of _TIMES_OF_DAY) {
+    const regex = new RegExp(`\\b${kw}\\b`, 'i');
+    if (regex.test(text)) {
+      namedTimeKw = kw;
+      const withPrep = new RegExp(`\\b(?:at|in)\\s+(?:the\\s+)?${kw}\\b`, 'i');
+      text = withPrep.test(text) ? text.replace(withPrep, '') : text.replace(regex, '');
+      text = text.replace(modifierPrefix, '');
+      text = text.replace(/\s{2,}/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '').trim();
+      break;
+    }
+  }
+
+  const timeRegex = /\bat\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i;
+  const clockMatch = text.match(timeRegex);
+  if (clockMatch) {
+    const normalized = _normTime(clockMatch[1].trim());
+    if (normalized) {
+      times_of_day = [normalized];
+      text = text.replace(clockMatch[0], '');
+      text = text.replace(modifierPrefix, '');
+      text = text.replace(/\s{2,}/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '').trim();
+    } else {
+      times_of_day = namedTimeKw ? [namedTimeKw] : [];
+    }
+  } else {
+    times_of_day = namedTimeKw ? [namedTimeKw] : [];
+  }
+
+  text = text.replace(/\b(every|each)\s*$/i, '').replace(/\s{2,}/g, ' ').trim();
+
+  const today = new Date().toISOString().split('T')[0];
+  return {
+    description: text,
+    schedule: { recurrence, times_of_day, dow, dom: 1, due_date: '' },
+    start_date: today,
+  };
+}

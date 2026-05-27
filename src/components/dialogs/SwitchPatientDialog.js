@@ -191,7 +191,7 @@ export default ({ open, roles, onClose, options = {} }) => {
   function okClient(cLine) {
     if (!cLine) { return false; }
     // if you are not authorized to access this client, reject it
-    if (!accessList[cLine.candidate_id].hasOwnProperty('list') || (accessList[cLine.candidate_id].list.length === 0)) {
+    if (!accessList[cLine.candidate_id]?.hasOwnProperty('list') || (accessList[cLine.candidate_id]?.list?.length === 0)) {
       return false;
     }
     // you ARE autohirzed to this client; is it filtered out?
@@ -239,7 +239,7 @@ export default ({ open, roles, onClose, options = {} }) => {
       <Paper p={2} component={Box} variant='outlined'
         width='100%' maxHeight={256} overflow='auto' square
       >
-        {noSwitchableAccounts &&
+        {(noSwitchableAccounts || !accessList[selectedClient]?.hasOwnProperty('list')) &&
           <Box key={'no_accounts_available'} display='flex' flexWrap='wrap' flexDirection='row' justifyContent='flex-start' alignItems='center'>
             <Typography variant='h5' className={classes.firstName}>{'Loading...'}</Typography>
           </Box>
@@ -270,7 +270,7 @@ export default ({ open, roles, onClose, options = {} }) => {
             ))}
           </React.Fragment>
         }
-        {!noSwitchableAccounts && (selectedClient !== '*none') &&
+        {!noSwitchableAccounts && (selectedClient !== '*none') && accessList[selectedClient] && (accessList[selectedClient].hasOwnProperty('list')) &&
           <React.Fragment>
             <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
               {rowsWritten = 0}

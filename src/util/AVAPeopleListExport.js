@@ -1,6 +1,8 @@
 import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
 
 import { dbClient, recordExists, deepCopy, resolveData, cl } from './AVAUtilities';
+import { getImage } from './AVAPeople';
 
 export function formatExportValue(value) {
   if ((value === null) || (value === undefined)) {
@@ -144,6 +146,8 @@ export async function getExportFieldPickerData({ sessionId, clientId, exportScop
         description: fieldRec.description || fieldRec.field_key,
         category: fieldRec.category || 'Other',
         value_type: fieldRec?.type,
+        export_formats: Array.isArray(fieldRec?.export_formats) ? fieldRec.export_formats : null,
+        filters: Array.isArray(fieldRec?.filters) ? fieldRec.filters : null,
       }))
       .sort((a, b) => {
         const catCompare = (a.category || '').localeCompare(b.category || '');
@@ -189,6 +193,7 @@ export async function resolveSelectedFieldValuesForPeople({
   clientId,
   personIds = [],
   selectedFieldKeys = [],
+  selectedFieldOptions = [],
   onProgress = null
 }) {
   if (!Array.isArray(selectedFieldKeys) || selectedFieldKeys.length === 0) {
@@ -201,6 +206,10 @@ export async function resolveSelectedFieldValuesForPeople({
   let completedCount = 0;
   const batchSize = (selectedFieldKeys.length > 20) ? 4 : 8;
   const progressUpdateEvery = Math.max(1, Math.floor(totalCount / 100));
+
+  const fieldOptionByKey = Object.fromEntries(
+    selectedFieldOptions.map(opt => [opt.field_key, opt])
+  );
 
   const resolveForPerson = async (personId) => {
     const resolvedFieldList = await resolveData(
@@ -216,6 +225,12 @@ export async function resolveSelectedFieldValuesForPeople({
 
     outputByPersonId[personId] = selectedFieldKeys.map((fieldKey, fieldIndex) => {
       const resolvedField = resolvedFieldList[fieldIndex];
+      const fieldOpt = fieldOptionByKey[fieldKey];
+      if (fieldOpt?.value_type === 'notes') {
+        const rawNotes = Array.isArray(resolvedField?.raw) ? resolvedField.raw : [];
+        const staticFilters = (fieldOpt.filters || []).filter(f => f.source !== 'prompt');
+        return evaluateNoteFilters(rawNotes, staticFilters);
+      }
       return formatExportValue(resolvedField?.formatted);
     });
 
@@ -235,6 +250,73 @@ export async function resolveSelectedFieldValuesForPeople({
   }
 
   return outputByPersonId;
+}
+
+/**
+ * Evaluate a set of filters against an array of note objects.
+ * Static filters (no source: "prompt") should already be evaluated before reaching PDF render;
+ * prompt-driven filters use resolvedPromptValues keyed by prompt_label.
+ */
+export function evaluateNoteFilters(notes, filters = [], resolvedPromptValues = {}) {
+  if (!Array.isArray(notes)) { return []; }
+  if (!Array.isArray(filters) || filters.length === 0) { return notes; }
+  return notes.filter(note =>
+    filters.every(filter => {
+      const rawFieldValue = note[filter.field];
+      const fieldValue = (rawFieldValue === undefined || rawFieldValue === null) && filter.field === 'note_timestamp'
+        ? Date.now() - 60 * 86400000
+        : rawFieldValue;
+      const filterValue = (filter.source === 'prompt')
+        ? resolvedPromptValues[filter.prompt_label || filter.field]
+        : filter.value;
+      if (filterValue === undefined || filterValue === null) { return true; }
+      switch (filter.operator) {
+        case 'eq':  return fieldValue === filterValue;
+        case 'ne':  return fieldValue !== filterValue;
+        case 'gt':  return fieldValue > filterValue;
+        case 'lt':  return fieldValue < filterValue;
+        case 'gte': return fieldValue >= filterValue;
+        case 'lte': return fieldValue <= filterValue;
+        case 'between': {
+          const { from, to } = (filterValue || {});
+          return (from === undefined || fieldValue >= from) && (to === undefined || fieldValue <= to);
+        }
+        case 'ct': {
+          const selected = Array.isArray(filterValue) ? filterValue : [filterValue];
+          return selected.includes(fieldValue);
+        }
+        default: return true;
+      }
+    })
+  );
+}
+
+/**
+ * Collect the unique prompt specs needed before a PDF export.
+ * Only notes-type fields with filters that have source: "prompt" contribute.
+ * Deduplicates by prompt_label so the same date-range prompt isn't shown twice
+ * when two notes fields share it.
+ */
+export function collectPromptSpecs(selectedFieldOptions = []) {
+  const specs = [];
+  const seenLabels = new Set();
+  for (const fieldOpt of selectedFieldOptions) {
+    if (fieldOpt.value_type !== 'notes') { continue; }
+    if (!Array.isArray(fieldOpt.filters)) { continue; }
+    for (const filter of fieldOpt.filters) {
+      if (filter.source !== 'prompt') { continue; }
+      const label = filter.prompt_label || filter.field;
+      if (seenLabels.has(label)) { continue; }
+      seenLabels.add(label);
+      specs.push({
+        prompt_label: label,
+        value_type: filter.value_type || null,
+        operator: filter.operator,
+        field: filter.field,
+      });
+    }
+  }
+  return specs;
 }
 
 export function downloadRowsAsCsv({ header = [], rows = [], fileName = 'export.csv' }) {
@@ -273,6 +355,226 @@ export function downloadRowsAsXlsx({ header = [], rows = [], fileName = 'export.
   XLSX.utils.book_append_sheet(workbook, worksheet, 'People List');
   XLSX.writeFile(workbook, fileName);
 }
+
+// Load an image URL into a base64 data-URI for embedding in jsPDF.
+async function loadImageAsBase64(url) {
+  if (!url) { return null; }
+  try {
+    const response = await fetch(url, { mode: 'cors' });
+    if (!response.ok) { return null; }
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  }
+  catch { return null; }
+}
+
+/**
+ * Generate a PDF with one page per person.
+ * Each page shows: optional photo, person name + ID as a centered header,
+ * then all selected fields as "Label: Value" pairs flowing down the page.
+ *
+ * @param {Object} params
+ * @param {string[]} params.header         Column labels from buildCurrentPeopleListExportData
+ * @param {Array[]}  params.rows           Data rows (parallel to header)
+ * @param {string}   params.fileName       Output file name (e.g. 'group_people_list.pdf')
+ * @param {number}   params.personIdColIndex   Column index containing the person_id (for photo lookup)
+ * @param {number}   params.personNameColIndex Column index containing the display name
+ * @param {number}   params.identityColCount   How many leading columns to skip in the field list
+ * @param {string}   [params.reportTitle='']   Optional subtitle shown at top of each page
+ */
+export async function downloadRowsAsPdf({
+  header = [],
+  rows = [],
+  fileName = 'export.pdf',
+  personIdColIndex = 0,
+  personNameColIndex = 0,
+  identityColCount = 1,
+  reportTitle = '',
+  fieldMeta = [],
+  resolvedPromptValues = {},
+}) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+  const pageWidth = doc.internal.pageSize.getWidth();   // 612 pt
+  const pageHeight = doc.internal.pageSize.getHeight(); // 792 pt
+  const margin = 40;
+  const contentWidth = pageWidth - (margin * 2);
+  const lineHeight = 16;
+  const photoSize = 80;
+
+  const fieldLabels = header.slice(identityColCount);
+
+  for (let i = 0; i < rows.length; i++) {
+    if (i > 0) { doc.addPage(); }
+
+    const row = rows[i];
+    const personId = `${row[personIdColIndex] || ''}`;
+    const personName = `${row[personNameColIndex] || ''}`;
+    const fieldValues = row.slice(identityColCount);
+
+    let y = margin;
+
+    // Photo — centered, square
+    const photoUrl = getImage(personId);
+    if (photoUrl) {
+      const base64 = await loadImageAsBase64(photoUrl);
+      if (base64) {
+        const photoX = (pageWidth - photoSize) / 2;
+        try { doc.addImage(base64, 'JPEG', photoX, y, photoSize, photoSize); }
+        catch {
+          try { doc.addImage(base64, 'PNG', photoX, y, photoSize, photoSize); }
+          catch { /* photo format unrecognized — skip */ }
+        }
+        y += photoSize + 24;
+      }
+    }
+
+    // Person name — large, bold, centered
+    doc.setFontSize(18);
+    doc.setFont('Helvetica', 'bold');
+    doc.text(personName || '(no name)', pageWidth / 2, y, { align: 'center' });
+    y += 10;
+
+    // Person ID — small, gray, centered
+    doc.setFontSize(10);
+    doc.setFont('Helvetica', 'normal');
+    doc.setTextColor(90, 90, 90);
+    doc.text(`ID: ${personId}`, pageWidth / 2, y, { align: 'center' });
+    doc.setTextColor(0, 0, 0);
+    y += 16;
+
+    // Divider
+    doc.setLineWidth(0.5);
+    doc.setDrawColor(190, 190, 190);
+    doc.line(margin, y, pageWidth - margin, y);
+    doc.setDrawColor(0, 0, 0);
+    y += 14;
+
+    // Field rows
+    doc.setFontSize(10);
+    for (let j = 0; j < fieldLabels.length; j++) {
+      const meta = fieldMeta[j];
+      const label = fieldLabels[j] || '';
+
+      if (meta?.value_type === 'notes') {
+        // ── Notes block ──
+        const rawNotes = Array.isArray(fieldValues[j]) ? fieldValues[j] : [];
+        const promptFilters = (meta.filters || []).filter(f => f.source === 'prompt');
+        const filteredNotes = evaluateNoteFilters(rawNotes, promptFilters, resolvedPromptValues);
+        if (filteredNotes.length === 0) { continue; }
+
+        if (y > pageHeight - margin - lineHeight * 3) { doc.addPage(); y = margin; }
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text(label ? `${label}:` : 'Notes:', margin, y);
+        y += lineHeight;
+
+        for (let n = 0; n < filteredNotes.length; n++) {
+          const note = filteredNotes[n];
+          if (y > pageHeight - margin - lineHeight * 4) { doc.addPage(); y = margin; }
+
+          // Name line (bold; urgent in red)
+          doc.setFontSize(9);
+          doc.setFont('Helvetica', 'bold');
+          if (note.urgent) {
+            doc.setTextColor(180, 0, 0);
+            const urgentTag = '[URGENT] ';
+            doc.text(urgentTag, margin + 8, y);
+            const urgentWidth = doc.getTextWidth(urgentTag);
+            doc.setTextColor(0, 0, 0);
+            doc.text(`${note.name || ''}`, margin + 8 + urgentWidth, y);
+          } else {
+            doc.text(`${note.name || ''}`, margin + 8, y);
+          }
+          doc.setTextColor(0, 0, 0);
+          y += lineHeight - 2;
+
+          // Note text (normal, wrapped)
+          if (note.noteText) {
+            doc.setFont('Helvetica', 'normal');
+            const noteLines = doc.splitTextToSize(note.noteText, contentWidth - 16);
+            for (const noteLine of noteLines) {
+              if (y > pageHeight - margin - lineHeight) { doc.addPage(); y = margin; }
+              doc.text(noteLine, margin + 8, y);
+              y += lineHeight - 2;
+            }
+          }
+
+          // Category + Byline (small, gray)
+          doc.setFont('Helvetica', 'normal');
+          doc.setFontSize(7);
+          doc.setTextColor(130, 130, 130);
+          if (note.category) {
+            if (y > pageHeight - margin - lineHeight) { doc.addPage(); y = margin; }
+            doc.text(note.category, margin + 8, y);
+            y += lineHeight - 2;
+          }
+          const byline = [note.user_name, (() => {
+            const raw = note.last_update;
+            if (!raw) { return `1/1/${new Date().getFullYear()}`; }
+            const d = new Date(raw);
+            return isNaN(d.getTime()) ? `1/1/${new Date().getFullYear()}` : d.toLocaleDateString();
+          })()].filter(Boolean).join(' · ');
+          if (byline) {
+            if (y > pageHeight - margin - lineHeight) { doc.addPage(); y = margin; }
+            doc.text(byline, margin + 8, y);
+            y += lineHeight - 2;
+          }
+          doc.setTextColor(0, 0, 0);
+          doc.setFontSize(9);
+
+          // Thin divider between notes (not after the last one)
+          if (n < filteredNotes.length - 1) {
+            if (y > pageHeight - margin - 6) { doc.addPage(); y = margin; }
+            doc.setLineWidth(0.25);
+            doc.setDrawColor(210, 210, 210);
+            doc.line(margin + 8, y, pageWidth - margin, y);
+            doc.setDrawColor(0, 0, 0);
+            y += 20;
+          }
+        }
+        y += 4;
+
+      } else {
+        // ── Standard "Label: value" row ──
+        const value = `${fieldValues[j] ?? ''}`.trim();
+        if (!value) { continue; }
+
+        if (y > pageHeight - margin - lineHeight) {
+          doc.addPage();
+          y = margin;
+        }
+
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(10);
+        const labelText = `${label}: `;
+        doc.text(labelText, margin, y);
+        const labelWidth = doc.getTextWidth(labelText);
+
+        doc.setFont('Helvetica', 'normal');
+        const valueLines = doc.splitTextToSize(value, contentWidth - labelWidth);
+        doc.text(valueLines[0], margin + labelWidth, y);
+        y += lineHeight;
+
+        for (let k = 1; k < valueLines.length; k++) {
+          if (y > pageHeight - margin - lineHeight) {
+            doc.addPage();
+            y = margin;
+          }
+          doc.text(valueLines[k], margin + labelWidth, y);
+          y += lineHeight;
+        }
+      }
+    }
+  }
+
+  doc.save(fileName);
+}
+
 
 async function getExportFieldDefinitionsByKey({ clientId, selectedFieldKeys = [] }) {
   const normalizedKeys = [...new Set([selectedFieldKeys]

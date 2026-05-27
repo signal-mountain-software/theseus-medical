@@ -13,7 +13,7 @@ import { createDocument } from '../../util/AVADocuments';
 import AVAUploadFile from '../../util/AVAUploadFile';
 import FormEditor from '../forms/FormEditor';
 
-import { Snackbar, Paper, Box, Dialog, DialogActions, DialogContent, DialogContentText, Button, Typography, Checkbox, FormControlLabel, TextField } from '@material-ui/core';
+import { Snackbar, Paper, Box, Dialog, DialogActions, DialogContent, DialogContentText, Button, Typography, Checkbox, FormControlLabel, TextField, LinearProgress, Tooltip } from '@material-ui/core';
 import Select from "react-dropdown-select";
 import { Alert, AlertTitle } from '@material-ui/lab/';
 import {
@@ -22,10 +22,14 @@ import {
   resolveSelectedFieldValuesForPeople,
   downloadRowsAsCsv,
   downloadRowsAsXlsx,
+  downloadRowsAsPdf,
   sanitizeExportBaseName,
   listSavedReports,
-  saveReport
+  saveReport,
+  collectPromptSpecs,
 } from '../../util/AVAPeopleListExport';
+
+import ExportFilterPrompt from './ExportFilterPrompt';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -40,6 +44,8 @@ import EditIcon from '@material-ui/icons/Edit';
 import VisibilityIcon from '@material-ui/icons/Visibility';
 import LockIcon from '@material-ui/icons/Lock';
 import GetAppIcon from '@material-ui/icons/GetApp';
+import PrintIcon from '@material-ui/icons/Print';
+import CancelIcon from '@material-ui/icons/Cancel';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
 
@@ -158,8 +164,14 @@ export default ({ defaults, onClose }) => {
     reportNameInput: '',
     hasUnsavedSelections: false,
     showDownloadConfirm: null,
+    showExportFilterPrompt: false,
+    exportFilterPromptSpecs: [],
     updatesMade: false,
-    viewPeopleMaintenance: false
+    viewPeopleMaintenance: false,
+    selectedPersonIds: [],
+    expandedPerson_id: null,
+    printQueue: [],
+    printQueueTotal: 0,
   });
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
   const updateReactData = (newData, force = false) => {
@@ -399,6 +411,53 @@ export default ({ defaults, onClose }) => {
     return true;
   }
 
+  async function downloadCurrentPeopleListPdf(resolvedPromptValues = {}) {
+    const selectedFieldObjects = reactData.exportFieldOptions.filter(
+      f => reactData.selectedExportFieldNames.includes(f.field_key));
+    const promptSpecs = collectPromptSpecs(selectedFieldObjects);
+    if (promptSpecs.length > 0 && Object.keys(resolvedPromptValues).length === 0) {
+      updateReactData({ showExportFilterPrompt: true, exportFilterPromptSpecs: promptSpecs }, true);
+      return null;
+    }
+    const exportData = await buildCurrentPeopleListExportData();
+    if (!exportData) {
+      return false;
+    }
+
+    const {
+      selectedForm,
+      header,
+      rows,
+      selectedFieldOptions
+    } = exportData;
+
+    const fieldMeta = selectedFieldOptions.map(opt => ({ value_type: opt.value_type, filters: opt.filters }));
+    const safeFormName = sanitizeExportBaseName(
+      selectedForm?.form_name || reactData.selectedForm_id,
+      'form'
+    );
+    const fileName = `${safeFormName || 'form'}_people_list.pdf`;
+
+    await downloadRowsAsPdf({
+      header,
+      rows,
+      fileName,
+      personIdColIndex: 1,
+      personNameColIndex: 0,
+      identityColCount: 2,
+      fieldMeta,
+      resolvedPromptValues,
+    });
+    await saveExportFieldSelections({
+      sessionId: state?.session?.user_id,
+      clientId: state?.session?.client_id,
+      exportScope: 'form_management',
+      selectedFieldNames: reactData.selectedExportFieldNames || [],
+      logLabel: 'form export selections'
+    });
+    return true;
+  }
+
   async function buildCurrentPeopleListExportData() {
     if (!reactData.selectedForm_id) {
       return false;
@@ -437,7 +496,8 @@ export default ({ defaults, onClose }) => {
       const resolvedByPersonId = await resolveSelectedFieldValuesForPeople({
         clientId: state.session.client_id,
         personIds,
-        selectedFieldKeys
+        selectedFieldKeys,
+        selectedFieldOptions
       });
 
       rows.forEach((rowObj, rowIndex) => {
@@ -454,7 +514,8 @@ export default ({ defaults, onClose }) => {
     return {
       selectedForm,
       header,
-      rows
+      rows,
+      selectedFieldOptions
     };
   }
 
@@ -1861,6 +1922,7 @@ export default ({ defaults, onClose }) => {
                               <SwapVertIcon />
                             </Box>
                           }
+
                         </React.Fragment>
                       )
                     }
@@ -1898,7 +1960,7 @@ export default ({ defaults, onClose }) => {
                   >
                     {reactData.masterFormList[reactData.selectedForm_id]?.filteredMemberIds?.slice(0, reactData.maxPeopleToRender)
                       .map((this_person, cX) => (
-                        <Box display='flex' flexDirection='row'   // Box for row icon, person name, and (optional) trailing icon
+                        <Box display='flex' flexDirection='row'   // outer: name row + inline actions all on one row
                           key={`formperson_row_list_${cX}`}
                           justifyContent='flex-start'
                           alignItems='center'
@@ -1918,36 +1980,141 @@ export default ({ defaults, onClose }) => {
                             }, true);
                           }}
                         >
-                          {reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.overall_status?.startsWith('compl')
-                            ?
-                            (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.formLocked
+                          <Box display='flex' flexDirection='row'   // inner: status icon + name + optional trailing check
+                            justifyContent='flex-start'
+                            alignItems='center'
+                          >
+                            {reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.overall_status?.startsWith('compl')
                               ?
-                              <LockIcon   // if overall status for this person/form is complete, show lock if form is locked
-                                key={`radio-button_person${cX}lock`}
-                                id={`radio-button_person${cX}lock`}
-                                onClick={() => {
+                              (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.formLocked
+                                ?
+                                <LockIcon   // if overall status for this person/form is complete, show lock if form is locked
+                                  key={`radio-button_person${cX}lock`}
+                                  id={`radio-button_person${cX}lock`}
+                                  onClick={() => {
+                                    updateReactData({
+                                      isEditing: {
+                                        calledFrom: 'forms',
+                                        person_id: this_person,
+                                        form_id: reactData.selectedForm_id,
+                                        document_id: (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id
+                                          || reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.document_id
+                                          || 'new')
+                                      }
+                                    }, true);
+                                  }}
+                                  style={AVATextStyle({
+                                    size: 1.5,
+                                    margin: { right: 0.5 },
+                                    color: 'gray'
+                                  })}
+                                  size='small'
+                                />
+                                :
+                                <CheckCircleIcon  // if overall status for this person/form is complete, show checkCircle if form is not locked
+                                  key={`radio-button_person${cX}edit`}
+                                  id={`radio-button_person${cX}edit`}
+                                  onClick={() => {
+                                    updateReactData({
+                                      isEditing: {
+                                        calledFrom: 'forms',
+                                        person_id: this_person,
+                                        form_id: reactData.selectedForm_id,
+                                        document_id: reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].completedDocs[0].document_id
+                                      }
+                                    }, true);
+                                  }}
+                                  style={AVATextStyle({
+                                    size: 1.5,
+                                    margin: { right: 0.5 },
+                                    color: 'green'
+                                  })}
+                                  size='small'
+                                />
+                              )
+                              :
+                              <EditIcon   // if overall status for this person/form is NOT complete, show edit icon
+                                key={`radio-button_person${cX}edit`}
+                                id={`radio-button_person${cX}edit`}
+                                onContextMenu={() => {
                                   updateReactData({
                                     isEditing: {
                                       calledFrom: 'forms',
                                       person_id: this_person,
                                       form_id: reactData.selectedForm_id,
-                                      document_id: (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id
-                                        || reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.document_id
-                                        || 'new')
+                                      document_id: ((reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status.startsWith('complete')) ? 'new' : (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'new'))
                                     }
                                   }, true);
+                                }}
+                                onClick={() => {
+                                  updateReactData({
+                                    isEditing: {
+                                      calledFrom: 'forms',
+                                      open_complete: !reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id,
+                                      person_id: this_person,
+                                      form_id: reactData.selectedForm_id,
+                                      document_id: (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id
+                                        || (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.document_id
+                                          || 'new'))
+                                    }
+                                  }, true);
+                                  console.log(reactData.isEditing);
                                 }}
                                 style={AVATextStyle({
                                   size: 1.5,
                                   margin: { right: 0.5 },
-                                  color: 'gray'
+                                  color: makeColor(reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status || 'not_started')
                                 })}
                                 size='small'
                               />
-                              :
-                              <CheckCircleIcon  // if overall status for this person/form is complete, show checkCircle if form is not locked
-                                key={`radio-button_person${cX}edit`}
-                                id={`radio-button_person${cX}edit`}
+                            }
+                            <Typography  // Tap to toggle selection
+                              key={`g_textpeople-${cX}`}
+                              style={AVATextStyle({
+                                overflow: 'visible',
+                                size: 1.2,
+                                bold: !!(reactData.selectedPersonIds?.includes(this_person)),
+                                margin: { top: 0 },
+                                color: makeColor(reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status || 'not_started')
+                              })}
+                              draggable={true}
+                              onDragStart={(e) => handleDragStart(e, {
+                                person_id: this_person,
+                                person_name: `${reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.person_name || makeName(this_person).display}`,
+                                reason: 'form'
+                              })}
+                              onClick={() => {
+                                const currentSelected = reactData.selectedPersonIds || [];
+                                if (currentSelected.includes(this_person)) {
+                                  // deselect this person
+                                  const newSelected = currentSelected.filter(p => p !== this_person);
+                                  updateReactData({
+                                    selectedPersonIds: newSelected,
+                                    expandedPerson_id: newSelected.length === 1 ? newSelected[0] : null
+                                  }, true);
+                                } else {
+                                  // add this person to selection
+                                  const newSelected = [...currentSelected, this_person];
+                                  updateReactData({
+                                    selectedPersonIds: newSelected,
+                                    expandedPerson_id: newSelected.length === 1 ? this_person : null
+                                  }, true);
+                                }
+                              }}
+                            >
+                              {`${reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.person_name || makeName(this_person).display}`}
+                            </Typography>
+                            {!reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.overall_status?.startsWith('compl') &&
+                              reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs &&
+                              (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs.length > 0) &&
+                              <CheckCircleIcon  // if overall status for this person/form is NOT complete, BUT there IS at least one complete form of this type, show checkCircle
+                                key={`radio-button_person${cX}off`}
+                                id={`radio-button_person${cX}off`}
+                                style={AVATextStyle({
+                                  color: 'green',
+                                  size: 1,
+                                  margin: { left: 0.5, right: 0.5 },
+                                })}
                                 onClick={() => {
                                   updateReactData({
                                     isEditing: {
@@ -1958,95 +2125,53 @@ export default ({ defaults, onClose }) => {
                                     }
                                   }, true);
                                 }}
-                                style={AVATextStyle({
-                                  size: 1.5,
-                                  margin: { right: 0.5 },
-                                  color: 'green'
-                                })}
                                 size='small'
                               />
-                            )
-                            :
-                            <EditIcon   // if overall status for this person/form is NOT complete, show edit icon
-                              key={`radio-button_person${cX}edit`}
-                              id={`radio-button_person${cX}edit`}
-                              onContextMenu={() => {
-                                updateReactData({
-                                  isEditing: {
-                                    calledFrom: 'forms',
-                                    person_id: this_person,
-                                    form_id: reactData.selectedForm_id,
-                                    document_id: ((reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status.startsWith('complete')) ? 'new' : (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id || 'new'))
-                                  }
-                                }, true);
-                              }}
-                              onClick={() => {
-                                updateReactData({
-                                  isEditing: {
-                                    calledFrom: 'forms',
-                                    open_complete: !reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id,
-                                    person_id: this_person,
-                                    form_id: reactData.selectedForm_id,
-                                    document_id: (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id
-                                      || (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.document_id
-                                        || 'new'))
-                                  }
-                                }, true);
-                                console.log(reactData.isEditing);
-                              }}
-                              style={AVATextStyle({
-                                size: 1.5,
-                                margin: { right: 0.5 },
-                                color: makeColor(reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status || 'not_started')
-                              })}
-                              size='small'
-                            />
-                          }
-                          <Typography  // Always show person's name, with color based on status of their form completion
-                            key={`g_textpeople-${cX}`}
-                            style={AVATextStyle({
-                              overflow: 'visible',
-                              size: 1.2,
-                              margin: { top: 0 },
-                              color: makeColor(reactData.masterPeopleList[this_person]?.[reactData.selectedForm_id]?.status || 'not_started')
-                            })}
-                            draggable={true}
-                            onDragStart={(e) => handleDragStart(e, {
-                              person_id: this_person,
-                              person_name: `${reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.person_name || makeName(this_person).display}`,
-                              reason: 'form'
-                            })}
-                            onClick={() => {
-                              updateReactData({
-                                viewPeopleMaintenance: this_person
-                              }, true);
-                            }}
-                          >
-                            {`${reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.person_name || makeName(this_person).display}`}
-                          </Typography>
-                          {!reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.overall_status?.startsWith('compl') &&
-                            reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs &&
-                            (reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs.length > 0) &&
-                            <CheckCircleIcon  // if overall status for this person/form is NOT complete, BUT there IS at least one complete form of this type, show checkCircle
-                              key={`radio-button_person${cX}off`}
-                              id={`radio-button_person${cX}off`}
-                              style={AVATextStyle({
-                                color: 'green',
-                                size: 1,
-                                margin: { left: 0.5, right: 0.5 },
-                              })}
-                              onClick={() => {
-                                updateReactData({
-                                  isEditing: {
-                                    calledFrom: 'forms',
-                                    person_id: this_person,
-                                    form_id: reactData.selectedForm_id,
-                                    document_id: reactData.masterFormList[reactData.selectedForm_id].memberList[this_person].completedDocs[0].document_id
-                                  }
-                                }, true);
-                              }}
-                              size='small'
-                            />
+                            }
+                          </Box>
+                          {/* Inline actions — shown to the right when this is the only selected person */}
+                          {reactData.expandedPerson_id === this_person && (reactData.selectedPersonIds?.length ?? 0) === 1 &&
+                            <Box display='flex' flexDirection='row'
+                              justifyContent='flex-start'
+                              alignItems='center'
+                              style={{ marginLeft: '12px', gap: '16px' }}
+                            >
+                              <Box display='flex' flexDirection='row' alignItems='center' style={{ cursor: 'pointer', gap: '4px' }}
+                                onClick={() => {
+                                  const docIdForPrint = (
+                                    reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.completedDocs[0]?.document_id
+                                    || reactData.masterFormList[reactData.selectedForm_id].memberList?.[this_person]?.wipDocs[0]?.document_id
+                                    || 'new'
+                                  );
+                                  updateReactData({
+                                    expandedPerson_id: null,
+                                    selectedPersonIds: [this_person],
+                                    isEditing: {
+                                      calledFrom: 'print',
+                                      person_id: this_person,
+                                      form_id: reactData.selectedForm_id,
+                                      document_id: docIdForPrint,
+                                      print_pdf: true
+                                    }
+                                  }, true);
+                                }}
+                              >
+                                <PrintIcon style={AVATextStyle({ size: 1.1, color: 'gray' })} />
+                                <Typography style={AVATextStyle({ size: 0.8, margin: { top: 0 } })}>Print</Typography>
+                              </Box>
+                              <Box display='flex' flexDirection='row' alignItems='center' style={{ cursor: 'pointer', gap: '4px' }}
+                                onClick={() => {
+                                  updateReactData({
+                                    expandedPerson_id: null,
+                                    selectedPersonIds: [],
+                                    viewPeopleMaintenance: this_person
+                                  }, true);
+                                }}
+                              >
+                                <SettingsIcon style={AVATextStyle({ size: 1.1 })} />
+                                <Typography style={AVATextStyle({ size: 0.8, margin: { top: 0 } })}>Profile</Typography>
+                              </Box>
+                            </Box>
                           }
                         </Box>
                       ))
@@ -2122,7 +2247,56 @@ export default ({ defaults, onClose }) => {
                     }}
                     edge="start"
                   />
+                  <PrintIcon
+                    classes={{ root: classes.rowButton }}
+                    size='medium'
+                    style={{ marginLeft: '16px', opacity: (reactData.selectedPersonIds?.length > 0) ? 1 : 0.4 }}
+                    aria-label="print_selected_icon"
+                    onClick={() => {
+                      if (!(reactData.selectedPersonIds?.length > 0)) return;
+                      const queue = reactData.selectedPersonIds.map(person_id => ({
+                        person_id,
+                        form_id: reactData.selectedForm_id,
+                        document_id: (
+                          reactData.masterFormList[reactData.selectedForm_id].memberList?.[person_id]?.completedDocs[0]?.document_id
+                          || reactData.masterFormList[reactData.selectedForm_id].memberList?.[person_id]?.wipDocs[0]?.document_id
+                          || 'new'
+                        )
+                      }));
+                      updateReactData({
+                        printQueueTotal: queue.length,
+                        printQueue: queue.slice(1),
+                        isEditing: {
+                          calledFrom: 'print',
+                          person_id: queue[0].person_id,
+                          form_id: queue[0].form_id,
+                          document_id: queue[0].document_id,
+                          print_pdf: true
+                        }
+                      }, true);
+                    }}
+                  />
+                  <CancelIcon
+                    classes={{ root: classes.rowButton }}
+                    size='medium'
+                    style={{ marginLeft: '16px', opacity: (reactData.selectedPersonIds?.length > 0) ? 1 : 0.4, color: (reactData.selectedPersonIds?.length > 0) ? 'red' : undefined }}
+                    aria-label="clear_selections_icon"
+                    onClick={() => {
+                      if (!(reactData.selectedPersonIds?.length > 0)) return;
+                      updateReactData({
+                        selectedPersonIds: [],
+                        expandedPerson_id: null
+                      }, true);
+                    }}
+                  />
                 </Box>
+                {(reactData.selectedPersonIds?.length ?? 0) > 0 &&
+                  <Typography
+                    style={AVATextStyle({ size: 0.85, margin: { top: 0.5, bottom: 0 }, color: 'textSecondary' })}
+                  >
+                    {`${reactData.selectedPersonIds.length} selected`}
+                  </Typography>
+                }
               </Box>
             }
           </Box>
@@ -2272,6 +2446,15 @@ export default ({ defaults, onClose }) => {
                                 label={
                                   <span>
                                     {fieldRec.description}
+                                    {Array.isArray(fieldRec.export_formats) && (
+                                      <span style={{
+                                        marginLeft: '6px', fontSize: '0.65em', color: 'white',
+                                        backgroundColor: (fieldRec.export_formats.includes('pdf') && !fieldRec.export_formats.includes('csv')) ? '#1565C0' : '#2E7D32',
+                                        borderRadius: '8px', padding: '1px 5px',
+                                      }}>
+                                        {(fieldRec.export_formats.includes('pdf') && !fieldRec.export_formats.includes('csv')) ? 'PDF' : 'CSV/XLS'}
+                                      </span>
+                                    )}
                                     {isChecked &&
                                       <span style={{ marginLeft: '6px', fontSize: '0.75em', color: '#888', fontWeight: 'bold' }}>
                                         {`#${posIndex + 1}`}
@@ -2311,12 +2494,12 @@ export default ({ defaults, onClose }) => {
                     size='small'
                     onClick={async () => {
                       updateReactData({ showDownloadConfirm: null }, true);
-                      const fn = reactData.showDownloadConfirm === 'xlsx' ? downloadCurrentPeopleListXlsx : downloadCurrentPeopleListCsv;
+                      const fn = reactData.showDownloadConfirm === 'xlsx' ? downloadCurrentPeopleListXlsx : reactData.showDownloadConfirm === 'pdf' ? downloadCurrentPeopleListPdf : downloadCurrentPeopleListCsv;
                       const result = await fn();
                       if (result) updateReactData({ showFieldPicker: false }, true);
                     }}
                   >
-                    {`Download ${reactData.showDownloadConfirm === 'xlsx' ? 'Excel' : 'CSV'} anyway`}
+                    {`Download ${reactData.showDownloadConfirm === 'xlsx' ? 'Excel' : reactData.showDownloadConfirm === 'pdf' ? 'PDF' : 'CSV'} anyway`}
                   </Button>
                   <Button
                     className={AVAClass.AVAButton}
@@ -2329,10 +2512,25 @@ export default ({ defaults, onClose }) => {
                 </Box>
               </Box>
               :
+              (() => {
+                const selectedFieldObjects = reactData.exportFieldOptions.filter(
+                  f => reactData.selectedExportFieldNames.includes(f.field_key));
+                const csvBlockers = selectedFieldObjects
+                  .filter(f => Array.isArray(f.export_formats) && !f.export_formats.includes('csv'))
+                  .map(f => f.description);
+                const xlsxBlockers = selectedFieldObjects
+                  .filter(f => Array.isArray(f.export_formats) && !f.export_formats.includes('xlsx'))
+                  .map(f => f.description);
+                const pdfBlockers = selectedFieldObjects
+                  .filter(f => Array.isArray(f.export_formats) && !f.export_formats.includes('pdf'))
+                  .map(f => f.description);
+                return (
               <React.Fragment>
+            <Tooltip placement='top' title={csvBlockers.length > 0 ? `Not available with: ${csvBlockers.join(', ')}` : ''}>
+              <span>
             <Button
               className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'green', color: 'white' }}
+              style={{ backgroundColor: csvBlockers.length > 0 ? '#aaa' : 'green', color: 'white' }}
               size='small'
               onClick={async () => {
                 if (reactData.hasUnsavedSelections && reactData.selectedExportFieldNames.length > 0) {
@@ -2346,13 +2544,17 @@ export default ({ defaults, onClose }) => {
                   }, true);
                 }
               }}
-              disabled={reactData.loadingExportFields}
+              disabled={reactData.loadingExportFields || csvBlockers.length > 0}
             >
               {'Download CSV'}
             </Button>
+              </span>
+            </Tooltip>
+            <Tooltip placement='top' title={xlsxBlockers.length > 0 ? `Not available with: ${xlsxBlockers.join(', ')}` : ''}>
+              <span>
             <Button
               className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'green', color: 'white' }}
+              style={{ backgroundColor: xlsxBlockers.length > 0 ? '#aaa' : 'green', color: 'white' }}
               size='small'
               onClick={async () => {
                 if (reactData.hasUnsavedSelections && reactData.selectedExportFieldNames.length > 0) {
@@ -2366,10 +2568,36 @@ export default ({ defaults, onClose }) => {
                   }, true);
                 }
               }}
-              disabled={reactData.loadingExportFields}
+              disabled={reactData.loadingExportFields || xlsxBlockers.length > 0}
             >
               {'Download Excel'}
             </Button>
+              </span>
+            </Tooltip>
+            <Tooltip placement='top' title={pdfBlockers.length > 0 ? `Not available with: ${pdfBlockers.join(', ')}` : ''}>
+              <span>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: pdfBlockers.length > 0 ? '#aaa' : 'blue', color: 'white' }}
+              size='small'
+              onClick={async () => {
+                if (reactData.hasUnsavedSelections && reactData.selectedExportFieldNames.length > 0) {
+                  updateReactData({ showDownloadConfirm: 'pdf' }, true);
+                  return;
+                }
+                const result = await downloadCurrentPeopleListPdf();
+                if (result) {
+                  updateReactData({
+                    showFieldPicker: false
+                  }, true);
+                }
+              }}
+              disabled={reactData.loadingExportFields || pdfBlockers.length > 0}
+            >
+              {'Download PDF'}
+            </Button>
+              </span>
+            </Tooltip>
             <Button
               className={AVAClass.AVAButton}
               style={{ backgroundColor: 'red', color: 'white' }}
@@ -2383,10 +2611,23 @@ export default ({ defaults, onClose }) => {
               {'Close'}
             </Button>
               </React.Fragment>
+                );
+              })()
             }
           </DialogActions>
         </Dialog>
       }
+      {reactData.showExportFilterPrompt && (
+        <ExportFilterPrompt
+          promptSpecs={reactData.exportFilterPromptSpecs || []}
+          onComplete={async (resolvedValues) => {
+            updateReactData({ showExportFilterPrompt: false }, true);
+            const result = await downloadCurrentPeopleListPdf(resolvedValues);
+            if (result) { updateReactData({ showFieldPicker: false }, true); }
+          }}
+          onCancel={() => updateReactData({ showExportFilterPrompt: false }, true)}
+        />
+      )}
       {reactData.isUploading &&
         <AVAUploadFile
           options={{
@@ -2438,19 +2679,26 @@ export default ({ defaults, onClose }) => {
       {reactData.isEditing &&
         <FormFillB
           key={`doc_update_ffB`}
-          request={(reactData.isEditing.document_id === 'new') ?
-            {
-              form_id: reactData.isEditing.form_id,
-              person_id: reactData.isEditing.person_id,
-              mode: 'new',
-            }
-            :
-            {
-              form_id: reactData.isEditing.form_id,
-              document_id: reactData.isEditing.document_id,
-              person_id: reactData.isEditing.person_id,
-              open_complete: reactData.isEditing.open_complete
-            }}
+          request={reactData.isEditing.print_pdf
+            ? {
+                form_id: reactData.isEditing.form_id,
+                document_id: reactData.isEditing.document_id,
+                person_id: reactData.isEditing.person_id,
+                mode: 'printPDF'
+              }
+            : (reactData.isEditing.document_id === 'new') ?
+              {
+                form_id: reactData.isEditing.form_id,
+                person_id: reactData.isEditing.person_id,
+                mode: 'new',
+              }
+              :
+              {
+                form_id: reactData.isEditing.form_id,
+                document_id: reactData.isEditing.document_id,
+                person_id: reactData.isEditing.person_id,
+                open_complete: reactData.isEditing.open_complete
+              }}
           onClose={async (ignore_me, statusObj) => {
             if (statusObj.document_status === 'aborted') {
               // no op
@@ -2523,9 +2771,33 @@ export default ({ defaults, onClose }) => {
                 await formPeople(reactData.isEditing.form_id);
               }
             }
+            // Capture print state before clearing isEditing (updateReactData mutates reactData directly)
+            const wasPrint = reactData.isEditing?.print_pdf;
             updateReactData({
               isEditing: false
             }, true);
+            // If this was a print job, advance the print queue
+            if (wasPrint) {
+              const remainingQueue = reactData.printQueue || [];
+              if (remainingQueue.length > 0) {
+                const next = remainingQueue[0];
+                updateReactData({
+                  printQueue: remainingQueue.slice(1),
+                  isEditing: {
+                    calledFrom: 'print',
+                    person_id: next.person_id,
+                    form_id: next.form_id,
+                    document_id: next.document_id,
+                    print_pdf: true
+                  }
+                }, true);
+              } else {
+                updateReactData({
+                  printQueue: [],
+                  printQueueTotal: 0,
+                }, true);
+              }
+            }
           }}
         />
       }
@@ -3092,6 +3364,37 @@ export default ({ defaults, onClose }) => {
             {reactData.alert.message}
           </Alert>
         </Snackbar >
+      }
+      {reactData.printQueueTotal > 0 &&
+        <Dialog
+          open={true}
+          PaperProps={{ style: { borderRadius: '16px', padding: '24px', minWidth: '320px' } }}
+        >
+          <DialogContent>
+            <Typography style={AVATextStyle({ size: 1.1, bold: true, margin: { bottom: 1 } })}>
+              {`Printing ${reactData.printQueueTotal - (reactData.printQueue?.length ?? 0)} of ${reactData.printQueueTotal}…`}
+            </Typography>
+            <LinearProgress
+              variant='determinate'
+              value={Math.round(100 * (reactData.printQueueTotal - (reactData.printQueue?.length ?? 0)) / reactData.printQueueTotal)}
+              style={{ height: '8px', borderRadius: '4px', marginTop: '8px', marginBottom: '8px' }}
+            />
+          </DialogContent>
+          <DialogActions style={{ justifyContent: 'center' }}>
+            <Button
+              style={{ color: 'red', textTransform: 'none' }}
+              onClick={() => {
+                updateReactData({
+                  printQueue: [],
+                  printQueueTotal: 0,
+                  isEditing: false
+                }, true);
+              }}
+            >
+              Cancel
+            </Button>
+          </DialogActions>
+        </Dialog>
       }
     </Dialog >
   );

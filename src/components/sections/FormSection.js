@@ -9,6 +9,7 @@ import { Typography, Box } from '@material-ui/core/';
 
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import EditIcon from '@material-ui/icons/Edit';
+import PrintIcon from '@material-ui/icons/Print';
 import AddCircleIcon from '@material-ui/icons/AddCircle';
 import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
 import DynamicFeedIcon from '@material-ui/icons/DynamicFeed';
@@ -748,6 +749,22 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                           }
                                         </React.Fragment>
                                       }
+                                      <PrintIcon
+                                        style={AVATextStyle({ margin: { right: 0.1 }, color: 'gray' })}
+                                        key={`radio-button_form${form_index}printright`}
+                                        id={`radio-button_form${form_index}printright`}
+                                        onClick={() => {
+                                          myDocs.isPrintingFilled = (
+                                            myDocs.completedDocs[0]?.document_id
+                                            || myDocs.wipDocs[0]?.document_id
+                                            || 'new'
+                                          );
+                                          updateReactData({
+                                            masterFormList: reactData.masterFormList
+                                          }, true);
+                                        }}
+                                        size='small'
+                                      />
                                     </Box>
                                   </Box>
                                   {myDocs.isUpdating &&
@@ -784,6 +801,23 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                       }}
                                       onClose={() => {
                                         myDocs.isPrinting = false;
+                                        updateReactData({
+                                          masterFormList: reactData.masterFormList
+                                        }, true);
+                                      }}
+                                    />
+                                  }
+                                  {myDocs.isPrintingFilled &&
+                                    <FormFillB
+                                      key={`docPerson-${this_formID}_printfilled_ffB`}
+                                      request={{
+                                        form_id: this_formID,
+                                        document_id: myDocs.isPrintingFilled,
+                                        person_id: person_id || currentValues.peopleRec.person_id,
+                                        mode: 'printPDF'
+                                      }}
+                                      onClose={() => {
+                                        myDocs.isPrintingFilled = false;
                                         updateReactData({
                                           masterFormList: reactData.masterFormList
                                         }, true);

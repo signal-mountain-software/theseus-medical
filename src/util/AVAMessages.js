@@ -841,14 +841,20 @@ export async function printDocument({ docData, docValues, docDocument, docID, cl
                 docData.fields[this_field].prompt.value += ':';
               }
               pdfLine(docData.fields[this_field].prompt.ref, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
-              docData.fields[this_field].value.selection.selectionList.forEach((text, tIndex) => {
+              docData.fields[this_field].value.selection.selectionList.forEach((entry, tIndex) => {
+                let text = entry;
+                let checkValue = entry;
+                if (entry !== null && typeof entry === 'object') {
+                  checkValue = (typeof entry.value === 'string') ? entry.value : (typeof entry.label === 'string') ? entry.label : String(entry);
+                  text = (typeof entry.label === 'string') ? entry.label : (typeof entry.text === 'string' && entry.text) ? entry.text : checkValue;
+                }
                 if (docData.fields[this_field].value && docData.fields[this_field].prompt.compressPrint) {
-                  if (docData.fields[this_field].value.includes(text)) {
+                  if (docData.fields[this_field].value.includes(checkValue)) {
                     pdfLine(text, { style: 'normal', indent: 2, after: 0, noNewLine: true });
                   }
                 }
                 else {
-                  let radioSelected = docValues[this_field].valueList.includes(text);
+                  let radioSelected = docValues[this_field].valueList.includes(checkValue);
                   if (tIndex === 0) {
                     pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
                   }
@@ -943,6 +949,43 @@ function okToShowSection(this_sectionObj, fields) {
   }
 }
 
+function stripHtml(raw) {
+  if (!raw || typeof raw !== 'string') { return { text: raw || '', hasBlocks: false }; }
+  const hasBlocks = /<(p|div|li|h[1-6]|tr|td|th)[\s>]/i.test(raw);
+  let text = raw
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+  text = text.replace(/<\/(p|div|li|br|h[1-6]|tr|td|th)>/gi, ' ');
+  text = text.replace(/<[^>]+>/g, '');
+  text = text.replace(/\s+/g, ' ').trim();
+  return { text, hasBlocks };
+}
+
+// Splits HTML content into one plain-text string per block-level element (p, div, li, br, etc.)
+// so each paragraph can be passed to pdfLine separately for correct full-width wrapping.
+function htmlToBlocks(raw) {
+  if (!raw || typeof raw !== 'string') return [raw || ''];
+  let text = raw
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+  // Treat block-level tag boundaries as paragraph breaks
+  text = text.replace(/<\/?(p|div|li|h[1-6]|tr|td|th)[^>]*>/gi, '\n');
+  // Convert <br> to space (not a paragraph break — avoids narrow-column wrapping)
+  text = text.replace(/<br\s*\/?>/gi, ' ');
+  // Strip remaining inline tags
+  text = text.replace(/<[^>]+>/g, '');
+  // Split into blocks, clean whitespace, drop empties
+  return text.split('\n').map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+}
+
 export async function printDocumentB({ documentList, options = {} }) {
   let response = [];
   if (!Array.isArray(documentList)) {
@@ -959,7 +1002,7 @@ export async function printDocumentB({ documentList, options = {} }) {
     page.document_id = docID;
     page.client_id = client_id;
     page.footerText = `AVA reference: ${page.client_id}_${page.document_id}`;
-    pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
+    // pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
     pdfLine(title, { style: 'bold', fontSize: (page.font.size.large * 1.5), align: 'center', after: 1 });
 
     //   sections.forEach((sectionObj, sectionNdx) => {
@@ -973,7 +1016,7 @@ export async function printDocumentB({ documentList, options = {} }) {
             switch (printType) {
               case 'upload':
               case 'image': {
-                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+                pdfLine(stripHtml(fields[this_field].prompt.value).text, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
                 pdfLine('', { image: fields[this_field].valueText, image_width: (page.width / 5), style: 'normal', size: 'medium', align: 'left', after: 1 });
                 break;
               }
@@ -990,15 +1033,21 @@ export async function printDocumentB({ documentList, options = {} }) {
                   if (fields[this_field].prompt.compressPrint) {
                     fields[this_field].prompt.value += ':';
                   }
-                  pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
-                  fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
+                  pdfLine(stripHtml(fields[this_field].prompt.value).text, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+                  fields[this_field].selectionObj.selectionList.forEach((entry, tIndex) => {
+                    let text = entry;
+                    let checkValue = entry;
+                    if (entry !== null && typeof entry === 'object') {
+                      checkValue = (typeof entry.value === 'string') ? entry.value : (typeof entry.label === 'string') ? entry.label : String(entry);
+                      text = (typeof entry.label === 'string') ? entry.label : (typeof entry.text === 'string' && entry.text) ? entry.text : checkValue;
+                    }
                     if (fields[this_field].value && fields[this_field].prompt.compressPrint) {
-                      if (fields[this_field].value.includes(text)) {
+                      if (fields[this_field].value.includes(checkValue)) {
                         pdfLine(text, { style: 'normal', indent: 2, after: 0, noNewLine: true });
                       }
                     }
                     else {
-                      let radioSelected = fields.hasOwnProperty(this_field) && fields[this_field].value && fields[this_field].value.includes(text);
+                      let radioSelected = fields.hasOwnProperty(this_field) && fields[this_field].value && fields[this_field].value.includes(checkValue);
                       if (tIndex === 0) {
                         pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
                       }
@@ -1017,33 +1066,23 @@ export async function printDocumentB({ documentList, options = {} }) {
                 break;
               }
               case 'header': {
-                pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', align: 'left', before: 0, after: 0, noNewLine: true });
-                break;
-              }
-              case 'html': {
-                await pdfHTML(`${fields[this_field].prompt.value}`,
-                  Object.assign({}, fields[this_field].prompt, {
-                    before: -2,
-                    printed_height: fields[this_field].prompt.printed_height,
-                    print_scale: fields[this_field].prompt.print_scale || 1,
-                    html: true,
-                    style: 'normal',
-                    size: 'medium',
-                    align: 'left',
-                    after: 1
-                  }));
+                const headerBlocks = htmlToBlocks(fields[this_field].prompt.value);
+                headerBlocks.forEach((block) => {
+                  pdfLine(block, { style: 'normal', size: 'medium', align: 'left', before: 0, after: 1, noNewLine: false });
+                });
                 break;
               }
               case 'signature': {
-                await pdfImage(fields[this_field].prompt.value, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
+                await pdfImage(stripHtml(fields[this_field].prompt.value).text, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
                 break;
               }
               case 'legacy_signature': {
-                pdfLine(fields[this_field].prompt.value, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
+                pdfLine(stripHtml(fields[this_field].prompt.value).text, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
                 break;
               }
               default: {
                 if (fields.hasOwnProperty(this_field)) {
+                  const { text: promptText, hasBlocks: promptHasBlocks } = stripHtml(fields[this_field].prompt.value);
                   if ((fields[this_field].valueText.length === 0) && fields[this_field].prompt.showNA) {
                     fields[this_field].valueText = 'n/a';
                   }
@@ -1051,13 +1090,38 @@ export async function printDocumentB({ documentList, options = {} }) {
                     pdfLine(fields[this_field].valueText,
                       { style: 'normal', size: 'medium', align: 'left', after: 0 });
                   }
-                  else if (fields[this_field].prompt.value.includes(fields[this_field].valueText)) {
-                    pdfLine(`${fields[this_field].prompt.value}`,
+                  else if (promptHasBlocks) {
+                    const blocks = htmlToBlocks(fields[this_field].prompt.value);
+                    blocks.forEach((block) => {
+                      pdfLine(block, { style: 'normal', size: 'medium', align: 'left', before: 0, after: 1, noNewLine: false });
+                    });
+                    const valueText = fields[this_field].valueText;
+                    const lineStartX = pdfCurrent.xPos;
+                    pdfLine(valueText, { style: 'normal', size: 'medium', align: 'left', after: 0, noNewLine: true });
+                    const MIN_BLANK_WIDTH = 200;
+                    const valueWidth = valueText ? doc.getTextWidth(valueText) + 4 : 0;
+                    const lineWidth = Math.max(0, Math.min(Math.max(valueWidth, MIN_BLANK_WIDTH), page.right - lineStartX));
+                    doc.line(lineStartX, pdfCurrent.yPos + 2, lineStartX + lineWidth, pdfCurrent.yPos + 2);
+                    pdfDown(1);
+                  }
+                  else if ((fields[this_field].valueText.length > 0) && promptText.includes(fields[this_field].valueText)) {
+                    pdfLine(promptText,
                       { style: 'normal', size: 'medium', align: 'left', after: 1 });
                   }
                   else {
-                    pdfLine(`${fields[this_field].prompt.value}: ${fields[this_field].valueText}`,
-                      { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                    const valueText = fields[this_field].valueText;
+                    pdfLine(`${promptText}: `, { style: 'normal', size: 'medium', align: 'left', after: 1, noNewLine: false });
+                    // Draw fill-in-the-blank underline starting where the prompt text ends
+                    const lineStartX = pdfCurrent.xPos;
+                    const MIN_BLANK_WIDTH = 200;
+                    const valueWidth = valueText ? doc.getTextWidth(valueText) + 4 : 0;
+                    const lineWidth = Math.max(0, Math.min(Math.max(valueWidth, MIN_BLANK_WIDTH), page.right - lineStartX));
+                    const lineY = pdfCurrent.yPos + 2;
+                    doc.line(lineStartX, lineY, lineStartX + lineWidth, lineY);
+                    if (valueText) {
+                      doc.text(valueText, lineStartX + 2, pdfCurrent.yPos);
+                    }
+                    pdfDown(1);
                   }
                 }
               }
@@ -1069,7 +1133,7 @@ export async function printDocumentB({ documentList, options = {} }) {
 
     // Finish
     pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
-    doc.save(docID);
+    doc.save(`${docID || 'document'}.pdf`);
     if (!options.multiPrint || (numberOfDocuments === docIndex)) {
       let pdfInfo = {
         s3Key: (`${page.client_id}_${page.document_id}.pdf`),
@@ -1126,7 +1190,13 @@ export async function printEmptyDocument({ documentList, options = {} }) {
             case 'select': {
               if (!fields[this_field].prompt.noPrint) {
                 pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
-                fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
+                fields[this_field].selectionObj.selectionList.forEach((entry, tIndex) => {
+                  let text = entry;
+                  let checkValue = entry;
+                  if (entry !== null && typeof entry === 'object') {
+                    checkValue = (typeof entry.value === 'string') ? entry.value : (typeof entry.label === 'string') ? entry.label : String(entry);
+                    text = (typeof entry.label === 'string') ? entry.label : (typeof entry.text === 'string' && entry.text) ? entry.text : checkValue;
+                  }
                   let radioSelected = false;
                   if (tIndex === 0) {
                     pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
@@ -1305,14 +1375,20 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
                     fields[this_field].prompt.value += ':';
                   }
                   pdfLine(fields[this_field].prompt.value, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
-                  fields[this_field].selectionObj.selectionList.forEach((text, tIndex) => {
+                  fields[this_field].selectionObj.selectionList.forEach((entry, tIndex) => {
+                    let text = entry;
+                    let checkValue = entry;
+                    if (entry !== null && typeof entry === 'object') {
+                      checkValue = (typeof entry.value === 'string') ? entry.value : (typeof entry.label === 'string') ? entry.label : String(entry);
+                      text = (typeof entry.label === 'string') ? entry.label : (typeof entry.text === 'string' && entry.text) ? entry.text : checkValue;
+                    }
                     if (fields[this_field].value && fields[this_field].prompt.compressPrint) {
-                      if (fields[this_field].value.includes(text)) {
+                      if (fields[this_field].value.includes(checkValue)) {
                         pdfLine(text, { style: 'normal', indent: 2, after: 0, noNewLine: true });
                       }
                     }
                     else {
-                      let radioSelected = fields[this_field].value && fields[this_field].value.includes(text);
+                      let radioSelected = fields[this_field].value && fields[this_field].value.includes(checkValue);
                       if (tIndex === 0) {
                         pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
                       }
@@ -1324,15 +1400,10 @@ export async function printDocumentHybrid({ documentList, options = {} }) {
                   if (fields[this_field].bonusText) {
                     const text = `${fields[this_field].prompt.other || 'Other'}: ${fields[this_field].bonusText}`;
                     pdfLine(text, { radio: true, radioSelected: true, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
-
                   }
                   pdfDown(1);
                   pdfStyle('reset');
                 }
-                break;
-              }
-              case 'header': {
-                pdfLine(fields[this_field].prompt.value, { protectOrphan: true, style: 'normal', size: 'medium', align: 'left', before: 1, after: 1 });
                 break;
               }
               case 'html': {
@@ -2366,6 +2437,13 @@ async function pdfHTML(text, options = {}) {
 }
 
 function pdfLine(text, options = {}) {
+  // Defensive: if text is an object (e.g. {label, text, value}), extract the best display string
+  if (text !== null && typeof text === 'object') {
+    text = (typeof text.label === 'string') ? text.label
+      : (typeof text.text === 'string' && text.text) ? text.text
+      : (typeof text.value === 'string') ? text.value
+      : String(text);
+  }
   clt({ pdfLine: text, options });
   if (options) { pdfStyle(options); }
   if (options.before) { pdfDown(options.before); }
@@ -2463,20 +2541,12 @@ function pdfLine(text, options = {}) {
     }
     catch {
       for (let this_image of makeArray(options.image)) {
-        doc.html(`<img src="${this_image}" />`);
-      }
-      switch (pdfCurrent.align) {
-        case 'center': {
-          pdfCurrent.xPos = page.centerPoint + (imageWidth / 2);
-          break;
-        }
-        case 'right': {
-          pdfCurrent.xPos = page.width - page.margin.right;
-          break;
-        }
-        default: {
-          pdfCurrent.xPos = xOffset + imageWidth;
-        }
+        pdfDown(1);
+        doc.text('Attachment image not available.', pdfCurrent.xPos + pdfCurrent.indent, pdfCurrent.yPos);
+        pdfDown(2);
+        let lWidth = doc.textWithLink('Click here to see the attachment.', pdfCurrent.xPos + pdfCurrent.indent, pdfCurrent.yPos, { url: this_image });
+        doc.line(pdfCurrent.xPos + pdfCurrent.indent, pdfCurrent.yPos + 2, pdfCurrent.xPos + pdfCurrent.indent + lWidth, pdfCurrent.yPos + 2);
+        pdfDown(1);
       }
     }
   }
@@ -2509,6 +2579,9 @@ function pdfLine(text, options = {}) {
   }
   else if (text && (text.length > 0)) {
     // this little chunk deals with text overflow
+    // For a new line, the available width starts from margin.left regardless of where xPos ended up
+    // from the previous line. For noNewLine (inline) mode, we do start from xPos.
+    const lineStartX = options.noNewLine ? pdfCurrent.xPos : page.margin.left;
     let tWords = [];
     let split_lines = text.split(/<br\s*[/]?>/gi);
     for (let this_line of split_lines) {
@@ -2516,8 +2589,8 @@ function pdfLine(text, options = {}) {
         let pWords = doc.splitTextToSize(this_line, page.printableArea);
         tWords.push(...pWords);
       }
-      else if ((pdfCurrent.align !== 'center') && ((doc.getTextWidth(this_line) + pdfCurrent.xPos + pdfCurrent.indent) > page.right)) {
-        let pWords = doc.splitTextToSize(this_line, (page.right - (pdfCurrent.xPos + pdfCurrent.indent)));
+      else if ((pdfCurrent.align !== 'center') && ((doc.getTextWidth(this_line) + lineStartX + pdfCurrent.indent) > page.right)) {
+        let pWords = doc.splitTextToSize(this_line, (page.right - lineStartX - pdfCurrent.indent));
         tWords.push(...pWords);
       }
       if (this_line !== split_lines[split_lines.length - 1]) {
