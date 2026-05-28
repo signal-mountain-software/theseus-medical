@@ -7,7 +7,7 @@ import { AVATextStyle, AVAclasses, AVADefaults, hexToRgb, isDark } from '../../u
 import { clearPushSubscriptionFromDB, initPushNotifications, unsubscribeFromPush, isPushSupported, isPushOptedIn, syncAlertDeliveryMethod } from '../../util/AVAPushNotifications';
 import { getActivityDetail } from '../../util/AVAActivityLoaderV3';
 import QuickAdd from './QuickAdd';
-import { isMemberOf } from '../../util/AVAGroups';
+
 
 import Card from '@material-ui/core/Card';
 import CardActionArea from '@material-ui/core/CardActionArea';
@@ -293,7 +293,25 @@ export default ({ start_at }) => {
   const tileContainerRef = React.useRef(null);
   const prevMenuDepthRef = React.useRef(0);
   const deferredStartAtRef = React.useRef(null);
+  const subjectGroupsRef = React.useRef(null);
   const activePersonId = state.session?.patient_id || state.session?.person_id;
+
+  const loadSubjectGroups = async () => {
+    const personId = activePersonId;
+    if (!personId) { return; }
+    const personRec = await dbClient
+      .get({
+        TableName: 'People',
+        Key: { person_id: personId }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error loading subject groups for menu auth': error });
+      });
+    if (recordExists(personRec)) {
+      subjectGroupsRef.current = new Set(personRec.Item.groups || []);
+    }
+  };
 
   const loadUserUiTilesOverride = async () => {
     const session_id = state.session?.patient_id;
@@ -646,25 +664,42 @@ export default ({ start_at }) => {
     };
   };
 
-  const authorizedToMenuItem = async (available_to) => {
+  const authorizedToMenuItem = (available_to) => {
     const {
       isSubjectAdmin,
       isSubjectSupport,
       subjectPersonId
     } = getSubjectContextForMenu();
 
-    if (!available_to || available_to.length === 0) { return true; }
+    if (!available_to || available_to.length === 0) {
+      return true;
+    }
     for (let this_rule of available_to) {
       switch (this_rule.split(':')[0]) {
-        case '*all': return true;
-        case '*admin': { if (isSubjectAdmin) { return true; } break; }
-        case '*support': { if (isSubjectSupport) { return true; } break; }
+        case '*all': {
+          return true;
+        }
+        case '*admin': {
+          if (isSubjectAdmin) {
+            return true;
+          } break;
+        }
+        case '*support': {
+          if (isSubjectSupport) {
+            return true;
+          } break;
+        }
         case 'group': {
           const check_group = this_rule.split(':')[1];
-          const isMember = await isMemberOf(state.session.client_id, subjectPersonId, check_group);
-          if (isMember) { return true; } break;
+          if (subjectGroupsRef.current?.has(check_group)) {
+            return true;
+          } break;
         }
-        case 'person': { if (subjectPersonId === this_rule.split(':')[1]) { return true; } break; }
+        case 'person': {
+          if (subjectPersonId === this_rule.split(':')[1]) {
+            return true;
+          } break;
+        }
         default: { }
       }
     }
@@ -684,7 +719,7 @@ export default ({ start_at }) => {
     if (recordExists(menuItemRec)) {
       // console.log(`Fetched menu item ${itemCode} from database.`);
       const this_item = menuItemRec.Item;
-      if (!this_item.available_to || await authorizedToMenuItem(this_item.available_to)) {
+      if (!this_item.available_to || authorizedToMenuItem(this_item.available_to)) {
         if (!reactData.menu_hierarchy[menu_level]) { reactData.menu_hierarchy[menu_level] = []; }
         if (!this_item.color) {
           // if I have a parent, use their color.  If not, use the client default color.  If that's not set, use gray
@@ -1533,7 +1568,10 @@ export default ({ start_at }) => {
         // in the correct mode from the start — eliminates the accessibility→tile flash.
         // We set uiTilesOverride now but keep uiTilesOverrideLoaded=false so the
         // second useEffect's guard won't trigger a redundant rebuild.
-        const userUiTilesOverride = await loadUserUiTilesOverride();
+        const [userUiTilesOverride] = await Promise.all([
+          loadUserUiTilesOverride(),
+          loadSubjectGroups()
+        ]);
         updateReactData({
           greetingName: tempName || 'AVA User',
           greetingWords: makeGreeting(),
