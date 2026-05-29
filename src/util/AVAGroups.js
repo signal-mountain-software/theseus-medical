@@ -147,7 +147,7 @@ export async function accountAccess(person_id, pClient_id) {
         let accessLevel = 'none';
         if (['master', 'admin'].includes(myClass)   // if I am a support or master class user
           || (this_person.may_proxy_to && this_person.may_proxy_to.hasOwnProperty(person_id))  // or the person record we're looking at granted permission for me to proxy to them
-          || (session.responsible_for.includes(this_person.person_id))
+          || (session.responsible_for && session.responsible_for.includes(this_person.person_id))
           || (this_person.person_id === person_id)  // the person is ME
         ) {
           accessLevel = 'proxy';    // then I get FULL (level 3) access to this person
@@ -191,7 +191,7 @@ export async function accountAccess(person_id, pClient_id) {
             pRec2Push.search_data = this_person.search_data;
             pRec2Push.session = this_person.session;
           };
-          if (session.responsible_for.includes(this_person.person_id) || (this_person.person_id === person_id)) {
+          if ((session.responsible_for && session.responsible_for.includes(this_person.person_id)) || (this_person.person_id === person_id)) {
             respList[client_id].list.push(pRec2Push);
           }
           else {
@@ -309,11 +309,11 @@ export async function getGroupAccess(client_id, person_id, options) {
 
   let classList = [];
   let my_personRec = {};
-  if (options && options.personRec) { 
-    my_personRec = options.personRec;
-  }
-  else {
-    my_personRec = await getPerson(person_id);
+  {
+    // Always work on a local copy of the person record so the module-level getPerson cache
+    // is never mutated by the group-expansion passes below.
+    const _raw = (options && options.personRec) ? options.personRec : await getPerson(person_id);
+    my_personRec = { ..._raw, groups: [...(_raw.groups || [])] };
   }
   const is_admin = ['master', 'admin'].includes(my_personRec?.account_class || 'local');
 

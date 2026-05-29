@@ -269,6 +269,11 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
     const AVAClass = AVAclasses();
 
     const { groupMemberList, pClient, pGroupName, pStyle, pRole, pPatient, pPatientName } = options;
+    const showContactInfo = !(
+        options?.showContactInfo === false
+        || options?.withContactInfo === false
+        || options?.hideContactInfo === true
+    );
 
     const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm'));
 
@@ -688,7 +693,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                             let personLast, addressValue;
                             let imbeddedTitle;
                             [personLast, imbeddedTitle] = person.name?.last?.split('~');
-                            const suppressContact = (person?.directory_option === 'no_contact');
+                            const suppressContact = (!showContactInfo || (person?.directory_option === 'no_contact'));
                             const rawCellPhoneValue = suppressContact ? '' : (person.contact_info?.cell?.number || person?.messaging?.sms || '');
                             const rawHomePhoneValue = suppressContact ? '' : (person.contact_info?.landline?.number || person?.messaging?.voice || '');
                             const rawWorkPhoneValue = suppressContact ? '' : (person.contact_info?.work?.number || person?.messaging?.office || '');
@@ -837,7 +842,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                         {(superSizeData.directory_option === 'exclude') &&
                             <Typography key='excluded-superSize' className={classes.upSizeLocation}>{'** Excluded from Directory **'}</Typography>
                         }
-                        {(makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData)
+                        {(showContactInfo ? makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData) : []
                             .map((prefLine, prefIndex) => (
                                 <a href={prefLine.action[0]}
                                     key={`prefLink-superSize.${prefIndex}`}
@@ -871,23 +876,25 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                             >
                                 {'Back'}
                             </Button>
-                            <Button
-                                className={AVAClass.AVAButton}
-                                style={{ backgroundColor: 'blue', color: 'white' }}
-                                size='small'
-                                startIcon={<SendIcon size="small" />}
-                                onClick={() => {
-                                    setPromptForMessage(true);
-                                    setMessageType('');
-                                    let rKey = `${superSizeData.name?.first} ${superSizeData.name?.last}:${superSizeData.person_id}`;
-                                    setRecipient(rKey.trim());
-                                }}
-                            >
-                                {`AVA Msg`}
-                            </Button>
+                            {showContactInfo &&
+                                <Button
+                                    className={AVAClass.AVAButton}
+                                    style={{ backgroundColor: 'blue', color: 'white' }}
+                                    size='small'
+                                    startIcon={<SendIcon size="small" />}
+                                    onClick={() => {
+                                        setPromptForMessage(true);
+                                        setMessageType('');
+                                        let rKey = `${superSizeData.name?.first} ${superSizeData.name?.last}:${superSizeData.person_id}`;
+                                        setRecipient(rKey.trim());
+                                    }}
+                                >
+                                    {`AVA Msg`}
+                                </Button>
+                            }
                         </Box>
                         <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                            {(makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData)
+                            {(showContactInfo ? makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData) : []
                                 .map((prefLine, prefIndex) => (
                                     <React.Fragment key={`Frag_${prefIndex}`}>
                                         <a href={prefLine.action[0]}

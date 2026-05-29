@@ -8,6 +8,7 @@ import { clearPushSubscriptionFromDB, initPushNotifications, unsubscribeFromPush
 import { getActivityDetail } from '../../util/AVAActivityLoaderV3';
 import QuickAdd from './QuickAdd';
 
+
 import Card from '@material-ui/core/Card';
 import CardActionArea from '@material-ui/core/CardActionArea';
 import CardContent from '@material-ui/core/CardContent';
@@ -18,7 +19,7 @@ import Alert from '@material-ui/lab/Alert';
 import AlertTitle from '@material-ui/lab/AlertTitle';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
-// import useMediaQuery from '@material-ui/core/useMediaQuery';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 import Marquee from "react-fast-marquee";
 import ReactPlayer from 'react-player';
 
@@ -62,6 +63,8 @@ import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder';
 import PhoneIcon from '@material-ui/icons/Phone';
 import NotificationsActiveIcon from '@material-ui/icons/NotificationsActive';
 import NotificationsOffIcon from '@material-ui/icons/NotificationsOff';
+import VisibilityIcon from '@material-ui/icons/Visibility';
+import VisibilityOffIcon from '@material-ui/icons/VisibilityOff';
 
 import Tooltip from '@material-ui/core/Tooltip';
 import QuickSearch from './QuickSearch';
@@ -167,6 +170,7 @@ export default ({ start_at }) => {
 
   const [, isIOS] = useIosCheck();
   const [webInstallPrompt, , onWebInstall] = useWebPrompt();
+  const isMobile = useMediaQuery('(max-width:800px)');
   const isAlreadyInstalled = !!(window.matchMedia?.('(display-mode: standalone)').matches || window.navigator?.standalone);
   const canInstall = !isAlreadyInstalled && (isIOS || !!webInstallPrompt);
 
@@ -201,7 +205,7 @@ export default ({ start_at }) => {
     showProfileEdit: false,
     showAddAccount: false,
     showQuickSearch: false,
-    editFavorites: false,
+    editFavorites: !clientUseTileUI,
     showPasswordEdit: false,
     groupData: {},
     anchorEl: null,
@@ -244,6 +248,7 @@ export default ({ start_at }) => {
   const useTileUI = ((reactData.uiTilesOverride === null) || (reactData.uiTilesOverride === undefined))
     ? clientUseTileUI
     : !!reactData.uiTilesOverride;
+  const previousUseTileUIRef = React.useRef(useTileUI);
 
   const normalizeHexColor = (value) => {
     if (!value || typeof value !== 'string') { return null; }
@@ -288,7 +293,25 @@ export default ({ start_at }) => {
   const tileContainerRef = React.useRef(null);
   const prevMenuDepthRef = React.useRef(0);
   const deferredStartAtRef = React.useRef(null);
+  const subjectGroupsRef = React.useRef(null);
   const activePersonId = state.session?.patient_id || state.session?.person_id;
+
+  const loadSubjectGroups = async () => {
+    const personId = activePersonId;
+    if (!personId) { return; }
+    const personRec = await dbClient
+      .get({
+        TableName: 'People',
+        Key: { person_id: personId }
+      })
+      .promise()
+      .catch((error) => {
+        cl({ 'Error loading subject groups for menu auth': error });
+      });
+    if (recordExists(personRec)) {
+      subjectGroupsRef.current = new Set(personRec.Item.groups || []);
+    }
+  };
 
   const loadUserUiTilesOverride = async () => {
     const session_id = state.session?.patient_id;
@@ -648,17 +671,35 @@ export default ({ start_at }) => {
       subjectPersonId
     } = getSubjectContextForMenu();
 
-    if (!available_to || available_to.length === 0) { return true; }
+    if (!available_to || available_to.length === 0) {
+      return true;
+    }
     for (let this_rule of available_to) {
       switch (this_rule.split(':')[0]) {
-        case '*all': return true;
-        case '*admin': { if (isSubjectAdmin) { return true; } break; }
-        case '*support': { if (isSubjectSupport) { return true; } break; }
+        case '*all': {
+          return true;
+        }
+        case '*admin': {
+          if (isSubjectAdmin) {
+            return true;
+          } break;
+        }
+        case '*support': {
+          if (isSubjectSupport) {
+            return true;
+          } break;
+        }
         case 'group': {
           const check_group = this_rule.split(':')[1];
-          if (state.groups?.memberGroupIds?.includes(check_group)) { return true; } break;
+          if (subjectGroupsRef.current?.has(check_group)) {
+            return true;
+          } break;
         }
-        case 'person': { if (subjectPersonId === this_rule.split(':')[1]) { return true; } break; }
+        case 'person': {
+          if (subjectPersonId === this_rule.split(':')[1]) {
+            return true;
+          } break;
+        }
         default: { }
       }
     }
@@ -743,7 +784,7 @@ export default ({ start_at }) => {
           menu_id: '__v3_favorites__',
           description: {
             short: 'Favorites',
-            long: 'Your Favorites'
+            long: `${reactData.greetingName ? (reactData.greetingName + "'s") : 'Your'} Favorites`
           },
           menu_itemType: 'menu',
           children: normalizedFavorites,
@@ -1527,7 +1568,10 @@ export default ({ start_at }) => {
         // in the correct mode from the start — eliminates the accessibility→tile flash.
         // We set uiTilesOverride now but keep uiTilesOverrideLoaded=false so the
         // second useEffect's guard won't trigger a redundant rebuild.
-        const userUiTilesOverride = await loadUserUiTilesOverride();
+        const [userUiTilesOverride] = await Promise.all([
+          loadUserUiTilesOverride(),
+          loadSubjectGroups()
+        ]);
         updateReactData({
           greetingName: tempName || 'AVA User',
           greetingWords: makeGreeting(),
@@ -1565,6 +1609,13 @@ export default ({ start_at }) => {
     }
     rebuildMenuHierarchy({ includeLoadingState: true });
   }, [reactData.uiTilesOverride]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useEffect(() => {
+    if (previousUseTileUIRef.current !== useTileUI) {
+      previousUseTileUIRef.current = useTileUI;
+      updateReactData({ editFavorites: !useTileUI }, true);
+    }
+  }, [useTileUI]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     if (!useTileUI || !tileContainerRef.current) { return; }
@@ -2279,6 +2330,9 @@ export default ({ start_at }) => {
     const tileOpacity = 1; 
     const isActiveParent = (menuItemType === 'menu') &&
       (reactData.level_active_parent?.[level_index + 1] === this_item.menu_id);
+    const hasChildren = (menuItemType === 'menu') && Array.isArray(this_item.children) && (this_item.children.length > 0);
+    const accessibleChildrenExpanded = (!useTileUI) && hasChildren &&
+      (reactData.menu_hierarchy[level_index + 1] || []).some((cell) => cell.parent === this_item.menu_id);
 
     const cardTile = (
       <Card className={classes.root}
@@ -2511,7 +2565,7 @@ export default ({ start_at }) => {
               </IconButton>
             </Box>
           }
-          {cardImageUrl && !reactData.editFavorites && !hideCardImage &&
+          {cardImageUrl && !hideCardImage && (!useTileUI || !reactData.editFavorites) &&
             <CardMedia
               className={classes.media}
               key={`${keyPrefix}cardMedia_card-${level_index}.${item_index}`}
@@ -2602,6 +2656,30 @@ export default ({ start_at }) => {
                 })()}
               </Box>
             </CardContent>
+          }
+          {!useTileUI && hasChildren &&
+            <Box
+              display='flex'
+              justifyContent='flex-end'
+              alignItems='center'
+              style={{ minHeight: 20, minWidth: 72, marginRight: 10 }}
+            >
+              {isMobile
+                ? (accessibleChildrenExpanded
+                  ? <VisibilityOffIcon fontSize='small' style={{ color: (isDark(tileColor) ? 'cornsilk' : 'black') }} />
+                  : <VisibilityIcon fontSize='small' style={{ color: (isDark(tileColor) ? 'cornsilk' : 'black') }} />)
+                : (
+                  <Typography
+                    style={AVATextStyle({
+                      size: 1,
+                      bold: true,
+                      color: (isDark(tileColor) ? 'cornsilk' : 'black')
+                    })}
+                  >
+                    {accessibleChildrenExpanded ? 'Hide' : 'Show'}
+                  </Typography>
+                )}
+            </Box>
           }
           {canAddFromThisRow &&
             <Box
@@ -3007,6 +3085,7 @@ export default ({ start_at }) => {
                     await saveUserUiTilesOverride(nextUseTileUI);
                     updateReactData({
                       uiTilesOverride: nextUseTileUI,
+                      editFavorites: !nextUseTileUI,
                       popupMenuOpen: false,
                     }, true);
                   }}>
