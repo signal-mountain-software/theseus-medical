@@ -100,6 +100,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     has_been_saved: false,
     myFormListObj: {},
     formsInitialized: false,
+    form_fields: {},
     myImage: (options.mode === 'add') ? '' : getImage(person_id || patient?.person_id || personRec?.person_id || state.session.patient_id),
     image_editing: false,
     components: {

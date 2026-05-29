@@ -398,6 +398,7 @@ export async function handleServiceRequestMessaging(body, serviceRequestRec) {
         rMsg = `Attempt to send this request was unsuccessful.`;
       }
       else {
+        serviceRequestRec.last_messageID = sendResults.message_id || '';
         rMsg = sendResults.message || `Successfully sent!`;
       }
     }
@@ -621,7 +622,8 @@ export async function updateServiceRequest(body) {
           "person": await makeName(r.requestor),
           "requestor": r.requestor,
           "request_type": r.request_type,
-          "last_visited": r.last_visited
+          "last_visited": r.last_visited,
+          "message_id": r.last_messageID || null
         }
       }
     });
@@ -1090,6 +1092,23 @@ export async function formatServiceRequest(inboundRequest) {
     final_result.push(result);
   }
   return final_result;
+}
+
+export async function getRequestLog(request_id) {
+  const qR = await dbClient
+    .query({
+      TableName: 'ServiceRequestLog',
+      IndexName: 'request_id-index',
+      KeyConditionExpression: 'request_id = :rid',
+      ExpressionAttributeValues: { ':rid': request_id },
+      ScanIndexForward: true,
+    })
+    .promise()
+    .catch(error => {
+      clt({ 'Error reading ServiceRequestLog by request_id': error });
+      return null;
+    });
+  return recordExists(qR) ? qR.Items : [];
 }
 
 export function validRequestStatus(pRequestType, pStatus, currentSession) {
