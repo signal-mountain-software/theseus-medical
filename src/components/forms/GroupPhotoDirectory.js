@@ -842,7 +842,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                         {(superSizeData.directory_option === 'exclude') &&
                             <Typography key='excluded-superSize' className={classes.upSizeLocation}>{'** Excluded from Directory **'}</Typography>
                         }
-                        {(showContactInfo ? makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData) : []
+                        {(showContactInfo ? makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData) : [])
                             .map((prefLine, prefIndex) => (
                                 <a href={prefLine.action[0]}
                                     key={`prefLink-superSize.${prefIndex}`}
@@ -863,7 +863,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                         </Box>
                                     }
                                 </a>
-                            )))}
+                            ))}
                         <Box display='flex' className={classes.giveMoreSpace} flexDirection='row' justifyContent='center' alignItems='center'>
                             <Button
                                 className={AVAClass.AVAButton}
@@ -894,7 +894,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                             }
                         </Box>
                         <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                            {(showContactInfo ? makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData) : []
+                            {(showContactInfo ? makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData) : [])
                                 .map((prefLine, prefIndex) => (
                                     <React.Fragment key={`Frag_${prefIndex}`}>
                                         <a href={prefLine.action[0]}
@@ -922,7 +922,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                             </a>
                                         }
                                     </React.Fragment>
-                                )))}
+                                ))}
                         </Box>
                     </Box>
                 </List>
