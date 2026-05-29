@@ -4,6 +4,9 @@ import { SET_GROUPS, SET_ACCESSLIST } from '../../contexts/Session/actions';
 
 import Dialog from '@material-ui/core/Dialog';
 import Slide from '@material-ui/core/Slide';
+import Box from '@material-ui/core/Box';
+import CircularProgress from '@material-ui/core/CircularProgress';
+import Typography from '@material-ui/core/Typography';
 
 import GroupControl from '../forms/GroupControl';
 import { makeArray } from '../../util/AVAUtilities';
@@ -212,8 +215,8 @@ export default ({ options, defaults, onClose, onAbort }) => {
       TransitionComponent={Transition}
       fullScreen
     >
-      {reactData.groupsManagedObject &&
-        <GroupControl
+      {reactData.groupsManagedObject
+        ? <GroupControl
           key={`group_control_${reactData.groupControlKey}`}
           defaults={defaults}
           pSession={pSession}
@@ -242,6 +245,10 @@ export default ({ options, defaults, onClose, onAbort }) => {
             }, true);
           }}
         />
+        : <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' style={{ height: '100%' }}>
+            <CircularProgress size={48} />
+            <Typography style={{ marginTop: 16 }}>{'Loading groups...'}</Typography>
+          </Box>
       }
     </Dialog>
   );

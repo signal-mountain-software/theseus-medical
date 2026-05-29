@@ -309,11 +309,11 @@ export async function getGroupAccess(client_id, person_id, options) {
 
   let classList = [];
   let my_personRec = {};
-  if (options && options.personRec) { 
-    my_personRec = options.personRec;
-  }
-  else {
-    my_personRec = await getPerson(person_id);
+  {
+    // Always work on a local copy of the person record so the module-level getPerson cache
+    // is never mutated by the group-expansion passes below.
+    const _raw = (options && options.personRec) ? options.personRec : await getPerson(person_id);
+    my_personRec = { ..._raw, groups: [...(_raw.groups || [])] };
   }
   const is_admin = ['master', 'admin'].includes(my_personRec?.account_class || 'local');
 
