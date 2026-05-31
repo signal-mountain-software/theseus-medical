@@ -1118,7 +1118,7 @@ export default ({ onClose, options = {} }) => {
 
     switch (validation.result) {
       case 'match':
-        if (reactData.require_pre_auth && reactData.preauth_match_on === 'code') {
+        if (reactData.require_pre_auth && (reactData.preauth_match_on === 'code' || reactData.preauth_match_on === 'code_strict')) {
           // Code mode: existing account found — capture person_id, then prompt or auto-submit
           updateReactData({
             candidates: [validation.personRec],
@@ -1155,7 +1155,15 @@ export default ({ onClose, options = {} }) => {
       case 'invalid':
         // No matches found
         if (reactData.require_pre_auth) {
-          if (reactData.preauth_match_on === 'code') {
+          if (reactData.preauth_match_on === 'code_strict') {
+            // Code-strict mode: name not found — block with error, do not proceed
+            showAlert({
+              severity: 'error',
+              title: 'Name Not Found',
+              message: "We couldn't find your name in our records. Please contact us if you believe this is an error.",
+              autoHide: false
+            });
+          } else if (reactData.preauth_match_on === 'code') {
             // Code mode: no existing account — go straight to code prompt
             updateReactData({ preauth_person_id: null, alert: false }, false);
             if (options.preauth_code) {
