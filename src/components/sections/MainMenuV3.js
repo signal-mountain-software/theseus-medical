@@ -88,6 +88,7 @@ import GroupPhotoDirectory from '../forms/GroupPhotoDirectory';
 import TaskManager from '../dialogs/TaskManager';
 import MultiObservationFormD from '../forms/MultiObservationFormV3';
 import MultiObservationFormC from '../forms/MultiObservationFormC';
+import RequestDashboardV3 from '../dialogs/RequestDashboardV3';
 import IosInstall from '../dialogs/IosInstall';
 import useIosCheck from '../../hooks/useIosCheck';
 import useWebPrompt from '../../hooks/useWebPrompt';
@@ -1640,6 +1641,7 @@ export default ({ start_at }) => {
     PeopleMaintenance,
     SwitchPatientDialog,
     MessageMonitorV3,
+    RequestDashboardV3,
     CheckInCheckOut,
     MarqueeMaintenance,
     GroupPhotoDirectory,

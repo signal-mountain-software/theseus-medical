@@ -1,7 +1,7 @@
 import { clt, cl, s3, titleCase, uuid, parseNumeric, getCustomizations, deepCopy } from './AVAUtilities';
 import { resolveMessageVariables } from './AVAMessages';
 import { makeName } from './AVAPeople';
-import { getServiceRequests, formatServiceRequest } from './AVAServiceRequest';
+import { getServiceRequests, formatServiceRequest, getRequestLog } from './AVAServiceRequest';
 import { makeDate } from './AVADateTime';
 
 import { jsPDF } from "jspdf";
@@ -801,10 +801,12 @@ function pdfHeader() {
   }
   pdfStyle({ size: 'large', align: 'center', style: 'bold' });
   doc.text(pdfCurrent.client_name || 'AVA', page.center, pdfCurrent.yPos, { align: 'center' });
-  pdfStyle({ size: 'large', before: 1.5, style: 'normal' });
-  doc.text(page.title || 'Report', page.center, pdfCurrent.yPos, { align: 'center' });
-  pdfStyle({ size: 'small', before: 1, style: 'normal' });
-  doc.text(pdfCurrent.reportTime, page.center, pdfCurrent.yPos, { align: 'center' });
+  if (page.title) {
+    pdfStyle({ size: 'large', before: 1.5, style: 'normal' });
+    doc.text(page.title, page.center, pdfCurrent.yPos, { align: 'center' });
+  }
+  pdfStyle({ size: 'small', before: 2, style: 'normal' });
+  doc.text(pdfCurrent.headerSubtitle || pdfCurrent.reportTime, page.center, pdfCurrent.yPos, { align: 'center' });
   if (pdfCurrent.pageNumber > 1) {
     pdfStyle({ size: 'small', before: 1 });
     doc.text(`Page ${pdfCurrent.pageNumber}`, page.center, pdfCurrent.yPos, { align: 'center' });
@@ -958,4 +960,112 @@ function pdfStyle(options = {}) {
       pdfDown(options.before);
     }
   }
+}
+
+export async function printRequestsOnePerPage(dataRows, options = {}) {
+  if (!dataRows || dataRows.length === 0) {
+    return { success: false, message: 'No requests to print.' };
+  }
+
+  await pdfLaunch({
+    client_id: options.client_id,
+    print: { data: { client_name: options.client_name } }
+  });
+  page.title = '';  // request type only shown in the data body, not the header
+
+  for (let index = 0; index < dataRows.length; index++) {
+    const item = dataRows[index];
+    pdfCurrent.headerSubtitle = item.local_key ? `Request #${item.local_key}` : '';
+    if (index > 0) {
+      pdfCurrent.pageNumber++;
+    }
+    pdfHeader();
+    pdfStyle('reset');
+
+    // Request type
+    pdfLine(item.workData.formatted_type || '', { size: 'large', style: 'bold' });
+
+    // Requestor name + location
+    const nameLine = (item.workData.requestor_name || '')
+      + (item.workData.requestor_location ? ` (${item.workData.requestor_location})` : '');
+    pdfLine(nameLine, { size: 'large', style: 'normal' });
+
+    // Status
+    if (item.workData.this_status) {
+      pdfLine(`Status: ${item.workData.this_status}`, { size: 'medium', style: 'normal' });
+    }
+
+    pdfStyle({ size: 'small' });
+
+    // Date submitted — use absolute format so exact date/time is shown
+    const _reqDate = item.request_date ? makeDate(item.request_date).absolute : item.workData.display_date;
+    if (_reqDate) { pdfLine(_reqDate); }
+
+    // Entered by (if different from requestor)
+    if (item.requestor !== item.workData.enteredBy) {
+      pdfLine(`By ${item.workData.enteredBy_name}`);
+    }
+
+    // Summary request lines
+    if (item.workData.summary_request) {
+      item.workData.summary_request.forEach(([type, value]) => {
+        if (type === 'qa' && value && typeof value === 'object') {
+          // Question on its own line, answer below in bold at 1.2x size
+          const question = value.question || '';
+          const rawAnswerText = Array.isArray(value.answers)
+            ? value.answers.join(', ')
+            : (value.answers || '');
+          // \u2713 is not renderable in jsPDF Helvetica; substitute a readable affirmative
+          const answerText = rawAnswerText.replace(/\u2713/g, 'Yes');
+          pdfLine(question, { size: 'medium', style: 'normal', before: 1, indent: 10 });
+          if (answerText) {
+            pdfLine(answerText, { size: 'medium', fontSize: pdfCurrent.fontSize * 1.2, style: 'bold', indent: 10 });
+            pdfStyle({ style: 'normal', fontSize: page.font.size.medium });
+          }
+        } else if (typeof value === 'string') {
+          if (type === 'head') { pdfLine(value, { size: 'medium', style: 'bold', before: 0.5 }); }
+          else if (type === 'qual') { pdfLine(value, { size: 'small', indent: 10 }); }
+          else { pdfLine(value, { size: 'medium', before: 0.5 }); }
+        }
+      });
+    }
+
+    // Notes section
+    if (item.workData.notes_section?.length > 0) {
+      item.workData.notes_section.forEach(([type, value]) => {
+        if (typeof value !== 'string') { return; }
+        if (type === 'head') { pdfLine(value, { size: 'medium', style: 'bold', before: 0.5 }); }
+        else { pdfLine(value, { size: 'small', indent: 10 }); }
+      });
+    }
+
+    // Activity log — loaded from ServiceRequestLog, mirrors on-screen history section
+    const activityLog = await getRequestLog(item.request_id);
+    if (activityLog && activityLog.length > 0) {
+      pdfLine('Activity History', { size: 'medium', style: 'bold', before: 2 });
+      pdfStyle({ style: 'normal', size: 'small' });
+      activityLog.forEach(entry => {
+        const entryDate = makeDate(entry.log_time).absolute;
+        pdfLine(`${entryDate}  \u2014  ${entry.activity}`, { size: 'small', indent: 10 });
+      });
+    }
+  }
+
+  const safeTitle = (options.title || 'requests').replace(/[^a-zA-Z0-9]/g, '_');
+  const pdfInfo = {
+    PDF: true,
+    fileName: `${safeTitle}_print.pdf`,
+    request_type: 'force_print',
+    s3Bucket: 'theseus-medical-storage',
+    s3Key: `${options.client_id || 'unknown'}_AVA_Report.pdf`,
+  };
+  const pdfResp = await savePDFBlob(doc.output('blob'), pdfInfo, { local: false, S3: true, onSave: 'print' });
+  if (pdfResp.responseData?.s3Resp) {
+    pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
+  }
+  return {
+    success: true,
+    message: `Printed ${dataRows.length} request${dataRows.length > 1 ? 's' : ''}.`,
+    pdfInfo
+  };
 }

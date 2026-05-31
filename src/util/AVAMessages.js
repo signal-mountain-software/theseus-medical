@@ -2914,10 +2914,10 @@ export async function sendMessages(body) {
       if (goodPost) {
         if (ind.length === 1) {
           let sName = await makeName(ind[0]);
-          results.push({ sent: true, message: `Successfully sent to ${sName}` });
+          results.push({ sent: true, message: `Successfully sent to ${sName}`, messsage_id: PostOfficeRec?.Item?.message_id || '' });
         }
         else {
-          results.push({ sent: true, message: `Successfully sent to ${ind.length} recipients` });
+          results.push({ sent: true, message: `Successfully sent to ${ind.length} recipients`, message_id: PostOfficeRec?.Item?.message_id || '' });
         }
       }
     }
