@@ -170,26 +170,15 @@ export default ({ options, defaults, onClose, onAbort }) => {
     // accountAccess() call (which reads all members of all groups).
     // Admins/support/master see every group; everyone else sees only their member groups.
     let localAccessList = state.accessList;
-    const isAdminUser = ['admin', 'support', 'master'].includes(state.user?.account_class);
     if (!localAccessList?.hasOwnProperty(state.session.client_id)) {
       // First time only: no accessList at all — must call accountAccess to bootstrap the full list
       localAccessList = await accountAccess(state.session.user_id, state.session.client_id);
       dispatch({ type: SET_ACCESSLIST, payload: localAccessList });
     } else {
-      // accessList exists — refresh just the groups slice from the freshly loaded hierarchy
-      const allGroupIds = [
-        ...(localGroups.adminHierarchy || []).map(g => g.id),
-        ...Object.keys(localGroups.publicGroups || {}),
-        ...Object.keys(localGroups.privateGroups || {})
-      ];
-      const authorizedGroupIds = isAdminUser ? allGroupIds : (memberGroupIds || []);
-      localAccessList = {
-        ...localAccessList,
-        [state.session.client_id]: {
-          ...localAccessList[state.session.client_id],
-          groups: authorizedGroupIds
-        }
-      };
+      // accessList exists — keep the existing groups slice as-is (it includes accessible_to grants
+      // that memberGroupIds alone would not cover). localAccessList stays pointing at state.accessList.
+      // TODO (long-term): merge memberGroupIds into existing groups to pick up live membership changes:
+      //   groups: [...new Set([...localAccessList[state.session.client_id].groups, ...(memberGroupIds || [])])]
     }
 
       await buildGroupControlData(localGroups, localAccessList);
