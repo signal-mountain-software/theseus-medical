@@ -1008,6 +1008,7 @@ export async function printRequestsOnePerPage(dataRows, options = {}) {
 
     // Summary request lines
     if (item.workData.summary_request) {
+      // eslint-disable-next-line no-loop-func
       item.workData.summary_request.forEach(([type, value]) => {
         if (type === 'qa' && value && typeof value === 'object') {
           // Question on its own line, answer below in bold at 1.2x size
