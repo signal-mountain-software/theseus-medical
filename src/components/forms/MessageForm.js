@@ -2418,7 +2418,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                                 sent_time: this_message.sent_time,
                                                 recipients: buildDialogRecipients(this_message.recipients),
                                                 deliveryCount: (this_message.recipients || []).length,
-                                                replyEnabled: !reactData.viewOnly,
+                                                replyEnabled: true,
                                                 replyMessage: this_message,
                                                 replyThread: this_thread,
                                                 replyingTo: prevMessage ? {
@@ -2444,37 +2444,39 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                           </a>
                                         ))}
                                         {isFirstMessage &&
+                                          <ReplyIcon
+                                            onClick={async () => {
+                                              let newMessageRecipients = [];
+                                              let replyToList = [];
+                                              if (this_message.inOut === 'held') {
+                                                newMessageRecipients.push({ person_id: this_message.author_id, person_name: this_message.author_name });
+                                              }
+                                              else {
+                                                for (const this_person of this_message.partner_id) {
+                                                  newMessageRecipients.push({ person_id: this_person, person_name: await makeName(this_person) });
+                                                }
+                                                if (this_message.reply_to && (this_message.reply_to.length > 0)) {
+                                                  for (const this_recipient of this_message.reply_to) {
+                                                    replyToList.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
+                                                  }
+                                                }
+                                              }
+                                              updateReactData({
+                                                newMessageRecipients,
+                                                replyToList,
+                                                newMessageThread: this_message.thread_id || (this_message.composite_key ? this_message.composite_key.split('~')[0].replace('T:', '') : ''),
+                                                newMessageSubject: this_message.subject,
+                                                newMessageMode: true,
+                                                is_reply: true,
+                                                is_public: (reactData.threads[this_thread].is_public ?? false),
+                                                newMessage_isPublic: (reactData.threads[this_thread].is_public ?? false)
+                                              }, true);
+                                            }}
+                                          />
+                                        }
+                                        {isFirstMessage &&
                                           !reactData.viewOnly &&
                                           <React.Fragment>
-                                            <ReplyIcon
-                                              onClick={async () => {
-                                                let newMessageRecipients = [];
-                                                let replyToList = [];
-                                                if (this_message.inOut === 'held') {
-                                                  newMessageRecipients.push({ person_id: this_message.author_id, person_name: this_message.author_name });
-                                                }
-                                                else {
-                                                  for (const this_person of this_message.partner_id) {
-                                                    newMessageRecipients.push({ person_id: this_person, person_name: await makeName(this_person) });
-                                                  }
-                                                  if (this_message.reply_to && (this_message.reply_to.length > 0)) {
-                                                    for (const this_recipient of this_message.reply_to) {
-                                                      replyToList.push({ person_id: this_recipient, person_name: await makeName(this_recipient) });
-                                                    }
-                                                  }
-                                                }
-                                                updateReactData({
-                                                  newMessageRecipients,
-                                                  replyToList,
-                                                  newMessageThread: this_message.thread_id || (this_message.composite_key ? this_message.composite_key.split('~')[0].replace('T:', '') : ''),
-                                                  newMessageSubject: this_message.subject,
-                                                  newMessageMode: true,
-                                                  is_reply: true,
-                                                  is_public: (reactData.threads[this_thread].is_public ?? false),
-                                                  newMessage_isPublic: (reactData.threads[this_thread].is_public ?? false)
-                                                }, true);
-                                              }}
-                                            />
                                             <DeleteIcon
                                               onClick={() => {
                                                 updateReactData({
@@ -2517,7 +2519,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                             sent_time: this_message.sent_time,
                                             recipients: buildDialogRecipients(this_message.recipients),
                                             deliveryCount: (this_message.recipients || []).length,
-                                            replyEnabled: !reactData.viewOnly,
+                                            replyEnabled: true,
                                             replyMessage: this_message,
                                             replyThread: this_thread,
                                             replyingTo: prevMessage ? {
