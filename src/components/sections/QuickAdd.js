@@ -531,6 +531,52 @@ export default ({ onClose, options = {} }) => {
     }));
   };
 
+  // Returns true if a field should be visible given the current field_values.
+  // Checks show_if / ignore_if on the Form_Fields record (same shape as FormFillB).
+  const shouldShowField = (fieldData) => {
+    if (!fieldData) return false;
+    const { show_if: showObj, ignore_if: ignoreObj } = fieldData;
+    if (!showObj && !ignoreObj) return true;
+
+    const matchValues = (valToCheck, valuesToMatch) => {
+      const normalizedValues = Array.isArray(valuesToMatch)
+        ? valuesToMatch.map(v => typeof v === 'string' ? v.toLowerCase() : v)
+        : [valuesToMatch].map(v => typeof v === 'string' ? v.toLowerCase() : v);
+      if (normalizedValues.includes('*')) {
+        if (Array.isArray(valToCheck)) return valToCheck.length > 0;
+        return valToCheck !== null && valToCheck !== undefined && valToCheck !== '';
+      }
+      if ((!valToCheck || (Array.isArray(valToCheck) && valToCheck.length === 0)) && normalizedValues.includes('%%no_data%%')) {
+        return true;
+      }
+      if (typeof valToCheck === 'string' && normalizedValues.includes(valToCheck.toLowerCase())) return true;
+      if (Array.isArray(valToCheck) && valToCheck.some(v => normalizedValues.includes(typeof v === 'string' ? v.toLowerCase() : v))) return true;
+      return false;
+    };
+
+    if (ignoreObj) {
+      const testList = Array.isArray(ignoreObj) ? ignoreObj : [ignoreObj];
+      const shouldIgnore = testList.some(test => {
+        const fieldKey = test.field || test.data?.split('.').slice(-1)[0];
+        const val = reactData.field_values[fieldKey] ?? null;
+        return matchValues(val, [].concat(test.values || []));
+      });
+      if (shouldIgnore) return false;
+    }
+
+    if (showObj) {
+      const testList = Array.isArray(showObj) ? showObj : [showObj];
+      const isShown = testList.some(test => {
+        const fieldKey = test.field || test.data?.split('.').slice(-1)[0];
+        const val = reactData.field_values[fieldKey] ?? null;
+        return matchValues(val, [].concat(test.values || []));
+      });
+      if (!isShown) return false;
+    }
+
+    return true;
+  };
+
   const handleFieldValueChange = (fieldName, value) => {
     setReactData(prev => ({
       ...prev,
@@ -2910,6 +2956,10 @@ export default ({ onClose, options = {} }) => {
                     );
                   }
 
+                  if (!shouldShowField(fieldData)) {
+                    return null;
+                  }
+
                   const fieldType = fieldData.value?.type || 'text';
 
                   // Hidden fields carry a fixed value but render nothing
@@ -3254,9 +3304,13 @@ export default ({ onClose, options = {} }) => {
 
                 if (reactData.selected_account_config && reactData.form_fields) {
                   // Validate required fields - only check fields that are actually presented on screen
+                  // and currently visible (not hidden by show_if/ignore_if)
                   const presentedFields = reactData.selected_account_config?.field_list || [];
                   const requiredFields = (reactData.selected_account_config?.required || [])
-                    .filter(fieldName => presentedFields.includes(fieldName));
+                    .filter(fieldName =>
+                      presentedFields.includes(fieldName) &&
+                      shouldShowField(reactData.form_fields[fieldName])
+                    );
 
                   const missingRequiredValues = requiredFields.filter(fieldName => {
                     return isEmpty(reactData.field_values[fieldName]);
