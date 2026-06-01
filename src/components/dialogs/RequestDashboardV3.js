@@ -342,7 +342,9 @@ export default function RequestDashboardV3({ factName, request = {}, options = {
         answers = dLine.slice(parenIdx + 1).replace(/\)+$/, '').split(/[,;]+/).map(a => titleCase(a.trim())).filter(Boolean);
       }
       if (s in req.textInput) {
-        answers.push(req.textInput[s]);
+        if (typeof req.textInput[s] === 'string' && req.textInput[s].trim()) {
+          answers.push(req.textInput[s]);
+        }
         delete req.textInput[s];
       }
       searchText += ` ${dLine}`;
@@ -1010,7 +1012,9 @@ export default function RequestDashboardV3({ factName, request = {}, options = {
       }
       if (type === 'qa') {
         const { question, answers } = payload;
-        const answerText = Array.isArray(answers) ? answers.join(', ') : (answers || '');
+        const answerText = Array.isArray(answers)
+          ? answers.filter(a => typeof a === 'string' && a.trim()).join(', ')
+          : (typeof answers === 'string' ? answers : '');
         return (
           <Box key={`${keyPrefix}-${idx}`}
             display='flex' flexDirection='row' flexWrap='wrap' alignItems='baseline'
