@@ -692,7 +692,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                         {visiblePeople.map(person => {
                             let personLast, addressValue;
                             let imbeddedTitle;
-                            [personLast, imbeddedTitle] = person.name?.last?.split('~');
+                            [personLast, imbeddedTitle] = (person.name?.last || '').split('~');
                             const suppressContact = (!showContactInfo || (person?.directory_option === 'no_contact'));
                             const rawCellPhoneValue = suppressContact ? '' : (person.contact_info?.cell?.number || person?.messaging?.sms || '');
                             const rawHomePhoneValue = suppressContact ? '' : (person.contact_info?.landline?.number || person?.messaging?.voice || '');

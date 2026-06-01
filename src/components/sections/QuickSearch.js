@@ -112,7 +112,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
               }
             }
           }
-          function loadList(this_item, my_children, this_level) {
+          function loadList(this_item, my_children, display_level, hidden_ancestors = []) {
             /* I can "see" a group in this list if:
                 - I am an adminstrative account
                   OR
@@ -120,27 +120,46 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                       AND
                   either restrictGroups is OFF or (if restrictGroups is ON, I am a member of the group and the group is the lowest level in the hierarchy)    
                   Note: restrictGroups prevents you from seeing groups that are parents or siblings of a group you are in
+                display_level only increments when this node is visible — so a group whose authorized
+                ancestors are all hidden appears at the same indent level as its nearest visible ancestor,
+                or at level 0 if none of its ancestors are visible.
+                hidden_ancestors accumulates names of skipped (not-authorized) ancestors so they can
+                be shown as a breadcrumb prefix: "Group 2 / Group 2a / Group 2a1".
             */
+            let childDisplayLevel = display_level;
+            let childHiddenAncestors = hidden_ancestors;
             if (administrative_account ||
               (
                 (state?.accessList?.[state.session?.client_id]?.groups && state?.accessList?.[state.session?.client_id]?.groups.includes(this_item)) &&
                 (!options.restrictGroups || (state?.patient?.groups?.includes(this_item) && isEmpty(my_children)))
               )
             ) {
+              const ownName = state.groups.groupNames[this_item];
+              const displayName = hidden_ancestors.length > 0
+                ? [...hidden_ancestors, ownName].join(' / ')
+                : ownName;
               groupList.push({
                 group_id: this_item,
-                group_name: state.groups.groupNames[this_item],
-                level: this_level
+                group_name: displayName,
+                level: display_level
               });
-              if (groupList_minLevel > this_level) {
-                groupList_minLevel = this_level;
+              if (groupList_minLevel > display_level) {
+                groupList_minLevel = display_level;
+              }
+              childDisplayLevel = display_level + 1;
+              childHiddenAncestors = [];  // reset — visible children don't need the breadcrumb
+            } else if (this_item !== '__TOP__') {
+              // This node is hidden — replace ancestors with just this name so only the
+              // nearest non-authorized ancestor appears as prefix (e.g. "Group 2a / Group 2a1")
+              const ownName = state.groups.groupNames[this_item];
+              if (ownName) {
+                childHiddenAncestors = [ownName];
               }
             }
             if (isEmpty(my_children)) { return; }
             else {
-              let next_level = this_level + 1;
               for (let my_child in my_children) {
-                loadList(my_child, my_children[my_child], next_level);
+                loadList(my_child, my_children[my_child], childDisplayLevel, childHiddenAncestors);
               }
             }
           }

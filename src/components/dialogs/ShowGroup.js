@@ -23,6 +23,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
     groupsManagedObject: null,
     preSelectedGroup: null,
     preSelectedFunction: null,
+    directoryGroupIds: null,
     groupControlKey: 0,
     updatesMade: false,
   });
@@ -46,7 +47,15 @@ export default ({ options, defaults, onClose, onAbort }) => {
     let selectPrivate = pGroupList.includes('*all_closed') || pGroupList.includes('*all_private');
     const selectMine = !pGroupList || (pGroupList.length === 0) || (pGroupList.includes('*user'));
     const authorized_groups = accessList?.[state.session.client_id]?.groups || [];
-    let gList = (groups?.adminHierarchy || []).filter(g => authorized_groups.includes(g.id));
+    // When explicit group IDs are passed in pGroupList, treat them as implicitly authorized
+    // so that callers can request a specific group's directory regardless of the user's own
+    // membership.  Wildcards (*all, *user, etc.) are NOT treated as explicit IDs.
+    const wildcards = ['*all', '*all_open', '*all_public', '*all_closed', '*all_private', '*user', '*responsible'];
+    const explicitGroupIds = pGroupList.filter(id => !wildcards.includes(id));
+    const effective_authorized = explicitGroupIds.length > 0
+      ? [...new Set([...authorized_groups, ...explicitGroupIds])]
+      : authorized_groups;
+    let gList = (groups?.adminHierarchy || []).filter(g => effective_authorized.includes(g.id));
     let response = {};
     for (let this_group of gList) {
       if ((this_group.level > 0)
@@ -83,7 +92,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
     };
     let publicGroupList = [];
     for (let gID in groups.publicGroups) {
-      if (!response[gID] && (authorized_groups.includes(gID)) && (selectAll || pGroupList.includes(gID) || selectOpen)) {
+      if (!response[gID] && (effective_authorized.includes(gID)) && (selectAll || pGroupList.includes(gID) || selectOpen)) {
         publicGroupList.push({
           group_name: groups.publicGroups[gID].group_name,
           group_id: gID,
@@ -97,7 +106,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
 
     let privateGroupList = [];
     for (let gID in groups.privateGroups) {
-      if (!response[gID] && (authorized_groups.includes(gID)) && (selectAll || pGroupList.includes(gID) || selectPrivate)) {
+      if (!response[gID] && (effective_authorized.includes(gID)) && (selectAll || pGroupList.includes(gID) || selectPrivate)) {
         privateGroupList.push({
           group_name: groups.privateGroups[gID].group_name,
           group_id: gID,
@@ -144,7 +153,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
       }
     }
 
-    updateReactData({ groupsManagedObject, preSelectedGroup, preSelectedFunction }, true);
+    updateReactData({ groupsManagedObject, preSelectedGroup, preSelectedFunction, directoryGroupIds: explicitGroups }, true);
   };
 
   async function initialize() {
@@ -170,26 +179,15 @@ export default ({ options, defaults, onClose, onAbort }) => {
     // accountAccess() call (which reads all members of all groups).
     // Admins/support/master see every group; everyone else sees only their member groups.
     let localAccessList = state.accessList;
-    const isAdminUser = ['admin', 'support', 'master'].includes(state.user?.account_class);
     if (!localAccessList?.hasOwnProperty(state.session.client_id)) {
       // First time only: no accessList at all — must call accountAccess to bootstrap the full list
       localAccessList = await accountAccess(state.session.user_id, state.session.client_id);
       dispatch({ type: SET_ACCESSLIST, payload: localAccessList });
     } else {
-      // accessList exists — refresh just the groups slice from the freshly loaded hierarchy
-      const allGroupIds = [
-        ...(localGroups.adminHierarchy || []).map(g => g.id),
-        ...Object.keys(localGroups.publicGroups || {}),
-        ...Object.keys(localGroups.privateGroups || {})
-      ];
-      const authorizedGroupIds = isAdminUser ? allGroupIds : (memberGroupIds || []);
-      localAccessList = {
-        ...localAccessList,
-        [state.session.client_id]: {
-          ...localAccessList[state.session.client_id],
-          groups: authorizedGroupIds
-        }
-      };
+      // accessList exists — keep the existing groups slice as-is (it includes accessible_to grants
+      // that memberGroupIds alone would not cover). localAccessList stays pointing at state.accessList.
+      // TODO (long-term): merge memberGroupIds into existing groups to pick up live membership changes:
+      //   groups: [...new Set([...localAccessList[state.session.client_id].groups, ...(memberGroupIds || [])])]
     }
 
       await buildGroupControlData(localGroups, localAccessList);
@@ -224,6 +222,7 @@ export default ({ options, defaults, onClose, onAbort }) => {
           focusAt={0}
           preSelectedGroup={reactData.preSelectedGroup}
           preSelectedFunction={reactData.preSelectedFunction}
+          directoryGroupIds={reactData.directoryGroupIds}
           renderAsDialog={false}
           onCancel={() => handleAbort(reactData.updatesMade)}
           onRefresh={async (responseObj) => {
