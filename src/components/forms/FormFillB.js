@@ -141,13 +141,13 @@ const useStyles = makeStyles(theme => ({
     padding: '3px 0 4px',
     backgroundColor: theme.palette.background.paper,
     color: theme.palette.text.secondary,
-    fontSize: theme.typography.fontSize * 0.75,
+    fontSize: '12px',
     lineHeight: 1.2,
   },
   selectionFieldLabelInline: {
     padding: '2px 0 4px 0',
     color: theme.palette.text.secondary,
-    fontSize: theme.typography.fontSize * 0.75,
+    fontSize: '12px',
     lineHeight: 1.2,
   },
   selectionFieldHelper: {
@@ -169,6 +169,18 @@ const useStyles = makeStyles(theme => ({
   '@global': {
     '.react-dropdown-select-dropdown': {
       zIndex: '10 !important',
+      backgroundColor: '#ffffff !important',
+      color: '#000000 !important',
+    },
+    '.react-dropdown-select-item': {
+      color: '#000000 !important',
+    },
+    '.react-dropdown-select-item:hover': {
+      backgroundColor: '#e8e8e8 !important',
+    },
+    '.react-dropdown-select-item.react-dropdown-select-item-selected': {
+      backgroundColor: '#bbdefb !important',
+      color: '#000000 !important',
     },
   },
   requiredTextField: {
@@ -1674,9 +1686,10 @@ export default ({ request = {}, onClose }) => {
           break;
         }
         case 'date_select':
+        case 'date_past':
         case 'date': {
           // return makeDate(rawValue, { noTime: true, noYearCorrection: true }).absolute;
-          response[index] = makeDate(this_value, { noTime: true, noYearCorrection: true }).slashDate;
+          response[index] = makeDate(this_value, { noTime: true, noYearCorrection: true }).absolute;
           break;
         }
         case 'time': {
@@ -2129,6 +2142,52 @@ export default ({ request = {}, onClose }) => {
           type: reactData.fields[fieldName].type
         });
       }
+    }
+
+    // Compute value for 'age' type fields — always read-only, derived from source date fields
+    if (reactData.fields[fieldName].type === 'age') {
+      // The age config (from_field, to_field, unit) lives in field.prompt because processFieldForSectionField
+      // does: returnObj.prompt = Object.assign({}, field_variables.value, field_variables.prompt)
+      // which merges the value config into prompt. field.value is the mutable computed result.
+      const ageFieldDef = reactData.fields[fieldName].prompt || {};
+      const fromFieldName = ageFieldDef.from_field;
+      const toFieldName = ageFieldDef.to_field;
+      const unit = ageFieldDef.unit || 'years';
+      const fromRawValue = fromFieldName ? (reactData.fields[fromFieldName]?.value ?? null) : null;
+      const toRawValue = toFieldName ? (reactData.fields[toFieldName]?.value ?? null) : null;
+
+      let computedAge = '';
+      if (fromRawValue) {
+        const fromObj = makeDate(fromRawValue, { noTime: true, noYearCorrection: true });
+        if (!fromObj.error) {
+          const toDate = toRawValue
+            ? (() => { const d = makeDate(toRawValue, { noTime: true, noYearCorrection: true }); return d.error ? null : d.date; })()
+            : (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })();
+          if (toDate) {
+            const from = fromObj.date;
+            if (unit === 'days') {
+              computedAge = String(Math.floor((toDate - from) / (1000 * 60 * 60 * 24)));
+            } else if (unit === 'months') {
+              let months = (toDate.getFullYear() - from.getFullYear()) * 12 + (toDate.getMonth() - from.getMonth());
+              if (toDate.getDate() < from.getDate()) { months--; }
+              computedAge = String(Math.max(0, months));
+            } else {
+              // years (default)
+              let years = toDate.getFullYear() - from.getFullYear();
+              if (toDate.getMonth() < from.getMonth() || (toDate.getMonth() === from.getMonth() && toDate.getDate() < from.getDate())) { years--; }
+              computedAge = String(Math.max(0, years));
+            }
+          }
+        }
+      }
+
+      if (reactData.fields[fieldName].valueText !== computedAge) {
+        hasChanges = true;
+        reactData.fields[fieldName].value = computedAge;
+        reactData.fields[fieldName].valueText = computedAge;
+      }
+      // age fields are always read-only
+      reactData.fields[fieldName].options = Object.assign({}, reactData.fields[fieldName].options, { viewOnly: true });
     }
 
     const nextIgnore = checkIgnore({
@@ -3921,7 +3980,7 @@ export default ({ request = {}, onClose }) => {
     const isTextType = fieldType === 'text';
     const isPhoneType = fieldType === 'phone';
     const isDateSelectType = fieldType === 'date_select';
-    const isDateOrTimeType = (fieldType === 'date') || (fieldType === 'time');
+    const isDateOrTimeType = (fieldType === 'date') || (fieldType === 'date_past') || (fieldType === 'time');
     const isRequiredField = isFieldRequired(fieldRec);
     const isDisabled = fieldRec.options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked;
     const promptWidth = fieldRec?.prompt?.width;
@@ -3958,10 +4017,12 @@ export default ({ request = {}, onClose }) => {
       id: `field__${this_field}`,
       variant: 'standard',
       size: 'small',
-      key: `field__${this_field}__${sectionNdx}`,
+      key: `field__${this_field}__${sectionNdx}__${valueText}`,
       placeholder: helperText || undefined,
       required: isRequiredField,
       disabled: isDisabled,
+      error: !!fieldRec.isError,
+      helperText: fieldRec.isError ? fieldRec.errorMessage : undefined,
       InputProps: { disableUnderline: true },
       style: {
         width: '100%',
@@ -4084,11 +4145,21 @@ export default ({ request = {}, onClose }) => {
           }
 
           if (isDateOrTimeType) {
-            let dObj = makeDate(event.target.value, { noTime: (fieldType === 'date'), noYearCorrection: true });
-            if (!dObj.error) {
+            let dObj = makeDate(event.target.value, {
+              noTime: (fieldType === 'date' || fieldType === 'date_past'),
+              noYearCorrection: true,
+              noFuture: (fieldType === 'date_past')
+            });
+            if (dObj.error) {
+              reactData.fields[this_field].isError = true;
+              reactData.fields[this_field].errorMessage = dObj.absolute;
+              updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+            } else {
+              reactData.fields[this_field].isError = false;
+              reactData.fields[this_field].errorMessage = '';
               await handleChangeValue({
                 newText: dObj.absolute,
-                newValue: ((fieldType === 'date')
+                newValue: ((fieldType === 'date' || fieldType === 'date_past')
                   ? dObj.numeric$
                   : dObj.timestamp),
                 prop: this_field,
@@ -4218,7 +4289,7 @@ export default ({ request = {}, onClose }) => {
                                     {''}
                                   </Typography>
                                 }
-                                {(['text', 'phone', 'date_select', 'date', 'time'].includes(reactData.fields[this_field].type))
+                                {(['text', 'phone', 'date_select', 'date', 'date_past', 'time', 'age'].includes(reactData.fields[this_field].type))
                                   && renderTextLikeField({ this_field, occ_index, sectionNdx, fieldNdx })
                                 }
                                 {(reactData.fields[this_field].type === 'header') && (occ_index === 0) &&
