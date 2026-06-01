@@ -127,7 +127,7 @@ const useStyles = makeStyles(theme => ({
 // Persists expand/collapse state across GroupControl mounts within the same session
 let _savedLevelHidden = null;
 
-export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedGroup = null, preSelectedFunction = null, onCancel = () => { }, onRefresh = () => { }, renderAsDialog = true }) => {
+export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedGroup = null, preSelectedFunction = null, directoryGroupIds = null, onCancel = () => { }, onRefresh = () => { }, renderAsDialog = true }) => {
 
   const isMounted = React.useRef(false);
   const isExiting = React.useRef(false);
@@ -737,6 +737,13 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       : reactData.sortedGroupMembers
     ) || [];
 
+    // When explicit group IDs were requested (directoryGroupIds), bypass the accessList.list
+    // filter — return raw person_id strings so GroupPhotoDirectory fetches any missing records
+    // from the DB directly, showing the full group regardless of the viewer's authorization.
+    if (directoryGroupIds && directoryGroupIds.length > 0) {
+      return visibleMemberIds;
+    }
+
     return state.accessList[state.session.client_id].list
       .filter((personKey) => visibleMemberIds.includes(personKey.person_id));
   }
@@ -1273,8 +1280,11 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         sortedGroupMembers,
       };
       if (preGroups.length > 0 && preSelectedFunction === 'directory') {
-        const visiblePeople = state.accessList[state.session.client_id].list
-          .filter(p => sortedGroupMembers.includes(p.person_id));
+        // When explicit group IDs were requested, bypass accessList.list and pass raw person_id
+        // strings — GroupPhotoDirectory fetches any missing records from DB directly.
+        const visiblePeople = (directoryGroupIds && directoryGroupIds.length > 0)
+          ? sortedGroupMembers
+          : state.accessList[state.session.client_id].list.filter(p => sortedGroupMembers.includes(p.person_id));
         preSelectUpdates.showPhotoDirectory = (visiblePeople.length > 0);
         preSelectUpdates.photoDirectoryPeople = visiblePeople;
       } else if (preGroups.length > 0 && preSelectedFunction === 'maintenance') {
