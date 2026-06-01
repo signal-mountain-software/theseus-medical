@@ -287,7 +287,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
           break;
         }
         case 'multiColumn': {
-          multiColumn = (oValue.toLowerCase() === 'off');
+          multiColumn = (oValue.toLowerCase() === 'on');
           break;
         }
         case 'required': {

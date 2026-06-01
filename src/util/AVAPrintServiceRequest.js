@@ -1014,8 +1014,8 @@ export async function printRequestsOnePerPage(dataRows, options = {}) {
           // Question on its own line, answer below in bold at 1.2x size
           const question = value.question || '';
           const rawAnswerText = Array.isArray(value.answers)
-            ? value.answers.join(', ')
-            : (value.answers || '');
+            ? value.answers.filter(a => typeof a === 'string' && a.trim()).join(', ')
+            : (typeof value.answers === 'string' ? value.answers : '');
           // \u2713 is not renderable in jsPDF Helvetica; substitute a readable affirmative
           const answerText = rawAnswerText.replace(/\u2713/g, 'Yes');
           pdfLine(question, { size: 'medium', style: 'normal', before: 1, indent: 10 });
