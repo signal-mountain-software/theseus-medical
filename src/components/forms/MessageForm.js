@@ -185,11 +185,12 @@ const useStyles = makeStyles(theme => ({
 }));
 
 // Pure utility functions — module-level so they are not recreated on every render
-function makeReadableTime(pJavaDate) {
+function makeReadableTime(pJavaDate, timeZone) {
   const d = new Date(Number(pJavaDate));
   return d.toLocaleDateString('en-US', {
     weekday: 'short', month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit', hour12: true
+    hour: 'numeric', minute: '2-digit', hour12: true,
+    ...(timeZone ? { timeZone } : {})
   });
 }
 
@@ -1432,15 +1433,16 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     let resultText = request.currentValue;
     let alreadyOpened = false;
     for (let this_result of request.resultArray) {
+      const clientTZ = state.session.client_timezone;
       if (this_result.result.toLowerCase().startsWith('reply')) {
-        return `Replied to ${makeDate(this_result.posted_time).oaDate}`;
+        return `Replied to ${makeDate(this_result.posted_time, { timeZone: clientTZ }).oaDate}`;
       }
       else if (this_result.result.toLowerCase() === 'response') {
-        return `Call responded to with "${this_result.response}" ${makeDate(this_result.posted_time).oaDate}`;
+        return `Call responded to with "${this_result.response}" ${makeDate(this_result.posted_time, { timeZone: clientTZ }).oaDate}`;
       }
       else if (!alreadyOpened) {
         if (this_result.result.toLowerCase() === 'open') {
-          resultText = `Opened ${makeDate(this_result.posted_time).oaDate}`;
+          resultText = `Opened ${makeDate(this_result.posted_time, { timeZone: clientTZ }).oaDate}`;
           alreadyOpened = true;
         }
         else if (this_result.result.toLowerCase().startsWith('deliver')) {
@@ -1448,13 +1450,13 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           if (this_result.info && this_result.info.phoneCarrier) {
             resultText += ` confirmed by ${this_result.info.phoneCarrier}`;
           }
-          resultText += ` ${makeDate(this_result.posted_time).oaDate}`;
+          resultText += ` ${makeDate(this_result.posted_time, { timeZone: clientTZ }).oaDate}`;
         }
         else if ((this_result.result.toLowerCase().includes('no answer')) || (this_result.result.toLowerCase().includes('busy'))) {
-          resultText = `No answer ${makeDate(this_result.posted_time).oaDate}`;
+          resultText = `No answer ${makeDate(this_result.posted_time, { timeZone: clientTZ }).oaDate}`;
         }
         else if (this_result.result.toLowerCase().includes('answered')) {
-          resultText = `${sentenceCase(this_result.result)} ${makeDate(this_result.posted_time).oaDate}`;
+          resultText = `${sentenceCase(this_result.result)} ${makeDate(this_result.posted_time, { timeZone: clientTZ }).oaDate}`;
           alreadyOpened = true;
         }
         else {
@@ -2397,7 +2399,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                           <Typography
                                             style={AVATextStyle({ size: 0.8 })}
                                           >
-                                            {`${makeReadableTime(this_message.sent_time)}`}
+                                            {`${makeReadableTime(this_message.sent_time, state.session.client_timezone)}`}
                                           </Typography>
                                         </Box>
                                       </Box>
@@ -2610,7 +2612,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
             const src = options.sourceMessage;
             const subject = String(src.subject_line || src.subject || src.title || '').trim();
             const bodyText = String(options.sourceMessageText || '').trim();
-            const sentDate = src.created_time ? makeReadableTime(src.created_time) : '';
+            const sentDate = src.created_time ? makeReadableTime(src.created_time, state.session.client_timezone) : '';
             const senderName = options.sourceSenderName || String(src.sent_from || 'Unknown').trim();
             const previewBody = bodyText.length > 400 ? bodyText.slice(0, 400) + '…' : bodyText;
             return (
