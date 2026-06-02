@@ -1175,14 +1175,16 @@ export default ({ request = {}, onClose }) => {
             if (keyParts?.length !== 2 || !rec.occurrence_date || rec.occurrence_date < todayNumeric) return false;
             if (signUpWindow) {
               const occDate = makeDate(rec.occurrence_date).date;
-              if (signUpWindow.start) {
+              const windowStart = Number(signUpWindow.start);
+              const windowEnd = Number(signUpWindow.end);
+              if (windowStart > 0) {
                 // Registration opens `start` days before the occurrence
-                const windowOpenNumeric = makeDate(addDays(occDate, -Number(signUpWindow.start))).numeric;
+                const windowOpenNumeric = makeDate(addDays(occDate, -windowStart)).numeric;
                 if (todayNumeric < windowOpenNumeric) return false;
               }
-              if (signUpWindow.end) {
+              if (windowEnd > 0) {
                 // Registration closes `end` days before the occurrence
-                const windowCloseNumeric = makeDate(addDays(occDate, -Number(signUpWindow.end))).numeric;
+                const windowCloseNumeric = makeDate(addDays(occDate, -windowEnd)).numeric;
                 if (todayNumeric > windowCloseNumeric) return false;
               }
             }
