@@ -6,9 +6,9 @@ import {
 import { makeDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getMemberList } from '../../util/AVAGroups';
-import { getServiceRequests, updateServiceRequest, printServiceRequest, getRequestLog } from '../../util/AVAServiceRequest';
+import { getServiceRequests, updateServiceRequest, getRequestLog } from '../../util/AVAServiceRequest';
 import { sendMessages } from '../../util/AVAMessages';
-import { printRawData, printRequestsOnePerPage } from '../../util/AVAPrintServiceRequest';
+import { printRequestsOnePerPage } from '../../util/AVAPrintServiceRequest';
 import { downloadRowsAsXlsx } from '../../util/AVAPeopleListExport';
 import { getActivityDetail } from '../../util/AVAActivityLoaderV3';
 import MakeMessage from '../forms/MakeMessage';
@@ -35,7 +35,6 @@ import ClearAllIcon from '@material-ui/icons/ClearAll';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import DashboardIcon from '@material-ui/icons/Dashboard';
 import DoneAllIcon from '@material-ui/icons/DoneAll';
-import ListAltIcon from '@material-ui/icons/ListAlt';
 import ListIcon from '@material-ui/icons/List';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 import PrintIcon from '@material-ui/icons/Print';
@@ -343,7 +342,9 @@ export default function RequestDashboardV3({ factName, request = {}, options = {
         answers = dLine.slice(parenIdx + 1).replace(/\)+$/, '').split(/[,;]+/).map(a => titleCase(a.trim())).filter(Boolean);
       }
       if (s in req.textInput) {
-        answers.push(req.textInput[s]);
+        if (typeof req.textInput[s] === 'string' && req.textInput[s].trim()) {
+          answers.push(req.textInput[s]);
+        }
         delete req.textInput[s];
       }
       searchText += ` ${dLine}`;
@@ -1011,7 +1012,9 @@ export default function RequestDashboardV3({ factName, request = {}, options = {
       }
       if (type === 'qa') {
         const { question, answers } = payload;
-        const answerText = Array.isArray(answers) ? answers.join(', ') : (answers || '');
+        const answerText = Array.isArray(answers)
+          ? answers.filter(a => typeof a === 'string' && a.trim()).join(', ')
+          : (typeof answers === 'string' ? answers : '');
         return (
           <Box key={`${keyPrefix}-${idx}`}
             display='flex' flexDirection='row' flexWrap='wrap' alignItems='baseline'

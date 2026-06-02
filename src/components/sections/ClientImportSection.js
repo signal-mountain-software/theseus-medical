@@ -35,6 +35,11 @@ const IMPORT_TYPES = [
     value: 'family_groups',
     label: 'Add Family Groups',
     description: 'Columns: primary_id (column A), then one or more user_ids. Always creates a new FamilyGroups record and updates each listed person\'s People record with the family link.'
+  },
+  {
+    value: 'merge_accounts',
+    label: 'Merge Account Data',
+    description: 'Columns: user_id_A (column A), user_id_B (column B). Merges groups, contact info, and address from both records into both records. Conflicting contact fields are preserved as an "alt" sibling. Address conflicts are resolved by keeping column A data.'
   }
 ];
 
@@ -78,9 +83,11 @@ const detectImportType = (headers) => {
     h.includes('phone') || h.includes('cell') || h.includes('home') || h.includes('work') || h.includes('email') || h.includes('mail')
   );
   const hasPrimaryId = lowerHeaders[0].includes('primary');
+  const isMergePair = lowerHeaders[0].endsWith('_a') && lowerHeaders.length > 1 && lowerHeaders[1].endsWith('_b');
   if (hasFirstLast && !hasUserId) return 'create_people';
   if (hasPrimaryId) return 'family_groups';
   if (hasUserId && hasContactKeyword) return 'update_contact';
+  if (isMergePair) return 'merge_accounts';
   if (hasUserId) return 'append_groups';
   return '';
 };
@@ -151,7 +158,7 @@ export default ({ reactData }) => {
           headers,
           rows: dataRows,
           detectedType: detected,
-          importType: detected || importState.importType,
+          importType: importState.importType || detected || '',
           results: null,
         });
       } catch (err) {
@@ -551,6 +558,173 @@ export default ({ reactData }) => {
     return { successes, errors, warnings };
   };
 
+  const processMergeAccounts = async (headers, rows) => {
+    const errors = [];
+    const warnings = [];
+    let successes = 0;
+
+    // Contact field paths that support an "alt" sibling on conflict.
+    // Each entry: { path: dotted path to the value, altPath: sibling to write conflict into }
+    const CONTACT_MERGE_FIELDS = [
+      { path: 'contact_info.cell.number',       altPath: 'contact_info.cell.alt',       messagingKey: 'sms',   isPhone: true  },
+      { path: 'contact_info.landline.number',   altPath: 'contact_info.landline.alt',   messagingKey: null,    isPhone: true  },
+      { path: 'contact_info.work.number',       altPath: 'contact_info.work.alt',       messagingKey: null,    isPhone: true  },
+      { path: 'contact_info.email.address',     altPath: 'contact_info.email.alt',      messagingKey: 'email', isPhone: false },
+      { path: 'contact_info.alt_email.address', altPath: 'contact_info.alt_email.alt',  messagingKey: null,    isPhone: false },
+    ];
+
+    // Read a value at a dotted path from an object (returns undefined if missing)
+    const getAtPath = (obj, path) => {
+      return path.split('.').reduce((cur, key) => (cur && cur[key] !== undefined ? cur[key] : undefined), obj);
+    };
+
+    // Write a value at a dotted path, creating intermediate objects as needed
+    const writeAtPath = (obj, path, value) => {
+      const keys = path.split('.');
+      let cur = obj;
+      for (let i = 0; i < keys.length - 1; i++) {
+        if (!cur[keys[i]] || typeof cur[keys[i]] !== 'object') cur[keys[i]] = {};
+        cur = cur[keys[i]];
+      }
+      cur[keys[keys.length - 1]] = value;
+    };
+
+    // Merge groups: union of both arrays, deduplicated
+    const mergeGroups = (groupsA, groupsB) => {
+      const a = Array.isArray(groupsA) ? groupsA : [];
+      const b = Array.isArray(groupsB) ? groupsB : [];
+      return [...new Set([...a, ...b])];
+    };
+
+    // Merge address: prefer recA's value; skip on conflict (no alt for address)
+    const mergeAddress = (recA, recB) => {
+      const addrA = recA.address || {};
+      const addrB = recB.address || {};
+      if (!addrB || Object.keys(addrB).length === 0) return addrA;
+      if (!addrA || Object.keys(addrA).length === 0) return addrB;
+      // Merge field by field: keep A where both exist, take B where A is empty
+      const merged = Object.assign({}, addrB, addrA);
+      return merged;
+    };
+
+    // Apply contact field merges between recA (primary) and recB (donor).
+    // Writes merged values back into both cloned records.
+    const mergeContactFields = (clonedA, clonedB) => {
+      for (const field of CONTACT_MERGE_FIELDS) {
+        const valA = getAtPath(clonedA, field.path);
+        const valB = getAtPath(clonedB, field.path);
+
+        if (valA && valB && valA !== valB) {
+          // Conflict: keep each record's own value; store the other as alt
+          writeAtPath(clonedA, field.altPath, valB);
+          writeAtPath(clonedB, field.altPath, valA);
+        } else if (!valA && valB) {
+          // A is empty — copy B's value into A
+          writeAtPath(clonedA, field.path, valB);
+          if (field.messagingKey) {
+            if (!clonedA.messaging) clonedA.messaging = {};
+            clonedA.messaging[field.messagingKey] = valB;
+          }
+        } else if (valA && !valB) {
+          // B is empty — copy A's value into B
+          writeAtPath(clonedB, field.path, valA);
+          if (field.messagingKey) {
+            if (!clonedB.messaging) clonedB.messaging = {};
+            clonedB.messaging[field.messagingKey] = valA;
+          }
+        }
+        // else: both empty or identical — nothing to do
+      }
+    };
+
+    cl({ 'merge_accounts: starting loop': { rowCount: rows.length, rows } });
+    for (let i = 0; i < rows.length; i++) {
+      const rowNum = i + 2;
+      const row = rows[i];
+      const idA = String(row[0] || '').trim();
+      const idB = String(row[1] || '').trim();
+      cl({ 'merge_accounts row': { rowNum, row, idA, idB } });
+
+      if (!idA || !idB) {
+        errors.push({ rowNum, message: `Row ${rowNum}: both user_id columns are required — skipped.` });
+        continue;
+      }
+      if (idA === idB) {
+        warnings.push(`Row ${rowNum}: column A and column B are the same user_id ("${idA}") — skipped.`);
+        continue;
+      }
+
+      try {
+        const [recAResult, recBResult] = await Promise.all([
+          dbClient.get({ Key: { person_id: idA }, TableName: 'People' }).promise().catch(() => null),
+          dbClient.get({ Key: { person_id: idB }, TableName: 'People' }).promise().catch(() => null),
+        ]);
+        cl({ 'merge_accounts DB lookup': { idA, foundA: !!recAResult?.Item, idB, foundB: !!recBResult?.Item } });
+
+        if (!recAResult?.Item) {
+          errors.push({ rowNum, message: `Row ${rowNum}: user_id "${idA}" (column A) not found — skipped.` });
+          continue;
+        }
+        if (!recBResult?.Item) {
+          errors.push({ rowNum, message: `Row ${rowNum}: user_id "${idB}" (column B) not found — skipped.` });
+          continue;
+        }
+
+        const clonedA = JSON.parse(JSON.stringify(recAResult.Item));
+        const clonedB = JSON.parse(JSON.stringify(recBResult.Item));
+
+        // ── merge groups ──────────────────────────────────────────────────
+        // Run addMember FIRST so it reads the original People records and updates
+        // PeopleGroups table. addMember also does a dbClient.update on People.groups,
+        // but our putDb below overwrites that with the full merged record, so order matters.
+        const mergedGroups = mergeGroups(clonedA.groups, clonedB.groups);
+        const addedToA = mergedGroups.filter(g => !(recAResult.Item.groups || []).includes(g));
+        const addedToB = mergedGroups.filter(g => !(recBResult.Item.groups || []).includes(g));
+        cl({ 'merge_accounts group calc': { idA, idB, groupsA: clonedA.groups, groupsB: clonedB.groups, mergedGroups, addedToA, addedToB } });
+        if (addedToA.length > 0) {
+          await addMember(idA, client_id, addedToA, { allowParent: true })
+            .catch(err => { cl({ 'merge_accounts addMember error for A': { idA, addedToA, err } }); });
+        }
+        if (addedToB.length > 0) {
+          await addMember(idB, client_id, addedToB, { allowParent: true })
+            .catch(err => { cl({ 'merge_accounts addMember error for B': { idB, addedToB, err } }); });
+        }
+        // Set merged groups on clones — putDb below will stamp the final merged groups
+        // after addMember has already handled PeopleGroups table updates.
+        clonedA.groups = mergedGroups;
+        clonedB.groups = mergedGroups;
+
+        // ── merge contact fields ──────────────────────────────────────────
+        mergeContactFields(clonedA, clonedB);
+
+        // ── merge address (A wins on conflict) ────────────────────────────
+        const mergedAddress = mergeAddress(clonedA, clonedB);
+        if (mergedAddress && Object.keys(mergedAddress).length > 0) {
+          clonedA.address = mergedAddress;
+          clonedB.address = mergedAddress;
+        }
+
+        // ── write back both records ───────────────────────────────────────
+        // putDb runs last so it stamps the fully merged record (groups + contact + address),
+        // overwriting any intermediate state left by addMember's update.
+        const ts = new Date().toISOString();
+        clonedA.last_update = ts;
+        clonedB.last_update = ts;
+
+        await Promise.all([
+          putDb({ TableName: 'People', Item: clonedA }),
+          putDb({ TableName: 'People', Item: clonedB }),
+        ]);
+
+        successes++;
+      } catch (err) {
+        cl({ 'Merge accounts row error': { rowNum, err } });
+        errors.push({ rowNum, message: `Row ${rowNum} (${idA} / ${idB}): ${err.message}` });
+      }
+    }
+    return { successes, errors, warnings };
+  };
+
   const processFamilyGroups = async (headers, rows) => {
     const errors = [];
     const warnings = [];
@@ -681,6 +855,8 @@ export default ({ reactData }) => {
         results = await processDDImport(headers, rows);
       } else if (importType === 'family_groups') {
         results = await processFamilyGroups(headers, rows);
+      } else if (importType === 'merge_accounts') {
+        results = await processMergeAccounts(headers, rows);
       } else {
         results = { successes: 0, errors: [{ rowNum: 0, message: 'Unknown import type.' }], warnings: [] };
       }

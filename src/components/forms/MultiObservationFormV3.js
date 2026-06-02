@@ -627,7 +627,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   const handleChangeTextField = (vText, columnNumber, rowNumber) => {
     reactData.columnList[columnNumber].columnActivated = true;
     if (!reactData.columnList[columnNumber].rowDetails[rowNumber].hasOwnProperty('textValue')) {
-      reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = {};
+      reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = '';
     }
     reactData.columnList[columnNumber].rowDetails[rowNumber].error = '';
     if (!vText || (vText === '')) {
@@ -2134,8 +2134,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               key={`thewholething`}
               id={`thewholething`}
               display="flex"
-              flexDirection='row'
-              flexWrap={'wrap'}
+              flexDirection={reactData.columnList[selectedColumn].rowDetails.some(r => r.multiColumn) ? 'row' : 'column'}
+              flexWrap={reactData.columnList[selectedColumn].rowDetails.some(r => r.multiColumn) ? 'wrap' : 'nowrap'}
               justifyContent="flex-start"
               alignItems='flex-start'
             >

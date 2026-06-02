@@ -112,14 +112,15 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
               }
             }
           }
-          function loadList(this_item, my_children, display_level, hidden_ancestors = []) {
+          function loadList(this_item, my_children, display_level, hidden_ancestors = [], ancestorAuthorized = false) {
             /* I can "see" a group in this list if:
-                - I am an adminstrative account
+                - I am an administrative account
                   OR
-                - I have "view" or higher rights to the group
+                - I have "view" or higher rights to the group (or an ancestor has those rights and restrictGroups is OFF)
                       AND
-                  either restrictGroups is OFF or (if restrictGroups is ON, I am a member of the group and the group is the lowest level in the hierarchy)    
-                  Note: restrictGroups prevents you from seeing groups that are parents or siblings of a group you are in
+                  either restrictGroups is OFF or (if restrictGroups is ON, I am a member of the group and the group is the lowest level in the hierarchy)
+                  Note: restrictGroups prevents you from seeing groups that are parents or siblings of a group you are in.
+                  Note: when restrictGroups is OFF, access to a parent automatically grants visibility to all its descendants.
                 display_level only increments when this node is visible — so a group whose authorized
                 ancestors are all hidden appears at the same indent level as its nearest visible ancestor,
                 or at level 0 if none of its ancestors are visible.
@@ -128,9 +129,11 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
             */
             let childDisplayLevel = display_level;
             let childHiddenAncestors = hidden_ancestors;
+            const directAccess = state?.accessList?.[state.session?.client_id]?.groups?.includes(this_item);
+            const inheritedAccess = !options.restrictGroups && ancestorAuthorized;
             if (administrative_account ||
               (
-                (state?.accessList?.[state.session?.client_id]?.groups && state?.accessList?.[state.session?.client_id]?.groups.includes(this_item)) &&
+                (directAccess || inheritedAccess) &&
                 (!options.restrictGroups || (state?.patient?.groups?.includes(this_item) && isEmpty(my_children)))
               )
             ) {
@@ -157,10 +160,9 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
               }
             }
             if (isEmpty(my_children)) { return; }
-            else {
-              for (let my_child in my_children) {
-                loadList(my_child, my_children[my_child], childDisplayLevel, childHiddenAncestors);
-              }
+            const childAncestorAuthorized = administrative_account || directAccess || inheritedAccess;
+            for (let my_child in my_children) {
+              loadList(my_child, my_children[my_child], childDisplayLevel, childHiddenAncestors, childAncestorAuthorized);
             }
           }
           reactUpd.groupInfo = Object.assign({}, deepCopy(state.groups), {

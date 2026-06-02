@@ -2694,6 +2694,7 @@ export default ({ start_at }) => {
                 component='div'
                 size='small'
                 aria-label={`add_card_row_${this_item.menu_id}`}
+                style={{ color: (isDark(tileColor) ? 'cornsilk' : 'black') }}
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
