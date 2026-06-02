@@ -2249,6 +2249,9 @@ export default ({ start_at }) => {
     if (reactData.is_master) {
       return true;
     }
+    if (state.session.responsible_for && (state.session.responsible_for.length > 0)) {
+      return true;
+    }
     if (state.accessList && state.accessList.hasOwnProperty(session.client_id) && state.accessList[session.client_id].hasOwnProperty('count')) {
       if ((state.accessList[session.client_id].count.proxy > 1) || (state.accessList[session.client_id].count.full > 1)) {
         return true;

@@ -179,6 +179,11 @@ export default ({ open, roles, onClose, options = {} }) => {
 
   function okToShow(pLine) {
     if (!pLine) { return false; }
+    if (state.session.responsible_for && state.session.responsible_for.length > 0) { 
+      if (state.session.responsible_for.includes(pLine.person_id)) {
+        return true;
+      }
+    }
     if (pLine.access === 'none') { return false; }
     if (pLine.access === 'view') { return false; }
     if (pLine.inactive_account) { return false; }
