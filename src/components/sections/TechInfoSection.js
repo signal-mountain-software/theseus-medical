@@ -103,6 +103,22 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
         Key: { session_id: person_id }
       }).promise();
 
+      // Delete all PeopleGroups rows for this person (any status, any group)
+      const pgResult = await dbClient.query({
+        TableName: 'PeopleGroups',
+        IndexName: 'person-index',
+        KeyConditionExpression: 'person_id = :p',
+        ExpressionAttributeValues: { ':p': person_id }
+      }).promise().catch(err => { console.error('Error querying PeopleGroups for deletion:', err); return null; });
+      if (pgResult?.Items?.length > 0) {
+        await Promise.all(pgResult.Items.map(row =>
+          dbClient.delete({
+            TableName: 'PeopleGroups',
+            Key: { client_group_id: row.client_group_id, person_id: row.person_id }
+          }).promise().catch(err => { console.error('Error deleting PeopleGroups row:', err); })
+        ));
+      }
+
       setDeleteConfirmOpen(false);
       setFamilyCheckConfirmOpen(false);
       console.log(`Account ${person_id} deleted successfully`);
