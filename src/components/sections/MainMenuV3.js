@@ -1576,7 +1576,10 @@ export default ({ start_at }) => {
         updateReactData({
           greetingName: tempName || 'AVA User',
           greetingWords: makeGreeting(),
-          ...(userUiTilesOverride !== null ? { uiTilesOverride: userUiTilesOverride } : {}),
+          ...(userUiTilesOverride !== null ? {
+            uiTilesOverride: userUiTilesOverride,
+            editFavorites: !userUiTilesOverride,
+          } : {}),
         }, true);
         // Build the menu directly (uiTilesOverride is now set so useTileUI is correct).
         await rebuildMenuHierarchy({ includeLoadingState: true });
@@ -2545,7 +2548,7 @@ export default ({ start_at }) => {
             height: useTileUI ? 100 : 'auto',
           }}
         >
-          {useTileUI && reactData.editFavorites && !isFavoriteCard &&
+          {useTileUI && reactData.editFavorites && !isFavoriteCard && normalizedMenuType !== 'menu' &&
             <Box
               display='flex'
               justifyContent='center'
@@ -2724,7 +2727,7 @@ export default ({ start_at }) => {
               </IconButton>
             </Box>
           }
-          {!useTileUI && reactData.editFavorites && !isFavoriteCard &&
+          {!useTileUI && reactData.editFavorites && !isFavoriteCard && normalizedMenuType !== 'menu' &&
             <Box
               display='flex'
               justifyContent='flex-end'
