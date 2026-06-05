@@ -2119,7 +2119,7 @@ export default ({ start_at }) => {
 
     const updatedChildren = [...(parentRec.Item.children || [])];
     if (!updatedChildren.includes(newMenuId)) {
-      updatedChildren.push(newMenuId);
+      updatedChildren.unshift(newMenuId);
     }
 
     await dbClient
