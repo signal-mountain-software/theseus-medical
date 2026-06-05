@@ -119,6 +119,7 @@ export default ({ onClose, options = {} }) => {
     selected_account_config: null,
     form_fields: {},
     field_values: {},
+    password_confirm: '',   // confirmation entry for *password field
     field_validation_errors: {}, // Store validation errors for real-time feedback
     loading_fields: false,
     loading_user_ids: false,
@@ -365,6 +366,15 @@ export default ({ onClose, options = {} }) => {
     let errorCount = 0;
 
     for (const fieldName of selectedConfig.field_list) {
+      // *password is a built-in special field — no DB record needed
+      if (fieldName === '*password') {
+        fieldData[fieldName] = {
+          field_name: '*password',
+          prompt: { value: 'Password' },
+          value: { type: '*password' },
+        };
+        continue;
+      }
       try {
         const formFieldRec = await getDb({
           Key: {
@@ -751,6 +761,21 @@ export default ({ onClose, options = {} }) => {
   };
 
   const saveCurrentFamilyMember = async () => {
+    // Validate *password field if present: both entries must match and be non-empty
+    const fieldList = reactData.selected_account_config?.field_list || [];
+    if (fieldList.includes('*password')) {
+      const pw = reactData.field_values['*password'] || '';
+      const confirm = reactData.password_confirm || '';
+      if (!pw) {
+        showAlert({ severity: 'error', title: 'Password Required', message: 'Please enter a password.', autoHide: false });
+        return;
+      }
+      if (pw !== confirm) {
+        showAlert({ severity: 'error', title: 'Passwords Do Not Match', message: 'The password and confirmation do not match. Please re-enter.', autoHide: false });
+        return;
+      }
+    }
+
     // Compute preauth_extra_fields: keys in preauth_data that are not in this account_type's field_list
     // These will be written directly onto the People record without prompting the user.
     // Only applies to the primary (first) account — subsequent family members only get default_groups.
@@ -1660,6 +1685,13 @@ export default ({ onClose, options = {} }) => {
         }
         obj[keys[keys.length - 1]] = fieldValues[fieldName];
       });
+
+      // Handle *password special field
+      if (Object.prototype.hasOwnProperty.call(fieldValues, '*password') && fieldValues['*password']) {
+        sessionRecord.last_login = fieldValues['*password'];
+        sessionRecord.requirePassword = true;
+        sessionRecord.forceSetPassword = false;
+      }
 
       console.log('Saving SessionsV2 record:', sessionRecord);
 
@@ -3074,6 +3106,44 @@ export default ({ onClose, options = {} }) => {
 
                   const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
                   const isRequired = reactData.selected_account_config?.required?.includes(fieldName) || false;
+
+                  // Password field — double-prompt with confirmation
+                  if (fieldType === '*password') {
+                    const pw = reactData.field_values[fieldName] || '';
+                    const confirm = reactData.password_confirm || '';
+                    const mismatch = confirm.length > 0 && pw !== confirm;
+                    return (
+                      <Box key={fieldName} style={{ marginBottom: '16px', marginRight: '16px' }}>
+                        <TextField
+                          fullWidth
+                          label={fieldLabel}
+                          required={isRequired}
+                          type='password'
+                          autoComplete='new-password'
+                          value={pw}
+                          onChange={(e) => handleFieldValueChange(fieldName, e.target.value)}
+                          variant='outlined'
+                          size='small'
+                          style={{ marginBottom: '8px' }}
+                        />
+                        <TextField
+                          fullWidth
+                          label='Confirm Password'
+                          required={isRequired}
+                          type='password'
+                          autoComplete='new-password'
+                          value={confirm}
+                          error={mismatch}
+                          helperText={mismatch ? 'Passwords do not match' : ''}
+                          onChange={(e) => { const val = e.target.value; setReactData(prev => ({ ...prev, password_confirm: val })); }}
+                          variant='outlined'
+                          size='small'
+                          style={{ marginBottom: '8px' }}
+                        />
+                      </Box>
+                    );
+                  }
+
                   const isDateField = fieldType === 'date';
                   const isEmailField = fieldType === 'email';
                   const isPhoneField = fieldType === 'phone';
