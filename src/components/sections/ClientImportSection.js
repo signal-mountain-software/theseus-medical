@@ -29,7 +29,7 @@ const IMPORT_TYPES = [
   {
     value: 'dd_import',
     label: 'Add Data to People records via Data Dictionary',
-    description: 'Columns: user_id, then one or more Data Dictionary field_key column headers. Stores values directly in the People record at each field\'s defined path.'
+    description: 'Columns: user_id, then one or more Data Dictionary field_key column headers. Stores values in the People or SessionsV2 record based on the field\'s source. Boolean fields (true/false/yes/no) are automatically coerced.'
   },
   {
     value: 'family_groups',
@@ -537,12 +537,21 @@ export default ({ reactData }) => {
           return src === 'person' || src === 'peoplerec' || src === 'people';
         });
 
-        if (!personCandidate || !personCandidate.path) {
-          warnings.push(`Column "${fieldKey}": no person-sourced path found in DataDictionaryV3 — column will be skipped.`);
+        const sessionCandidate = candidates.find(c => {
+          const src = String(c.source || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          return src === 'session' || src === 'sessionrec' || src === 'sessionsv2' || src === 'sessions';
+        });
+
+        const activeCandidate = personCandidate || sessionCandidate;
+        const targetTable = personCandidate ? 'people' : (sessionCandidate ? 'session' : null);
+
+        if (!activeCandidate || !activeCandidate.path) {
+          warnings.push(`Column "${fieldKey}": no person- or session-sourced path found in DataDictionaryV3 — column will be skipped.`);
           ddMap[fieldKey] = { path: null, found: false };
         } else {
-          const rawPath = Array.isArray(personCandidate.path) ? personCandidate.path[0] : personCandidate.path;
-          ddMap[fieldKey] = { path: rawPath, found: true };
+          const rawPath = Array.isArray(activeCandidate.path) ? activeCandidate.path[0] : activeCandidate.path;
+          const valueType = String(activeCandidate.type || dictionaryRec.type || activeCandidate.value_type || activeCandidate.data_type || dictionaryRec.value_type || dictionaryRec.data_type || '').toLowerCase();
+          ddMap[fieldKey] = { path: rawPath, found: true, target: targetTable, valueType };
         }
       } catch (err) {
         warnings.push(`Column "${fieldKey}": error loading DataDictionaryV3 record — column will be skipped.`);
@@ -565,7 +574,29 @@ export default ({ reactData }) => {
           continue;
         }
         const updatedPerson = Object.assign({}, existing.Item);
-        let anyChange = false;
+        let anyPersonChange = false;
+
+        // Fetch SessionsV2 record lazily only if needed
+        const sessionFieldKeys = fieldKeys.filter(k => ddMap[k]?.found && ddMap[k]?.target === 'session');
+        let updatedSession = null;
+        let anySessionChange = false;
+        if (sessionFieldKeys.length > 0) {
+          const sessionResult = await dbClient.get({ Key: { session_id: person_id }, TableName: 'SessionsV2' }).promise().catch(() => null);
+          if (sessionResult?.Item) {
+            updatedSession = Object.assign({}, sessionResult.Item);
+          } else {
+            warnings.push(`Row ${rowNum} (${person_id}): no SessionsV2 record found — session fields skipped.`);
+          }
+        }
+
+        const coerceValue = (rawVal, valueType) => {
+          if (valueType === 'boolean' || valueType === 'bool') {
+            const lower = rawVal.toLowerCase();
+            if (['true', 'yes', '1', 'y'].includes(lower)) return true;
+            if (['false', 'no', '0', 'n'].includes(lower)) return false;
+          }
+          return rawVal;
+        };
 
         for (let colIdx = 0; colIdx < fieldKeys.length; colIdx++) {
           const fieldKey = fieldKeys[colIdx];
@@ -573,13 +604,25 @@ export default ({ reactData }) => {
           if (!info || !info.found || !info.path) continue;
           const rawVal = String(row[colIdx + 1] || '').trim();
           if (!rawVal) continue;
-          setAtPath(updatedPerson, info.path, rawVal);
-          anyChange = true;
+          const coercedVal = coerceValue(rawVal, info.valueType || '');
+          if (info.target === 'session') {
+            if (updatedSession) {
+              setAtPath(updatedSession, info.path, coercedVal);
+              anySessionChange = true;
+            }
+          } else {
+            setAtPath(updatedPerson, info.path, coercedVal);
+            anyPersonChange = true;
+          }
         }
 
-        if (anyChange) {
+        if (anyPersonChange) {
           updatedPerson.last_update = new Date().toISOString();
           await putDb({ TableName: 'People', Item: updatedPerson });
+        }
+        if (anySessionChange && updatedSession) {
+          updatedSession.last_update = new Date().toISOString();
+          await putDb({ TableName: 'SessionsV2', Item: updatedSession });
         }
         successes++;
       } catch (err) {
