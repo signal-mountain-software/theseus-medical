@@ -14,7 +14,7 @@ const IMPORT_TYPES = [
   {
     value: 'create_people',
     label: 'Create new accounts',
-    description: 'Columns: First Name, Last Name (and optional email, cell phone). Creates People, SessionsV2, and PeopleAccounts records.'
+    description: 'Columns: First Name + Last Name, or a single Name/Full Name column (and optional email, cell phone). Creates People, SessionsV2, and PeopleAccounts records.'
   },
   {
     value: 'append_groups',
@@ -78,13 +78,14 @@ const detectImportType = (headers) => {
   if (!headers || headers.length === 0) return '';
   const lowerHeaders = headers.map(h => String(h).toLowerCase().trim());
   const hasFirstLast = lowerHeaders.some(h => h.includes('first')) && lowerHeaders.some(h => h.includes('last'));
+  const hasFullName = lowerHeaders.some(h => h === 'name' || h === 'full name' || h === 'full_name' || h === 'fullname');
   const hasUserId = lowerHeaders[0].includes('user') || lowerHeaders[0].includes('person') || lowerHeaders[0].includes('id');
   const hasContactKeyword = lowerHeaders.some(h =>
     h.includes('phone') || h.includes('cell') || h.includes('home') || h.includes('work') || h.includes('email') || h.includes('mail')
   );
   const hasPrimaryId = lowerHeaders[0].includes('primary');
   const isMergePair = lowerHeaders[0].endsWith('_a') && lowerHeaders.length > 1 && lowerHeaders[1].endsWith('_b');
-  if (hasFirstLast && !hasUserId) return 'create_people';
+  if ((hasFirstLast || hasFullName) && !hasUserId) return 'create_people';
   if (hasPrimaryId) return 'family_groups';
   if (hasUserId && hasContactKeyword) return 'update_contact';
   if (isMergePair) return 'merge_accounts';
@@ -173,15 +174,32 @@ export default ({ reactData }) => {
 
   // ── import processors ─────────────────────────────────────────────────────
 
+  const parseFullName = (raw) => {
+    const trimmed = String(raw || '').trim();
+    if (!trimmed) return { firstName: '', lastName: '' };
+    if (trimmed.includes(',')) {
+      const commaIdx = trimmed.indexOf(',');
+      const lastName = trimmed.slice(0, commaIdx).trim();
+      const firstName = trimmed.slice(commaIdx + 1).trim();
+      return { firstName, lastName };
+    }
+    const parts = trimmed.split(/\s+/);
+    const lastName = parts.pop();
+    const firstName = parts.join(' ');
+    return { firstName, lastName };
+  };
+
   const processCreatePeople = async (headers, rows) => {
     const lowerHeaders = headers.map(h => String(h).toLowerCase().trim());
     const firstIdx = lowerHeaders.findIndex(h => h.includes('first'));
     const lastIdx = lowerHeaders.findIndex(h => h.includes('last'));
+    const fullNameIdx = lowerHeaders.findIndex(h => h === 'name' || h === 'full name' || h === 'full_name' || h === 'fullname');
     const emailIdx = lowerHeaders.findIndex(h => (h.includes('email') || h.includes('mail')) && !h.includes('alt'));
     const cellIdx = lowerHeaders.findIndex(h => h.includes('cell') || h.includes('mobile') || (h.includes('phone') && !h.includes('home') && !h.includes('work')));
 
-    if (firstIdx === -1 || lastIdx === -1) {
-      return { successes: 0, errors: [{ rowNum: 0, message: 'Could not find "First Name" and "Last Name" columns.' }], warnings: [] };
+    const useSingleNameCol = fullNameIdx !== -1 && (firstIdx === -1 || lastIdx === -1);
+    if (!useSingleNameCol && (firstIdx === -1 || lastIdx === -1)) {
+      return { successes: 0, errors: [{ rowNum: 0, message: 'Could not find name columns. Expected "First Name" + "Last Name", or a single "Name" / "Full Name" column.' }], warnings: [] };
     }
 
     // Load client style once for user_id format
@@ -201,17 +219,31 @@ export default ({ reactData }) => {
     const errors = [];
     const warnings = [];
     const usedIds = new Set(); // track IDs generated in this batch
+    const seenNames = new Set(); // track names seen in this spreadsheet to catch in-batch duplicates
     const assignedIds = new Array(rows.length).fill('');
 
     for (let i = 0; i < rows.length; i++) {
       const rowNum = i + 2; // 1-based, +1 for header row
       const row = rows[i];
-      const firstName = titleCase(String(row[firstIdx] || '').trim());
-      const lastName = titleCase(String(row[lastIdx] || '').trim());
+      let firstName, lastName;
+      if (useSingleNameCol) {
+        const parsed = parseFullName(row[fullNameIdx]);
+        firstName = titleCase(parsed.firstName);
+        lastName = titleCase(parsed.lastName);
+      } else {
+        firstName = titleCase(String(row[firstIdx] || '').trim());
+        lastName = titleCase(String(row[lastIdx] || '').trim());
+      }
       if (!firstName || !lastName) {
         errors.push({ rowNum, message: `Row ${rowNum}: missing first or last name — skipped.` });
         continue;
       }
+      const nameKey = `${firstName.toLowerCase()} ${lastName.toLowerCase()}`;
+      if (seenNames.has(nameKey)) {
+        warnings.push(`Row ${rowNum} (${firstName} ${lastName}): duplicate name in spreadsheet — skipped.`);
+        continue;
+      }
+      seenNames.add(nameKey);
       const email = emailIdx >= 0 ? String(row[emailIdx] || '').trim().toLowerCase() : '';
       const cell = cellIdx >= 0 ? toStoragePhone(String(row[cellIdx] || '').trim()) : '';
 
