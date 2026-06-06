@@ -141,13 +141,13 @@ const useStyles = makeStyles(theme => ({
     padding: '3px 0 4px',
     backgroundColor: theme.palette.background.paper,
     color: theme.palette.text.secondary,
-    fontSize: '12px',
+    fontSize: '1rem',
     lineHeight: 1.2,
   },
   selectionFieldLabelInline: {
     padding: '2px 0 4px 0',
     color: theme.palette.text.secondary,
-    fontSize: '12px',
+    fontSize: '1rem',
     lineHeight: 1.2,
   },
   selectionFieldHelper: {
@@ -546,7 +546,26 @@ export default ({ request = {}, onClose }) => {
   // **************************
 
   const checkIgnore = (tests) => {
-    const { ignoreObj, showObj } = tests;
+    const { ignoreObj, showObj, occurrenceNumber } = tests;
+
+    // Resolve a field key to its occurrence-specific version when inside a repeating block.
+    // Handles both '1'-placeholder keys (field_1_name → field_N_name) and _occ1 suffix keys.
+    const resolveOccFieldKey = (fieldKey) => {
+      if (!occurrenceNumber || occurrenceNumber === 1 || !fieldKey) return fieldKey;
+      // _occ1 suffix style
+      if (fieldKey.endsWith('_occ1')) {
+        return `${fieldKey.slice(0, -5)}_occ${occurrenceNumber}`;
+      }
+      // '1'-placeholder style: replace first occurrence of '1' surrounded by non-digits (or boundaries)
+      const substituted = fieldKey.replace(/(^|[^0-9])1($|[^0-9])/, `$1${occurrenceNumber}$2`);
+      // If substitution changed the key and that key exists in fields, use it;
+      // otherwise fall back to _occN suffix to avoid silently resolving to the wrong field
+      if (substituted !== fieldKey) {
+        if (reactData.fields[substituted]) return substituted;
+        return `${fieldKey}_occ${occurrenceNumber}`;
+      }
+      return `${fieldKey}_occ${occurrenceNumber}`;
+    };
     const matchValues = (valToCheck, valuesToMatch) => {
       // Normalize valuesToMatch: convert string values to lowercase without mutating the original
       const normalizedValues = Array.isArray(valuesToMatch)
@@ -578,7 +597,8 @@ export default ({ request = {}, onClose }) => {
       // Also supports legacy scalar form with a .data property for backward compatibility.
       const testList = Array.isArray(ignoreObj) ? ignoreObj : [ignoreObj];
       ignoreResult = testList.some(this_test => {
-        const fieldKey = this_test.field || this_test.data?.split('.').slice(-1)[0];
+        const rawFieldKey = this_test.field || this_test.data?.split('.').slice(-1)[0];
+        const fieldKey = resolveOccFieldKey(rawFieldKey);
         const value_to_test = reactData.fields[fieldKey]?.value ?? null;
         return matchValues(value_to_test, makeArray(this_test.values));
       });
@@ -589,7 +609,8 @@ export default ({ request = {}, onClose }) => {
       // Also supports legacy scalar form with a .data property for backward compatibility.
       const testList = Array.isArray(showObj) ? showObj : [showObj];
       const isShown = testList.some(this_test => {
-        const fieldKey = this_test.field || this_test.data?.split('.').slice(-1)[0];
+        const rawFieldKey = this_test.field || this_test.data?.split('.').slice(-1)[0];
+        const fieldKey = resolveOccFieldKey(rawFieldKey);
         const value_to_test = reactData.fields[fieldKey]?.value ?? null;
         return matchValues(value_to_test, makeArray(this_test.values));
       });
@@ -1648,9 +1669,13 @@ export default ({ request = {}, onClose }) => {
                   : null;
                 reactData.fields[resolvedFieldName] = Object.assign({}, deepCopy(reactData.fields[baseFieldName]), {
                   value: docFieldValue,
-                  valueText: formatValue({ rawValue: docFieldValue, type: reactData.fields[baseFieldName].type })
+                  valueText: formatValue({ rawValue: docFieldValue, type: reactData.fields[baseFieldName].type }),
+                  _occurrence_number: section_number,
                 });
               }
+            } else if (enrichedField) {
+              // Stamp occurrence 1 so checkIgnore can resolve sibling field keys consistently
+              reactData.fields[baseFieldName]._occurrence_number = 1;
             }
           }
         }
@@ -2194,7 +2219,8 @@ export default ({ request = {}, onClose }) => {
 
     const nextIgnore = checkIgnore({
       ignoreObj: reactData.fields[fieldName]?.ignore_if || reactData.fields[fieldName]?.prompt?.ignore_if,
-      showObj: reactData.fields[fieldName]?.show_if
+      showObj: reactData.fields[fieldName]?.show_if,
+      occurrenceNumber: reactData.fields[fieldName]?._occurrence_number ?? null,
     });
     if (reactData.fields[fieldName].ignore !== nextIgnore) {
       hasChanges = true;
@@ -2270,7 +2296,8 @@ export default ({ request = {}, onClose }) => {
           className={`${classes.selectionFieldBox} ${isRequiredField ? classes.requiredOutline : ''}`}
           style={containerStyle}
         >
-          <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}>
+          <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}
+            style={{ fontSize: `${reactData.user_fontSize}rem` }}>
             <span dangerouslySetInnerHTML={{ __html: promptText || normalizePromptMarkup(props.prop) }} />
             {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
           </Typography>
@@ -2419,7 +2446,8 @@ export default ({ request = {}, onClose }) => {
           className={`${classes.selectionFieldBox} ${isRequiredField ? classes.requiredOutline : ''}`}
           style={containerStyle}
         >
-          <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}>
+          <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}
+            style={{ fontSize: `${reactData.user_fontSize}rem` }}>
             <span dangerouslySetInnerHTML={{ __html: promptText || normalizePromptMarkup(props.prop) }} />
             {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
           </Typography>
@@ -4034,7 +4062,8 @@ export default ({ request = {}, onClose }) => {
     };
 
     const promptLabel = !!promptText && (
-      <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}>
+      <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}
+        style={{ fontSize: `${reactData.user_fontSize}rem` }}>
         <span dangerouslySetInnerHTML={{ __html: promptText }} />
         {isRequiredField && <span className={classes.requiredAsterisk}>&nbsp;*</span>}
       </Typography>
@@ -4800,25 +4829,54 @@ export default ({ request = {}, onClose }) => {
                         const nextSection = displaySections[sectionNdx + 1];
                         const isLastInGroup = !nextSection || nextSection.occurrence_template !== sectionObj.occurrence_template;
                         const canAddMore = sectionObj.occurrence_number < sectionObj.occurrence_max;
-                        if (!isLastInGroup || !canAddMore) return null;
+                        const canRemove = isLastInGroup && sectionObj.occurrence_number > 1;
+                        if (!isLastInGroup && !canRemove) return null;
+                        if (isLastInGroup && !canAddMore && !canRemove) return null;
                         const addMoreLabel = reactData.formRec?.sections?.find(s => s.section_name === sectionObj.occurrence_template)?.add_more_label
-                          || 'Add another';
+                          || `Add another ${sectionObj.occurrence_template.replace(/\s*1\s*/, ' ').trim()}`;
                         return (
-                          <Box key={`more_btn__${sectionObj.occurrence_template}`} display='flex' justifyContent='flex-start' marginTop={1} marginBottom={1} marginLeft={1}>
-                            <Button
-                              size='small'
-                              className={AVAClass.AVAButton}
-                              style={{ color: 'white', backgroundColor: '#1976d2' }}
-                              onClick={() => {
-                                updateReactData({
-                                  activeSectionOccurrences: Object.assign({}, reactData.activeSectionOccurrences, {
-                                    [sectionObj.occurrence_template]: sectionObj.occurrence_number + 1
-                                  })
-                                }, true);
-                              }}
-                            >
-                              {`+ ${addMoreLabel}`}
-                            </Button>
+                          <Box key={`more_btn__${sectionObj.occurrence_template}`} display='flex' justifyContent='flex-start' marginTop={1} marginBottom={1} marginLeft={1} style={{ gap: '8px' }}>
+                            {isLastInGroup && canAddMore && (
+                              <Button
+                                size='small'
+                                className={AVAClass.AVAButton}
+                                style={{ color: 'white', backgroundColor: '#1976d2' }}
+                                onClick={() => {
+                                  updateReactData({
+                                    activeSectionOccurrences: Object.assign({}, reactData.activeSectionOccurrences, {
+                                      [sectionObj.occurrence_template]: sectionObj.occurrence_number + 1
+                                    })
+                                  }, true);
+                                }}
+                              >
+                                {`+ ${addMoreLabel}`}
+                              </Button>
+                            )}
+                            {canRemove && (
+                              <Button
+                                size='small'
+                                className={AVAClass.AVAButton}
+                                style={{ color: 'white', backgroundColor: '#b71c1c' }}
+                                onClick={() => {
+                                  // Clear field values for this occurrence before removing it
+                                  const fieldsToReset = sectionObj.fields;
+                                  for (const fieldName of fieldsToReset) {
+                                    if (reactData.fields[fieldName]) {
+                                      reactData.fields[fieldName].value = null;
+                                      reactData.fields[fieldName].valueText = null;
+                                    }
+                                  }
+                                  updateReactData({
+                                    fields: reactData.fields,
+                                    activeSectionOccurrences: Object.assign({}, reactData.activeSectionOccurrences, {
+                                      [sectionObj.occurrence_template]: sectionObj.occurrence_number - 1
+                                    })
+                                  }, true);
+                                }}
+                              >
+                                {'- Remove'}
+                              </Button>
+                            )}
                           </Box>
                         );
                       })()}
@@ -4879,10 +4937,19 @@ export default ({ request = {}, onClose }) => {
                     <Button
                       onClick={async () => {
                         const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
-                        await handleSave({
+                        const saveResponse = await handleSave({
                           document_id,
                           final: false
                         });
+                        if (saveResponse?.goodPut) {
+                          updateReactData({
+                            alert: {
+                              severity: 'success',
+                              title: 'Saved',
+                              message: 'Your form has been saved.'
+                            }
+                          }, true);
+                        }
                       }}
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'lightcyan', color: 'black' }}
