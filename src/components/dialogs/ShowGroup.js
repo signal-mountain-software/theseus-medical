@@ -126,6 +126,25 @@ export default ({ options, defaults, onClose, onAbort }) => {
       response['__PRIVATE_GROUPS__'] = { group_id: '__PRIVATE_GROUPS__', group_name: 'Private Groups', group_type: 'header', role: 'header', level: 1 };
       for (let g of privateGroupList) { response[g.group_id] = g; }
     }
+
+    // For explicitly-requested group IDs still missing from response, add them unconditionally.
+    // pGroup_id in a menu directive is a trusted instruction and should bypass all access filtering.
+    for (const id of explicitGroupIds) {
+      if (response[id]) { continue; }
+      const adminEntry = (groups?.adminHierarchy || []).find(g => g.id === id);
+      if (adminEntry) {
+        response[id] = { group_name: adminEntry.name, group_type: 'admin', group_id: id, role: 'member', level: adminEntry.level || 2 };
+        continue;
+      }
+      if (groups?.publicGroups?.[id]) {
+        response[id] = { group_name: groups.publicGroups[id].group_name, group_id: id, group_type: 'public', role: groups.publicGroups[id].role || 'member', level: 2 };
+        continue;
+      }
+      if (groups?.privateGroups?.[id]) {
+        response[id] = { group_name: groups.privateGroups[id].group_name, group_id: id, group_type: 'private', role: groups.privateGroups[id].role || 'member', level: 2 };
+      }
+    }
+
     return response;
   };
 

@@ -14,7 +14,7 @@ const IMPORT_TYPES = [
   {
     value: 'create_people',
     label: 'Create new accounts',
-    description: 'Columns: First Name, Last Name (and optional email, cell phone). Creates People, SessionsV2, and PeopleAccounts records.'
+    description: 'Columns: First Name + Last Name, or a single Name/Full Name column (and optional email, cell phone). Creates People, SessionsV2, and PeopleAccounts records.'
   },
   {
     value: 'append_groups',
@@ -29,7 +29,7 @@ const IMPORT_TYPES = [
   {
     value: 'dd_import',
     label: 'Add Data to People records via Data Dictionary',
-    description: 'Columns: user_id, then one or more Data Dictionary field_key column headers. Stores values directly in the People record at each field\'s defined path.'
+    description: 'Columns: user_id, then one or more Data Dictionary field_key column headers. Stores values in the People or SessionsV2 record based on the field\'s source. Boolean fields (true/false/yes/no) are automatically coerced.'
   },
   {
     value: 'family_groups',
@@ -78,13 +78,14 @@ const detectImportType = (headers) => {
   if (!headers || headers.length === 0) return '';
   const lowerHeaders = headers.map(h => String(h).toLowerCase().trim());
   const hasFirstLast = lowerHeaders.some(h => h.includes('first')) && lowerHeaders.some(h => h.includes('last'));
+  const hasFullName = lowerHeaders.some(h => h === 'name' || h === 'full name' || h === 'full_name' || h === 'fullname');
   const hasUserId = lowerHeaders[0].includes('user') || lowerHeaders[0].includes('person') || lowerHeaders[0].includes('id');
   const hasContactKeyword = lowerHeaders.some(h =>
     h.includes('phone') || h.includes('cell') || h.includes('home') || h.includes('work') || h.includes('email') || h.includes('mail')
   );
   const hasPrimaryId = lowerHeaders[0].includes('primary');
   const isMergePair = lowerHeaders[0].endsWith('_a') && lowerHeaders.length > 1 && lowerHeaders[1].endsWith('_b');
-  if (hasFirstLast && !hasUserId) return 'create_people';
+  if ((hasFirstLast || hasFullName) && !hasUserId) return 'create_people';
   if (hasPrimaryId) return 'family_groups';
   if (hasUserId && hasContactKeyword) return 'update_contact';
   if (isMergePair) return 'merge_accounts';
@@ -173,15 +174,32 @@ export default ({ reactData }) => {
 
   // ── import processors ─────────────────────────────────────────────────────
 
+  const parseFullName = (raw) => {
+    const trimmed = String(raw || '').trim();
+    if (!trimmed) return { firstName: '', lastName: '' };
+    if (trimmed.includes(',')) {
+      const commaIdx = trimmed.indexOf(',');
+      const lastName = trimmed.slice(0, commaIdx).trim();
+      const firstName = trimmed.slice(commaIdx + 1).trim();
+      return { firstName, lastName };
+    }
+    const parts = trimmed.split(/\s+/);
+    const lastName = parts.pop();
+    const firstName = parts.join(' ');
+    return { firstName, lastName };
+  };
+
   const processCreatePeople = async (headers, rows) => {
     const lowerHeaders = headers.map(h => String(h).toLowerCase().trim());
     const firstIdx = lowerHeaders.findIndex(h => h.includes('first'));
     const lastIdx = lowerHeaders.findIndex(h => h.includes('last'));
+    const fullNameIdx = lowerHeaders.findIndex(h => h === 'name' || h === 'full name' || h === 'full_name' || h === 'fullname');
     const emailIdx = lowerHeaders.findIndex(h => (h.includes('email') || h.includes('mail')) && !h.includes('alt'));
     const cellIdx = lowerHeaders.findIndex(h => h.includes('cell') || h.includes('mobile') || (h.includes('phone') && !h.includes('home') && !h.includes('work')));
 
-    if (firstIdx === -1 || lastIdx === -1) {
-      return { successes: 0, errors: [{ rowNum: 0, message: 'Could not find "First Name" and "Last Name" columns.' }], warnings: [] };
+    const useSingleNameCol = fullNameIdx !== -1 && (firstIdx === -1 || lastIdx === -1);
+    if (!useSingleNameCol && (firstIdx === -1 || lastIdx === -1)) {
+      return { successes: 0, errors: [{ rowNum: 0, message: 'Could not find name columns. Expected "First Name" + "Last Name", or a single "Name" / "Full Name" column.' }], warnings: [] };
     }
 
     // Load client style once for user_id format
@@ -201,17 +219,31 @@ export default ({ reactData }) => {
     const errors = [];
     const warnings = [];
     const usedIds = new Set(); // track IDs generated in this batch
+    const seenNames = new Set(); // track names seen in this spreadsheet to catch in-batch duplicates
     const assignedIds = new Array(rows.length).fill('');
 
     for (let i = 0; i < rows.length; i++) {
       const rowNum = i + 2; // 1-based, +1 for header row
       const row = rows[i];
-      const firstName = titleCase(String(row[firstIdx] || '').trim());
-      const lastName = titleCase(String(row[lastIdx] || '').trim());
+      let firstName, lastName;
+      if (useSingleNameCol) {
+        const parsed = parseFullName(row[fullNameIdx]);
+        firstName = titleCase(parsed.firstName);
+        lastName = titleCase(parsed.lastName);
+      } else {
+        firstName = titleCase(String(row[firstIdx] || '').trim());
+        lastName = titleCase(String(row[lastIdx] || '').trim());
+      }
       if (!firstName || !lastName) {
         errors.push({ rowNum, message: `Row ${rowNum}: missing first or last name — skipped.` });
         continue;
       }
+      const nameKey = `${firstName.toLowerCase()} ${lastName.toLowerCase()}`;
+      if (seenNames.has(nameKey)) {
+        warnings.push(`Row ${rowNum} (${firstName} ${lastName}): duplicate name in spreadsheet — skipped.`);
+        continue;
+      }
+      seenNames.add(nameKey);
       const email = emailIdx >= 0 ? String(row[emailIdx] || '').trim().toLowerCase() : '';
       const cell = cellIdx >= 0 ? toStoragePhone(String(row[cellIdx] || '').trim()) : '';
 
@@ -505,12 +537,21 @@ export default ({ reactData }) => {
           return src === 'person' || src === 'peoplerec' || src === 'people';
         });
 
-        if (!personCandidate || !personCandidate.path) {
-          warnings.push(`Column "${fieldKey}": no person-sourced path found in DataDictionaryV3 — column will be skipped.`);
+        const sessionCandidate = candidates.find(c => {
+          const src = String(c.source || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          return src === 'session' || src === 'sessionrec' || src === 'sessionsv2' || src === 'sessions';
+        });
+
+        const activeCandidate = personCandidate || sessionCandidate;
+        const targetTable = personCandidate ? 'people' : (sessionCandidate ? 'session' : null);
+
+        if (!activeCandidate || !activeCandidate.path) {
+          warnings.push(`Column "${fieldKey}": no person- or session-sourced path found in DataDictionaryV3 — column will be skipped.`);
           ddMap[fieldKey] = { path: null, found: false };
         } else {
-          const rawPath = Array.isArray(personCandidate.path) ? personCandidate.path[0] : personCandidate.path;
-          ddMap[fieldKey] = { path: rawPath, found: true };
+          const rawPath = Array.isArray(activeCandidate.path) ? activeCandidate.path[0] : activeCandidate.path;
+          const valueType = String(activeCandidate.type || dictionaryRec.type || activeCandidate.value_type || activeCandidate.data_type || dictionaryRec.value_type || dictionaryRec.data_type || '').toLowerCase();
+          ddMap[fieldKey] = { path: rawPath, found: true, target: targetTable, valueType };
         }
       } catch (err) {
         warnings.push(`Column "${fieldKey}": error loading DataDictionaryV3 record — column will be skipped.`);
@@ -533,7 +574,29 @@ export default ({ reactData }) => {
           continue;
         }
         const updatedPerson = Object.assign({}, existing.Item);
-        let anyChange = false;
+        let anyPersonChange = false;
+
+        // Fetch SessionsV2 record lazily only if needed
+        const sessionFieldKeys = fieldKeys.filter(k => ddMap[k]?.found && ddMap[k]?.target === 'session');
+        let updatedSession = null;
+        let anySessionChange = false;
+        if (sessionFieldKeys.length > 0) {
+          const sessionResult = await dbClient.get({ Key: { session_id: person_id }, TableName: 'SessionsV2' }).promise().catch(() => null);
+          if (sessionResult?.Item) {
+            updatedSession = Object.assign({}, sessionResult.Item);
+          } else {
+            warnings.push(`Row ${rowNum} (${person_id}): no SessionsV2 record found — session fields skipped.`);
+          }
+        }
+
+        const coerceValue = (rawVal, valueType) => {
+          if (valueType === 'boolean' || valueType === 'bool') {
+            const lower = rawVal.toLowerCase();
+            if (['true', 'yes', '1', 'y'].includes(lower)) return true;
+            if (['false', 'no', '0', 'n'].includes(lower)) return false;
+          }
+          return rawVal;
+        };
 
         for (let colIdx = 0; colIdx < fieldKeys.length; colIdx++) {
           const fieldKey = fieldKeys[colIdx];
@@ -541,13 +604,25 @@ export default ({ reactData }) => {
           if (!info || !info.found || !info.path) continue;
           const rawVal = String(row[colIdx + 1] || '').trim();
           if (!rawVal) continue;
-          setAtPath(updatedPerson, info.path, rawVal);
-          anyChange = true;
+          const coercedVal = coerceValue(rawVal, info.valueType || '');
+          if (info.target === 'session') {
+            if (updatedSession) {
+              setAtPath(updatedSession, info.path, coercedVal);
+              anySessionChange = true;
+            }
+          } else {
+            setAtPath(updatedPerson, info.path, coercedVal);
+            anyPersonChange = true;
+          }
         }
 
-        if (anyChange) {
+        if (anyPersonChange) {
           updatedPerson.last_update = new Date().toISOString();
           await putDb({ TableName: 'People', Item: updatedPerson });
+        }
+        if (anySessionChange && updatedSession) {
+          updatedSession.last_update = new Date().toISOString();
+          await putDb({ TableName: 'SessionsV2', Item: updatedSession });
         }
         successes++;
       } catch (err) {

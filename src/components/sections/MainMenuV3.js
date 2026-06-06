@@ -1576,7 +1576,10 @@ export default ({ start_at }) => {
         updateReactData({
           greetingName: tempName || 'AVA User',
           greetingWords: makeGreeting(),
-          ...(userUiTilesOverride !== null ? { uiTilesOverride: userUiTilesOverride } : {}),
+          ...(userUiTilesOverride !== null ? {
+            uiTilesOverride: userUiTilesOverride,
+            editFavorites: !userUiTilesOverride,
+          } : {}),
         }, true);
         // Build the menu directly (uiTilesOverride is now set so useTileUI is correct).
         await rebuildMenuHierarchy({ includeLoadingState: true });
@@ -1678,7 +1681,7 @@ export default ({ start_at }) => {
         return state.session.client_id;
       }
       else if (sourceValue === '<today_ymd>') {
-        return makeDate(reactData.current_time, { timeZone: state.session.client_timezone }).ymd
+        return makeDate(reactData.current_time, { timeZone: state.session.client_timezone }).ymd;
       }
       if (Array.isArray(sourceValue)) {
         return sourceValue.map((entry) => replaceTokens(entry));
@@ -1775,7 +1778,7 @@ export default ({ start_at }) => {
             renderFunctionCall: false
           }, true);
         }}
-        onSave={(saveResponse) => { 
+        onSave={(saveResponse) => {
           const closeAlert = buildAlertFromCloseResponse(saveResponse);
           start();
           const reactUpd = {
@@ -2116,7 +2119,7 @@ export default ({ start_at }) => {
 
     const updatedChildren = [...(parentRec.Item.children || [])];
     if (!updatedChildren.includes(newMenuId)) {
-      updatedChildren.push(newMenuId);
+      updatedChildren.unshift(newMenuId);
     }
 
     await dbClient
@@ -2332,7 +2335,7 @@ export default ({ start_at }) => {
       : null;
     const tileColor = this_item.color || parentColor || stringToColor(this_item.menu_id);
     // const tileOpacity = Math.max(0.5, 1 - (level_index * 0.2));
-    const tileOpacity = 1; 
+    const tileOpacity = 1;
     const isActiveParent = (menuItemType === 'menu') &&
       (reactData.level_active_parent?.[level_index + 1] === this_item.menu_id);
     const hasChildren = (menuItemType === 'menu') && Array.isArray(this_item.children) && (this_item.children.length > 0);
@@ -2345,6 +2348,8 @@ export default ({ start_at }) => {
         style={{
           marginRight: useTileUI ? '8px' : '6px',
           marginLeft: useTileUI ? '8px' : '6px',
+          marginTop: useTileUI ? null : (accessibleDepth === 0 ? '16px' : 0),
+          paddingRight: useTileUI ? null : '10px',
           borderRadius: ('30px 30px 30px 30px'),
           backgroundColor: hexToRgb(tileColor, tileOpacity),
           textDecoration: 'none',
@@ -2354,7 +2359,7 @@ export default ({ start_at }) => {
           minWidth: useTileUI ? undefined : 'calc(100% - 12px)',
           minHeight: useTileUI ? undefined : 86,
           maxHeight: useTileUI ? undefined : 'none',
-          marginBottom: useTileUI ? 10 : 10,
+          marginBottom: useTileUI ? 10 : 2,
           ...((isActiveParent && useTileUI) ? {
             outline: `8px solid black`,
             filter: 'brightness(1.18)',
@@ -2545,7 +2550,7 @@ export default ({ start_at }) => {
             height: useTileUI ? 100 : 'auto',
           }}
         >
-          {useTileUI && reactData.editFavorites && !isFavoriteCard &&
+          {useTileUI && reactData.editFavorites && !isFavoriteCard && normalizedMenuType !== 'menu' &&
             <Box
               display='flex'
               justifyContent='center'
@@ -2724,7 +2729,7 @@ export default ({ start_at }) => {
               </IconButton>
             </Box>
           }
-          {!useTileUI && reactData.editFavorites && !isFavoriteCard &&
+          {!useTileUI && reactData.editFavorites && !isFavoriteCard && normalizedMenuType !== 'menu' &&
             <Box
               display='flex'
               justifyContent='flex-end'
@@ -3825,7 +3830,7 @@ export default ({ start_at }) => {
                         updateReactData({ addMenuDialogPhone: digits }, true);
                       }}
                       helperText={(reactData.addMenuDialogPhone || '').length === 10
-                        ? `Will dial: +1-${(reactData.addMenuDialogPhone).slice(0,3)}-${(reactData.addMenuDialogPhone).slice(3,6)}-${(reactData.addMenuDialogPhone).slice(6)}`
+                        ? `Will dial: +1-${(reactData.addMenuDialogPhone).slice(0, 3)}-${(reactData.addMenuDialogPhone).slice(3, 6)}-${(reactData.addMenuDialogPhone).slice(6)}`
                         : `${(reactData.addMenuDialogPhone || '').length}/10 digits entered`
                       }
                     />
