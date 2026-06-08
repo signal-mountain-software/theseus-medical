@@ -2658,7 +2658,8 @@ export default ({ request = {}, onClose }) => {
           errors_in_stage: 0,
         };
       }
-      if (okToShowSection(sectionObj)) {
+      if (okToShowSection(sectionObj) &&
+          !(sectionObj.occurrence_template && sectionObj.occurrence_number > (reactData.activeSectionOccurrences?.[sectionObj.occurrence_template] ?? 1))) {
         for (const this_field of sectionObj.fields) {
           // this_field may be a plain string or an object with a field_name property
           // (repeating sections store objects so each occurrence has its own resolved field_name)
