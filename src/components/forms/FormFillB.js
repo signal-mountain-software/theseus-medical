@@ -4225,6 +4225,7 @@ export default ({ request = {}, onClose }) => {
         open={(forceRedisplay && (reactData.version > 0)) || true}
         key={`wholeScreen__`}
         onClose={handleAbort}
+        disableBackdropClick
         classes={{ paper: classes.clientBackground }}
         maxWidth={false}
         BackdropProps={reactData.options?.mode === 'printPDF' ? { style: { visibility: 'hidden' } } : undefined}
