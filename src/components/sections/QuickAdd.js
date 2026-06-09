@@ -1264,8 +1264,8 @@ export default ({ onClose, options = {} }) => {
                 autoHide: false
               });
             } else {
-              // Valid pre-auth: parse name for pre-fill then apply result
-              const nameParts = enteredName.trim().split(/\s+/);
+              // Valid pre-auth: parse name for pre-fill only if the entry was a name (not email/phone/id)
+              const nameParts = validation.lookupType === 'name' ? enteredName.trim().split(/\s+/) : [];
               updateReactData({
                 parsed_first_name: nameParts[0] || '',
                 parsed_last_name: nameParts.length > 1 ? nameParts.slice(1).join(' ') : '',
@@ -1301,7 +1301,8 @@ export default ({ onClose, options = {} }) => {
               {
                 text: `Create a New Account`,
                 function: () => {
-                  const nameParts = enteredName.trim().split(/\s+/);
+                  // Only pre-fill name fields if the entry was actually a name (not email/phone/id)
+                  const nameParts = validation.lookupType === 'name' ? enteredName.trim().split(/\s+/) : [];
                   const firstName = nameParts[0] || '';
                   const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
                   setReactData(prev => ({
@@ -2667,11 +2668,14 @@ export default ({ onClose, options = {} }) => {
         {reactData.stage === 'prompt_for_name' && !reactData.verification_stage && (
           <Box style={{ marginTop: '16px' }}>
             <Typography variant="h6" style={{ marginBottom: '16px' }}>
-              First, let's check to see if you already have an account. Please enter your name, e-Mail address, phone number, or User ID.  If we find a match, we'll ask you to verify your account.  If not, we'll help you create a new one.
+              {reactData.preauth_match_on === 'name'
+                ? `Please enter your full name.`
+                : `First, let's check to see if you already have an account. Please enter your name, e-Mail address, phone number, or User ID.  If we find a match, we'll ask you to verify your account.  If not, we'll help you create a new one.`
+              }
             </Typography>
             <TextField
               fullWidth
-              label="Name (first and last), e-Mail, Phone Number, or User ID"
+              label={reactData.preauth_match_on === 'name' ? 'Full name (first and last)' : 'Name (first and last), e-Mail, Phone Number, or User ID'}
               value={reactData.entered_name}
               onChange={(event) => {
                 const value = event?.target?.value || '';

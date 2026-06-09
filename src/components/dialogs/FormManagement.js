@@ -1064,23 +1064,32 @@ export default ({ defaults, onClose }) => {
     let masterFormList = {};
     // and build myFormListObj with one object for each form assigned to members of this person's groups
     // get all the forms that are assigned people in this group 
-    let allForms = await dbClient
-      .query({
+    let allFormsItems = [];
+    let lastFormsKey = undefined;
+    do {
+      const formsQueryParams = {
         KeyConditionExpression: 'client_id = :c',
         TableName: 'Forms',
         ExpressionAttributeValues: {
           ':c': state.session.client_id,
         }
-      })
-      .promise()
-      .catch(error => {
-        if (error.code === 'NetworkingError') {
-          cl(`Security Violation or no Internet Connection`);
-        }
-        cl(`Error reading Forms; error is ${error}`);
-      });
-    if (recordExists(allForms)) {
-      for (let formRec of allForms.Items) {
+      };
+      if (lastFormsKey) { formsQueryParams.ExclusiveStartKey = lastFormsKey; }
+      const allForms = await dbClient
+        .query(formsQueryParams)
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            cl(`Security Violation or no Internet Connection`);
+          }
+          cl(`Error reading Forms; error is ${error}`);
+        });
+      if (recordExists(allForms)) {
+        allFormsItems = allFormsItems.concat(allForms.Items || []);
+      }
+      lastFormsKey = allForms?.LastEvaluatedKey;
+    } while (lastFormsKey);
+    for (let formRec of allFormsItems) {
         // due_by works like this...
         //   if due_by is single date and the date is in the future, use that date
         //   if due_by is an array of dates, take the nearest date that is in the future
@@ -1118,7 +1127,6 @@ export default ({ defaults, onClose }) => {
           active: formRec.active || false
         };
       }
-    }
     // are there one or more groups that require this form?
     let allGroups = await dbClient
       .query({
