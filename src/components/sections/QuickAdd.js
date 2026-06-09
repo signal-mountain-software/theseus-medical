@@ -113,7 +113,7 @@ export default ({ onClose, options = {} }) => {
     errorList: {},
     new_account_prompts: {},
     all_account_prompts: [], // Unfiltered prompts, used for auto_next_account_type lookup
-    administrative_account: (state?.user ? ['admin', 'support', 'master'].includes(state.user.account_class) : false),
+    administrative_account: (state?.user ? ['admin', 'master'].includes(state.user.account_class) : false),
     client_id: state?.session?.client_id || options?.client_id || null,
     selected_account_type: '',
     selected_account_config: null,
