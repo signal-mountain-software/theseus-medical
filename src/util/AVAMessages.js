@@ -1008,7 +1008,14 @@ export async function printDocumentB({ documentList, options = {} }) {
     //   sections.forEach((sectionObj, sectionNdx) => {
     for (const sectionObj of sections) {
       if (okToShowSection(sectionObj, fields)) {
-        pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', fontSize: (page.font.size.medium * 1.2), align: 'left', before: 2, after: 1 });
+        if (sectionObj.section_header) {
+          const sectionHeaderBlocks = htmlToBlocks(sectionObj.section_header);
+          sectionHeaderBlocks.forEach((block, bIdx) => {
+            pdfLine(block, { protectOrphan: bIdx === 0, style: 'bold', fontSize: (page.font.size.medium * 1.2), align: 'left', before: bIdx === 0 ? 2 : 0, after: 1 });
+          });
+        } else {
+          pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', fontSize: (page.font.size.medium * 1.2), align: 'left', before: 2, after: 1 });
+        }
         //  sectionObj.fields.forEach((this_field, fieldNdx) => {
         for (const this_field of sectionObj.fields) {
           if (fields.hasOwnProperty(this_field) && !(fields[this_field].ignore) && !(fields[this_field].hidden)) {
@@ -1068,6 +1075,14 @@ export async function printDocumentB({ documentList, options = {} }) {
               case 'header': {
                 const headerBlocks = htmlToBlocks(fields[this_field].prompt.value);
                 headerBlocks.forEach((block) => {
+                  pdfLine(block, { style: 'normal', size: 'medium', align: 'left', before: 0, after: 1, noNewLine: false });
+                });
+                break;
+              }
+              case 'html': {
+                // html fields store their display content in .value (not .prompt.value)
+                const htmlBlocks = htmlToBlocks(fields[this_field].value || fields[this_field].prompt?.value || '');
+                htmlBlocks.forEach((block) => {
                   pdfLine(block, { style: 'normal', size: 'medium', align: 'left', before: 0, after: 1, noNewLine: false });
                 });
                 break;

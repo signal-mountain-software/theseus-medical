@@ -2135,6 +2135,30 @@ export default ({ request = {}, onClose }) => {
     return response;
   };
 
+  // Returns a shallow copy of reactData.fields with all %%...%% tokens in prompt.value resolved,
+  // and for html-type fields the .value also resolved.  Used before calling printDocumentB so
+  // the PDF sees the same substituted text that the screen renders.
+  const resolveFieldsForPrint = () => {
+    const resolved = {};
+    for (const [fieldName, fieldRec] of Object.entries(reactData.fields)) {
+      if (!fieldRec) { continue; }
+      const resolvedPromptValue = fieldRec.prompt?.value
+        ? reconcilePrompt({ rawValue: fieldRec.prompt.value, this_field: fieldName, includeRequiredMarker: false })
+        : fieldRec.prompt?.value;
+      const resolvedValue = (fieldRec.type === 'html' && typeof fieldRec.value === 'string')
+        ? reconcilePrompt({ rawValue: fieldRec.value, this_field: fieldName, includeRequiredMarker: false })
+        : fieldRec.value;
+      resolved[fieldName] = {
+        ...fieldRec,
+        value: resolvedValue,
+        prompt: fieldRec.prompt
+          ? { ...fieldRec.prompt, value: resolvedPromptValue }
+          : fieldRec.prompt
+      };
+    }
+    return resolved;
+  };
+
   // **************************
 
   const processFieldForDisplay = async (fieldName) => {
@@ -3887,7 +3911,7 @@ export default ({ request = {}, onClose }) => {
         await printDocumentB({
           documentList: [{
             sections: displaySections,
-            fields: reactData.fields,
+            fields: resolveFieldsForPrint(),
             signatures,
             docID: reactData.document_id,
             client_id: state.session.client_id,
@@ -5004,7 +5028,7 @@ export default ({ request = {}, onClose }) => {
                         await printDocumentB({
                           documentList: [{
                             sections: displaySections,
-                            fields: reactData.fields,
+                            fields: resolveFieldsForPrint(),
                             signatures,
                             docID: reactData.document_id,
                             client_id: state.session.client_id,
