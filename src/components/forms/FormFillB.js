@@ -9,7 +9,7 @@ import { makeDate, makeTime, addDays } from '../../util/AVADateTime';
 import AVAConfirm from './AVAConfirm';
 import AVAUploadFile from '../../util/AVAUploadFile';
 
-import { printFromHTML, sendMessages, printDocumentB } from '../../util/AVAMessages';
+import { printFromHTML, sendMessages, printDocumentHtmlB, printElementWysiwygB } from '../../util/AVAMessages';
 import { printEmptyDocument } from '../../util/AVAMessages';
 import SignatureCanvas from 'react-signature-canvas';
 import Select from "react-dropdown-select";
@@ -222,6 +222,8 @@ export default ({ request = {}, onClose }) => {
 
   // This ref is to capture the entire form contents for HTML output
   const formContainerRef = React.useRef(null);
+  // Print capture area excludes the bottom action bar to better match final form output.
+  const printContentRef = React.useRef(null);
 
   const generateHtmlOutput = () => {
     // Access outerHTML when needed
@@ -2159,6 +2161,54 @@ export default ({ request = {}, onClose }) => {
     return resolved;
   };
 
+  const collectSignaturesForPrint = () => {
+    let signatures = [];
+    for (const fieldName in reactData.fields) {
+      if (reactData.fields[fieldName]?.type === 'signature') {
+        const sigRefNumber = reactData.fields[fieldName].options?.sigRefNumber ?? 0;
+        if (reactData.fields[fieldName].value && String(reactData.fields[fieldName].value).startsWith('data:image/')) {
+          signatures[sigRefNumber] = reactData.fields[fieldName].value;
+        }
+      }
+    }
+    return signatures;
+  };
+
+  const printWithLegacyPdfEngine = async () => {
+    const signatures = collectSignaturesForPrint();
+    const { displaySections } = getDisplayState();
+    // Use printDocumentHtmlB: constructs clean HTML from field data and renders it via
+    // jsPDF's doc.html() engine, which preserves <strong>, <ol>, <li>, <table> etc.
+    await printDocumentHtmlB({
+      documentList: [{
+        sections: displaySections,
+        fields: resolveFieldsForPrint(),
+        signatures,
+        docID: reactData.document_id,
+        client_id: state.session.client_id,
+        title: reactData.document_title
+      }]
+    });
+  };
+
+  const printCurrentForm = async () => {
+    try {
+      if (printContentRef.current) {
+        await printElementWysiwygB({
+          element: printContentRef.current,
+          docID: reactData.document_id,
+          client_id: state.session.client_id,
+          title: reactData.document_title
+        });
+        return;
+      }
+    } catch (error) {
+      console.error('WYSIWYG print failed, falling back to legacy PDF renderer:', error);
+    }
+
+    await printWithLegacyPdfEngine();
+  };
+
   // **************************
 
   const processFieldForDisplay = async (fieldName) => {
@@ -3896,28 +3946,8 @@ export default ({ request = {}, onClose }) => {
       }
       else if (reactData.options.mode === 'printPDF') {
         await initialize();
-        // Collect signature data from field values (signature canvases may not be mounted)
-        let signatures = [];
-        for (const fieldName in reactData.fields) {
-          if (reactData.fields[fieldName]?.type === 'signature') {
-            const sigRefNumber = reactData.fields[fieldName].options?.sigRefNumber ?? 0;
-            if (reactData.fields[fieldName].value && String(reactData.fields[fieldName].value).startsWith('data:image/')) {
-              signatures[sigRefNumber] = reactData.fields[fieldName].value;
-            }
-          }
-        }
-        // Use getDisplayState to get the filtered, resolved section/field list
-        const { displaySections } = getDisplayState();
-        await printDocumentB({
-          documentList: [{
-            sections: displaySections,
-            fields: resolveFieldsForPrint(),
-            signatures,
-            docID: reactData.document_id,
-            client_id: state.session.client_id,
-            title: reactData.document_title
-          }]
-        });
+        // Keep legacy PDF generation in auto-print mode where the dialog is intentionally hidden.
+        await printWithLegacyPdfEngine();
         onClose('print', {
           document_id: reactData.document_id,
           document_title: reactData.document_title,
@@ -4263,8 +4293,9 @@ export default ({ request = {}, onClose }) => {
       >
         {!isInitializing() &&
           <React.Fragment>
-            <Box m={2}>
-              <Typography style={AVATextStyle({
+            <div ref={printContentRef}>
+              <Box m={2}>
+                <Typography style={AVATextStyle({
                 size: 1.8, bold: true, margin: {
                   bottom: 1,
                   top: 1,
@@ -4916,6 +4947,7 @@ export default ({ request = {}, onClose }) => {
                 </Typography>
               }
             </DialogContent>
+            </div>
             <Box
               display='flex'
               flexDirection='row'
@@ -5015,26 +5047,7 @@ export default ({ request = {}, onClose }) => {
                           const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
                           await handleSave({ document_id, final: false });
                         }
-                        let signatures = [];
-                        for (const fieldName in reactData.fields) {
-                          if (reactData.fields[fieldName]?.type === 'signature') {
-                            const sigRefNumber = reactData.fields[fieldName].options?.sigRefNumber ?? 0;
-                            if (reactData.fields[fieldName].value && String(reactData.fields[fieldName].value).startsWith('data:image/')) {
-                              signatures[sigRefNumber] = reactData.fields[fieldName].value;
-                            }
-                          }
-                        }
-                        const { displaySections } = getDisplayState();
-                        await printDocumentB({
-                          documentList: [{
-                            sections: displaySections,
-                            fields: resolveFieldsForPrint(),
-                            signatures,
-                            docID: reactData.document_id,
-                            client_id: state.session.client_id,
-                            title: reactData.document_title
-                          }]
-                        });
+                        await printCurrentForm();
                       }}
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'lightblue', color: 'black' }}

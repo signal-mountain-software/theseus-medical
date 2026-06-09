@@ -8,6 +8,7 @@ import { getObservationItems } from './AVAObservations';
 import { makeDate } from './AVADateTime';
 
 import { jsPDF } from "jspdf";
+import html2canvas from 'html2canvas';
 
 let page = {};
 let pdfCurrent = {};
@@ -986,6 +987,393 @@ function htmlToBlocks(raw) {
   return text.split('\n').map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
 }
 
+// WYSIWYG capture path: rasterize the currently rendered form element and place it into
+// one or more PDF pages, preserving visual HTML/CSS output as rendered on screen.
+export async function printElementWysiwygB({ element, client_id, docID, title, options = {} }) {
+  if (!(element instanceof Element)) {
+    throw new Error('printElementWysiwygB requires a valid DOM element');
+  }
+
+  await pdfLaunch({ client_id, pdf: options.pdf || {} });
+
+  const safeClientId = client_id || page.client_id || 'unknown_client';
+  const safeDocId = docID || `document_${Date.now()}`;
+  page.title = title || '';
+  page.document_id = safeDocId;
+  page.client_id = safeClientId;
+  page.footerText = `AVA reference: ${safeClientId}_${safeDocId}`;
+
+  const captureScale = options.scale || Math.max(1.5, Math.min(window.devicePixelRatio || 1, 2));
+
+  // Clone the element's content into a fresh container attached directly to document.body.
+  // This completely escapes the MUI Dialog's overflow:auto chain — which is why the
+  // onclone approach didn't work: MUI CSS class rules were still clipping the clone.
+  // After attaching, we walk every descendant and force overflow:visible / height:auto
+  // with !important so no class-based rule can re-clip the content.
+  const printContainer = document.createElement('div');
+  printContainer.style.cssText =
+    'position:fixed;left:-9999px;top:0;width:900px;background:#ffffff;' +
+    'overflow:visible;pointer-events:none;z-index:-1;';
+  printContainer.innerHTML = element.innerHTML;
+  document.body.appendChild(printContainer);
+
+  const safeTagsForAutoHeight = new Set(['INPUT', 'TEXTAREA', 'SELECT', 'IMG', 'VIDEO', 'CANVAS', 'SVG']);
+  for (const el of printContainer.querySelectorAll('*')) {
+    el.style.setProperty('overflow', 'visible', 'important');
+    el.style.setProperty('overflow-y', 'visible', 'important');
+    el.style.setProperty('max-height', 'none', 'important');
+    if (!safeTagsForAutoHeight.has((el.tagName || '').toUpperCase())) {
+      el.style.setProperty('height', 'auto', 'important');
+    }
+  }
+
+  // Two animation frames let the browser measure the natural layout height after style overrides.
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  const captureWidth = printContainer.offsetWidth;
+  const captureHeight = printContainer.scrollHeight;
+
+  let canvas;
+  try {
+    canvas = await html2canvas(printContainer, {
+      scale: captureScale,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      scrollX: 0,
+      scrollY: 0,
+      width: captureWidth,
+      height: captureHeight,
+      windowWidth: captureWidth,
+      windowHeight: captureHeight
+    });
+  } finally {
+    document.body.removeChild(printContainer);
+  }
+
+  if (!canvas.width || !canvas.height) {
+    throw new Error('Failed to capture printable content');
+  }
+
+  const printableWidth = page.width - page.margin.left - page.margin.right;
+  const printableHeight = page.height - page.margin.top - page.margin.bottom;
+  const sourcePageHeight = Math.max(1, Math.floor((printableHeight * canvas.width) / printableWidth));
+
+  let sourceY = 0;
+  let pageIndex = 0;
+
+  while (sourceY < canvas.height) {
+    const sliceHeight = Math.min(sourcePageHeight, canvas.height - sourceY);
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = canvas.width;
+    sliceCanvas.height = sliceHeight;
+
+    const ctx = sliceCanvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Failed to create print canvas context');
+    }
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+    ctx.drawImage(canvas, 0, sourceY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+
+    const imageData = sliceCanvas.toDataURL('image/jpeg', 0.95);
+    const renderedHeight = (sliceHeight * printableWidth) / canvas.width;
+
+    if (pageIndex > 0) {
+      doc.addPage([page.width, page.height], 'portrait');
+    }
+
+    doc.addImage(imageData, 'JPEG', page.margin.left, page.margin.top, printableWidth, renderedHeight, undefined, 'FAST');
+    doc.setFontSize(page.font.size.tiny);
+    doc.text(page.footerText, page.centerPoint, page.height - (page.margin.bottom / 2), { align: 'center' });
+
+    sourceY += sliceHeight;
+    pageIndex++;
+  }
+
+  doc.save(`${safeDocId}.pdf`);
+
+  let pdfInfo = {
+    s3Key: `${safeClientId}_${safeDocId}.pdf`,
+    s3Bucket: (options.S3_bucket || 'theseus-medical-storage')
+  };
+  let pdfResp = await savePDF(doc, pdfInfo, { local: false, S3: true, onSave: false });
+  if (pdfResp.responseData.s3Resp) {
+    pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
+  }
+
+  return [pdfInfo];
+}
+
+// Hybrid print engine: pdfLine (doc.text) for all plain-text fields — so Unicode radio
+// glyphs, underlines, and fill-in blanks render correctly — and doc.html() ONLY for
+// 'header' and 'html' field types that contain rich HTML markup (bold, italic, colors,
+// lists, etc.).  Y-position is tracked explicitly so both engines stay in sync on the
+// same module-level doc.
+export async function printDocumentHtmlB({ documentList, options = {} }) {
+  let response = [];
+  if (!Array.isArray(documentList)) {
+    documentList = [documentList];
+  }
+
+  for (const docInfo of documentList) {
+    const { sections, fields, docID, client_id, title, signatures = [] } = docInfo;
+    const safeDocId = docID || `document_${Date.now()}`;
+    const safeClientId = client_id || 'unknown';
+
+    // Initialize the PDF engine — sets up the module-level doc, page, and pdfCurrent
+    await pdfLaunch({ client_id });
+    page.title = title;
+    page.document_id = safeDocId;
+    page.client_id = safeClientId;
+    page.footerText = `AVA reference: ${safeClientId}_${safeDocId}`;
+
+    pdfLine(title || '', { style: 'bold', fontSize: (page.font.size.large * 1.5), align: 'center', after: 1 });
+
+    // renderHtmlBlock: measures an HTML snippet's natural height, renders it via doc.html()
+    // at the current pdfCurrent.yPos, then advances pdfCurrent.yPos past the block.
+    // Only called for 'header' and 'html' field types — never for plain-text fields.
+    //
+    // We use a reference window of 700px (desktop-safe, avoids mobile responsive breakpoints)
+    // and scale both the font size and measured height by (BLOCK_CONTENT_WIDTH / 700) so
+    // the rendered text matches pdfLine's medium size.  A CSS injection in the wrapper
+    // forces all child elements to respect max-width:100% so rich-text content from the
+    // editor cannot overflow beyond the 700px container before it is scaled down.
+    const BLOCK_CONTENT_WIDTH = page.width;
+    const REFERENCE_WINDOW_PX = 700;
+
+    // Font family: use whatever pdfLine uses (page.font.family = 'Helvetica').
+    // Add Arial as a CSS fallback for browsers that don't have Helvetica installed.
+    const blockFontFamily = `${page.font.family},Arial,sans-serif`;
+    // Scale font up so that after doc.html() scales it down by (BLOCK_CONTENT_WIDTH/700),
+    // the effective rendered size equals page.font.size.medium.
+    const blockFontSizePx = Math.round(page.font.size.medium);
+
+    // eslint-disable-next-line no-loop-func
+    const renderHtmlBlock = async (htmlContent) => {
+      if (!htmlContent || !String(htmlContent).trim()) return;
+
+      // Wrap at BLOCK_CONTENT_WIDTH width.  The injected <style> forces all child
+      // elements to honour the container width regardless of inline styles from the
+      // rich-text editor, preventing right-margin overflow in the rendered image.
+      const wrapped =
+        `<div style="font-family:${blockFontFamily};font-size:${blockFontSizePx}px;color:#222;` +
+        `width:${BLOCK_CONTENT_WIDTH}px;max-width:${BLOCK_CONTENT_WIDTH}px;box-sizing:border-box;">` +
+        `<style>* { max-width:100% !important; box-sizing:border-box !important; ` +
+        `overflow-wrap:break-word !important; word-wrap:break-word !important; }</style>` +
+        `${htmlContent}</div>`;
+
+      // Measure natural rendered height at the same windowWidth we pass to doc.html()
+      const measurer = document.createElement('div');
+      measurer.style.cssText =
+        `position:fixed;left:-9999px;top:0;width:${BLOCK_CONTENT_WIDTH}px;` +
+        `font-family:${blockFontFamily};font-size:${blockFontSizePx}px;visibility:hidden;`;
+      measurer.innerHTML = htmlContent;
+      document.body.appendChild(measurer);
+      await new Promise(r => requestAnimationFrame(r));
+      const measuredPx = measurer.scrollHeight;
+      document.body.removeChild(measurer);
+
+      // Scale the measured height by the same ratio doc.html() applies to the content.
+      const pdfHeightUnits = Math.ceil(measuredPx * (BLOCK_CONTENT_WIDTH / REFERENCE_WINDOW_PX)) + 4;
+
+      // Start a new page if the block won't fit in the remaining space
+      if (pdfCurrent.yPos + pdfHeightUnits > page.bottom) {
+        doc.addPage([page.width, page.height], 'portrait');
+        pdfCurrent.yPos = page.margin.top;
+      }
+
+      const blockY = pdfCurrent.yPos;
+      const pagesBefore = doc.internal.getNumberOfPages();
+
+      await new Promise(resolve => {
+        doc.html(wrapped, {
+          callback: resolve,
+          x: page.margin.left,
+          y: blockY,
+          width: BLOCK_CONTENT_WIDTH,
+          windowWidth: REFERENCE_WINDOW_PX,
+          // 'text' mode inserts proper page breaks so content is never sliced
+          // mid-line across a page boundary (unlike autoPaging: false which bleeds
+          // content into the next page's coordinate space and causes footer overlap).
+          autoPaging: 'text',
+          html2canvas: { scale: 0.75, useCORS: true, logging: false, backgroundColor: '#ffffff' }
+        });
+      });
+
+      // Compute the final Y position after the block.
+      // If doc.html() added pages (content overflowed), estimate the remaining height
+      // on the last page using the same ratio as the width scaling.
+      const pagesAfter = doc.internal.getNumberOfPages();
+      const addedPages = pagesAfter - pagesBefore;
+      if (addedPages === 0) {
+        pdfCurrent.yPos = blockY + pdfHeightUnits;
+      } else {
+        const printH = page.height - page.margin.top - page.margin.bottom;
+        const usedOnFirstPage = (page.height - page.margin.bottom) - blockY;
+        const overflow = pdfHeightUnits - usedOnFirstPage;
+        const finalY = page.margin.top + (overflow % printH);
+        pdfCurrent.yPos = finalY > page.margin.top ? finalY : page.margin.top + page.font.size.medium * 2;
+      }
+      pdfCurrent.xPos = page.margin.left;
+    };
+
+    for (const sectionObj of sections) {
+      if (!okToShowSection(sectionObj, fields)) continue;
+
+      // Section heading — strip HTML and render as bold pdfLine text
+      if (sectionObj.section_header) {
+        const sectionHeaderBlocks = htmlToBlocks(sectionObj.section_header);
+        // eslint-disable-next-line no-loop-func
+        sectionHeaderBlocks.forEach((block, bIdx) => {
+          pdfLine(block, { protectOrphan: bIdx === 0, style: 'bold', fontSize: (page.font.size.medium * 1.2), align: 'left', before: bIdx === 0 ? 2 : 0, after: 1 });
+        });
+      } else if (sectionObj.section_name) {
+        pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', fontSize: (page.font.size.medium * 1.2), align: 'left', before: 2, after: 1 });
+      }
+
+      for (const this_field of sectionObj.fields) {
+        const fieldRec = fields[this_field];
+        if (!fieldRec || fieldRec.ignore || fieldRec.hidden || fieldRec.prompt?.noPrint) continue;
+
+        switch (fieldRec.type) {
+          case 'header': {
+            // Rich HTML prompt — rendered as an image block to preserve all formatting
+            await renderHtmlBlock(fieldRec.prompt?.value || '');
+            break;
+          }
+          case 'html': {
+            // Rich HTML content stored in .value
+            await renderHtmlBlock(fieldRec.value || fieldRec.prompt?.value || '');
+            break;
+          }
+          case 'image':
+          case 'upload': {
+            const pt = stripHtml(fieldRec.prompt?.value || '').text;
+            if (pt) pdfLine(`${pt} [attachment]`, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+            break;
+          }
+          case 'signature': {
+            const sigNum = fieldRec.options?.sigRefNumber ?? 0;
+            if (signatures[sigNum]) {
+              await pdfImage(stripHtml(fieldRec.prompt?.value || '').text, { image: signatures[sigNum], style: 'normal', size: 'medium', align: 'left', after: 1 });
+            } else {
+              pdfLine(`${stripHtml(fieldRec.prompt?.value || '').text}: _____________________`, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+            }
+            break;
+          }
+          case 'drop_down':
+          case 'dropdown':
+          case 'dropDown':
+          case 'select&text':
+          case 'select': {
+            if (!fieldRec.prompt?.noPrint) {
+              if (page.line_was_compressed) {
+                pdfDown(1);
+                page.line_was_compressed = false;
+              }
+              const pt = stripHtml(fieldRec.prompt?.value || '').text;
+              if (fieldRec.prompt?.compressPrint) {
+                const vals = [fieldRec.valueText].flat().filter(Boolean);
+                pdfLine(`${pt}: ${vals.join(', ')}`, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+              } else {
+                // Use pdfLine with radio:true/radioSelected so the native PDF font handles
+                // the filled/unfilled circle glyphs — no Unicode encoding issues.
+                pdfLine(pt, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
+                (fieldRec.selectionObj?.selectionList || []).forEach((entry, tIndex) => {
+                  const text = typeof entry === 'object' ? (entry.label || entry.display || entry.value || '') : String(entry);
+                  const val = typeof entry === 'object' ? (entry.value || entry.label || '') : String(entry);
+                  const radioSelected = [fieldRec.value].flat().includes(val);
+                  if (tIndex === 0) {
+                    pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
+                  } else {
+                    pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                  }
+                });
+                if (fieldRec.bonusText) {
+                  pdfLine(`${fieldRec.prompt?.other || 'Other'}: ${fieldRec.bonusText}`, { radio: true, radioSelected: true, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
+                }
+                pdfDown(1);
+                pdfStyle('reset');
+              }
+            }
+            break;
+          }
+          case 'select_event': {
+            // Calendar-derived selection: value key is stored as eventId#YYYYMMDD.
+            // Extract and format the date portion for a readable print display.
+            const pt = stripHtml(fieldRec.prompt?.value || '').text;
+            const rawVal = String(fieldRec.valueText || fieldRec.value || '');
+            let displayVal = rawVal;
+            if (rawVal.includes('#')) {
+              const datePart = rawVal.split('#').pop();
+              const parsed = makeDate(datePart);
+              if (!parsed.error) { displayVal = parsed.absolute_full || parsed.absolute || rawVal; }
+            }
+            pdfLine(`${pt}: ${displayVal}`, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+            break;
+          }
+          default: {
+            const { text: promptText, hasBlocks: promptHasBlocks } = stripHtml(fieldRec.prompt?.value || '');
+            const valueText = String(fieldRec.valueText || '');
+            if (!fieldRec.valueText && fieldRec.prompt?.showNA) {
+              fieldRec.valueText = 'n/a';
+            }
+            if (fieldRec.prompt?.compressPrint) {
+              pdfLine(valueText, { style: 'normal', size: 'medium', align: 'left', after: 0 });
+            } else if (promptHasBlocks) {
+              const blocks = htmlToBlocks(fieldRec.prompt?.value || '');
+              blocks.forEach(block => {
+                pdfLine(block, { style: 'normal', size: 'medium', align: 'left', before: 0, after: 1, noNewLine: false });
+              });
+              pdfCurrent.yPos += 4;
+              const lineStartX = pdfCurrent.xPos;
+              pdfLine(valueText, { style: 'normal', size: 'medium', align: 'left', after: 0, noNewLine: true });
+              const MIN_BLANK_WIDTH = 200;
+              const valueWidth = valueText ? doc.getTextWidth(valueText) + 4 : 0;
+              const lineWidth = Math.max(0, Math.min(Math.max(valueWidth, MIN_BLANK_WIDTH), page.right - lineStartX));
+              doc.line(lineStartX, pdfCurrent.yPos + 2, lineStartX + lineWidth, pdfCurrent.yPos + 2);
+              pdfDown(1);
+            } else if (valueText && promptText.includes(valueText)) {
+              pdfLine(promptText, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+            } else {
+              pdfLine(`${promptText}: `, { style: 'normal', size: 'medium', align: 'left', after: 1, noNewLine: false });
+              pdfCurrent.yPos += 4;
+              const lineStartX = pdfCurrent.xPos;
+              const MIN_BLANK_WIDTH = 200;
+              const valueWidth = valueText ? doc.getTextWidth(valueText) + 4 : 0;
+              const lineWidth = Math.max(0, Math.min(Math.max(valueWidth, MIN_BLANK_WIDTH), page.right - lineStartX));
+              const lineY = pdfCurrent.yPos + 2;
+              doc.line(lineStartX, lineY, lineStartX + lineWidth, lineY);
+              if (valueText) {
+                doc.text(valueText, lineStartX + 2, pdfCurrent.yPos);
+              }
+              pdfDown(1);
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
+    doc.save(`${safeDocId}.pdf`);
+
+    let pdfInfo = {
+      s3Key: `${safeClientId}_${safeDocId}.pdf`,
+      s3Bucket: options.S3_bucket || 'theseus-medical-storage'
+    };
+    const pdfResp = await savePDF(doc, pdfInfo, { local: false, S3: true, onSave: false });
+    if (pdfResp.responseData.s3Resp) {
+      pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
+    }
+    response.push(pdfInfo);
+  }
+  return response;
+}
+
 export async function printDocumentB({ documentList, options = {} }) {
   let response = [];
   if (!Array.isArray(documentList)) {
@@ -1010,6 +1398,7 @@ export async function printDocumentB({ documentList, options = {} }) {
       if (okToShowSection(sectionObj, fields)) {
         if (sectionObj.section_header) {
           const sectionHeaderBlocks = htmlToBlocks(sectionObj.section_header);
+          // eslint-disable-next-line no-loop-func
           sectionHeaderBlocks.forEach((block, bIdx) => {
             pdfLine(block, { protectOrphan: bIdx === 0, style: 'bold', fontSize: (page.font.size.medium * 1.2), align: 'left', before: bIdx === 0 ? 2 : 0, after: 1 });
           });
@@ -1095,6 +1484,20 @@ export async function printDocumentB({ documentList, options = {} }) {
                 pdfLine(stripHtml(fields[this_field].prompt.value).text, { image: signatures[fields[this_field].options.sigRefNumber], style: 'normal', size: 'medium', align: 'left', after: 1 });
                 break;
               }
+              case 'select_event': {
+                // Calendar-derived selection: value key is stored as eventId#YYYYMMDD.
+                // Extract and format the date portion for a readable print display.
+                const pt = stripHtml(fields[this_field].prompt.value).text;
+                const rawVal = String(fields[this_field].valueText || fields[this_field].value || '');
+                let displayVal = rawVal;
+                if (rawVal.includes('#')) {
+                  const datePart = rawVal.split('#').pop();
+                  const parsed = makeDate(datePart);
+                  if (!parsed.error) { displayVal = parsed.absolute_full || parsed.absolute || rawVal; }
+                }
+                pdfLine(`${pt}: ${displayVal}`, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                break;
+              }
               default: {
                 if (fields.hasOwnProperty(this_field)) {
                   const { text: promptText, hasBlocks: promptHasBlocks } = stripHtml(fields[this_field].prompt.value);
@@ -1111,6 +1514,7 @@ export async function printDocumentB({ documentList, options = {} }) {
                       pdfLine(block, { style: 'normal', size: 'medium', align: 'left', before: 0, after: 1, noNewLine: false });
                     });
                     const valueText = fields[this_field].valueText;
+                    pdfCurrent.yPos += 4;
                     const lineStartX = pdfCurrent.xPos;
                     pdfLine(valueText, { style: 'normal', size: 'medium', align: 'left', after: 0, noNewLine: true });
                     const MIN_BLANK_WIDTH = 200;
@@ -1127,6 +1531,7 @@ export async function printDocumentB({ documentList, options = {} }) {
                     const valueText = fields[this_field].valueText;
                     pdfLine(`${promptText}: `, { style: 'normal', size: 'medium', align: 'left', after: 1, noNewLine: false });
                     // Draw fill-in-the-blank underline starting where the prompt text ends
+                    pdfCurrent.yPos += 4;
                     const lineStartX = pdfCurrent.xPos;
                     const MIN_BLANK_WIDTH = 200;
                     const valueWidth = valueText ? doc.getTextWidth(valueText) + 4 : 0;
@@ -1182,7 +1587,7 @@ export async function printEmptyDocument({ documentList, options = {} }) {
     page.client_id = client_id;
     page.footerText = `AVA reference: ${page.client_id}_${page.document_id}`;
     pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
-    pdfLine(title, { style: 'bold', fontSize: (page.font.size.large * 1.5), align: 'center', after: 1 });
+    pdfLine(title, { style: 'bold', fontSize: (page.font.size.large), align: 'center', after: 1 });
     // eslint-disable-next-line
     //  sections.forEach((sectionObj) => {
     for (const sectionObj of sections) {
