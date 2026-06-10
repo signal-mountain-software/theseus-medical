@@ -676,33 +676,24 @@ export default ({ start_at }) => {
       return true;
     }
     for (let this_rule of available_to) {
-      switch (this_rule.split(':')[0]) {
-        case '*all': {
-          return true;
+      // If the rule contains "&&", ALL parts must be satisfied (AND logic)
+      const ruleParts = this_rule.includes('&&')
+        ? this_rule.split('&&').map(p => p.trim())
+        : [this_rule.trim()];
+      const allMet = ruleParts.every(rule => {
+        switch (rule.split(':')[0]) {
+          case '*all': return true;
+          case '*admin': return isSubjectAdmin;
+          case '*support': return isSubjectSupport;
+          case 'group': {
+            const check_group = rule.split(':')[1];
+            return !!(subjectGroupsRef.current?.has(check_group));
+          }
+          case 'person': return subjectPersonId === rule.split(':')[1];
+          default: return false;
         }
-        case '*admin': {
-          if (isSubjectAdmin) {
-            return true;
-          } break;
-        }
-        case '*support': {
-          if (isSubjectSupport) {
-            return true;
-          } break;
-        }
-        case 'group': {
-          const check_group = this_rule.split(':')[1];
-          if (subjectGroupsRef.current?.has(check_group)) {
-            return true;
-          } break;
-        }
-        case 'person': {
-          if (subjectPersonId === this_rule.split(':')[1]) {
-            return true;
-          } break;
-        }
-        default: { }
-      }
+      });
+      if (allMet) { return true; }
     }
     return false;
   };

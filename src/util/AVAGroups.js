@@ -363,17 +363,24 @@ export async function getGroupAccess(client_id, person_id, options) {
     if (is_admin || this_group.group_type === 'public') { is_accessible = true; }
     else if (this_group.accessible_to) {
       for (let this_access_rule of this_group.accessible_to) {
-        switch (this_access_rule.split(':')[0].trim()) {
-          case '*all': { is_accessible = true; break; }
-          case '*admin': { if (is_admin) { is_accessible = true; } break; }  // redundant since we check is_admin at the top of the loop, but we'll leave it in case we want to add other admin-like classes in the future
-          case '*support': { if (['master', 'support', 'admin'].includes(my_personRec.account_class)) { is_accessible = true; } break; }
-          case 'person': { if (this_access_rule.split(':')[1].trim() === person_id) { is_accessible = true; } break; }
-          case 'group': { if (my_personRec.groups.includes(this_access_rule.split(':')[1].trim())) { is_accessible = true; } break; }
-          case '*members': { if (my_personRec.groups.includes(this_group.group_id)) { is_accessible = true; } break; }
-          case 'class': { if (this_access_rule.split(':')[1].trim() === my_personRec.account_class) { is_accessible = true; } break; }
-          case 'group_type': { if (this_access_rule.split(':')[1].trim() === this_group.group_type) { is_accessible = true; } break; }
-          default: { cl({ 'Unrecognized access rule type': this_access_rule.split(':')[0].trim() }); }
-        }
+        // If the rule contains "&&", ALL parts must be satisfied (AND logic)
+        const ruleParts = this_access_rule.includes('&&')
+          ? this_access_rule.split('&&').map(p => p.trim())
+          : [this_access_rule.trim()];
+        const allMet = ruleParts.every(rule => {
+          switch (rule.split(':')[0].trim()) {
+            case '*all': return true;
+            case '*admin': return is_admin;  // redundant since we check is_admin at the top of the loop, but we'll leave it in case we want to add other admin-like classes in the future
+            case '*support': return ['master', 'support', 'admin'].includes(my_personRec.account_class);
+            case 'person': return rule.split(':')[1].trim() === person_id;
+            case 'group': return my_personRec.groups.includes(rule.split(':')[1].trim());
+            case '*members': return my_personRec.groups.includes(this_group.group_id);
+            case 'class': return rule.split(':')[1].trim() === my_personRec.account_class;
+            case 'group_type': return rule.split(':')[1].trim() === this_group.group_type;
+            default: { cl({ 'Unrecognized access rule type': rule.split(':')[0].trim() }); return false; }
+          }
+        });
+        if (allMet) { is_accessible = true; }
       }
     }
     else if (may_access.has(this_group.group_id)) {  // redundant but included for clarity
