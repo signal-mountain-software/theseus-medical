@@ -1606,8 +1606,49 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 <SendIcon
                   classes={{ root: classes.rowButton }}
                   size='medium'
-                  style={{ alignSelf: 'center' }}
-                  aria-label="trash_icon"
+                  style={{ alignSelf: 'center', cursor: 'pointer' }}
+                  aria-label="send_mail_icon"
+                  onClick={() => {
+                    const selectedIds = reactData.selectedGroupIds || [];
+                    if (selectedIds.length === 0) { return; }
+                    let sendMessage = [];
+                    if (reactData.intersectionMode) {
+                      // ctrl-tap union mode: send to the individuals shown in the right column
+                      const members = reactData.selectedGroupMembers || {};
+                      for (const person_id of (reactData.sortedGroupMembers || [])) {
+                        const p = members[person_id];
+                        if (p) {
+                          sendMessage.push({
+                            person_id,
+                            person_name: `${p.name.first} ${p.name.last}`
+                          });
+                        }
+                      }
+                    } else {
+                      // Normal selection: send to root-of-selection groups
+                      // (those whose parent is NOT also selected)
+                      // parentOf is built from adminHierarchy where belongs_to is the actual parent group_id string
+                      const selectedSet = new Set(selectedIds);
+                      const parentOf = {};
+                      for (const h of (state.groups.adminHierarchy || [])) {
+                        if (h.belongs_to) { parentOf[h.id] = h.belongs_to; }
+                      }
+                      for (const group_id of selectedIds) {
+                        const grp = groupsManagedObject[group_id];
+                        if (!grp) { continue; }
+                        const parent_id = parentOf[group_id];
+                        if (!parent_id || !selectedSet.has(parent_id)) {
+                          sendMessage.push({
+                            group_id,
+                            group_name: grp.group_name
+                          });
+                        }
+                      }
+                    }
+                    if (sendMessage.length > 0) {
+                      updateReactData({ sendMessage }, true);
+                    }
+                  }}
                   onDragOver={(e) => handleDragOver(e)}
                   onDrop={async (e) => {
                     e.preventDefault();
