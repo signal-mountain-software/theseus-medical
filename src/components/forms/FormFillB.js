@@ -20,6 +20,7 @@ import LockIcon from '@material-ui/icons/Lock';
 import LockOpenIcon from '@material-ui/icons/LockOpen';
 import InsertDriveFileIcon from '@material-ui/icons/InsertDriveFile';
 import { Dialog, DialogContent, Snackbar, Box, Typography, FormControlLabel, Button, TextField, Checkbox, IconButton, Chip } from '@material-ui/core';
+import LinearProgress from '@material-ui/core/LinearProgress';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -438,6 +439,8 @@ export default ({ request = {}, onClose }) => {
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const [fieldDebugSnack, setFieldDebugSnack] = React.useState(null);
+  const [loadingProgress, setLoadingProgress] = React.useState(0);
+  const [loadingMessage, setLoadingMessage] = React.useState('Loading form...');
 
   const [renderedSectionCount, setRenderedSectionCount] = React.useState(0);
   const sectionRenderTimerRef = React.useRef(null);
@@ -1450,6 +1453,17 @@ export default ({ request = {}, onClose }) => {
       formRec
     };
 
+    // Count total fields across all sections (+ noData_section) to drive the progress bar
+    const totalFieldCount = formRec.sections.reduce((sum, s) => sum + (s.fields?.length || 0), 0)
+      + (formRec.noData_section?.fields?.length || 0);
+    let processedFieldCount = 0;
+    const reportFieldProgress = () => {
+      processedFieldCount++;
+      const pct = totalFieldCount > 0 ? Math.round((processedFieldCount / totalFieldCount) * 100) : 0;
+      setLoadingProgress(pct);
+      setLoadingMessage(`Loading form… (${processedFieldCount} of ${totalFieldCount} fields)`);
+    };
+
     // update all section and field names with resolved variables
     for (let this_section of response.sections) {
       this_section.section_name = await resolveVariables(this_section.section_name);
@@ -1494,6 +1508,7 @@ export default ({ request = {}, onClose }) => {
             valueText: formRec.fields[field_name].field_valueText
           }
         );
+        reportFieldProgress();
       };
     };
 
@@ -1534,6 +1549,7 @@ export default ({ request = {}, onClose }) => {
             valueText: formRec.fields[field_name].field_valueText
           }
         );
+        reportFieldProgress();
       }
     }
 
@@ -4291,6 +4307,18 @@ export default ({ request = {}, onClose }) => {
           }
         }}
       >
+        {isInitializing() &&
+          <Box style={{ padding: '40px 32px', minWidth: '40vw' }}>
+            <Typography style={AVATextStyle({ size: 1.2, bold: true, margin: { bottom: 2 } })}>
+              {loadingMessage}
+            </Typography>
+            <LinearProgress
+              variant={loadingProgress > 0 ? 'determinate' : 'indeterminate'}
+              value={loadingProgress}
+              style={{ height: 8, borderRadius: 4 }}
+            />
+          </Box>
+        }
         {!isInitializing() &&
           <React.Fragment>
             <div ref={printContentRef}>
