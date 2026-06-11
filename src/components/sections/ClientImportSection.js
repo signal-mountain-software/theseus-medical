@@ -60,6 +60,7 @@ const toStoragePhone = (phoneValue) => {
 };
 
 // Set a value at a dotted path inside obj, stripping a leading 'person'/'peoplerec' prefix segment.
+// Numeric path segments are treated as array indices, e.g. 'my_field.0' targets element 0 of my_field[].
 const setAtPath = (obj, rawPath, value) => {
   if (!rawPath) return;
   const keys = String(rawPath).split('.');
@@ -72,10 +73,18 @@ const setAtPath = (obj, rawPath, value) => {
   if (effectiveKeys.length === 0) return;
   let current = obj;
   for (let i = 0; i < effectiveKeys.length - 1; i++) {
-    if (!current[effectiveKeys[i]]) current[effectiveKeys[i]] = {};
-    current = current[effectiveKeys[i]];
+    const key = effectiveKeys[i];
+    const nextKey = effectiveKeys[i + 1];
+    const nextIsIndex = /^\d+$/.test(nextKey);
+    if (nextIsIndex) {
+      if (!Array.isArray(current[key])) current[key] = [];
+    } else {
+      if (!current[key] || typeof current[key] !== 'object') current[key] = {};
+    }
+    current = current[key];
   }
-  current[effectiveKeys[effectiveKeys.length - 1]] = value;
+  const lastKey = effectiveKeys[effectiveKeys.length - 1];
+  current[/^\d+$/.test(lastKey) ? parseInt(lastKey, 10) : lastKey] = value;
 };
 
 // Guess the import type from the column headers.
@@ -713,15 +722,24 @@ export default ({ reactData }) => {
       return path.split('.').reduce((cur, key) => (cur && cur[key] !== undefined ? cur[key] : undefined), obj);
     };
 
-    // Write a value at a dotted path, creating intermediate objects as needed
+    // Write a value at a dotted path, creating intermediate objects/arrays as needed.
+    // Numeric path segments are treated as array indices, e.g. 'my_field.0' targets element 0 of my_field[].
     const writeAtPath = (obj, path, value) => {
       const keys = path.split('.');
       let cur = obj;
       for (let i = 0; i < keys.length - 1; i++) {
-        if (!cur[keys[i]] || typeof cur[keys[i]] !== 'object') cur[keys[i]] = {};
-        cur = cur[keys[i]];
+        const key = keys[i];
+        const nextKey = keys[i + 1];
+        const nextIsIndex = /^\d+$/.test(nextKey);
+        if (nextIsIndex) {
+          if (!Array.isArray(cur[key])) cur[key] = [];
+        } else {
+          if (!cur[key] || typeof cur[key] !== 'object') cur[key] = {};
+        }
+        cur = cur[key];
       }
-      cur[keys[keys.length - 1]] = value;
+      const lastKey = keys[keys.length - 1];
+      cur[/^\d+$/.test(lastKey) ? parseInt(lastKey, 10) : lastKey] = value;
     };
 
     // Merge groups: union of both arrays, deduplicated
