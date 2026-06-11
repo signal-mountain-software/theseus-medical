@@ -40,6 +40,11 @@ const IMPORT_TYPES = [
     value: 'merge_accounts',
     label: 'Merge Account Data',
     description: 'Columns: user_id_A (column A), user_id_B (column B). Merges groups, contact info, and address from both records into both records. Conflicting contact fields are preserved as an "alt" sibling. Address conflicts are resolved by keeping column A data.'
+  },
+  {
+    value: 'delete_accounts',
+    label: 'Delete Accounts',
+    description: 'Columns: user_id only. Permanently deletes each listed account from People, SessionsV2, and PeopleGroups. This action cannot be undone.'
   }
 ];
 
@@ -85,10 +90,12 @@ const detectImportType = (headers) => {
   );
   const hasPrimaryId = lowerHeaders[0].includes('primary');
   const isMergePair = lowerHeaders[0].endsWith('_a') && lowerHeaders.length > 1 && lowerHeaders[1].endsWith('_b');
+  const isDeleteOnly = (lowerHeaders.length === 1) && (lowerHeaders[0].includes('user') || lowerHeaders[0].includes('person') || lowerHeaders[0].includes('id'));
   if ((hasFirstLast || hasFullName) && !hasUserId) return 'create_people';
   if (hasPrimaryId) return 'family_groups';
   if (hasUserId && hasContactKeyword) return 'update_contact';
   if (isMergePair) return 'merge_accounts';
+  if (isDeleteOnly) return 'delete_accounts';
   if (hasUserId) return 'append_groups';
   return '';
 };
@@ -204,15 +211,22 @@ export default ({ reactData }) => {
 
     // Load client style once for user_id format
     let clientSuffix = null;
+    let idSeparator = '-';
     let useNameOnly = false;
     const clientStyleRec = await dbClient
       .get({ Key: { client_id, custom_key: 'client_style' }, TableName: 'Customizations' })
       .promise()
       .catch(() => null);
-    if (clientStyleRec?.Item?.customization_value?.client_suffix) {
-      const rawSuffix = clientStyleRec.Item.customization_value.client_suffix;
-      useNameOnly = (rawSuffix === '*none');
-      clientSuffix = useNameOnly ? null : rawSuffix;
+    if (clientStyleRec?.Item?.customization_value) {
+      const cv = clientStyleRec.Item.customization_value;
+      if (cv.id_separator !== undefined) {
+        idSeparator = cv.id_separator;
+      }
+      if (cv.client_suffix !== undefined) {
+        const rawSuffix = cv.client_suffix;
+        useNameOnly = (rawSuffix === '*none');
+        clientSuffix = useNameOnly ? null : rawSuffix;
+      }
     }
 
     const successes = [];
@@ -259,10 +273,9 @@ export default ({ reactData }) => {
         let candidate;
         if (useNameOnly) {
           candidate = `${firstInitial}${cleanLast}${counter}`.toLowerCase();
-        } else if (clientSuffix) {
-          candidate = `${firstInitial}${cleanLast}${counter}-${clientSuffix}`.toLowerCase();
         } else {
-          candidate = `${firstInitial}${cleanLast}${counter}-${client_id}`.toLowerCase();
+          const suffix = clientSuffix || client_id;
+          candidate = `${firstInitial}${cleanLast}${counter}${idSeparator}${suffix}`.toLowerCase();
         }
         if (!usedIds.has(candidate)) {
           // Check People table
@@ -633,6 +646,53 @@ export default ({ reactData }) => {
     return { successes, errors, warnings };
   };
 
+  const processDeleteAccounts = async (rows) => {
+    const errors = [];
+    const warnings = [];
+    let successes = 0;
+
+    for (let i = 0; i < rows.length; i++) {
+      const rowNum = i + 2;
+      const person_id = String(rows[i][0] || '').trim();
+      if (!person_id) {
+        errors.push({ rowNum, message: `Row ${rowNum}: missing user_id — skipped.` });
+        continue;
+      }
+      try {
+        // Delete from People
+        await dbClient.delete({ TableName: 'People', Key: { person_id } }).promise()
+          .catch(err => { cl({ 'delete_accounts: error deleting People': { person_id, err } }); });
+
+        // Delete from SessionsV2
+        await dbClient.delete({ TableName: 'SessionsV2', Key: { session_id: person_id } }).promise()
+          .catch(err => { cl({ 'delete_accounts: error deleting SessionsV2': { person_id, err } }); });
+
+        // Delete all PeopleGroups rows for this person (any status, any group)
+        const pgResult = await dbClient.query({
+          TableName: 'PeopleGroups',
+          IndexName: 'person-index',
+          KeyConditionExpression: 'person_id = :p',
+          ExpressionAttributeValues: { ':p': person_id }
+        }).promise().catch(err => { cl({ 'delete_accounts: error querying PeopleGroups': { person_id, err } }); return null; });
+        if (pgResult?.Items?.length > 0) {
+          await Promise.all(pgResult.Items.map(row =>
+            dbClient.delete({
+              TableName: 'PeopleGroups',
+              Key: { client_group_id: row.client_group_id, person_id: row.person_id }
+            }).promise().catch(err => { cl({ 'delete_accounts: error deleting PeopleGroups row': { person_id, row, err } }); })
+          ));
+        }
+
+        cl({ 'delete_accounts: deleted': person_id });
+        successes++;
+      } catch (err) {
+        cl({ 'delete_accounts row error': { rowNum, person_id, err } });
+        errors.push({ rowNum, message: `Row ${rowNum} (${person_id}): ${err.message}` });
+      }
+    }
+    return { successes, errors, warnings };
+  };
+
   const processMergeAccounts = async (headers, rows) => {
     const errors = [];
     const warnings = [];
@@ -749,23 +809,37 @@ export default ({ reactData }) => {
         const clonedB = JSON.parse(JSON.stringify(recBResult.Item));
 
         // ── merge groups ──────────────────────────────────────────────────
-        // Run addMember FIRST so it reads the original People records and updates
-        // PeopleGroups table. addMember also does a dbClient.update on People.groups,
-        // but our putDb below overwrites that with the full merged record, so order matters.
-        const mergedGroups = mergeGroups(clonedA.groups, clonedB.groups);
-        const addedToA = mergedGroups.filter(g => !(recAResult.Item.groups || []).includes(g));
-        const addedToB = mergedGroups.filter(g => !(recBResult.Item.groups || []).includes(g));
-        cl({ 'merge_accounts group calc': { idA, idB, groupsA: clonedA.groups, groupsB: clonedB.groups, mergedGroups, addedToA, addedToB } });
-        if (addedToA.length > 0) {
-          await addMember(idA, client_id, addedToA, { allowParent: true })
-            .catch(err => { cl({ 'merge_accounts addMember error for A': { idA, addedToA, err } }); });
-        }
-        if (addedToB.length > 0) {
-          await addMember(idB, client_id, addedToB, { allowParent: true })
-            .catch(err => { cl({ 'merge_accounts addMember error for B': { idB, addedToB, err } }); });
-        }
-        // Set merged groups on clones — putDb below will stamp the final merged groups
-        // after addMember has already handled PeopleGroups table updates.
+        // Source groups from PeopleGroups (authoritative) rather than People.groups,
+        // which can drift out of sync. Union the two sets, then call addMember for
+        // ALL groups for BOTH people so PeopleGroups ends up fully in sync.
+        const [pgAResult, pgBResult] = await Promise.all([
+          dbClient.query({
+            TableName: 'PeopleGroups',
+            IndexName: 'person-index',
+            KeyConditionExpression: 'person_id = :p AND membership_status = :s',
+            ExpressionAttributeValues: { ':p': idA, ':s': 'active' }
+          }).promise().catch(() => null),
+          dbClient.query({
+            TableName: 'PeopleGroups',
+            IndexName: 'person-index',
+            KeyConditionExpression: 'person_id = :p AND membership_status = :s',
+            ExpressionAttributeValues: { ':p': idB, ':s': 'active' }
+          }).promise().catch(() => null),
+        ]);
+        const groupsFromPGA = (pgAResult?.Items || [])
+          .filter(r => r.client_group_id.startsWith(client_id + '~'))
+          .map(r => r.client_group_id.split('~')[1]);
+        const groupsFromPGB = (pgBResult?.Items || [])
+          .filter(r => r.client_group_id.startsWith(client_id + '~'))
+          .map(r => r.client_group_id.split('~')[1]);
+        const mergedGroups = mergeGroups(groupsFromPGA, groupsFromPGB);
+        cl({ 'merge_accounts group calc': { idA, idB, groupsFromPGA, groupsFromPGB, mergedGroups } });
+        // Call addMember for the full union set on both people to ensure PeopleGroups is in sync.
+        await addMember(idA, client_id, mergedGroups, { allowParent: true })
+          .catch(err => { cl({ 'merge_accounts addMember error for A': { idA, mergedGroups, err } }); });
+        await addMember(idB, client_id, mergedGroups, { allowParent: true })
+          .catch(err => { cl({ 'merge_accounts addMember error for B': { idB, mergedGroups, err } }); });
+        // Set merged groups on clones — putDb below will stamp the final merged groups.
         clonedA.groups = mergedGroups;
         clonedB.groups = mergedGroups;
 
@@ -932,6 +1006,8 @@ export default ({ reactData }) => {
         results = await processFamilyGroups(headers, rows);
       } else if (importType === 'merge_accounts') {
         results = await processMergeAccounts(headers, rows);
+      } else if (importType === 'delete_accounts') {
+        results = await processDeleteAccounts(rows);
       } else {
         results = { successes: 0, errors: [{ rowNum: 0, message: 'Unknown import type.' }], warnings: [] };
       }
