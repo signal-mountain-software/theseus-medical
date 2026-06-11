@@ -2270,8 +2270,24 @@ export default ({ request = {}, onClose }) => {
       const fromFieldName = ageFieldDef.from_field;
       const toFieldName = ageFieldDef.to_field;
       const unit = ageFieldDef.unit || 'years';
-      const fromRawValue = fromFieldName ? (reactData.fields[fromFieldName]?.value ?? null) : null;
-      const toRawValue = toFieldName ? (reactData.fields[toFieldName]?.value ?? null) : null;
+
+      // from_source: resolve directly from peopleRec/sessionRec (bypasses form field dependency)
+      let fromRawValue = fromFieldName ? (reactData.fields[fromFieldName]?.value ?? null) : null;
+      if (!fromRawValue && ageFieldDef.from_source) {
+        const fromSourcePath = makeArray(ageFieldDef.from_source, '.');
+        const fromSourceFile = fromSourcePath[0].toLowerCase();
+        const fromSourceKey = fromSourcePath.slice(1);
+        if (fromSourceFile.startsWith('person') || fromSourceFile.startsWith('people')) {
+          fromRawValue = resolve({ object: reactData.peopleRec[reactData.pertains_to], key: fromSourceKey });
+        }
+        else if (fromSourceFile.startsWith('session')) {
+          fromRawValue = resolve({ object: reactData.sessionRec[reactData.pertains_to], key: fromSourceKey });
+        }
+      }
+
+      const toRawValue = toFieldName
+        ? (reactData.fields[toFieldName]?.value ?? null)
+        : (ageFieldDef.to_date ?? null);
 
       let computedAge = '';
       if (fromRawValue) {
@@ -2564,12 +2580,20 @@ export default ({ request = {}, onClose }) => {
                       key={`${props.groupKeyPrefix || 'CheckGroup'}__${props.prop}_${tIndex}`}
                       size='small'
                       disabled={isDisabled}
-                      checked={isSelectionOptionSelected({
+                      checked={text.remove_all ? false : isSelectionOptionSelected({
                         selectedValue: fieldRec.value,
                         optionValue: text.value,
                         optionDisplay: text.display
                       })}
                       onMouseDown={async () => {
+                        if (text.remove_all) {
+                          reactData.fields[props.prop].value = [];
+                          updateReactData({
+                            formUpdates: ++reactData.formUpdates,
+                            fields: reactData.fields
+                          }, true);
+                          return;
+                        }
                         if (text.select_all) {
                           const isCurrentlyChecked = isSelectionOptionSelected({
                             selectedValue: fieldRec.value,
@@ -3157,8 +3181,9 @@ export default ({ request = {}, onClose }) => {
 
     // check for actions needed leaving or entering stages
     let this_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.current_formStage);
-    // Capture group list before any stage transitions so we can diff for PeopleGroups sync
-    const groupsBeforeStageTransitions = (reactData.peopleRec[reactData.pertains_to]?.groups || []).slice();
+    // Collect stage-transition group changes; applied via addMember/removeMember after the saveAs put
+    const pendingGroupAdditions = [];
+    const pendingGroupRemovals = [];
     if ((reactData.previous_formStage !== reactData.current_formStage) && reactData.formRec.stages) {
       // log stage change
       cl(`Form ${document_id} stage changed from ${reactData.previous_formStage} to ${reactData.current_formStage}`);
@@ -3174,8 +3199,8 @@ export default ({ request = {}, onClose }) => {
         // remove and add groups from pertains_to account's group list if any
         let groupInstructions_onStageExit = reactData.formRec.stages[stage_we_finished].on_complete_groups;
         if (groupInstructions_onStageExit) {
-          reactData.peopleRec[reactData.pertains_to].groups = update_stageGroups(groupInstructions_onStageExit);
-          needsUpdate.peopleRec = true;
+          if (groupInstructions_onStageExit.remove) { pendingGroupRemovals.push(...[groupInstructions_onStageExit.remove].flat()); }
+          if (groupInstructions_onStageExit.add) { pendingGroupAdditions.push(...[groupInstructions_onStageExit.add].flat()); }
         }
         // create tasks on stage exit
         const taskTemplates_onStageExit = reactData.formRec.stages[stage_we_finished].on_complete_tasks;
@@ -3195,8 +3220,8 @@ export default ({ request = {}, onClose }) => {
       // remove and add groups from pertains_to account's group list if any
       let groupInstructions_onStageEntry = reactData.formRec.stages[this_stageIndex].on_entry_groups;
       if (groupInstructions_onStageEntry) {
-        reactData.peopleRec[reactData.pertains_to].groups = update_stageGroups(groupInstructions_onStageEntry);
-        needsUpdate.peopleRec = true;
+        if (groupInstructions_onStageEntry.remove) { pendingGroupRemovals.push(...[groupInstructions_onStageEntry.remove].flat()); }
+        if (groupInstructions_onStageEntry.add) { pendingGroupAdditions.push(...[groupInstructions_onStageEntry.add].flat()); }
       }
       // lock the form?
       if (reactData.formRec.stages[this_stageIndex].on_entry_lock) { formLocked = true; }
@@ -3221,19 +3246,14 @@ export default ({ request = {}, onClose }) => {
         });
       if (response.goodPut) {
         peopleUpdated = true;
-        // Sync PeopleGroups for any stage-transition group changes
-        const groupsAfterStageTransitions = reactData.peopleRec[reactData.pertains_to]?.groups || [];
-        const personId = reactData.pertains_to;
-        const clientId = state.session.client_id;
-        const parent_of = state.groups?.parent_of || {};
-        const isLeaf = g => !parent_of[g]?.length;
-        const groupsToAdd = groupsAfterStageTransitions.filter(g => isLeaf(g) && !groupsBeforeStageTransitions.includes(g));
-        const groupsToRemove = groupsBeforeStageTransitions.filter(g => isLeaf(g) && !groupsAfterStageTransitions.includes(g));
-        if (groupsToAdd.length > 0) { await addMember(personId, clientId, groupsToAdd); }
-        if (groupsToRemove.length > 0) { await removeMember(personId, clientId, groupsToRemove); }
       }
     }
-    if (peopleUpdated) {
+    // Apply stage-transition group changes via addMember/removeMember.
+    // These run after the saveAs People put so addMember reads the freshest record.
+    // addMember/removeMember handle hierarchy, PeopleGroups, and onAdd/onRemove rule firing.
+    if (pendingGroupRemovals.length > 0) { await removeMember(reactData.pertains_to, state.session.client_id, pendingGroupRemovals); }
+    if (pendingGroupAdditions.length > 0) { await addMember(reactData.pertains_to, state.session.client_id, pendingGroupAdditions); }
+    if (peopleUpdated || pendingGroupRemovals.length > 0 || pendingGroupAdditions.length > 0) {
       syncPersonToSessionCaches({
         state,
         dispatch,
@@ -3306,6 +3326,59 @@ export default ({ request = {}, onClose }) => {
     // create tasks as indicated in formRec options upon final save
     if (final && reactData.formRec?.options?.tasks) {
       await createTasksFromTemplates(reactData.formRec.options.tasks);
+    }
+
+    // apply conditional group assignments as indicated in formRec options upon final save
+    // Each rule: { add: [...], remove: [...], require_complete_forms: [...] }
+    // require_complete_forms: all listed form_ids must have at least one 'complete' document
+    // for pertains_to before the add/remove takes effect.
+    if (final && reactData.formRec?.options?.group_assignments) {
+      for (const rule of [reactData.formRec.options.group_assignments].flat()) {
+        let conditionMet = true;
+        if (rule.require_complete_forms && rule.require_complete_forms.length > 0) {
+          // Check each required form — query DocumentMaster by person_form-index
+          // Skip the current form — it was just saved as 'complete' above and may not
+          // yet be visible via an eventually-consistent GSI query.
+          for (const required_form_id of rule.require_complete_forms) {
+            if (required_form_id === reactData.form_id) { continue; }
+            const foundDocs = await dbClient
+              .query({
+                TableName: 'DocumentMaster',
+                IndexName: 'person_form-index',
+                KeyConditionExpression: 'pertains_to = :p and form_type = :f',
+                FilterExpression: '#s = :complete',
+                ExpressionAttributeNames: { '#s': 'status' },
+                ExpressionAttributeValues: {
+                  ':p': reactData.pertains_to,
+                  ':f': required_form_id,
+                  ':complete': 'complete'
+                }
+              })
+              .promise()
+              .catch(error => {
+                cl(`group_assignments: error querying DocumentMaster for ${required_form_id}: ${error}`);
+                return null;
+              });
+            if (!foundDocs || !foundDocs.Items || foundDocs.Items.length === 0) {
+              conditionMet = false;
+              break;
+            }
+          }
+        }
+        if (!conditionMet) { continue; }
+        // Use removeMember/addMember so hierarchy, PeopleGroups, and onAdd/onRemove rules all fire.
+        if (rule.remove) {
+          await removeMember(reactData.pertains_to, state.session.client_id, [rule.remove].flat());
+        }
+        if (rule.add) {
+          await addMember(reactData.pertains_to, state.session.client_id, [rule.add].flat());
+        }
+        syncPersonToSessionCaches({
+          state,
+          dispatch,
+          personRec: reactData.peopleRec[reactData.pertains_to]
+        });
+      }
     }
 
     updateReactData({

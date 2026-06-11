@@ -22,28 +22,35 @@ export default ({ currentValues, updateField }) => {
   React.useEffect(() => {
     async function initialize() {
       updateReactData({ loading: true });
-      const formsRec = await dbClient
-        .query({
+      let allItems = [];
+      let lastKey = undefined;
+      do {
+        const queryParams = {
           TableName: 'Forms',
           KeyConditionExpression: 'client_id = :c',
           ExpressionAttributeValues: {
             ':c': state.session.client_id
           }
-        })
-        .promise()
-        .catch((error) => {
-          if (error.code === 'NetworkingError') {
-            cl(`Security Violation or no Internet Connection`);
-          }
-          cl({ 'Error reading Forms': error });
-        });
+        };
+        if (lastKey) { queryParams.ExclusiveStartKey = lastKey; }
+        const formsRec = await dbClient
+          .query(queryParams)
+          .promise()
+          .catch((error) => {
+            if (error.code === 'NetworkingError') {
+              cl(`Security Violation or no Internet Connection`);
+            }
+            cl({ 'Error reading Forms': error });
+            return null;
+          });
+        if (!formsRec) { break; }
+        allItems = allItems.concat(formsRec.Items || []);
+        lastKey = formsRec.LastEvaluatedKey;
+      } while (lastKey);
 
-      let formsLibrary = [];
-      if (recordExists(formsRec)) {
-        formsLibrary = (formsRec.Items || []).filter((formRec) => {
-          return (!formRec.hasOwnProperty('active') || !!formRec.active);
-        });
-      }
+      let formsLibrary = allItems.filter((formRec) => {
+        return (!formRec.hasOwnProperty('active') || !!formRec.active);
+      });
 
       formsLibrary.sort((a, b) => {
         const catA = (a.category || 'Uncategorized').toLowerCase();

@@ -1589,6 +1589,21 @@ async function applyGroupRules(triggerType, person_id, client_id, group_id, fire
       const where = action.where?.length ? action.where : [group_id];
 
       for (const targetPerson of whoIds) {
+        // Evaluate condition (if present) before executing the action.
+        // condition.if_member_of: all listed group_ids must be active for targetPerson.
+        if (action.condition?.if_member_of?.length) {
+          const requiredGroups = [action.condition.if_member_of].flat();
+          let personCurrentGroups;
+          if (personGroups.has(targetPerson)) {
+            personCurrentGroups = personGroups.get(targetPerson);
+          } else {
+            personCurrentGroups = await getPersonGroups(targetPerson, client_id);
+            personGroups.set(targetPerson, personCurrentGroups);
+          }
+          const conditionMet = requiredGroups.every(g => personCurrentGroups.includes(g));
+          if (!conditionMet) { continue; }
+        }
+
         for (const targetGroup of where) {
           if (action.action === 'addMember') {
             await addMember(targetPerson, client_id, targetGroup, { _firedRules: firedRules, _personGroups: personGroups, _personRecs: personRecs, membershipSource: 'withData' });
