@@ -476,6 +476,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                 marginBottom: '4px',
                 padding: '4px 8px',
                 borderRadius: '4px',
+                width: '87%',
                 backgroundColor: getCategoryColor(this_note.category),
                 ...(this_note.urgent ? {
                   borderLeft: '4px solid #f54927',

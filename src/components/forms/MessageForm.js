@@ -840,6 +840,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
               return {
                 recipient_id: r.person_id || r.group_id || reactData.preferred_recipients[r.rIndex].personList[0],
                 recipient_name: r.person_name || r.group_name || reactData.preferred_recipients[r.rIndex].objText,
+                is_group: !!r.group_id,
                 wasHeld: false,
                 status_held: false,
                 status_blocked: false,
@@ -1498,6 +1499,38 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   */
 
   function makeToLine(this_thread, message_index) {
+    // Builds a friendly recipient summary, aware of groups vs. individuals.
+    // is_group is set on optimistically-added entries (right after send); loaded
+    // messages have groups already expanded by PostOffice so all entries are people.
+    function formatRecipientList(recipients) {
+      if (recipients.length === 0) { return ''; }
+      if (recipients.length <= 3) {
+        return listFromArray(recipients.map(r => r.recipient_name));
+      }
+      const groups = recipients.filter(r => r.is_group);
+      const people = recipients.filter(r => !r.is_group);
+      if (groups.length === recipients.length) {
+        // All groups — show up to 2 names then "N more groups"
+        const shown = groups.slice(0, 2).map(r => r.recipient_name);
+        const remaining = groups.length - 2;
+        return `${listFromArray(shown)} and ${remaining} more group${remaining === 1 ? '' : 's'}`;
+      }
+      if (people.length === recipients.length) {
+        // All people — show first 3 names then "N more people"
+        const shown = people.slice(0, 3).map(r => r.recipient_name);
+        const remaining = people.length - 3;
+        return `${listFromArray(shown)} and ${remaining} more person${remaining === 1 ? '' : 's'}`;
+      }
+      // Mixed groups and people
+      const groupPart = groups.length === 1
+        ? groups[0].recipient_name
+        : `${groups.length} groups`;
+      const peoplePart = people.length === 1
+        ? people[0].recipient_name
+        : `${people.length} people`;
+      return `${groupPart} and ${peoplePart}`;
+    }
+
     let response;
     let OG_message = message_index === 0;
     if (reactData.threads[this_thread].messages[message_index].inOut === 'out') {
@@ -1506,30 +1539,12 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         response += 'The Group';
       }
       else {
-        if (reactData.threads[this_thread].messages[message_index].recipients.length < 4) {
-          response += listFromArray(reactData.threads[this_thread].messages[message_index].recipients.map(r => { return r.recipient_name; }));
-        }
-        else {
-          // Show first 3 recipients plus count of remaining
-          const allRecipients = reactData.threads[this_thread].messages[message_index].recipients;
-          const displayRecipients = allRecipients.slice(0, 3).map(r => r.recipient_name);
-          const remainingCount = allRecipients.length - 3;
-          response += `${listFromArray(displayRecipients)} (and ${remainingCount} other${remainingCount === 1 ? '' : 's'})`;
-        }
+        response += formatRecipientList(reactData.threads[this_thread].messages[message_index].recipients);
       }
     }
     else if (reactData.threads[this_thread].messages[message_index].inOut === 'held') {
       response = `${reactData.threads[this_thread].messages[message_index].author_name} -> `;
-      if (reactData.threads[this_thread].messages[message_index].recipients.length < 4) {
-        response += listFromArray(reactData.threads[this_thread].messages[message_index].recipients.map(r => { return r.recipient_name; }));
-      }
-      else {
-        // Show first 3 recipients plus count of remaining
-        const allRecipients = reactData.threads[this_thread].messages[message_index].recipients;
-        const displayRecipients = allRecipients.slice(0, 3).map(r => r.recipient_name);
-        const remainingCount = allRecipients.length - 3;
-        response += `${listFromArray(displayRecipients)} (and ${remainingCount} other${remainingCount === 1 ? '' : 's'})`;
-      }
+      response += formatRecipientList(reactData.threads[this_thread].messages[message_index].recipients);
     }
     else {
       response = `${reactData.threads[this_thread].messages[message_index].author_name} -> `;
@@ -1839,9 +1854,19 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                       return `${sender} -> The Group`;
                                     }
 
-                                    // If more than 4 recipients, show count
+                                    // If more than 4 recipients, show group-aware count
                                     if (reactData.newMessageRecipients.length > 4) {
-                                      return `${sender} -> ${reactData.selectedPeople_count || reactData.selections.length} recipients`;
+                                      const groupCount = reactData.newMessageRecipients.filter(r => r.group_id).length;
+                                      const peopleCount = reactData.newMessageRecipients.filter(r => r.person_id || r.hasOwnProperty('rIndex')).length;
+                                      let countLabel;
+                                      if (groupCount > 0 && peopleCount === 0) {
+                                        countLabel = `${groupCount} group${groupCount === 1 ? '' : 's'}`;
+                                      } else if (peopleCount > 0 && groupCount === 0) {
+                                        countLabel = `${peopleCount} people`;
+                                      } else {
+                                        countLabel = `${groupCount} group${groupCount === 1 ? '' : 's'} and ${peopleCount} people`;
+                                      }
+                                      return `${sender} -> ${countLabel}`;
                                     }
 
                                     // If there are recipients to display
@@ -1850,9 +1875,11 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                       const recipients = reactData.newMessageRecipients.length > 0
                                         ? reactData.newMessageRecipients
                                         : reactData.selections;
+                                      const groupCount = recipients.filter(r => r.group_id).length;
+                                      const overflowWord = groupCount === recipients.length ? 'groups' : 'people';
                                       const recipientNames = listFromArray(
                                         recipients.map(r => (r.person_name || r.group_name || reactData.preferred_recipients?.[r.rIndex]?.objText)),
-                                        { max: { length: 4, words: 'recipients' } }
+                                        { max: { length: 4, words: overflowWord } }
                                       );
                                       return `${sender} -> ${recipientNames}`;
                                     }

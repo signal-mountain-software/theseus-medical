@@ -423,7 +423,7 @@ export default ({
           catch { console.log(defaultValue); }
         }
       }
-      if ((session.client_style.allow_old_messaging) && !state.patient.useNewMessaging) {
+      if ((session?.client_style?.allow_old_messaging) && !state.patient.useNewMessaging) {
         return (
           <MessageFormLegacy
             pPerson={session.patient_id}
@@ -552,7 +552,7 @@ export default ({
           });
         }
       }
-      if ((session.client_style.allow_old_messaging) && !state.patient.useNewMessaging) {
+      if ((session?.client_style?.allow_old_messaging) && !state.patient.useNewMessaging) {
         return (
           <MakeMessage
             titleText={defaultValueObj.title}

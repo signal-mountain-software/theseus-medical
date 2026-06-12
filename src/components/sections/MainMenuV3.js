@@ -57,6 +57,7 @@ import NewReleasesOutlinedIcon from '@material-ui/icons/NewReleasesOutlined';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 import SearchIcon from '@material-ui/icons/Search';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
+import CancelIcon from '@material-ui/icons/Cancel';
 import GetAppIcon from '@material-ui/icons/GetApp';
 import FavoriteIcon from '@material-ui/icons/Favorite';
 import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder';
@@ -223,7 +224,8 @@ export default ({ start_at }) => {
     addMenuDialogLinkSource: 'url',
     addMenuDialogTitle: '',
     addMenuDialogUrl: '',
-    addMenuDialogUploadFile: null,
+    addMenuDialogUploadFiles: [],
+    addMenuDialogUploadFileIndex: 0,
     addMenuDialogUploadFileName: '',
     addMenuDialogUploadProgress: 0,
     addMenuDialogSaving: false,
@@ -676,33 +678,24 @@ export default ({ start_at }) => {
       return true;
     }
     for (let this_rule of available_to) {
-      switch (this_rule.split(':')[0]) {
-        case '*all': {
-          return true;
+      // If the rule contains "&&", ALL parts must be satisfied (AND logic)
+      const ruleParts = this_rule.includes('&&')
+        ? this_rule.split('&&').map(p => p.trim())
+        : [this_rule.trim()];
+      const allMet = ruleParts.every(rule => {
+        switch (rule.split(':')[0]) {
+          case '*all': return true;
+          case '*admin': return isSubjectAdmin;
+          case '*support': return isSubjectSupport;
+          case 'group': {
+            const check_group = rule.split(':')[1];
+            return !!(subjectGroupsRef.current?.has(check_group));
+          }
+          case 'person': return subjectPersonId === rule.split(':')[1];
+          default: return false;
         }
-        case '*admin': {
-          if (isSubjectAdmin) {
-            return true;
-          } break;
-        }
-        case '*support': {
-          if (isSubjectSupport) {
-            return true;
-          } break;
-        }
-        case 'group': {
-          const check_group = this_rule.split(':')[1];
-          if (subjectGroupsRef.current?.has(check_group)) {
-            return true;
-          } break;
-        }
-        case 'person': {
-          if (subjectPersonId === this_rule.split(':')[1]) {
-            return true;
-          } break;
-        }
-        default: { }
-      }
+      });
+      if (allMet) { return true; }
     }
     return false;
   };
@@ -1904,7 +1897,7 @@ export default ({ start_at }) => {
     const phoneDigits = (reactData.addMenuDialogPhone || '').replace(/\D/g, '');
     const linkSource = reactData.addMenuDialogLinkSource || 'url';
     const urlText = (reactData.addMenuDialogUrl || '').trim();
-    const uploadFile = reactData.addMenuDialogUploadFile;
+    const uploadFiles = reactData.addMenuDialogUploadFiles || [];
     const messageTargets = ([reactData.addMenuDialogTargets].flat())
       .filter((targetRec) => {
         return !!(targetRec && (targetRec.person_id || targetRec.group_id || targetRec.rIndex !== undefined));
@@ -1951,7 +1944,7 @@ export default ({ start_at }) => {
       return;
     }
 
-    if ((itemType === 'link') && (linkSource === 'upload') && !uploadFile) {
+    if ((itemType === 'link') && (linkSource === 'upload') && uploadFiles.length === 0) {
       updateReactData({
         alert: {
           severity: 'warning',
@@ -2022,39 +2015,111 @@ export default ({ start_at }) => {
       return;
     }
 
-    let finalLinkUrl = urlText;
+    // Multi-file upload: upload each file, create one menu card per file, then return.
     if ((itemType === 'link') && (linkSource === 'upload')) {
-      try {
-        const uploadResponse = await uploadMenuLinkFile(uploadFile);
-        finalLinkUrl = uploadResponse?.Location || '';
+      const createdCells = [];
+      const failedFiles = [];
+      for (let fi = 0; fi < uploadFiles.length; fi++) {
+        const fileToUpload = uploadFiles[fi];
+        updateReactData({ addMenuDialogUploadFileIndex: fi, addMenuDialogUploadProgress: 0 }, true);
+        let fileUrl = '';
+        try {
+          const uploadResponse = await uploadMenuLinkFile(fileToUpload);
+          fileUrl = uploadResponse?.Location || '';
+        }
+        catch (error) {
+          cl({ 'Error uploading menu link file': error });
+          failedFiles.push(fileToUpload.name || `file ${fi + 1}`);
+          continue;
+        }
+        if (!fileUrl) {
+          failedFiles.push(fileToUpload.name || `file ${fi + 1}`);
+          continue;
+        }
+        const cardTitle = uploadFiles.length === 1 ? titleText : `${titleText} ${fi + 1}`;
+        const newMenuId = await deriveUniqueMenuId(cardTitle);
+        const newMenuRec = {
+          client_id: state.session.client_id,
+          menu_id: newMenuId,
+          available_to: [...(parentRec.Item.available_to || [])],
+          description: { long: cardTitle, short: cardTitle },
+          menu_itemType: 'link',
+          url: fileUrl,
+        };
+        if (parentRec.Item.hasOwnProperty('newItem_availableTo')) {
+          newMenuRec.available_to = [];
+          parentRec.Item.newItem_availableTo.forEach(p => {
+            if (p === '*match') {
+              state.patient.groups.forEach(g => { newMenuRec.available_to.push(`group:${g}`); });
+            }
+            else { newMenuRec.available_to.push(p); }
+          });
+        }
+        await dbClient.put({ TableName: 'MenuV3', Item: newMenuRec }).promise()
+          .catch((error) => { cl({ 'Error creating new MenuV3 record': error }); });
+        createdCells.push({ menu_id: newMenuId, menuItemRec: newMenuRec, parent: reactData.addMenuDialogParent });
       }
-      catch (error) {
-        cl({ 'Error uploading menu link file': error });
+      if (createdCells.length === 0) {
         updateReactData({
           addMenuDialogSaving: false,
           addMenuDialogUploadProgress: 0,
+          addMenuDialogUploadFileIndex: 0,
           alert: {
             severity: 'error',
             title: 'Upload failed',
-            message: `Unable to upload ${uploadFile?.name || 'selected file'}`
+            message: failedFiles.length > 0
+              ? `All uploads failed: ${failedFiles.slice(0, 5).join(', ')}${failedFiles.length > 5 ? ` (+${failedFiles.length - 5} more)` : ''}`
+              : 'No files were uploaded successfully.'
           }
         }, true);
         return;
       }
-      if (!finalLinkUrl) {
-        updateReactData({
-          addMenuDialogSaving: false,
-          addMenuDialogUploadProgress: 0,
-          alert: {
-            severity: 'error',
-            title: 'Upload failed',
-            message: 'Upload did not return a URL for this file.'
-          }
-        }, true);
-        return;
-      }
+      const updatedChildren = [...(parentRec.Item.children || [])];
+      createdCells.forEach(({ menu_id }) => {
+        if (!updatedChildren.includes(menu_id)) updatedChildren.unshift(menu_id);
+      });
+      await dbClient.update({
+        TableName: 'MenuV3',
+        Key: { client_id: state.session.client_id, menu_id: reactData.addMenuDialogParent },
+        UpdateExpression: 'set #c = :c',
+        ExpressionAttributeNames: { '#c': 'children' },
+        ExpressionAttributeValues: { ':c': updatedChildren }
+      }).promise().catch((error) => { cl({ 'Error updating parent MenuV3 children': error }); });
+      const updatedMenuHierarchy = [...reactData.menu_hierarchy];
+      const targetLevel = reactData.addMenuDialogLevel;
+      if (!updatedMenuHierarchy[targetLevel]) updatedMenuHierarchy[targetLevel] = [];
+      updatedMenuHierarchy[targetLevel] = [...updatedMenuHierarchy[targetLevel], ...createdCells];
+      const successMsg = createdCells.length === 1
+        ? `${createdCells[0].menuItemRec.description.short} was added to this level.`
+        : `${createdCells.length} cards were added to this level.${failedFiles.length > 0 ? ` (${failedFiles.length} file${failedFiles.length > 1 ? 's' : ''} failed)` : ''}`;
+      updateReactData({
+        addMenuDialog: false,
+        addMenuDialogLevel: null,
+        addMenuDialogParent: null,
+        addMenuDialogType: null,
+        addMenuDialogLinkSource: 'url',
+        addMenuDialogTitle: '',
+        addMenuDialogUrl: '',
+        addMenuDialogUploadFiles: [],
+        addMenuDialogUploadFileIndex: 0,
+        addMenuDialogUploadFileName: '',
+        addMenuDialogUploadProgress: 0,
+        addMenuDialogSaving: false,
+        addMenuDialogTargets: [],
+        addMenuDialogPhone: '',
+        showAddMessageTargetSearch: false,
+        selections: [],
+        menu_hierarchy: updatedMenuHierarchy,
+        alert: {
+          severity: failedFiles.length > 0 ? 'warning' : 'success',
+          title: failedFiles.length > 0 ? 'Some uploads failed' : 'Cards added',
+          message: successMsg
+        }
+      }, true);
+      return;
     }
 
+    let finalLinkUrl = urlText;
     const newMenuId = await deriveUniqueMenuId(titleText);
     const newMenuItemType = (itemType === 'message_target') ? 'function' : (itemType === 'phone_dial') ? 'link' : itemType;
     const newMenuRec = {
@@ -2164,7 +2229,8 @@ export default ({ start_at }) => {
       addMenuDialogLinkSource: 'url',
       addMenuDialogTitle: '',
       addMenuDialogUrl: '',
-      addMenuDialogUploadFile: null,
+      addMenuDialogUploadFiles: [],
+      addMenuDialogUploadFileIndex: 0,
       addMenuDialogUploadFileName: '',
       addMenuDialogUploadProgress: 0,
       addMenuDialogSaving: false,
@@ -2714,7 +2780,8 @@ export default ({ start_at }) => {
                     addMenuDialogLinkSource: 'url',
                     addMenuDialogTitle: '',
                     addMenuDialogUrl: '',
-                    addMenuDialogUploadFile: null,
+                    addMenuDialogUploadFiles: [],
+                    addMenuDialogUploadFileIndex: 0,
                     addMenuDialogUploadFileName: '',
                     addMenuDialogUploadProgress: 0,
                     addMenuDialogSaving: false,
@@ -3326,7 +3393,8 @@ export default ({ start_at }) => {
                           addMenuDialogLinkSource: 'url',
                           addMenuDialogTitle: '',
                           addMenuDialogUrl: '',
-                          addMenuDialogUploadFile: null,
+                          addMenuDialogUploadFiles: [],
+                          addMenuDialogUploadFileIndex: 0,
                           addMenuDialogUploadFileName: '',
                           addMenuDialogUploadProgress: 0,
                           addMenuDialogSaving: false,
@@ -3677,7 +3745,8 @@ export default ({ start_at }) => {
                     addMenuDialogLinkSource: 'url',
                     addMenuDialogTitle: '',
                     addMenuDialogUrl: '',
-                    addMenuDialogUploadFile: null,
+                    addMenuDialogUploadFiles: [],
+                    addMenuDialogUploadFileIndex: 0,
                     addMenuDialogUploadFileName: '',
                     addMenuDialogUploadProgress: 0,
                     addMenuDialogSaving: false,
@@ -3773,12 +3842,20 @@ export default ({ start_at }) => {
                         <input
                           type='file'
                           ref={addMenuUploadInputRef}
+                          multiple={true}
                           style={{ display: 'none' }}
                           onChange={(event) => {
-                            const selectedFile = event.target.files && event.target.files[0] ? event.target.files[0] : null;
+                            const newFiles = event.target.files ? Array.from(event.target.files) : [];
+                            if (newFiles.length === 0) return;
+                            // Reset value so the same file(s) can be picked again if needed
+                            event.target.value = '';
+                            const existing = reactData.addMenuDialogUploadFiles || [];
+                            const remaining = Math.max(0, 50 - existing.length);
+                            const updated = [...existing, ...newFiles.slice(0, remaining)];
                             updateReactData({
-                              addMenuDialogUploadFile: selectedFile,
-                              addMenuDialogUploadFileName: selectedFile ? selectedFile.name : '',
+                              addMenuDialogUploadFiles: updated,
+                              addMenuDialogUploadFileIndex: 0,
+                              addMenuDialogUploadFileName: updated.length === 1 ? updated[0].name : `${updated.length} files queued`,
                               addMenuDialogUploadProgress: 0
                             }, true);
                           }}
@@ -3793,19 +3870,47 @@ export default ({ start_at }) => {
                                 addMenuUploadInputRef.current.click();
                               }
                             }}
-                            disabled={reactData.addMenuDialogSaving}
+                            disabled={reactData.addMenuDialogSaving || (reactData.addMenuDialogUploadFiles || []).length >= 50}
                           >
-                            {'Choose File'}
+                            {'Choose File(s) to Upload'}
                           </Button>
                           <Typography style={AVATextStyle({ size: 0.8, margin: { left: 1 } })}>
-                            {reactData.addMenuDialogUploadFileName || 'No file selected'}
+                            {(reactData.addMenuDialogUploadFiles || []).length === 0
+                              ? 'No file selected'
+                              : `${(reactData.addMenuDialogUploadFiles || []).length} file${(reactData.addMenuDialogUploadFiles || []).length > 1 ? 's' : ''} queued`}
                           </Typography>
                         </Box>
+                        {(reactData.addMenuDialogUploadFiles || []).length > 0 && !reactData.addMenuDialogSaving &&
+                          <Box mt={0.5} display='flex' flexDirection='column'>
+                            {(reactData.addMenuDialogUploadFiles || []).map((f, fi) => (
+                              <Box key={`queued_${fi}`} display='flex' alignItems='center'>
+                                <IconButton
+                                  size='small'
+                                  style={{ padding: 2 }}
+                                  onClick={() => {
+                                    const updated = (reactData.addMenuDialogUploadFiles || []).filter((_, i) => i !== fi);
+                                    updateReactData({
+                                      addMenuDialogUploadFiles: updated,
+                                      addMenuDialogUploadFileName: updated.length === 0 ? '' : updated.length === 1 ? updated[0].name : `${updated.length} files queued`
+                                    }, true);
+                                  }}
+                                >
+                                  <CancelIcon style={{ fontSize: '1rem', opacity: 0.6 }} />
+                                </IconButton>
+                                <Typography style={AVATextStyle({ size: 0.75, margin: { left: 0.5 } })} noWrap>
+                                  {f.name}
+                                </Typography>
+                              </Box>
+                            ))}
+                          </Box>
+                        }
                         {(reactData.addMenuDialogSaving || reactData.addMenuDialogUploadProgress > 0) &&
                           <Box mt={1}>
                             <LinearProgress variant='determinate' value={reactData.addMenuDialogUploadProgress || 0} />
                             <Typography style={AVATextStyle({ size: 0.75, margin: { top: 0.3 } })}>
-                              {`Upload progress: ${reactData.addMenuDialogUploadProgress || 0}%`}
+                              {(reactData.addMenuDialogUploadFiles || []).length > 1
+                                ? `Uploading file ${(reactData.addMenuDialogUploadFileIndex || 0) + 1} of ${(reactData.addMenuDialogUploadFiles || []).length}: ${reactData.addMenuDialogUploadProgress || 0}%`
+                                : `Upload progress: ${reactData.addMenuDialogUploadProgress || 0}%`}
                             </Typography>
                           </Box>
                         }
@@ -3891,7 +3996,8 @@ export default ({ start_at }) => {
                           addMenuDialogLinkSource: 'url',
                           addMenuDialogTitle: '',
                           addMenuDialogUrl: '',
-                          addMenuDialogUploadFile: null,
+                          addMenuDialogUploadFiles: [],
+                          addMenuDialogUploadFileIndex: 0,
                           addMenuDialogUploadFileName: '',
                           addMenuDialogUploadProgress: 0,
                           addMenuDialogSaving: false,
