@@ -1,5 +1,5 @@
 import React from 'react';
-import { getRole, getAllGroups, getGroupsBelongTo, getPersonGroups, accountAccess } from '../../util/AVAGroups';
+import { getRole, getAllGroups } from '../../util/AVAGroups';
 import { SET_GROUPS, SET_ACCESSLIST } from '../../contexts/Session/actions';
 
 import Dialog from '@material-ui/core/Dialog';
@@ -184,30 +184,22 @@ export default ({ options, defaults, onClose, onAbort }) => {
     // Background refresh: pull latest hierarchy/access and update GroupControl when ready.
     // This keeps initial open fast while still converging to fresh data.
     void (async () => {
-    // Always fetch group structure fresh from DB — fast (structure only, no member lists).
-    // This ensures GroupControl shows current groups/hierarchy without requiring an app restart.
-    const [belongsTo, group_structure, memberGroupIds] = await Promise.all([
-      getGroupsBelongTo(state.session.client_id, state.session.patient_id, { sort: true }),
-      getAllGroups(state.session.patient_id, state.session.client_id),
-      getPersonGroups(state.session.patient_id, state.session.client_id)
-    ]);
-    const localGroups = Object.assign({}, group_structure, { belongsTo, memberGroupIds });
+    // getAllGroups now runs getGroupAccess + getGroupHierarchy in parallel internally,
+    // and returns belongsTo, memberGroupIds, and authorizedGroups pre-computed.
+    // No separate getGroupAccess call needed here.
+    const localGroups = await getAllGroups(state.session.patient_id, state.session.client_id);
     dispatch({ type: SET_GROUPS, payload: localGroups });
 
-    // Build authorized_groups locally from the fresh hierarchy — avoids the heavyweight
-    // accountAccess() call (which reads all members of all groups).
-    // Admins/support/master see every group; everyone else sees only their member groups.
-    let localAccessList = state.accessList;
-    if (!localAccessList?.hasOwnProperty(state.session.client_id)) {
-      // First time only: no accessList at all — must call accountAccess to bootstrap the full list
-      localAccessList = await accountAccess(state.session.user_id, state.session.client_id);
-      dispatch({ type: SET_ACCESSLIST, payload: localAccessList });
-    } else {
-      // accessList exists — keep the existing groups slice as-is (it includes accessible_to grants
-      // that memberGroupIds alone would not cover). localAccessList stays pointing at state.accessList.
-      // TODO (long-term): merge memberGroupIds into existing groups to pick up live membership changes:
-      //   groups: [...new Set([...localAccessList[state.session.client_id].groups, ...(memberGroupIds || [])])]
-    }
+    // Merge the fresh authorizedGroups into any existing accessList slice so the people list
+    // (populated later when a directory is opened) is preserved across navigations.
+    const localAccessList = Object.assign({}, state.accessList, {
+      [state.session.client_id]: Object.assign(
+        {},
+        state.accessList?.[state.session.client_id] || {},
+        { groups: localGroups.authorizedGroups || [] }
+      )
+    });
+    dispatch({ type: SET_ACCESSLIST, payload: localAccessList });
 
       await buildGroupControlData(localGroups, localAccessList);
     })();

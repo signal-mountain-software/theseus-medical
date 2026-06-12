@@ -624,6 +624,7 @@ export default ({ request = {}, onClose }) => {
     return ignoreResult;
   };
 
+  /*
   // **************************
   // Helper to recursively get all descendants (children, grandchildren, etc.) of groups in a list
   const getAllChildrenOfGroups = (groupList) => {
@@ -712,6 +713,7 @@ export default ({ request = {}, onClose }) => {
     // Convert Set back to array and return
     return Array.from(allAncestors);
   };
+  */
 
   // **************************
   // Consolidated helper to resolve and return default value for a field
@@ -3467,6 +3469,7 @@ export default ({ request = {}, onClose }) => {
     });
   }
 
+  /*
   function update_stageGroups(groupInstructions) {
     let groupList = reactData.peopleRec[reactData.pertains_to].groups || [];
     if (groupInstructions.remove) {
@@ -3491,7 +3494,8 @@ export default ({ request = {}, onClose }) => {
     }
     return groupList;
   }
-
+  */
+  
   // Creates tasks from an array of task-template objects (used by on_complete_tasks and options.tasks).
   // Each template: { text, iterate_over?, skip_if_blank?, condition?: { field, value } }
   // All field references use occurrence-1 naming (e.g. med_1_name); iterate_over causes them to
