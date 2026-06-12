@@ -23,7 +23,7 @@ import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
 import { AVAclasses } from '../../util/AVAStyles';
 import { isEmpty, sentenceCase } from '../../util/AVAUtilities';
-import { getPublicGroupList, getPrivateGroupList, determineClass, getRole } from '../../util/AVAGroups';
+import { determineClass, getRole } from '../../util/AVAGroups';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import MakeMessage from './MakeMessage';
 
@@ -744,8 +744,6 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                             } else {
                                                 const personData = { ...person };
                                                 personData.role = await getRole(options.pGroup, person.person_id);
-                                                personData.public_groups = await getPublicGroupList(state.session.client_id, person.person_id);
-                                                personData.private_groups = await getPrivateGroupList(state.session.client_id, person.person_id);
                                                 if (!personData.account_class) {
                                                     personData.account_class = determineClass(personData.groups, state.session.group_assignments);
                                                 }
