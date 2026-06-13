@@ -3366,7 +3366,7 @@ export default ({ onClose, options = {} }) => {
             ) : (
               <Box>
                 {reactData.family_members.length > 1 && (
-                  <Typography variant="h6" style={{ marginBottom: '16px', color: 'green' }}>
+                  <Typography variant="h6" style={{ marginBottom: '16px' }}>
                     ✓ All Family Members Ready ({reactData.family_members.length} total)
                   </Typography>
                 )}
@@ -3377,7 +3377,7 @@ export default ({ onClose, options = {} }) => {
                 )}
                 {/* Show family_id if generated for multiple members */}
                 {reactData.family_id && (
-                  <Typography variant="body2" style={{ marginBottom: '20px', color: 'blue', fontWeight: 'bold' }}>
+                  <Typography variant="body2" style={{ marginBottom: '20px', fontWeight: 'bold' }}>
                     Family ID: {reactData.family_id}
                   </Typography>
                 )}
@@ -3385,12 +3385,12 @@ export default ({ onClose, options = {} }) => {
                   {reactData.family_members.map((member, index) => {
                     const memberName = getFamilyMemberName(member);
                     return (
-                      <Box key={index} style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                      <Box key={index} style={{ marginBottom: '8px', padding: '8px', border: '1px solid #aaa', borderRadius: '4px' }}>
                         <Typography variant="body2" style={{ fontWeight: 'bold' }}>
                           {index + 1}. {titleCase(member.account_type)} - {memberName}
                         </Typography>
                         {member.proposed_user_id && (
-                          <Typography variant="body2" style={{ color: 'blue', fontSize: '0.85em' }}>
+                          <Typography variant="body2" style={{ fontSize: '0.85em' }}>
                             User ID: {member.proposed_user_id}
                           </Typography>
                         )}
