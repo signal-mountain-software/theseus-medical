@@ -119,6 +119,21 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
         ));
       }
 
+      // Delete all PeopleAccounts rows for this person (name, email, phone lookup entries)
+      const paResult = await dbClient.query({
+        TableName: 'PeopleAccounts',
+        KeyConditionExpression: 'person_id = :p',
+        ExpressionAttributeValues: { ':p': person_id }
+      }).promise().catch(err => { console.error('Error querying PeopleAccounts for deletion:', err); return null; });
+      if (paResult?.Items?.length > 0) {
+        await Promise.all(paResult.Items.map(row =>
+          dbClient.delete({
+            TableName: 'PeopleAccounts',
+            Key: { person_id: row.person_id, identifier: row.identifier }
+          }).promise().catch(err => { console.error('Error deleting PeopleAccounts row:', err); })
+        ));
+      }
+
       setDeleteConfirmOpen(false);
       setFamilyCheckConfirmOpen(false);
       console.log(`Account ${person_id} deleted successfully`);
