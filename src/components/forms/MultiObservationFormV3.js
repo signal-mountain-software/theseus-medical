@@ -939,11 +939,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   function getQualTextValue(rowData, qOpt, qChoice) {
     if (rowData.qualSelections && rowData.qualSelections[qOpt]) {
-      return rowData.qualSelections[qOpt][qChoice] || '';
+      const val = rowData.qualSelections[qOpt][qChoice];
+      return (typeof val === 'string') ? val : '';
     }
-    else {
-      return '';
-    }
+    return '';
   }
 
   function optSelected(rowData, qOpt, qChoice, qValueText) {
@@ -2148,8 +2147,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     borderRadius={'16px'}
                     marginLeft={2}
                     marginRight={2}
-                    maxWidth={this_item.style?.width || ((this_item.checkbox && !this_item.isChecked) ? 400 : 'auto')}
-                    width={this_item.style?.width || (!this_item.checkbox ? '100%' : 'auto')}
+                    maxWidth={this_item.style?.width || ((this_item.checkbox && !this_item.isChecked) ? 400 : 'calc(100% - 32px)')}
+                    width={this_item.style?.width || (!this_item.checkbox ? 'calc(100% - 32px)' : 'auto')}
                     marginTop={(this_item.header ? 0 : 2)}
                     marginBottom={(this_item.header ? 1 : 2)}
                     padding={(this_item.header ? 0 : 1)}
@@ -2159,7 +2158,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     }
                     className={!!this_item.error ? classes.backGroundRed : (this_item.isChecked ? classes.backGroundGreen : classes.backGroundNone)}
                     borderColor={!!this_item.error ? 'red' : (this_item.isChecked ? 'green' : 'lightgray')}
-                    key={`rowboxwrap_${selectedColumn}.${this_index}-${this_item.version}-${!!this_item.error ? 'err' : 'ok'}`}
+                    key={`rowboxwrap_${selectedColumn}.${this_index}`}
                     id={`rowboxwrap_${selectedColumn}.${this_index}-${this_item.version}-${!!this_item.error ? 'err' : 'ok'}`}
                   >
                     { /* Descriptive text - headers and info that is text only */}
@@ -2191,14 +2190,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     }
                     { /* Text prompt line for this row - headers don't have this */}
                     {this_item.input && !reactData.viewOnly &&
-                      <Card elevation={0} sx={this_item.style?.width ? {} : { maxWidth: 345 }} style={{ width: this_item.style?.width || '100%', padding: '4px', paddingBottom: '6px' }}>
+                      <Card elevation={0} sx={this_item.style?.width ? {} : { maxWidth: 345 }} style={{ width: this_item.style?.width || '100%', maxWidth: '100%', boxSizing: 'border-box', padding: '4px', paddingBottom: '6px' }}>
                         <TextField
                           style={Object.assign({
-                            marginLeft: '8px',
                             paddingLeft: 0,
                             paddingRight: 0,
                             flexGrow: 2,
-                            width: '95%',
+                            width: '100%',
                           },
                             (this_item.isChecked && !isEmpty(this_item.qualData) ? { marginTop: '12px' } : {}))
                           }
@@ -2548,6 +2546,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                                     id={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.version}`}
                                                     size="small"
                                                     checked={isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
+                                                    onClick={() => {
+                                                      // Pure toggle — no text argument so optSelected treats it as boolean toggle
+                                                      optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display);
+                                                      reactData.columnList[selectedColumn].columnActivated = true;
+                                                      updateReactData({ columnList: reactData.columnList }, true);
+                                                    }}
                                                   />
                                                 }
                                                 <Typography style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 0.1 } })}>
@@ -2555,18 +2559,30 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                                 </Typography>
                                                 {!reactData.viewOnly &&
                                                   <TextField
-                                                    key={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.version}`}
-                                                    id={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.version}`}
+                                                    key={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}`}
+                                                    id={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}`}
                                                     style={AVATextStyle({ 'line-height': 1, size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}
                                                     defaultValue={getQualTextValue(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
                                                     variant={'standard'}
                                                     inputProps={{ style: { paddingBottom: 0, paddingTop: 0, fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                                                     FormHelperTextProps={{ style: { paddingBottom: 0, paddingTop: 0, fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                                                    onChange={(event) => {
-                                                      optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display, event.target.value);
-                                                      updateReactData({
-                                                        columnList: reactData.columnList
-                                                      }, true);
+                                                    onBlur={(event) => {
+                                                      // Directly store text without calling optSelected — avoids the boolean-toggle
+                                                      // side-effect that fires when onBlur triggers due to focus moving elsewhere
+                                                      const text = event.target.value;
+                                                      const rowData = reactData.columnList[selectedColumn].rowDetails[this_index];
+                                                      if (!rowData.qualSelections) { rowData.qualSelections = {}; }
+                                                      if (!rowData.qualSelections[qR.title]) { rowData.qualSelections[qR.title] = {}; }
+                                                      const currentVal = rowData.qualSelections[qR.title][opt.display];
+                                                      if (currentVal) {
+                                                        // Already checked — update stored text (keep boolean true if field is empty)
+                                                        rowData.qualSelections[qR.title][opt.display] = text || true;
+                                                      } else if (text) {
+                                                        // Not yet checked but user entered text — implicitly check it with the text
+                                                        rowData.qualSelections[qR.title][opt.display] = text;
+                                                      }
+                                                      reactData.columnList[selectedColumn].columnActivated = true;
+                                                      updateReactData({ columnList: reactData.columnList }, true);
                                                     }}
                                                     autoComplete='off'
                                                   />
