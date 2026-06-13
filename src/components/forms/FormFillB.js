@@ -4157,6 +4157,7 @@ export default ({ request = {}, onClose }) => {
     const fieldType = fieldRec.type;
     const isTextType = fieldType === 'text';
     const isPhoneType = fieldType === 'phone';
+    const isEmailType = fieldType === 'email';
     const isDateSelectType = fieldType === 'date_select';
     const isDateOrTimeType = (fieldType === 'date') || (fieldType === 'date_past') || (fieldType === 'time');
     const isRequiredField = isFieldRequired(fieldRec);
@@ -4283,12 +4284,23 @@ export default ({ request = {}, onClose }) => {
         }
         defaultValue={valueText}
         onBlur={async (event) => {
-          if (isTextType) {
+          if (isTextType || isEmailType) {
+            if (isEmailType && event.target.value) {
+              const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(event.target.value.trim());
+              if (!emailValid) {
+                reactData.fields[this_field].isError = true;
+                reactData.fields[this_field].errorMessage = 'Please enter a valid email address';
+                updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+                return;
+              }
+              reactData.fields[this_field].isError = false;
+              reactData.fields[this_field].errorMessage = '';
+            }
             await handleChangeValue({
               newText: event.target.value,
               prop: this_field,
               occ_index,
-              sentenceCase: true
+              sentenceCase: isTextType
             });
             return;
           }
@@ -4299,9 +4311,18 @@ export default ({ request = {}, onClose }) => {
 
           if (isPhoneType) {
             let fPhone = formatPhone(event.target.value);
+            const phoneDigits = fPhone.replace(/\D/g, '');
+            if (phoneDigits.length > 0 && phoneDigits.length < 10) {
+              reactData.fields[this_field].isError = true;
+              reactData.fields[this_field].errorMessage = 'Phone number must be at least 10 digits';
+              updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+              return;
+            }
+            reactData.fields[this_field].isError = false;
+            reactData.fields[this_field].errorMessage = '';
             await handleChangeValue({
               newText: fPhone,
-              newValue: `+1${fPhone.replace(/\D/g, '')}`,
+              newValue: `+1${phoneDigits}`,
               occ_index,
               prop: this_field,
               sentenceCase: false
@@ -4482,7 +4503,7 @@ export default ({ request = {}, onClose }) => {
                                     {''}
                                   </Typography>
                                 }
-                                {(['text', 'phone', 'date_select', 'date', 'date_past', 'time', 'age'].includes(reactData.fields[this_field].type))
+                                {(['text', 'email', 'phone', 'date_select', 'date', 'date_past', 'time', 'age'].includes(reactData.fields[this_field].type))
                                   && renderTextLikeField({ this_field, occ_index, sectionNdx, fieldNdx })
                                 }
                                 {(reactData.fields[this_field].type === 'header') && (occ_index === 0) &&
