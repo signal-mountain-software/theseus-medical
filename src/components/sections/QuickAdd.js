@@ -162,6 +162,7 @@ export default ({ onClose, options = {} }) => {
     preauth_lookup_type: null,    // lookupType used to find the existing account ('user_id'|'name'|'email'|'phone')
     updating_existing_person_id: null, // when set, fill_fields stage updates this existing account
     existing_people_rec: null,         // full People record loaded for pre-filling the update form
+    group_selection_values: [],        // group IDs chosen by the user from group_selection list
   });
 
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
@@ -519,6 +520,7 @@ export default ({ onClose, options = {} }) => {
       form_fields: {}, // Clear previous fields
       field_values: {}, // Clear previous values
       field_validation_errors: {}, // Clear validation errors
+      group_selection_values: [], // Clear group selections for new account type
       stage: 'fill_fields'
     }));
 
@@ -536,6 +538,7 @@ export default ({ onClose, options = {} }) => {
       form_fields: {},
       field_values: {},
       field_validation_errors: {}, // Clear validation errors
+      group_selection_values: [],
       loading_fields: false,
       stage: 'select_account_type'
     }));
@@ -802,6 +805,7 @@ export default ({ onClose, options = {} }) => {
       form_fields: reactData.form_fields,
       field_values: reactData.field_values,
       preauth_extra_fields: preauthExtraFields,
+      group_selection_values: reactData.group_selection_values || [],
       timestamp: new Date().toISOString()
     };
 
@@ -987,6 +991,7 @@ export default ({ onClose, options = {} }) => {
       form_fields: {},
       field_values: {},
       field_validation_errors: {}, // Clear validation errors
+      group_selection_values: [],
       loading_fields: false,
       current_member_index: prev.current_member_index + 1,
       stage: 'select_account_type', // Back to account type selection
@@ -1828,7 +1833,8 @@ export default ({ onClose, options = {} }) => {
         preauthGroups = rawPreauthGroups.split(',').map(g => g.trim()).filter(Boolean);
       }
 
-      const groups = [...new Set(["__TOP__", "ALL", ...defaultGroups, ...preauthGroups])];
+      const selectedGroups = (member.group_selection_values || []).map(g => String(g).trim()).filter(Boolean);
+      const groups = [...new Set(["__TOP__", "ALL", ...defaultGroups, ...selectedGroups, ...preauthGroups])];
 
       // Extract contact info for preferred methods
       const email = fieldValues.email || fieldValues.eMail || fieldValues['e-Mail'] || fieldValues.email_address || fieldValues['email address'] || '';
@@ -2036,9 +2042,10 @@ export default ({ onClose, options = {} }) => {
       });
 
       // Register group memberships via addMember now that the People record exists
+      // allowParent:true because default_groups may include non-leaf (parent) groups
       const groupsToAdd = groups.filter(g => g !== '__TOP__' && g !== 'ALL');
       if (groupsToAdd.length > 0) {
-        await addMember(peopleRecord.person_id, reactData.client_id, groupsToAdd)
+        await addMember(peopleRecord.person_id, reactData.client_id, groupsToAdd, { allowParent: true })
           .catch(err => console.error('addMember error during QuickAdd:', err));
       }
 
@@ -2981,6 +2988,90 @@ export default ({ onClose, options = {} }) => {
                     Account ID: <strong>{reactData.updating_existing_person_id}</strong>
                   </Typography>
                 )}
+                {/* Group selection — rendered before text fields when group_selection is configured */}
+                {reactData.selected_account_config?.group_selection && (() => {
+                  const gs = reactData.selected_account_config.group_selection;
+                  const groupList = Array.isArray(gs.groups) ? gs.groups : [];
+                  if (groupList.length === 0) return null;
+                  // Resolve each entry: supports string (group_id) or {id, label}
+                  const hierarchy = state.groups?.adminHierarchy || [];
+                  const resolvedGroups = groupList.map(entry => {
+                    if (typeof entry === 'object' && entry !== null) {
+                      return { id: entry.id, label: entry.label || entry.id };
+                    }
+                    const found = hierarchy.find(h => h.id === entry || h.group_id === entry);
+                    return { id: entry, label: found?.name || found?.description || titleCase(String(entry).replace(/[-_]/g, ' ')) };
+                  });
+                  const selectedVals = reactData.group_selection_values || [];
+                  return (
+                    <Box key='__group_selection__' style={{ marginBottom: '20px', marginRight: '16px' }}>
+                      <Box
+                        style={{
+                          position: 'relative',
+                          borderRadius: '4px',
+                          padding: '8px 14px'
+                        }}
+                      >
+                        <fieldset
+                          aria-hidden="true"
+                          className={classes.selectFieldset}
+                          style={{
+                            textAlign: 'left',
+                            position: 'absolute',
+                            bottom: 0, right: 0, top: '-5px', left: 0,
+                            margin: 0, padding: '0 8px',
+                            pointerEvents: 'none',
+                            borderRadius: 'inherit',
+                            borderStyle: 'solid',
+                            borderWidth: '1px',
+                            overflow: 'hidden',
+                            minWidth: '0%',
+                          }}
+                        >
+                          <legend style={{
+                            float: 'unset', width: 'auto', overflow: 'hidden',
+                            display: 'block', padding: 0, height: '16px',
+                            paddingBottom: '20px', fontSize: '1em',
+                            visibility: 'visible', maxWidth: '100%',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            <span className={classes.selectLabel} style={{
+                              paddingLeft: '5px', paddingRight: '5px',
+                              display: 'inline-block', fontSize: '1em',
+                              marginTop: '-16px'
+                            }}>
+                              {gs.label || 'Select groups'}
+                            </span>
+                          </legend>
+                        </fieldset>
+                        <Box className={classes.selectOptions} style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingTop: '4px' }}>
+                          {resolvedGroups.map((g, idx) => (
+                            <FormControlLabel
+                              key={`__grpsel_${idx}`}
+                              control={
+                                <Checkbox
+                                  checked={selectedVals.includes(g.id)}
+                                  onChange={() => {
+                                    setReactData(prev => {
+                                      const cur = prev.group_selection_values || [];
+                                      const next = cur.includes(g.id)
+                                        ? cur.filter(v => v !== g.id)
+                                        : [...cur, g.id];
+                                      return { ...prev, group_selection_values: next };
+                                    });
+                                  }}
+                                  size="small"
+                                />
+                              }
+                              label={<Typography variant="body2">{g.label}</Typography>}
+                            />
+                          ))}
+                        </Box>
+                      </Box>
+                    </Box>
+                  );
+                })()}
+
                 {Object.entries(reactData.form_fields).map(([fieldName, fieldData]) => {
                   if (!fieldData) {
                     return (
