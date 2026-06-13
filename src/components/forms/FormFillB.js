@@ -28,6 +28,7 @@ import AVA_AlertSound from '../../ava_alert.mp3';
 import useSound from 'use-sound';
 
 import useSession from '../../hooks/useSession';
+import useDarkMode from '../../hooks/useDarkMode';
 import { syncPersonToSessionCaches } from '../../util/AVASessionSync';
 import { useIdleTimer } from 'react-idle-timer';
 import { updateDocument, createDocument } from '../../util/AVADocuments';
@@ -220,6 +221,23 @@ export default ({ request = {}, onClose }) => {
   const signatureRef = [React.useRef(null), React.useRef(null), React.useRef(null)];
 
   const { state, dispatch } = useSession();
+  const { state: darkModeState } = useDarkMode();
+  const isDarkMode = darkModeState?.mode === 'dark';
+
+  // Replaces hard-coded colors in HTML strings with dark-mode-friendly alternatives.
+  // Only active when dark mode is on; passes through unchanged in light mode.
+  const adaptHtml = (html) => {
+    if (!isDarkMode || !html) { return html; }
+    return html
+      .replace(/color\s*:\s*red\b/gi,   'color:#ff6b6b')   // red  → soft red
+      .replace(/color\s*:\s*blue\b/gi,  'color:#7ab3ff')   // blue → soft blue
+      .replace(/color\s*:\s*green\b/gi, 'color:#6fcf6f')   // green → soft green
+      .replace(/color\s*:\s*black\b/gi, 'color:#e0e0e0')   // black → near-white
+      .replace(/color\s*:\s*#[0-9a-f]{3,6};?\s*"/gi, (match) => {
+        // Leave any other explicit hex colors alone — they were intentionally chosen
+        return match;
+      });
+  };
 
   // This ref is to capture the entire form contents for HTML output
   const formContainerRef = React.useRef(null);
@@ -2406,7 +2424,7 @@ export default ({ request = {}, onClose }) => {
         >
           <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}
             style={{ fontSize: `${reactData.user_fontSize}rem` }}>
-            <span dangerouslySetInnerHTML={{ __html: promptText || normalizePromptMarkup(props.prop) }} />
+            <span dangerouslySetInnerHTML={{ __html: adaptHtml(promptText || normalizePromptMarkup(props.prop)) }} />
             {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
           </Typography>
           {!!helperText && (
@@ -2556,7 +2574,7 @@ export default ({ request = {}, onClose }) => {
         >
           <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}
             style={{ fontSize: `${reactData.user_fontSize}rem` }}>
-            <span dangerouslySetInnerHTML={{ __html: promptText || normalizePromptMarkup(props.prop) }} />
+            <span dangerouslySetInnerHTML={{ __html: adaptHtml(promptText || normalizePromptMarkup(props.prop)) }} />
             {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
           </Typography>
           {!!helperText && (
@@ -4213,7 +4231,7 @@ export default ({ request = {}, onClose }) => {
     const promptLabel = !!promptText && (
       <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}
         style={{ fontSize: `${reactData.user_fontSize}rem` }}>
-        <span dangerouslySetInnerHTML={{ __html: promptText }} />
+        <span dangerouslySetInnerHTML={{ __html: adaptHtml(promptText) }} />
         {isRequiredField && <span className={classes.requiredAsterisk}>&nbsp;*</span>}
       </Typography>
     );
@@ -4450,7 +4468,7 @@ export default ({ request = {}, onClose }) => {
                               }),
                               zIndex: 2 + sectionNdx
                             }}
-                            dangerouslySetInnerHTML={{ __html: sectionObj.section_header }}
+                            dangerouslySetInnerHTML={{ __html: adaptHtml(sectionObj.section_header) }}
                           />
                         : <div
                             key={`section__${sectionObj.section_name}`}
@@ -4516,10 +4534,10 @@ export default ({ request = {}, onClose }) => {
                                       reactData.fields[this_field].prompt?.style || {}
                                     ))}
                                     dangerouslySetInnerHTML={{
-                                      __html: normalizePromptMarkup(reconcilePrompt({
+                                      __html: adaptHtml(normalizePromptMarkup(reconcilePrompt({
                                         rawValue: reactData.fields[this_field].prompt?.value,
                                         this_field
-                                      }))
+                                      })))
                                     }}
                                   />
                                 }
@@ -4537,10 +4555,10 @@ export default ({ request = {}, onClose }) => {
                                     >
                                       <span
                                         dangerouslySetInnerHTML={{
-                                          __html: normalizePromptMarkup(reconcilePrompt({
+                                          __html: adaptHtml(normalizePromptMarkup(reconcilePrompt({
                                             rawValue: reactData.fields[this_field].prompt?.value,
                                             this_field
-                                          }))
+                                          })))
                                         }}
                                       />
                                     </Typography>
@@ -4649,10 +4667,10 @@ export default ({ request = {}, onClose }) => {
                                       >
                                         <span
                                           dangerouslySetInnerHTML={{
-                                            __html: normalizePromptMarkup(reconcilePrompt({
+                                            __html: adaptHtml(normalizePromptMarkup(reconcilePrompt({
                                               rawValue: reactData.fields[this_field].prompt?.value,
                                               this_field
-                                            }))
+                                            })))
                                           }}
                                         />
                                       </Typography>
@@ -4785,7 +4803,7 @@ export default ({ request = {}, onClose }) => {
                                 {(reactData.fields[this_field].type === 'html') &&
                                   <Box>
                                     <div
-                                      dangerouslySetInnerHTML={{ '__html': reactData.fields[this_field].value }}
+                                      dangerouslySetInnerHTML={{ '__html': adaptHtml(reactData.fields[this_field].value) }}
                                     />
                                   </Box>
                                 }
@@ -4812,10 +4830,10 @@ export default ({ request = {}, onClose }) => {
                                       <u>
                                         <span
                                           dangerouslySetInnerHTML={{
-                                            __html: normalizePromptMarkup(reactData.fields[this_field].prompt?.helper || `Tap here for ${reconcilePrompt({
+                                            __html: adaptHtml(normalizePromptMarkup(reactData.fields[this_field].prompt?.helper || `Tap here for ${reconcilePrompt({
                                               rawValue: reactData.fields[this_field].prompt?.value,
                                               this_field
-                                            })}`)
+                                            })}`))
                                           }}
                                         />
                                       </u>
@@ -4867,10 +4885,10 @@ export default ({ request = {}, onClose }) => {
                                       >
                                         <span
                                           dangerouslySetInnerHTML={{
-                                            __html: normalizePromptMarkup(reconcilePrompt({
+                                            __html: adaptHtml(normalizePromptMarkup(reconcilePrompt({
                                               rawValue: reactData.fields[this_field].prompt?.value,
                                               this_field
-                                            }))
+                                            })))
                                           }}
                                         />
                                       </Typography>
@@ -4986,11 +5004,11 @@ export default ({ request = {}, onClose }) => {
                                               >
                                                 <span
                                                   dangerouslySetInnerHTML={{
-                                                    __html: normalizePromptMarkup(reconcilePrompt({
+                                                    __html: adaptHtml(normalizePromptMarkup(reconcilePrompt({
                                                       rawValue: reactData.fields[this_field].prompt?.value,
                                                       this_field,
                                                       includeRequiredMarker: false
-                                                    }))
+                                                    })))
                                                   }}
                                                 />
                                                 {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
