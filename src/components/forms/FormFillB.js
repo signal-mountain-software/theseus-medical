@@ -4176,6 +4176,7 @@ export default ({ request = {}, onClose }) => {
     const isTextType = fieldType === 'text';
     const isPhoneType = fieldType === 'phone';
     const isEmailType = fieldType === 'email';
+    const isIdentityConfirmType = fieldType === 'identity_confirm';
     const isDateSelectType = fieldType === 'date_select';
     const isDateOrTimeType = (fieldType === 'date') || (fieldType === 'date_past') || (fieldType === 'time');
     const isRequiredField = isFieldRequired(fieldRec);
@@ -4302,6 +4303,41 @@ export default ({ request = {}, onClose }) => {
         }
         defaultValue={valueText}
         onBlur={async (event) => {
+          if (isIdentityConfirmType) {
+            const entry = (event.target.value || '').trim().toLowerCase();
+            if (!entry) {
+              return;
+            }
+            const displayName = (state.session.user_display_name || '').toLowerCase();
+            const lastLogin = (state.session.last_login || '').toLowerCase();
+            if (entry === displayName) {
+              reactData.fields[this_field].isError = false;
+              reactData.fields[this_field].errorMessage = '';
+              await handleChangeValue({
+                newText: event.target.value.trim(),
+                prop: this_field,
+                occ_index,
+                sentenceCase: false
+              });
+              return;
+            }
+            if (lastLogin && entry === lastLogin) {
+              reactData.fields[this_field].isError = false;
+              reactData.fields[this_field].errorMessage = '';
+              await handleChangeValue({
+                newText: state.session.user_display_name,
+                prop: this_field,
+                occ_index,
+                sentenceCase: false
+              });
+              return;
+            }
+            reactData.fields[this_field].isError = true;
+            reactData.fields[this_field].errorMessage = 'Entry does not match your name or password';
+            updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+            return;
+          }
+
           if (isTextType || isEmailType) {
             if (isEmailType && event.target.value) {
               const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(event.target.value.trim());
@@ -4521,7 +4557,7 @@ export default ({ request = {}, onClose }) => {
                                     {''}
                                   </Typography>
                                 }
-                                {(['text', 'email', 'phone', 'date_select', 'date', 'date_past', 'time', 'age'].includes(reactData.fields[this_field].type))
+                                {(['text', 'email', 'phone', 'date_select', 'date', 'date_past', 'time', 'age', 'identity_confirm'].includes(reactData.fields[this_field].type))
                                   && renderTextLikeField({ this_field, occ_index, sectionNdx, fieldNdx })
                                 }
                                 {(reactData.fields[this_field].type === 'header') && (occ_index === 0) &&
