@@ -1248,6 +1248,27 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           })
           .promise();
         updatedPeopleRecord = true;
+        // Sync PeopleGroups for both-changed and new-account paths
+        {
+          const parent_of = state.groups?.parent_of || {};
+          const isLeaf = g => !parent_of[g]?.length;
+          const ogGroups = reactData.og.peopleRec.groups || [];
+          const newGroups = reactData.current.peopleRec.groups || [];
+          const groupsToAdd = newGroups.filter(g => isLeaf(g) && !ogGroups.includes(g));
+          const groupsToRemove = ogGroups.filter(g => isLeaf(g) && !newGroups.includes(g));
+          const personId = reactData.current.peopleRec.person_id;
+          const clientId = state.session.client_id;
+          if (groupsToAdd.length > 0) {
+            await addMember(personId, clientId, groupsToAdd, { allowParent: false });
+          }
+          if (groupsToRemove.length > 0) {
+            await removeMember(personId, clientId, groupsToRemove);
+          }
+          if (personId === state.session.patient_id) {
+            const memberGroupIds = await getPersonGroups(personId, clientId);
+            dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups, { memberGroupIds }) });
+          }
+        }
       }
       else if (peopleChanged) {
         await dbClient
