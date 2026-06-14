@@ -7,13 +7,18 @@ import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import { Box, Button, TextField, Typography, Dialog, Paper, DialogContentText, DialogActions, Switch } from '@material-ui/core/';
+import { Box, Button, Chip, TextField, Tooltip, Typography, Dialog, Paper, DialogContentText, DialogActions, Switch } from '@material-ui/core/';
+import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
+import ChevronRightIcon from '@material-ui/icons/ChevronRight';
+import GroupIcon from '@material-ui/icons/Group';
+import PersonIcon from '@material-ui/icons/Person';
+import StarIcon from '@material-ui/icons/Star';
 
 const useStyles = makeStyles(theme => ({
   clientPopUp: {
     borderRadius: '30px 30px 30px 30px',
     padding: '16px',
-    height: '450px'
+    maxHeight: '90vh',
   }
 }));
 
@@ -55,8 +60,52 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
 
   // Virtual scrolling state
   const [maxPeopleToRender, setMaxPeopleToRender] = React.useState(100);
-  // Show only selected toggle
-  const [showOnlySelected, setShowOnlySelected] = React.useState(false);
+  // Expand/collapse state for group tree nodes
+  const [collapsedGroups, setCollapsedGroups] = React.useState(new Set());
+  // Group highlighted by tapping its chip
+  const [highlightedGroupId, setHighlightedGroupId] = React.useState(null);
+  // Capture initial selections so cancel can restore them
+  const initialSelectionsRef = React.useRef(reactData.selections ? [...reactData.selections] : []);
+
+  // Build full breadcrumb path for a group from the flat groupList
+  const getGroupPath = (group_id) => {
+    const gl = reactData.groupInfo?.groupList;
+    if (!gl) { return group_id; }
+    const idx = gl.findIndex(g => g.group_id === group_id);
+    if (idx < 0) { return group_id; }
+    const path = [gl[idx].group_name];
+    let checkLevel = gl[idx].level;
+    for (let i = idx - 1; i >= 0 && checkLevel > 0; i--) {
+      if (gl[i].level < checkLevel) {
+        path.unshift(gl[i].group_name);
+        checkLevel = gl[i].level;
+      }
+    }
+    return path.join(' / ');
+  };
+
+  // Expand all ancestors of a group, show the groups section, and highlight the row
+  const expandToGroup = (group_id) => {
+    const gl = reactData.groupInfo?.groupList;
+    if (!gl) { return; }
+    const idx = gl.findIndex(g => g.group_id === group_id);
+    if (idx < 0) { return; }
+    const next = new Set(collapsedGroups);
+    let checkLevel = gl[idx].level;
+    for (let i = idx - 1; i >= 0 && checkLevel > 0; i--) {
+      if (gl[i].level < checkLevel) {
+        next.delete(gl[i].group_id);
+        checkLevel = gl[i].level;
+      }
+    }
+    setCollapsedGroups(next);
+    setHighlightedGroupId(group_id);
+    if (!reactData.showGroupList) {
+      updateReactData({ showGroupList: true }, true);
+    }
+    // Clear highlight after 2 seconds
+    window.setTimeout(() => setHighlightedGroupId(null), 2000);
+  };
 
   React.useEffect(() => {
     console.log('EFFECT mounted');
@@ -97,8 +146,10 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
           let groupList = [];
           let groupList_minLevel = 99;
           loadList('__TOP__', state.groups.groupTree['__TOP__'], 0);
+          const adminGroupsEndIdx = groupList.length;
 
-          // Append public/open groups (not in the hierarchy tree) at level 0
+          // Collect public groups separately
+          const rawPublicGroups = [];
           if (state.groups.publicGroups) {
             for (const [group_id, groupRec] of Object.entries(state.groups.publicGroups)) {
               if (administrative_account ||
@@ -108,9 +159,79 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                   (!options.restrictGroups || state?.patient?.groups?.includes(group_id))
                 )
               ) {
-                groupList.push({ group_id, group_name: groupRec.group_name, level: 0 });
+                rawPublicGroups.push({ group_id, group_name: groupRec.group_name });
               }
             }
+          }
+
+          // Build final list with section headers.
+          // For the hierarchy section:
+          //   Case 1 (wide open): exactly one level-0 group exists after normalization — that IS
+          //   the "ALL" / client-root group. Use its name as the synthetic header and drop it
+          //   from the list; real entries start at level 1.
+          //   Case 2 (filtered/restricted): use "My Groups" as header and shift all groups +1.
+          const finalGroupList = [];
+
+          if (adminGroupsEndIdx > 0) {
+            const normalizedPrivate = groupList.slice(0, adminGroupsEndIdx).map(g => ({
+              ...g,
+              level: g.level - groupList_minLevel
+            }));
+            const level0Private = normalizedPrivate.filter(g => g.level === 0);
+            if (level0Private.length === 1) {
+              // Wide-open: absorb the single root as the section label (not force-collapsed)
+              finalGroupList.push({
+                group_id: '__admin_groups_header__',
+                group_name: level0Private[0].group_name,
+                level: 0,
+                isSection: true
+              });
+              normalizedPrivate.filter(g => g.level > 0).forEach(g => finalGroupList.push(g));
+            } else {
+              // Filtered: generic section label, shift groups under it
+              finalGroupList.push({
+                group_id: '__admin_groups_header__',
+                group_name: 'My Groups',
+                level: 0,
+                isSection: true
+              });
+              normalizedPrivate.forEach(g => finalGroupList.push({ ...g, level: g.level + 1 }));
+            }
+          }
+
+          if (rawPublicGroups.length > 0) {
+            finalGroupList.push({
+              group_id: '__public_groups_header__',
+              group_name: 'Public Groups',
+              level: 0,
+              isHeader: true
+            });
+            rawPublicGroups.forEach(g => finalGroupList.push({ ...g, level: 1 }));
+          }
+
+          // Collect and append private groups (same structure as publicGroups)
+          const rawPrivateGroups = [];
+          if (state.groups.privateGroups) {
+            for (const [group_id, groupRec] of Object.entries(state.groups.privateGroups)) {
+              if (administrative_account ||
+                (
+                  state?.accessList?.[state.session?.client_id]?.groups &&
+                  state?.accessList?.[state.session?.client_id]?.groups.includes(group_id) &&
+                  (!options.restrictGroups || state?.patient?.groups?.includes(group_id))
+                )
+              ) {
+                rawPrivateGroups.push({ group_id, group_name: groupRec.group_name });
+              }
+            }
+          }
+          if (rawPrivateGroups.length > 0) {
+            finalGroupList.push({
+              group_id: '__private_groups_header__',
+              group_name: 'Private Groups',
+              level: 0,
+              isHeader: true
+            });
+            rawPrivateGroups.forEach(g => finalGroupList.push({ ...g, level: 1 }));
           }
           function loadList(this_item, my_children, display_level, hidden_ancestors = [], ancestorAuthorized = false) {
             /* I can "see" a group in this list if:
@@ -166,14 +287,22 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
             }
           }
           reactUpd.groupInfo = Object.assign({}, deepCopy(state.groups), {
-            groupList: groupList.map(this_group => {
-              return {
-                group_id: this_group.group_id,
-                group_name: this_group.group_name,
-                level: this_group.level - groupList_minLevel
-              };
-            })
+            groupList: finalGroupList
           });
+
+          // Seed collapsed state: collapse all parent nodes at level >= 1 (show top two levels by default)
+          const gl = reactUpd.groupInfo.groupList;
+          const initialCollapsed = new Set();
+          gl.forEach((g, idx) => {
+            const isParent = idx + 1 < gl.length && gl[idx + 1].level > g.level;
+            // Collapse headers and level>=1 parents on initial display
+            if (g.isHeader || (isParent && g.level >= 1)) {
+              initialCollapsed.add(g.group_id);
+            }
+          });
+          if (initialCollapsed.size > 0) {
+            setCollapsedGroups(initialCollapsed);
+          }
 
           // Auto-show group list if showGroupList option is true
           if (optionsRef.current.showGroupList || optionsRef.current.restrictGroups) {
@@ -188,7 +317,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
       if (!reactData.accessList) {
         if (!state.accessList) {
           if (isMounted.current) {
-            onClose();
+            onClose(initialSelectionsRef.current);
           }
         }
         else {
@@ -256,15 +385,9 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   };
 
   const OKtoShowPreferred = (this_object, rIndex) => {
-    // If showOnlySelected is true, only show selected preferred recipients
-    if (showOnlySelected) {
-      return reactData.selections && reactData.selections.some(s => s.rIndex === rIndex);
-    }
-       // If restrictGroups is true, we have already filtered out non-member groups
     if (optionsRef.current.restrictGroups) {
       return true;
     }
-
     return (
       (options.showAll && (isEmpty(reactData.linkedPersonFilter) || reactData.linkedPersonFilter?.raw?.length < 2))
       ||
@@ -277,19 +400,10 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   };
 
   const OKtoShowGroup = (this_group) => {
-    // If restrictGroups is true, we hve already filtered out non-member groups
+    if (this_group.isHeader || this_group.isSection) { return true; }
     if (options.restrictGroups) {
       return true;
     }
- //   if (this_group.level === 0) {
- //     return false;
- //   }
-
-    // If showOnlySelected is true, only show selected groups
-    if (showOnlySelected) {
-      return reactData.selections && reactData.selections.some(s => s.group_id === this_group.group_id);
-    }
-
     return (
       (options.showAll && (isEmpty(reactData.linkedPersonFilter) || reactData.linkedPersonFilter?.raw?.length < 2))
       ||
@@ -301,14 +415,6 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   const OKtoShow = (this_person) => {
     this_person.first = this_person.first || this_person.name?.first || '';
     this_person.last = this_person.last || this_person.name?.last || '';
-
-    // If showOnlySelected is true, only show selected people and group members
-    if (showOnlySelected) {
-      const isDirectlySelected = reactData.selections && reactData.selections.some(s => s.person_id === this_person.person_id);
-      const isGroupMember = reactData.selectedPeople_list && reactData.selectedPeople_list.includes(this_person.person_id);
-      return isDirectlySelected || isGroupMember;
-    }
-
     return (
       (options.showAll && (isEmpty(reactData.linkedPersonFilter) || reactData.linkedPersonFilter?.raw?.length < 2))
       ||
@@ -335,7 +441,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
       fullWidth
       variant={'elevation'}
       elevation={2}
-      onClose={() => { onClose(); }}
+      onClose={() => { onClose(initialSelectionsRef.current); }}
     >
       <DialogContentText
         id='scroll-dialog-title'
@@ -347,7 +453,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
       >
         {options.title || `Quick Search`}
       </DialogContentText>
-      <Box display='flex' flexDirection='row' alignItems='center' justifyContent='space-between' style={{ marginLeft: '8px', marginRight: '8px' }}>
+      <Box display='flex' flexDirection='row' alignItems='center' style={{ marginLeft: '8px', marginRight: '8px' }}>
         <TextField
           style={isMobile ? AVATextStyle({ width: '60%' }) : AVATextStyle({ width: '70%' })}
           key={`key_words`}
@@ -378,22 +484,68 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
           autoComplete='off'
           helperText='Name Search'
         />
-        {/* Only show "Selected Only" toggle if there are selections */}
-        {(((reactData.selections?.length || 0) > 0) || ((reactData.selectedPeople_list?.length || 0) > 0)) &&
-          <Box display='flex' flexDirection='row' alignItems='center'>
-            <Typography variant='body2' style={{ marginRight: '4px' }}>
-              Selected Only
-            </Typography>
-            <Switch
-              checked={showOnlySelected}
-              onChange={(e) => {
-                setShowOnlySelected(e.target.checked);
-                setMaxPeopleToRender(100); // Reset virtual scrolling
-              }}
-              color='primary'
-              size='small'
-            />
-          </Box>
+      </Box>
+
+      {/* Chip strip — always-visible selection summary */}
+      <Box
+        display='flex'
+        flexDirection='row'
+        flexWrap='wrap'
+        alignItems='center'
+        style={{
+          minHeight: 36,
+          maxHeight: 96,
+          overflowY: 'auto',
+          padding: '4px 8px',
+          margin: '4px 8px',
+          border: '1px solid #e0e0e0',
+          borderRadius: 8,
+          backgroundColor: '#fafafa',
+          gap: 6,
+        }}
+      >
+        {(!reactData.selections || reactData.selections.length === 0)
+          ? <Typography style={{ color: '#bbb', fontSize: '0.82rem', fontStyle: 'italic' }}>
+            {'Nothing selected yet'}
+          </Typography>
+          : reactData.selections.map((sel, sIndex) => {
+            const isGroup = !!sel.group_id;
+            const isPref = sel.rIndex !== undefined;
+            const fullLabel = sel.person_name || sel.listName
+              || (isGroup ? getGroupPath(sel.group_id) : null)
+              || sel.person_id || sel.group_id || '';
+            // Show only the leaf segment in the chip; full breadcrumb path visible on hover
+            const chipLabel = (isGroup && fullLabel.includes(' / '))
+              ? fullLabel.split(' / ').slice(-1)[0]
+              : fullLabel;
+            return (
+              <Tooltip key={`chip_sel_${sIndex}`} title={fullLabel} placement='top'>
+                <Chip
+                  size='small'
+                  icon={isGroup
+                    ? <GroupIcon style={{ fontSize: '0.85rem' }} />
+                    : isPref
+                      ? <StarIcon style={{ fontSize: '0.85rem' }} />
+                      : <PersonIcon style={{ fontSize: '0.85rem' }} />
+                  }
+                  label={chipLabel}
+                  onClick={isGroup ? () => expandToGroup(sel.group_id) : undefined}
+                  onDelete={() => {
+                    reactData.selections.splice(sIndex, 1);
+                    const { selectedPeople_count, selectedPeople_list } = countSelections();
+                    updateReactData({ selectedPeople_count, selectedPeople_list, selections: reactData.selections }, true);
+                  }}
+                  style={{
+                    backgroundColor: isGroup ? '#e3f2fd' : isPref ? '#fff3e0' : '#e8f5e9',
+                    color: isGroup ? '#1565c0' : isPref ? '#bf360c' : '#1b5e20',
+                    fontSize: '0.8rem',
+                    maxWidth: '20vw',
+                    cursor: isGroup ? 'pointer' : 'default',
+                  }}
+                />
+              </Tooltip>
+            );
+          })
         }
       </Box>
       <Paper paddingTop={'8px'} paddingBottom={'8px'} paddingLeft={'8px'} component={Box} elevation={0}
@@ -414,50 +566,6 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
           }
         }}
       >
-        {reactData.showAll && reactData.selections && (reactData.selections.length > 0) &&
-          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
-            style={{ marginBottom: '20px' }}
-          >
-            <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-              <Typography
-                style={{ fontWeight: 'bold', paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
-              >
-                {'Selected'}
-              </Typography>
-            </Box>
-            <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'
-              style={{ marginLeft: '16px' }}
-            >
-              {reactData.selections.map((this_selection, sIndex) => (
-                <Box
-                  display='flex'
-                  flexDirection='row'
-                  alignItems={'center'}
-                  key={`select_group_opt${sIndex}`}
-                  style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
-                  onClick={() => {
-                    if (options.pickAndGo) {
-                      reactData.selections.splice(sIndex, 1);
-                      let { selectedPeople_count, selectedPeople_list } = countSelections();
-                      updateReactData({
-                        selectedPeople_count,
-                        selectedPeople_list,
-                        selections: reactData.selections
-                      }, true);
-                    }
-                  }}
-                >
-                  <Typography
-                    style={AVATextStyle({ bold: true, color: 'green' })}
-                  >
-                    {this_selection.person_name || this_selection.listName || this_selection.group_name}
-                  </Typography>
-                </Box>
-              )
-              )}
-            </Box>
-          </Box>
-        }
         {options.withPreferred && reactData.preferred_recipients && (reactData.preferred_recipients.length > 0) &&
           (() => {
             // Check if there are any visible preferred recipients
@@ -620,62 +728,146 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                   style={{ marginLeft: '16px' }}
                 >
                   {reactData.showGroupList &&
-                    reactData.groupInfo.groupList.map((this_group, gIndex) => (
-                      OKtoShowGroup(this_group) &&
-                      <Box
-                        display='flex'
-                        flexDirection='row'
-                        alignItems={'center'}
-                        key={`select_group_opt${gIndex}`}
-                        style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
-                        onContextMenu={async (e) => {
-                          e.preventDefault();
-                          updateReactData({
-                            alert: {
-                              severity: 'info',
-                              title: `${this_group.group_name}`,
-                              message: <div>
-                                Group ID: <strong>{this_group.group_id}</strong><br /></div>
-                            }
-                          }, true);
-                        }}
-                        onClick={() => {
-                          const foundAt = reactData.selections?.findIndex(s => { return (s.group_id === this_group.group_id); }) ?? -1;
-                          if (foundAt > -1) {
-                            reactData.selections.splice(foundAt, 1);
+                    (() => {
+                      const groupList = reactData.groupInfo.groupList;
+                      const isSearchActive = (reactData.linkedPersonFilter?.raw?.length || 0) > 1;
+
+                      // A group has children if the next entry in the flat list has a higher level
+                      const hasChildren = (idx) =>
+                        idx + 1 < groupList.length && groupList[idx + 1].level > groupList[idx].level;
+
+                      // A group is visible only when every ancestor in the chain is expanded
+                      const isVisible = (idx) => {
+                        if (isSearchActive) { return true; } // auto-expand on search
+                        let checkLevel = groupList[idx].level;
+                        for (let i = idx - 1; i >= 0; i--) {
+                          if (groupList[i].level < checkLevel) {
+                            // Found the next ancestor up the chain
+                            if (collapsedGroups.has(groupList[i].group_id)) { return false; }
+                            checkLevel = groupList[i].level; // now look for this ancestor's parent
+                            if (checkLevel === 0) { break; } // reached root — no more ancestors
                           }
-                          else {
-                            if (!reactData.selections) {
-                              reactData.selections = [];
+                        }
+                        return true;
+                      };
+
+                      // During search, build a set of ancestor IDs for matching groups
+                      // so they can be shown as gray context rows
+                      const ancestorContextIds = new Set();
+                      if (isSearchActive) {
+                        groupList.forEach((g, idx) => {
+                          if (g.isHeader || g.isSection) { return; }
+                          if (g.group_name.toLowerCase().includes(reactData.linkedPersonFilter.lower)) {
+                            let checkLevel = g.level;
+                            for (let i = idx - 1; i >= 0 && checkLevel > 0; i--) {
+                              if (groupList[i].level < checkLevel) {
+                                ancestorContextIds.add(groupList[i].group_id);
+                                checkLevel = groupList[i].level;
+                              }
                             }
-                            reactData.selections.unshift({
-                              group_id: this_group.group_id,
-                              group_name: this_group.group_name
-                            });
                           }
-                          let { selectedPeople_count, selectedPeople_list } = countSelections();
-                          updateReactData({
-                            selectedPeople_count,
-                            selectedPeople_list,
-                            selections: reactData.selections
-                          }, true);
-                          if (options.pickOne) { onClose(reactData.selections); }
+                        });
+                      }
+
+                      return groupList.map((this_group, gIndex) => {
+                        const isHeader = !!this_group.isHeader;
+                        const isSection = !!this_group.isSection;
+                        const isNonSelectable = isHeader || isSection;
+                        const isAncestorContext = isSearchActive && !isNonSelectable && ancestorContextIds.has(this_group.group_id);
+                        const matchesSearch = isSearchActive && !isNonSelectable &&
+                          this_group.group_name.toLowerCase().includes(reactData.linkedPersonFilter?.lower || '');
+
+                        // Visibility: during search show matches + their ancestors + headers/sections
+                        if (isSearchActive) {
+                          if (!isNonSelectable && !matchesSearch && !isAncestorContext) { return null; }
+                        } else {
+                          if (!OKtoShowGroup(this_group)) { return null; }
+                          if (!isVisible(gIndex)) { return null; }
                         }
-                        }
-                      >
-                        <Typography
-                          style={{
-                            ...(reactData.selections && reactData.selections.some(s => { return s.group_id === this_group.group_id; })
-                              ? AVATextStyle({ bold: true, color: 'green' })
-                              : AVATextStyle()
-                            ),
-                            marginLeft: `${((this_group.level - 1) * 10)}px`
-                          }}
-                        >
-                          {this_group.group_name}
-                        </Typography>
-                      </Box>
-                    ))}
+
+                        const isParent = isNonSelectable || hasChildren(gIndex);
+                        const isCollapsed = collapsedGroups.has(this_group.group_id);
+                        const isSelected = !isNonSelectable && reactData.selections && reactData.selections.some(s => s.group_id === this_group.group_id);
+                        const indentPx = (this_group.level || 0) * 16;
+
+                        const isHighlighted = this_group.group_id === highlightedGroupId;
+                        const toggleCollapse = () => {
+                          const next = new Set(collapsedGroups);
+                          if (isCollapsed) { next.delete(this_group.group_id); }
+                          else { next.add(this_group.group_id); }
+                          setCollapsedGroups(next);
+                        };
+                        return (
+                          <Box
+                            display='flex'
+                            flexDirection='row'
+                            alignItems='center'
+                            key={`select_group_opt${gIndex}`}
+                            ref={isHighlighted ? (el) => { if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } } : undefined}
+                            style={{
+                              paddingTop: isHeader ? '6px' : '2px',
+                              marginTop: isHeader ? '6px' : '2px',
+                              marginBottom: '2px',
+                              marginLeft: `${indentPx}px`, cursor: 'pointer',
+                              borderRadius: 6,
+                              backgroundColor: isHighlighted ? '#fff9c4' : 'transparent',
+                              transition: 'background-color 0.4s ease',
+                            }}
+                            onContextMenu={isHeader ? undefined : async (e) => {
+                              e.preventDefault();
+                              updateReactData({
+                                alert: {
+                                  severity: 'info',
+                                  title: `${this_group.group_name}`,
+                                  message: <div>Group ID: <strong>{this_group.group_id}</strong><br /></div>
+                                }
+                              }, true);
+                            }}
+                            onClick={() => {
+                              if (isNonSelectable) {
+                                toggleCollapse();
+                                return;
+                              }
+                              const foundAt = reactData.selections?.findIndex(s => s.group_id === this_group.group_id) ?? -1;
+                              if (foundAt > -1) {
+                                reactData.selections.splice(foundAt, 1);
+                              } else {
+                                if (!reactData.selections) { reactData.selections = []; }
+                                reactData.selections.unshift({ group_id: this_group.group_id, group_name: this_group.group_name });
+                              }
+                              const { selectedPeople_count, selectedPeople_list } = countSelections();
+                              updateReactData({ selectedPeople_count, selectedPeople_list, selections: reactData.selections }, true);
+                              if (options.pickOne) { onClose(reactData.selections); }
+                            }}
+                          >
+                            <Typography
+                              style={isNonSelectable
+                                ? AVATextStyle({ bold: true, size: 0.85 })
+                                : isAncestorContext
+                                  ? { color: '#aaa', fontStyle: 'italic', fontSize: '0.88rem' }
+                                  : (isSelected ? AVATextStyle({ bold: true, color: 'green' }) : AVATextStyle())
+                              }
+                            >
+                              {this_group.group_name}
+                            </Typography>
+                            {(isParent || isHeader) && !isSearchActive &&
+                              <Box
+                                style={{ display: 'flex', alignItems: 'center', marginLeft: 6, flexShrink: 0 }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleCollapse();
+                                }}
+                              >
+                                {isCollapsed
+                                  ? <ChevronRightIcon style={{ fontSize: '1rem', color: '#aaa' }} />
+                                  : <ExpandMoreIcon style={{ fontSize: '1rem', color: '#aaa' }} />
+                                }
+                              </Box>
+                            }
+                          </Box>
+                        );
+                      });
+                    })()}
                 </Box>
               </Box>
             );
@@ -781,6 +973,16 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button
           className={AVAClass.AVAButton}
+          style={{ backgroundColor: 'gray', color: 'white', marginRight: 8 }}
+          size='small'
+          onClick={() => {
+            onClose(initialSelectionsRef.current);
+          }}
+        >
+          {'Cancel'}
+        </Button>
+        <Button
+          className={AVAClass.AVAButton}
           style={{
             backgroundColor: (() => {
               // If a specific buttonColor was provided, use it
@@ -799,14 +1001,14 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
           }}
         >
           {(() => {
-            if (typeof options.buttonText === 'string') {
-              return options.buttonText;
-            } else if (typeof options.buttonText === 'object' && options.buttonText !== null) {
-              const hasSelections = reactData.selections && reactData.selections.length > 0;
-              return hasSelections ? (options.buttonText.selected || 'Select') : (options.buttonText.empty || 'Select');
-            } else {
-              return 'Select';
+            const count = (reactData.selections || []).length;
+            if (count === 0) {
+              if (typeof options.buttonText === 'object' && options.buttonText?.empty) { return options.buttonText.empty; }
+              return typeof options.buttonText === 'string' ? options.buttonText : 'Done';
             }
+            if (typeof options.buttonText === 'string') { return `${options.buttonText}`; }
+            if (typeof options.buttonText === 'object' && options.buttonText?.selected) { return `${options.buttonText.selected}`; }
+            return `Use ${count} selection${count === 1 ? '' : 's'}`;
           })()}
         </Button>
       </DialogActions>

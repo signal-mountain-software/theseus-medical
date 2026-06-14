@@ -231,12 +231,18 @@ export default ({ start_at }) => {
     addMenuDialogSaving: false,
     addMenuDialogTargets: [],
     addMenuDialogPhone: '',
+    addMenuDialogAvailableTo: ['*all'],
+    showAddAccessToSearch: false,
     deleteMenuConfirm: false,
     deleteMenuTarget: null,
     editDescriptionDialog: false,
     editDescriptionMenuId: null,
     editDescriptionShort: '',
     editDescriptionLong: '',
+    editDescriptionAvailableTo: [],
+    editDescriptionParent: null,
+    editDescriptionCanDelete: false,
+    showAccessToSearch: false,
     showAddMessageTargetSearch: false,
     uiTilesOverrideLoaded: false,
     uiTilesOverride: null,
@@ -1289,7 +1295,7 @@ export default ({ start_at }) => {
   };
 
   const handleSaveDescription = async () => {
-    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong } = reactData;
+    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong, editDescriptionAvailableTo } = reactData;
     let saveWorked = true;
     await dbClient
       .update({
@@ -1298,10 +1304,11 @@ export default ({ start_at }) => {
           client_id: state.session.client_id,
           menu_id: editDescriptionMenuId
         },
-        UpdateExpression: 'set #d = :d',
+        UpdateExpression: 'set #d = :d, available_to = :a',
         ExpressionAttributeNames: { '#d': 'description' },
         ExpressionAttributeValues: {
-          ':d': { short: editDescriptionShort, long: editDescriptionLong }
+          ':d': { short: editDescriptionShort, long: editDescriptionLong },
+          ':a': editDescriptionAvailableTo || []
         }
       })
       .promise()
@@ -1316,6 +1323,8 @@ export default ({ start_at }) => {
         for (const cell of level) {
           if (cell.menu_id === editDescriptionMenuId && cell.menuItemRec) {
             cell.menuItemRec.description = { short: editDescriptionShort, long: editDescriptionLong };
+            cell.menuItemRec.available_to = editDescriptionAvailableTo || [];
+            cell.available_to = editDescriptionAvailableTo || [];
           }
         }
       }
@@ -1326,6 +1335,9 @@ export default ({ start_at }) => {
       editDescriptionMenuId: null,
       editDescriptionShort: '',
       editDescriptionLong: '',
+      editDescriptionAvailableTo: [],
+      editDescriptionParent: null,
+      editDescriptionCanDelete: false,
       menu_hierarchy: reactData.menu_hierarchy,
       alert: saveWorked
         ? { severity: 'success', title: 'Saved', message: 'Description updated.' }
@@ -2107,7 +2119,9 @@ export default ({ start_at }) => {
         addMenuDialogSaving: false,
         addMenuDialogTargets: [],
         addMenuDialogPhone: '',
+        addMenuDialogAvailableTo: ['*all'],
         showAddMessageTargetSearch: false,
+        showAddAccessToSearch: false,
         selections: [],
         menu_hierarchy: updatedMenuHierarchy,
         alert: {
@@ -2125,27 +2139,13 @@ export default ({ start_at }) => {
     const newMenuRec = {
       client_id: state.session.client_id,
       menu_id: newMenuId,
-      available_to: [...(parentRec.Item.available_to || [])],
+      available_to: reactData.addMenuDialogAvailableTo || ['*all'],
       description: {
         long: titleText,
         short: titleText,
       },
       menu_itemType: newMenuItemType,
     };
-
-    if (parentRec.Item.hasOwnProperty('newItem_availableTo')) {
-      newMenuRec.available_to = [];
-      parentRec.Item.newItem_availableTo.forEach(p => {
-        if (p === '*match') {
-          state.patient.groups.forEach(g => {
-            if (g !== 'ALL' && !g.includes('__')) {
-              newMenuRec.available_to.push(`group:${g}`);
-            }
-          });
-        }
-        else { newMenuRec.available_to.push(p); }
-      });
-    }
 
     if (itemType === 'link') {
       newMenuRec.url = finalLinkUrl;
@@ -2236,7 +2236,9 @@ export default ({ start_at }) => {
       addMenuDialogSaving: false,
       addMenuDialogTargets: [],
       addMenuDialogPhone: '',
+      addMenuDialogAvailableTo: ['*all'],
       showAddMessageTargetSearch: false,
+      showAddAccessToSearch: false,
       selections: [],
       menu_hierarchy: updatedMenuHierarchy,
       alert: {
@@ -2341,6 +2343,32 @@ export default ({ start_at }) => {
   const firstVisibleLevelIndex = reactData.menu_hierarchy.findIndex((menuLevel) => {
     return Array.isArray(menuLevel) && menuLevel.some((cell) => !cell.menuItemRec.hidden);
   });
+
+  const describeAvailableTo = (available_to) => {
+    const rules = available_to || [];
+    if (rules.length === 0) { return 'Everyone'; }
+
+    // Separate star-rules from group: and person: entries
+    const starRules = rules.filter(r => r.trimStart().startsWith('*'));
+    const groupIds = rules.filter(r => r.startsWith('group:')).map(r => r.slice(6));
+    const personIds = rules.filter(r => r.startsWith('person:')).map(r => r.slice(7));
+
+    const parts = [];
+
+    // Star rules pass through as-is
+    if (starRules.length > 0) {
+      parts.push(...starRules);
+    }
+
+    if (groupIds.length > 0) {
+      parts.push(`${groupIds.length} Group${groupIds.length === 1 ? '' : 's'}`);
+    }
+    if (personIds.length > 0) {
+      parts.push(`${personIds.length} ${personIds.length === 1 ? 'Person' : 'People'}`);
+    }
+
+    return parts.length > 0 ? parts.join(', ') : 'Everyone';
+  };
 
   function renderAccessibleSubMenu(parentMenuId, level_index, accessibleDepth = 1) {
     if (useTileUI) {
@@ -2451,6 +2479,9 @@ export default ({ start_at }) => {
                         editDescriptionMenuId: this_item.menu_id,
                         editDescriptionShort: this_item.description?.short || '',
                         editDescriptionLong: this_item.description?.long || '',
+                        editDescriptionAvailableTo: deepCopy(this_item.available_to || []),
+                        editDescriptionParent: this_cell.parent || null,
+                        editDescriptionCanDelete: canDeleteThisCard,
                       }, true);
                     }}
                   >
@@ -2461,33 +2492,7 @@ export default ({ start_at }) => {
               message: <div>
                 ID: {this_item.menu_id}<br />
                 Type: {this_item.menu_itemType}{this_item.url && <><br />URL: {this_item.url}</>}<br />
-                Security: {this_item.available_to.join(', ')}<br />
-                Location: Level {level_index} / Item {item_index}<br />
-                {canDeleteThisCard &&
-                  <Box mt={1.5}>
-                    <Button
-                      size='small'
-                      variant='contained'
-                      color='secondary'
-                      className={AVAClass.AVAButton}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        updateReactData({
-                          alert: false,
-                          deleteMenuConfirm: true,
-                          deleteMenuTarget: {
-                            menu_id: this_item.menu_id,
-                            parent_id: this_cell.parent,
-                            label: this_item.description?.short || this_item.menu_id
-                          }
-                        }, true);
-                      }}
-                    >
-                      {'Delete Menu Item'}
-                    </Button>
-                  </Box>
-                }
+                Security: {describeAvailableTo(this_item.available_to)}<br />
               </div>
             }
           }, true);
@@ -3642,6 +3647,75 @@ export default ({ start_at }) => {
             />
           }
 
+          {reactData.showAddAccessToSearch &&
+            <QuickSearch
+              reactData={reactData}
+              updateReactData={updateReactData}
+              options={{
+                title: 'Who Can See This Menu Item?',
+                withGroups: true,
+                showGroupList: true,  
+                showAll: true,
+                pickAndGo: true,
+                keepSelections: true,
+                buttonText: {
+                  empty: 'Done (no restrictions)',
+                  selected: 'Use These'
+                }
+              }}
+              onClose={(selections) => {
+                const cleanSelections = ([selections].flat()).filter(s => s && (s.person_id || s.group_id));
+                const keptRules = (reactData.addMenuDialogAvailableTo || [])
+                  .filter(r => !r.startsWith('group:') && !r.startsWith('person:') && r !== '*all');
+                const newAvailableTo = cleanSelections.length === 0
+                  ? ['*all']
+                  : [
+                    ...keptRules,
+                    ...cleanSelections.map(s => s.group_id ? `group:${s.group_id}` : `person:${s.person_id}`)
+                  ];
+                updateReactData({
+                  showAddAccessToSearch: false,
+                  addMenuDialogAvailableTo: newAvailableTo,
+                  selections: cleanSelections,
+                }, true);
+              }}
+            />
+          }
+
+          {reactData.showAccessToSearch &&
+            <QuickSearch
+              reactData={reactData}
+              updateReactData={updateReactData}
+              options={{
+                title: 'Who Can See This Menu Item?',
+                withGroups: true,
+                showGroupList: true,
+                showAll: true,
+                pickAndGo: true,
+                keepSelections: true,
+                buttonText: {
+                  empty: 'Done (no restrictions)',
+                  selected: 'Use These'
+                }
+              }}
+              onClose={(selections) => {
+                const cleanSelections = ([selections].flat()).filter(s => s && (s.person_id || s.group_id));
+                // Preserve non-person/group rules (*all, *admin, *support, &&-compound rules)
+                const keptRules = (reactData.editDescriptionAvailableTo || [])
+                  .filter(r => !r.startsWith('group:') && !r.startsWith('person:'));
+                const newAvailableTo = [
+                  ...keptRules,
+                  ...cleanSelections.map(s => s.group_id ? `group:${s.group_id}` : `person:${s.person_id}`)
+                ];
+                updateReactData({
+                  showAccessToSearch: false,
+                  editDescriptionAvailableTo: newAvailableTo,
+                  selections: cleanSelections,
+                }, true);
+              }}
+            />
+          }
+
           {reactData.renderFunctionCall &&
             renderFunction(reactData.renderFunctionCall)
           }
@@ -3752,7 +3826,9 @@ export default ({ start_at }) => {
                     addMenuDialogSaving: false,
                     addMenuDialogTargets: [],
                     addMenuDialogPhone: '',
+                    addMenuDialogAvailableTo: ['*all'],
                     showAddMessageTargetSearch: false,
+                    showAddAccessToSearch: false,
                     selections: [],
                   }, true);
                 }
@@ -3968,6 +4044,30 @@ export default ({ start_at }) => {
                     </Box>
                   </React.Fragment>
                 }
+                <Box display='flex' flexDirection='row' alignItems='center' justifyContent='space-between' mt={2}>
+                  <Box display='flex' flexDirection='column'>
+                    <Typography style={AVATextStyle({ size: 0.8, bold: true })}>{'Who can see this?'}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.8 })}>
+                      {describeAvailableTo(reactData.addMenuDialogAvailableTo)}
+                    </Typography>
+                  </Box>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    size='small'
+                    onClick={() => {
+                      const existingSelections = (reactData.addMenuDialogAvailableTo || [])
+                        .filter(r => r.startsWith('group:') || r.startsWith('person:'))
+                        .map(r => r.startsWith('group:')
+                          ? { group_id: r.slice(6) }
+                          : { person_id: r.slice(7) }
+                        );
+                      updateReactData({ showAddAccessToSearch: true, groupInfo: null, linkedPersonFilter: { raw: '', lower: '' }, selections: existingSelections }, true);
+                    }}
+                    disabled={reactData.addMenuDialogSaving}
+                  >
+                    {'Change'}
+                  </Button>
+                </Box>
                 <Box display='flex' justifyContent='center' mt={2}>
                   <Button
                     className={AVAClass.AVAButton}
@@ -4003,7 +4103,9 @@ export default ({ start_at }) => {
                           addMenuDialogSaving: false,
                           addMenuDialogTargets: [],
                           addMenuDialogPhone: '',
+                          addMenuDialogAvailableTo: ['*all'],
                           showAddMessageTargetSearch: false,
+                          showAddAccessToSearch: false,
                           selections: [],
                         }, true);
                       }
@@ -4101,23 +4203,75 @@ export default ({ start_at }) => {
               rows={3}
               style={{ marginBottom: 24 }}
             />
-            <Box display='flex' justifyContent='center'>
+            <Box display='flex' alignItems='center' justifyContent='space-between' style={{ marginBottom: 16 }}>
+              <Box display='flex' flexDirection='column'>
+                <Typography variant='caption' style={{ color: 'gray' }}>{'Who can see this item'}</Typography>
+                <Typography variant='body2'>
+                  {describeAvailableTo(reactData.editDescriptionAvailableTo)}
+                </Typography>
+              </Box>
               <Button
                 className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'gray', color: 'white', marginRight: 8 }}
+                style={{ marginLeft: 8 }}
                 size='small'
-                onClick={() => updateReactData({ editDescriptionDialog: false }, true)}
+                onClick={() => {
+                  const existingSelections = (reactData.editDescriptionAvailableTo || [])
+                    .filter(r => r.startsWith('group:') || r.startsWith('person:'))
+                    .map(r => r.startsWith('group:')
+                      ? { group_id: r.slice(6) }
+                      : { person_id: r.slice(7) }
+                    );
+                  updateReactData({
+                    showAccessToSearch: true,
+                    groupInfo: null,
+                    linkedPersonFilter: { raw: '', lower: '' },
+                    selections: existingSelections,
+                  }, true);
+                }}
               >
-                Cancel
+                {'Edit Access'}
               </Button>
-              <Button
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'green', color: 'white' }}
-                size='small'
-                onClick={handleSaveDescription}
-              >
-                Save
-              </Button>
+            </Box>
+            <Box display='flex' justifyContent='space-between' alignItems='center'>
+              {reactData.editDescriptionCanDelete
+                ? <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: '#c62828', color: 'white' }}
+                    size='small'
+                    onClick={() => {
+                      updateReactData({
+                        editDescriptionDialog: false,
+                        deleteMenuConfirm: true,
+                        deleteMenuTarget: {
+                          menu_id: reactData.editDescriptionMenuId,
+                          parent_id: reactData.editDescriptionParent,
+                          label: reactData.editDescriptionShort || reactData.editDescriptionMenuId
+                        }
+                      }, true);
+                    }}
+                  >
+                    {'Delete'}
+                  </Button>
+                : <Box />
+              }
+              <Box>
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'gray', color: 'white', marginRight: 8 }}
+                  size='small'
+                  onClick={() => updateReactData({ editDescriptionDialog: false }, true)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'green', color: 'white' }}
+                  size='small'
+                  onClick={handleSaveDescription}
+                >
+                  Save
+                </Button>
+              </Box>
             </Box>
           </Box>
         </Dialog>
