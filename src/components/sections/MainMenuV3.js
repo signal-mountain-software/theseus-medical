@@ -85,6 +85,7 @@ import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageMonitorV3 from '../forms/MessageMonitorV3';
 import CheckInCheckOut from '../forms/CheckInCheckOut';
 import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
+import MessageTemplateManager from '../dialogs/MessageTemplateManager';
 import GroupPhotoDirectory from '../forms/GroupPhotoDirectory';
 import TaskManager from '../dialogs/TaskManager';
 import MultiObservationFormD from '../forms/MultiObservationFormV3';
@@ -1664,6 +1665,7 @@ export default ({ start_at }) => {
     RequestDashboardV3,
     CheckInCheckOut,
     MarqueeMaintenance,
+    MessageTemplateManager,
     GroupPhotoDirectory,
     TaskManager,
     MultiObservationFormD,
@@ -1769,6 +1771,7 @@ export default ({ start_at }) => {
         listValues={props.options?.listValues || props.fact?.listValues || []}
         OGpatient={reactData.OGpatient}
         options={props.options || {}}
+        open={true}
         patient={state.session}
         pClient={state.session.client_id}
         peopleList={props.options?.peopleList || props.options?.OGvaluesList}
@@ -2472,6 +2475,7 @@ export default ({ start_at }) => {
           marginBottom: useTileUI ? 10 : 2,
           ...((isActiveParent && useTileUI) ? {
             outline: `8px solid black`,
+            boxShadow: '10px 10px 10px',
             filter: 'brightness(1.18)',
           } : {}),
         }}
