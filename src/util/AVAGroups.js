@@ -248,31 +248,43 @@ export async function accountAccess(person_id, pClient_id) {
 }
 
 export async function getAllClients() {
-  let qParm = {
-    FilterExpression: 'custom_key = :c',
-    ExpressionAttributeValues: { ':c': 'client_name' },
-    TableName: "Customizations"
-  };
-  let everyClient = await dbClient
-    .scan(qParm)
-    .promise()
-    .catch(error => {
-      cl({ 'Error reading for Clients': error });
-    });
-  let returnArray = [];
-  if (recordExists(everyClient)) {
-    let activeClients = everyClient.Items.filter(this_client => {
-      return (!this_client.disabled);
-    });
-    activeClients.sort((a, b) => {      // sort by client name
-      if (a.customization_value > b.customization_value) { return 1; }
-      else { return -1; }
-    });
-    returnArray = activeClients.map(c => {
-      return c.client_id;
+  // Fetch client names and logos in parallel via the custom_key-index GSI
+  const [namesResult, logosResult] = await Promise.all([
+    dbClient.query({
+      TableName: 'Customizations',
+      IndexName: 'custom_key-index',
+      KeyConditionExpression: 'custom_key = :k',
+      ExpressionAttributeValues: { ':k': 'client_name' }
+    }).promise().catch(error => { cl({ 'Error reading client names': error }); }),
+    dbClient.query({
+      TableName: 'Customizations',
+      IndexName: 'custom_key-index',
+      KeyConditionExpression: 'custom_key = :k',
+      ExpressionAttributeValues: { ':k': 'logo' }
+    }).promise().catch(error => { cl({ 'Error reading client logos': error }); })
+  ]);
+
+  if (!recordExists(namesResult)) { return []; }
+
+  const logoMap = {};
+  if (recordExists(logosResult)) {
+    logosResult.Items.forEach(item => {
+      logoMap[item.client_id] = item.icon || item.customization_value || '';
     });
   }
-  return returnArray;
+
+  return namesResult.Items
+    .filter(item => !item.disabled)
+    .sort((a, b) => {
+      const aName = (a.customization_value || a.client_id).toLowerCase();
+      const bName = (b.customization_value || b.client_id).toLowerCase();
+      return aName < bName ? -1 : aName > bName ? 1 : 0;
+    })
+    .map(item => ({
+      id: item.client_id,
+      name: item.customization_value || item.client_id,
+      logo: logoMap[item.client_id] || ''
+    }));
 }
 
 export async function isMemberOf(client_id, person_id, pGroup_id) {
