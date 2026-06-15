@@ -232,6 +232,7 @@ export default ({ start_at }) => {
     addMenuDialogTargets: [],
     addMenuDialogPhone: '',
     addMenuDialogAvailableTo: ['*all'],
+    addMenuDialogColor: null,
     showAddAccessToSearch: false,
     deleteMenuConfirm: false,
     deleteMenuTarget: null,
@@ -240,6 +241,7 @@ export default ({ start_at }) => {
     editDescriptionShort: '',
     editDescriptionLong: '',
     editDescriptionAvailableTo: [],
+    editDescriptionColor: null,
     editDescriptionParent: null,
     editDescriptionCanDelete: false,
     showAccessToSearch: false,
@@ -674,6 +676,10 @@ export default ({ start_at }) => {
   };
 
   const authorizedToMenuItem = (available_to) => {
+    if (reactData.is_master) {
+      return true;
+    }
+
     const {
       isSubjectAdmin,
       isSubjectSupport,
@@ -1295,8 +1301,14 @@ export default ({ start_at }) => {
   };
 
   const handleSaveDescription = async () => {
-    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong, editDescriptionAvailableTo } = reactData;
+    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong, editDescriptionAvailableTo, editDescriptionColor } = reactData;
     let saveWorked = true;
+    const colorExpr = editDescriptionColor ? ', color = :c' : ' REMOVE color';
+    const exprValues = {
+      ':d': { short: editDescriptionShort, long: editDescriptionLong },
+      ':a': editDescriptionAvailableTo || []
+    };
+    if (editDescriptionColor) { exprValues[':c'] = editDescriptionColor; }
     await dbClient
       .update({
         TableName: 'MenuV3',
@@ -1304,12 +1316,9 @@ export default ({ start_at }) => {
           client_id: state.session.client_id,
           menu_id: editDescriptionMenuId
         },
-        UpdateExpression: 'set #d = :d, available_to = :a',
+        UpdateExpression: `set #d = :d, available_to = :a${colorExpr}`,
         ExpressionAttributeNames: { '#d': 'description' },
-        ExpressionAttributeValues: {
-          ':d': { short: editDescriptionShort, long: editDescriptionLong },
-          ':a': editDescriptionAvailableTo || []
-        }
+        ExpressionAttributeValues: exprValues
       })
       .promise()
       .catch((error) => {
@@ -1325,6 +1334,8 @@ export default ({ start_at }) => {
             cell.menuItemRec.description = { short: editDescriptionShort, long: editDescriptionLong };
             cell.menuItemRec.available_to = editDescriptionAvailableTo || [];
             cell.available_to = editDescriptionAvailableTo || [];
+            if (editDescriptionColor) { cell.menuItemRec.color = editDescriptionColor; }
+            else { delete cell.menuItemRec.color; }
           }
         }
       }
@@ -1336,6 +1347,7 @@ export default ({ start_at }) => {
       editDescriptionShort: '',
       editDescriptionLong: '',
       editDescriptionAvailableTo: [],
+      editDescriptionColor: null,
       editDescriptionParent: null,
       editDescriptionCanDelete: false,
       menu_hierarchy: reactData.menu_hierarchy,
@@ -2053,10 +2065,11 @@ export default ({ start_at }) => {
         const newMenuRec = {
           client_id: state.session.client_id,
           menu_id: newMenuId,
-          available_to: [...(parentRec.Item.available_to || [])],
+          available_to: reactData.addMenuDialogAvailableTo || ['*all'],
           description: { long: cardTitle, short: cardTitle },
           menu_itemType: 'link',
           url: fileUrl,
+          ...(reactData.addMenuDialogColor ? { color: reactData.addMenuDialogColor } : {})
         };
         if (parentRec.Item.hasOwnProperty('newItem_availableTo')) {
           newMenuRec.available_to = [];
@@ -2120,6 +2133,7 @@ export default ({ start_at }) => {
         addMenuDialogTargets: [],
         addMenuDialogPhone: '',
         addMenuDialogAvailableTo: ['*all'],
+        addMenuDialogColor: null,
         showAddMessageTargetSearch: false,
         showAddAccessToSearch: false,
         selections: [],
@@ -2145,6 +2159,7 @@ export default ({ start_at }) => {
         short: titleText,
       },
       menu_itemType: newMenuItemType,
+      ...(reactData.addMenuDialogColor ? { color: reactData.addMenuDialogColor } : {})
     };
 
     if (itemType === 'link') {
@@ -2237,6 +2252,7 @@ export default ({ start_at }) => {
       addMenuDialogTargets: [],
       addMenuDialogPhone: '',
       addMenuDialogAvailableTo: ['*all'],
+      addMenuDialogColor: null,
       showAddMessageTargetSearch: false,
       showAddAccessToSearch: false,
       selections: [],
@@ -2480,6 +2496,7 @@ export default ({ start_at }) => {
                         editDescriptionShort: this_item.description?.short || '',
                         editDescriptionLong: this_item.description?.long || '',
                         editDescriptionAvailableTo: deepCopy(this_item.available_to || []),
+                        editDescriptionColor: this_item.color || null,
                         editDescriptionParent: this_cell.parent || null,
                         editDescriptionCanDelete: canDeleteThisCard,
                       }, true);
@@ -3827,6 +3844,7 @@ export default ({ start_at }) => {
                     addMenuDialogTargets: [],
                     addMenuDialogPhone: '',
                     addMenuDialogAvailableTo: ['*all'],
+                    addMenuDialogColor: null,
                     showAddMessageTargetSearch: false,
                     showAddAccessToSearch: false,
                     selections: [],
@@ -3876,8 +3894,8 @@ export default ({ start_at }) => {
                     >
                       <FormControlLabel value='menu' control={<Radio color='primary' />} label='Sub-Menu' />
                       <FormControlLabel value='link' control={<Radio color='primary' />} label='Document, Video, Picture, or Link' />
-                      {reactData.is_admin && <FormControlLabel value='message_target' control={<Radio color='primary' />} label='One-tap Message' />}
-                      {reactData.is_admin && <FormControlLabel value='phone_dial' control={<Radio color='primary' />} label='Auto-dial Phone' />}
+                      <FormControlLabel value='message_target' control={<Radio color='primary' />} label='One-tap Message' />
+                      <FormControlLabel value='phone_dial' control={<Radio color='primary' />} label='Auto-dial Phone' />
                     </RadioGroup>
                   </React.Fragment>
                 }
@@ -4044,6 +4062,40 @@ export default ({ start_at }) => {
                     </Box>
                   </React.Fragment>
                 }
+                <Box display='flex' flexDirection='row' alignItems='center' mt={2} style={{ marginBottom: 4 }}>
+                  <Typography style={AVATextStyle({ size: 0.8, margin: { right: 1 } })}>{'Color'}</Typography>
+                  <Box style={{
+                    width: 24, height: 24, borderRadius: 4, flexShrink: 0,
+                    border: '2px solid #bbb',
+                    backgroundColor: reactData.addMenuDialogColor || '#f5f5f5',
+                    marginRight: 8
+                  }} />
+                  <input
+                    type='text'
+                    placeholder='#rrggbb'
+                    value={reactData.addMenuDialogColor || ''}
+                    onChange={(e) => updateReactData({ addMenuDialogColor: e.target.value || null }, true)}
+                    onBlur={(e) => {
+                      const normalized = normalizeHexColor(e.target.value);
+                      updateReactData({ addMenuDialogColor: normalized }, true);
+                    }}
+                    disabled={reactData.addMenuDialogSaving}
+                    style={{ width: 90, fontSize: '0.82rem', fontFamily: 'monospace', padding: '3px 6px', border: '1px solid #ccc', borderRadius: 4 }}
+                  />
+                  {!reactData.addMenuDialogColor &&
+                    <Typography style={{ marginLeft: 8, fontSize: '0.78rem', color: '#aaa', fontStyle: 'italic' }}>
+                      {'Inherited from parent'}
+                    </Typography>
+                  }
+                  {reactData.addMenuDialogColor &&
+                    <Button size='small' style={{ marginLeft: 8, minWidth: 0, padding: '2px 6px', fontSize: '0.75rem' }}
+                      onClick={() => updateReactData({ addMenuDialogColor: null }, true)}
+                      disabled={reactData.addMenuDialogSaving}
+                    >
+                      {'Clear'}
+                    </Button>
+                  }
+                </Box>
                 <Box display='flex' flexDirection='row' alignItems='center' justifyContent='space-between' mt={2}>
                   <Box display='flex' flexDirection='column'>
                     <Typography style={AVATextStyle({ size: 0.8, bold: true })}>{'Who can see this?'}</Typography>
@@ -4104,6 +4156,7 @@ export default ({ start_at }) => {
                           addMenuDialogTargets: [],
                           addMenuDialogPhone: '',
                           addMenuDialogAvailableTo: ['*all'],
+                          addMenuDialogColor: null,
                           showAddMessageTargetSearch: false,
                           showAddAccessToSearch: false,
                           selections: [],
@@ -4179,7 +4232,7 @@ export default ({ start_at }) => {
       {reactData.editDescriptionDialog &&
         <Dialog
           open={reactData.editDescriptionDialog}
-          onClose={() => updateReactData({ editDescriptionDialog: false }, true)}
+          onClose={() => updateReactData({ editDescriptionDialog: false, editDescriptionColor: null }, true)}
           classes={{ paper: classes.clientPopUp }}
           fullWidth
         >
@@ -4203,6 +4256,38 @@ export default ({ start_at }) => {
               rows={3}
               style={{ marginBottom: 24 }}
             />
+            <Box display='flex' alignItems='center' style={{ marginBottom: 16 }}>
+              <Typography variant='caption' style={{ color: 'gray', marginRight: 12, whiteSpace: 'nowrap' }}>{'Color'}</Typography>
+              <Box style={{
+                width: 24, height: 24, borderRadius: 4, flexShrink: 0,
+                border: '2px solid #bbb',
+                backgroundColor: reactData.editDescriptionColor || '#f5f5f5',
+                marginRight: 8
+              }} />
+              <input
+                type='text'
+                placeholder='#rrggbb'
+                value={reactData.editDescriptionColor || ''}
+                onChange={(e) => updateReactData({ editDescriptionColor: e.target.value || null }, true)}
+                onBlur={(e) => {
+                  const normalized = normalizeHexColor(e.target.value);
+                  updateReactData({ editDescriptionColor: normalized }, true);
+                }}
+                style={{ width: 90, fontSize: '0.82rem', fontFamily: 'monospace', padding: '3px 6px', border: '1px solid #ccc', borderRadius: 4 }}
+              />
+              {!reactData.editDescriptionColor &&
+                <Typography style={{ marginLeft: 8, fontSize: '0.78rem', color: '#aaa', fontStyle: 'italic' }}>
+                  {'Inherited from parent'}
+                </Typography>
+              }
+              {reactData.editDescriptionColor &&
+                <Button size='small' style={{ marginLeft: 8, minWidth: 0, padding: '2px 6px', fontSize: '0.75rem' }}
+                  onClick={() => updateReactData({ editDescriptionColor: null }, true)}
+                >
+                  {'Clear'}
+                </Button>
+              }
+            </Box>
             <Box display='flex' alignItems='center' justifyContent='space-between' style={{ marginBottom: 16 }}>
               <Box display='flex' flexDirection='column'>
                 <Typography variant='caption' style={{ color: 'gray' }}>{'Who can see this item'}</Typography>
@@ -4259,7 +4344,7 @@ export default ({ start_at }) => {
                   className={AVAClass.AVAButton}
                   style={{ backgroundColor: 'gray', color: 'white', marginRight: 8 }}
                   size='small'
-                  onClick={() => updateReactData({ editDescriptionDialog: false }, true)}
+                  onClick={() => updateReactData({ editDescriptionDialog: false, editDescriptionColor: null }, true)}
                 >
                   Cancel
                 </Button>
