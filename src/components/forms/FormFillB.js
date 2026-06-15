@@ -28,6 +28,7 @@ import AVA_AlertSound from '../../ava_alert.mp3';
 import useSound from 'use-sound';
 
 import useSession from '../../hooks/useSession';
+import useDarkMode from '../../hooks/useDarkMode';
 import { syncPersonToSessionCaches } from '../../util/AVASessionSync';
 import { useIdleTimer } from 'react-idle-timer';
 import { updateDocument, createDocument } from '../../util/AVADocuments';
@@ -220,6 +221,23 @@ export default ({ request = {}, onClose }) => {
   const signatureRef = [React.useRef(null), React.useRef(null), React.useRef(null)];
 
   const { state, dispatch } = useSession();
+  const { state: darkModeState } = useDarkMode();
+  const isDarkMode = darkModeState?.mode === 'dark';
+
+  // Replaces hard-coded colors in HTML strings with dark-mode-friendly alternatives.
+  // Only active when dark mode is on; passes through unchanged in light mode.
+  const adaptHtml = (html) => {
+    if (!isDarkMode || !html) { return html; }
+    return html
+      .replace(/color\s*:\s*red\b/gi,   'color:#ff6b6b')   // red  → soft red
+      .replace(/color\s*:\s*blue\b/gi,  'color:#7ab3ff')   // blue → soft blue
+      .replace(/color\s*:\s*green\b/gi, 'color:#6fcf6f')   // green → soft green
+      .replace(/color\s*:\s*black\b/gi, 'color:#e0e0e0')   // black → near-white
+      .replace(/color\s*:\s*#[0-9a-f]{3,6};?\s*"/gi, (match) => {
+        // Leave any other explicit hex colors alone — they were intentionally chosen
+        return match;
+      });
+  };
 
   // This ref is to capture the entire form contents for HTML output
   const formContainerRef = React.useRef(null);
@@ -624,6 +642,7 @@ export default ({ request = {}, onClose }) => {
     return ignoreResult;
   };
 
+  /*
   // **************************
   // Helper to recursively get all descendants (children, grandchildren, etc.) of groups in a list
   const getAllChildrenOfGroups = (groupList) => {
@@ -712,6 +731,7 @@ export default ({ request = {}, onClose }) => {
     // Convert Set back to array and return
     return Array.from(allAncestors);
   };
+  */
 
   // **************************
   // Consolidated helper to resolve and return default value for a field
@@ -2404,7 +2424,7 @@ export default ({ request = {}, onClose }) => {
         >
           <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}
             style={{ fontSize: `${reactData.user_fontSize}rem` }}>
-            <span dangerouslySetInnerHTML={{ __html: promptText || normalizePromptMarkup(props.prop) }} />
+            <span dangerouslySetInnerHTML={{ __html: adaptHtml(promptText || normalizePromptMarkup(props.prop)) }} />
             {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
           </Typography>
           {!!helperText && (
@@ -2554,7 +2574,7 @@ export default ({ request = {}, onClose }) => {
         >
           <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}
             style={{ fontSize: `${reactData.user_fontSize}rem` }}>
-            <span dangerouslySetInnerHTML={{ __html: promptText || normalizePromptMarkup(props.prop) }} />
+            <span dangerouslySetInnerHTML={{ __html: adaptHtml(promptText || normalizePromptMarkup(props.prop)) }} />
             {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
           </Typography>
           {!!helperText && (
@@ -3467,6 +3487,7 @@ export default ({ request = {}, onClose }) => {
     });
   }
 
+  /*
   function update_stageGroups(groupInstructions) {
     let groupList = reactData.peopleRec[reactData.pertains_to].groups || [];
     if (groupInstructions.remove) {
@@ -3491,7 +3512,8 @@ export default ({ request = {}, onClose }) => {
     }
     return groupList;
   }
-
+  */
+  
   // Creates tasks from an array of task-template objects (used by on_complete_tasks and options.tasks).
   // Each template: { text, iterate_over?, skip_if_blank?, condition?: { field, value } }
   // All field references use occurrence-1 naming (e.g. med_1_name); iterate_over causes them to
@@ -4153,6 +4175,8 @@ export default ({ request = {}, onClose }) => {
     const fieldType = fieldRec.type;
     const isTextType = fieldType === 'text';
     const isPhoneType = fieldType === 'phone';
+    const isEmailType = fieldType === 'email';
+    const isIdentityConfirmType = fieldType === 'identity_confirm';
     const isDateSelectType = fieldType === 'date_select';
     const isDateOrTimeType = (fieldType === 'date') || (fieldType === 'date_past') || (fieldType === 'time');
     const isRequiredField = isFieldRequired(fieldRec);
@@ -4208,7 +4232,7 @@ export default ({ request = {}, onClose }) => {
     const promptLabel = !!promptText && (
       <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}
         style={{ fontSize: `${reactData.user_fontSize}rem` }}>
-        <span dangerouslySetInnerHTML={{ __html: promptText }} />
+        <span dangerouslySetInnerHTML={{ __html: adaptHtml(promptText) }} />
         {isRequiredField && <span className={classes.requiredAsterisk}>&nbsp;*</span>}
       </Typography>
     );
@@ -4279,12 +4303,58 @@ export default ({ request = {}, onClose }) => {
         }
         defaultValue={valueText}
         onBlur={async (event) => {
-          if (isTextType) {
+          if (isIdentityConfirmType) {
+            const entry = (event.target.value || '').trim().toLowerCase();
+            if (!entry) {
+              return;
+            }
+            const displayName = (state.session.user_display_name || '').toLowerCase();
+            const lastLogin = (state.session.last_login || '').toLowerCase();
+            if (entry === displayName) {
+              reactData.fields[this_field].isError = false;
+              reactData.fields[this_field].errorMessage = '';
+              await handleChangeValue({
+                newText: event.target.value.trim(),
+                prop: this_field,
+                occ_index,
+                sentenceCase: false
+              });
+              return;
+            }
+            if (lastLogin && entry === lastLogin) {
+              reactData.fields[this_field].isError = false;
+              reactData.fields[this_field].errorMessage = '';
+              await handleChangeValue({
+                newText: state.session.user_display_name,
+                prop: this_field,
+                occ_index,
+                sentenceCase: false
+              });
+              return;
+            }
+            reactData.fields[this_field].isError = true;
+            reactData.fields[this_field].errorMessage = 'Entry does not match your name or password';
+            updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+            return;
+          }
+
+          if (isTextType || isEmailType) {
+            if (isEmailType && event.target.value) {
+              const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(event.target.value.trim());
+              if (!emailValid) {
+                reactData.fields[this_field].isError = true;
+                reactData.fields[this_field].errorMessage = 'Please enter a valid email address';
+                updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+                return;
+              }
+              reactData.fields[this_field].isError = false;
+              reactData.fields[this_field].errorMessage = '';
+            }
             await handleChangeValue({
               newText: event.target.value,
               prop: this_field,
               occ_index,
-              sentenceCase: true
+              sentenceCase: isTextType
             });
             return;
           }
@@ -4295,9 +4365,18 @@ export default ({ request = {}, onClose }) => {
 
           if (isPhoneType) {
             let fPhone = formatPhone(event.target.value);
+            const phoneDigits = fPhone.replace(/\D/g, '');
+            if (phoneDigits.length > 0 && phoneDigits.length < 10) {
+              reactData.fields[this_field].isError = true;
+              reactData.fields[this_field].errorMessage = 'Phone number must be at least 10 digits';
+              updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+              return;
+            }
+            reactData.fields[this_field].isError = false;
+            reactData.fields[this_field].errorMessage = '';
             await handleChangeValue({
               newText: fPhone,
-              newValue: `+1${fPhone.replace(/\D/g, '')}`,
+              newValue: `+1${phoneDigits}`,
               occ_index,
               prop: this_field,
               sentenceCase: false
@@ -4425,7 +4504,7 @@ export default ({ request = {}, onClose }) => {
                               }),
                               zIndex: 2 + sectionNdx
                             }}
-                            dangerouslySetInnerHTML={{ __html: sectionObj.section_header }}
+                            dangerouslySetInnerHTML={{ __html: adaptHtml(sectionObj.section_header) }}
                           />
                         : <div
                             key={`section__${sectionObj.section_name}`}
@@ -4478,7 +4557,7 @@ export default ({ request = {}, onClose }) => {
                                     {''}
                                   </Typography>
                                 }
-                                {(['text', 'phone', 'date_select', 'date', 'date_past', 'time', 'age'].includes(reactData.fields[this_field].type))
+                                {(['text', 'email', 'phone', 'date_select', 'date', 'date_past', 'time', 'age', 'identity_confirm'].includes(reactData.fields[this_field].type))
                                   && renderTextLikeField({ this_field, occ_index, sectionNdx, fieldNdx })
                                 }
                                 {(reactData.fields[this_field].type === 'header') && (occ_index === 0) &&
@@ -4491,10 +4570,10 @@ export default ({ request = {}, onClose }) => {
                                       reactData.fields[this_field].prompt?.style || {}
                                     ))}
                                     dangerouslySetInnerHTML={{
-                                      __html: normalizePromptMarkup(reconcilePrompt({
+                                      __html: adaptHtml(normalizePromptMarkup(reconcilePrompt({
                                         rawValue: reactData.fields[this_field].prompt?.value,
                                         this_field
-                                      }))
+                                      })))
                                     }}
                                   />
                                 }
@@ -4512,10 +4591,10 @@ export default ({ request = {}, onClose }) => {
                                     >
                                       <span
                                         dangerouslySetInnerHTML={{
-                                          __html: normalizePromptMarkup(reconcilePrompt({
+                                          __html: adaptHtml(normalizePromptMarkup(reconcilePrompt({
                                             rawValue: reactData.fields[this_field].prompt?.value,
                                             this_field
-                                          }))
+                                          })))
                                         }}
                                       />
                                     </Typography>
@@ -4624,10 +4703,10 @@ export default ({ request = {}, onClose }) => {
                                       >
                                         <span
                                           dangerouslySetInnerHTML={{
-                                            __html: normalizePromptMarkup(reconcilePrompt({
+                                            __html: adaptHtml(normalizePromptMarkup(reconcilePrompt({
                                               rawValue: reactData.fields[this_field].prompt?.value,
                                               this_field
-                                            }))
+                                            })))
                                           }}
                                         />
                                       </Typography>
@@ -4760,7 +4839,7 @@ export default ({ request = {}, onClose }) => {
                                 {(reactData.fields[this_field].type === 'html') &&
                                   <Box>
                                     <div
-                                      dangerouslySetInnerHTML={{ '__html': reactData.fields[this_field].value }}
+                                      dangerouslySetInnerHTML={{ '__html': adaptHtml(reactData.fields[this_field].value) }}
                                     />
                                   </Box>
                                 }
@@ -4787,10 +4866,10 @@ export default ({ request = {}, onClose }) => {
                                       <u>
                                         <span
                                           dangerouslySetInnerHTML={{
-                                            __html: normalizePromptMarkup(reactData.fields[this_field].prompt?.helper || `Tap here for ${reconcilePrompt({
+                                            __html: adaptHtml(normalizePromptMarkup(reactData.fields[this_field].prompt?.helper || `Tap here for ${reconcilePrompt({
                                               rawValue: reactData.fields[this_field].prompt?.value,
                                               this_field
-                                            })}`)
+                                            })}`))
                                           }}
                                         />
                                       </u>
@@ -4842,10 +4921,10 @@ export default ({ request = {}, onClose }) => {
                                       >
                                         <span
                                           dangerouslySetInnerHTML={{
-                                            __html: normalizePromptMarkup(reconcilePrompt({
+                                            __html: adaptHtml(normalizePromptMarkup(reconcilePrompt({
                                               rawValue: reactData.fields[this_field].prompt?.value,
                                               this_field
-                                            }))
+                                            })))
                                           }}
                                         />
                                       </Typography>
@@ -4961,11 +5040,11 @@ export default ({ request = {}, onClose }) => {
                                               >
                                                 <span
                                                   dangerouslySetInnerHTML={{
-                                                    __html: normalizePromptMarkup(reconcilePrompt({
+                                                    __html: adaptHtml(normalizePromptMarkup(reconcilePrompt({
                                                       rawValue: reactData.fields[this_field].prompt?.value,
                                                       this_field,
                                                       includeRequiredMarker: false
-                                                    }))
+                                                    })))
                                                   }}
                                                 />
                                                 {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}

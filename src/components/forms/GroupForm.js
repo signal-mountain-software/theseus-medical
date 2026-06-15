@@ -4,7 +4,7 @@ import AVATextInput from './AVATextInput';
 import { useSnackbar } from 'notistack';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
-import { createNewGroup, getMemberList, addMember, getPublicGroupList, getPrivateGroupList, determineClass, getRole, removeMember, removeAdministrator, addAdministrator } from '../../util/AVAGroups';
+import { createNewGroup, getMemberList, addMember, getAllGroups, determineClass, removeMember, removeAdministrator, addAdministrator } from '../../util/AVAGroups';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import useSession from '../../hooks/useSession';
 
@@ -659,9 +659,10 @@ export default ({ options, onReset }) => {
                 ((rowsWritten <= rowLimit) && (okToShow(this_item)) &&
                   <Paper component={Box} variant='outlined'
                     onClick={async () => {
-                      this_item.role = await getRole(pGroup, this_item.person_id);
-                      this_item.public_groups = await getPublicGroupList(state.session.client_id, this_item.person_id);
-                      this_item.private_groups = await getPrivateGroupList(state.session.client_id, this_item.person_id);
+                      const _gd = await getAllGroups(this_item.person_id, state.session.client_id);
+                      this_item.role = _gd.publicGroups[pGroup]?.role || _gd.privateGroups[pGroup]?.role || _gd.belongsTo[pGroup]?.role || 'non-member';
+                      this_item.public_groups = _gd.publicGroups;
+                      this_item.private_groups = _gd.privateGroups;
                       if (!this_item.account_class) {
                         this_item.account_class = determineClass(this_item.groups, state.session.group_assignments);
                       }
@@ -705,9 +706,10 @@ export default ({ options, onReset }) => {
                         <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center' overflow={'hidden'}>
                           <Box
                             onClick={async () => {
-                              this_item.role = await getRole(pGroup, this_item.person_id);
-                              this_item.public_groups = await getPublicGroupList(state.session.client_id, this_item.person_id);
-                              this_item.private_groups = await getPrivateGroupList(state.session.client_id, this_item.person_id);
+                              const _gd = await getAllGroups(this_item.person_id, state.session.client_id);
+                              this_item.role = _gd.publicGroups[pGroup]?.role || _gd.privateGroups[pGroup]?.role || _gd.belongsTo[pGroup]?.role || 'non-member';
+                              this_item.public_groups = _gd.publicGroups;
+                              this_item.private_groups = _gd.privateGroups;
                               if (!this_item.account_class) {
                                 this_item.account_class = determineClass(this_item.groups, state.session.group_assignments);
                               }

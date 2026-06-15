@@ -692,6 +692,21 @@ export default ({ reactData }) => {
           ));
         }
 
+        // Delete all PeopleAccounts rows for this person (name, email, phone lookup entries)
+        const paResult = await dbClient.query({
+          TableName: 'PeopleAccounts',
+          KeyConditionExpression: 'person_id = :p',
+          ExpressionAttributeValues: { ':p': person_id }
+        }).promise().catch(err => { cl({ 'delete_accounts: error querying PeopleAccounts': { person_id, err } }); return null; });
+        if (paResult?.Items?.length > 0) {
+          await Promise.all(paResult.Items.map(row =>
+            dbClient.delete({
+              TableName: 'PeopleAccounts',
+              Key: { person_id: row.person_id, identifier: row.identifier }
+            }).promise().catch(err => { cl({ 'delete_accounts: error deleting PeopleAccounts row': { person_id, row, err } }); })
+          ));
+        }
+
         cl({ 'delete_accounts: deleted': person_id });
         successes++;
       } catch (err) {

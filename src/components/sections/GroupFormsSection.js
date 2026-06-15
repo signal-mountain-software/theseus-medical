@@ -4,7 +4,7 @@ import useSession from '../../hooks/useSession';
 import { Box, Checkbox, Typography } from '@material-ui/core/';
 
 import { AVATextStyle } from '../../util/AVAStyles';
-import { cl, dbClient, recordExists } from '../../util/AVAUtilities';
+import { cl, dbClient } from '../../util/AVAUtilities';
 
 export default ({ currentValues, updateField }) => {
 

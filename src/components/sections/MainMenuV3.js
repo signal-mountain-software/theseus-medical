@@ -85,6 +85,7 @@ import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageMonitorV3 from '../forms/MessageMonitorV3';
 import CheckInCheckOut from '../forms/CheckInCheckOut';
 import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
+import MessageTemplateManager from '../dialogs/MessageTemplateManager';
 import GroupPhotoDirectory from '../forms/GroupPhotoDirectory';
 import TaskManager from '../dialogs/TaskManager';
 import MultiObservationFormD from '../forms/MultiObservationFormV3';
@@ -231,12 +232,20 @@ export default ({ start_at }) => {
     addMenuDialogSaving: false,
     addMenuDialogTargets: [],
     addMenuDialogPhone: '',
+    addMenuDialogAvailableTo: ['*all'],
+    addMenuDialogColor: null,
+    showAddAccessToSearch: false,
     deleteMenuConfirm: false,
     deleteMenuTarget: null,
     editDescriptionDialog: false,
     editDescriptionMenuId: null,
     editDescriptionShort: '',
     editDescriptionLong: '',
+    editDescriptionAvailableTo: [],
+    editDescriptionColor: null,
+    editDescriptionParent: null,
+    editDescriptionCanDelete: false,
+    showAccessToSearch: false,
     showAddMessageTargetSearch: false,
     uiTilesOverrideLoaded: false,
     uiTilesOverride: null,
@@ -668,6 +677,10 @@ export default ({ start_at }) => {
   };
 
   const authorizedToMenuItem = (available_to) => {
+    if (reactData.is_master) {
+      return true;
+    }
+
     const {
       isSubjectAdmin,
       isSubjectSupport,
@@ -1289,8 +1302,14 @@ export default ({ start_at }) => {
   };
 
   const handleSaveDescription = async () => {
-    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong } = reactData;
+    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong, editDescriptionAvailableTo, editDescriptionColor } = reactData;
     let saveWorked = true;
+    const colorExpr = editDescriptionColor ? ', color = :c' : ' REMOVE color';
+    const exprValues = {
+      ':d': { short: editDescriptionShort, long: editDescriptionLong },
+      ':a': editDescriptionAvailableTo || []
+    };
+    if (editDescriptionColor) { exprValues[':c'] = editDescriptionColor; }
     await dbClient
       .update({
         TableName: 'MenuV3',
@@ -1298,11 +1317,9 @@ export default ({ start_at }) => {
           client_id: state.session.client_id,
           menu_id: editDescriptionMenuId
         },
-        UpdateExpression: 'set #d = :d',
+        UpdateExpression: `set #d = :d, available_to = :a${colorExpr}`,
         ExpressionAttributeNames: { '#d': 'description' },
-        ExpressionAttributeValues: {
-          ':d': { short: editDescriptionShort, long: editDescriptionLong }
-        }
+        ExpressionAttributeValues: exprValues
       })
       .promise()
       .catch((error) => {
@@ -1316,6 +1333,10 @@ export default ({ start_at }) => {
         for (const cell of level) {
           if (cell.menu_id === editDescriptionMenuId && cell.menuItemRec) {
             cell.menuItemRec.description = { short: editDescriptionShort, long: editDescriptionLong };
+            cell.menuItemRec.available_to = editDescriptionAvailableTo || [];
+            cell.available_to = editDescriptionAvailableTo || [];
+            if (editDescriptionColor) { cell.menuItemRec.color = editDescriptionColor; }
+            else { delete cell.menuItemRec.color; }
           }
         }
       }
@@ -1326,6 +1347,10 @@ export default ({ start_at }) => {
       editDescriptionMenuId: null,
       editDescriptionShort: '',
       editDescriptionLong: '',
+      editDescriptionAvailableTo: [],
+      editDescriptionColor: null,
+      editDescriptionParent: null,
+      editDescriptionCanDelete: false,
       menu_hierarchy: reactData.menu_hierarchy,
       alert: saveWorked
         ? { severity: 'success', title: 'Saved', message: 'Description updated.' }
@@ -1640,6 +1665,7 @@ export default ({ start_at }) => {
     RequestDashboardV3,
     CheckInCheckOut,
     MarqueeMaintenance,
+    MessageTemplateManager,
     GroupPhotoDirectory,
     TaskManager,
     MultiObservationFormD,
@@ -1745,6 +1771,7 @@ export default ({ start_at }) => {
         listValues={props.options?.listValues || props.fact?.listValues || []}
         OGpatient={reactData.OGpatient}
         options={props.options || {}}
+        open={true}
         patient={state.session}
         pClient={state.session.client_id}
         peopleList={props.options?.peopleList || props.options?.OGvaluesList}
@@ -2041,10 +2068,11 @@ export default ({ start_at }) => {
         const newMenuRec = {
           client_id: state.session.client_id,
           menu_id: newMenuId,
-          available_to: [...(parentRec.Item.available_to || [])],
+          available_to: reactData.addMenuDialogAvailableTo || ['*all'],
           description: { long: cardTitle, short: cardTitle },
           menu_itemType: 'link',
           url: fileUrl,
+          ...(reactData.addMenuDialogColor ? { color: reactData.addMenuDialogColor } : {})
         };
         if (parentRec.Item.hasOwnProperty('newItem_availableTo')) {
           newMenuRec.available_to = [];
@@ -2107,7 +2135,10 @@ export default ({ start_at }) => {
         addMenuDialogSaving: false,
         addMenuDialogTargets: [],
         addMenuDialogPhone: '',
+        addMenuDialogAvailableTo: ['*all'],
+        addMenuDialogColor: null,
         showAddMessageTargetSearch: false,
+        showAddAccessToSearch: false,
         selections: [],
         menu_hierarchy: updatedMenuHierarchy,
         alert: {
@@ -2125,27 +2156,14 @@ export default ({ start_at }) => {
     const newMenuRec = {
       client_id: state.session.client_id,
       menu_id: newMenuId,
-      available_to: [...(parentRec.Item.available_to || [])],
+      available_to: reactData.addMenuDialogAvailableTo || ['*all'],
       description: {
         long: titleText,
         short: titleText,
       },
       menu_itemType: newMenuItemType,
+      ...(reactData.addMenuDialogColor ? { color: reactData.addMenuDialogColor } : {})
     };
-
-    if (parentRec.Item.hasOwnProperty('newItem_availableTo')) {
-      newMenuRec.available_to = [];
-      parentRec.Item.newItem_availableTo.forEach(p => {
-        if (p === '*match') {
-          state.patient.groups.forEach(g => {
-            if (g !== 'ALL' && !g.includes('__')) {
-              newMenuRec.available_to.push(`group:${g}`);
-            }
-          });
-        }
-        else { newMenuRec.available_to.push(p); }
-      });
-    }
 
     if (itemType === 'link') {
       newMenuRec.url = finalLinkUrl;
@@ -2236,7 +2254,10 @@ export default ({ start_at }) => {
       addMenuDialogSaving: false,
       addMenuDialogTargets: [],
       addMenuDialogPhone: '',
+      addMenuDialogAvailableTo: ['*all'],
+      addMenuDialogColor: null,
       showAddMessageTargetSearch: false,
+      showAddAccessToSearch: false,
       selections: [],
       menu_hierarchy: updatedMenuHierarchy,
       alert: {
@@ -2342,6 +2363,32 @@ export default ({ start_at }) => {
     return Array.isArray(menuLevel) && menuLevel.some((cell) => !cell.menuItemRec.hidden);
   });
 
+  const describeAvailableTo = (available_to) => {
+    const rules = available_to || [];
+    if (rules.length === 0) { return 'Everyone'; }
+
+    // Separate star-rules from group: and person: entries
+    const starRules = rules.filter(r => r.trimStart().startsWith('*'));
+    const groupIds = rules.filter(r => r.startsWith('group:')).map(r => r.slice(6));
+    const personIds = rules.filter(r => r.startsWith('person:')).map(r => r.slice(7));
+
+    const parts = [];
+
+    // Star rules pass through as-is
+    if (starRules.length > 0) {
+      parts.push(...starRules);
+    }
+
+    if (groupIds.length > 0) {
+      parts.push(`${groupIds.length} Group${groupIds.length === 1 ? '' : 's'}`);
+    }
+    if (personIds.length > 0) {
+      parts.push(`${personIds.length} ${personIds.length === 1 ? 'Person' : 'People'}`);
+    }
+
+    return parts.length > 0 ? parts.join(', ') : 'Everyone';
+  };
+
   function renderAccessibleSubMenu(parentMenuId, level_index, accessibleDepth = 1) {
     if (useTileUI) {
       return null;
@@ -2428,6 +2475,7 @@ export default ({ start_at }) => {
           marginBottom: useTileUI ? 10 : 2,
           ...((isActiveParent && useTileUI) ? {
             outline: `8px solid black`,
+            boxShadow: '10px 10px 10px',
             filter: 'brightness(1.18)',
           } : {}),
         }}
@@ -2451,6 +2499,10 @@ export default ({ start_at }) => {
                         editDescriptionMenuId: this_item.menu_id,
                         editDescriptionShort: this_item.description?.short || '',
                         editDescriptionLong: this_item.description?.long || '',
+                        editDescriptionAvailableTo: deepCopy(this_item.available_to || []),
+                        editDescriptionColor: this_item.color || null,
+                        editDescriptionParent: this_cell.parent || null,
+                        editDescriptionCanDelete: canDeleteThisCard,
                       }, true);
                     }}
                   >
@@ -2461,33 +2513,7 @@ export default ({ start_at }) => {
               message: <div>
                 ID: {this_item.menu_id}<br />
                 Type: {this_item.menu_itemType}{this_item.url && <><br />URL: {this_item.url}</>}<br />
-                Security: {this_item.available_to.join(', ')}<br />
-                Location: Level {level_index} / Item {item_index}<br />
-                {canDeleteThisCard &&
-                  <Box mt={1.5}>
-                    <Button
-                      size='small'
-                      variant='contained'
-                      color='secondary'
-                      className={AVAClass.AVAButton}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        updateReactData({
-                          alert: false,
-                          deleteMenuConfirm: true,
-                          deleteMenuTarget: {
-                            menu_id: this_item.menu_id,
-                            parent_id: this_cell.parent,
-                            label: this_item.description?.short || this_item.menu_id
-                          }
-                        }, true);
-                      }}
-                    >
-                      {'Delete Menu Item'}
-                    </Button>
-                  </Box>
-                }
+                Security: {describeAvailableTo(this_item.available_to)}<br />
               </div>
             }
           }, true);
@@ -3642,6 +3668,75 @@ export default ({ start_at }) => {
             />
           }
 
+          {reactData.showAddAccessToSearch &&
+            <QuickSearch
+              reactData={reactData}
+              updateReactData={updateReactData}
+              options={{
+                title: 'Who Can See This Menu Item?',
+                withGroups: true,
+                showGroupList: true,  
+                showAll: true,
+                pickAndGo: true,
+                keepSelections: true,
+                buttonText: {
+                  empty: 'Done (no restrictions)',
+                  selected: 'Use These'
+                }
+              }}
+              onClose={(selections) => {
+                const cleanSelections = ([selections].flat()).filter(s => s && (s.person_id || s.group_id));
+                const keptRules = (reactData.addMenuDialogAvailableTo || [])
+                  .filter(r => !r.startsWith('group:') && !r.startsWith('person:') && r !== '*all');
+                const newAvailableTo = cleanSelections.length === 0
+                  ? ['*all']
+                  : [
+                    ...keptRules,
+                    ...cleanSelections.map(s => s.group_id ? `group:${s.group_id}` : `person:${s.person_id}`)
+                  ];
+                updateReactData({
+                  showAddAccessToSearch: false,
+                  addMenuDialogAvailableTo: newAvailableTo,
+                  selections: cleanSelections,
+                }, true);
+              }}
+            />
+          }
+
+          {reactData.showAccessToSearch &&
+            <QuickSearch
+              reactData={reactData}
+              updateReactData={updateReactData}
+              options={{
+                title: 'Who Can See This Menu Item?',
+                withGroups: true,
+                showGroupList: true,
+                showAll: true,
+                pickAndGo: true,
+                keepSelections: true,
+                buttonText: {
+                  empty: 'Done (no restrictions)',
+                  selected: 'Use These'
+                }
+              }}
+              onClose={(selections) => {
+                const cleanSelections = ([selections].flat()).filter(s => s && (s.person_id || s.group_id));
+                // Preserve non-person/group rules (*all, *admin, *support, &&-compound rules)
+                const keptRules = (reactData.editDescriptionAvailableTo || [])
+                  .filter(r => !r.startsWith('group:') && !r.startsWith('person:'));
+                const newAvailableTo = [
+                  ...keptRules,
+                  ...cleanSelections.map(s => s.group_id ? `group:${s.group_id}` : `person:${s.person_id}`)
+                ];
+                updateReactData({
+                  showAccessToSearch: false,
+                  editDescriptionAvailableTo: newAvailableTo,
+                  selections: cleanSelections,
+                }, true);
+              }}
+            />
+          }
+
           {reactData.renderFunctionCall &&
             renderFunction(reactData.renderFunctionCall)
           }
@@ -3752,7 +3847,10 @@ export default ({ start_at }) => {
                     addMenuDialogSaving: false,
                     addMenuDialogTargets: [],
                     addMenuDialogPhone: '',
+                    addMenuDialogAvailableTo: ['*all'],
+                    addMenuDialogColor: null,
                     showAddMessageTargetSearch: false,
+                    showAddAccessToSearch: false,
                     selections: [],
                   }, true);
                 }
@@ -3800,8 +3898,8 @@ export default ({ start_at }) => {
                     >
                       <FormControlLabel value='menu' control={<Radio color='primary' />} label='Sub-Menu' />
                       <FormControlLabel value='link' control={<Radio color='primary' />} label='Document, Video, Picture, or Link' />
-                      {reactData.is_admin && <FormControlLabel value='message_target' control={<Radio color='primary' />} label='One-tap Message' />}
-                      {reactData.is_admin && <FormControlLabel value='phone_dial' control={<Radio color='primary' />} label='Auto-dial Phone' />}
+                      <FormControlLabel value='message_target' control={<Radio color='primary' />} label='One-tap Message' />
+                      <FormControlLabel value='phone_dial' control={<Radio color='primary' />} label='Auto-dial Phone' />
                     </RadioGroup>
                   </React.Fragment>
                 }
@@ -3968,6 +4066,64 @@ export default ({ start_at }) => {
                     </Box>
                   </React.Fragment>
                 }
+                <Box display='flex' flexDirection='row' alignItems='center' mt={2} style={{ marginBottom: 4 }}>
+                  <Typography style={AVATextStyle({ size: 0.8, margin: { right: 1 } })}>{'Color'}</Typography>
+                  <Box style={{
+                    width: 24, height: 24, borderRadius: 4, flexShrink: 0,
+                    border: '2px solid #bbb',
+                    backgroundColor: reactData.addMenuDialogColor || '#f5f5f5',
+                    marginRight: 8
+                  }} />
+                  <input
+                    type='text'
+                    placeholder='#rrggbb'
+                    value={reactData.addMenuDialogColor || ''}
+                    onChange={(e) => updateReactData({ addMenuDialogColor: e.target.value || null }, true)}
+                    onBlur={(e) => {
+                      const normalized = normalizeHexColor(e.target.value);
+                      updateReactData({ addMenuDialogColor: normalized }, true);
+                    }}
+                    disabled={reactData.addMenuDialogSaving}
+                    style={{ width: 90, fontSize: '0.82rem', fontFamily: 'monospace', padding: '3px 6px', border: '1px solid #ccc', borderRadius: 4 }}
+                  />
+                  {!reactData.addMenuDialogColor &&
+                    <Typography style={{ marginLeft: 8, fontSize: '0.78rem', color: '#aaa', fontStyle: 'italic' }}>
+                      {'Inherited from parent'}
+                    </Typography>
+                  }
+                  {reactData.addMenuDialogColor &&
+                    <Button size='small' style={{ marginLeft: 8, minWidth: 0, padding: '2px 6px', fontSize: '0.75rem' }}
+                      onClick={() => updateReactData({ addMenuDialogColor: null }, true)}
+                      disabled={reactData.addMenuDialogSaving}
+                    >
+                      {'Clear'}
+                    </Button>
+                  }
+                </Box>
+                <Box display='flex' flexDirection='row' alignItems='center' justifyContent='space-between' mt={2}>
+                  <Box display='flex' flexDirection='column'>
+                    <Typography style={AVATextStyle({ size: 0.8, bold: true })}>{'Who can see this?'}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.8 })}>
+                      {describeAvailableTo(reactData.addMenuDialogAvailableTo)}
+                    </Typography>
+                  </Box>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    size='small'
+                    onClick={() => {
+                      const existingSelections = (reactData.addMenuDialogAvailableTo || [])
+                        .filter(r => r.startsWith('group:') || r.startsWith('person:'))
+                        .map(r => r.startsWith('group:')
+                          ? { group_id: r.slice(6) }
+                          : { person_id: r.slice(7) }
+                        );
+                      updateReactData({ showAddAccessToSearch: true, groupInfo: null, linkedPersonFilter: { raw: '', lower: '' }, selections: existingSelections }, true);
+                    }}
+                    disabled={reactData.addMenuDialogSaving}
+                  >
+                    {'Change'}
+                  </Button>
+                </Box>
                 <Box display='flex' justifyContent='center' mt={2}>
                   <Button
                     className={AVAClass.AVAButton}
@@ -4003,7 +4159,10 @@ export default ({ start_at }) => {
                           addMenuDialogSaving: false,
                           addMenuDialogTargets: [],
                           addMenuDialogPhone: '',
+                          addMenuDialogAvailableTo: ['*all'],
+                          addMenuDialogColor: null,
                           showAddMessageTargetSearch: false,
+                          showAddAccessToSearch: false,
                           selections: [],
                         }, true);
                       }
@@ -4077,7 +4236,7 @@ export default ({ start_at }) => {
       {reactData.editDescriptionDialog &&
         <Dialog
           open={reactData.editDescriptionDialog}
-          onClose={() => updateReactData({ editDescriptionDialog: false }, true)}
+          onClose={() => updateReactData({ editDescriptionDialog: false, editDescriptionColor: null }, true)}
           classes={{ paper: classes.clientPopUp }}
           fullWidth
         >
@@ -4101,23 +4260,107 @@ export default ({ start_at }) => {
               rows={3}
               style={{ marginBottom: 24 }}
             />
-            <Box display='flex' justifyContent='center'>
+            <Box display='flex' alignItems='center' style={{ marginBottom: 16 }}>
+              <Typography variant='caption' style={{ color: 'gray', marginRight: 12, whiteSpace: 'nowrap' }}>{'Color'}</Typography>
+              <Box style={{
+                width: 24, height: 24, borderRadius: 4, flexShrink: 0,
+                border: '2px solid #bbb',
+                backgroundColor: reactData.editDescriptionColor || '#f5f5f5',
+                marginRight: 8
+              }} />
+              <input
+                type='text'
+                placeholder='#rrggbb'
+                value={reactData.editDescriptionColor || ''}
+                onChange={(e) => updateReactData({ editDescriptionColor: e.target.value || null }, true)}
+                onBlur={(e) => {
+                  const normalized = normalizeHexColor(e.target.value);
+                  updateReactData({ editDescriptionColor: normalized }, true);
+                }}
+                style={{ width: 90, fontSize: '0.82rem', fontFamily: 'monospace', padding: '3px 6px', border: '1px solid #ccc', borderRadius: 4 }}
+              />
+              {!reactData.editDescriptionColor &&
+                <Typography style={{ marginLeft: 8, fontSize: '0.78rem', color: '#aaa', fontStyle: 'italic' }}>
+                  {'Inherited from parent'}
+                </Typography>
+              }
+              {reactData.editDescriptionColor &&
+                <Button size='small' style={{ marginLeft: 8, minWidth: 0, padding: '2px 6px', fontSize: '0.75rem' }}
+                  onClick={() => updateReactData({ editDescriptionColor: null }, true)}
+                >
+                  {'Clear'}
+                </Button>
+              }
+            </Box>
+            <Box display='flex' alignItems='center' justifyContent='space-between' style={{ marginBottom: 16 }}>
+              <Box display='flex' flexDirection='column'>
+                <Typography variant='caption' style={{ color: 'gray' }}>{'Who can see this item'}</Typography>
+                <Typography variant='body2'>
+                  {describeAvailableTo(reactData.editDescriptionAvailableTo)}
+                </Typography>
+              </Box>
               <Button
                 className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'gray', color: 'white', marginRight: 8 }}
+                style={{ marginLeft: 8 }}
                 size='small'
-                onClick={() => updateReactData({ editDescriptionDialog: false }, true)}
+                onClick={() => {
+                  const existingSelections = (reactData.editDescriptionAvailableTo || [])
+                    .filter(r => r.startsWith('group:') || r.startsWith('person:'))
+                    .map(r => r.startsWith('group:')
+                      ? { group_id: r.slice(6) }
+                      : { person_id: r.slice(7) }
+                    );
+                  updateReactData({
+                    showAccessToSearch: true,
+                    groupInfo: null,
+                    linkedPersonFilter: { raw: '', lower: '' },
+                    selections: existingSelections,
+                  }, true);
+                }}
               >
-                Cancel
+                {'Edit Access'}
               </Button>
-              <Button
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'green', color: 'white' }}
-                size='small'
-                onClick={handleSaveDescription}
-              >
-                Save
-              </Button>
+            </Box>
+            <Box display='flex' justifyContent='space-between' alignItems='center'>
+              {reactData.editDescriptionCanDelete
+                ? <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: '#c62828', color: 'white' }}
+                    size='small'
+                    onClick={() => {
+                      updateReactData({
+                        editDescriptionDialog: false,
+                        deleteMenuConfirm: true,
+                        deleteMenuTarget: {
+                          menu_id: reactData.editDescriptionMenuId,
+                          parent_id: reactData.editDescriptionParent,
+                          label: reactData.editDescriptionShort || reactData.editDescriptionMenuId
+                        }
+                      }, true);
+                    }}
+                  >
+                    {'Delete'}
+                  </Button>
+                : <Box />
+              }
+              <Box>
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'gray', color: 'white', marginRight: 8 }}
+                  size='small'
+                  onClick={() => updateReactData({ editDescriptionDialog: false, editDescriptionColor: null }, true)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'green', color: 'white' }}
+                  size='small'
+                  onClick={handleSaveDescription}
+                >
+                  Save
+                </Button>
+              </Box>
             </Box>
           </Box>
         </Dialog>

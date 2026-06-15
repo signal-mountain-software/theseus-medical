@@ -14,7 +14,7 @@ import TextField from '@material-ui/core/TextField';
 import Paper from '@material-ui/core/Paper';
 import { switchActiveAccount, cl, array_in_array, getCustomizations } from '../../util/AVAUtilities';
 import { getAllClients } from '../../util/AVAGroups';
-import { getImage, getPerson } from '../../util/AVAPeople';
+import { getImage } from '../../util/AVAPeople';
 
 import useSession from '../../hooks/useSession';
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -119,16 +119,7 @@ export default ({ open, roles, onClose, options = {} }) => {
   React.useEffect(() => {
     if (!multiClient) { return; }
     async function loadClients() {
-      const clientIds = await getAllClients();
-      const clientDataArray = await Promise.all(clientIds.map(async (client_id) => {
-        const nameRec = await getCustomizations('client_name', client_id);
-        const logoRec = await getCustomizations('logo', client_id);
-        return {
-          id: client_id,
-          name: nameRec?.customization_value || client_id,
-          logo: logoRec?.icon || '',
-        };
-      }));
+      const clientDataArray = await getAllClients();
       setAllClientData(clientDataArray);
     }
     loadClients();
@@ -242,13 +233,8 @@ export default ({ open, roles, onClose, options = {} }) => {
         {`You may filter the list below`}
       </Typography>
       <Paper p={2} component={Box} variant='outlined'
-        width='100%' maxHeight={256} overflow='auto' square
+        width='100%' maxHeight={multiClient ? 600 : 256} overflow='auto' square
       >
-        {(noSwitchableAccounts || !accessList[selectedClient]?.hasOwnProperty('list')) &&
-          <Box key={'no_accounts_available'} display='flex' flexWrap='wrap' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-            <Typography variant='h5' className={classes.firstName}>{'Loading...'}</Typography>
-          </Box>
-        }
         {!noSwitchableAccounts && (selectedClient === '*none') &&
           <React.Fragment>
             {allClientData.filter(c => !client_filter || c.name.toLowerCase().includes(client_filter)).map((client, c) => (
@@ -256,8 +242,9 @@ export default ({ open, roles, onClose, options = {} }) => {
                 key={`client_master_line_${c}`}
                 onClick={async () => {
                   const user_from_customizations = await getCustomizations('master_account', client.id);
-                  const gotPerson = await getPerson(user_from_customizations?.customization_value || `ava-${client.id.toLowerCase()}`);
-                  await onSelect(client.id, gotPerson);
+                  const personId = user_from_customizations?.customization_value || `ava-${client.id.toLowerCase()}`;
+                  const baseUrl = window.location.href.replace('refresh', 'theseus').split('?')[0];
+                  window.location.replace(`${baseUrl}?user=${personId}&client=${client.id}`);
                 }}
               >
                 <Box display='flex' height={50} flexDirection='row' my='16px' justifyContent='flex-start' alignItems='center'>

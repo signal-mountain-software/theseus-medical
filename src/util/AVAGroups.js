@@ -248,31 +248,43 @@ export async function accountAccess(person_id, pClient_id) {
 }
 
 export async function getAllClients() {
-  let qParm = {
-    FilterExpression: 'custom_key = :c',
-    ExpressionAttributeValues: { ':c': 'client_name' },
-    TableName: "Customizations"
-  };
-  let everyClient = await dbClient
-    .scan(qParm)
-    .promise()
-    .catch(error => {
-      cl({ 'Error reading for Clients': error });
-    });
-  let returnArray = [];
-  if (recordExists(everyClient)) {
-    let activeClients = everyClient.Items.filter(this_client => {
-      return (!this_client.disabled);
-    });
-    activeClients.sort((a, b) => {      // sort by client name
-      if (a.customization_value > b.customization_value) { return 1; }
-      else { return -1; }
-    });
-    returnArray = activeClients.map(c => {
-      return c.client_id;
+  // Fetch client names and logos in parallel via the custom_key-index GSI
+  const [namesResult, logosResult] = await Promise.all([
+    dbClient.query({
+      TableName: 'Customizations',
+      IndexName: 'custom_key-index',
+      KeyConditionExpression: 'custom_key = :k',
+      ExpressionAttributeValues: { ':k': 'client_name' }
+    }).promise().catch(error => { cl({ 'Error reading client names': error }); }),
+    dbClient.query({
+      TableName: 'Customizations',
+      IndexName: 'custom_key-index',
+      KeyConditionExpression: 'custom_key = :k',
+      ExpressionAttributeValues: { ':k': 'logo' }
+    }).promise().catch(error => { cl({ 'Error reading client logos': error }); })
+  ]);
+
+  if (!recordExists(namesResult)) { return []; }
+
+  const logoMap = {};
+  if (recordExists(logosResult)) {
+    logosResult.Items.forEach(item => {
+      logoMap[item.client_id] = item.icon || item.customization_value || '';
     });
   }
-  return returnArray;
+
+  return namesResult.Items
+    .filter(item => !item.disabled)
+    .sort((a, b) => {
+      const aName = (a.customization_value || a.client_id).toLowerCase();
+      const bName = (b.customization_value || b.client_id).toLowerCase();
+      return aName < bName ? -1 : aName > bName ? 1 : 0;
+    })
+    .map(item => ({
+      id: item.client_id,
+      name: item.customization_value || item.client_id,
+      logo: logoMap[item.client_id] || ''
+    }));
 }
 
 export async function isMemberOf(client_id, person_id, pGroup_id) {
@@ -313,7 +325,11 @@ export async function getGroupAccess(client_id, person_id, options) {
     // Always work on a local copy of the person record so the module-level getPerson cache
     // is never mutated by the group-expansion passes below.
     const _raw = (options && options.personRec) ? options.personRec : await getPerson(person_id);
-    my_personRec = { ..._raw, groups: [...(_raw.groups || [])] };
+    // PeopleGroups (GSI, active only) is the authoritative membership source.
+    // Fall back to People.groups[] only for records that predate PeopleGroups.
+    const pgGroups = await getPersonGroups(person_id, client_id);
+    const seedGroups = pgGroups.length > 0 ? pgGroups : [...(_raw.groups || [])];
+    my_personRec = { ..._raw, groups: seedGroups };
   }
   const is_admin = ['master', 'admin'].includes(my_personRec?.account_class || 'local');
 
@@ -417,10 +433,15 @@ export async function getGroupAccess(client_id, person_id, options) {
       group_id: this_group.group_id,
       role: is_responsible ? 'responsible' : (belongs_to ? 'member' : 'non-member'),
       admin_class: this_group.admin_class,
+      group_type: this_group.group_type,
       is_accessible,
       is_responsible,
       belongs_to
     };
+    if (this_group.dynamic_group) {
+      resultObj.is_dynamic = true;
+      resultObj.rules = this_group.rules || [];
+    }
     if (resultObj.role === 'non-member' && !is_accessible) {
       rejectObject[this_group.group_id] = resultObj;
     }
@@ -2117,13 +2138,25 @@ export async function getAllGroupTypes(pClient_id, person_id) {
     ExpressionAttributeValues: { ':c': pClient_id },
     TableName: "Groups"
   };
-  let groupRec = await dbClient
-    .query(qParm)
-    .promise()
-    .catch(error => {
+  // Fetch group records and person's active memberships in parallel —
+  // avoids N sequential getRole() round-trips (one per group) in the loop below.
+  const [groupRec, pgGroups] = await Promise.all([
+    dbClient.query(qParm).promise().catch(error => {
       cl({ 'Error reading Groups': error, client_id: `<${pClient_id}>` });
-    });
+    }),
+    getPersonGroups(person_id, pClient_id)
+  ]);
   if (!recordExists(groupRec)) { return { publicGroups: {}, privateGroups: {}, dynamicGroups: [] }; }
+  // Build role purely from session data + PeopleGroups membership — no DB reads per group.
+  const responsible_for = makeArray(session?.responsible_for || []).map(g => g.split('~')[0].trim());
+  const groups_managed_ids = makeArray(session?.groups_managed || []).map(g => g.split('~')[0].trim());
+  const roleFor = (thisGroup) => {
+    const gid = thisGroup.group_id;
+    if (responsible_for.includes(gid) || groups_managed_ids.includes(gid) || thisGroup.admin_list?.includes(person_id)) {
+      return 'responsible';
+    }
+    return pgGroups.includes(gid) ? 'member' : 'non-member';
+  };
   // Sort by name for consistency
   groupRec.Items.sort((a, b) => (a.name > b.name ? 1 : -1));
   let publicGroups = {};
@@ -2131,7 +2164,7 @@ export async function getAllGroupTypes(pClient_id, person_id) {
   let privateGroups = {};
   let dynamicGroups = [];
   for (let thisGroup of groupRec.Items) {
-    let role = await getRole(thisGroup.group_id, person_id);
+    const role = roleFor(thisGroup);
     if (thisGroup.group_type === "private") {
       privateGroups[thisGroup.group_id] = {
         group_name: thisGroup.name,
@@ -2167,37 +2200,63 @@ export async function getAllGroupTypes(pClient_id, person_id) {
 }
 
 export async function getAllGroups(person_id, client_id) {
-  /*
-   returns the single admin group that this person_id belongs to in the client_id
-     selectedID = admin group that this person_id belongs to in the client_id
-   AND three objects containing different types of groups:
-     adminHierarchy: [], 
-     publicGroups: {}, 
-     privateGroups: {}
-  */
-
-  let responseData = {};
-  let session = await getSession(person_id);
+  const sessionObj = await getSession(person_id);
   if (!client_id) {
-    if (session) { client_id = session.client_id; }
-    if (!client_id) { return { adminHierarchy: [], publicGroups: {}, privateGroups: {}, dynamicGroups: [] }; }
+    if (sessionObj) { client_id = sessionObj.client_id; }
+    if (!client_id) { return { adminHierarchy: [], publicGroups: {}, privateGroups: {}, dynamicGroups: [], belongsTo: {}, memberGroupIds: [], authorizedGroups: [] }; }
   }
-  // Use consolidated group fetch
-  const { publicGroups, privateGroups, dynamicGroups } = await getAllGroupTypes(client_id, person_id);
-  // Retain adminHierarchy and other hierarchy data if needed
-  let gHResponse = await getGroupHierarchy(client_id, { sort: true });
-  responseData.adminHierarchy = gHResponse.hierarchy;
-  responseData.groupTree = gHResponse.group_tree;
-  responseData.preferred_recipients = gHResponse.preferred_recipients;
-  responseData.groupNames = gHResponse.group_names;
-  responseData.parent_of = gHResponse.parent_of;
-  responseData.publicGroups = publicGroups;
-  responseData.privateGroups = privateGroups;
-  responseData.dynamicGroups = dynamicGroups;
-  // Remove admin groups from privateGroups and publicGroups for consistency
-  responseData.adminHierarchy.forEach(a => { delete responseData.privateGroups[a.id]; delete responseData.publicGroups[a.id];});
+  // Single parallel fetch: getGroupAccess queries ALL groups and computes role;
+  // getGroupHierarchy queries only admin/parent groups for the tree structure.
+  // This replaces getAllGroupTypes which re-queried Groups and called getRole() once per group.
+  const [[groups_person_belongsTo, rejectObject], gHResponse] = await Promise.all([
+    getGroupAccess(client_id, person_id),
+    getGroupHierarchy(client_id, { sort: true })
+  ]);
+  // Classify groups by type — group_type is now included on each getGroupAccess result object.
+  const allResults = Object.assign({}, groups_person_belongsTo, rejectObject);
+  const publicGroups = {};
+  const privateGroups = {};
+  const dynamicGroups = [];
+  for (const [gid, g] of Object.entries(allResults)) {
+    if (g.group_type === 'public' || g.group_type === 'open') {
+      publicGroups[gid] = { group_name: g.group_name, group_id: gid, role: g.role };
+    } else if (g.group_type === 'private') {
+      privateGroups[gid] = { group_name: g.group_name, group_id: gid, role: g.role };
+    }
+    if (g.is_dynamic) {
+      dynamicGroups.push({ group_id: gid, group_name: g.group_name, rules: g.rules || [] });
+    }
+  }
+  // belongsTo: sorted accessible-group map — replaces the former getGroupsBelongTo({sort:true}) call.
+  // memberGroupIds: groups the person actually belongs to.
+  // authorizedGroups: all groups the person may access — used for accessList dispatch.
+  const belongsTo = Object.fromEntries(
+    Object.entries(groups_person_belongsTo)
+      .sort(([, a], [, b]) => (a.group_name < b.group_name ? -1 : 1))
+  );
+  const memberGroupIds = Object.values(groups_person_belongsTo)
+    .filter(g => g.belongs_to)
+    .map(g => g.group_id);
+  const authorizedGroups = Object.values(groups_person_belongsTo)
+    .filter(g => g.is_accessible)
+    .map(g => g.group_id);
+  const responseData = {
+    adminHierarchy: gHResponse.hierarchy,
+    groupTree: gHResponse.group_tree,
+    preferred_recipients: gHResponse.preferred_recipients,
+    groupNames: gHResponse.group_names,
+    parent_of: gHResponse.parent_of,
+    publicGroups,
+    privateGroups,
+    dynamicGroups,
+    belongsTo,
+    memberGroupIds,
+    authorizedGroups,
+  };
+  // Remove admin/parent groups from public/private buckets — they live in adminHierarchy.
+  responseData.adminHierarchy.forEach(a => { delete responseData.privateGroups[a.id]; delete responseData.publicGroups[a.id]; });
   for (let gID in responseData.publicGroups) { delete responseData.privateGroups[gID]; }
-  // Populate module-level hierarchy cache for use by addMember/removeMember
+  // Populate module-level hierarchy cache for addMember/removeMember.
   cachedHierarchy = { adminHierarchy: responseData.adminHierarchy, parent_of: responseData.parent_of };
   return responseData;
 };

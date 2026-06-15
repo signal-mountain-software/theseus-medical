@@ -14,7 +14,9 @@ import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
   const AVAClass = AVAclasses();
-  let localColor = currentValues.customizationRecs?.client_style?.customization_value?.backgroundColor;
+  const [localColor, setLocalColor] = React.useState(
+    currentValues.customizationRecs?.client_style?.customization_value?.backgroundColor || '#ffffff'
+  );
 
   const preauthFileInputRef = React.useRef(null);
   const [preauthImportStatus, setPreauthImportStatus] = React.useState(null);
@@ -23,7 +25,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
     const file = event.target.files[0];
     if (!file) return;
     event.target.value = '';  // allow re-selecting same file
-    const clientId = currentValues.customizationRecs.client_name.client_id;
+    const clientId = currentValues.customizationRecs.client_name?.client_id;
     setPreauthImportStatus('Reading file\u2026');
     try {
       const data = await file.arrayBuffer();
@@ -103,7 +105,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
             minWidth={200}
             maxWidth={200}
             alt=''
-            src={currentValues.customizationRecs.client_style.customization_value.checkin_image}
+            src={currentValues.customizationRecs.client_style?.customization_value?.checkin_image}
           />
           <Box display='flex' alignItems='flex-start'
             justifyContent='center' flexDirection='column'
@@ -152,7 +154,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
             key={`color_picker_bg__${reactData.localColor}`}
             value={localColor}
             onChange={(event) => {
-              localColor = event.target.value;
+              setLocalColor(event.target.value);
             }}
           />
           <CheckCircleIcon
@@ -207,7 +209,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
               {'Upload a new Logo'}
             </Typography>
           </Button>
-          <Avatar className={AVAClass.AVAAvatar} src={currentValues.customizationRecs.logo.icon} />
+          <Avatar className={AVAClass.AVAAvatar} src={currentValues.customizationRecs.logo?.icon} />
         </Box>
       </Box>
 
@@ -227,20 +229,20 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { right: 0.8 },
-            bold: !currentValues.customizationRecs.client_style.customization_value.ui_tiles
+            bold: !currentValues.customizationRecs.client_style?.customization_value?.ui_tiles
           })}
         >
           {'Menu'}
         </Typography>
         <Switch
-          checked={currentValues.customizationRecs.client_style.customization_value?.ui_tiles || false}
+          checked={currentValues.customizationRecs.client_style?.customization_value?.ui_tiles || false}
           onClick={async (event) => {
             await updateField({
               updateList:
                 [{
                   tableName: 'customizationRecs',
                   fieldName: 'client_style.customization_value.ui_tiles',
-                  newData: !currentValues.customizationRecs.client_style.customization_value.ui_tiles
+                  newData: !currentValues.customizationRecs.client_style?.customization_value?.ui_tiles
                 }]
             });
           }}
@@ -250,7 +252,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { left: 0.8 },
-            bold: currentValues.customizationRecs.client_style.customization_value.ui_tiles
+            bold: currentValues.customizationRecs.client_style?.customization_value?.ui_tiles
           })}
         >
           {'Tiles'}
@@ -260,7 +262,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
 
 
-      {currentValues.customizationRecs.client_style.customization_value?.ui_tiles &&
+      {currentValues.customizationRecs.client_style?.customization_value?.ui_tiles &&
         <React.Fragment>
           <Typography
             style={AVATextStyle({ margin: { top: 1 } })}
@@ -272,20 +274,20 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
             <Typography
               style={AVATextStyle({
                 size: 0.8, margin: { right: 0.8 },
-                bold: !currentValues.customizationRecs.client_style.customization_value.suppress_card_image
+                bold: !currentValues.customizationRecs.client_style?.customization_value?.suppress_card_image
               })}
             >
               {'Show Images'}
             </Typography>
             <Switch
-              checked={currentValues.customizationRecs.client_style.customization_value?.suppress_card_image || false}
+              checked={currentValues.customizationRecs.client_style?.customization_value?.suppress_card_image || false}
               onClick={async (event) => {
                 await updateField({
                   updateList:
                     [{
                       tableName: 'customizationRecs',
                       fieldName: 'client_style.customization_value.suppress_card_image',
-                      newData: !currentValues.customizationRecs.client_style.customization_value.suppress_card_image
+                      newData: !currentValues.customizationRecs.client_style?.customization_value?.suppress_card_image
                     }]
                 });
               }}
@@ -295,7 +297,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
             <Typography
               style={AVATextStyle({
                 size: 0.8, margin: { left: 0.8 },
-                bold: currentValues.customizationRecs.client_style.customization_value.suppress_card_image
+                bold: currentValues.customizationRecs.client_style?.customization_value?.suppress_card_image
               })}
             >
               {'Hide Images'}
@@ -318,20 +320,20 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { right: 0.8 },
-            bold: !currentValues.customizationRecs.client_style.customization_value.ui_v3Dev
+            bold: !currentValues.customizationRecs.client_style?.customization_value?.ui_v3Dev
           })}
         >
           {'Legacy'}
         </Typography>
         <Switch
-          checked={currentValues.customizationRecs.client_style.customization_value?.ui_v3Dev || false}
+          checked={currentValues.customizationRecs.client_style?.customization_value?.ui_v3Dev || false}
           onClick={async (event) => {
             await updateField({
               updateList:
                 [{
                   tableName: 'customizationRecs',
                   fieldName: 'client_style.customization_value.ui_v3Dev',
-                  newData: !currentValues.customizationRecs.client_style.customization_value.ui_v3Dev
+                  newData: !currentValues.customizationRecs.client_style?.customization_value?.ui_v3Dev
                 }]
             });
           }}
@@ -341,7 +343,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { left: 0.8 },
-            bold: currentValues.customizationRecs.client_style.customization_value.ui_v3Dev
+            bold: currentValues.customizationRecs.client_style?.customization_value?.ui_v3Dev
           })}
         >
           {'V3 version'}
@@ -376,7 +378,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
                   tableName: 'customizationRecs',
                   fieldName: 'useOldVersion',
                   newData: {
-                    client_id: currentValues.customizationRecs.client_name.client_id,
+                    client_id: currentValues.customizationRecs.client_name?.client_id,
                     custom_key: 'useOldVersion',
                     customization_value: !currentValues.customizationRecs.useOldVersion?.customization_value
                   }
@@ -410,20 +412,20 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { right: 0.8 },
-            bold: currentValues.customizationRecs.client_style.customization_value.allow_old_messaging
+            bold: currentValues.customizationRecs.client_style?.customization_value?.allow_old_messaging
           })}
         >
           {'Legacy Allowed'}
         </Typography>
         <Switch
-          checked={!(currentValues.customizationRecs.client_style.customization_value?.allow_old_messaging)}
+          checked={!(currentValues.customizationRecs.client_style?.customization_value?.allow_old_messaging)}
           onClick={async (event) => {
             await updateField({
               updateList:
                 [{
                   tableName: 'customizationRecs',
                   fieldName: 'client_style.customization_value.allow_old_messaging',
-                  newData: !currentValues.customizationRecs.client_style.customization_value.allow_old_messaging
+                  newData: !currentValues.customizationRecs.client_style?.customization_value?.allow_old_messaging
                 }]
             });
           }}
@@ -433,7 +435,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { left: 0.8 },
-            bold: !currentValues.customizationRecs.client_style.customization_value.allow_old_messaging
+            bold: !currentValues.customizationRecs.client_style?.customization_value?.allow_old_messaging
           })}
         >
           {'New Required'}
@@ -453,22 +455,22 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { right: 0.8 },
-            bold: !currentValues.customizationRecs.client_style.customization_value.preferred_communication ||
-              currentValues.customizationRecs.client_style.customization_value.preferred_communication !== 'text'
+            bold: !currentValues.customizationRecs.client_style?.customization_value?.preferred_communication ||
+              currentValues.customizationRecs.client_style?.customization_value?.preferred_communication !== 'text'
           })}
         >
           {'e-Mail Preferred'}
         </Typography>
         <Switch
-          checked={currentValues.customizationRecs.client_style.customization_value?.preferred_communication === 'text'}
+          checked={currentValues.customizationRecs.client_style?.customization_value?.preferred_communication === 'text'}
           onClick={async (event) => {
             await updateField({
               updateList:
                 [{
                   tableName: 'customizationRecs',
                   fieldName: 'client_style.customization_value.preferred_communication',
-                  newData: !currentValues.customizationRecs.client_style.customization_value.preferred_communication ? 'email' :
-                    (currentValues.customizationRecs.client_style.customization_value.preferred_communication === 'text' ? 'email' : 'text')
+                  newData: !currentValues.customizationRecs.client_style?.customization_value?.preferred_communication ? 'email' :
+                    (currentValues.customizationRecs.client_style?.customization_value?.preferred_communication === 'text' ? 'email' : 'text')
                 }]
             });
           }}
@@ -478,7 +480,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { left: 0.8 },
-            bold: currentValues.customizationRecs.client_style.customization_value.preferred_communication === 'text'
+            bold: currentValues.customizationRecs.client_style?.customization_value?.preferred_communication === 'text'
           })}
         >
           {'Text Messages Preferred'}
@@ -496,20 +498,20 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { right: 0.8 },
-            bold: !currentValues.customizationRecs.client_style.customization_value.mandatory_passwords
+            bold: !currentValues.customizationRecs.client_style?.customization_value?.mandatory_passwords
           })}
         >
           {'Passwords Optional'}
         </Typography>
         <Switch
-          checked={currentValues.customizationRecs.client_style.customization_value?.mandatory_passwords}
+          checked={currentValues.customizationRecs.client_style?.customization_value?.mandatory_passwords}
           onClick={async (event) => {
             await updateField({
               updateList:
                 [{
                   tableName: 'customizationRecs',
                   fieldName: 'client_style.customization_value.mandatory_passwords',
-                  newData: !currentValues.customizationRecs.client_style.customization_value.mandatory_passwords
+                  newData: !currentValues.customizationRecs.client_style?.customization_value?.mandatory_passwords
                 }]
             });
           }}
@@ -519,7 +521,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { left: 0.8 },
-            bold: currentValues.customizationRecs.client_style.customization_value.mandatory_passwords
+            bold: currentValues.customizationRecs.client_style?.customization_value?.mandatory_passwords
           })}
         >
           {'Password Mandatory'}
@@ -539,20 +541,20 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { right: 0.8 },
-            bold: !currentValues.customizationRecs.client_style.customization_value.marquee_critical_only
+            bold: !currentValues.customizationRecs.client_style?.customization_value?.marquee_critical_only
           })}
         >
           {'Show Marquee'}
         </Typography>
         <Switch
-          checked={currentValues.customizationRecs.client_style.customization_value?.marquee_critical_only}
+          checked={currentValues.customizationRecs.client_style?.customization_value?.marquee_critical_only}
           onClick={async (event) => {
             await updateField({
               updateList:
                 [{
                   tableName: 'customizationRecs',
                   fieldName: 'client_style.customization_value.marquee_critical_only',
-                  newData: !currentValues.customizationRecs.client_style.customization_value.marquee_critical_only
+                  newData: !currentValues.customizationRecs.client_style?.customization_value?.marquee_critical_only
                 }]
             });
           }}
@@ -562,7 +564,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { left: 0.8 },
-            bold: currentValues.customizationRecs.client_style.customization_value.marquee_critical_only
+            bold: currentValues.customizationRecs.client_style?.customization_value?.marquee_critical_only
           })}
         >
           {'Hide Unless Critical/Urgent'}
@@ -583,20 +585,20 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { right: 0.8 },
-            bold: currentValues.customizationRecs.client_style.customization_value.sort_order !== 'last_first'
+            bold: currentValues.customizationRecs.client_style?.customization_value?.sort_order !== 'last_first'
           })}
         >
           {'First Last'}
         </Typography>
         <Switch
-          checked={currentValues.customizationRecs.client_style.customization_value?.sort_order === 'last_first'}
+          checked={currentValues.customizationRecs.client_style?.customization_value?.sort_order === 'last_first'}
           onClick={async (event) => {
             await updateField({
               updateList:
                 [{
                   tableName: 'customizationRecs',
                   fieldName: 'client_style.customization_value.sort_order',
-                  newData: currentValues.customizationRecs.client_style.customization_value.sort_order === 'last_first' ? 'first_last' : 'last_first'
+                  newData: currentValues.customizationRecs.client_style?.customization_value?.sort_order === 'last_first' ? 'first_last' : 'last_first'
                 }]
             });
           }}
@@ -606,7 +608,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { left: 0.8 },
-            bold: currentValues.customizationRecs.client_style.customization_value.sort_order === 'last_first'
+            bold: currentValues.customizationRecs.client_style?.customization_value?.sort_order === 'last_first'
           })}
         >
           {'Last, First'}
@@ -627,20 +629,20 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { right: 0.8 },
-            bold: !currentValues.customizationRecs.client_style.customization_value.suppress_forms_in_profile
+            bold: !currentValues.customizationRecs.client_style?.customization_value?.suppress_forms_in_profile
           })}
         >
           {'Show'}
         </Typography>
         <Switch
-          checked={currentValues.customizationRecs.client_style.customization_value?.suppress_forms_in_profile}
+          checked={currentValues.customizationRecs.client_style?.customization_value?.suppress_forms_in_profile}
           onClick={async (event) => {
             await updateField({
               updateList:
                 [{
                   tableName: 'customizationRecs',
                   fieldName: 'client_style.customization_value.suppress_forms_in_profile',
-                  newData: !currentValues.customizationRecs.client_style.customization_value.suppress_forms_in_profile
+                  newData: !currentValues.customizationRecs.client_style?.customization_value?.suppress_forms_in_profile
                 }]
             });
           }}
@@ -650,7 +652,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { left: 0.8 },
-            bold: currentValues.customizationRecs.client_style.customization_value.suppress_forms_in_profile
+            bold: currentValues.customizationRecs.client_style?.customization_value?.suppress_forms_in_profile
           })}
         >
           {'Hide'}
@@ -672,15 +674,15 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { right: 0.8 },
-            bold: !currentValues.customizationRecs.client_style.customization_value.preAuth?.require_pre_auth
+            bold: !currentValues.customizationRecs.client_style?.customization_value?.preAuth?.require_pre_auth
           })}
         >
           {'Open to Anyone'}
         </Typography>
         <Switch
-          checked={currentValues.customizationRecs.client_style.customization_value?.preAuth?.require_pre_auth || false}
+          checked={currentValues.customizationRecs.client_style?.customization_value?.preAuth?.require_pre_auth || false}
           onClick={async () => {
-            const currentPreAuth = currentValues.customizationRecs.client_style.customization_value?.preAuth || {};
+            const currentPreAuth = currentValues.customizationRecs.client_style?.customization_value?.preAuth || {};
             await updateField({
               updateList: [{
                 tableName: 'customizationRecs',
@@ -695,14 +697,14 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { left: 0.8 },
-            bold: currentValues.customizationRecs.client_style.customization_value.preAuth?.require_pre_auth
+            bold: currentValues.customizationRecs.client_style?.customization_value?.preAuth?.require_pre_auth
           })}
         >
           {'Pre-Authorization Required'}
         </Typography>
       </Box>
 
-      {currentValues.customizationRecs.client_style.customization_value?.preAuth?.require_pre_auth &&
+      {currentValues.customizationRecs.client_style?.customization_value?.preAuth?.require_pre_auth &&
         <React.Fragment>
           <Typography
             style={AVATextStyle({ size: 0.8, margin: { left: 0.5, top: 0.5, bottom: -0.3 } })}
@@ -710,9 +712,9 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
             {'Authorize by matching the applicant on:'}
           </Typography>
           <RadioGroup
-            value={currentValues.customizationRecs.client_style.customization_value?.preAuth?.preauth_match_on || 'code'}
+            value={currentValues.customizationRecs.client_style?.customization_value?.preAuth?.preauth_match_on || 'code'}
             onChange={async (event) => {
-              const currentPreAuth = currentValues.customizationRecs.client_style.customization_value?.preAuth || {};
+              const currentPreAuth = currentValues.customizationRecs.client_style?.customization_value?.preAuth || {};
               await updateField({
                 updateList: [{
                   tableName: 'customizationRecs',
@@ -730,14 +732,14 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
             ))}
           </RadioGroup>
 
-          {(currentValues.customizationRecs.client_style.customization_value?.preAuth?.preauth_match_on || 'code') === 'code' &&
+          {(currentValues.customizationRecs.client_style?.customization_value?.preAuth?.preauth_match_on || 'code') === 'code' &&
             <TextField
               autoComplete='off'
               style={{ width: '60%', marginBottom: '16px', marginLeft: '8px' }}
-              defaultValue={currentValues.customizationRecs.client_style.customization_value?.preAuth?.preauth_code_prompt || ''}
+              defaultValue={currentValues.customizationRecs.client_style?.customization_value?.preAuth?.preauth_code_prompt || ''}
               helperText='Prompt text shown to applicant when asking for their code'
               onBlur={async (event) => {
-                const currentPreAuth = currentValues.customizationRecs.client_style.customization_value?.preAuth || {};
+                const currentPreAuth = currentValues.customizationRecs.client_style?.customization_value?.preAuth || {};
                 await updateField({
                   updateList: [{
                     tableName: 'customizationRecs',
@@ -780,7 +782,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
         <Typography
           style={AVATextStyle({ opacity: '40%', margin: { top: 1, right: 0.5 } })}
         >
-          {`Client ID: ${currentValues.customizationRecs.client_name.client_id}`}
+          {`Client ID: ${currentValues.customizationRecs.client_name?.client_id}`}
         </Typography>
       </Box>
       {
