@@ -408,16 +408,28 @@ export async function getGroupAccess(client_id, person_id, options) {
   }
 
   // third pass finds children and grandchildren of groups I belong to and marks me as belonging to them as well; this will allow the fourth pass to recognize that I have access to those descendant groups by virtue of my membership in the parent group
-  for (const good_group of may_access) { 
-    let findChildren = (parent_id) => {
-      everyGroup.Items.forEach(g => {
-        if (g.belongs_to === parent_id) {
-          may_access.add(g.group_id);
-          my_personRec.groups.push(g.group_id);  // this will trick the fourth pass into marking me as a member of descendant groups
-          findChildren(g.group_id);
-        }
-      });
-    };
+  const findChildrenDone = new Set();   // fully processed nodes — skip silently on revisit via different path
+  const findChildrenStack = [];         // current call path — used to detect true cycles only
+  const findChildren = (parent_id) => {
+    if (findChildrenStack.includes(parent_id)) {
+      const cycleStart = findChildrenStack.indexOf(parent_id);
+      const cyclePath = [...findChildrenStack.slice(cycleStart), parent_id];
+      console.warn(`AVAGroups CYCLE DETECTED in getGroupAccess/findChildren. Loop path: ${cyclePath.map(id => `"${id}"`).join(' → ')}. Fix the belongs_to record for group "${parent_id}".`);
+      return;
+    }
+    if (findChildrenDone.has(parent_id)) { return; }  // already expanded via another path — no cycle
+    findChildrenStack.push(parent_id);
+    everyGroup.Items.forEach(g => {
+      if (g.belongs_to === parent_id) {
+        may_access.add(g.group_id);
+        my_personRec.groups.push(g.group_id);  // this will trick the fourth pass into marking me as a member of descendant groups
+        findChildren(g.group_id);
+      }
+    });
+    findChildrenStack.pop();
+    findChildrenDone.add(parent_id);
+  };
+  for (const good_group of may_access) {
     findChildren(good_group);
   }
 
@@ -1970,17 +1982,30 @@ export async function getGroupHierarchy(pClient_id, options) {
 
   // build parent_of object
   let parent_of = {};
-  for (let top_level in hierarchy) {
-    addChild(top_level, hierarchy[top_level]);
-  }
+  const addChildFullyProcessed = new Set();  // nodes whose entire subtree is done — safe to skip
+  const addChildCallStack = [];              // current recursion path — used to detect true cycles
   function addChild(parent, target) {
+    if (addChildCallStack.includes(parent)) {
+      // True cycle: this node is already an ancestor in the current path
+      const cycleStart = addChildCallStack.indexOf(parent);
+      const cyclePath = [...addChildCallStack.slice(cycleStart), parent];
+      console.warn(`AVAGroups CYCLE DETECTED in getGroupHierarchy/addChild. Loop path: ${cyclePath.map(id => `"${id}"(${nameObj[id] || id})`).join(' → ')}. Fix the belongs_to record for group "${parent}" (${nameObj[parent] || parent}).`);
+      return parent_of[parent];
+    }
+    if (addChildFullyProcessed.has(parent)) { return parent_of[parent]; }  // already done via another path — no cycle
+    addChildCallStack.push(parent);
     for (let my_child in target) {
       if (!parent_of.hasOwnProperty(parent)) { parent_of[parent] = [my_child]; }
       else { parent_of[parent].push(my_child); }
       let grandchildren = addChild(my_child, target[my_child]);
       if (grandchildren) { parent_of[parent].push(...grandchildren); };
     }
+    addChildCallStack.pop();
+    addChildFullyProcessed.add(parent);
     return parent_of[parent];
+  }
+  for (let top_level in hierarchy) {
+    addChild(top_level, hierarchy[top_level]);
   }
 
   // manipulate the output:
@@ -2004,7 +2029,12 @@ export async function getGroupHierarchy(pClient_id, options) {
     group_names: nameObj, group_tree: hierarchy, hierarchy, parent_of
   });
 
-  function recursiveSearch(searchObj) {
+  function recursiveSearch(searchObj, visited = new WeakSet()) {
+    if (visited.has(searchObj)) {
+      console.log(`AVAGroups circular reference detected in getGroupHierarchy/recursiveSearch while placing group "${thisGroup?.group_id}" (belongs_to: "${thisGroup?.belongs_to}") — check belongs_to data for this group_id`);
+      return [false, {}];
+    }
+    visited.add(searchObj);
     let oKeys = Object.keys(searchObj);
     if (oKeys.length === 0) { return [false, {}]; }
     if (oKeys.includes(thisGroup.belongs_to)) { // parent found
@@ -2013,7 +2043,7 @@ export async function getGroupHierarchy(pClient_id, options) {
     }
     else {
       for (let g = 0; g < oKeys.length; g++) {
-        let [success, result] = recursiveSearch(searchObj[oKeys[g]]);
+        let [success, result] = recursiveSearch(searchObj[oKeys[g]], visited);
         if (success) {
           searchObj[oKeys[g]] = result;
           return [true, searchObj];
@@ -2023,8 +2053,13 @@ export async function getGroupHierarchy(pClient_id, options) {
     }
   }
 
-  function recursiveSort(searchObj, response, level) {
-    if (Object.keys(searchObj).length === 0) { return []; }
+  function recursiveSort(searchObj, response, level, visited = new WeakSet()) {
+    if (visited.has(searchObj)) {
+      console.log(`AVAGroups circular reference detected in getGroupHierarchy/recursiveSort at level ${level} — check belongs_to data for groups at this level`);
+      return response;
+    }
+    visited.add(searchObj);
+    if (Object.keys(searchObj).length === 0) { return response.length ? response : []; }
     let oKeys = Object.keys(searchObj).sort((a, b) => {
       if (nameObj[a] > nameObj[b]) { return 1; }
       else { return -1; }
@@ -2040,7 +2075,7 @@ export async function getGroupHierarchy(pClient_id, options) {
         admin_class: classObj[oKeys[g]],
         admin_list: responsibleObj[oKeys[g]]
       });
-      if (!selectable) { response = recursiveSort(searchObj[oKeys[g]], response, level + 1); }
+      if (!selectable) { response = recursiveSort(searchObj[oKeys[g]], response, level + 1, visited); }
     }
     return response;
   }
