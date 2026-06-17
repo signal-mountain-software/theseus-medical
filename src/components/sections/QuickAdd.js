@@ -2638,8 +2638,8 @@ export default ({ onClose, options = {} }) => {
                     `All Family Members Ready (${reactData.family_members.length} total)`) :
                   reactData.selected_account_type ?
                     (reactData.current_member_index > 0 ?
-                      `${titleCase(reactData.selected_account_type)} - Family Member ${reactData.current_member_index + 1}` :
-                      titleCase(reactData.selected_account_type)) :
+                      `${reactData.selected_account_config?.capture_header || titleCase(reactData.selected_account_type)} - Family Member ${reactData.current_member_index + 1}` :
+                      (reactData.selected_account_config?.capture_header || titleCase(reactData.selected_account_type))) :
                     (reactData.current_member_index > 0 ?
                       `Select Account Type - Family Member ${reactData.current_member_index + 1}` :
                       'Select Account Type')
@@ -2981,7 +2981,7 @@ export default ({ onClose, options = {} }) => {
             {reactData.selected_account_type && !reactData.loading_fields && Object.keys(reactData.form_fields).length > 0 && (
               <Box style={{ marginTop: '16px', paddingRight: '16px' }}>
                 <Typography variant="h6" style={{ marginBottom: reactData.updating_existing_person_id ? '8px' : '16px' }}>
-                  {reactData.updating_existing_person_id ? 'Update Information for' : 'Enter Information for'} {titleCase(reactData.selected_account_type)}:
+                  {reactData.updating_existing_person_id ? 'Update Information for' : 'Enter Information for'} {reactData.selected_account_config?.capture_header || titleCase(reactData.selected_account_type)}:
                 </Typography>
                 {reactData.updating_existing_person_id && (
                   <Typography variant="subtitle2" style={{ marginBottom: '16px', color: '#1976d2' }}>
