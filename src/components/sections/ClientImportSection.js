@@ -1,11 +1,11 @@
 import React from 'react';
 import {
   Box, Button, Typography, RadioGroup, FormControlLabel, Radio, FormControl, FormLabel,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, LinearProgress
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, LinearProgress, Dialog
 } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab';
 import { dbClient, putDb, isEmpty, titleCase, cl } from '../../util/AVAUtilities';
-import { addMember } from '../../util/AVAGroups';
+import { addMember, removeMember } from '../../util/AVAGroups';
 import { AVATextStyle } from '../../util/AVAStyles';
 
 const XLSX = require('xlsx');
@@ -146,6 +146,8 @@ export default ({ reactData }) => {
     progressTotal: 0,
     results: null,   // { successes: number, errors: [{rowNum, message}], warnings: string[] }
   });
+
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
 
   const patchState = (updates) => setImportState(prev => Object.assign({}, prev, updates));
 
@@ -398,6 +400,12 @@ export default ({ reactData }) => {
     const warnings = [];
     let successes = 0;
 
+    // Determine per-column whether it's an add or remove operation
+    // (columns after col 0; header containing 'remove' → removeMember)
+    const colActions = headers.slice(1).map(h =>
+      String(h || '').toLowerCase().includes('remove') ? 'remove' : 'add'
+    );
+
     for (let i = 0; i < rows.length; i++) {
       const rowNum = i + 2;
       const row = rows[i];
@@ -406,10 +414,18 @@ export default ({ reactData }) => {
         errors.push({ rowNum, message: `Row ${rowNum}: missing user_id — skipped.` });
         continue;
       }
-      const newGroups = row.slice(1)
-        .map(g => String(g || '').trim())
-        .filter(g => g !== '');
-      if (newGroups.length === 0) {
+
+      // Split group IDs by column action
+      const groupsToAdd = [];
+      const groupsToRemove = [];
+      row.slice(1).forEach((cell, colIdx) => {
+        const g = String(cell || '').trim();
+        if (!g) return;
+        if (colActions[colIdx] === 'remove') { groupsToRemove.push(g); }
+        else { groupsToAdd.push(g); }
+      });
+
+      if (groupsToAdd.length === 0 && groupsToRemove.length === 0) {
         warnings.push(`Row ${rowNum} (${person_id}): no group IDs found — skipped.`);
         continue;
       }
@@ -419,7 +435,12 @@ export default ({ reactData }) => {
           errors.push({ rowNum, message: `Row ${rowNum}: person_id "${person_id}" not found — skipped.` });
           continue;
         }
-        await addMember(person_id, client_id, newGroups, { allowParent: true });
+        if (groupsToAdd.length > 0) {
+          await addMember(person_id, client_id, groupsToAdd, { allowParent: true });
+        }
+        if (groupsToRemove.length > 0) {
+          await removeMember(person_id, client_id, groupsToRemove);
+        }
         successes++;
       } catch (err) {
         cl({ 'Append groups row error': { rowNum, err } });
@@ -1174,12 +1195,51 @@ export default ({ reactData }) => {
             variant='contained'
             color='primary'
             size='small'
-            onClick={handleCommit}
+            onClick={() => {
+              if (importType === 'delete_accounts') {
+                setConfirmDelete(true);
+              } else {
+                handleCommit();
+              }
+            }}
             disabled={!canCommit}
           >
             Commit Import
           </Button>
         </Box>
+      )}
+
+      {/* ── delete confirmation dialog ── */}
+      {confirmDelete && (
+        <Dialog open onClose={() => setConfirmDelete(false)}>
+          <Box style={{ padding: '24px', maxWidth: 420 }}>
+            <Typography variant='h6' style={{ color: 'red', marginBottom: '12px', fontWeight: 'bold' }}>
+              <span role="img" aria-label="warning">⚠️</span> Permanently Delete Accounts?
+            </Typography>
+            <Typography style={{ marginBottom: '8px' }}>
+              You are about to <strong>permanently delete {rows.length} account{rows.length !== 1 ? 's' : ''}</strong> from People, SessionsV2, and PeopleGroups.
+            </Typography>
+            <Typography style={{ marginBottom: '20px', color: 'red' }}>
+              This action <strong>cannot be undone</strong>.
+            </Typography>
+            <Box style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <Button
+                variant='contained'
+                onClick={() => setConfirmDelete(false)}
+                style={{ backgroundColor: 'green', color: 'white' }}
+              >
+                Cancel — Keep Accounts
+              </Button>
+              <Button
+                variant='contained'
+                onClick={() => { setConfirmDelete(false); handleCommit(); }}
+                style={{ backgroundColor: 'red', color: 'white' }}
+              >
+                Yes, Delete Permanently
+              </Button>
+            </Box>
+          </Box>
+        </Dialog>
       )}
 
       {/* ── results ── */}
