@@ -1038,10 +1038,12 @@ export default ({ request = {}, onClose }) => {
       field_variables = Object.assign({}, field_variables, commonFieldRec.value, commonFieldRec);
     }
 
-    // Now override with any values in formRec.fields[field_name]
-    if (formRec.fields && formRec.fields[field_name]) {
+    // Now override with any values in formRec.fields — try field_name first, then field_key
+    // (DB may key entries by field_id which equals field_key, not by field_name)
+    const _formSpecEntry = formRec.fields && (formRec.fields[field_name] || (field_key !== field_name && formRec.fields[field_key]));
+    if (_formSpecEntry) {
       if (!_field_sources.includes('form spec')) { _field_sources.push('form spec'); }
-      field_variables = Object.assign({}, field_variables, formRec.fields[field_name]);
+      field_variables = Object.assign({}, field_variables, _formSpecEntry);
     }
 
     if (isObject(fieldEntry)) {
@@ -1145,7 +1147,8 @@ export default ({ request = {}, onClose }) => {
     if (preset_values && preset_values[field_name]) {
       returnObj.og_default = formatValue({
         rawValue: returnObj.field_value,
-        type: returnObj.type
+        type: returnObj.type,
+        date_format: field_variables.options?.date_format
       });
       returnObj.field_value = preset_values[field_name];
     }
@@ -1153,7 +1156,8 @@ export default ({ request = {}, onClose }) => {
     // format the default value for display
     returnObj.field_valueText = formatValue({
       rawValue: returnObj.field_value,
-      type: returnObj.type
+      type: returnObj.type,
+      date_format: field_variables.options?.date_format
     });
 
     // Selection Obj should be set for the special case - type = select or type = select & text
@@ -1344,8 +1348,8 @@ export default ({ request = {}, onClose }) => {
       }
     }
 
-    // set options
-    returnObj.options = {
+    // set options — spread field_variables.options first so extra properties (e.g. date_format) pass through
+    returnObj.options = Object.assign({}, field_variables.options || {}, {
       required: !!(field_variables.required || field_variables.value?.required || returnObj.value?.required),
       log_results: returnObj.value?.log_results || false,
       viewOnly: (returnObj.value?.edit === 'view'),
@@ -1353,7 +1357,7 @@ export default ({ request = {}, onClose }) => {
       ifEmpty: field_variables.options ? field_variables.options.ifEmpty : null,
       resetFields: (returnObj.value?.resetFields
         || (field_variables.options ? field_variables.options.resetFields : null))
-    };
+    });
 
     // gather show_if/show_ifAll/ignore_if in response
     returnObj.show_if = field_variables.show_if || null;
@@ -1707,7 +1711,7 @@ export default ({ request = {}, onClose }) => {
                   : null;
                 reactData.fields[resolvedFieldName] = Object.assign({}, deepCopy(reactData.fields[baseFieldName]), {
                   value: docFieldValue,
-                  valueText: formatValue({ rawValue: docFieldValue, type: reactData.fields[baseFieldName].type }),
+                  valueText: formatValue({ rawValue: docFieldValue, type: reactData.fields[baseFieldName].type, date_format: reactData.fields[baseFieldName].options?.date_format }),
                   _occurrence_number: section_number,
                 });
               }
@@ -1740,7 +1744,7 @@ export default ({ request = {}, onClose }) => {
     }
   };
 
-  const formatValue = ({ rawValue, type }) => {
+  const formatValue = ({ rawValue, type, date_format }) => {
     let source = makeArray(rawValue);
     let response = [];
     for (let [index, this_value] of source.entries()) {
@@ -1753,8 +1757,8 @@ export default ({ request = {}, onClose }) => {
         case 'date_select':
         case 'date_past':
         case 'date': {
-          // return makeDate(rawValue, { noTime: true, noYearCorrection: true }).absolute;
-          response[index] = makeDate(this_value, { noTime: true, noYearCorrection: true }).absolute;
+          const dateObj = makeDate(this_value, { noTime: true, noYearCorrection: true });
+          response[index] = dateObj[date_format] ?? dateObj.absolute;
           break;
         }
         case 'time': {
@@ -1819,7 +1823,8 @@ export default ({ request = {}, onClose }) => {
     }
     reactData.fields[prop].valueText = formatValue({
       rawValue: reactData.fields[prop].value,
-      type: reactData.fields[prop].type
+      type: reactData.fields[prop].type,
+      date_format: reactData.fields[prop].options?.date_format
     });
     if (reactData.fields[prop].options.resetFields) {
       for (const this_resetter of makeArray(reactData.fields[prop].options.resetFields)) {
@@ -1833,7 +1838,8 @@ export default ({ request = {}, onClose }) => {
         }
         reactData.fields[this_resetter].valueText = formatValue({
           rawValue: reactData.fields[this_resetter].value,
-          type: reactData.fields[this_resetter].type
+          type: reactData.fields[this_resetter].type,
+          date_format: reactData.fields[this_resetter].options?.date_format
         });
       }
     }
@@ -1884,7 +1890,8 @@ export default ({ request = {}, onClose }) => {
         }
         reactData.fields[this_resetter].valueText = formatValue({
           rawValue: reactData.fields[this_resetter].value,
-          type: reactData.fields[this_resetter].type
+          type: reactData.fields[this_resetter].type,
+          date_format: reactData.fields[this_resetter].options?.date_format
         });
       }
     }
@@ -2276,7 +2283,8 @@ export default ({ request = {}, onClose }) => {
         reactData.fields[fieldName].value = defaultResult.value;
         reactData.fields[fieldName].valueText = formatValue({
           rawValue: reactData.fields[fieldName].value,
-          type: reactData.fields[fieldName].type
+          type: reactData.fields[fieldName].type,
+          date_format: reactData.fields[fieldName].options?.date_format
         });
       }
     }
@@ -2800,6 +2808,15 @@ export default ({ request = {}, onClose }) => {
           const field_name = isObject(this_field) ? this_field.field_name : this_field;
           const thisFieldRec = reactData.fields[field_name];
           if (!thisFieldRec || thisFieldRec.ignore) {
+            continue;
+          }
+          // Skip required-field check if field-level show_if/ignore_if hides this field
+          const fieldIsHidden = checkIgnore({
+            ignoreObj: thisFieldRec.ignore_if || thisFieldRec.prompt?.ignore_if,
+            showObj: thisFieldRec.show_if,
+            occurrenceNumber: thisFieldRec._occurrence_number ?? null,
+          });
+          if (fieldIsHidden) {
             continue;
           }
           thisFieldRec.isError = false;
@@ -5220,14 +5237,19 @@ export default ({ request = {}, onClose }) => {
                       edge="start"
                     />
                   }
-                  {!reactData.clientSampleMode && !reactData.formRec.upload_only &&
+                  {!reactData.formRec.upload_only &&
                     <Button
                       onClick={async () => {
-                        if (valuesChanged()) {
-                          const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
-                          await handleSave({ document_id, final: false });
+                        if (reactData.viewOnlyMode || reactData.clientSampleMode) {
+                          await printCurrentForm();
                         }
-                        await printCurrentForm();
+                        else {
+                          if (valuesChanged()) {
+                            const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
+                            await handleSave({ document_id, final: false });
+                          }
+                          await printCurrentForm();
+                        }
                       }}
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'lightblue', color: 'black' }}
