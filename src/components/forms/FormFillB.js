@@ -1527,10 +1527,29 @@ export default ({ request = {}, onClose }) => {
         });
 
         reactData.fields[field_name] = Object.assign({}, formRec.fields[field_name],
-          {
-            value: formRec.fields[field_name].field_value,
-            valueText: formRec.fields[field_name].field_valueText
-          }
+          (() => {
+            const rawValue = formRec.fields[field_name].field_value;
+            const fieldType = formRec.fields[field_name].type;
+            if (fieldType === 'select&text' && rawValue) {
+              const knownValues = new Set(
+                (formRec.fields[field_name].selectionObj?.selectionList || []).map(e => e.value ?? e)
+              );
+              const vals = [rawValue].flat();
+              const bonus = vals.find(v => v && !knownValues.has(v));
+              const cleanVals = vals.filter(v => knownValues.has(v));
+              if (bonus) {
+                return {
+                  value: cleanVals.length === 1 ? cleanVals[0] : cleanVals,
+                  valueText: formRec.fields[field_name].field_valueText,
+                  bonusText: bonus
+                };
+              }
+            }
+            return {
+              value: rawValue,
+              valueText: formRec.fields[field_name].field_valueText
+            };
+          })()
         );
         reportFieldProgress();
       };
@@ -1568,10 +1587,29 @@ export default ({ request = {}, onClose }) => {
         });
 
         reactData.fields[field_name] = Object.assign({}, formRec.fields[field_name],
-          {
-            value: formRec.fields[field_name].field_value,
-            valueText: formRec.fields[field_name].field_valueText
-          }
+          (() => {
+            const rawValue = formRec.fields[field_name].field_value;
+            const fieldType = formRec.fields[field_name].type;
+            if (fieldType === 'select&text' && rawValue) {
+              const knownValues = new Set(
+                (formRec.fields[field_name].selectionObj?.selectionList || []).map(e => e.value ?? e)
+              );
+              const vals = [rawValue].flat();
+              const bonus = vals.find(v => v && !knownValues.has(v));
+              const cleanVals = vals.filter(v => knownValues.has(v));
+              if (bonus) {
+                return {
+                  value: cleanVals.length === 1 ? cleanVals[0] : cleanVals,
+                  valueText: formRec.fields[field_name].field_valueText,
+                  bonusText: bonus
+                };
+              }
+            }
+            return {
+              value: rawValue,
+              valueText: formRec.fields[field_name].field_valueText
+            };
+          })()
         );
         reportFieldProgress();
       }
@@ -2649,6 +2687,12 @@ export default ({ request = {}, onClose }) => {
                             if (idx >= 0) { reactData.fields[props.prop].value.splice(idx, 1); }
                           }
                         }
+                        // When single-select, clear the 'other' text so it doesn't compete
+                        if (shouldUseSingleSelection && reactData.fields[props.prop].bonusText) {
+                          reactData.fields[props.prop].bonusText = '';
+                          const textInput = document.getElementById(`${props.prop}_otherText`);
+                          if (textInput) { textInput.value = ''; }
+                        }
                         await handleMakeSelection({
                           clickText: text.value,
                           prop: props.prop,
@@ -2671,40 +2715,82 @@ export default ({ request = {}, onClose }) => {
               {(props.withPrompt) &&
                 <FormControlLabel
                   className={classes.formControlDays}
+        //          style={{ height: 'auto' }}
                   key={`${props.prop}_other`}
                   control={
+                    <Checkbox
+                      checked={!!fieldRec.bonusText}
+                      disabled={isDisabled}
+                      size='small'
+                      style={{ padding: '4px' }}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          const defaultText = toInlineFieldText(props.withPrompt || '');
+                          fieldRec.bonusText = defaultText;
+                          if (shouldUseSingleSelection) {
+                            reactData.fields[props.prop].value = [];
+                          } else {
+                            const max = reactData.fields[props.prop].selectionObj?.max ?? 99;
+                            const vals = [reactData.fields[props.prop].value].flat().filter(v => !isEmpty(v));
+                            while (vals.length >= max) { vals.shift(); }
+                            reactData.fields[props.prop].value = vals;
+                          }
+                          updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+                          setTimeout(() => {
+                            const textInput = document.getElementById(`${props.prop}_otherText`);
+                            if (textInput) { textInput.focus(); textInput.select(); }
+                          }, 150);
+                        } else {
+                          fieldRec.bonusText = '';
+                          const textInput = document.getElementById(`${props.prop}_otherText`);
+                          if (textInput) { textInput.value = ''; }
+                          updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+                        }
+                      }}
+                    />
+                  }
+                  label={
                     <TextField
-                      style={AVATextStyle({
-                        lineHeight: 1,
-                        padding: { bottom: 0, top: 1 },
-                        size: 0.75,
-                        margin: { top: 0, bottom: 0.5, left: 0.5, right: 3 }
-                      })}
-                      className={classes.radioDays}
                       autoComplete='off'
                       disabled={isDisabled}
                       id={`${props.prop}_otherText`}
-                      defaultValue={(fieldRec.value && fieldRec.bonusText)
-                        ? fieldRec.bonusText
-                        : ''
-                      }
-                      onBlur={(event) => {
-                        if (!fieldRec.value) {
-                          fieldRec.value = [];
-                        }
+                      defaultValue={fieldRec.bonusText || ''}
+                      onChange={(event) => {
+                        if (!fieldRec.value) { fieldRec.value = []; }
+                        const wasEmpty = !fieldRec.bonusText;
                         fieldRec.bonusText = event.target.value;
-                        setTimeout(() => {
-                          updateReactData({
-                            formUpdates: reactData.formUpdates++,
-                            fields: reactData.fields
-                          }, true);
-                        }, 0);
+                        if (wasEmpty && event.target.value) {
+                          if (shouldUseSingleSelection) {
+                            reactData.fields[props.prop].value = [];
+                          } else {
+                            const max = reactData.fields[props.prop].selectionObj?.max ?? 99;
+                            const vals = [reactData.fields[props.prop].value].flat().filter(v => !isEmpty(v));
+                            while (vals.length >= max) { vals.shift(); }
+                            reactData.fields[props.prop].value = vals;
+                          }
+                          const cursorPos = event.target.selectionStart;
+                          updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+                          setTimeout(() => {
+                            const textInput = document.getElementById(`${props.prop}_otherText`);
+                            if (textInput) { textInput.focus(); textInput.setSelectionRange(cursorPos, cursorPos); }
+                          }, 150);
+                        }
                       }}
-                      variant='outlined'
-                      size='small'
+                      onBlur={() => {
+                        updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+                      }}
+                      variant='standard'
                       placeholder={toInlineFieldText(props.withPrompt || '')}
+                      inputProps={{
+                        style: {
+                          fontSize: `${reactData.user_fontSize * 0.85}rem`,
+                          padding: '0 2px 2px'
+                        }
+                      }}
+                      style={{ marginRight: '16px', marginTop: '5px' }}
                     />
                   }
+                  labelPlacement='end'
                 />
               }
             </React.Fragment>
@@ -2830,7 +2916,10 @@ export default ({ request = {}, onClose }) => {
           if (isFieldRequired(thisFieldRec)) {
             const minSelectionRequired = getSelectionMinRequirement(thisFieldRec);
             if (minSelectionRequired > 0) {
-              const selectedValues = [thisFieldRec.value ?? []].flat().filter(v => !isEmpty(v));
+              const selectedValues = [
+                ...[thisFieldRec.value ?? []].flat(),
+                ...(thisFieldRec.bonusText ? [thisFieldRec.bonusText] : [])
+              ].filter(v => !isEmpty(v));
               const numberOfSelections = selectedValues.length;
               if (numberOfSelections < minSelectionRequired) {
                 const prompt_part = reconcilePrompt({
