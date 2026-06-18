@@ -1456,13 +1456,13 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                               }}
                               style={AVATextStyle({
                                 size: 1.2,
-                                color: ((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry))
+                                color: ((reactData.selectedPersonRec && reactData.selectedPersonRec?.groups?.includes(listEntry))
                                   ? 'orange'
                                   : (reactData.intersectionMode && [listEntry, ...getDescendants(listEntry)].every(id => (reactData.selectedGroupIds || []).includes(id)))
                                     ? '#c62828'
                                     : null
                                 ),
-                                weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry)) || [listEntry, ...getDescendants(listEntry)].every(id => (reactData.selectedGroupIds || []).includes(id))) ? 'bold' : null),
+                                weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec?.groups?.includes(listEntry)) || [listEntry, ...getDescendants(listEntry)].every(id => (reactData.selectedGroupIds || []).includes(id))) ? 'bold' : null),
                                 cursor: canDragManage ? 'grab' : null,
                                 userSelect: 'none',
                                 margin: { left: (groupsManagedObject[listEntry].level ? ((groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) - 1) * 1.5 : 0), top: 0.35, bottom: 0.65, right: 0.8 },
