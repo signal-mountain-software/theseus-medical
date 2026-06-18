@@ -58,6 +58,8 @@ import PersonAddIcon from '@material-ui/icons/PersonAdd';
 import SearchIcon from '@material-ui/icons/Search';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import CancelIcon from '@material-ui/icons/Cancel';
+import DeleteIcon from '@material-ui/icons/Delete';
+import LastPageIcon from '@material-ui/icons/LastPage';
 import GetAppIcon from '@material-ui/icons/GetApp';
 import FavoriteIcon from '@material-ui/icons/Favorite';
 import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder';
@@ -232,7 +234,7 @@ export default ({ start_at }) => {
     addMenuDialogSaving: false,
     addMenuDialogTargets: [],
     addMenuDialogPhone: '',
-    addMenuDialogAvailableTo: ['*all'],
+    addMenuDialogAvailableTo: [],
     addMenuDialogColor: null,
     showAddAccessToSearch: false,
     deleteMenuConfirm: false,
@@ -687,8 +689,11 @@ export default ({ start_at }) => {
       subjectPersonId
     } = getSubjectContextForMenu();
 
-    if (!available_to || available_to.length === 0) {
+    if (!available_to) {
       return true;
+    }
+    if (available_to.length === 0 || available_to.includes('*none')) {
+      return false;
     }
     for (let this_rule of available_to) {
       // If the rule contains "&&", ALL parts must be satisfied (AND logic)
@@ -726,7 +731,7 @@ export default ({ start_at }) => {
     if (recordExists(menuItemRec)) {
       // console.log(`Fetched menu item ${itemCode} from database.`);
       const this_item = menuItemRec.Item;
-      if (!this_item.available_to || authorizedToMenuItem(this_item.available_to)) {
+      if (!this_item.hasOwnProperty('available_to') || authorizedToMenuItem(this_item.available_to)) {
         if (!reactData.menu_hierarchy[menu_level]) { reactData.menu_hierarchy[menu_level] = []; }
         if (!this_item.color) {
           // if I have a parent, use their color.  If not, use the client default color.  If that's not set, use gray
@@ -1351,7 +1356,7 @@ export default ({ start_at }) => {
       editDescriptionColor: null,
       editDescriptionParent: null,
       editDescriptionCanDelete: false,
-      menu_hierarchy: reactData.menu_hierarchy,
+      menu_hierarchy: reactData.menu_hierarchy.map(level => level ? [...level] : level),
       alert: saveWorked
         ? { severity: 'success', title: 'Saved', message: 'Description updated.' }
         : { severity: 'error', title: 'Save failed', message: 'Unable to update description. Please try again.' }
@@ -2068,7 +2073,7 @@ export default ({ start_at }) => {
         const newMenuRec = {
           client_id: state.session.client_id,
           menu_id: newMenuId,
-          available_to: reactData.addMenuDialogAvailableTo || ['*all'],
+          available_to: reactData.addMenuDialogAvailableTo,
           description: { long: cardTitle, short: cardTitle },
           menu_itemType: 'link',
           url: fileUrl,
@@ -2135,7 +2140,7 @@ export default ({ start_at }) => {
         addMenuDialogSaving: false,
         addMenuDialogTargets: [],
         addMenuDialogPhone: '',
-        addMenuDialogAvailableTo: ['*all'],
+        addMenuDialogAvailableTo: [],
         addMenuDialogColor: null,
         showAddMessageTargetSearch: false,
         showAddAccessToSearch: false,
@@ -2156,7 +2161,7 @@ export default ({ start_at }) => {
     const newMenuRec = {
       client_id: state.session.client_id,
       menu_id: newMenuId,
-      available_to: reactData.addMenuDialogAvailableTo || ['*all'],
+      available_to: reactData.addMenuDialogAvailableTo,
       description: {
         long: titleText,
         short: titleText,
@@ -2254,7 +2259,7 @@ export default ({ start_at }) => {
       addMenuDialogSaving: false,
       addMenuDialogTargets: [],
       addMenuDialogPhone: '',
-      addMenuDialogAvailableTo: ['*all'],
+      addMenuDialogAvailableTo: [],
       addMenuDialogColor: null,
       showAddMessageTargetSearch: false,
       showAddAccessToSearch: false,
@@ -2365,7 +2370,7 @@ export default ({ start_at }) => {
 
   const describeAvailableTo = (available_to) => {
     const rules = available_to || [];
-    if (rules.length === 0) { return 'Everyone'; }
+    if (rules.length === 0 || rules.includes('*none')) { return 'No access assigned'; }
 
     // Separate star-rules from group: and person: entries
     const starRules = rules.filter(r => r.trimStart().startsWith('*'));
@@ -2668,35 +2673,59 @@ export default ({ start_at }) => {
             </Box>
           }
           {cardImageUrl && !hideCardImage && (!useTileUI || !reactData.editFavorites) &&
-            <CardMedia
-              className={classes.media}
-              key={`${keyPrefix}cardMedia_card-${level_index}.${item_index}`}
-              image={cardImageUrl}
-              title="Menu Media"
-              style={hasLinkThumbnail
-                ? (useTileUI
-                  ? { height: 100, width: '100%', borderRadius: '30px 30px 30px 30px' }
-                  : { width: 140, minWidth: 140, maxWidth: 140, height: 86, minHeight: 86, borderRadius: '30px 0 0 30px' }
-                )
-                : (useTileUI
-                  ? undefined
-                  : {
-                    width: 64,
-                    minWidth: 64,
-                    maxWidth: 64,
-                    height: 64,
-                    minHeight: 64,
-                    marginLeft: 18,
-                    marginRight: -8,
-                    borderRadius: '16px',
-                    backgroundSize: '80%',
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'center',
-                    backgroundColor: isDark(tileColor) ? 'rgba(255,255,255,0.85)' : undefined,
-                  }
-                )
+            <Box style={hasLinkThumbnail && useTileUI ? { position: 'relative', width: '100%' } : undefined}>
+              <CardMedia
+                className={classes.media}
+                key={`${keyPrefix}cardMedia_card-${level_index}.${item_index}`}
+                image={cardImageUrl}
+                title="Menu Media"
+                style={hasLinkThumbnail
+                  ? (useTileUI
+                    ? { height: 100, width: '100%', borderRadius: '30px 30px 30px 30px' }
+                    : { width: 140, minWidth: 140, maxWidth: 140, height: 86, minHeight: 86, borderRadius: '30px 0 0 30px' }
+                  )
+                  : (useTileUI
+                    ? undefined
+                    : {
+                      width: 64,
+                      minWidth: 64,
+                      maxWidth: 64,
+                      height: 64,
+                      minHeight: 64,
+                      marginLeft: 18,
+                      marginRight: -8,
+                      borderRadius: '16px',
+                      backgroundSize: '80%',
+                      backgroundRepeat: 'no-repeat',
+                      backgroundPosition: 'center',
+                      backgroundColor: isDark(tileColor) ? 'rgba(255,255,255,0.85)' : undefined,
+                    }
+                  )
+                }
+              />
+              {hasLinkThumbnail && useTileUI &&
+                <Box style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  borderRadius: '0 0 30px 30px',
+                  background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0) 100%)',
+                  padding: '18px 8px 6px 8px',
+                }}>
+                  <Typography style={{
+                    color: 'white',
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    fontSize: '0.85rem',
+                    textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+                    lineHeight: 1.2,
+                  }}>
+                    {this_item.description?.short || this_item.menu_id}
+                  </Typography>
+                </Box>
               }
-            />
+            </Box>
           }
           {!(hasLinkThumbnail && !hideCardImage && !reactData.editFavorites) &&
             <CardContent className={classes.cardcontentdetail}
@@ -3847,7 +3876,7 @@ export default ({ start_at }) => {
                     addMenuDialogSaving: false,
                     addMenuDialogTargets: [],
                     addMenuDialogPhone: '',
-                    addMenuDialogAvailableTo: ['*all'],
+                    addMenuDialogAvailableTo: [],
                     addMenuDialogColor: null,
                     showAddMessageTargetSearch: false,
                     showAddAccessToSearch: false,
@@ -4159,7 +4188,7 @@ export default ({ start_at }) => {
                           addMenuDialogSaving: false,
                           addMenuDialogTargets: [],
                           addMenuDialogPhone: '',
-                          addMenuDialogAvailableTo: ['*all'],
+                          addMenuDialogAvailableTo: [],
                           addMenuDialogColor: null,
                           showAddMessageTargetSearch: false,
                           showAddAccessToSearch: false,
@@ -4241,7 +4270,30 @@ export default ({ start_at }) => {
           fullWidth
         >
           <Box p={3} display='flex' flexDirection='column'>
-            <Typography variant='h6' style={{ marginBottom: 16 }}>Edit Description</Typography>
+            {/* Title row: "Edit Menu Item" + optional trash-can delete button */}
+            <Box display='flex' alignItems='center' justifyContent='space-between' style={{ marginBottom: 16 }}>
+              <Typography variant='h6'>Edit Menu Item</Typography>
+              {reactData.editDescriptionCanDelete &&
+                <IconButton
+                  size='small'
+                  style={{ color: '#c62828' }}
+                  title='Delete this item'
+                  onClick={() => {
+                    updateReactData({
+                      editDescriptionDialog: false,
+                      deleteMenuConfirm: true,
+                      deleteMenuTarget: {
+                        menu_id: reactData.editDescriptionMenuId,
+                        parent_id: reactData.editDescriptionParent,
+                        label: reactData.editDescriptionShort || reactData.editDescriptionMenuId
+                      }
+                    }, true);
+                  }}
+                >
+                  <DeleteIcon />
+                </IconButton>
+              }
+            </Box>
             <TextField
               label='Short description'
               value={reactData.editDescriptionShort}
@@ -4321,46 +4373,68 @@ export default ({ start_at }) => {
                 {'Edit Access'}
               </Button>
             </Box>
+            {/* Bottom row: Move to End + Cancel (left), Save (right) */}
             <Box display='flex' justifyContent='space-between' alignItems='center'>
-              {reactData.editDescriptionCanDelete
-                ? <Button
+              <Box display='flex' style={{ gap: 8 }}>
+                {reactData.editDescriptionParent &&
+                  <Button
                     className={AVAClass.AVAButton}
-                    style={{ backgroundColor: '#c62828', color: 'white' }}
+                    style={{ backgroundColor: '#1565c0', color: 'white' }}
                     size='small'
-                    onClick={() => {
-                      updateReactData({
-                        editDescriptionDialog: false,
-                        deleteMenuConfirm: true,
-                        deleteMenuTarget: {
-                          menu_id: reactData.editDescriptionMenuId,
-                          parent_id: reactData.editDescriptionParent,
-                          label: reactData.editDescriptionShort || reactData.editDescriptionMenuId
-                        }
-                      }, true);
+                    startIcon={<LastPageIcon />}
+                    onClick={async () => {
+                      const parentId = reactData.editDescriptionParent;
+                      const menuId = reactData.editDescriptionMenuId;
+                      const parentRec = await dbClient
+                        .get({ TableName: 'MenuV3', Key: { client_id: state.session.client_id, menu_id: parentId } })
+                        .promise().catch(() => null);
+                      if (recordExists(parentRec)) {
+                        const children = [...new Set([parentRec.Item.children || []].flat())];
+                        const reordered = [...children.filter(id => id !== menuId), menuId];
+                        await saveParentChildrenList(parentId, reordered);
+                        // Reorder sibling cells in local hierarchy to match the new children order
+                        const updatedHierarchy = reactData.menu_hierarchy.map(level => {
+                          if (!level) { return level; }
+                          const hasSiblings = level.some(cell => cell.parent === parentId);
+                          if (!hasSiblings) { return [...level]; }
+                          const siblings = level.filter(cell => cell.parent === parentId);
+                          const others = level.filter(cell => cell.parent !== parentId);
+                          const reorderedSiblings = reordered
+                            .map(id => siblings.find(cell => cell.menu_id === id))
+                            .filter(Boolean);
+                          // preserve any siblings not in the reordered list (shouldn't happen, but safe)
+                          const extra = siblings.filter(cell => !reordered.includes(cell.menu_id));
+                          return [...others, ...reorderedSiblings, ...extra];
+                        });
+                        updateReactData({
+                          editDescriptionDialog: false,
+                          editDescriptionColor: null,
+                          menu_hierarchy: updatedHierarchy,
+                          alert: { severity: 'success', title: 'Moved', message: `"${reactData.editDescriptionShort || menuId}" moved to end.` }
+                        }, true);
+                      }
                     }}
                   >
-                    {'Delete'}
+                    Move to End
                   </Button>
-                : <Box />
-              }
-              <Box>
+                }
                 <Button
                   className={AVAClass.AVAButton}
-                  style={{ backgroundColor: 'gray', color: 'white', marginRight: 8 }}
+                  style={{ backgroundColor: 'red', color: 'white' }}
                   size='small'
                   onClick={() => updateReactData({ editDescriptionDialog: false, editDescriptionColor: null }, true)}
                 >
                   Cancel
                 </Button>
-                <Button
-                  className={AVAClass.AVAButton}
-                  style={{ backgroundColor: 'green', color: 'white' }}
-                  size='small'
-                  onClick={handleSaveDescription}
-                >
-                  Save
-                </Button>
               </Box>
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'green', color: 'white' }}
+                size='small'
+                onClick={handleSaveDescription}
+              >
+                Save
+              </Button>
             </Box>
           </Box>
         </Dialog>

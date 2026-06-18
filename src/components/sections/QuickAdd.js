@@ -983,19 +983,57 @@ export default ({ onClose, options = {} }) => {
     await proceedWithSave();
   };
 
-  const resetForNextMember = () => {
+  const resetForNextMember = async () => {
+    // If the just-completed account type declares next_account_type_options,
+    // restrict the selection list to only those types for the next member.
+    const nextOptions = reactData.selected_account_config?.next_account_type_options;
+    const allowedTypes = nextOptions ? [nextOptions].flat() : null;
+    const nextPrompts = allowedTypes
+      ? (reactData.all_account_prompts || reactData.new_account_prompts || []).filter(p => allowedTypes.includes(p.account_type))
+      : reactData.new_account_prompts;
+
+    // If exactly one option, auto-select it without showing the selection screen
+    if (nextPrompts.length === 1) {
+      const autoConfig = nextPrompts[0];
+      setReactData(prev => ({
+        ...prev,
+        selected_account_type: autoConfig.account_type,
+        selected_account_config: autoConfig,
+        form_fields: {},
+        field_values: {},
+        field_validation_errors: {},
+        group_selection_values: [],
+        loading_fields: false,
+        new_account_prompts: nextPrompts,
+        current_member_index: prev.current_member_index + 1,
+        stage: 'fill_fields',
+        entered_name: '',
+        name_validation_result: null,
+        candidates: [],
+        select_user: false,
+        verification_stage: false,
+        verification_input: '',
+        verification_message: '',
+        matched_account: null,
+        parsed_first_name: '',
+        parsed_last_name: ''
+      }));
+      await gatherFormFields(autoConfig);
+      return;
+    }
+
     setReactData(prev => ({
       ...prev,
       selected_account_type: '',
       selected_account_config: null,
       form_fields: {},
       field_values: {},
-      field_validation_errors: {}, // Clear validation errors
+      field_validation_errors: {},
       group_selection_values: [],
       loading_fields: false,
       current_member_index: prev.current_member_index + 1,
-      stage: 'select_account_type', // Back to account type selection
-      // Clear all name-related fields for new family member
+      new_account_prompts: nextPrompts,
+      stage: 'select_account_type',
       entered_name: '',
       name_validation_result: null,
       candidates: [],
@@ -2638,8 +2676,8 @@ export default ({ onClose, options = {} }) => {
                     `All Family Members Ready (${reactData.family_members.length} total)`) :
                   reactData.selected_account_type ?
                     (reactData.current_member_index > 0 ?
-                      `${titleCase(reactData.selected_account_type)} - Family Member ${reactData.current_member_index + 1}` :
-                      titleCase(reactData.selected_account_type)) :
+                      `${reactData.selected_account_config?.capture_header || titleCase(reactData.selected_account_type)} - Family Member ${reactData.current_member_index + 1}` :
+                      (reactData.selected_account_config?.capture_header || titleCase(reactData.selected_account_type))) :
                     (reactData.current_member_index > 0 ?
                       `Select Account Type - Family Member ${reactData.current_member_index + 1}` :
                       'Select Account Type')
@@ -2981,7 +3019,7 @@ export default ({ onClose, options = {} }) => {
             {reactData.selected_account_type && !reactData.loading_fields && Object.keys(reactData.form_fields).length > 0 && (
               <Box style={{ marginTop: '16px', paddingRight: '16px' }}>
                 <Typography variant="h6" style={{ marginBottom: reactData.updating_existing_person_id ? '8px' : '16px' }}>
-                  {reactData.updating_existing_person_id ? 'Update Information for' : 'Enter Information for'} {titleCase(reactData.selected_account_type)}:
+                  {reactData.updating_existing_person_id ? 'Update Information for' : 'Enter Information for'} {reactData.selected_account_config?.capture_header || titleCase(reactData.selected_account_type)}:
                 </Typography>
                 {reactData.updating_existing_person_id && (
                   <Typography variant="subtitle2" style={{ marginBottom: '16px', color: '#1976d2' }}>

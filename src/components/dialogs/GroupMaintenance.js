@@ -101,6 +101,7 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
     addAttachment: false,
     isError: false,
     showQuickSearch: false,
+    showGroupAccessSearch: false,
     groupsToAdd: [],
     pendingAddIconGroups: [],
     addLink: false,

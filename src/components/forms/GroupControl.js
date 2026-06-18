@@ -3,7 +3,7 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 
 import { createNewGroup, getGroupMembers, getMemberList, addMember, removeMember } from '../../util/AVAGroups';
-import { dbClient, sentenceCase, isObject, listFromArray, cl } from '../../util/AVAUtilities';
+import { dbClient, isObject, listFromArray, cl } from '../../util/AVAUtilities';
 import AVATextInput from '../forms/AVATextInput';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import GroupMaintenance from '../dialogs/GroupMaintenance';
@@ -322,92 +322,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       return;
     }
     if (draggedFrom.hasOwnProperty('groupObj')) {
-      if (droppedOn.levelZero) {
-        let top = state.groups.adminHierarchy.find(h => { return h.level === 0; });
-        droppedOn.group_id = top.id;
-      }
-      else if (droppedOn.groupObj.group_type !== 'admin') {
-        // public and private groups cannot be dropped on
-        updateReactData({
-          alert: {
-            severity: 'error',
-            title: 'Error',
-            message: `${droppedOn.groupObj.group_name} is a ${sentenceCase(droppedOn.groupObj.group_type)} group and cannot be a "parent"`
-          }
-        }, true);
-        return;
-      }
-      // who are my parent and grandparents before the change?
-      let targetGroup_formerFamilyTree = [];
-      let this_group = myParent(draggedFrom.group_id);
-      for (this_group; !!this_group; this_group = myParent(this_group)) {
-        targetGroup_formerFamilyTree.push(this_group);
-      }
-      // dragged now belongs_to dropped
-      let UpdateExpression = 'set #b = :b';
-      let ExpressionAttributeValues = {
-        ':b': droppedOn.group_id
-      };
-      let ExpressionAttributeNames = {
-        '#b': 'belongs_to'
-      };
-      if (draggedFrom.groupObj.group_type !== 'admin') {  // if this formerly was a public or private group, it will now be an admin type group
-        UpdateExpression += ', #t = :t';
-        ExpressionAttributeValues[':t'] = 'admin';
-        ExpressionAttributeNames['#t'] = 'group_type';
-      }
-      await dbClient
-        .update({
-          Key: {
-            client_id: pSession.client_id,
-            group_id: draggedFrom.group_id
-          },
-          UpdateExpression,
-          ExpressionAttributeValues,
-          ExpressionAttributeNames,
-          TableName: "Groups",
-        })
-        .promise()
-        .catch(error => {
-          console.log(`caught error updating Group; error is: `, error);
-        });
-
-      groupsManagedObject[draggedFrom.group_id].level = (groupsManagedObject[droppedOn.group_id]?.level || 0) + 1;
-
-      // who are my parent and grandparents after the change?
-      let targetGroup_newFamilyTree = [droppedOn.group_id];
-      this_group = myParent(droppedOn.group_id);
-      for (this_group; !!this_group; this_group = myParent(this_group)) {
-        targetGroup_newFamilyTree.push(this_group);
-      }
-      for (const former_parent of targetGroup_formerFamilyTree) {
-        state.groups.parent_of[former_parent].splice(state.groups.parent_of[former_parent].indexOf(draggedFrom.group_id), 1);
-      }
-      for (const new_parent of targetGroup_newFamilyTree) {
-        if (state.groups.parent_of.hasOwnProperty(new_parent)) {
-          state.groups.parent_of[new_parent].push(draggedFrom.group_id);
-        }
-        else {
-          state.groups.parent_of[new_parent] = [draggedFrom.group_id];
-        }
-      }
-
-      let foundAt = state.groups.adminHierarchy.findIndex(g => { return g.id === draggedFrom.group_id; });
-      if (foundAt > -1) {
-        state.groups.adminHierarchy[foundAt].belongs_to = droppedOn.group_id;
-      }
-      else {
-        state.groups.adminHierarchy.push({
-          belongs_to: droppedOn.group_id,
-          id: draggedFrom.group_id,
-          level: groupsManagedObject[draggedFrom.group_id].level,
-          name: draggedFrom.groupObj.group_name,
-          selectable: true
-        });
-      }
-      delete state.groups.publicGroups[draggedFrom.group_id];
-      delete state.groups.privateGroups[draggedFrom.group_id];
-      dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups) });
+      // Group-to-group drag for re-parenting has been removed. Use the Parent & Children
+      // section in Group Maintenance to change parent/child relationships.
+      return;
     }
     else if (draggedFrom.hasOwnProperty('personObj')) {
       if (draggedFrom.hasOwnProperty('personGroup') && (draggedFrom.intent === 'group')) {
@@ -1389,16 +1306,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
               >
                 <Typography
                   key={`g_client_name_header`}
-                  onDragOver={(e) => handleDragOver(e)}
-                  onDrop={async (e) => {
-                    // Keep GroupControl state in place after drag/drop.
-                    // Full refresh here clears selectedGroup and right-side list context.
-                    await handleDrop(e, {
-                      droppedOn: {
-                        levelZero: true
-                      }
-                    });
-                  }}
                   style={AVATextStyle({
                     size: 1.5,
                     bold: true,
@@ -1549,13 +1456,13 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                               }}
                               style={AVATextStyle({
                                 size: 1.2,
-                                color: ((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry))
+                                color: ((reactData.selectedPersonRec && reactData.selectedPersonRec?.groups?.includes(listEntry))
                                   ? 'orange'
                                   : (reactData.intersectionMode && [listEntry, ...getDescendants(listEntry)].every(id => (reactData.selectedGroupIds || []).includes(id)))
                                     ? '#c62828'
                                     : null
                                 ),
-                                weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec.groups.includes(listEntry)) || [listEntry, ...getDescendants(listEntry)].every(id => (reactData.selectedGroupIds || []).includes(id))) ? 'bold' : null),
+                                weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec?.groups?.includes(listEntry)) || [listEntry, ...getDescendants(listEntry)].every(id => (reactData.selectedGroupIds || []).includes(id))) ? 'bold' : null),
                                 cursor: canDragManage ? 'grab' : null,
                                 userSelect: 'none',
                                 margin: { left: (groupsManagedObject[listEntry].level ? ((groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) - 1) * 1.5 : 0), top: 0.35, bottom: 0.65, right: 0.8 },

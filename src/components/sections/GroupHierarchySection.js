@@ -171,6 +171,39 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
                         if (tempBelongsTo !== null) {
                           return;
                         }
+                        // Block re-parenting to self
+                        if (listEntry === currentValues.Groups.group_id) {
+                          return;
+                        }
+                        // Block re-parenting to a descendant — that would create a cycle.
+                        // groupsManagedObject is ordered as a flattened tree; the subtree of the
+                        // current group is the contiguous run of entries after it whose level is
+                        // strictly greater than the current group's level.
+                        const groupKeys = Object.keys(reactData.groupsManagedObject);
+                        const currentIdx = groupKeys.indexOf(currentValues.Groups.group_id);
+                        const candidateIdx = groupKeys.indexOf(listEntry);
+                        const currentLevel = reactData.groupsManagedObject[currentValues.Groups.group_id]?.level ?? 0;
+                        if (currentIdx >= 0 && candidateIdx > currentIdx) {
+                          let isDescendant = true;
+                          for (let i = currentIdx + 1; i <= candidateIdx; i++) {
+                            if (reactData.groupsManagedObject[groupKeys[i]].level <= currentLevel) {
+                              isDescendant = false;
+                              break;
+                            }
+                          }
+                          if (isDescendant) {
+                            await updateField({
+                              reactUpd: {
+                                alert: {
+                                  severity: 'warning',
+                                  title: 'Circular Reference',
+                                  message: `"${reactData.groupsManagedObject[listEntry]?.group_name}" is already a child of "${currentValues.Groups.name}". Setting it as a parent would create a circular reference.`,
+                                }
+                              }
+                            });
+                            return;
+                          }
+                        }
                         setConfirmParentTarget(listEntry);
                       }}
                       style={AVATextStyle({

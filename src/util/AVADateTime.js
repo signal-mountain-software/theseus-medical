@@ -41,7 +41,7 @@ export function makeDate(pInput, optionIn = {}) {
             'error': true,
             'relative': '',  // next Tuesday
             'absolute': '',  // Tue, Aug 22
-            'absolute_withAge': '',  // Aug 22, 2023
+            'absolute_withAge': '',  // 15 years old
             'absolute_full': '',  // Tuesday, August 22, 2023
             'dateOnly': '',  // August 22
             'timeOnly': '', // 2:45pm
@@ -52,6 +52,7 @@ export function makeDate(pInput, optionIn = {}) {
             'input': '2099-01-01',
             'obs': '2099.1.1',
             'slashDate': '1/1/2025',
+            'slashFull': '01/01/2025',
             'iso': '2099-01-01T00:00:00.000Z',
             'iso_week': 9901,
             'numeric': 20990101,
@@ -136,6 +137,7 @@ export function makeDate(pInput, optionIn = {}) {
                 'input': '2099-01-01',
                 'obs': '2099.1.1',
                 'slashDate': '1/1/2025',
+                'slashFull': '01/01/2025',
                 'iso': '2099-01-01T00:00:00.000Z',
                 'iso_week': 9901,
                 'numeric': 20990101,
@@ -193,6 +195,7 @@ export function makeDate(pInput, optionIn = {}) {
                 'input': '2099-01-01',
                 'obs': '2099.1.1',
                 'slashDate': '1/1/2025',
+                'slashFull': '01/01/2025',
                 'iso': '2099-01-01T00:00:00.000Z',
                 'iso_week': 9901,
                 'numeric': 20990101,
@@ -335,6 +338,7 @@ export function makeDate(pInput, optionIn = {}) {
         'input': targetDateInput,
         'obs': targetDateYMD.replace(regEx, '.'),
         'slashDate': `${targetDate.toLocaleDateString([], { timeZone: options.timeZone })}`,
+        'slashFull': targetDateYMD.replace(/\./g, '').replace(/(\d{4})(\d{2})(\d{2})/, '$2/$3/$1'),
         'iso': targetDate.toISOString(),
         'iso_week': getWeekNumberFromDate(targetDate),
         'numeric': Number(targetDateYMD.replace(/\./g, '')),
