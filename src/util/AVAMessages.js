@@ -1030,6 +1030,24 @@ export async function printElementWysiwygB({ element, client_id, docID, title, o
   // Two animation frames let the browser measure the natural layout height after style overrides.
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
+  // Collect element bounds (DOM pixels relative to printContainer top) for smart page-break detection.
+  // We walk up to 5 levels deep and record any element tall enough to be a logical content block (≥ 20px).
+  const containerRect = printContainer.getBoundingClientRect();
+  const elementBoundsDom = [];
+  const walkForBounds = (el, depth) => {
+    if (depth > 5) { return; }
+    for (const child of el.children) {
+      const r = child.getBoundingClientRect();
+      const relTop = r.top - containerRect.top;
+      const relBottom = r.bottom - containerRect.top;
+      if (r.height >= 20) {
+        elementBoundsDom.push({ top: relTop, bottom: relBottom });
+      }
+      walkForBounds(child, depth + 1);
+    }
+  };
+  walkForBounds(printContainer, 0);
+
   const captureWidth = printContainer.offsetWidth;
   const captureHeight = printContainer.scrollHeight;
 
@@ -1060,11 +1078,34 @@ export async function printElementWysiwygB({ element, client_id, docID, title, o
   const printableHeight = page.height - page.margin.top - page.margin.bottom;
   const sourcePageHeight = Math.max(1, Math.floor((printableHeight * canvas.width) / printableWidth));
 
+  // Scale DOM-pixel element bounds to canvas pixels so we can reason about cut points.
+  const elementBoundsCanvas = elementBoundsDom.map(b => ({
+    top: Math.round(b.top * captureScale),
+    bottom: Math.round(b.bottom * captureScale)
+  }));
+
+  // Returns the safest canvas-pixel Y to cut at, avoiding slicing through an element.
+  // When the nominal cut falls inside one or more elements, retreat to just before the
+  // topmost straddling element that fits on the current page.  Falls back to nominalCut
+  // when an element is too tall to fit on a single page.
+  const findSafeCut = (nominalCut, sourceY) => {
+    if (nominalCut >= canvas.height) { return nominalCut; }
+    const straddling = elementBoundsCanvas.filter(b => b.top < nominalCut && b.bottom > nominalCut);
+    if (straddling.length === 0) { return nominalCut; }
+    const retreatCandidates = straddling
+      .map(b => b.top)
+      .filter(t => t > sourceY)
+      .sort((a, b) => b - a);
+    return retreatCandidates.length > 0 ? retreatCandidates[0] : nominalCut;
+  };
+
   let sourceY = 0;
   let pageIndex = 0;
 
   while (sourceY < canvas.height) {
-    const sliceHeight = Math.min(sourcePageHeight, canvas.height - sourceY);
+    const nominalCut = sourceY + sourcePageHeight;
+    const actualCut = findSafeCut(nominalCut, sourceY);
+    const sliceHeight = Math.min(actualCut - sourceY, canvas.height - sourceY);
     const sliceCanvas = document.createElement('canvas');
     sliceCanvas.width = canvas.width;
     sliceCanvas.height = sliceHeight;
