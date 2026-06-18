@@ -232,7 +232,7 @@ export default ({ start_at }) => {
     addMenuDialogSaving: false,
     addMenuDialogTargets: [],
     addMenuDialogPhone: '',
-    addMenuDialogAvailableTo: ['*all'],
+    addMenuDialogAvailableTo: [],
     addMenuDialogColor: null,
     showAddAccessToSearch: false,
     deleteMenuConfirm: false,
@@ -687,8 +687,11 @@ export default ({ start_at }) => {
       subjectPersonId
     } = getSubjectContextForMenu();
 
-    if (!available_to || available_to.length === 0) {
+    if (!available_to) {
       return true;
+    }
+    if (available_to.length === 0 || available_to.includes('*none')) {
+      return false;
     }
     for (let this_rule of available_to) {
       // If the rule contains "&&", ALL parts must be satisfied (AND logic)
@@ -726,7 +729,7 @@ export default ({ start_at }) => {
     if (recordExists(menuItemRec)) {
       // console.log(`Fetched menu item ${itemCode} from database.`);
       const this_item = menuItemRec.Item;
-      if (!this_item.available_to || authorizedToMenuItem(this_item.available_to)) {
+      if (!this_item.hasOwnProperty('available_to') || authorizedToMenuItem(this_item.available_to)) {
         if (!reactData.menu_hierarchy[menu_level]) { reactData.menu_hierarchy[menu_level] = []; }
         if (!this_item.color) {
           // if I have a parent, use their color.  If not, use the client default color.  If that's not set, use gray
@@ -2068,7 +2071,7 @@ export default ({ start_at }) => {
         const newMenuRec = {
           client_id: state.session.client_id,
           menu_id: newMenuId,
-          available_to: reactData.addMenuDialogAvailableTo || ['*all'],
+          available_to: reactData.addMenuDialogAvailableTo,
           description: { long: cardTitle, short: cardTitle },
           menu_itemType: 'link',
           url: fileUrl,
@@ -2135,7 +2138,7 @@ export default ({ start_at }) => {
         addMenuDialogSaving: false,
         addMenuDialogTargets: [],
         addMenuDialogPhone: '',
-        addMenuDialogAvailableTo: ['*all'],
+        addMenuDialogAvailableTo: [],
         addMenuDialogColor: null,
         showAddMessageTargetSearch: false,
         showAddAccessToSearch: false,
@@ -2156,7 +2159,7 @@ export default ({ start_at }) => {
     const newMenuRec = {
       client_id: state.session.client_id,
       menu_id: newMenuId,
-      available_to: reactData.addMenuDialogAvailableTo || ['*all'],
+      available_to: reactData.addMenuDialogAvailableTo,
       description: {
         long: titleText,
         short: titleText,
@@ -2254,7 +2257,7 @@ export default ({ start_at }) => {
       addMenuDialogSaving: false,
       addMenuDialogTargets: [],
       addMenuDialogPhone: '',
-      addMenuDialogAvailableTo: ['*all'],
+      addMenuDialogAvailableTo: [],
       addMenuDialogColor: null,
       showAddMessageTargetSearch: false,
       showAddAccessToSearch: false,
@@ -2365,7 +2368,7 @@ export default ({ start_at }) => {
 
   const describeAvailableTo = (available_to) => {
     const rules = available_to || [];
-    if (rules.length === 0) { return 'Everyone'; }
+    if (rules.length === 0 || rules.includes('*none')) { return 'No access assigned'; }
 
     // Separate star-rules from group: and person: entries
     const starRules = rules.filter(r => r.trimStart().startsWith('*'));
@@ -3847,7 +3850,7 @@ export default ({ start_at }) => {
                     addMenuDialogSaving: false,
                     addMenuDialogTargets: [],
                     addMenuDialogPhone: '',
-                    addMenuDialogAvailableTo: ['*all'],
+                    addMenuDialogAvailableTo: [],
                     addMenuDialogColor: null,
                     showAddMessageTargetSearch: false,
                     showAddAccessToSearch: false,
@@ -4159,7 +4162,7 @@ export default ({ start_at }) => {
                           addMenuDialogSaving: false,
                           addMenuDialogTargets: [],
                           addMenuDialogPhone: '',
-                          addMenuDialogAvailableTo: ['*all'],
+                          addMenuDialogAvailableTo: [],
                           addMenuDialogColor: null,
                           showAddMessageTargetSearch: false,
                           showAddAccessToSearch: false,
