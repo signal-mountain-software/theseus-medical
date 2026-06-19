@@ -313,6 +313,9 @@ export default ({ start_at }) => {
   const prevMenuDepthRef = React.useRef(0);
   const deferredStartAtRef = React.useRef(null);
   const subjectGroupsRef = React.useRef(null);
+  // Cache for the optional 'favorites' MenuV3 template record.
+  // undefined = not yet fetched; null = fetched but not found; object = found record.
+  const favoritesMenuTemplateRef = React.useRef(undefined);
   const activePersonId = state.session?.patient_id || state.session?.person_id;
 
   const loadSubjectGroups = async () => {
@@ -429,6 +432,7 @@ export default ({ start_at }) => {
     const savedStartAt = reactData.start_at;
 
     reactData.menu_hierarchy = [];
+    favoritesMenuTemplateRef.current = undefined; // Re-fetch template on each full rebuild
     const new_menuHierarchy = await getMenuItem('__top__', 0);
     let reactUpd = {
       menu_hierarchy: new_menuHierarchy,
@@ -437,7 +441,7 @@ export default ({ start_at }) => {
     };
     const favoriteList = normalizeFavorites(state.patient?.v3_favorites || []);
     if (favoriteList && favoriteList.length > 0) {
-      const menuWithFavorites = applyFavoritesCardToHierarchy(new_menuHierarchy, favoriteList);
+      const menuWithFavorites = await applyFavoritesCardToHierarchy(new_menuHierarchy, favoriteList);
       reactUpd.menu_hierarchy = menuWithFavorites;
       reactUpd.v3_favorites = favoriteList;
     }
@@ -961,7 +965,7 @@ export default ({ start_at }) => {
     return [...new Set(cleaned)];
   };
 
-  const applyFavoritesCardToHierarchy = (menuHierarchy, favoriteList) => {
+  const applyFavoritesCardToHierarchy = async (menuHierarchy, favoriteList) => {
     const normalizedFavorites = normalizeFavorites(favoriteList);
     const newHierarchy = (menuHierarchy || []).map((levelList) => {
       return Array.isArray(levelList) ? [...levelList] : [];
@@ -976,19 +980,41 @@ export default ({ start_at }) => {
     });
 
     if ((normalizedFavorites.length > 0) && (reactData.start_at === '__top__')) {
+      // Fetch (and cache) an optional 'favorites' MenuV3 template record for this client.
+      if (favoritesMenuTemplateRef.current === undefined) {
+        const templateResult = await dbClient
+          .get({
+            TableName: 'MenuV3',
+            Key: { client_id: state.session.client_id, menu_id: 'favorites' }
+          })
+          .promise()
+          .catch((error) => {
+            cl({ 'Error fetching favorites menu template': error });
+          });
+        favoritesMenuTemplateRef.current = recordExists(templateResult) ? templateResult.Item : null;
+      }
+      const template = favoritesMenuTemplateRef.current;
+
+      // User's personal favorites are prepended; any extra children from the template
+      // that aren't already in the personal list are appended after them.
+      const templateExtras = template
+        ? (template.children || []).filter((id) => !normalizedFavorites.includes(id))
+        : [];
+
       newHierarchy[1].unshift({
         menu_id: '__v3_favorites__',
         parent: '__top__',
         menuItemRec: {
           menu_id: '__v3_favorites__',
-          description: {
+          description: template?.description || {
             short: 'Favorites',
             long: `${reactData.greetingName ? (reactData.greetingName + "'s") : 'Your'} Favorites`
           },
           menu_itemType: 'menu',
-          children: normalizedFavorites,
-          color: stringToColor('__v3_favorites__'),
-          icon: state.session?.client_logo
+          children: [...normalizedFavorites, ...templateExtras],
+          color: template?.color || stringToColor('__v3_favorites__'),
+          icon_thumb: template?.icon_thumb || null,
+          icon: template?.icon_thumb || template?.icon || state.session?.client_logo
         }
       });
     }
@@ -997,7 +1023,7 @@ export default ({ start_at }) => {
   };
 
   const refreshFavoritesBranchInHierarchy = async (menuHierarchy, favoriteList) => {
-    let refreshedHierarchy = applyFavoritesCardToHierarchy(menuHierarchy, favoriteList);
+    let refreshedHierarchy = await applyFavoritesCardToHierarchy(menuHierarchy, favoriteList);
     const favoritesCellObj = findMenuCellWithLevel(refreshedHierarchy, '__v3_favorites__');
     if (!favoritesCellObj) {
       return refreshedHierarchy;
@@ -1720,7 +1746,7 @@ export default ({ start_at }) => {
     }
 
     const refreshedHierarchy = await rebuildMenuHierarchy({ includeLoadingState: false });
-    const refreshedWithFavorites = applyFavoritesCardToHierarchy(refreshedHierarchy, nextFavorites);
+    const refreshedWithFavorites = await applyFavoritesCardToHierarchy(refreshedHierarchy, nextFavorites);
     void persistOpenMenusFromHierarchy(refreshedWithFavorites);
 
     updateReactData({
