@@ -61,6 +61,8 @@ import CancelIcon from '@material-ui/icons/Cancel';
 import DeleteIcon from '@material-ui/icons/Delete';
 import LastPageIcon from '@material-ui/icons/LastPage';
 import GetAppIcon from '@material-ui/icons/GetApp';
+import NavigateBeforeIcon from '@material-ui/icons/NavigateBefore';
+import NavigateNextIcon from '@material-ui/icons/NavigateNext';
 import FavoriteIcon from '@material-ui/icons/Favorite';
 import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder';
 import PhoneIcon from '@material-ui/icons/Phone';
@@ -254,6 +256,8 @@ export default ({ start_at }) => {
     showLiveLink: false,
     liveLinkUrl: '',
     liveLinkTitle: '',
+    liveLinkSiblings: [],
+    liveLinkCurrentIndex: -1,
     showIosInstall: false,
     alert: false,
     testMode: ["T", "L"].includes(window.location.href.split('//')[1].slice(0, 1).toUpperCase()),
@@ -2800,10 +2804,29 @@ export default ({ start_at }) => {
               }, true);
               return;
             }
+            const urlSiblings = (reactData.menu_hierarchy[level_index] || [])
+              .filter(cell => {
+                const sibItem = cell.menuItemRec;
+                if (!sibItem || !sibItem.url) { return false; }
+                if (cell.parent !== this_cell.parent) { return false; }
+                const sibType = sibItem.menu_type || sibItem.menu_itemType;
+                const sibIsTel = String(sibItem.url || '').trim().toLowerCase().startsWith('tel:');
+                if (sibIsTel) { return false; }
+                const sibCardImageUrl = sibItem.icon_thumb || getLinkThumbnailUrl(sibItem.url, sibItem.icon);
+                const sibHasLinkThumbnail = !!(sibCardImageUrl && sibCardImageUrl !== sibItem.icon);
+                return (sibType === 'live_link' || (useTileUI && sibHasLinkThumbnail && sibType === 'link'));
+              })
+              .map(cell => ({
+                url: buildLiveLinkEmbedUrl(cell.menuItemRec.url),
+                title: cell.menuItemRec.description?.short || cell.menuItemRec.menu_id
+              }));
+            const currentSiblingIndex = urlSiblings.findIndex(s => s.url === frameUrl);
             updateReactData({
               showLiveLink: true,
               liveLinkUrl: frameUrl,
-              liveLinkTitle: this_item.description?.short || this_item.menu_id
+              liveLinkTitle: this_item.description?.short || this_item.menu_id,
+              liveLinkSiblings: urlSiblings,
+              liveLinkCurrentIndex: currentSiblingIndex
             }, true);
           }
         }}
@@ -3706,7 +3729,7 @@ export default ({ start_at }) => {
                                       style={{ marginTop: 10, marginBottom: 4, gap: 8 }}
                                     >
                                       <Button
-                                        variant='outlined'
+                                        variant='contained'
                                         size='small'
                                         disabled={!hasPrev}
                                         onClick={() => {
@@ -3714,20 +3737,45 @@ export default ({ start_at }) => {
                                             levelPages: Object.assign({}, reactData.levelPages, { [level_index]: safePage - 1 })
                                           }, true);
                                         }}
+                                        style={{
+                                          backgroundColor: hasPrev ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.2)',
+                                          color: hasPrev ? 'white' : 'rgba(255,255,255,0.4)',
+                                          borderRadius: '20px',
+                                          textShadow: 'none',
+                                          boxShadow: hasPrev ? '0 2px 6px rgba(0,0,0,0.4)' : 'none',
+                                          minWidth: 72
+                                        }}
                                       >
                                         ‹ Prev
                                       </Button>
-                                      <Typography variant='caption' style={{ opacity: 0.7 }}>
+                                      <Typography
+                                        variant='caption'
+                                        style={{
+                                          backgroundColor: 'rgba(0,0,0,0.6)',
+                                          color: 'white',
+                                          borderRadius: '12px',
+                                          padding: '2px 10px',
+                                          fontWeight: 600
+                                        }}
+                                      >
                                         {`${safePage + 1} / ${totalPages}`}
                                       </Typography>
                                       <Button
-                                        variant='outlined'
+                                        variant='contained'
                                         size='small'
                                         disabled={!hasNext}
                                         onClick={() => {
                                           updateReactData({
                                             levelPages: Object.assign({}, reactData.levelPages, { [level_index]: safePage + 1 })
                                           }, true);
+                                        }}
+                                        style={{
+                                          backgroundColor: hasNext ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.2)',
+                                          color: hasNext ? 'white' : 'rgba(255,255,255,0.4)',
+                                          borderRadius: '20px',
+                                          textShadow: 'none',
+                                          boxShadow: hasNext ? '0 2px 6px rgba(0,0,0,0.4)' : 'none',
+                                          minWidth: 72
                                         }}
                                       >
                                         Next ›
@@ -4016,7 +4064,9 @@ export default ({ start_at }) => {
                 updateReactData({
                   showLiveLink: false,
                   liveLinkUrl: '',
-                  liveLinkTitle: ''
+                  liveLinkTitle: '',
+                  liveLinkSiblings: [],
+                  liveLinkCurrentIndex: -1
                 }, true);
               }}
               maxWidth={false}
@@ -4036,31 +4086,94 @@ export default ({ start_at }) => {
                   <Typography style={AVATextStyle({ margin: { left: 1.2 }, size: 1.5, bold: true })}>
                     {reactData.liveLinkTitle || 'Live Link'}
                   </Typography>
-                  <Button
-                    className={AVAClass.AVAButton}
-                    variant='contained'
-                    size='small'
-                    onClick={() => {
-                      updateReactData({
-                        showLiveLink: false,
-                        liveLinkUrl: '',
-                        liveLinkTitle: ''
-                      }, true);
-                    }}
-                  >
-                    {'Close'}
-                  </Button>
+                  <Box display='flex' alignItems='center' style={{ gap: 4 }}>
+                    {(reactData.liveLinkSiblings?.length > 1) &&
+                      <IconButton
+                        size='small'
+                        disabled={reactData.liveLinkCurrentIndex <= 0}
+                        onClick={() => {
+                          const newIndex = reactData.liveLinkCurrentIndex - 1;
+                          const sibling = reactData.liveLinkSiblings[newIndex];
+                          updateReactData({ liveLinkUrl: sibling.url, liveLinkTitle: sibling.title, liveLinkCurrentIndex: newIndex }, true);
+                        }}
+                      >
+                        <NavigateBeforeIcon />
+                      </IconButton>
+                    }
+                    {(reactData.liveLinkSiblings?.length > 1) &&
+                      <IconButton
+                        size='small'
+                        disabled={reactData.liveLinkCurrentIndex >= (reactData.liveLinkSiblings.length - 1)}
+                        onClick={() => {
+                          const newIndex = reactData.liveLinkCurrentIndex + 1;
+                          const sibling = reactData.liveLinkSiblings[newIndex];
+                          updateReactData({ liveLinkUrl: sibling.url, liveLinkTitle: sibling.title, liveLinkCurrentIndex: newIndex }, true);
+                        }}
+                      >
+                        <NavigateNextIcon />
+                      </IconButton>
+                    }
+                    <IconButton
+                      size='small'
+                      title='Download'
+                      onClick={async () => {
+                        const url = reactData.liveLinkUrl;
+                        const fileName = url.split('/').pop().split('?')[0] || 'download';
+                        try {
+                          const response = await fetch(url);
+                          const blob = await response.blob();
+                          const objectUrl = URL.createObjectURL(blob);
+                          const anchor = document.createElement('a');
+                          anchor.href = objectUrl;
+                          anchor.download = fileName;
+                          anchor.click();
+                          URL.revokeObjectURL(objectUrl);
+                        } catch {
+                          window.open(url, '_blank', 'noopener,noreferrer');
+                        }
+                      }}
+                    >
+                      <GetAppIcon />
+                    </IconButton>
+                    <Button
+                      className={AVAClass.AVAButton}
+                      variant='contained'
+                      size='small'
+                      onClick={() => {
+                        updateReactData({
+                          showLiveLink: false,
+                          liveLinkUrl: '',
+                          liveLinkTitle: '',
+                          liveLinkSiblings: [],
+                          liveLinkCurrentIndex: -1
+                        }, true);
+                      }}
+                    >
+                      {'Close'}
+                    </Button>
+                  </Box>
                 </Box>
                 <Box
                   width='100%'
+                  display='flex'
+                  justifyContent='center'
+                  alignItems='center'
                   style={{
                     height: 'calc(100% - 52px)',
                     minHeight: 0,
                     paddingBottom: 24,
-                    boxSizing: 'border-box'
+                    boxSizing: 'border-box',
+                    overflow: 'hidden'
                   }}
                 >
-                  {canPlayAsMedia(reactData.liveLinkUrl)
+                  {/\.(jpe?g|png|gif|webp|svg|bmp)(\?.*)?$/i.test((reactData.liveLinkUrl || '').trim())
+                    ? <Box
+                        component='img'
+                        src={reactData.liveLinkUrl}
+                        alt={reactData.liveLinkTitle || ''}
+                        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                      />
+                    : canPlayAsMedia(reactData.liveLinkUrl)
                     ?
                     <ReactPlayer
                       url={reactData.liveLinkUrl}
@@ -4069,13 +4182,6 @@ export default ({ start_at }) => {
                       playing
                       controls
                       muted
-                      config={{
-                        file: {
-                          attributes: {
-                            controlsList: 'nodownload'
-                          }
-                        }
-                      }}
                     />
                     :
                     <iframe
