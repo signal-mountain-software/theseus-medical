@@ -256,7 +256,8 @@ export default ({ start_at }) => {
     liveLinkTitle: '',
     showIosInstall: false,
     alert: false,
-    testMode: ["T", "L"].includes(window.location.href.split('//')[1].slice(0, 1).toUpperCase())
+    testMode: ["T", "L"].includes(window.location.href.split('//')[1].slice(0, 1).toUpperCase()),
+    levelPages: {}    // tracks current page (0-indexed) per level for paginated display
   });
 
   const useTileUI = ((reactData.uiTilesOverride === null) || (reactData.uiTilesOverride === undefined))
@@ -502,9 +503,7 @@ export default ({ start_at }) => {
           }
           else if (startAtItem.menu_itemType === 'menu') {
             reactData.menu_hierarchy = reactUpd.menu_hierarchy;
-            for (const childItem of (startAtItem.children || [])) {
-              await getMenuItem(childItem, startAtLevel + 1, startAtItem);
-            }
+            await batchGetMenuItems(startAtItem.children || [], startAtLevel + 1, startAtItem);
             reactUpd.menu_hierarchy = reactData.menu_hierarchy;
           }
         }
@@ -751,10 +750,8 @@ export default ({ start_at }) => {
             parent: targetParentId
           });
         }
-        if (this_item.hidden && this_item.menu_itemType === 'menu') {  // hidden menu item? process children immediately
-          for (const childItem of (this_item.children || [])) {
-            await getMenuItem(childItem, menu_level + 1, this_item);
-          }
+            if (this_item.hidden && this_item.menu_itemType === 'menu') {  // hidden menu item? process children immediately
+          await batchGetMenuItems(this_item.children || [], menu_level + 1, this_item);
         }
       }
     }
@@ -762,6 +759,192 @@ export default ({ start_at }) => {
       console.log(`Menu item ${itemCode} not found in database.`);
     }
     return reactData.menu_hierarchy;
+  };
+
+  const MENU_PAGE_SIZE = 50;  // items shown per page per menu level (prev/next navigation)
+
+  /**
+   * Generate a tiny base64 JPEG thumbnail from an image File object.
+   * Stored in icon_thumb on the MenuV3 record so the grid can display instantly
+   * without any additional image fetches — the data comes back in BatchGet.
+   * Target: 64×64 px at JPEG quality 0.55 ≈ 2–4 KB.
+   */
+  const generateMenuThumb = (file) => {
+    return new Promise((resolve) => {
+      if (!file || !file.type?.startsWith('image/')) { resolve(null); return; }
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const THUMB_SIZE = 64;
+        const canvas = document.createElement('canvas');
+        canvas.width = THUMB_SIZE;
+        canvas.height = THUMB_SIZE;
+        const ctx = canvas.getContext('2d');
+        // Cover-fit: crop to square from center
+        const side = Math.min(img.naturalWidth, img.naturalHeight);
+        const sx = (img.naturalWidth - side) / 2;
+        const sy = (img.naturalHeight - side) / 2;
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, THUMB_SIZE, THUMB_SIZE);
+        resolve(canvas.toDataURL('image/jpeg', 0.55));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    });
+  };
+
+  /**
+   * Same as generateMenuThumb but from a URL instead of a File.
+   * Uses crossOrigin='anonymous' so canvas.toDataURL() is allowed on S3 public-read images.
+   */
+  const generateMenuThumbFromUrl = (imageUrl) => {
+    return new Promise((resolve) => {
+      if (!imageUrl || typeof imageUrl !== 'string') { resolve(null); return; }
+      if (!/\.(jpe?g|png|gif|webp|bmp)(\?.*)?$/i.test(imageUrl.trim())) { resolve(null); return; }
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const THUMB_SIZE = 64;
+          const canvas = document.createElement('canvas');
+          canvas.width = THUMB_SIZE;
+          canvas.height = THUMB_SIZE;
+          const ctx = canvas.getContext('2d');
+          const side = Math.min(img.naturalWidth, img.naturalHeight);
+          const sx = (img.naturalWidth - side) / 2;
+          const sy = (img.naturalHeight - side) / 2;
+          ctx.drawImage(img, sx, sy, side, side, 0, 0, THUMB_SIZE, THUMB_SIZE);
+          resolve(canvas.toDataURL('image/jpeg', 0.55));
+        } catch (_e) {
+          resolve(null);  // tainted canvas (CORS) — skip silently
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = imageUrl;
+    });
+  };
+
+  // Guard against backfilling the same menu_id twice concurrently
+  const _thumbBackfillInProgress = React.useRef(new Set());
+
+  /**
+   * For legacy items loaded without icon_thumb: generate a thumb from S3 in small
+   * background batches, save it to DynamoDB, update the in-memory record, and trigger
+   * a re-render.  This runs fire-and-forget so it never blocks page load or navigation.
+   */
+  const backfillMenuThumbs = async (menuItems) => {
+    const BATCH = 5;  // concurrent image fetches per round — don't hammer the browser
+    const candidates = menuItems.filter(item =>
+      !item.icon_thumb &&
+      item.menu_itemType === 'link' &&
+      item.url &&
+      /\.(jpe?g|png|gif|webp|bmp)(\?.*)?$/i.test(item.url.trim()) &&
+      !_thumbBackfillInProgress.current.has(item.menu_id)
+    );
+    if (candidates.length === 0) { return; }
+    candidates.forEach(item => _thumbBackfillInProgress.current.add(item.menu_id));
+
+    for (let i = 0; i < candidates.length; i += BATCH) {
+      const chunk = candidates.slice(i, i + BATCH);
+      const results = await Promise.all(
+        chunk.map(async (item) => {
+          const thumb = await generateMenuThumbFromUrl(item.url);
+          return { item, thumb };
+        })
+      );
+      let anyUpdated = false;
+      for (const { item, thumb } of results) {
+        _thumbBackfillInProgress.current.delete(item.menu_id);
+        if (!thumb) { continue; }
+        // Save to DynamoDB — happens once, silently
+        dbClient.update({
+          TableName: 'MenuV3',
+          Key: { client_id: state.session.client_id, menu_id: item.menu_id },
+          UpdateExpression: 'set icon_thumb = :t',
+          ExpressionAttributeValues: { ':t': thumb }
+        }).promise().catch((err) => {
+          console.warn(`Failed to save icon_thumb for ${item.menu_id}:`, err.message);
+        });
+        // Update the in-memory record immediately so the current render benefits too
+        item.icon_thumb = thumb;
+        anyUpdated = true;
+      }
+      if (anyUpdated) {
+        // Lightweight re-render to show newly generated thumbs
+        updateReactData({ menu_hierarchy: reactData.menu_hierarchy }, true);
+      }
+    }
+  };
+
+  /**
+   * Fetch a list of child menu IDs in parallel using DynamoDB BatchGet (up to 100 keys/request).
+   * Preserves the order defined in the parent's children array.
+   * Falls back to sequential getMenuItem for any items not returned by BatchGet.
+   */
+  const batchGetMenuItems = async (childIds, menu_level, parent) => {
+    if (!childIds || childIds.length === 0) { return; }
+    const BATCH_SIZE = 100;
+    // Build an ordered index so we can sort results back into children order
+    const orderIndex = Object.fromEntries(childIds.map((id, i) => [id, i]));
+    const allFetched = [];
+    for (let i = 0; i < childIds.length; i += BATCH_SIZE) {
+      const chunk = childIds.slice(i, i + BATCH_SIZE);
+      const result = await dbClient
+        .batchGet({
+          RequestItems: {
+            MenuV3: {
+              Keys: chunk.map(id => ({ client_id: state.session.client_id, menu_id: id }))
+            }
+          }
+        })
+        .promise()
+        .catch(error => {
+          console.error('BatchGet error fetching menu items:', error.message);
+          return { Responses: {} };
+        });
+      const fetched = result?.Responses?.MenuV3 || [];
+      allFetched.push(...fetched);
+    }
+    // Sort back to original children order
+    allFetched.sort((a, b) => {
+      const ia = orderIndex[a.menu_id] ?? 9999;
+      const ib = orderIndex[b.menu_id] ?? 9999;
+      return ia - ib;
+    });
+    if (!reactData.menu_hierarchy[menu_level]) { reactData.menu_hierarchy[menu_level] = []; }
+    const hiddenChildren = [];
+    for (const this_item of allFetched) {
+      if (!this_item.hasOwnProperty('available_to') || authorizedToMenuItem(this_item.available_to)) {
+        if (!this_item.color) {
+          if (parent && !parent.hidden) { this_item.color = parent.color; }
+          else { this_item.color = stringToColor(this_item.menu_id); }
+        }
+        if (state.session.client_style?.suppress_card_image) { this_item.icon = null; }
+        else if (!this_item.icon) { this_item.icon = state.session.client_logo; }
+        const targetParentId = parent?.menu_id || null;
+        const alreadyLoaded = reactData.menu_hierarchy[menu_level].some(
+          (existingCell) => existingCell.menu_id === this_item.menu_id && existingCell.parent === targetParentId
+        );
+        if (!alreadyLoaded) {
+          reactData.menu_hierarchy[menu_level].push({
+            menu_id: this_item.menu_id,
+            menuItemRec: this_item,
+            parent: targetParentId
+          });
+        }
+        if (this_item.hidden && this_item.menu_itemType === 'menu') {
+          hiddenChildren.push({ children: this_item.children || [], level: menu_level + 1, parent: this_item });
+        }
+      }
+    }
+    // Recurse into hidden pass-through menus
+    for (const { children, level, parent: hiddenParent } of hiddenChildren) {
+      await batchGetMenuItems(children, level, hiddenParent);
+    }
+
+    // Backfill icon_thumb for legacy items that were saved without one — fire and forget
+    const levelItems = (reactData.menu_hierarchy[menu_level] || []).map(c => c.menuItemRec);
+    void backfillMenuThumbs(levelItems);
   };
 
   const normalizeFavorites = (favoriteList) => {
@@ -2055,7 +2238,10 @@ export default ({ start_at }) => {
         const fileToUpload = uploadFiles[fi];
         updateReactData({ addMenuDialogUploadFileIndex: fi, addMenuDialogUploadProgress: 0 }, true);
         let fileUrl = '';
+        let thumbDataUrl = null;
         try {
+          // Generate thumbnail client-side before uploading — stored in DB, no extra fetches needed
+          thumbDataUrl = await generateMenuThumb(fileToUpload);
           const uploadResponse = await uploadMenuLinkFile(fileToUpload);
           fileUrl = uploadResponse?.Location || '';
         }
@@ -2077,6 +2263,7 @@ export default ({ start_at }) => {
           description: { long: cardTitle, short: cardTitle },
           menu_itemType: 'link',
           url: fileUrl,
+          ...(thumbDataUrl ? { icon_thumb: thumbDataUrl } : {}),
           ...(reactData.addMenuDialogColor ? { color: reactData.addMenuDialogColor } : {})
         };
         if (parentRec.Item.hasOwnProperty('newItem_availableTo')) {
@@ -2445,8 +2632,8 @@ export default ({ start_at }) => {
     const isLinkCard = ['link', 'live_link'].includes(normalizedMenuType);
     const isTelLink = isLinkCard && String(this_item.url || '').trim().toLowerCase().startsWith('tel:');
     const cardImageUrl = (isLinkCard && !isTelLink)
-      ? getLinkThumbnailUrl(this_item.url, this_item.icon)
-      : this_item.icon;
+      ? (this_item.icon_thumb || getLinkThumbnailUrl(this_item.url, this_item.icon))
+      : (this_item.icon_thumb || this_item.icon);
     const hasLinkThumbnail = (isLinkCard && !isTelLink) && !!(cardImageUrl && cardImageUrl !== this_item.icon);
     const parentColor = (level_index > 0)
       ? reactData.menu_hierarchy[level_index - 1]?.find((parentCell) => parentCell.menu_id === this_cell.parent)?.menuItemRec?.color
@@ -2534,10 +2721,9 @@ export default ({ start_at }) => {
                 reactData.menu_hierarchy[level_index + 1] = [];
               }
               reactData.level_active_parent[level_index + 1] = this_item.menu_id;
-
-              for (let this_child of this_item.children) {
-                await getMenuItem(this_child, level_index + 1, this_item);
-              }
+              // Reset to first page when opening a new menu level
+              reactData.levelPages = Object.assign({}, reactData.levelPages, { [level_index + 1]: 0 });
+              await batchGetMenuItems(this_item.children, level_index + 1, this_item);
             }
             else {
               const nextLevelCells = reactData.menu_hierarchy[level_index + 1] || [];
@@ -2564,15 +2750,16 @@ export default ({ start_at }) => {
                 }
               }
               else {
-                for (let this_child of this_item.children) {
-                  await getMenuItem(this_child, level_index + 1, this_item);
-                }
+                // Reset to first page when opening a menu
+                reactData.levelPages = Object.assign({}, reactData.levelPages, { [level_index + 1]: 0 });
+                await batchGetMenuItems(this_item.children, level_index + 1, this_item);
               }
             }
 
             updateReactData({
               menu_hierarchy: reactData.menu_hierarchy,
-              level_active_parent: reactData.level_active_parent
+              level_active_parent: reactData.level_active_parent,
+              levelPages: reactData.levelPages
             }, true);
             void persistOpenMenusFromHierarchy(reactData.menu_hierarchy);
           }
@@ -3495,9 +3682,61 @@ export default ({ start_at }) => {
                             mt={2} mb={2} ml={1} mr={1}
                             style={{ flexGrow: 1, rowGap: useTileUI ? '10px' : '0px', flexDirection: useTileUI ? 'row' : 'column' }}
                           >
-                            {this_level.filter(c => !c.menuItemRec.hidden).map((this_cell, item_index) => {
-                              return renderMenuCardCell(this_cell, level_index, item_index);
-                            })}
+                            {(() => {
+                              const visibleItems = this_level.filter(c => !c.menuItemRec.hidden);
+                              const currentPage = reactData.levelPages?.[level_index] ?? 0;
+                              const totalPages = Math.ceil(visibleItems.length / MENU_PAGE_SIZE) || 1;
+                              const safePage = Math.min(currentPage, totalPages - 1);
+                              const pageStart = safePage * MENU_PAGE_SIZE;
+                              const pageItems = visibleItems.slice(pageStart, pageStart + MENU_PAGE_SIZE);
+                              const hasPrev = safePage > 0;
+                              const hasNext = safePage < totalPages - 1;
+                              return (
+                                <>
+                                  {pageItems.map((this_cell, item_index) =>
+                                    renderMenuCardCell(this_cell, level_index, pageStart + item_index)
+                                  )}
+                                  {(hasPrev || hasNext) && (
+                                    <Box
+                                      key={`pageNav_level${level_index}`}
+                                      display='flex'
+                                      alignItems='center'
+                                      justifyContent='center'
+                                      width={useTileUI ? '100%' : 'calc(100% - 12px)'}
+                                      style={{ marginTop: 10, marginBottom: 4, gap: 8 }}
+                                    >
+                                      <Button
+                                        variant='outlined'
+                                        size='small'
+                                        disabled={!hasPrev}
+                                        onClick={() => {
+                                          updateReactData({
+                                            levelPages: Object.assign({}, reactData.levelPages, { [level_index]: safePage - 1 })
+                                          }, true);
+                                        }}
+                                      >
+                                        ‹ Prev
+                                      </Button>
+                                      <Typography variant='caption' style={{ opacity: 0.7 }}>
+                                        {`${safePage + 1} / ${totalPages}`}
+                                      </Typography>
+                                      <Button
+                                        variant='outlined'
+                                        size='small'
+                                        disabled={!hasNext}
+                                        onClick={() => {
+                                          updateReactData({
+                                            levelPages: Object.assign({}, reactData.levelPages, { [level_index]: safePage + 1 })
+                                          }, true);
+                                        }}
+                                      >
+                                        Next ›
+                                      </Button>
+                                    </Box>
+                                  )}
+                                </>
+                              );
+                            })()}
                             {addTile}
                           </Box>
                         </Box>
