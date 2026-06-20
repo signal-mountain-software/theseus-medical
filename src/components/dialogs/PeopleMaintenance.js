@@ -243,22 +243,11 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             peopleRec.account_class = determineClass(peopleRec.groups, state.session.group_assignments);
           }
           if (peopleRec.checkout_status) {
-            if (['admin', 'staff', 'resident', 'student', 'camper'].includes(peopleRec.account_class)) {
-              if (peopleRec.checkout_status === 'out') {
-                peopleRec.checkout_message = peopleRec.checkout_recent_history[0];
-              }
-              else {
-                peopleRec.checkout_message = false;
-              }
-            }
-            else {
-              if (peopleRec.checkout_status === 'in') {
-                peopleRec.checkout_message = peopleRec.checkout_recent_history[0];
-              }
-              else {
-                peopleRec.checkout_message = false;
-              }
-            }
+            const checkoutDefault = peopleRec.checkout_default
+              || (['admin', 'staff', 'resident', 'student', 'camper'].includes(peopleRec.account_class) ? 'in' : 'out');
+            peopleRec.checkout_message = (peopleRec.checkout_status !== checkoutDefault)
+              ? peopleRec.checkout_recent_history[0]
+              : false;
           }
           else {
             peopleRec.checkout_message = false;
