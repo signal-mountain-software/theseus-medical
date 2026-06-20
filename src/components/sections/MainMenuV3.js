@@ -3732,7 +3732,8 @@ export default ({ start_at }) => {
                             style={{ flexGrow: 1, rowGap: useTileUI ? '10px' : '0px', flexDirection: useTileUI ? 'row' : 'column' }}
                           >
                             {(() => {
-                              const visibleItems = this_level.filter(c => !c.menuItemRec.hidden);
+                              const activeParent = reactData.level_active_parent?.[level_index];
+                              const visibleItems = this_level.filter(c => !c.menuItemRec.hidden && (!useTileUI || !activeParent || c.parent === activeParent));
                               const currentPage = reactData.levelPages?.[level_index] ?? 0;
                               const totalPages = Math.ceil(visibleItems.length / MENU_PAGE_SIZE) || 1;
                               const safePage = Math.min(currentPage, totalPages - 1);
