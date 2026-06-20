@@ -249,8 +249,11 @@ export default ({ start_at }) => {
     editDescriptionColor: null,
     editDescriptionParent: null,
     editDescriptionCanDelete: false,
+    editDescriptionItemType: null,
+    editDescriptionTargets: [],
     showAccessToSearch: false,
     showAddMessageTargetSearch: false,
+    showEditMessageTargetSearch: false,
     uiTilesOverrideLoaded: false,
     uiTilesOverride: null,
     showLiveLink: false,
@@ -1520,7 +1523,7 @@ export default ({ start_at }) => {
   };
 
   const handleSaveDescription = async () => {
-    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong, editDescriptionAvailableTo, editDescriptionColor } = reactData;
+    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong, editDescriptionAvailableTo, editDescriptionColor, editDescriptionItemType, editDescriptionTargets } = reactData;
     let saveWorked = true;
     const colorExpr = editDescriptionColor ? ', color = :c' : ' REMOVE color';
     const exprValues = {
@@ -1545,6 +1548,34 @@ export default ({ start_at }) => {
         cl({ 'Error updating MenuV3 description': error });
       });
 
+    if (saveWorked && editDescriptionItemType === 'message_target') {
+      const updatedCall = {
+        target: 'MessageForm',
+        params: {
+          options: {
+            newMessage: true,
+            recipients: deepCopy(editDescriptionTargets || [])
+          }
+        }
+      };
+      await dbClient
+        .update({
+          TableName: 'MenuV3',
+          Key: {
+            client_id: state.session.client_id,
+            menu_id: editDescriptionMenuId
+          },
+          UpdateExpression: 'set #c = :call',
+          ExpressionAttributeNames: { '#c': 'call' },
+          ExpressionAttributeValues: { ':call': updatedCall }
+        })
+        .promise()
+        .catch((error) => {
+          saveWorked = false;
+          cl({ 'Error updating MenuV3 recipients': error });
+        });
+    }
+
     if (saveWorked) {
       for (const level of reactData.menu_hierarchy) {
         if (!level) { continue; }
@@ -1555,6 +1586,12 @@ export default ({ start_at }) => {
             cell.available_to = editDescriptionAvailableTo || [];
             if (editDescriptionColor) { cell.menuItemRec.color = editDescriptionColor; }
             else { delete cell.menuItemRec.color; }
+            if (editDescriptionItemType === 'message_target') {
+              if (!cell.menuItemRec.call) { cell.menuItemRec.call = { target: 'MessageForm', params: { options: {} } }; }
+              cell.menuItemRec.call.params = cell.menuItemRec.call.params || {};
+              cell.menuItemRec.call.params.options = cell.menuItemRec.call.params.options || {};
+              cell.menuItemRec.call.params.options.recipients = deepCopy(editDescriptionTargets || []);
+            }
           }
         }
       }
@@ -1569,6 +1606,8 @@ export default ({ start_at }) => {
       editDescriptionColor: null,
       editDescriptionParent: null,
       editDescriptionCanDelete: false,
+      editDescriptionItemType: null,
+      editDescriptionTargets: [],
       menu_hierarchy: reactData.menu_hierarchy.map(level => level ? [...level] : level),
       alert: saveWorked
         ? { severity: 'success', title: 'Saved', message: 'Description updated.' }
@@ -2725,6 +2764,8 @@ export default ({ start_at }) => {
                         editDescriptionColor: this_item.color || null,
                         editDescriptionParent: this_cell.parent || null,
                         editDescriptionCanDelete: canDeleteThisCard,
+                        editDescriptionItemType: (this_item.call?.target === 'MessageForm' && Array.isArray(this_item.call?.params?.options?.recipients) && this_item.call.params.options.recipients.length > 0) ? 'message_target' : null,
+                        editDescriptionTargets: deepCopy(this_item.call?.params?.options?.recipients || []),
                       }, true);
                     }}
                   >
@@ -4011,6 +4052,35 @@ export default ({ start_at }) => {
             />
           }
 
+          {reactData.showEditMessageTargetSearch &&
+            <QuickSearch
+              reactData={reactData}
+              updateReactData={updateReactData}
+              options={{
+                title: 'Select One-tap Message Targets',
+                withGroups: true,
+                withPreferred: true,
+                showAll: true,
+                pickAndGo: true,
+                keepSelections: true,
+                buttonText: {
+                  empty: 'Done',
+                  selected: 'Use Selected Targets'
+                }
+              }}
+              onClose={(selectedTargets) => {
+                const cleanTargets = ([selectedTargets].flat()).filter((targetRec) => {
+                  return !!(targetRec && (targetRec.person_id || targetRec.group_id || targetRec.rIndex !== undefined));
+                });
+                updateReactData({
+                  showEditMessageTargetSearch: false,
+                  editDescriptionTargets: cleanTargets,
+                  selections: cleanTargets
+                }, true);
+              }}
+            />
+          }
+
           {reactData.showAddAccessToSearch &&
             <QuickSearch
               reactData={reactData}
@@ -4637,7 +4707,7 @@ export default ({ start_at }) => {
       {reactData.editDescriptionDialog &&
         <Dialog
           open={reactData.editDescriptionDialog}
-          onClose={() => updateReactData({ editDescriptionDialog: false, editDescriptionColor: null }, true)}
+          onClose={() => updateReactData({ editDescriptionDialog: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [] }, true)}
           classes={{ paper: classes.clientPopUp }}
           fullWidth
         >
@@ -4745,6 +4815,29 @@ export default ({ start_at }) => {
                 {'Edit Access'}
               </Button>
             </Box>
+            {reactData.editDescriptionItemType === 'message_target' &&
+              <Box display='flex' alignItems='center' justifyContent='space-between' style={{ marginBottom: 16 }}>
+                <Box display='flex' flexDirection='column'>
+                  <Typography variant='caption' style={{ color: 'gray' }}>{'Message recipients'}</Typography>
+                  <Typography variant='body2'>
+                    {`${(reactData.editDescriptionTargets || []).length} target${(reactData.editDescriptionTargets || []).length === 1 ? '' : 's'} selected`}
+                  </Typography>
+                </Box>
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ marginLeft: 8 }}
+                  size='small'
+                  onClick={() => {
+                    updateReactData({
+                      showEditMessageTargetSearch: true,
+                      selections: deepCopy(reactData.editDescriptionTargets || [])
+                    }, true);
+                  }}
+                >
+                  {'Edit Recipients'}
+                </Button>
+              </Box>
+            }
             {/* Bottom row: Move to End + Cancel (left), Save (right) */}
             <Box display='flex' justifyContent='space-between' alignItems='center'>
               <Box display='flex' style={{ gap: 8 }}>
@@ -4794,7 +4887,7 @@ export default ({ start_at }) => {
                   className={AVAClass.AVAButton}
                   style={{ backgroundColor: 'red', color: 'white' }}
                   size='small'
-                  onClick={() => updateReactData({ editDescriptionDialog: false, editDescriptionColor: null }, true)}
+                  onClick={() => updateReactData({ editDescriptionDialog: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [] }, true)}
                 >
                   Cancel
                 </Button>
