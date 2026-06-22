@@ -238,6 +238,7 @@ export default ({ start_at }) => {
     addMenuDialogPhone: '',
     addMenuDialogAvailableTo: [],
     addMenuDialogColor: null,
+    addMenuDialogAccessReviewed: false,
     showAddAccessToSearch: false,
     deleteMenuConfirm: false,
     deleteMenuTarget: null,
@@ -2398,6 +2399,7 @@ export default ({ start_at }) => {
         addMenuDialogPhone: '',
         addMenuDialogAvailableTo: [],
         addMenuDialogColor: null,
+        addMenuDialogAccessReviewed: false,
         showAddMessageTargetSearch: false,
         showAddAccessToSearch: false,
         selections: [],
@@ -2517,6 +2519,7 @@ export default ({ start_at }) => {
       addMenuDialogPhone: '',
       addMenuDialogAvailableTo: [],
       addMenuDialogColor: null,
+      addMenuDialogAccessReviewed: false,
       showAddMessageTargetSearch: false,
       showAddAccessToSearch: false,
       selections: [],
@@ -2648,6 +2651,45 @@ export default ({ start_at }) => {
     }
 
     return parts.length > 0 ? parts.join(', ') : 'Everyone';
+  };
+
+  // The three named star-values that can appear as access rules in available_to
+  // and need to be selectable (and pre-selected) in the QuickSearch dialog.
+  const SPECIAL_ACCESS_VALUES = [
+    { person_id: '*all',     first: '* Everybody',      last: '' },
+    { person_id: '*admin',   first: '* Administrators',  last: '' },
+    { person_id: '*support', first: '* Support Staff',   last: '' },
+  ];
+
+  // Returns the initialized available_to array for a new menu item:
+  // the current user and (if different) the active patient, plus whatever
+  // the parent menu item already restricts access to.
+  const makeDefaultAvailableTo = (parentId) => {
+    const userId = state.session.user_id;
+    const patientId = state.session.patient_id;
+    const parentCell = reactData.menu_hierarchy.flat().find(c => c.menu_id === parentId);
+    const parentAvailableTo = parentCell?.menuItemRec?.available_to || [];
+    const personEntries = [
+      ...(userId ? [`person:${userId}`] : []),
+      ...(patientId && patientId !== userId ? [`person:${patientId}`] : []),
+    ];
+    return [...new Set([...personEntries, ...parentAvailableTo])];
+  };
+
+  // Returns true when the Add button should be blocked pending a security review.
+  // That is: the user has not yet opened the "Set" dialog AND the current
+  // available_to contains only the auto-defaulted person entries (user / patient)
+  // plus generic "*..." entries — i.e. no explicit group or third-party restrictions
+  // have been set yet.
+  const addDialogNeedsReview = (availableTo) => {
+    if (reactData.addMenuDialogAccessReviewed) { return false; }
+    const userId = state.session.user_id;
+    const patientId = state.session.patient_id;
+    const defaultPersonEntries = new Set([
+      ...(userId ? [`person:${userId}`] : []),
+      ...(patientId && patientId !== userId ? [`person:${patientId}`] : []),
+    ]);
+    return (availableTo || []).every(r => r.startsWith('*') || defaultPersonEntries.has(r));
   };
 
   function renderAccessibleSubMenu(parentMenuId, level_index, accessibleDepth = 1) {
@@ -3119,6 +3161,8 @@ export default ({ start_at }) => {
                     addMenuDialogSaving: false,
                     addMenuDialogTargets: [],
                     addMenuDialogPhone: '',
+                    addMenuDialogAvailableTo: makeDefaultAvailableTo(this_item.menu_id),
+                    addMenuDialogAccessReviewed: false,
                     showAddMessageTargetSearch: false,
                     selections: [],
                   }, true);
@@ -3732,6 +3776,8 @@ export default ({ start_at }) => {
                           addMenuDialogSaving: false,
                           addMenuDialogTargets: [],
                           addMenuDialogPhone: '',
+                          addMenuDialogAvailableTo: makeDefaultAvailableTo(parentMenuId),
+                          addMenuDialogAccessReviewed: false,
                           showAddMessageTargetSearch: false,
                           selections: [],
                         }, true);
@@ -4088,10 +4134,11 @@ export default ({ start_at }) => {
               options={{
                 title: 'Who Can See This Menu Item?',
                 withGroups: true,
-                showGroupList: true,  
+                showGroupList: true,
                 showAll: true,
                 pickAndGo: true,
                 keepSelections: true,
+                withSpecialValues: true,
                 buttonText: {
                   empty: 'Done (no restrictions)',
                   selected: 'Use These'
@@ -4099,17 +4146,26 @@ export default ({ start_at }) => {
               }}
               onClose={(selections) => {
                 const cleanSelections = ([selections].flat()).filter(s => s && (s.person_id || s.group_id));
+                // Keep only unusual compound rules; the three known star-values are
+                // now managed entirely through the selection UI, so exclude them here.
+                const knownStarValues = new Set(['*all', '*admin', '*support']);
                 const keptRules = (reactData.addMenuDialogAvailableTo || [])
-                  .filter(r => !r.startsWith('group:') && !r.startsWith('person:') && r !== '*all');
+                  .filter(r => !r.startsWith('group:') && !r.startsWith('person:') && !knownStarValues.has(r));
                 const newAvailableTo = cleanSelections.length === 0
                   ? ['*all']
                   : [
                     ...keptRules,
-                    ...cleanSelections.map(s => s.group_id ? `group:${s.group_id}` : `person:${s.person_id}`)
+                    ...cleanSelections.map(s => {
+                      if (s.group_id) { return `group:${s.group_id}`; }
+                      // Star-values (*all, *admin, *support) are stored with person_id = the raw value
+                      if (s.person_id && s.person_id.startsWith('*')) { return s.person_id; }
+                      return `person:${s.person_id}`;
+                    })
                   ];
                 updateReactData({
                   showAddAccessToSearch: false,
                   addMenuDialogAvailableTo: newAvailableTo,
+                  addMenuDialogAccessReviewed: true,
                   selections: cleanSelections,
                 }, true);
               }}
@@ -4320,6 +4376,7 @@ export default ({ start_at }) => {
                     addMenuDialogPhone: '',
                     addMenuDialogAvailableTo: [],
                     addMenuDialogColor: null,
+                    addMenuDialogAccessReviewed: false,
                     showAddMessageTargetSearch: false,
                     showAddAccessToSearch: false,
                     selections: [],
@@ -4583,16 +4640,39 @@ export default ({ start_at }) => {
                     size='small'
                     onClick={() => {
                       const existingSelections = (reactData.addMenuDialogAvailableTo || [])
-                        .filter(r => r.startsWith('group:') || r.startsWith('person:'))
-                        .map(r => r.startsWith('group:')
-                          ? { group_id: r.slice(6) }
-                          : { person_id: r.slice(7) }
-                        );
-                      updateReactData({ showAddAccessToSearch: true, groupInfo: null, linkedPersonFilter: { raw: '', lower: '' }, selections: existingSelections }, true);
+                        .filter(r => r.startsWith('group:') || r.startsWith('person:') || r.startsWith('*'))
+                        .map(r => {
+                          if (r.startsWith('group:')) { return { group_id: r.slice(6) }; }
+                          // Special star-values (*all, *admin, *support)
+                          if (r.startsWith('*')) {
+                            const sv = SPECIAL_ACCESS_VALUES.find(s => s.person_id === r);
+                            return { person_id: r, person_name: sv ? sv.first : r };
+                          }
+                          const personId = r.slice(7);
+                          // Resolve a display name so QuickSearch chips show names rather than IDs.
+                          // Priority: patient > user (by session) > accessList lookup > none
+                          let personName = null;
+                          if (personId === state.session.patient_id) {
+                            personName = reactData.greetingName || null;
+                          } else if (personId === state.session.user_id) {
+                            personName = state.session.user_display_name || null;
+                          } else if (reactData.accessList) {
+                            const found = reactData.accessList.find(p => p.person_id === personId);
+                            if (found) { personName = (`${found.first || ''} ${found.last || ''}`).trim() || null; }
+                          }
+                          return { person_id: personId, ...(personName ? { person_name: personName } : {}) };
+                        });
+                      updateReactData({
+                        showAddAccessToSearch: true,
+                        groupInfo: null,
+                        linkedPersonFilter: { raw: '', lower: '' },
+                        selections: existingSelections,
+                        special_values: SPECIAL_ACCESS_VALUES,
+                      }, true);
                     }}
                     disabled={reactData.addMenuDialogSaving}
                   >
-                    {'Change'}
+                    {reactData.addMenuDialogAccessReviewed ? 'Change' : 'Set'}
                   </Button>
                 </Box>
                 <Box display='flex' justifyContent='center' mt={2}>
@@ -4605,7 +4685,7 @@ export default ({ start_at }) => {
                     onClick={async () => {
                       await handleAddMenuItem();
                     }}
-                    disabled={reactData.addMenuDialogSaving}
+                    disabled={reactData.addMenuDialogSaving || addDialogNeedsReview(reactData.addMenuDialogAvailableTo)}
                   >
                     {'Add'}
                   </Button>
@@ -4632,6 +4712,7 @@ export default ({ start_at }) => {
                           addMenuDialogPhone: '',
                           addMenuDialogAvailableTo: [],
                           addMenuDialogColor: null,
+                          addMenuDialogAccessReviewed: false,
                           showAddMessageTargetSearch: false,
                           showAddAccessToSearch: false,
                           selections: [],
