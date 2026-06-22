@@ -2377,7 +2377,7 @@ export default ({ start_at }) => {
       const updatedMenuHierarchy = [...reactData.menu_hierarchy];
       const targetLevel = reactData.addMenuDialogLevel;
       if (!updatedMenuHierarchy[targetLevel]) updatedMenuHierarchy[targetLevel] = [];
-      updatedMenuHierarchy[targetLevel] = [...updatedMenuHierarchy[targetLevel], ...createdCells];
+      updatedMenuHierarchy[targetLevel] = [...createdCells, ...updatedMenuHierarchy[targetLevel]];
       const successMsg = createdCells.length === 1
         ? `${createdCells[0].menuItemRec.description.short} was added to this level.`
         : `${createdCells.length} cards were added to this level.${failedFiles.length > 0 ? ` (${failedFiles.length} file${failedFiles.length > 1 ? 's' : ''} failed)` : ''}`;
@@ -2492,12 +2492,12 @@ export default ({ start_at }) => {
       updatedMenuHierarchy[targetLevel] = [];
     }
     updatedMenuHierarchy[targetLevel] = [
-      ...updatedMenuHierarchy[targetLevel],
       {
         menu_id: newMenuId,
         menuItemRec: newMenuRec,
         parent: reactData.addMenuDialogParent
-      }
+      },
+      ...updatedMenuHierarchy[targetLevel],
     ];
 
     updateReactData({
