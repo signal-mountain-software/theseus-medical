@@ -74,6 +74,14 @@ export async function getTasksForPerson(client_id, person_id, viewer_id, subject
 
     // ── available_to: is viewer_id allowed to see/complete this task? ────
     if (!Array.isArray(t.available_to)) { return false; }
+    if (t.available_to.some(entry => {
+      if (!entry.startsWith('!')) { return false; }
+      const raw = entry.slice(1);
+      if (raw === '*all') { return true; }
+      if (raw.startsWith('group:')) { return myViewerGroups.includes(raw.slice(6)); }
+      if (raw.startsWith('person:')) { return actualViewerId === raw.slice(7); }
+      return false;
+    })) { return false; }
     return t.available_to.some(entry => {
       if (entry === '*all') { return true; }
       if (entry === `person:${actualViewerId}`) { return true; }
@@ -744,6 +752,14 @@ export async function getTasksForPeopleList(client_id, personIds, viewer_id, dat
       });
       if (!appliesToSubject) { return false; }
       if (!Array.isArray(t.available_to)) { return false; }
+      if (t.available_to.some(entry => {
+        if (!entry.startsWith('!')) { return false; }
+        const raw = entry.slice(1);
+        if (raw === '*all') { return true; }
+        if (raw.startsWith('group:')) { return myViewerGroups.includes(raw.slice(6)); }
+        if (raw.startsWith('person:')) { return viewer_id === raw.slice(7); }
+        return false;
+      })) { return false; }
       return t.available_to.some(entry => {
         if (entry === '*all') { return true; }
         if (entry === `person:${viewer_id}`) { return true; }

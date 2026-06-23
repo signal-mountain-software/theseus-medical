@@ -1107,6 +1107,18 @@ export default Component => props => {
 
       const v3AuthorizedForMenuItem = (available_to) => {
         if (!available_to || available_to.length === 0) { return true; }
+        if (currentProfile.account_class === 'master') { return true; }
+        const denied = available_to.some(r => {
+          if (!r.startsWith('!')) { return false; }
+          const raw = r.slice(1);
+          if (raw === '*all') { return true; }
+          if (raw === '*admin') { return isSubjectAdmin; }
+          if (raw === '*support') { return isSubjectSupport; }
+          if (raw.startsWith('group:')) { return memberGroupIds.includes(raw.slice(6)); }
+          if (raw.startsWith('person:')) { return subjectPersonId === raw.slice(7); }
+          return false;
+        });
+        if (denied) { return false; }
         for (const rule of available_to) {
           const [type, value] = `${rule}`.split(':');
           if (type === '*all') { return true; }

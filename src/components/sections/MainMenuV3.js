@@ -41,6 +41,7 @@ import IconButton from '@material-ui/core/IconButton';
 import Radio from '@material-ui/core/Radio';
 import RadioGroup from '@material-ui/core/RadioGroup';
 import LinearProgress from '@material-ui/core/LinearProgress';
+import Switch from '@material-ui/core/Switch';
 
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
@@ -239,6 +240,7 @@ export default ({ start_at }) => {
     addMenuDialogAvailableTo: [],
     addMenuDialogColor: null,
     addMenuDialogAccessReviewed: false,
+    addMenuDialogDenyMode: false,
     showAddAccessToSearch: false,
     deleteMenuConfirm: false,
     deleteMenuTarget: null,
@@ -250,6 +252,7 @@ export default ({ start_at }) => {
     editDescriptionColor: null,
     editDescriptionParent: null,
     editDescriptionCanDelete: false,
+    editDescriptionDenyMode: false,
     editDescriptionItemType: null,
     editDescriptionTargets: [],
     showAccessToSearch: false,
@@ -706,6 +709,17 @@ export default ({ start_at }) => {
     if (available_to.length === 0 || available_to.includes('*none')) {
       return false;
     }
+    const denied = available_to.some(r => {
+      if (!r.startsWith('!')) { return false; }
+      const raw = r.slice(1);
+      if (raw === '*all') { return true; }
+      if (raw === '*admin') { return isSubjectAdmin; }
+      if (raw === '*support') { return isSubjectSupport; }
+      if (raw.startsWith('group:')) { return !!(subjectGroupsRef.current?.has(raw.slice(6))); }
+      if (raw.startsWith('person:')) { return subjectPersonId === raw.slice(7); }
+      return false;
+    });
+    if (denied) { return false; }
     for (let this_rule of available_to) {
       // If the rule contains "&&", ALL parts must be satisfied (AND logic)
       const ruleParts = this_rule.includes('&&')
@@ -1607,6 +1621,7 @@ export default ({ start_at }) => {
       editDescriptionColor: null,
       editDescriptionParent: null,
       editDescriptionCanDelete: false,
+      editDescriptionDenyMode: false,
       editDescriptionItemType: null,
       editDescriptionTargets: [],
       menu_hierarchy: reactData.menu_hierarchy.map(level => level ? [...level] : level),
@@ -2400,6 +2415,7 @@ export default ({ start_at }) => {
         addMenuDialogAvailableTo: [],
         addMenuDialogColor: null,
         addMenuDialogAccessReviewed: false,
+        addMenuDialogDenyMode: false,
         showAddMessageTargetSearch: false,
         showAddAccessToSearch: false,
         selections: [],
@@ -2520,6 +2536,7 @@ export default ({ start_at }) => {
       addMenuDialogAvailableTo: [],
       addMenuDialogColor: null,
       addMenuDialogAccessReviewed: false,
+      addMenuDialogDenyMode: false,
       showAddMessageTargetSearch: false,
       showAddAccessToSearch: false,
       selections: [],
@@ -2631,10 +2648,13 @@ export default ({ start_at }) => {
     const rules = available_to || [];
     if (rules.length === 0 || rules.includes('*none')) { return 'No access assigned'; }
 
+    const denyRules = rules.filter(r => r.startsWith('!'));
+    const allowRules = rules.filter(r => !r.startsWith('!'));
+
     // Separate star-rules from group: and person: entries
-    const starRules = rules.filter(r => r.trimStart().startsWith('*'));
-    const groupIds = rules.filter(r => r.startsWith('group:')).map(r => r.slice(6));
-    const personIds = rules.filter(r => r.startsWith('person:')).map(r => r.slice(7));
+    const starRules = allowRules.filter(r => r.trimStart().startsWith('*'));
+    const groupIds = allowRules.filter(r => r.startsWith('group:')).map(r => r.slice(6));
+    const personIds = allowRules.filter(r => r.startsWith('person:')).map(r => r.slice(7));
 
     const parts = [];
 
@@ -2649,6 +2669,15 @@ export default ({ start_at }) => {
     if (personIds.length > 0) {
       parts.push(`${personIds.length} ${personIds.length === 1 ? 'Person' : 'People'}`);
     }
+
+    const denyGroupCount = denyRules.filter(r => r.startsWith('!group:')).length;
+    const denyPersonCount = denyRules.filter(r => r.startsWith('!person:')).length;
+    const denyStarRules = denyRules.filter(r => !r.startsWith('!group:') && !r.startsWith('!person:'));
+    const denyParts = [];
+    if (denyGroupCount > 0) { denyParts.push(`${denyGroupCount} Group${denyGroupCount === 1 ? '' : 's'}`); }
+    if (denyPersonCount > 0) { denyParts.push(`${denyPersonCount} ${denyPersonCount === 1 ? 'Person' : 'People'}`); }
+    denyStarRules.forEach(r => denyParts.push(r.slice(1)));
+    if (denyParts.length > 0) { parts.push(`except ${denyParts.join(', ')}`); }
 
     return parts.length > 0 ? parts.join(', ') : 'Everyone';
   };
@@ -3163,6 +3192,7 @@ export default ({ start_at }) => {
                     addMenuDialogPhone: '',
                     addMenuDialogAvailableTo: makeDefaultAvailableTo(this_item.menu_id),
                     addMenuDialogAccessReviewed: false,
+                    addMenuDialogDenyMode: false,
                     showAddMessageTargetSearch: false,
                     selections: [],
                   }, true);
@@ -3778,6 +3808,7 @@ export default ({ start_at }) => {
                           addMenuDialogPhone: '',
                           addMenuDialogAvailableTo: makeDefaultAvailableTo(parentMenuId),
                           addMenuDialogAccessReviewed: false,
+                          addMenuDialogDenyMode: false,
                           showAddMessageTargetSearch: false,
                           selections: [],
                         }, true);
@@ -4146,22 +4177,24 @@ export default ({ start_at }) => {
               }}
               onClose={(selections) => {
                 const cleanSelections = ([selections].flat()).filter(s => s && (s.person_id || s.group_id));
-                // Keep only unusual compound rules; the three known star-values are
-                // now managed entirely through the selection UI, so exclude them here.
+                const isDenyMode = !!reactData.addMenuDialogDenyMode;
                 const knownStarValues = new Set(['*all', '*admin', '*support']);
-                const keptRules = (reactData.addMenuDialogAvailableTo || [])
-                  .filter(r => !r.startsWith('group:') && !r.startsWith('person:') && !knownStarValues.has(r));
-                const newAvailableTo = cleanSelections.length === 0
-                  ? ['*all']
-                  : [
-                    ...keptRules,
-                    ...cleanSelections.map(s => {
-                      if (s.group_id) { return `group:${s.group_id}`; }
-                      // Star-values (*all, *admin, *support) are stored with person_id = the raw value
-                      if (s.person_id && s.person_id.startsWith('*')) { return s.person_id; }
-                      return `person:${s.person_id}`;
-                    })
-                  ];
+                // Keep entries from the opposite side so both allow and deny rules can co-exist.
+                const keptRules = (reactData.addMenuDialogAvailableTo || []).filter(r =>
+                  isDenyMode
+                    ? !r.startsWith('!')  // keep allow-side entries when editing deny side
+                    : r.startsWith('!') || (!r.startsWith('group:') && !r.startsWith('person:') && !knownStarValues.has(r))  // keep deny entries + unusual allow entries
+                );
+                const mappedSelections = cleanSelections.map(s => {
+                  let entry;
+                  if (s.group_id) { entry = `group:${s.group_id}`; }
+                  else if (s.person_id && s.person_id.startsWith('*')) { entry = s.person_id; }
+                  else { entry = `person:${s.person_id}`; }
+                  return isDenyMode ? `!${entry}` : entry;
+                });
+                const newAvailableTo = (cleanSelections.length === 0 && !isDenyMode)
+                  ? ['*all', ...keptRules]
+                  : [...keptRules, ...mappedSelections];
                 updateReactData({
                   showAddAccessToSearch: false,
                   addMenuDialogAvailableTo: newAvailableTo,
@@ -4183,6 +4216,7 @@ export default ({ start_at }) => {
                 showAll: true,
                 pickAndGo: true,
                 keepSelections: true,
+                withSpecialValues: true,
                 buttonText: {
                   empty: 'Done (no restrictions)',
                   selected: 'Use These'
@@ -4190,13 +4224,23 @@ export default ({ start_at }) => {
               }}
               onClose={(selections) => {
                 const cleanSelections = ([selections].flat()).filter(s => s && (s.person_id || s.group_id));
-                // Preserve non-person/group rules (*all, *admin, *support, &&-compound rules)
-                const keptRules = (reactData.editDescriptionAvailableTo || [])
-                  .filter(r => !r.startsWith('group:') && !r.startsWith('person:'));
-                const newAvailableTo = [
-                  ...keptRules,
-                  ...cleanSelections.map(s => s.group_id ? `group:${s.group_id}` : `person:${s.person_id}`)
-                ];
+                const isDenyMode = !!reactData.editDescriptionDenyMode;
+                const knownStarValues = new Set(['*all', '*admin', '*support']);
+                const keptRules = (reactData.editDescriptionAvailableTo || []).filter(r =>
+                  isDenyMode
+                    ? !r.startsWith('!')
+                    : r.startsWith('!') || (!r.startsWith('group:') && !r.startsWith('person:') && !knownStarValues.has(r))
+                );
+                const mappedSelections = cleanSelections.map(s => {
+                  let entry;
+                  if (s.group_id) { entry = `group:${s.group_id}`; }
+                  else if (s.person_id && s.person_id.startsWith('*')) { entry = s.person_id; }
+                  else { entry = `person:${s.person_id}`; }
+                  return isDenyMode ? `!${entry}` : entry;
+                });
+                const newAvailableTo = (cleanSelections.length === 0 && !isDenyMode)
+                  ? ['*all', ...keptRules]
+                  : [...keptRules, ...mappedSelections];
                 updateReactData({
                   showAccessToSearch: false,
                   editDescriptionAvailableTo: newAvailableTo,
@@ -4377,6 +4421,7 @@ export default ({ start_at }) => {
                     addMenuDialogAvailableTo: [],
                     addMenuDialogColor: null,
                     addMenuDialogAccessReviewed: false,
+                    addMenuDialogDenyMode: false,
                     showAddMessageTargetSearch: false,
                     showAddAccessToSearch: false,
                     selections: [],
@@ -4628,29 +4673,30 @@ export default ({ start_at }) => {
                     </Button>
                   }
                 </Box>
-                <Box display='flex' flexDirection='row' alignItems='center' justifyContent='space-between' mt={2}>
+                <Box display='flex' flexDirection='row' alignItems='flex-start' justifyContent='space-between' mt={2}>
                   <Box display='flex' flexDirection='column'>
                     <Typography style={AVATextStyle({ size: 0.8, bold: true })}>{'Who can see this?'}</Typography>
                     <Typography style={AVATextStyle({ size: 0.8 })}>
                       {describeAvailableTo(reactData.addMenuDialogAvailableTo)}
                     </Typography>
                   </Box>
-                  <Button
-                    className={AVAClass.AVAButton}
-                    size='small'
+                  <Box display='flex' flexDirection='column' alignItems='flex-end'>
+                    <Button
+                      className={AVAClass.AVAButton}
+                      size='small'
+                      style={{ backgroundColor: reactData.addMenuDialogDenyMode ? '#ffcdd2' : '#c8e6c9' }}
                     onClick={() => {
+                      const isDenyMode = !!reactData.addMenuDialogDenyMode;
                       const existingSelections = (reactData.addMenuDialogAvailableTo || [])
-                        .filter(r => r.startsWith('group:') || r.startsWith('person:') || r.startsWith('*'))
+                        .filter(r => isDenyMode ? r.startsWith('!') : (r.startsWith('group:') || r.startsWith('person:') || r.startsWith('*')))
                         .map(r => {
-                          if (r.startsWith('group:')) { return { group_id: r.slice(6) }; }
-                          // Special star-values (*all, *admin, *support)
-                          if (r.startsWith('*')) {
-                            const sv = SPECIAL_ACCESS_VALUES.find(s => s.person_id === r);
-                            return { person_id: r, person_name: sv ? sv.first : r };
+                          const raw = isDenyMode ? r.slice(1) : r;
+                          if (raw.startsWith('group:')) { return { group_id: raw.slice(6) }; }
+                          if (raw.startsWith('*')) {
+                            const sv = SPECIAL_ACCESS_VALUES.find(s => s.person_id === raw);
+                            return { person_id: raw, person_name: sv ? sv.first : raw };
                           }
-                          const personId = r.slice(7);
-                          // Resolve a display name so QuickSearch chips show names rather than IDs.
-                          // Priority: patient > user (by session) > accessList lookup > none
+                          const personId = raw.slice(7);
                           let personName = null;
                           if (personId === state.session.patient_id) {
                             personName = reactData.greetingName || null;
@@ -4672,8 +4718,21 @@ export default ({ start_at }) => {
                     }}
                     disabled={reactData.addMenuDialogSaving}
                   >
-                    {reactData.addMenuDialogAccessReviewed ? 'Change' : 'Set'}
+                    {`${reactData.addMenuDialogAccessReviewed ? 'Change' : 'Set'} ${reactData.addMenuDialogDenyMode ? 'Exclusions' : 'Access'}`}
                   </Button>
+                    <FormControlLabel
+                      style={{ marginTop: 4 }}
+                      control={
+                        <Switch
+                          size='small'
+                          checked={!!reactData.addMenuDialogDenyMode}
+                          onChange={(e) => updateReactData({ addMenuDialogDenyMode: e.target.checked }, true)}
+                          disabled={reactData.addMenuDialogSaving}
+                        />
+                      }
+                      label={<Typography style={AVATextStyle({ size: 0.75 })}>{reactData.addMenuDialogDenyMode ? 'Deny access' : 'Allow access'}</Typography>}
+                    />
+                  </Box>
                 </Box>
                 <Box display='flex' justifyContent='center' mt={2}>
                   <Button
@@ -4713,6 +4772,7 @@ export default ({ start_at }) => {
                           addMenuDialogAvailableTo: [],
                           addMenuDialogColor: null,
                           addMenuDialogAccessReviewed: false,
+                          addMenuDialogDenyMode: false,
                           showAddMessageTargetSearch: false,
                           showAddAccessToSearch: false,
                           selections: [],
@@ -4788,7 +4848,7 @@ export default ({ start_at }) => {
       {reactData.editDescriptionDialog &&
         <Dialog
           open={reactData.editDescriptionDialog}
-          onClose={() => updateReactData({ editDescriptionDialog: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [] }, true)}
+          onClose={() => updateReactData({ editDescriptionDialog: false, editDescriptionDenyMode: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [] }, true)}
           classes={{ paper: classes.clientPopUp }}
           fullWidth
         >
@@ -4867,34 +4927,54 @@ export default ({ start_at }) => {
                 </Button>
               }
             </Box>
-            <Box display='flex' alignItems='center' justifyContent='space-between' style={{ marginBottom: 16 }}>
+            <Box display='flex' alignItems='flex-start' justifyContent='space-between' style={{ marginBottom: 16 }}>
               <Box display='flex' flexDirection='column'>
                 <Typography variant='caption' style={{ color: 'gray' }}>{'Who can see this item'}</Typography>
                 <Typography variant='body2'>
                   {describeAvailableTo(reactData.editDescriptionAvailableTo)}
                 </Typography>
               </Box>
-              <Button
-                className={AVAClass.AVAButton}
-                style={{ marginLeft: 8 }}
-                size='small'
+              <Box display='flex' flexDirection='column' alignItems='flex-end'>
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ marginLeft: 8, backgroundColor: reactData.editDescriptionDenyMode ? '#ffcdd2' : '#c8e6c9' }}
+                  size='small'
                 onClick={() => {
+                  const isDenyMode = !!reactData.editDescriptionDenyMode;
                   const existingSelections = (reactData.editDescriptionAvailableTo || [])
-                    .filter(r => r.startsWith('group:') || r.startsWith('person:'))
-                    .map(r => r.startsWith('group:')
-                      ? { group_id: r.slice(6) }
-                      : { person_id: r.slice(7) }
-                    );
+                    .filter(r => isDenyMode ? r.startsWith('!') : (r.startsWith('group:') || r.startsWith('person:') || r.startsWith('*')))
+                    .map(r => {
+                      const raw = isDenyMode ? r.slice(1) : r;
+                      if (raw.startsWith('group:')) { return { group_id: raw.slice(6) }; }
+                      if (raw.startsWith('*')) {
+                        const sv = SPECIAL_ACCESS_VALUES.find(s => s.person_id === raw);
+                        return { person_id: raw, person_name: sv ? sv.first : raw };
+                      }
+                      return { person_id: raw.slice(7) };
+                    });
                   updateReactData({
                     showAccessToSearch: true,
                     groupInfo: null,
                     linkedPersonFilter: { raw: '', lower: '' },
                     selections: existingSelections,
+                    special_values: SPECIAL_ACCESS_VALUES,
                   }, true);
                 }}
               >
-                {'Edit Access'}
+                {reactData.editDescriptionDenyMode ? 'Edit Exclusions' : 'Edit Access'}
               </Button>
+                <FormControlLabel
+                  style={{ marginTop: 4 }}
+                  control={
+                    <Switch
+                      size='small'
+                      checked={!!reactData.editDescriptionDenyMode}
+                      onChange={(e) => updateReactData({ editDescriptionDenyMode: e.target.checked }, true)}
+                    />
+                  }
+                  label={<Typography variant='caption'>{reactData.editDescriptionDenyMode ? 'Deny access' : 'Allow access'}</Typography>}
+                />
+              </Box>
             </Box>
             {reactData.editDescriptionItemType === 'message_target' &&
               <Box display='flex' alignItems='center' justifyContent='space-between' style={{ marginBottom: 16 }}>
@@ -4968,7 +5048,7 @@ export default ({ start_at }) => {
                   className={AVAClass.AVAButton}
                   style={{ backgroundColor: 'red', color: 'white' }}
                   size='small'
-                  onClick={() => updateReactData({ editDescriptionDialog: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [] }, true)}
+                  onClick={() => updateReactData({ editDescriptionDialog: false, editDescriptionDenyMode: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [] }, true)}
                 >
                   Cancel
                 </Button>
