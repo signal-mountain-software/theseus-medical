@@ -290,18 +290,22 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
             groupList: finalGroupList
           });
 
-          // Seed collapsed state: collapse all parent nodes at level >= 1 (show top two levels by default)
-          const gl = reactUpd.groupInfo.groupList;
-          const initialCollapsed = new Set();
-          gl.forEach((g, idx) => {
-            const isParent = idx + 1 < gl.length && gl[idx + 1].level > g.level;
-            // Collapse headers and level>=1 parents on initial display
-            if (g.isHeader || (isParent && g.level >= 1)) {
-              initialCollapsed.add(g.group_id);
+          // Seed collapsed state: collapse all parent nodes at level >= 1 (show top two levels by default).
+          // Skip seeding entirely when groupsInitiallyExpanded is set — the state is already an empty
+          // Set (nothing collapsed), which is exactly "fully expanded".
+          if (!optionsRef.current.groupsInitiallyExpanded) {
+            const gl = reactUpd.groupInfo.groupList;
+            const initialCollapsed = new Set();
+            gl.forEach((g, idx) => {
+              const isParent = idx + 1 < gl.length && gl[idx + 1].level > g.level;
+              // Collapse headers and level>=1 parents on initial display
+              if (g.isHeader || (isParent && g.level >= 1)) {
+                initialCollapsed.add(g.group_id);
+              }
+            });
+            if (initialCollapsed.size > 0) {
+              setCollapsedGroups(initialCollapsed);
             }
-          });
-          if (initialCollapsed.size > 0) {
-            setCollapsedGroups(initialCollapsed);
           }
 
           // Auto-show group list if showGroupList option is true
