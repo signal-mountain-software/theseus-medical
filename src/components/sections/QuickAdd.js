@@ -1973,7 +1973,11 @@ export default ({ onClose, options = {} }) => {
         account_type: member.account_type
       };
 
-      // pick-out form_field instructions and place data properly in People rec
+      // Initialize checkout_default and checkout_status if the account config specifies it
+      if (member.account_config?.checkout_default) {
+        peopleRecord.checkout_default = member.account_config.checkout_default;
+        peopleRecord.checkout_status = member.account_config.checkout_default;
+      }
       Object.entries(member.form_fields).forEach(([fieldName, formRec]) => {
         if (Object.prototype.hasOwnProperty.call(fieldValues, fieldName)) {
           const rawSaveAs = formRec.saveAs || formRec.value?.saveAs || formRec.prompt?.saveAs || false;

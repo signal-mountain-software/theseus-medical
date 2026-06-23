@@ -113,13 +113,12 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
     currentValues.peopleRec.preferred_language = 'en';
   }
   else if (Array.isArray(currentValues.peopleRec.preferred_language)) {
-    currentValues.peopleRec.preferred_language = currentValues.peopleRec.preferred_language[0];
+    currentValues.peopleRec.preferred_language = currentValues.peopleRec.preferred_language[0] || 'en';
   }
+  const foundLanguage = languageTable.find(l => l.value === currentValues.peopleRec.preferred_language);
   let myAnswer = {
-    label: languageTable.find(l => {
-      return l.value === currentValues.peopleRec.preferred_language;
-    }).label,
-    value: currentValues.peopleRec.preferred_language
+    label: foundLanguage?.label || 'English',
+    value: foundLanguage?.value || 'en'
   };
 
   if (!currentValues.peopleRec.preferred_voice) {

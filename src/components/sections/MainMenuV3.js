@@ -41,6 +41,7 @@ import IconButton from '@material-ui/core/IconButton';
 import Radio from '@material-ui/core/Radio';
 import RadioGroup from '@material-ui/core/RadioGroup';
 import LinearProgress from '@material-ui/core/LinearProgress';
+import Switch from '@material-ui/core/Switch';
 
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
@@ -238,6 +239,8 @@ export default ({ start_at }) => {
     addMenuDialogPhone: '',
     addMenuDialogAvailableTo: [],
     addMenuDialogColor: null,
+    addMenuDialogAccessReviewed: false,
+    addMenuDialogDenyMode: false,
     showAddAccessToSearch: false,
     deleteMenuConfirm: false,
     deleteMenuTarget: null,
@@ -249,8 +252,12 @@ export default ({ start_at }) => {
     editDescriptionColor: null,
     editDescriptionParent: null,
     editDescriptionCanDelete: false,
+    editDescriptionDenyMode: false,
+    editDescriptionItemType: null,
+    editDescriptionTargets: [],
     showAccessToSearch: false,
     showAddMessageTargetSearch: false,
+    showEditMessageTargetSearch: false,
     uiTilesOverrideLoaded: false,
     uiTilesOverride: null,
     showLiveLink: false,
@@ -313,6 +320,9 @@ export default ({ start_at }) => {
   const prevMenuDepthRef = React.useRef(0);
   const deferredStartAtRef = React.useRef(null);
   const subjectGroupsRef = React.useRef(null);
+  // Cache for the optional 'favorites' MenuV3 template record.
+  // undefined = not yet fetched; null = fetched but not found; object = found record.
+  const favoritesMenuTemplateRef = React.useRef(undefined);
   const activePersonId = state.session?.patient_id || state.session?.person_id;
 
   const loadSubjectGroups = async () => {
@@ -429,6 +439,7 @@ export default ({ start_at }) => {
     const savedStartAt = reactData.start_at;
 
     reactData.menu_hierarchy = [];
+    favoritesMenuTemplateRef.current = undefined; // Re-fetch template on each full rebuild
     const new_menuHierarchy = await getMenuItem('__top__', 0);
     let reactUpd = {
       menu_hierarchy: new_menuHierarchy,
@@ -437,7 +448,7 @@ export default ({ start_at }) => {
     };
     const favoriteList = normalizeFavorites(state.patient?.v3_favorites || []);
     if (favoriteList && favoriteList.length > 0) {
-      const menuWithFavorites = applyFavoritesCardToHierarchy(new_menuHierarchy, favoriteList);
+      const menuWithFavorites = await applyFavoritesCardToHierarchy(new_menuHierarchy, favoriteList);
       reactUpd.menu_hierarchy = menuWithFavorites;
       reactUpd.v3_favorites = favoriteList;
     }
@@ -698,6 +709,17 @@ export default ({ start_at }) => {
     if (available_to.length === 0 || available_to.includes('*none')) {
       return false;
     }
+    const denied = available_to.some(r => {
+      if (!r.startsWith('!')) { return false; }
+      const raw = r.slice(1);
+      if (raw === '*all') { return true; }
+      if (raw === '*admin') { return isSubjectAdmin; }
+      if (raw === '*support') { return isSubjectSupport; }
+      if (raw.startsWith('group:')) { return !!(subjectGroupsRef.current?.has(raw.slice(6))); }
+      if (raw.startsWith('person:')) { return subjectPersonId === raw.slice(7); }
+      return false;
+    });
+    if (denied) { return false; }
     for (let this_rule of available_to) {
       // If the rule contains "&&", ALL parts must be satisfied (AND logic)
       const ruleParts = this_rule.includes('&&')
@@ -961,7 +983,7 @@ export default ({ start_at }) => {
     return [...new Set(cleaned)];
   };
 
-  const applyFavoritesCardToHierarchy = (menuHierarchy, favoriteList) => {
+  const applyFavoritesCardToHierarchy = async (menuHierarchy, favoriteList) => {
     const normalizedFavorites = normalizeFavorites(favoriteList);
     const newHierarchy = (menuHierarchy || []).map((levelList) => {
       return Array.isArray(levelList) ? [...levelList] : [];
@@ -976,19 +998,41 @@ export default ({ start_at }) => {
     });
 
     if ((normalizedFavorites.length > 0) && (reactData.start_at === '__top__')) {
+      // Fetch (and cache) an optional 'favorites' MenuV3 template record for this client.
+      if (favoritesMenuTemplateRef.current === undefined) {
+        const templateResult = await dbClient
+          .get({
+            TableName: 'MenuV3',
+            Key: { client_id: state.session.client_id, menu_id: 'favorites' }
+          })
+          .promise()
+          .catch((error) => {
+            cl({ 'Error fetching favorites menu template': error });
+          });
+        favoritesMenuTemplateRef.current = recordExists(templateResult) ? templateResult.Item : null;
+      }
+      const template = favoritesMenuTemplateRef.current;
+
+      // User's personal favorites are prepended; any extra children from the template
+      // that aren't already in the personal list are appended after them.
+      const templateExtras = template
+        ? (template.children || []).filter((id) => !normalizedFavorites.includes(id))
+        : [];
+
       newHierarchy[1].unshift({
         menu_id: '__v3_favorites__',
         parent: '__top__',
         menuItemRec: {
           menu_id: '__v3_favorites__',
-          description: {
+          description: template?.description || {
             short: 'Favorites',
             long: `${reactData.greetingName ? (reactData.greetingName + "'s") : 'Your'} Favorites`
           },
           menu_itemType: 'menu',
-          children: normalizedFavorites,
-          color: stringToColor('__v3_favorites__'),
-          icon: state.session?.client_logo
+          children: [...normalizedFavorites, ...templateExtras],
+          color: template?.color || stringToColor('__v3_favorites__'),
+          icon_thumb: template?.icon_thumb || null,
+          icon: template?.icon_thumb || template?.icon || state.session?.client_logo
         }
       });
     }
@@ -997,7 +1041,7 @@ export default ({ start_at }) => {
   };
 
   const refreshFavoritesBranchInHierarchy = async (menuHierarchy, favoriteList) => {
-    let refreshedHierarchy = applyFavoritesCardToHierarchy(menuHierarchy, favoriteList);
+    let refreshedHierarchy = await applyFavoritesCardToHierarchy(menuHierarchy, favoriteList);
     const favoritesCellObj = findMenuCellWithLevel(refreshedHierarchy, '__v3_favorites__');
     if (!favoritesCellObj) {
       return refreshedHierarchy;
@@ -1494,7 +1538,7 @@ export default ({ start_at }) => {
   };
 
   const handleSaveDescription = async () => {
-    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong, editDescriptionAvailableTo, editDescriptionColor } = reactData;
+    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong, editDescriptionAvailableTo, editDescriptionColor, editDescriptionItemType, editDescriptionTargets } = reactData;
     let saveWorked = true;
     const colorExpr = editDescriptionColor ? ', color = :c' : ' REMOVE color';
     const exprValues = {
@@ -1519,6 +1563,34 @@ export default ({ start_at }) => {
         cl({ 'Error updating MenuV3 description': error });
       });
 
+    if (saveWorked && editDescriptionItemType === 'message_target') {
+      const updatedCall = {
+        target: 'MessageForm',
+        params: {
+          options: {
+            newMessage: true,
+            recipients: deepCopy(editDescriptionTargets || [])
+          }
+        }
+      };
+      await dbClient
+        .update({
+          TableName: 'MenuV3',
+          Key: {
+            client_id: state.session.client_id,
+            menu_id: editDescriptionMenuId
+          },
+          UpdateExpression: 'set #c = :call',
+          ExpressionAttributeNames: { '#c': 'call' },
+          ExpressionAttributeValues: { ':call': updatedCall }
+        })
+        .promise()
+        .catch((error) => {
+          saveWorked = false;
+          cl({ 'Error updating MenuV3 recipients': error });
+        });
+    }
+
     if (saveWorked) {
       for (const level of reactData.menu_hierarchy) {
         if (!level) { continue; }
@@ -1529,6 +1601,12 @@ export default ({ start_at }) => {
             cell.available_to = editDescriptionAvailableTo || [];
             if (editDescriptionColor) { cell.menuItemRec.color = editDescriptionColor; }
             else { delete cell.menuItemRec.color; }
+            if (editDescriptionItemType === 'message_target') {
+              if (!cell.menuItemRec.call) { cell.menuItemRec.call = { target: 'MessageForm', params: { options: {} } }; }
+              cell.menuItemRec.call.params = cell.menuItemRec.call.params || {};
+              cell.menuItemRec.call.params.options = cell.menuItemRec.call.params.options || {};
+              cell.menuItemRec.call.params.options.recipients = deepCopy(editDescriptionTargets || []);
+            }
           }
         }
       }
@@ -1543,6 +1621,9 @@ export default ({ start_at }) => {
       editDescriptionColor: null,
       editDescriptionParent: null,
       editDescriptionCanDelete: false,
+      editDescriptionDenyMode: false,
+      editDescriptionItemType: null,
+      editDescriptionTargets: [],
       menu_hierarchy: reactData.menu_hierarchy.map(level => level ? [...level] : level),
       alert: saveWorked
         ? { severity: 'success', title: 'Saved', message: 'Description updated.' }
@@ -1720,7 +1801,7 @@ export default ({ start_at }) => {
     }
 
     const refreshedHierarchy = await rebuildMenuHierarchy({ includeLoadingState: false });
-    const refreshedWithFavorites = applyFavoritesCardToHierarchy(refreshedHierarchy, nextFavorites);
+    const refreshedWithFavorites = await applyFavoritesCardToHierarchy(refreshedHierarchy, nextFavorites);
     void persistOpenMenusFromHierarchy(refreshedWithFavorites);
 
     updateReactData({
@@ -2312,7 +2393,7 @@ export default ({ start_at }) => {
       const updatedMenuHierarchy = [...reactData.menu_hierarchy];
       const targetLevel = reactData.addMenuDialogLevel;
       if (!updatedMenuHierarchy[targetLevel]) updatedMenuHierarchy[targetLevel] = [];
-      updatedMenuHierarchy[targetLevel] = [...updatedMenuHierarchy[targetLevel], ...createdCells];
+      updatedMenuHierarchy[targetLevel] = [...createdCells, ...updatedMenuHierarchy[targetLevel]];
       const successMsg = createdCells.length === 1
         ? `${createdCells[0].menuItemRec.description.short} was added to this level.`
         : `${createdCells.length} cards were added to this level.${failedFiles.length > 0 ? ` (${failedFiles.length} file${failedFiles.length > 1 ? 's' : ''} failed)` : ''}`;
@@ -2333,6 +2414,8 @@ export default ({ start_at }) => {
         addMenuDialogPhone: '',
         addMenuDialogAvailableTo: [],
         addMenuDialogColor: null,
+        addMenuDialogAccessReviewed: false,
+        addMenuDialogDenyMode: false,
         showAddMessageTargetSearch: false,
         showAddAccessToSearch: false,
         selections: [],
@@ -2427,12 +2510,12 @@ export default ({ start_at }) => {
       updatedMenuHierarchy[targetLevel] = [];
     }
     updatedMenuHierarchy[targetLevel] = [
-      ...updatedMenuHierarchy[targetLevel],
       {
         menu_id: newMenuId,
         menuItemRec: newMenuRec,
         parent: reactData.addMenuDialogParent
-      }
+      },
+      ...updatedMenuHierarchy[targetLevel],
     ];
 
     updateReactData({
@@ -2452,6 +2535,8 @@ export default ({ start_at }) => {
       addMenuDialogPhone: '',
       addMenuDialogAvailableTo: [],
       addMenuDialogColor: null,
+      addMenuDialogAccessReviewed: false,
+      addMenuDialogDenyMode: false,
       showAddMessageTargetSearch: false,
       showAddAccessToSearch: false,
       selections: [],
@@ -2563,10 +2648,13 @@ export default ({ start_at }) => {
     const rules = available_to || [];
     if (rules.length === 0 || rules.includes('*none')) { return 'No access assigned'; }
 
+    const denyRules = rules.filter(r => r.startsWith('!'));
+    const allowRules = rules.filter(r => !r.startsWith('!'));
+
     // Separate star-rules from group: and person: entries
-    const starRules = rules.filter(r => r.trimStart().startsWith('*'));
-    const groupIds = rules.filter(r => r.startsWith('group:')).map(r => r.slice(6));
-    const personIds = rules.filter(r => r.startsWith('person:')).map(r => r.slice(7));
+    const starRules = allowRules.filter(r => r.trimStart().startsWith('*'));
+    const groupIds = allowRules.filter(r => r.startsWith('group:')).map(r => r.slice(6));
+    const personIds = allowRules.filter(r => r.startsWith('person:')).map(r => r.slice(7));
 
     const parts = [];
 
@@ -2582,7 +2670,55 @@ export default ({ start_at }) => {
       parts.push(`${personIds.length} ${personIds.length === 1 ? 'Person' : 'People'}`);
     }
 
+    const denyGroupCount = denyRules.filter(r => r.startsWith('!group:')).length;
+    const denyPersonCount = denyRules.filter(r => r.startsWith('!person:')).length;
+    const denyStarRules = denyRules.filter(r => !r.startsWith('!group:') && !r.startsWith('!person:'));
+    const denyParts = [];
+    if (denyGroupCount > 0) { denyParts.push(`${denyGroupCount} Group${denyGroupCount === 1 ? '' : 's'}`); }
+    if (denyPersonCount > 0) { denyParts.push(`${denyPersonCount} ${denyPersonCount === 1 ? 'Person' : 'People'}`); }
+    denyStarRules.forEach(r => denyParts.push(r.slice(1)));
+    if (denyParts.length > 0) { parts.push(`except ${denyParts.join(', ')}`); }
+
     return parts.length > 0 ? parts.join(', ') : 'Everyone';
+  };
+
+  // The three named star-values that can appear as access rules in available_to
+  // and need to be selectable (and pre-selected) in the QuickSearch dialog.
+  const SPECIAL_ACCESS_VALUES = [
+    { person_id: '*all',     first: '* Everybody',      last: '' },
+    { person_id: '*admin',   first: '* Administrators',  last: '' },
+    { person_id: '*support', first: '* Support Staff',   last: '' },
+  ];
+
+  // Returns the initialized available_to array for a new menu item:
+  // the current user and (if different) the active patient, plus whatever
+  // the parent menu item already restricts access to.
+  const makeDefaultAvailableTo = (parentId) => {
+    const userId = state.session.user_id;
+    const patientId = state.session.patient_id;
+    const parentCell = reactData.menu_hierarchy.flat().find(c => c.menu_id === parentId);
+    const parentAvailableTo = parentCell?.menuItemRec?.available_to || [];
+    const personEntries = [
+      ...(userId ? [`person:${userId}`] : []),
+      ...(patientId && patientId !== userId ? [`person:${patientId}`] : []),
+    ];
+    return [...new Set([...personEntries, ...parentAvailableTo])];
+  };
+
+  // Returns true when the Add button should be blocked pending a security review.
+  // That is: the user has not yet opened the "Set" dialog AND the current
+  // available_to contains only the auto-defaulted person entries (user / patient)
+  // plus generic "*..." entries — i.e. no explicit group or third-party restrictions
+  // have been set yet.
+  const addDialogNeedsReview = (availableTo) => {
+    if (reactData.addMenuDialogAccessReviewed) { return false; }
+    const userId = state.session.user_id;
+    const patientId = state.session.patient_id;
+    const defaultPersonEntries = new Set([
+      ...(userId ? [`person:${userId}`] : []),
+      ...(patientId && patientId !== userId ? [`person:${patientId}`] : []),
+    ]);
+    return (availableTo || []).every(r => r.startsWith('*') || defaultPersonEntries.has(r));
   };
 
   function renderAccessibleSubMenu(parentMenuId, level_index, accessibleDepth = 1) {
@@ -2699,6 +2835,8 @@ export default ({ start_at }) => {
                         editDescriptionColor: this_item.color || null,
                         editDescriptionParent: this_cell.parent || null,
                         editDescriptionCanDelete: canDeleteThisCard,
+                        editDescriptionItemType: (this_item.call?.target === 'MessageForm' && Array.isArray(this_item.call?.params?.options?.recipients) && this_item.call.params.options.recipients.length > 0) ? 'message_target' : null,
+                        editDescriptionTargets: deepCopy(this_item.call?.params?.options?.recipients || []),
                       }, true);
                     }}
                   >
@@ -3052,6 +3190,9 @@ export default ({ start_at }) => {
                     addMenuDialogSaving: false,
                     addMenuDialogTargets: [],
                     addMenuDialogPhone: '',
+                    addMenuDialogAvailableTo: makeDefaultAvailableTo(this_item.menu_id),
+                    addMenuDialogAccessReviewed: false,
+                    addMenuDialogDenyMode: false,
                     showAddMessageTargetSearch: false,
                     selections: [],
                   }, true);
@@ -3665,6 +3806,9 @@ export default ({ start_at }) => {
                           addMenuDialogSaving: false,
                           addMenuDialogTargets: [],
                           addMenuDialogPhone: '',
+                          addMenuDialogAvailableTo: makeDefaultAvailableTo(parentMenuId),
+                          addMenuDialogAccessReviewed: false,
+                          addMenuDialogDenyMode: false,
                           showAddMessageTargetSearch: false,
                           selections: [],
                         }, true);
@@ -3706,7 +3850,8 @@ export default ({ start_at }) => {
                             style={{ flexGrow: 1, rowGap: useTileUI ? '10px' : '0px', flexDirection: useTileUI ? 'row' : 'column' }}
                           >
                             {(() => {
-                              const visibleItems = this_level.filter(c => !c.menuItemRec.hidden);
+                              const activeParent = reactData.level_active_parent?.[level_index];
+                              const visibleItems = this_level.filter(c => !c.menuItemRec.hidden && (!useTileUI || !activeParent || c.parent === activeParent));
                               const currentPage = reactData.levelPages?.[level_index] ?? 0;
                               const totalPages = Math.ceil(visibleItems.length / MENU_PAGE_SIZE) || 1;
                               const safePage = Math.min(currentPage, totalPages - 1);
@@ -3984,6 +4129,35 @@ export default ({ start_at }) => {
             />
           }
 
+          {reactData.showEditMessageTargetSearch &&
+            <QuickSearch
+              reactData={reactData}
+              updateReactData={updateReactData}
+              options={{
+                title: 'Select One-tap Message Targets',
+                withGroups: true,
+                withPreferred: true,
+                showAll: true,
+                pickAndGo: true,
+                keepSelections: true,
+                buttonText: {
+                  empty: 'Done',
+                  selected: 'Use Selected Targets'
+                }
+              }}
+              onClose={(selectedTargets) => {
+                const cleanTargets = ([selectedTargets].flat()).filter((targetRec) => {
+                  return !!(targetRec && (targetRec.person_id || targetRec.group_id || targetRec.rIndex !== undefined));
+                });
+                updateReactData({
+                  showEditMessageTargetSearch: false,
+                  editDescriptionTargets: cleanTargets,
+                  selections: cleanTargets
+                }, true);
+              }}
+            />
+          }
+
           {reactData.showAddAccessToSearch &&
             <QuickSearch
               reactData={reactData}
@@ -3991,10 +4165,11 @@ export default ({ start_at }) => {
               options={{
                 title: 'Who Can See This Menu Item?',
                 withGroups: true,
-                showGroupList: true,  
+                showGroupList: true,
                 showAll: true,
                 pickAndGo: true,
                 keepSelections: true,
+                withSpecialValues: true,
                 buttonText: {
                   empty: 'Done (no restrictions)',
                   selected: 'Use These'
@@ -4002,17 +4177,28 @@ export default ({ start_at }) => {
               }}
               onClose={(selections) => {
                 const cleanSelections = ([selections].flat()).filter(s => s && (s.person_id || s.group_id));
-                const keptRules = (reactData.addMenuDialogAvailableTo || [])
-                  .filter(r => !r.startsWith('group:') && !r.startsWith('person:') && r !== '*all');
-                const newAvailableTo = cleanSelections.length === 0
-                  ? ['*all']
-                  : [
-                    ...keptRules,
-                    ...cleanSelections.map(s => s.group_id ? `group:${s.group_id}` : `person:${s.person_id}`)
-                  ];
+                const isDenyMode = !!reactData.addMenuDialogDenyMode;
+                const knownStarValues = new Set(['*all', '*admin', '*support']);
+                // Keep entries from the opposite side so both allow and deny rules can co-exist.
+                const keptRules = (reactData.addMenuDialogAvailableTo || []).filter(r =>
+                  isDenyMode
+                    ? !r.startsWith('!')  // keep allow-side entries when editing deny side
+                    : r.startsWith('!') || (!r.startsWith('group:') && !r.startsWith('person:') && !knownStarValues.has(r))  // keep deny entries + unusual allow entries
+                );
+                const mappedSelections = cleanSelections.map(s => {
+                  let entry;
+                  if (s.group_id) { entry = `group:${s.group_id}`; }
+                  else if (s.person_id && s.person_id.startsWith('*')) { entry = s.person_id; }
+                  else { entry = `person:${s.person_id}`; }
+                  return isDenyMode ? `!${entry}` : entry;
+                });
+                const newAvailableTo = (cleanSelections.length === 0 && !isDenyMode)
+                  ? ['*all', ...keptRules]
+                  : [...keptRules, ...mappedSelections];
                 updateReactData({
                   showAddAccessToSearch: false,
                   addMenuDialogAvailableTo: newAvailableTo,
+                  addMenuDialogAccessReviewed: true,
                   selections: cleanSelections,
                 }, true);
               }}
@@ -4030,6 +4216,7 @@ export default ({ start_at }) => {
                 showAll: true,
                 pickAndGo: true,
                 keepSelections: true,
+                withSpecialValues: true,
                 buttonText: {
                   empty: 'Done (no restrictions)',
                   selected: 'Use These'
@@ -4037,13 +4224,23 @@ export default ({ start_at }) => {
               }}
               onClose={(selections) => {
                 const cleanSelections = ([selections].flat()).filter(s => s && (s.person_id || s.group_id));
-                // Preserve non-person/group rules (*all, *admin, *support, &&-compound rules)
-                const keptRules = (reactData.editDescriptionAvailableTo || [])
-                  .filter(r => !r.startsWith('group:') && !r.startsWith('person:'));
-                const newAvailableTo = [
-                  ...keptRules,
-                  ...cleanSelections.map(s => s.group_id ? `group:${s.group_id}` : `person:${s.person_id}`)
-                ];
+                const isDenyMode = !!reactData.editDescriptionDenyMode;
+                const knownStarValues = new Set(['*all', '*admin', '*support']);
+                const keptRules = (reactData.editDescriptionAvailableTo || []).filter(r =>
+                  isDenyMode
+                    ? !r.startsWith('!')
+                    : r.startsWith('!') || (!r.startsWith('group:') && !r.startsWith('person:') && !knownStarValues.has(r))
+                );
+                const mappedSelections = cleanSelections.map(s => {
+                  let entry;
+                  if (s.group_id) { entry = `group:${s.group_id}`; }
+                  else if (s.person_id && s.person_id.startsWith('*')) { entry = s.person_id; }
+                  else { entry = `person:${s.person_id}`; }
+                  return isDenyMode ? `!${entry}` : entry;
+                });
+                const newAvailableTo = (cleanSelections.length === 0 && !isDenyMode)
+                  ? ['*all', ...keptRules]
+                  : [...keptRules, ...mappedSelections];
                 updateReactData({
                   showAccessToSearch: false,
                   editDescriptionAvailableTo: newAvailableTo,
@@ -4223,6 +4420,8 @@ export default ({ start_at }) => {
                     addMenuDialogPhone: '',
                     addMenuDialogAvailableTo: [],
                     addMenuDialogColor: null,
+                    addMenuDialogAccessReviewed: false,
+                    addMenuDialogDenyMode: false,
                     showAddMessageTargetSearch: false,
                     showAddAccessToSearch: false,
                     selections: [],
@@ -4474,29 +4673,66 @@ export default ({ start_at }) => {
                     </Button>
                   }
                 </Box>
-                <Box display='flex' flexDirection='row' alignItems='center' justifyContent='space-between' mt={2}>
+                <Box display='flex' flexDirection='row' alignItems='flex-start' justifyContent='space-between' mt={2}>
                   <Box display='flex' flexDirection='column'>
                     <Typography style={AVATextStyle({ size: 0.8, bold: true })}>{'Who can see this?'}</Typography>
                     <Typography style={AVATextStyle({ size: 0.8 })}>
                       {describeAvailableTo(reactData.addMenuDialogAvailableTo)}
                     </Typography>
                   </Box>
-                  <Button
-                    className={AVAClass.AVAButton}
-                    size='small'
+                  <Box display='flex' flexDirection='column' alignItems='flex-end'>
+                    <Button
+                      className={AVAClass.AVAButton}
+                      size='small'
+                      style={{ backgroundColor: reactData.addMenuDialogDenyMode ? '#ffcdd2' : '#c8e6c9' }}
                     onClick={() => {
+                      const isDenyMode = !!reactData.addMenuDialogDenyMode;
                       const existingSelections = (reactData.addMenuDialogAvailableTo || [])
-                        .filter(r => r.startsWith('group:') || r.startsWith('person:'))
-                        .map(r => r.startsWith('group:')
-                          ? { group_id: r.slice(6) }
-                          : { person_id: r.slice(7) }
-                        );
-                      updateReactData({ showAddAccessToSearch: true, groupInfo: null, linkedPersonFilter: { raw: '', lower: '' }, selections: existingSelections }, true);
+                        .filter(r => isDenyMode ? r.startsWith('!') : (r.startsWith('group:') || r.startsWith('person:') || r.startsWith('*')))
+                        .map(r => {
+                          const raw = isDenyMode ? r.slice(1) : r;
+                          if (raw.startsWith('group:')) { return { group_id: raw.slice(6) }; }
+                          if (raw.startsWith('*')) {
+                            const sv = SPECIAL_ACCESS_VALUES.find(s => s.person_id === raw);
+                            return { person_id: raw, person_name: sv ? sv.first : raw };
+                          }
+                          const personId = raw.slice(7);
+                          let personName = null;
+                          if (personId === state.session.patient_id) {
+                            personName = reactData.greetingName || null;
+                          } else if (personId === state.session.user_id) {
+                            personName = state.session.user_display_name || null;
+                          } else if (reactData.accessList) {
+                            const found = reactData.accessList.find(p => p.person_id === personId);
+                            if (found) { personName = (`${found.first || ''} ${found.last || ''}`).trim() || null; }
+                          }
+                          return { person_id: personId, ...(personName ? { person_name: personName } : {}) };
+                        });
+                      updateReactData({
+                        showAddAccessToSearch: true,
+                        groupInfo: null,
+                        linkedPersonFilter: { raw: '', lower: '' },
+                        selections: existingSelections,
+                        special_values: SPECIAL_ACCESS_VALUES,
+                      }, true);
                     }}
                     disabled={reactData.addMenuDialogSaving}
                   >
-                    {'Change'}
+                    {`${reactData.addMenuDialogAccessReviewed ? 'Change' : 'Set'} ${reactData.addMenuDialogDenyMode ? 'Exclusions' : 'Access'}`}
                   </Button>
+                    <FormControlLabel
+                      style={{ marginTop: 4 }}
+                      control={
+                        <Switch
+                          size='small'
+                          checked={!!reactData.addMenuDialogDenyMode}
+                          onChange={(e) => updateReactData({ addMenuDialogDenyMode: e.target.checked }, true)}
+                          disabled={reactData.addMenuDialogSaving}
+                        />
+                      }
+                      label={<Typography style={AVATextStyle({ size: 0.75 })}>{reactData.addMenuDialogDenyMode ? 'Deny access' : 'Allow access'}</Typography>}
+                    />
+                  </Box>
                 </Box>
                 <Box display='flex' justifyContent='center' mt={2}>
                   <Button
@@ -4508,7 +4744,7 @@ export default ({ start_at }) => {
                     onClick={async () => {
                       await handleAddMenuItem();
                     }}
-                    disabled={reactData.addMenuDialogSaving}
+                    disabled={reactData.addMenuDialogSaving || addDialogNeedsReview(reactData.addMenuDialogAvailableTo)}
                   >
                     {'Add'}
                   </Button>
@@ -4535,6 +4771,8 @@ export default ({ start_at }) => {
                           addMenuDialogPhone: '',
                           addMenuDialogAvailableTo: [],
                           addMenuDialogColor: null,
+                          addMenuDialogAccessReviewed: false,
+                          addMenuDialogDenyMode: false,
                           showAddMessageTargetSearch: false,
                           showAddAccessToSearch: false,
                           selections: [],
@@ -4610,7 +4848,7 @@ export default ({ start_at }) => {
       {reactData.editDescriptionDialog &&
         <Dialog
           open={reactData.editDescriptionDialog}
-          onClose={() => updateReactData({ editDescriptionDialog: false, editDescriptionColor: null }, true)}
+          onClose={() => updateReactData({ editDescriptionDialog: false, editDescriptionDenyMode: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [] }, true)}
           classes={{ paper: classes.clientPopUp }}
           fullWidth
         >
@@ -4689,35 +4927,78 @@ export default ({ start_at }) => {
                 </Button>
               }
             </Box>
-            <Box display='flex' alignItems='center' justifyContent='space-between' style={{ marginBottom: 16 }}>
+            <Box display='flex' alignItems='flex-start' justifyContent='space-between' style={{ marginBottom: 16 }}>
               <Box display='flex' flexDirection='column'>
                 <Typography variant='caption' style={{ color: 'gray' }}>{'Who can see this item'}</Typography>
                 <Typography variant='body2'>
                   {describeAvailableTo(reactData.editDescriptionAvailableTo)}
                 </Typography>
               </Box>
-              <Button
-                className={AVAClass.AVAButton}
-                style={{ marginLeft: 8 }}
-                size='small'
+              <Box display='flex' flexDirection='column' alignItems='flex-end'>
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ marginLeft: 8, backgroundColor: reactData.editDescriptionDenyMode ? '#ffcdd2' : '#c8e6c9' }}
+                  size='small'
                 onClick={() => {
+                  const isDenyMode = !!reactData.editDescriptionDenyMode;
                   const existingSelections = (reactData.editDescriptionAvailableTo || [])
-                    .filter(r => r.startsWith('group:') || r.startsWith('person:'))
-                    .map(r => r.startsWith('group:')
-                      ? { group_id: r.slice(6) }
-                      : { person_id: r.slice(7) }
-                    );
+                    .filter(r => isDenyMode ? r.startsWith('!') : (r.startsWith('group:') || r.startsWith('person:') || r.startsWith('*')))
+                    .map(r => {
+                      const raw = isDenyMode ? r.slice(1) : r;
+                      if (raw.startsWith('group:')) { return { group_id: raw.slice(6) }; }
+                      if (raw.startsWith('*')) {
+                        const sv = SPECIAL_ACCESS_VALUES.find(s => s.person_id === raw);
+                        return { person_id: raw, person_name: sv ? sv.first : raw };
+                      }
+                      return { person_id: raw.slice(7) };
+                    });
                   updateReactData({
                     showAccessToSearch: true,
                     groupInfo: null,
                     linkedPersonFilter: { raw: '', lower: '' },
                     selections: existingSelections,
+                    special_values: SPECIAL_ACCESS_VALUES,
                   }, true);
                 }}
               >
-                {'Edit Access'}
+                {reactData.editDescriptionDenyMode ? 'Edit Exclusions' : 'Edit Access'}
               </Button>
+                <FormControlLabel
+                  style={{ marginTop: 4 }}
+                  control={
+                    <Switch
+                      size='small'
+                      checked={!!reactData.editDescriptionDenyMode}
+                      onChange={(e) => updateReactData({ editDescriptionDenyMode: e.target.checked }, true)}
+                    />
+                  }
+                  label={<Typography variant='caption'>{reactData.editDescriptionDenyMode ? 'Deny access' : 'Allow access'}</Typography>}
+                />
+              </Box>
             </Box>
+            {reactData.editDescriptionItemType === 'message_target' &&
+              <Box display='flex' alignItems='center' justifyContent='space-between' style={{ marginBottom: 16 }}>
+                <Box display='flex' flexDirection='column'>
+                  <Typography variant='caption' style={{ color: 'gray' }}>{'Message recipients'}</Typography>
+                  <Typography variant='body2'>
+                    {`${(reactData.editDescriptionTargets || []).length} target${(reactData.editDescriptionTargets || []).length === 1 ? '' : 's'} selected`}
+                  </Typography>
+                </Box>
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ marginLeft: 8 }}
+                  size='small'
+                  onClick={() => {
+                    updateReactData({
+                      showEditMessageTargetSearch: true,
+                      selections: deepCopy(reactData.editDescriptionTargets || [])
+                    }, true);
+                  }}
+                >
+                  {'Edit Recipients'}
+                </Button>
+              </Box>
+            }
             {/* Bottom row: Move to End + Cancel (left), Save (right) */}
             <Box display='flex' justifyContent='space-between' alignItems='center'>
               <Box display='flex' style={{ gap: 8 }}>
@@ -4767,7 +5048,7 @@ export default ({ start_at }) => {
                   className={AVAClass.AVAButton}
                   style={{ backgroundColor: 'red', color: 'white' }}
                   size='small'
-                  onClick={() => updateReactData({ editDescriptionDialog: false, editDescriptionColor: null }, true)}
+                  onClick={() => updateReactData({ editDescriptionDialog: false, editDescriptionDenyMode: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [] }, true)}
                 >
                   Cancel
                 </Button>

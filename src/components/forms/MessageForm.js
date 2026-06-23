@@ -302,6 +302,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     withGroupList: ((options && options.hasOwnProperty('showGroupList') && !options.showGroupList) ? false : true),
     withIndividualList: ((options && options.hasOwnProperty('showIndividualList') && !options.showIndividualList) ? false : true),
     withPreferredList: ((options && options.hasOwnProperty('showPreferredList') && !options.showPreferredList) ? false : true),
+    groupsInitiallyExpanded: (options && options.groupsInitiallyExpanded) || false,
     showQuickSearch: (options && options.newMessage && (!options.recipients || (options.recipients.length === 0))) || false,
     showVariableMenu: false,
     showVMAlt: ((options && options.hasOwnProperty('hideVMAlt') && options.hideVMAlt) ? true : false),
@@ -2803,6 +2804,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                 buttonColor: (reactData.selections.length === 0) ? 'red' : 'green',
                 buttonText: searchButtonText(),
                 showAll: state.session.client_style.show_all_people ?? !state.session.client_style.restrict_groups,
+                groupsInitiallyExpanded: reactData.groupsInitiallyExpanded,
                 title: 'Select Recipients'
               }}
               onClose={async (selections) => {

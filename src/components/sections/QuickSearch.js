@@ -64,6 +64,8 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   const [collapsedGroups, setCollapsedGroups] = React.useState(new Set());
   // Group highlighted by tapping its chip
   const [highlightedGroupId, setHighlightedGroupId] = React.useState(null);
+  // Person highlighted by tapping its chip
+  const [highlightedPersonId, setHighlightedPersonId] = React.useState(null);
   // Capture initial selections so cancel can restore them
   const initialSelectionsRef = React.useRef(reactData.selections ? [...reactData.selections] : []);
 
@@ -105,6 +107,13 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
     }
     // Clear highlight after 2 seconds
     window.setTimeout(() => setHighlightedGroupId(null), 2000);
+  };
+
+  // Scroll the people list to show and flash-highlight a person by ID
+  const scrollToPerson = (person_id) => {
+    setMaxPeopleToRender(prev => Math.max(prev, 500));
+    setHighlightedPersonId(person_id);
+    window.setTimeout(() => setHighlightedPersonId(null), 2000);
   };
 
   React.useEffect(() => {
@@ -290,18 +299,22 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
             groupList: finalGroupList
           });
 
-          // Seed collapsed state: collapse all parent nodes at level >= 1 (show top two levels by default)
-          const gl = reactUpd.groupInfo.groupList;
-          const initialCollapsed = new Set();
-          gl.forEach((g, idx) => {
-            const isParent = idx + 1 < gl.length && gl[idx + 1].level > g.level;
-            // Collapse headers and level>=1 parents on initial display
-            if (g.isHeader || (isParent && g.level >= 1)) {
-              initialCollapsed.add(g.group_id);
+          // Seed collapsed state: collapse all parent nodes at level >= 1 (show top two levels by default).
+          // Skip seeding entirely when groupsInitiallyExpanded is set — the state is already an empty
+          // Set (nothing collapsed), which is exactly "fully expanded".
+          if (!optionsRef.current.groupsInitiallyExpanded) {
+            const gl = reactUpd.groupInfo.groupList;
+            const initialCollapsed = new Set();
+            gl.forEach((g, idx) => {
+              const isParent = idx + 1 < gl.length && gl[idx + 1].level > g.level;
+              // Collapse headers and level>=1 parents on initial display
+              if (g.isHeader || (isParent && g.level >= 1)) {
+                initialCollapsed.add(g.group_id);
+              }
+            });
+            if (initialCollapsed.size > 0) {
+              setCollapsedGroups(initialCollapsed);
             }
-          });
-          if (initialCollapsed.size > 0) {
-            setCollapsedGroups(initialCollapsed);
           }
 
           // Auto-show group list if showGroupList option is true
@@ -511,8 +524,12 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
           : reactData.selections.map((sel, sIndex) => {
             const isGroup = !!sel.group_id;
             const isPref = sel.rIndex !== undefined;
+            const resolvedPerson = (!isGroup && !isPref && sel.person_id && !sel.person_name && !sel.listName)
+              ? (reactData.accessList || []).find(p => p.person_id === sel.person_id)
+              : null;
             const fullLabel = sel.person_name || sel.listName
               || (isGroup ? getGroupPath(sel.group_id) : null)
+              || (resolvedPerson ? (`${resolvedPerson.first || ''} ${resolvedPerson.last || ''}`).trim() : null)
               || sel.person_id || sel.group_id || '';
             // Show only the leaf segment in the chip; full breadcrumb path visible on hover
             const chipLabel = (isGroup && fullLabel.includes(' / '))
@@ -529,7 +546,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                       : <PersonIcon style={{ fontSize: '0.85rem' }} />
                   }
                   label={chipLabel}
-                  onClick={isGroup ? () => expandToGroup(sel.group_id) : undefined}
+                  onClick={isGroup ? () => expandToGroup(sel.group_id) : (!isPref && sel.person_id ? () => scrollToPerson(sel.person_id) : undefined)}
                   onDelete={() => {
                     reactData.selections.splice(sIndex, 1);
                     const { selectedPeople_count, selectedPeople_list } = countSelections();
@@ -540,7 +557,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                     color: isGroup ? '#1565c0' : isPref ? '#bf360c' : '#1b5e20',
                     fontSize: '0.8rem',
                     maxWidth: '20vw',
-                    cursor: isGroup ? 'pointer' : 'default',
+                    cursor: (isGroup || (!isPref && sel.person_id)) ? 'pointer' : 'default',
                   }}
                 />
               </Tooltip>
@@ -904,7 +921,8 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
                     flexDirection='row'
                     alignItems={'center'}
                     key={`select_person_opt${tIndex}`}
-                    style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance' }}
+                    ref={this_item.person_id === highlightedPersonId ? (el) => { if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } } : undefined}
+                    style={{ paddingTop: '2px', marginTop: '4px', marginBottom: '4px', textWrapStyle: 'balance', borderRadius: 6, backgroundColor: this_item.person_id === highlightedPersonId ? '#fff9c4' : 'transparent', transition: 'background-color 0.4s ease' }}
                     onContextMenu={async (e) => {
                       e.preventDefault();
                       updateReactData({

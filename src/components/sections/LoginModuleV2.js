@@ -753,6 +753,23 @@ const LoginModuleV2 = ({
     const customizedSession = await loadClientCustomizations(patientRec, sessionRec);
     const { updatedPerson, updatedSession } = await computeAdminAccount(personRec, customizedSession);
 
+    // Always sync session.patient_id to the resolved patientRec so that the
+    // dispatched session is self-consistent.
+    //
+    // - Fresh manual login (useSessionPatientRef = false): patientRec === personRec,
+    //   so patient_id is set to the newly-logged-in user's own ID ("pure" login).
+    // - Cookie/auto resume (useSessionPatientRef = true): patientRec was resolved
+    //   from the stored session (e.g. an adult child resuming as their parent),
+    //   so the proxy patient_id is correctly preserved.
+    //
+    // Without this, whatever patient_id happens to be in the SessionsV2 record at
+    // the moment of login is blindly propagated, which can produce a mismatched
+    // state.session.patient_id after sign-out + sign-in-as-different-user.
+    const resolvedPatientId = (patientRec || updatedPerson)?.person_id;
+    if (resolvedPatientId && customizedSession) {
+      customizedSession.patient_id = resolvedPatientId;
+    }
+
     if (updatedSession) {
       setResolvedSession(customizedSession || updatedSession);
     }
