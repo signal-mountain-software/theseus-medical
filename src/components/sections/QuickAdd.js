@@ -75,7 +75,7 @@ import { sendMessages } from '../../util/AVAMessages';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import { Auth } from 'aws-amplify';
-import { Box, Button, TextField, Typography, Dialog, DialogContentText, DialogActions, FormControl, FormLabel, RadioGroup, FormControlLabel, Radio, Snackbar, Checkbox } from '@material-ui/core/';
+import { Box, Button, TextField, Typography, Dialog, DialogContentText, DialogActions, FormControl, FormLabel, RadioGroup, FormControlLabel, Radio, Snackbar, Checkbox, Select as MuiSelect, MenuItem, InputLabel } from '@material-ui/core/';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 
 const useStyles = makeStyles(theme => ({
@@ -94,7 +94,29 @@ const useStyles = makeStyles(theme => ({
   },
   selectOptions: {
     color: theme.palette.text.primary,
-  }
+  },
+  requiredTextField: {
+    '& .MuiInputLabel-root': {
+      color: theme.palette.success.main,
+    },
+    '& .MuiInputLabel-asterisk': {
+      color: theme.palette.success.main,
+      fontWeight: 700,
+    },
+    '& .MuiOutlinedInput-root .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.success.main,
+    },
+    '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.success.main,
+    },
+    '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.success.main,
+      borderWidth: 2,
+    },
+  },
+  requiredSelectFieldset: {
+    borderColor: `${theme.palette.success.main} !important`,
+  },
 }));
 
 export default ({ onClose, options = {} }) => {
@@ -593,21 +615,17 @@ export default ({ onClose, options = {} }) => {
   const handleFieldValueChange = (fieldName, value) => {
     setReactData(prev => ({
       ...prev,
-      field_values: {
-        ...prev.field_values,
-        [fieldName]: value
-      }
+      field_values: { ...prev.field_values, [fieldName]: value },
+      field_validation_errors: { ...prev.field_validation_errors, [fieldName]: null }
     }));
   };
 
   const handlePhoneFieldChange = (fieldName, value) => {
-    // Immediately update the field value for responsive typing
+    // Immediately update the field value and clear any prior required error
     setReactData(prev => ({
       ...prev,
-      field_values: {
-        ...prev.field_values,
-        [fieldName]: value
-      }
+      field_values: { ...prev.field_values, [fieldName]: value },
+      field_validation_errors: { ...prev.field_validation_errors, [fieldName]: null }
     }));
 
     // Clear any existing timeout for this field
@@ -667,13 +685,11 @@ export default ({ onClose, options = {} }) => {
   };
 
   const handleEmailFieldChange = (fieldName, value) => {
-    // Immediately update the field value for responsive typing
+    // Immediately update the field value and clear any prior required error
     setReactData(prev => ({
       ...prev,
-      field_values: {
-        ...prev.field_values,
-        [fieldName]: value
-      }
+      field_values: { ...prev.field_values, [fieldName]: value },
+      field_validation_errors: { ...prev.field_validation_errors, [fieldName]: null }
     }));
 
     // Clear any existing timeout for this field
@@ -735,10 +751,8 @@ export default ({ onClose, options = {} }) => {
 
     setReactData(prev => ({
       ...prev,
-      field_values: {
-        ...prev.field_values,
-        [fieldName]: newValue
-      }
+      field_values: { ...prev.field_values, [fieldName]: newValue },
+      field_validation_errors: { ...prev.field_validation_errors, [fieldName]: null }
     }));
   };
 
@@ -763,7 +777,50 @@ export default ({ onClose, options = {} }) => {
     }));
   };
 
+  // Returns true when a field is required (checks field record + config-level required array)
+  const isFieldRequired = (fieldName, fieldData) => {
+    if (!fieldData) { return false; }
+    return !!(
+      (reactData.selected_account_config?.required || []).includes(fieldName) ||
+      fieldData.required ||
+      fieldData.options?.required ||
+      fieldData.value?.required
+    );
+  };
+
   const saveCurrentFamilyMember = async () => {
+    // Validate required fields before anything else
+    const requiredErrors = {};
+    Object.entries(reactData.form_fields || {}).forEach(([fieldName, fieldData]) => {
+      if (!fieldData || !shouldShowField(fieldData)) { return; }
+      const fieldType = fieldData.value?.type || 'text';
+      if (fieldType === 'hidden' || fieldType === 'header') { return; }
+      if (!isFieldRequired(fieldName, fieldData)) { return; }
+      const val = reactData.field_values[fieldName];
+      const empty = !val || (Array.isArray(val) ? val.length === 0 : String(val).trim() === '');
+      if (empty) {
+        const label = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
+        requiredErrors[fieldName] = `${label} is required`;
+      }
+    });
+    if (Object.keys(requiredErrors).length > 0) {
+      // Combine both updates in a single setReactData call to avoid React 16 batching
+      // overwriting field_validation_errors when showAlert's spread uses the original state.
+      setReactData(prev => ({
+        ...prev,
+        field_validation_errors: requiredErrors,  // full replace: clears errors for fields now filled
+        alert: {
+          severity: 'error',
+          title: 'Required Fields Missing',
+          message: 'Please fill in all required fields (shown in green) before continuing.',
+          detail: null,
+          action: null,
+          autoHide: false
+        }
+      }));
+      return;
+    }
+
     // Validate *password field if present: both entries must match and be non-empty
     const fieldList = reactData.selected_account_config?.field_list || [];
     if (fieldList.includes('*password')) {
@@ -3211,8 +3268,9 @@ export default ({ onClose, options = {} }) => {
                                 display: 'inline-block',
                                 fontSize: '1em',
                                 marginTop: '-16px',
+                                ...(isRequired ? { color: '#2e7d32' } : {}),
                               }}>
-                                {fieldLabel} {isRequired && '*'}
+                                {fieldLabel} {isRequired && <span style={{ color: '#2e7d32', fontWeight: 700 }}>*</span>}
                               </span>
                             </legend>
                           </fieldset>
@@ -3242,7 +3300,47 @@ export default ({ onClose, options = {} }) => {
                   }
 
                   const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
-                  const isRequired = reactData.selected_account_config?.required?.includes(fieldName) || false;
+                  const isRequired = isFieldRequired(fieldName, fieldData);
+
+                  // Dropdown field — single-select (or multi when selection.max > 1)
+                  if (fieldType.startsWith('drop')) {
+                    const dropOptions = fieldData.value?.selection?.selectionList || [];
+                    const dropMax = fieldData.value?.selection?.max || 1;
+                    const isMulti = dropMax > 1;
+                    const currentValue = isMulti
+                      ? (reactData.field_values[fieldName] || [])
+                      : (reactData.field_values[fieldName] || '');
+                    const dropValidationError = reactData.field_validation_errors?.[fieldName];
+                    return (
+                      <Box key={fieldName} style={{ marginBottom: '16px', marginRight: '16px' }}>
+                        <FormControl
+                          fullWidth
+                          variant="outlined"
+                          size="small"
+                          className={isRequired ? classes.requiredTextField : undefined}
+                          error={Boolean(dropValidationError)}
+                        >
+                          <InputLabel required={isRequired}>{fieldLabel}</InputLabel>
+                          <MuiSelect
+                            value={currentValue}
+                            multiple={isMulti}
+                            onChange={(e) => handleFieldValueChange(fieldName, e.target.value)}
+                            label={fieldLabel}
+                          >
+                            {!isMulti && <MenuItem value=""><em>None</em></MenuItem>}
+                            {dropOptions.map((option, idx) => (
+                              <MenuItem key={`${fieldName}_${idx}`} value={option}>{option}</MenuItem>
+                            ))}
+                          </MuiSelect>
+                          {dropValidationError && (
+                            <Typography variant="caption" style={{ color: '#f44336', marginLeft: '14px', marginTop: '3px', display: 'block' }}>
+                              {dropValidationError}
+                            </Typography>
+                          )}
+                        </FormControl>
+                      </Box>
+                    );
+                  }
 
                   // Password field — double-prompt with confirmation
                   if (fieldType === '*password') {
@@ -3255,6 +3353,7 @@ export default ({ onClose, options = {} }) => {
                           fullWidth
                           label={fieldLabel}
                           required={isRequired}
+                          className={isRequired ? classes.requiredTextField : undefined}
                           type='password'
                           autoComplete='new-password'
                           value={pw}
@@ -3267,6 +3366,7 @@ export default ({ onClose, options = {} }) => {
                           fullWidth
                           label='Confirm Password'
                           required={isRequired}
+                          className={isRequired ? classes.requiredTextField : undefined}
                           type='password'
                           autoComplete='new-password'
                           value={confirm}
@@ -3300,6 +3400,7 @@ export default ({ onClose, options = {} }) => {
                         fullWidth
                         label={fieldLabel}
                         required={isRequired}
+                        className={isRequired ? classes.requiredTextField : undefined}
                         type={fieldType === 'email' ? 'email' :
                           fieldType === 'phone' ? 'tel' : 'text'}
                         value={reactData.field_values[fieldName] || ''}
@@ -3510,34 +3611,8 @@ export default ({ onClose, options = {} }) => {
                 }
 
                 if (reactData.selected_account_config && reactData.form_fields) {
-                  // Validate required fields - only check fields that are actually presented on screen
-                  // and currently visible (not hidden by show_if/ignore_if)
-                  const presentedFields = reactData.selected_account_config?.field_list || [];
-                  const requiredFields = (reactData.selected_account_config?.required || [])
-                    .filter(fieldName =>
-                      presentedFields.includes(fieldName) &&
-                      shouldShowField(reactData.form_fields[fieldName])
-                    );
-
-                  const missingRequiredValues = requiredFields.filter(fieldName => {
-                    return isEmpty(reactData.field_values[fieldName]);
-                  });
-
-                  if (missingRequiredValues.length > 0) {
-                    // Convert field names to user-friendly prompts
-                    const missingFieldPrompts = missingRequiredValues.map(fieldName => {
-                      const fieldData = reactData.form_fields[fieldName];
-                      return fieldData?.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
-                    });
-
-                    showAlert({
-                      severity: 'warning',
-                      title: 'Required Fields Missing',
-                      message: `Please fill in all required fields: ${missingFieldPrompts.join(', ')}`,
-                      autoHide: false
-                    });
-                    return;
-                  }
+                  // Required-field validation is handled inside saveCurrentFamilyMember()
+                  // which sets per-field errors in field_validation_errors.
 
                   // Validate date fields
                   const invalidDateFields = [];
