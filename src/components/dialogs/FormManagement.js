@@ -1356,7 +1356,7 @@ export default ({ defaults, onClose }) => {
                 </Typography>
               </Box>
               <Paper component={Box} elevation={0} overflow='auto' square
-                style={{ scrollbarWidth: 'none', flexGrow: 1, display: 'flex' }}
+                style={{ scrollbarWidth: 'auto', flexGrow: 1, display: 'flex', width: '98%' }}
               >
                 <Box display='flex' flexDirection='column'
                   justifyContent='flex-start'
@@ -1581,7 +1581,7 @@ export default ({ defaults, onClose }) => {
                   </Box >
                 </Box>
                 <Paper component={Box} width='100%' elevation={0} overflow='auto' square
-                  style={{ scrollbarWidth: 'thin', flexGrow: 1, display: 'flex' }}
+                  style={{ scrollbarWidth: 'auto', flexGrow: 1, display: 'flex' }}
                   onDragOver={(e) => handleDragOver(e)}
                   onDrop={async (e) => {
                     e.preventDefault();
@@ -1939,7 +1939,7 @@ export default ({ defaults, onClose }) => {
 
                 <Paper component={Box} width='100%' elevation={0} square
                   style={{
-                    scrollbarWidth: 'thin',
+                    scrollbarWidth: 'auto',
                     flexGrow: 1,
                     display: 'flex',
                     overflow: 'auto',

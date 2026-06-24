@@ -41,7 +41,7 @@ const useStyles = makeStyles(theme => ({
     paddingBottom: theme.spacing(1),
     overflowX: 'hidden',
     overflowY: 'auto',
-    maxHeight: 'calc(100vh - 260px)',
+    maxHeight: 'calc(100dvh - 260px)',
     marginLeft: theme.spacing(2),
   },
   buttonArea: {
@@ -4561,6 +4561,7 @@ export default ({ request = {}, onClose }) => {
           style: {
             minWidth: '80vw',
             maxWidth: '80vw',
+            maxHeight: 'calc(100dvh - 32px)',
             ...(reactData.options?.mode === 'printPDF' ? { visibility: 'hidden', pointerEvents: 'none' } : {})
           }
         }}
