@@ -777,15 +777,12 @@ export default ({ onClose, options = {} }) => {
     }));
   };
 
-  // Returns true when a field is required (checks field record + config-level required array)
+  // Returns true when a field is required.
+  // Sole authority is the config-level required array so that required status
+  // is correct on every pass regardless of what a Form_Fields DB record says.
   const isFieldRequired = (fieldName, fieldData) => {
     if (!fieldData) { return false; }
-    return !!(
-      (reactData.selected_account_config?.required || []).includes(fieldName) ||
-      fieldData.required ||
-      fieldData.options?.required ||
-      fieldData.value?.required
-    );
+    return !!(reactData.selected_account_config?.required || []).includes(fieldName);
   };
 
   const saveCurrentFamilyMember = async () => {
