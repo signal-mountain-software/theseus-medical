@@ -1,4 +1,5 @@
 import React from 'react';
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField } from '@material-ui/core';
 import { dbClient, lambda, makeArray, getCustomizations, deepCopy, uuid } from '../util/AVAUtilities';
 import { accountAccess, getAllGroups, getGroupsBelongTo, getPersonGroups } from '../util/AVAGroups';
 import { getAllOccurrences, v2buildCalendar, createNewOccurrences } from '../util/AVACalendars';
@@ -47,6 +48,12 @@ export default Component => props => {
   const AVA_default_password = process.env.REACT_APP_AVA_PP;
 
   const [messageList, setMessageList] = React.useState([]);
+
+  const [forgotPasswordActive, setForgotPasswordActive] = React.useState(false);
+  const [forgotPasswordFields, setForgotPasswordFields] = React.useState({ userId: '', firstName: '', newPassword: '' });
+  const [forgotPasswordPending, setForgotPasswordPending] = React.useState(false);
+  const lastAttemptedUserId = React.useRef('');
+  const [loginResetKey, setLoginResetKey] = React.useState(0);
 
   const [reactData, setReactData] = React.useState({
     currentClientLogo:
@@ -441,6 +448,76 @@ export default Component => props => {
     return 'password';
   }
 
+  async function validateUserAccount(payload) {
+    const fResp = await lambda.invoke({
+      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:validateUserAccount',
+      InvocationType: 'RequestResponse',
+      LogType: 'Tail',
+      Payload: JSON.stringify(payload)
+    }).promise().catch(err => {
+      console.log('validateUserAccount failed:', err);
+      return null;
+    });
+    if (!fResp) { return [false, 'Technical problem. Contact AVA Support.']; }
+    const parsed = JSON.parse(fResp.Payload);
+    if (parsed.status === 400) { return [false, parsed.body]; }
+    if (Array.isArray(parsed.body) && parsed.body.length === 1) { return [true, parsed.body[0]]; }
+    return [false, 'Multiple accounts found. Please be more specific.'];
+  }
+
+  async function resetUserPassword(userId, newPassword) {
+    const fResp = await lambda.invoke({
+      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:updateTheseusUser',
+      InvocationType: 'RequestResponse',
+      LogType: 'Tail',
+      Payload: JSON.stringify({
+        body: {
+          clientId: 'SMSoft',
+          updatePerson: userId,
+          newValues: { pwdReset: true, newPassword }
+        }
+      })
+    }).promise().catch(err => {
+      console.log('resetUserPassword failed:', err);
+      return null;
+    });
+    return fResp ? JSON.parse(fResp.Payload) : null;
+  }
+
+  async function handleForgotPasswordSubmit() {
+    const { userId, firstName, newPassword } = forgotPasswordFields;
+    if (!userId.trim() || !firstName.trim() || !newPassword.trim()) {
+      enqueueSnackbar('Please fill in all fields.', { variant: 'warning' });
+      return;
+    }
+    setForgotPasswordPending(true);
+    const [valid, response] = await validateUserAccount({ user_id: userId.trim(), nameTest: firstName.trim() });
+    if (!valid) {
+      enqueueSnackbar(typeof response === 'string' ? response : 'Could not verify your account.', { variant: 'error' });
+      setForgotPasswordPending(false);
+      return;
+    }
+    const resetResp = await resetUserPassword(userId.trim(), newPassword.trim());
+    if (!resetResp) {
+      enqueueSnackbar('Technical problem resetting password. Contact AVA Support.', { variant: 'error' });
+      setForgotPasswordPending(false);
+      return;
+    }
+    // Update SessionsV2.last_login so cookie-based auto-login works with the new password
+    await dbClient.update({
+      TableName: 'SessionsV2',
+      Key: { session_id: userId.trim().toLowerCase() },
+      UpdateExpression: 'SET last_login = :p',
+      ExpressionAttributeValues: { ':p': newPassword.trim() }
+    }).promise().catch(err => {
+      console.log('SessionsV2 last_login update failed:', err);
+    });
+    enqueueSnackbar(`Password reset! Please sign in with your new password.`, { variant: 'success' });
+    setForgotPasswordActive(false);
+    setForgotPasswordPending(false);
+    setLoginResetKey(k => k + 1);
+  }
+
   async function genericLogin(pUser, pSource) {
     let [goodLogin, ,] = await cognitoLogin(AVA_default_user, AVA_default_password);
     if (goodLogin) {
@@ -496,11 +573,69 @@ export default Component => props => {
     }
     if (isTestEnv || true) {
       return (
-        <LoginModuleV2
-          onReady={() => {
-            setAVAReady(true);
-          }}
-        />
+        <React.Fragment>
+          <LoginModuleV2
+            key={loginResetKey}
+            onReady={() => {
+              setAVAReady(true);
+            }}
+            onSubmitUserId={(resolvedId) => {
+              lastAttemptedUserId.current = resolvedId || '';
+            }}
+            onForgotPassword={() => {
+              setForgotPasswordFields({ userId: lastAttemptedUserId.current, firstName: '', newPassword: '' });
+              setForgotPasswordActive(true);
+            }}
+          />
+          {forgotPasswordActive && (
+            <Dialog open fullWidth maxWidth='xs'>
+              <DialogTitle>Reset Your Password</DialogTitle>
+              <DialogContent>
+                <TextField
+                  label='Username / ID'
+                  value={forgotPasswordFields.userId}
+                  onChange={e => { const v = e.target.value; setForgotPasswordFields(p => ({ ...p, userId: v })); }}
+                  fullWidth
+                  margin='normal'
+                  disabled={forgotPasswordPending}
+                  autoFocus={!forgotPasswordFields.userId}
+                />
+                <TextField
+                  label='First Name'
+                  value={forgotPasswordFields.firstName}
+                  onChange={e => { const v = e.target.value; setForgotPasswordFields(p => ({ ...p, firstName: v })); }}
+                  fullWidth
+                  margin='normal'
+                  disabled={forgotPasswordPending}
+                  autoFocus={!!forgotPasswordFields.userId}
+                />
+                <TextField
+                  label='New Password'
+                  type='password'
+                  value={forgotPasswordFields.newPassword}
+                  onChange={e => { const v = e.target.value; setForgotPasswordFields(p => ({ ...p, newPassword: v })); }}
+                  onKeyDown={e => { if (e.key === 'Enter') { handleForgotPasswordSubmit(); } }}
+                  fullWidth
+                  margin='normal'
+                  disabled={forgotPasswordPending}
+                />
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setForgotPasswordActive(false)} disabled={forgotPasswordPending}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleForgotPasswordSubmit}
+                  disabled={forgotPasswordPending || !forgotPasswordFields.userId || !forgotPasswordFields.firstName || !forgotPasswordFields.newPassword}
+                  variant='contained'
+                  color='primary'
+                >
+                  {forgotPasswordPending ? 'Resetting...' : 'Reset Password'}
+                </Button>
+              </DialogActions>
+            </Dialog>
+          )}
+        </React.Fragment>
       );
     }
   }
