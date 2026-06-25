@@ -2155,6 +2155,7 @@ export default ({ request = {}, onClose }) => {
             object: reactData.peopleRec[reactData.pertains_to],
             key: reconcile_key
           });
+          console.log(`reconcilePrompt: token=${variable} extracted=${extracted_field} table_value=${table_value} fieldExists=${!!reactData.fields[extracted_field]} valueText=${reactData.fields[extracted_field]?.valueText}`);
           if (table_value) {
             response = response.replace(variable, `${[table_value].flat()[0]}`);
           }
@@ -2171,6 +2172,7 @@ export default ({ request = {}, onClose }) => {
               vValue = `<${titleCase(extracted_field.toLowerCase().replace(/[^a-z]/, ' '))}>`;
             }
             response = response.replace(variable, vValue);
+            console.log(`reconcilePrompt: substituted ${variable} => ${vValue}`);
           }
           else if (extracted_field.includes('//')) {
             let [field_part, regex_part] = extracted_field.split('//');
@@ -2324,6 +2326,21 @@ export default ({ request = {}, onClose }) => {
           type: reactData.fields[fieldName].type,
           date_format: reactData.fields[fieldName].options?.date_format
         });
+      }
+    }
+
+    // For html-type fields, resolve any %%field%% tokens now (after all carrier fields are loaded)
+    // so the stored value already has substitutions applied before the first render.
+    if (reactData.fields[fieldName].type === 'html' && typeof reactData.fields[fieldName].value === 'string') {
+      const resolved = reconcilePrompt({
+        rawValue: reactData.fields[fieldName].value,
+        this_field: fieldName,
+        includeRequiredMarker: false
+      });
+      if (resolved !== reactData.fields[fieldName].value) {
+        hasChanges = true;
+        reactData.fields[fieldName].value = resolved;
+        reactData.fields[fieldName].valueText = resolved;
       }
     }
 
@@ -4552,8 +4569,7 @@ export default ({ request = {}, onClose }) => {
       <Dialog
         open={(forceRedisplay && (reactData.version > 0)) || true}
         key={`wholeScreen__`}
-        onClose={handleAbort}
-        disableBackdropClick
+        onClose={(event, reason) => { if (reason !== 'backdropClick') { handleAbort(); } }}
         classes={{ paper: classes.clientBackground }}
         maxWidth={false}
         BackdropProps={reactData.options?.mode === 'printPDF' ? { style: { visibility: 'hidden' } } : undefined}
@@ -4946,7 +4962,7 @@ export default ({ request = {}, onClose }) => {
                                 {(reactData.fields[this_field].type === 'html') &&
                                   <Box>
                                     <div
-                                      dangerouslySetInnerHTML={{ '__html': adaptHtml(reactData.fields[this_field].value) }}
+                                      dangerouslySetInnerHTML={{ '__html': adaptHtml(reconcilePrompt({ rawValue: reactData.fields[this_field].value, this_field })) }}
                                     />
                                   </Box>
                                 }
