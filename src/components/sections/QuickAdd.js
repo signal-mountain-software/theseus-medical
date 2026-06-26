@@ -1362,7 +1362,7 @@ export default ({ onClose, options = {} }) => {
               });
             } else {
               // Valid pre-auth: parse name for pre-fill only if the entry was a name (not email/phone/id)
-              const nameParts = validation.lookupType === 'name' ? enteredName.trim().split(/\s+/) : [];
+              const nameParts = (validation.lookupType === 'name' && !/@|\d/.test(enteredName)) ? enteredName.trim().split(/\s+/) : [];
               updateReactData({
                 parsed_first_name: nameParts[0] || '',
                 parsed_last_name: nameParts.length > 1 ? nameParts.slice(1).join(' ') : '',
@@ -1399,7 +1399,7 @@ export default ({ onClose, options = {} }) => {
                 text: `Create a New Account`,
                 function: () => {
                   // Only pre-fill name fields if the entry was actually a name (not email/phone/id)
-                  const nameParts = validation.lookupType === 'name' ? enteredName.trim().split(/\s+/) : [];
+                  const nameParts = (validation.lookupType === 'name' && !/@|\d/.test(enteredName)) ? enteredName.trim().split(/\s+/) : [];
                   const firstName = nameParts[0] || '';
                   const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
                   setReactData(prev => ({
@@ -1703,7 +1703,9 @@ export default ({ onClose, options = {} }) => {
         return;
       }
       // Pre-fill name from preauth_data if available; fall back to entered name
-      const nameParts = (reactData.entered_name || '').trim().split(/\s+/);
+      // Only use entered name as a name if it contains no @ or digits (i.e. not an email/phone)
+      const enteredForName = reactData.entered_name || '';
+      const nameParts = !/@|\d/.test(enteredForName) ? enteredForName.trim().split(/\s+/) : [];
       updateReactData({
         parsed_first_name: preAuthRec.preauth_data?.first_name || nameParts[0] || '',
         parsed_last_name:  preAuthRec.preauth_data?.last_name  || (nameParts.length > 1 ? nameParts.slice(1).join(' ') : ''),

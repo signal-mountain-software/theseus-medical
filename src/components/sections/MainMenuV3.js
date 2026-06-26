@@ -2846,7 +2846,7 @@ export default ({ start_at }) => {
               </Box>,
               message: <div>
                 ID: {this_item.menu_id}<br />
-                Type: {this_item.menu_itemType}{this_item.url && <><br />URL: {this_item.url}</>}<br />
+                Type: {this_item.menu_itemType}{this_item.url && <><br />URL: {this_item.url.length > 60 ? this_item.url.slice(0, 60) + '…' : this_item.url}</>}<br />
                 Security: {describeAvailableTo(this_item.available_to)}<br />
               </div>
             }
@@ -4809,7 +4809,7 @@ export default ({ start_at }) => {
           <Alert
             severity={reactData.alert.severity || 'info'}
             variant='filled'
-            style={{ paddingLeft: '24px', paddingRight: '48px', borderRadius: '30px', borderWidth: 4, borderColor: 'black' }}
+            style={{ paddingLeft: '24px', paddingRight: '48px', borderRadius: '30px', borderWidth: 4, borderColor: 'black', maxWidth: '420px' }}
             onClose={() => {
               updateReactData({
                 alert: false
