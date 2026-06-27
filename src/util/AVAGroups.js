@@ -1866,6 +1866,7 @@ export async function getGroupHierarchy(pClient_id, options) {
   let parentObj = { '__TOP__': '' };   // this object tells who the parent is for each parentObj[group_id]
   let classObj = { '__TOP__': 'other' };
   let responsibleObj = { '__TOP__': [] };
+  let sortOrderObj = {};   // optional display_order field per group — drives sort when present
 
   // first pass - all admin level groups are added to their parent
   for (let g = 0; g < groupRec.Items.length; g++) {
@@ -1907,6 +1908,7 @@ export async function getGroupHierarchy(pClient_id, options) {
       parentObj[thisGroup.group_id] = thisGroup.belongs_to;
       responsibleObj[thisGroup.group_id] = thisGroup.admin_list;
       classObj[thisGroup.group_id] = thisGroup.admin_class || 'other';
+      sortOrderObj[thisGroup.group_id] = thisGroup.display_order ?? null;
       let cKey = `${pClient_id}//${thisGroup.group_id}`;
       groupRecs[cKey] = thisGroup;
     }
@@ -1974,6 +1976,7 @@ export async function getGroupHierarchy(pClient_id, options) {
         parentObj[thisGroup.group_id] = thisGroup.belongs_to;
         classObj[thisGroup.group_id] = thisGroup.admin_class || 'other';
         responsibleObj[thisGroup.group_id] = thisGroup.admin_list;
+        sortOrderObj[thisGroup.group_id] = thisGroup.display_order ?? null;
         groupRec.Items.splice(g, 1);
         g--;
       }
@@ -2024,6 +2027,7 @@ export async function getGroupHierarchy(pClient_id, options) {
       parent_of
     });
   }
+
   return ({
     preferred_recipients: messagingObj,
     group_names: nameObj, group_tree: hierarchy, hierarchy, parent_of
@@ -2061,8 +2065,13 @@ export async function getGroupHierarchy(pClient_id, options) {
     visited.add(searchObj);
     if (Object.keys(searchObj).length === 0) { return response.length ? response : []; }
     let oKeys = Object.keys(searchObj).sort((a, b) => {
-      if (nameObj[a] > nameObj[b]) { return 1; }
-      else { return -1; }
+      const oa = sortOrderObj[a], ob = sortOrderObj[b];
+      if (oa != null && ob != null) { return oa - ob; }
+      if (oa != null) { return -1; }
+      if (ob != null) { return 1; }
+      const na = (nameObj[a] || '').replace(/\s+/g, ' ').trim();
+      const nb = (nameObj[b] || '').replace(/\s+/g, ' ').trim();
+      return na.localeCompare(nb, undefined, { sensitivity: 'base' });
     });
     for (let g = 0; g < oKeys.length; g++) {
       let selectable = (Object.keys(searchObj[oKeys[g]]).length === 0);
@@ -2071,6 +2080,7 @@ export async function getGroupHierarchy(pClient_id, options) {
         level,
         belongs_to: parentObj[oKeys[g]],
         name: nameObj[oKeys[g]],
+        display_order: sortOrderObj[oKeys[g]] ?? null,
         selectable,
         admin_class: classObj[oKeys[g]],
         admin_list: responsibleObj[oKeys[g]]

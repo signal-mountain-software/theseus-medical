@@ -96,6 +96,26 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
           defaultValue={currentValues.Groups?.name || ''}
           helperText='Group Name'
         />
+        <TextField
+          id='DisplayOrder'
+          autoComplete='off'
+          type='number'
+          style={{ width: '120px', marginLeft: '24px' }}
+          onChange={async (event) => {
+            const val = event.target.value === '' ? null : Number(event.target.value);
+            await updateField({
+              updateList:
+                [{
+                  tableName: 'Groups',
+                  fieldName: 'display_order',
+                  newData: val
+                }]
+            });
+          }}
+          defaultValue={currentValues.Groups?.display_order ?? ''}
+          helperText='Display Order'
+          inputProps={{ min: 1 }}
+        />
       </Box>
 
       <Box display='flex' alignItems='flex-start'
