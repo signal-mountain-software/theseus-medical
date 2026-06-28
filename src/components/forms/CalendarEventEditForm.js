@@ -503,13 +503,22 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       slotInfo.slotObj[this_owner].docRecs = docRecs;
       slotInfo.slotObj[this_owner].docStatus = docStatus;
     }
-    let slotList = Object.keys(slotInfo.slotObj).sort().map(o => {
+    let slotList = [];
+    for (let o of Object.keys(slotInfo.slotObj).sort()) {
       let first = "";
       let last = "";
       if (!slotInfo.slotObj[o].status || ['released', 'available'].includes(slotInfo.slotObj[o].status)) {
         slotInfo.slotObj[o].display_name = '';
         slotInfo.slotObj[o].owner = '';
         if (!firstAvailableChoice) { firstAvailableChoice = o; }
+      }
+      if (slotInfo.slotObj[o].owner) {
+        let resolvedName = await makeName(slotInfo.slotObj[o].owner);
+        if (resolvedName) { slotInfo.slotObj[o].display_name = resolvedName; }
+        if (o !== slotInfo.slotObj[o].owner && !['time', 'seats'].includes(pOccData.signup_type)) {
+          let slotIdName = await makeName(o);
+          if (slotIdName && slotIdName !== o) { slotInfo.slotObj[o].slot_id_name = slotIdName; }
+        }
       }
       if (slotInfo.slotObj[o].display_name) {
         [first, last] = slotInfo.slotObj[o].display_name.split(/\s(.*)/);
@@ -524,15 +533,15 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       if (isOwned(slotData)) {
         reactData.numberOfOwnedSlots++;
       }
-      return {
+      slotList.push({
         event_key: slotInfo.occRec.event_key,
         first,
         last,
         display_name: slotInfo.slotObj[o].display_name,
         slotData,
         marked: slotInfo.slotObj[o].marked || false
-      };
-    });
+      });
+    }
     slotList.sort((a, b) => {
       if (a.slotData.slot_sort) {
         return ((a.slotData.slot_sort > b.slotData.slot_sort) ? 1 : -1);
@@ -1726,6 +1735,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                   width='100%' flexDirection='column' justifyContent='center' alignItems='flex-start'>
                   {/* Slot Name */}
                   {(this_item.slotData.id !== this_item.slotData.owner) &&
+                    (['time', 'seats'].includes(pOccData.signup_type) || !this_item.slotData.slot_id_name) &&
                     <Box display='flex' mr={1} ml={0}
                       flexDirection='row' justifyContent='center' alignItems='center'
                     >
@@ -1743,7 +1753,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                   {/* Slot Owner */}
                   {isOwned(this_item.slotData) &&
                     <Box display='flex' width='100%'
-                      mt={(this_item.slotData?.slot_description ? 1 : 0)}
+                      mt={0}
                       flexDirection='row'
                       flexWrap='wrap'
                       justifyContent='space-between' alignItems='center'
@@ -1839,6 +1849,13 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                             ) ? 'Reserved' : this_item.slotData.display_name
                             }
                           </Typography>
+                          {(this_item.slotData.id !== this_item.slotData.owner) &&
+                            !['time', 'seats'].includes(pOccData.signup_type) &&
+                            this_item.slotData.slot_id_name &&
+                            <Typography style={AVATextStyle({ size: 1, align: 'left' })} className={classes.standard}>
+                              {this_item.slotData.slot_id_name}
+                            </Typography>
+                          }
                           {this_item.marked
                             && (isSlotOwner(this_item.slotData) || (this_item.slotData.documents && (this_item.slotData.documents.length > 0)))
                             && (this_item.check_in || this_item.slotData.check_in)

@@ -746,6 +746,22 @@ const LoginModuleV2 = ({
     return { updatedPerson, updatedSession };
   }, []);
 
+  const bakeCookies = React.useCallback((pUser, pClient, pPerson, pDays = 90) => {
+    if (!pUser) return;
+    const expirySeconds = Math.max(60, Math.round((Number(pDays) || 90) * 24 * 60 * 60));
+    setCookie('AVAuser',
+      JSON.stringify({
+        user_id: pUser,
+        client: pClient,
+        person_id: pPerson
+      }), { path: '/', maxAge: expirySeconds });
+    if (pClient) {
+      setCookie('AVAclient', JSON.stringify({
+        client: pClient,
+      }), { path: '/', maxAge: expirySeconds });
+    }
+  }, [setCookie]);
+
   const finalizeLoadedSession = React.useCallback(async (personRec, sessionRec) => {
     const patientRec = useSessionPatientRef.current
       ? await resolvePatientFromSession(personRec, sessionRec)
@@ -780,6 +796,18 @@ const LoginModuleV2 = ({
       setResolvedPatient(patientRec);
     }
 
+    // If a per-client cookie expiry is configured, re-bake now that customizations are loaded.
+    // This overwrites the initial 90-day cookie with the client-specific expiry.
+    const customExpiryDays = Number(customizedSession?.cookie_expiry_days);
+    if (customExpiryDays > 0 && customExpiryDays !== 90) {
+      bakeCookies(
+        personRec?.person_id,
+        customizedSession?.client_id || personRec?.client_id,
+        personRec?.person_id,
+        customExpiryDays
+      );
+    }
+
     applySessionToMemory(customizedSession || updatedSession, updatedPerson, patientRec || updatedPerson);
     updateSessionV2Record(customizedSession || updatedSession, updatedPerson, patientRec || updatedPerson);
     loadSyncInfo(customizedSession || updatedSession, patientRec || updatedPerson);
@@ -791,23 +819,7 @@ const LoginModuleV2 = ({
         patient: patientRec || updatedPerson,
       });
     }
-  }, [applySessionToMemory, computeAdminAccount, loadClientCustomizations, loadSyncInfo, onReady, resolvePatientFromSession, updateSessionV2Record]);
-
-  const bakeCookies = React.useCallback((pUser, pClient, pPerson) => {
-    if (!pUser) return;
-    const ninetyDays = 90 * 24 * 60 * 60;
-    setCookie('AVAuser',
-      JSON.stringify({
-        user_id: pUser,
-        client: pClient,
-        person_id: pPerson
-      }), { path: '/', maxAge: ninetyDays });
-    if (pClient) {
-      setCookie('AVAclient', JSON.stringify({
-        client: pClient,
-      }), { path: '/', maxAge: ninetyDays });
-    }
-  }, [setCookie]);
+  }, [applySessionToMemory, bakeCookies, computeAdminAccount, loadClientCustomizations, loadSyncInfo, onReady, resolvePatientFromSession, updateSessionV2Record]);
 
   const getNextStepFromSession = (sessionRec) => {
     if (!sessionRec) return 'user';
