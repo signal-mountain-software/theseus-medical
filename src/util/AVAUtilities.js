@@ -1328,16 +1328,27 @@ function resolvePathSpecValue(sourceRecord, pathSpec) {
 
   const compositeParts = [];
   for (const subPathSpec of pathSpec) {
-    if (typeof subPathSpec !== 'string' || !subPathSpec.trim()) {
+    if (((typeof subPathSpec) !== 'string') && !Array.isArray(subPathSpec)) {
       continue;
     }
-    const subValue = getValueByPath(sourceRecord, subPathSpec);
+    if ((typeof subPathSpec === 'string') && !subPathSpec.trim()) {
+      continue;
+    }
+
+    const subValue = resolvePathSpecValue(sourceRecord, subPathSpec);
     if (!isGoodResolvedValue(subValue)) {
       continue;
     }
-    const partValue = stringifyResolvedPart(subValue);
-    if (partValue) {
-      compositeParts.push(partValue);
+
+    const subValues = Array.isArray(subValue) ? subValue : [subValue];
+    for (const subEntry of subValues) {
+      if (!isGoodResolvedValue(subEntry)) {
+        continue;
+      }
+      const partValue = stringifyResolvedPart(subEntry);
+      if (partValue) {
+        compositeParts.push(partValue);
+      }
     }
   }
 
@@ -1647,7 +1658,35 @@ function getValueByPath(sourceObject, pathSpec) {
   if (!sourceObject || !pathSpec || (typeof pathSpec !== 'string')) {
     return undefined;
   }
+
+  // Literal-first behavior: if the exact path resolves (even with a literal '*'),
+  // use it and skip wildcard expansion.
+  const literalValue = getValueByPathLiteral(sourceObject, pathSpec);
+  if (literalValue !== undefined) {
+    return literalValue;
+  }
+
+  if (!pathSpec.includes('*')) {
+    return undefined;
+  }
+
+  return getValueByWildcardPath(sourceObject, pathSpec);
+}
+
+function getValueByPathLiteral(sourceObject, pathSpec) {
+  if (!sourceObject || !pathSpec || (typeof pathSpec !== 'string')) {
+    return undefined;
+  }
+
   const pathParts = pathSpec.split('.').map((p) => p.trim()).filter((p) => p.length > 0);
+  return getValueByPathParts(sourceObject, pathParts);
+}
+
+function getValueByPathParts(sourceObject, pathParts = []) {
+  if (!sourceObject || !Array.isArray(pathParts) || pathParts.length === 0) {
+    return undefined;
+  }
+
   let currentValue = sourceObject;
   for (const part of pathParts) {
     if (currentValue === null || currentValue === undefined) {
@@ -1665,6 +1704,121 @@ function getValueByPath(sourceObject, pathSpec) {
     }
   }
   return currentValue;
+}
+
+function getValueByWildcardPath(sourceObject, pathSpec) {
+  if (!sourceObject || !pathSpec || (typeof pathSpec !== 'string')) {
+    return undefined;
+  }
+
+  const pathParts = pathSpec.split('.').map((p) => p.trim()).filter((p) => p.length > 0);
+  if (pathParts.length === 0) {
+    return undefined;
+  }
+
+  return resolveWildcardPathParts(sourceObject, pathParts);
+}
+
+function resolveWildcardPathParts(currentValue, pathParts = []) {
+  if (!Array.isArray(pathParts) || pathParts.length === 0) {
+    return currentValue;
+  }
+  if (currentValue === null || currentValue === undefined) {
+    return undefined;
+  }
+
+  const [thisPart, ...restPathParts] = pathParts;
+  if (typeof thisPart !== 'string' || !thisPart.trim()) {
+    return resolveWildcardPathParts(currentValue, restPathParts);
+  }
+
+  if (thisPart.includes('*') && !Array.isArray(currentValue) && (typeof currentValue === 'object')) {
+    const wildcardValues = resolveWildcardValues(currentValue, thisPart);
+    if (!Array.isArray(wildcardValues) || wildcardValues.length === 0) {
+      return undefined;
+    }
+
+    // If wildcard is terminal, return the populated values list.
+    if (restPathParts.length === 0) {
+      const populatedValues = wildcardValues.filter((entry) => isGoodResolvedValue(entry));
+      return populatedValues.length > 0 ? populatedValues : undefined;
+    }
+
+    // Continue traversal from wildcard-derived array.
+    return resolveWildcardPathParts(wildcardValues, restPathParts);
+  }
+
+  if (Array.isArray(currentValue)) {
+    const idx = Number(thisPart);
+    if (!Number.isInteger(idx)) {
+      return undefined;
+    }
+    return resolveWildcardPathParts(currentValue[idx], restPathParts);
+  }
+
+  return resolveWildcardPathParts(currentValue[thisPart], restPathParts);
+}
+
+function resolveWildcardValues(sourceObject, wildcardKey) {
+  if (!sourceObject || (typeof sourceObject !== 'object') || Array.isArray(sourceObject)) {
+    return [];
+  }
+  if (!wildcardKey || (typeof wildcardKey !== 'string') || !wildcardKey.includes('*')) {
+    return [];
+  }
+
+  const wildcardRegex = buildWildcardRegex(wildcardKey);
+  const matchingKeys = Object.keys(sourceObject)
+    .filter((keyName) => wildcardRegex.test(keyName))
+    .sort(compareWildcardKeys);
+
+  return matchingKeys.map((keyName) => sourceObject[keyName]);
+}
+
+function buildWildcardRegex(wildcardPattern = '') {
+  const escapedPattern = wildcardPattern
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*');
+
+  return new RegExp(`^${escapedPattern}$`);
+}
+
+function compareWildcardKeys(leftKey = '', rightKey = '') {
+  const leftParts = splitKeyNumericSuffix(leftKey);
+  const rightParts = splitKeyNumericSuffix(rightKey);
+
+  const baseCompare = leftParts.base.localeCompare(rightParts.base);
+  if (baseCompare !== 0) {
+    return baseCompare;
+  }
+
+  if ((leftParts.index !== null) && (rightParts.index !== null)) {
+    return leftParts.index - rightParts.index;
+  }
+  if (leftParts.index !== null) {
+    return -1;
+  }
+  if (rightParts.index !== null) {
+    return 1;
+  }
+
+  return `${leftKey}`.localeCompare(`${rightKey}`);
+}
+
+function splitKeyNumericSuffix(keyName = '') {
+  const keyText = `${keyName}`;
+  const found = keyText.match(/^(.*?)(\d+)$/);
+  if (!found) {
+    return {
+      base: keyText,
+      index: null
+    };
+  }
+
+  return {
+    base: found[1],
+    index: Number(found[2])
+  };
 }
 
 function isGoodResolvedValue(value) {
