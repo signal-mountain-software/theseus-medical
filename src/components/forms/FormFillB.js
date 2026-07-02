@@ -1148,7 +1148,8 @@ export default ({ request = {}, onClose }) => {
       returnObj.og_default = formatValue({
         rawValue: returnObj.field_value,
         type: returnObj.type,
-        date_format: field_variables.options?.date_format
+        date_format: field_variables.options?.date_format,
+        numeric_options: field_variables.options
       });
       returnObj.field_value = preset_values[field_name];
     }
@@ -1157,7 +1158,8 @@ export default ({ request = {}, onClose }) => {
     returnObj.field_valueText = formatValue({
       rawValue: returnObj.field_value,
       type: returnObj.type,
-      date_format: field_variables.options?.date_format
+      date_format: field_variables.options?.date_format,
+      numeric_options: field_variables.options
     });
 
     // Selection Obj should be set for the special case - type = select or type = select & text
@@ -1749,7 +1751,12 @@ export default ({ request = {}, onClose }) => {
                   : null;
                 reactData.fields[resolvedFieldName] = Object.assign({}, deepCopy(reactData.fields[baseFieldName]), {
                   value: docFieldValue,
-                  valueText: formatValue({ rawValue: docFieldValue, type: reactData.fields[baseFieldName].type, date_format: reactData.fields[baseFieldName].options?.date_format }),
+                  valueText: formatValue({
+                    rawValue: docFieldValue,
+                    type: reactData.fields[baseFieldName].type,
+                    date_format: reactData.fields[baseFieldName].options?.date_format,
+                    numeric_options: reactData.fields[baseFieldName].options
+                  }),
                   _occurrence_number: section_number,
                 });
               }
@@ -1782,7 +1789,61 @@ export default ({ request = {}, onClose }) => {
     }
   };
 
-  const formatValue = ({ rawValue, type, date_format }) => {
+  const parseNumericConstraint = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const resolveNumericDisplayOptions = (numeric_options = {}) => {
+    const minValue = parseNumericConstraint(numeric_options?.minValue ?? numeric_options?.min_value);
+    const maxValue = parseNumericConstraint(numeric_options?.maxValue ?? numeric_options?.max_value);
+
+    const configuredPadLength = Number.parseInt(
+      numeric_options?.padLength
+      ?? numeric_options?.pad_length
+      ?? numeric_options?.displayDigits
+      ?? numeric_options?.display_digits,
+      10
+    );
+
+    let padLength = Number.isFinite(configuredPadLength) && configuredPadLength > 0
+      ? configuredPadLength
+      : null;
+
+    if (!padLength) {
+      const maxDigits = Number.isFinite(maxValue) && maxValue >= 0
+        ? String(Math.trunc(maxValue)).length
+        : null;
+      const minDigits = Number.isFinite(minValue) && minValue >= 0
+        ? String(Math.trunc(minValue)).length
+        : null;
+      padLength = Math.max(maxDigits || 0, minDigits || 0) || null;
+    }
+
+    return {
+      minValue,
+      maxValue,
+      padLength,
+    };
+  };
+
+  const formatNumericDisplayValue = ({ value, numeric_options }) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return value;
+    }
+
+    const normalized = Math.trunc(parsed);
+    const { padLength } = resolveNumericDisplayOptions(numeric_options);
+    const absDigits = String(Math.abs(normalized));
+    const paddedDigits = (Number.isFinite(padLength) && padLength > 0)
+      ? absDigits.padStart(padLength, '0')
+      : absDigits;
+
+    return `${normalized < 0 ? '-' : ''}${paddedDigits}`;
+  };
+
+  const formatValue = ({ rawValue, type, date_format, numeric_options }) => {
     let source = makeArray(rawValue);
     let response = [];
     for (let [index, this_value] of source.entries()) {
@@ -1802,6 +1863,11 @@ export default ({ request = {}, onClose }) => {
         case 'time': {
           // return makeDate(rawValue, { noTime: true, noYearCorrection: true }).timeOnly;
           response[index] = makeTime(this_value).time;
+          break;
+        }
+        case 'number':
+        case 'numeric': {
+          response[index] = formatNumericDisplayValue({ value: this_value, numeric_options });
           break;
         }
         case 'id': {
@@ -1853,16 +1919,22 @@ export default ({ request = {}, onClose }) => {
     if (sentenceCase && newText && (newText.length === 1)) {
       newText = newText.toUpperCase();
     }
+    const resolvedValue = (newValue !== undefined)
+      ? newValue
+      : ((newList !== undefined)
+        ? newList
+        : newText);
     if (reactData.fields[prop].prompt?.occurrences && (reactData.fields[prop].prompt?.occurrences > 1)) {
-      reactData.fields[prop].value[occ_index] = newValue || newList || newText;
+      reactData.fields[prop].value[occ_index] = resolvedValue;
     }
     else {
-      reactData.fields[prop].value = newValue || newList || newText;
+      reactData.fields[prop].value = resolvedValue;
     }
     reactData.fields[prop].valueText = formatValue({
       rawValue: reactData.fields[prop].value,
       type: reactData.fields[prop].type,
-      date_format: reactData.fields[prop].options?.date_format
+      date_format: reactData.fields[prop].options?.date_format,
+      numeric_options: reactData.fields[prop].options
     });
     if (reactData.fields[prop].options.resetFields) {
       for (const this_resetter of makeArray(reactData.fields[prop].options.resetFields)) {
@@ -1877,7 +1949,8 @@ export default ({ request = {}, onClose }) => {
         reactData.fields[this_resetter].valueText = formatValue({
           rawValue: reactData.fields[this_resetter].value,
           type: reactData.fields[this_resetter].type,
-          date_format: reactData.fields[this_resetter].options?.date_format
+          date_format: reactData.fields[this_resetter].options?.date_format,
+          numeric_options: reactData.fields[this_resetter].options
         });
       }
     }
@@ -1929,7 +2002,8 @@ export default ({ request = {}, onClose }) => {
         reactData.fields[this_resetter].valueText = formatValue({
           rawValue: reactData.fields[this_resetter].value,
           type: reactData.fields[this_resetter].type,
-          date_format: reactData.fields[this_resetter].options?.date_format
+          date_format: reactData.fields[this_resetter].options?.date_format,
+          numeric_options: reactData.fields[this_resetter].options
         });
       }
     }
@@ -2166,7 +2240,8 @@ export default ({ request = {}, onClose }) => {
             let vValue = reactData.fields[extracted_field].valueText;
             vValue = listFromArray(formatValue({
               rawValue: reactData.fields[extracted_field].value,
-              type: reactData.fields[extracted_field].type
+              type: reactData.fields[extracted_field].type,
+              numeric_options: reactData.fields[extracted_field].options
             }));
             if (!vValue) {
               vValue = `<${titleCase(extracted_field.toLowerCase().replace(/[^a-z]/, ' '))}>`;
@@ -2324,7 +2399,8 @@ export default ({ request = {}, onClose }) => {
         reactData.fields[fieldName].valueText = formatValue({
           rawValue: reactData.fields[fieldName].value,
           type: reactData.fields[fieldName].type,
-          date_format: reactData.fields[fieldName].options?.date_format
+          date_format: reactData.fields[fieldName].options?.date_format,
+          numeric_options: reactData.fields[fieldName].options
         });
       }
     }
@@ -2563,7 +2639,8 @@ export default ({ request = {}, onClose }) => {
                   reactData.fields[props.prop].value = newValue;
                   reactData.fields[props.prop].valueText = formatValue({
                     rawValue: newValue,
-                    type: reactData.fields[props.prop].type
+                    type: reactData.fields[props.prop].type,
+                    numeric_options: reactData.fields[props.prop].options
                   });
                   updateReactData({
                     formUpdates: ++reactData.formUpdates,
@@ -3556,7 +3633,8 @@ export default ({ request = {}, onClose }) => {
       const fieldRec = reactData.fields?.[key];
       const valueText = formatValue({
         rawValue: fieldRec?.value,
-        type: fieldRec?.type
+        type: fieldRec?.type,
+        numeric_options: fieldRec?.options
       });
       if (fieldRec) { return String(valueText || fieldRec.value || ''); }
       return match;
@@ -3851,7 +3929,8 @@ export default ({ request = {}, onClose }) => {
         else if (reactData.fields.hasOwnProperty(a[2])) {
           v = formatValue({
             rawValue: reactData.fields[a[2]].value,
-            type: reactData.fields[a[2]].type
+            type: reactData.fields[a[2]].type,
+            numeric_options: reactData.fields[a[2]].options
           });
         }
         else if (o) {
@@ -3882,7 +3961,8 @@ export default ({ request = {}, onClose }) => {
           else {
             v = formatValue({
               rawValue: reactData.fields[a[2]].value,
-              type: reactData.fields[a[2]].type
+              type: reactData.fields[a[2]].type,
+              numeric_options: reactData.fields[a[2]].options
             });
           }
         }
@@ -3893,7 +3973,8 @@ export default ({ request = {}, onClose }) => {
           else {
             v = formatValue({
               rawValue: o[a[2]].value,
-              type: o[a[2]].type
+              type: o[a[2]].type,
+              numeric_options: o[a[2]].options
             });
           }
         }
@@ -4297,6 +4378,7 @@ export default ({ request = {}, onClose }) => {
 
     const fieldType = fieldRec.type;
     const isTextType = fieldType === 'text';
+    const isNumericValueType = (fieldType === 'number') || (fieldType === 'numeric');
     const isPhoneType = fieldType === 'phone';
     const isEmailType = fieldType === 'email';
     const isIdentityConfirmType = fieldType === 'identity_confirm';
@@ -4305,7 +4387,7 @@ export default ({ request = {}, onClose }) => {
     const isRequiredField = isFieldRequired(fieldRec);
     const isDisabled = fieldRec.options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked;
     const promptWidth = fieldRec?.prompt?.width;
-    const fallbackMinWidth = (isPhoneType || isDateSelectType || isDateOrTimeType) ? '20vw' : '60vw';
+    const fallbackMinWidth = (isPhoneType || isNumericValueType || isDateSelectType || isDateOrTimeType) ? '20vw' : '60vw';
     const textRows = Number(fieldRec.prompt?.rows || fieldRec.value?.rows || 1);
     const resolvedMinWidth = promptWidth ? `${promptWidth}px` : fallbackMinWidth;
     const valueText = (fieldRec && fieldRec.valueText)
@@ -4419,6 +4501,13 @@ export default ({ request = {}, onClose }) => {
               overflowWrap: 'anywhere'
             }
           }
+          : isNumericValueType
+            ? {
+              'data-lpignore': 'true',
+              'data-form-type': 'other',
+              inputMode: 'numeric',
+              pattern: '[0-9]*'
+            }
           : {
             'data-lpignore': 'true',
             'data-form-type': 'other'
@@ -4478,6 +4567,57 @@ export default ({ request = {}, onClose }) => {
               prop: this_field,
               occ_index,
               sentenceCase: isTextType
+            });
+            return;
+          }
+
+          if (isNumericValueType) {
+            const rawEntry = String(event.target.value || '').trim();
+            if (!rawEntry) {
+              reactData.fields[this_field].isError = false;
+              reactData.fields[this_field].errorMessage = '';
+              await handleChangeValue({
+                newValue: null,
+                prop: this_field,
+                occ_index,
+                sentenceCase: false
+              });
+              return;
+            }
+
+            const digitsOnly = rawEntry.replace(/\D/g, '');
+            if (!digitsOnly) {
+              reactData.fields[this_field].isError = true;
+              reactData.fields[this_field].errorMessage = 'Please enter numbers only';
+              updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+              return;
+            }
+
+            const parsedValue = Number.parseInt(digitsOnly, 10);
+            const numericOptions = fieldRec.options || fieldRec.prompt || {};
+            const { minValue, maxValue } = resolveNumericDisplayOptions(numericOptions);
+
+            if (Number.isFinite(minValue) && parsedValue < minValue) {
+              reactData.fields[this_field].isError = true;
+              reactData.fields[this_field].errorMessage = `Value must be at least ${formatNumericDisplayValue({ value: minValue, numeric_options: numericOptions })}`;
+              updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+              return;
+            }
+
+            if (Number.isFinite(maxValue) && parsedValue > maxValue) {
+              reactData.fields[this_field].isError = true;
+              reactData.fields[this_field].errorMessage = `Value must be ${formatNumericDisplayValue({ value: maxValue, numeric_options: numericOptions })} or less`;
+              updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+              return;
+            }
+
+            reactData.fields[this_field].isError = false;
+            reactData.fields[this_field].errorMessage = '';
+            await handleChangeValue({
+              newValue: parsedValue,
+              prop: this_field,
+              occ_index,
+              sentenceCase: false
             });
             return;
           }
@@ -4680,7 +4820,7 @@ export default ({ request = {}, onClose }) => {
                                     {''}
                                   </Typography>
                                 }
-                                {(['text', 'email', 'phone', 'date_select', 'date', 'date_past', 'time', 'age', 'identity_confirm'].includes(reactData.fields[this_field].type))
+                                {(['text', 'email', 'phone', 'number', 'numeric', 'date_select', 'date', 'date_past', 'time', 'age', 'identity_confirm'].includes(reactData.fields[this_field].type))
                                   && renderTextLikeField({ this_field, occ_index, sectionNdx, fieldNdx })
                                 }
                                 {(reactData.fields[this_field].type === 'header') && (occ_index === 0) &&

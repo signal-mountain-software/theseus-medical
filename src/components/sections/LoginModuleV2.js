@@ -20,6 +20,8 @@ import MakeAVAMenu from '../../util/MakeAVAMenu';
 import QuickAdd from './QuickAdd';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
+const SESSION_POLICY_STATE_KEY = 'AVA_session_policy_state';
+
 const LoginModuleV2 = ({
   branding = {},
   initialStep = 'user',
@@ -110,6 +112,52 @@ const LoginModuleV2 = ({
   const savedClientCookie = normalizeCookieValue(cookies?.AVAclient);
   // const savedActionCookie = normalizeCookieValue(cookies?.AVAaction);
 
+  const getEffectiveCookieExpiryDays = React.useCallback((sessionLike) => {
+    const policyHours = Number(sessionLike?.session_policy?.cookie_ttl_hours);
+    if (Number.isFinite(policyHours) && policyHours > 0) {
+      return (policyHours / 24);
+    }
+
+    const allowLegacyFallback = (sessionLike?.session_policy?.fallback_to_legacy_cookie_expiry_days !== false);
+    const customExpiryDays = Number(sessionLike?.cookie_expiry_days);
+    if (allowLegacyFallback && Number.isFinite(customExpiryDays) && customExpiryDays > 0) {
+      return customExpiryDays;
+    }
+
+    return 90;
+  }, []);
+
+  const persistSessionPolicyState = React.useCallback((sessionLike, personLike) => {
+    if (!sessionLike?.session_policy || typeof sessionLike.session_policy !== 'object') {
+      return;
+    }
+
+    const now = new Date();
+    const startedAt = now.toISOString();
+    const policyHours = Number(sessionLike?.session_policy?.absolute_session_max_hours);
+    const fallbackDays = Number(getEffectiveCookieExpiryDays(sessionLike));
+    const fallbackHours = Number.isFinite(fallbackDays) && fallbackDays > 0 ? (fallbackDays * 24) : null;
+    const effectiveHours = (Number.isFinite(policyHours) && policyHours > 0) ? policyHours : fallbackHours;
+    const expiresAt = effectiveHours ? new Date(now.getTime() + (effectiveHours * 60 * 60 * 1000)).toISOString() : null;
+
+    const policyState = {
+      version: 1,
+      client_id: sessionLike?.client_id || personLike?.client_id || null,
+      user_id: personLike?.person_id || sessionLike?.user_id || sessionLike?.session_id || null,
+      started_at: startedAt,
+      last_active_at: startedAt,
+      expires_at: expiresAt,
+      policy: sessionLike?.session_policy || null,
+    };
+
+    try {
+      localStorage.setItem(SESSION_POLICY_STATE_KEY, JSON.stringify(policyState));
+    }
+    catch {
+      // Ignore storage write failures; policy enforcement will gracefully fallback.
+    }
+  }, [getEffectiveCookieExpiryDays]);
+
   const getUrlParams = React.useCallback(() => {
     const params = new URLSearchParams(window.location.search || '');
     const obj = {};
@@ -118,6 +166,16 @@ const LoginModuleV2 = ({
     });
     return obj;
   }, []);
+
+  React.useEffect(() => {
+    const params = getUrlParams();
+    if (!params?.session_msg) {
+      return;
+    }
+
+    const reasonText = params?.session_reason ? ` (${params.session_reason})` : '';
+    setAlertMessage(`${params.session_msg}${reasonText}`);
+  }, [getUrlParams]);
 
   const getClientNameForId = React.useCallback(async (clientId) => {
     if (!clientId) return '';
@@ -796,17 +854,19 @@ const LoginModuleV2 = ({
       setResolvedPatient(patientRec);
     }
 
-    // If a per-client cookie expiry is configured, re-bake now that customizations are loaded.
-    // This overwrites the initial 90-day cookie with the client-specific expiry.
-    const customExpiryDays = Number(customizedSession?.cookie_expiry_days);
-    if (customExpiryDays > 0 && customExpiryDays !== 90) {
+    // Re-bake now that customizations are loaded so per-client policy can override
+    // the initial default maxAge set during early auth.
+    const effectiveCookieDays = Number(getEffectiveCookieExpiryDays(customizedSession));
+    if (effectiveCookieDays > 0 && effectiveCookieDays !== 90) {
       bakeCookies(
         personRec?.person_id,
         customizedSession?.client_id || personRec?.client_id,
         personRec?.person_id,
-        customExpiryDays
+        effectiveCookieDays
       );
     }
+
+    persistSessionPolicyState(customizedSession || updatedSession, updatedPerson);
 
     applySessionToMemory(customizedSession || updatedSession, updatedPerson, patientRec || updatedPerson);
     updateSessionV2Record(customizedSession || updatedSession, updatedPerson, patientRec || updatedPerson);
@@ -819,7 +879,7 @@ const LoginModuleV2 = ({
         patient: patientRec || updatedPerson,
       });
     }
-  }, [applySessionToMemory, bakeCookies, computeAdminAccount, loadClientCustomizations, loadSyncInfo, onReady, resolvePatientFromSession, updateSessionV2Record]);
+  }, [applySessionToMemory, bakeCookies, computeAdminAccount, getEffectiveCookieExpiryDays, loadClientCustomizations, loadSyncInfo, onReady, persistSessionPolicyState, resolvePatientFromSession, updateSessionV2Record]);
 
   const getNextStepFromSession = (sessionRec) => {
     if (!sessionRec) return 'user';

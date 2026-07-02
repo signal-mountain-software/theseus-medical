@@ -11,6 +11,7 @@ import ClientMessagingSection from './ClientMessagingSection';
 import WeatherSection from '../sections/WeatherSection';
 import GlobalMessagePreferencesSection from '../sections/GlobalMessagePreferencesSection';
 import ClientImportSection from '../sections/ClientImportSection';
+import SessionSecuritySection from '../sections/SessionSecuritySection';
 
 import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -34,6 +35,19 @@ const useStyles = makeStyles(theme => ({
 }));
 
 export default ({ client_id, personRec, initialValues, options = {}, onClose }) => {
+
+  const defaultSessionPolicy = {
+    version: 1,
+    mode: 'persistent',
+    cookie_ttl_hours: 2160,
+    absolute_session_max_hours: 2160,
+    idle_timeout_minutes: null,
+    force_reauth_on_resume: false,
+    force_reauth_on_refresh: false,
+    enforce_on_sensitive_actions: false,
+    logout_message: 'Session expired. Please sign in again.',
+    fallback_to_legacy_cookie_expiry_days: true,
+  };
 
   const isMounted = React.useRef(false);
   const { state } = useSession();
@@ -106,6 +120,9 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
       GlobalMessagePreferencesSection: {
         component_id: GlobalMessagePreferencesSection,
       },
+      SessionSecuritySection: {
+        component_id: SessionSecuritySection,
+      },
       ClientImportSection: {
         component_id: ClientImportSection,
       }
@@ -177,6 +194,14 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
           component_name: 'ClientMessagingSection'
         },
         {
+          section_name: 'Session Security',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'SessionSecuritySection'
+        },
+        {
           section_name: 'Import Accounts',
           color: initialValues?.color || 'orange',
           isOpen: false,
@@ -233,6 +258,11 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
             custom_key: 'client_style',
             customization_value: {}
           },
+          session_policy: {
+            client_id: reactData.client_id,
+            custom_key: 'session_policy',
+            customization_value: deepCopy(defaultSessionPolicy)
+          },
         }
       };
       if (recordExists(cRecs)) {
@@ -263,6 +293,15 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
                 this_cRec.customization_value.time_based_rules = [];
               }
               reactUpdObj.og.customizationRecs['global_mail_rules'].customization_value.time_based_rules = this_cRec.customization_value.time_based_rules;
+              break;
+            }
+            case 'session_policy': {
+              this_cRec.customization_value = Object.assign(
+                {},
+                deepCopy(defaultSessionPolicy),
+                this_cRec.customization_value || {}
+              );
+              reactUpdObj.og.customizationRecs.session_policy = this_cRec;
               break;
             }
             default: {

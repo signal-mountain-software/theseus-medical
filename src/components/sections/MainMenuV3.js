@@ -100,6 +100,8 @@ import IosInstall from '../dialogs/IosInstall';
 import useIosCheck from '../../hooks/useIosCheck';
 import useWebPrompt from '../../hooks/useWebPrompt';
 
+const SESSION_POLICY_STATE_KEY = 'AVA_session_policy_state';
+
 const useStyles = makeStyles(theme => ({
   root: {
     maxWidth: 100,
@@ -190,7 +192,7 @@ export default ({ start_at }) => {
   const clientUseTileUI = (state.session?.client_style?.ui_tiles === true);
   const canToggleUiMode = !clientUseTileUI;
 
-  const [, , removeCookie] = useCookies(['AVAuser']);
+  const [cookies, , removeCookie] = useCookies(['AVAuser']);
 
   const [reactData, setReactData] = React.useState({
     /**** NEW V3 CODE ****/
@@ -314,6 +316,151 @@ export default ({ start_at }) => {
   const oneMinute = 1000 * 60;
   const oneHour = 60 * oneMinute;
   const msBeforeSleeping = 1 * oneMinute;
+  const policyLogoutInProgressRef = React.useRef(false);
+
+  const normalizeCookieValue = (value) => {
+    if (!value) return null;
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      }
+      catch {
+        return null;
+      }
+    }
+    return value;
+  };
+
+  const readSessionPolicyState = () => {
+    try {
+      const raw = localStorage.getItem(SESSION_POLICY_STATE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return (parsed && typeof parsed === 'object') ? parsed : null;
+    }
+    catch {
+      return null;
+    }
+  };
+
+  const writeSessionPolicyState = (nextState) => {
+    try {
+      localStorage.setItem(SESSION_POLICY_STATE_KEY, JSON.stringify(nextState));
+    }
+    catch {
+      // Ignore storage write failures; policy enforcement will gracefully fallback.
+    }
+  };
+
+  const getEffectivePolicy = React.useCallback(() => {
+    const policy = state.session?.session_policy;
+    if (!policy || typeof policy !== 'object') {
+      return null;
+    }
+
+    return {
+      mode: policy.mode || 'persistent',
+      absolute_session_max_hours: Number(policy.absolute_session_max_hours),
+      idle_timeout_minutes: Number(policy.idle_timeout_minutes),
+      force_reauth_on_resume: !!policy.force_reauth_on_resume,
+      force_reauth_on_refresh: !!policy.force_reauth_on_refresh,
+      enforce_on_sensitive_actions: !!policy.enforce_on_sensitive_actions,
+      logout_message: policy.logout_message || 'Session expired. Please sign in again.',
+    };
+  }, [state.session]);
+
+  const forcePolicyLogout = React.useCallback(async (reason, message) => {
+    if (policyLogoutInProgressRef.current) {
+      return false;
+    }
+    policyLogoutInProgressRef.current = true;
+
+    const userId = state.session?.user_id || state.session?.person_id;
+    const clientId = state.session?.client_id;
+
+    await accessLog(userId || '*unknown*', '*na*', `Session policy sign-out: ${reason}`);
+    removeCookie('AVAuser', { path: '/' });
+    localStorage.removeItem(SESSION_POLICY_STATE_KEY);
+    if (userId) {
+      await clearPushSubscriptionFromDB(userId).catch(() => null);
+    }
+    await Auth.signOut().catch(() => null);
+
+    const jumpTo = window.location.origin;
+    const messageText = encodeURIComponent(message || 'Session expired. Please sign in again.');
+    const reasonText = encodeURIComponent(reason || 'unknown');
+    window.location.replace(`${jumpTo}?client=${clientId}&session_msg=${messageText}&session_reason=${reasonText}`);
+    return false;
+  }, [removeCookie, state.session]);
+
+  const validateSessionPolicy = React.useCallback(async ({ trigger = 'activity' } = {}) => {
+    if (!state.session) {
+      return true;
+    }
+
+    const policy = getEffectivePolicy();
+    if (!policy) {
+      return true;
+    }
+
+    if ((trigger === 'resume') && policy.force_reauth_on_resume) {
+      return forcePolicyLogout('forced_resume', policy.logout_message);
+    }
+
+    if ((trigger === 'refresh') && policy.force_reauth_on_refresh) {
+      return forcePolicyLogout('forced_refresh', policy.logout_message);
+    }
+
+    const userCookie = normalizeCookieValue(cookies?.AVAuser);
+    if (!userCookie?.user_id) {
+      return forcePolicyLogout('cookie_missing', policy.logout_message);
+    }
+
+    const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
+    const sessionUserId = state.session?.user_id || state.session?.person_id;
+    const sessionClientId = state.session?.client_id;
+    let policyState = readSessionPolicyState();
+
+    if (!policyState
+      || policyState.client_id !== sessionClientId
+      || (policyState.user_id && sessionUserId && policyState.user_id !== sessionUserId)) {
+      const startedAt = nowIso;
+      const maxHours = Number.isFinite(policy.absolute_session_max_hours) && policy.absolute_session_max_hours > 0
+        ? policy.absolute_session_max_hours
+        : null;
+      const expiresAt = maxHours ? new Date(nowMs + (maxHours * oneHour)).toISOString() : null;
+      policyState = {
+        version: 1,
+        client_id: sessionClientId,
+        user_id: sessionUserId,
+        started_at: startedAt,
+        last_active_at: nowIso,
+        expires_at: expiresAt,
+      };
+      writeSessionPolicyState(policyState);
+    }
+
+    const parsedExpires = Date.parse(policyState.expires_at || '');
+    if (Number.isFinite(parsedExpires) && nowMs > parsedExpires) {
+      return forcePolicyLogout('absolute_expired', policy.logout_message);
+    }
+
+    const idleMinutes = Number(policy.idle_timeout_minutes);
+    if (Number.isFinite(idleMinutes) && idleMinutes > 0) {
+      const lastActiveMs = Date.parse(policyState.last_active_at || policyState.started_at || nowIso);
+      if (Number.isFinite(lastActiveMs) && (nowMs - lastActiveMs) > (idleMinutes * oneMinute)) {
+        return forcePolicyLogout('idle_timeout', policy.logout_message);
+      }
+    }
+
+    if (trigger !== 'idle') {
+      policyState.last_active_at = nowIso;
+      writeSessionPolicyState(policyState);
+    }
+
+    return true;
+  }, [cookies, forcePolicyLogout, getEffectivePolicy, oneHour, oneMinute, state.session]);
 
   const addMenuUploadInputRef = React.useRef(null);
   const tileContainerRef = React.useRef(null);
@@ -429,6 +576,12 @@ export default ({ start_at }) => {
       }, true);
       return [];
     }
+
+    const policyOk = await validateSessionPolicy({ trigger: 'refresh' });
+    if (!policyOk) {
+      return [];
+    }
+
     if (includeLoadingState) {
       updateReactData({
         loading: 'Building your AVA menu'
@@ -543,6 +696,11 @@ export default ({ start_at }) => {
   };
 
   const onIdle = async () => {
+    const policyOk = await validateSessionPolicy({ trigger: 'idle' });
+    if (!policyOk) {
+      return;
+    }
+
     let now = new Date();
     let minutesSinceActive = 0;
     if (!reactData.idleState) {
@@ -606,6 +764,11 @@ export default ({ start_at }) => {
   };
 
   async function onAction() {
+    const policyOk = await validateSessionPolicy({ trigger: 'activity' });
+    if (!policyOk) {
+      return;
+    }
+
     let now = new Date();
     if ((reactData.idleState) || ((now.getTime() - reactData.lastActiveTime.getTime()) > oneMinute)) {
       cl(`Action/Update at ${now.toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}`);
@@ -1913,6 +2076,27 @@ export default ({ start_at }) => {
   }, [useTileUI]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
+    const handleResume = () => {
+      void validateSessionPolicy({ trigger: 'resume' });
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        handleResume();
+      }
+    };
+
+    window.addEventListener('focus', handleResume);
+    window.addEventListener('pageshow', handleResume);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.removeEventListener('focus', handleResume);
+      window.removeEventListener('pageshow', handleResume);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [validateSessionPolicy]);
+
+  React.useEffect(() => {
     if (!useTileUI || !tileContainerRef.current) { return; }
     const currentDepth = reactData.menu_hierarchy.filter(
       (level) => Array.isArray(level) && level.some((c) => !c.menuItemRec?.hidden)
@@ -2595,8 +2779,42 @@ export default ({ start_at }) => {
   };
 
   function makeExpiration() {
-    let cognito_expires = JSON.parse(sessionStorage.getItem('cognito_expires'));
-    let sTime = new Date(cognito_expires ? (cognito_expires * 1000) : (nowTime + oneHour));
+    const policy = getEffectivePolicy();
+    const policyState = readSessionPolicyState();
+    const candidateExpirations = [];
+
+    const absoluteExpiryMs = Date.parse(policyState?.expires_at || '');
+    if (Number.isFinite(absoluteExpiryMs)) {
+      candidateExpirations.push(absoluteExpiryMs);
+    }
+
+    const idleMinutes = Number(policy?.idle_timeout_minutes);
+    if (Number.isFinite(idleMinutes) && idleMinutes > 0) {
+      const idleAnchorMs = Date.parse(policyState?.last_active_at || policyState?.started_at || '');
+      if (Number.isFinite(idleAnchorMs)) {
+        candidateExpirations.push(idleAnchorMs + (idleMinutes * oneMinute));
+      }
+    }
+
+    let displayExpiryMs = candidateExpirations.length > 0
+      ? Math.min(...candidateExpirations)
+      : null;
+
+    if (!Number.isFinite(displayExpiryMs)) {
+      let cognitoExpiresRaw = null;
+      try {
+        cognitoExpiresRaw = JSON.parse(sessionStorage.getItem('cognito_expires'));
+      }
+      catch {
+        cognitoExpiresRaw = null;
+      }
+      const cognitoExpiresSeconds = Number(cognitoExpiresRaw);
+      displayExpiryMs = (Number.isFinite(cognitoExpiresSeconds) && cognitoExpiresSeconds > 0)
+        ? (cognitoExpiresSeconds * 1000)
+        : (nowTime + oneHour);
+    }
+
+    const sTime = new Date(displayExpiryMs);
     return `Sess exp ${sTime.toLocaleDateString('en-US', {
       month: 'numeric',
       day: 'numeric',
