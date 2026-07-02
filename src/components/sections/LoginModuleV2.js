@@ -440,6 +440,13 @@ const LoginModuleV2 = ({
   const handleCreateAccount = async () => {
     const entry = createAccountEntry || userId;
     const inputType = createAccountType || detectInputType(entry);
+    const urlParams = getUrlParams();
+    const clientId = urlParams?.client || urlParams?.client_id || urlParams?.create || resolvedPerson?.client_id || resolvedSession?.client_id || savedClientCookie?.client || savedClientCookie?.client_id || null;
+    if (clientId) {
+      const baseUrl = window.location.href.split('?')[0];
+      window.location.replace(`${baseUrl}?create=${clientId}`);
+      return;
+    }
     if (onCreateAccount) {
       onCreateAccount({ rawInput: entry, inputType });
       return;
