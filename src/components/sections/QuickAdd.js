@@ -1240,6 +1240,7 @@ export default ({ onClose, options = {} }) => {
     }
 
     let existingPerson = null;
+    let inactivePersonFoundForClient = false;
     let gotPerson = await dbClient
       .query({
         KeyConditionExpression: 'identifier = :i',
@@ -1250,13 +1251,38 @@ export default ({ onClose, options = {} }) => {
       .promise()
       .catch(error => { console.log(`getGroup ERROR reading Customizations; caught error is: ${error}`); });
     if (recordExists(gotPerson)) {
-      existingPerson = gotPerson.Items[0];
+      // PeopleAccounts identifiers are global; resolve candidates through People
+      // and only accept accounts that belong to the invoking client.
+      for (const accountRec of (gotPerson.Items || [])) {
+        if (!accountRec?.person_id) {
+          continue;
+        }
+
+        const personRec = await getDb({
+          Key: { person_id: accountRec.person_id },
+          TableName: 'People'
+        });
+
+        if (!personRec || personRec.client_id !== client_id) {
+          continue;
+        }
+
+        if (personRec.inactive_account) {
+          inactivePersonFoundForClient = true;
+          continue;
+        }
+
+        existingPerson = personRec;
+        break;
+      }
     }
 
     if (!existingPerson) {
+      if (inactivePersonFoundForClient) {
+        return { result: 'invalid', error_field: 0, reason: `We found an inactive account for ${IDString}, but nothing current.`, lookupString, lookupType };
+      }
       return { result: 'invalid', error_field: 0, reason: `We didn't find an account for ${IDString}`, lookupString, lookupType };
-    }
-    else if (existingPerson.inactive_account) {
+    } else if (existingPerson.inactive_account) {
       return { result: 'invalid', error_field: 0, reason: `We found an inactive account for ${IDString}, but nothing current.`, lookupString, lookupType };
     }
     else {
@@ -3741,6 +3767,11 @@ export default ({ onClose, options = {} }) => {
               }}
               size='small'
               onClick={() => {
+                if (reactData.family_members[0]?.account_config?.family_role === 'none') {
+                  goBackToEdit();
+                  return;
+                }
+
                 setReactData(prev => ({
                   ...prev,
                   stage: 'ask_for_more',
