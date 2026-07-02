@@ -3283,6 +3283,16 @@ export default ({ request = {}, onClose }) => {
         .filter(v => !isEmpty(v))
         .map(v => `${v}`);
     };
+    const defaultPersistReadOnlyTypes = new Set(['age']);
+    const shouldPersistFieldValue = (fieldRec = {}) => {
+      if (!fieldRec.options?.viewOnly) {
+        return true;
+      }
+      if (fieldRec.options?.persistOnSave || fieldRec.prompt?.persistOnSave) {
+        return true;
+      }
+      return defaultPersistReadOnlyTypes.has(fieldRec.type);
+    };
     for (const this_field in reactData.fields) {
       if (reactData.fields[this_field].bonusText) {   // an extra value added to the end of a list of selections (as in "other - please specify")
         let current_value = [reactData.fields[this_field].value].flat();
@@ -3291,7 +3301,7 @@ export default ({ request = {}, onClose }) => {
         reactData.fields[this_field].value = current_value;
         reactData.fields[this_field].valueText = listFromArray(current_value);
       }
-      if (!reactData.fields[this_field].options?.viewOnly) {
+      if (shouldPersistFieldValue(reactData.fields[this_field])) {
         field_values[this_field] = reactData.fields[this_field].value;
       }
       if (reactData.fields[this_field].ignore) { continue; }  // load the values, but don't save them anywhere
