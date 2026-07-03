@@ -1042,6 +1042,12 @@ export default ({ defaults, onClose }) => {
     }
     console.timeEnd('⏱️ Computing person statuses');
 
+    // Rebuild sorted IDs after doc processing because buildMasters can add people
+    // who are not in currently assigned groups but do have this form in history.
+    reactData.masterFormList[this_form].sortedMemberIds = Object.keys(reactData.masterFormList[this_form].memberList).sort((a, b) => {
+      return (reactData.masterFormList[this_form].memberList[a].sort_order > reactData.masterFormList[this_form].memberList[b].sort_order) ? 1 : -1;
+    });
+
     // INITIALIZE FILTERED LIST: Start with all people (no filter applied yet)
     reactData.masterFormList[this_form].filteredMemberIds = reactData.masterFormList[this_form].sortedMemberIds;
     applyFilterToForm(this_form);
