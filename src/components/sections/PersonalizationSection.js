@@ -2,7 +2,8 @@ import React from 'react';
 import Box from '@material-ui/core/Box';
 import { Slider, Typography, Button, Switch, TextField, Checkbox } from '@material-ui/core';
 import { AVATextStyle, AVAclasses, AVADefaults } from '../../util/AVAStyles';
-import { s3, cloudfront, isMobile } from '../../util/AVAUtilities';
+import { s3, cloudfront, isMobile, getObject } from '../../util/AVAUtilities';
+import { createPersonPhotoThumbFromFile } from '../../util/AVAPeople';
 import Select from 'react-dropdown-select';
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
@@ -352,10 +353,20 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
                   .getCroppedCanvas()
                   .toBlob((async (pBlob) => {
                     let editedPhoto = new File([pBlob], `${currentValues.peopleRec.person_id}.jpg`, { type: 'image/jpeg' });
+                    const personThumb = await createPersonPhotoThumbFromFile(editedPhoto);
                     newPhoto = await handleSaveFile({ photo: editedPhoto, temp: false });
+                    if (personThumb) {
+                      await updateField({
+                        updateList: [{
+                          tableName: 'peopleRec',
+                          fieldName: 'person_photo',
+                          newData: personThumb
+                        }]
+                      });
+                    }
                     updateReactData({
                       imageEditing: false,
-                      myImage: newPhoto.Location,
+                      myImage: personThumb || newPhoto.Location,
                       OKtoSave: true,
                     }, true);
                   }), 'image/jpeg');
@@ -407,7 +418,7 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
                 size='small'
                 onClick={async () => {
                   updateReactData({
-                    imageEditing: reactData.myImage
+                    imageEditing: getObject(currentValues.peopleRec.person_id, 'image')
                   }, true);
                 }}
               >

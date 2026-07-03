@@ -2,11 +2,12 @@ import React from 'react';
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
 import { API, graphqlOperation } from 'aws-amplify';
-import { getPerson, getSession, makeName, makeSearchData, formatPhone } from '../../util/AVAPeople';
+import { getPerson, getSession, makeName, makeSearchData, formatPhone, getImage, createPersonPhotoThumbFromFile, persistPersonPhotoThumb } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
 import { getObject, cl, dbClient, s3, lambda, cloudfront, titleCase, deepCopy } from '../../util/AVAUtilities';
 import { createPutFact } from '../../graphql/mutations';
 import useSession from '../../hooks/useSession';
+import { syncPersonToSessionCaches } from '../../util/AVASessionSync';
 
 import { useSnackbar } from 'notistack';
 
@@ -214,7 +215,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
   const [cropperInstance, setCropper] = React.useState();
 
   const { enqueueSnackbar } = useSnackbar();
-  const { state } = useSession();
+  const { state, dispatch } = useSession();
 
   const [user_fontSize, setUserFontSize] = React.useState(1);
   const [fontFactor,] = React.useState(1);
@@ -331,7 +332,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
           preferred_method: localPersonRec.preferred_method || 'AVA',
           respArray: (finalRespArray || []),
           nameObj: (nameObj || {}),
-          photoURL: await getObject(`${patient.person_id}`, 'image'),
+          photoURL: getImage(localPersonRec || patient.person_id),
           requirePassword: (targetSession.hasOwnProperty('requirePassword') ? targetSession.requirePassword : false),
           storePassword: (targetSession.hasOwnProperty('storePassword') ? targetSession.storePassword : true),
           subscription_status: targetSession.subscription_status || 'na',
@@ -794,7 +795,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
           cl(`caught error updating People; error is: `, error);
         });
       // copy photo
-      let [fileID, extension] = localData.photoURL.split('/').pop().split('?').shift().split('.');
+      let [fileID, extension] = getObject(patient.person_id, 'image').split('/').pop().split('?').shift().split('.');
       let copy_response = await s3.copyObject({
         CopySource: `theseus-medical-storage/public/patients/${fileID}.${extension}`,
         Bucket: 'theseus-medical-storage',
@@ -966,7 +967,21 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
         });
         enqueueSnackbar(`The new image is saved, but you'll still see the old one for a little while`, { variant: 'warning', persist: false });
       });
-    localData.photoURL = await getObject(patient.person_id, 'image');
+
+    const personThumb = await createPersonPhotoThumbFromFile(pTarget);
+    if (personThumb) {
+      await persistPersonPhotoThumb(patient.person_id, personThumb);
+      syncPersonToSessionCaches({
+        state,
+        dispatch,
+        personRec: {
+          person_id: patient.person_id,
+          person_photo: personThumb
+        }
+      });
+    }
+
+    localData.photoURL = personThumb || getImage(patient.person_id);
     setLocalData(localData);
     return;
   };
@@ -1469,7 +1484,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
                         hidden={patient.person_id.startsWith('*NEW~')}
                         size='small'
                         onClick={async () => {
-                          setEditPhoto(localData.photoURL);
+                          setEditPhoto(getObject(patient.person_id, 'image'));
                         }}
                       >
                         <Typography>Edit this photo</Typography>
