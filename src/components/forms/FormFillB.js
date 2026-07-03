@@ -2367,6 +2367,109 @@ export default ({ request = {}, onClose }) => {
     await printWithLegacyPdfEngine();
   };
 
+  const resolveFieldKeyForOccurrence = ({ fieldKey, occurrenceNumber }) => {
+    if (!fieldKey || !occurrenceNumber || occurrenceNumber === 1) {
+      return fieldKey;
+    }
+
+    const candidateKeys = [];
+
+    // _occ style (deceased_date_of_birth -> deceased_date_of_birth_occ2)
+    if (/_occ\d+$/.test(fieldKey)) {
+      candidateKeys.push(fieldKey.replace(/_occ\d+$/, `_occ${occurrenceNumber}`));
+    }
+    else {
+      candidateKeys.push(`${fieldKey}_occ${occurrenceNumber}`);
+    }
+
+    // '1'-placeholder style used in FormFillB section expansion
+    const replaceFirstOne = `${fieldKey}`.replace('1', String(occurrenceNumber));
+    if (replaceFirstOne !== fieldKey) {
+      candidateKeys.push(replaceFirstOne);
+    }
+
+    // Token-like '1' replacement fallback (matches checkIgnore strategy)
+    const replaceStandaloneOne = `${fieldKey}`.replace(/(^|[^0-9])1($|[^0-9])/, `$1${occurrenceNumber}$2`);
+    if (replaceStandaloneOne !== fieldKey) {
+      candidateKeys.push(replaceStandaloneOne);
+    }
+
+    // Keep input key as final fallback.
+    candidateKeys.push(fieldKey);
+
+    const deduped = candidateKeys.filter((candidate, index) => {
+      return candidate && candidateKeys.indexOf(candidate) === index;
+    });
+
+    const existing = deduped.find((candidate) => reactData.fields?.[candidate]);
+    return existing || deduped[0] || fieldKey;
+  };
+
+  const computeAgeValueForField = (fieldName) => {
+    const ageFieldRec = reactData.fields?.[fieldName];
+    if (!ageFieldRec || ageFieldRec.type !== 'age') {
+      return null;
+    }
+
+    // The age config (from_field, to_field, unit) is merged into prompt.
+    const ageFieldDef = ageFieldRec.prompt || {};
+    const occurrenceNumber = ageFieldRec._occurrence_number ?? null;
+    const fromFieldName = resolveFieldKeyForOccurrence({
+      fieldKey: ageFieldDef.from_field,
+      occurrenceNumber
+    });
+    const toFieldName = resolveFieldKeyForOccurrence({
+      fieldKey: ageFieldDef.to_field,
+      occurrenceNumber
+    });
+    const unit = ageFieldDef.unit || 'years';
+
+    // Prefer the in-form source field value, then optional from_source fallback.
+    let fromRawValue = fromFieldName ? (reactData.fields[fromFieldName]?.value ?? null) : null;
+    if (!fromRawValue && ageFieldDef.from_source) {
+      const fromSourcePath = makeArray(ageFieldDef.from_source, '.');
+      const fromSourceFile = fromSourcePath[0].toLowerCase();
+      const fromSourceKey = fromSourcePath.slice(1);
+      if (fromSourceFile.startsWith('person') || fromSourceFile.startsWith('people')) {
+        fromRawValue = resolve({ object: reactData.peopleRec[reactData.pertains_to], key: fromSourceKey });
+      }
+      else if (fromSourceFile.startsWith('session')) {
+        fromRawValue = resolve({ object: reactData.sessionRec[reactData.pertains_to], key: fromSourceKey });
+      }
+    }
+
+    const toRawValue = toFieldName
+      ? (reactData.fields[toFieldName]?.value ?? null)
+      : (ageFieldDef.to_date ?? null);
+
+    let computedAge = null;
+    if (fromRawValue) {
+      const fromObj = makeDate(fromRawValue, { noTime: true, noYearCorrection: true });
+      if (!fromObj.error) {
+        const toDate = toRawValue
+          ? (() => { const d = makeDate(toRawValue, { noTime: true, noYearCorrection: true }); return d.error ? null : d.date; })()
+          : (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })();
+        if (toDate) {
+          const from = fromObj.date;
+          if (unit === 'days') {
+            computedAge = String(Math.floor((toDate - from) / (1000 * 60 * 60 * 24)));
+          } else if (unit === 'months') {
+            let months = (toDate.getFullYear() - from.getFullYear()) * 12 + (toDate.getMonth() - from.getMonth());
+            if (toDate.getDate() < from.getDate()) { months--; }
+            computedAge = String(Math.max(0, months));
+          } else {
+            // years (default)
+            let years = toDate.getFullYear() - from.getFullYear();
+            if (toDate.getMonth() < from.getMonth() || (toDate.getMonth() === from.getMonth() && toDate.getDate() < from.getDate())) { years--; }
+            computedAge = String(Math.max(0, years));
+          }
+        }
+      }
+    }
+
+    return computedAge;
+  };
+
   // **************************
 
   const processFieldForDisplay = async (fieldName) => {
@@ -2422,61 +2525,13 @@ export default ({ request = {}, onClose }) => {
 
     // Compute value for 'age' type fields — always read-only, derived from source date fields
     if (reactData.fields[fieldName].type === 'age') {
-      // The age config (from_field, to_field, unit) lives in field.prompt because processFieldForSectionField
-      // does: returnObj.prompt = Object.assign({}, field_variables.value, field_variables.prompt)
-      // which merges the value config into prompt. field.value is the mutable computed result.
-      const ageFieldDef = reactData.fields[fieldName].prompt || {};
-      const fromFieldName = ageFieldDef.from_field;
-      const toFieldName = ageFieldDef.to_field;
-      const unit = ageFieldDef.unit || 'years';
+      const computedAge = computeAgeValueForField(fieldName);
+      const computedAgeText = computedAge ?? '';
 
-      // from_source: resolve directly from peopleRec/sessionRec (bypasses form field dependency)
-      let fromRawValue = fromFieldName ? (reactData.fields[fromFieldName]?.value ?? null) : null;
-      if (!fromRawValue && ageFieldDef.from_source) {
-        const fromSourcePath = makeArray(ageFieldDef.from_source, '.');
-        const fromSourceFile = fromSourcePath[0].toLowerCase();
-        const fromSourceKey = fromSourcePath.slice(1);
-        if (fromSourceFile.startsWith('person') || fromSourceFile.startsWith('people')) {
-          fromRawValue = resolve({ object: reactData.peopleRec[reactData.pertains_to], key: fromSourceKey });
-        }
-        else if (fromSourceFile.startsWith('session')) {
-          fromRawValue = resolve({ object: reactData.sessionRec[reactData.pertains_to], key: fromSourceKey });
-        }
-      }
-
-      const toRawValue = toFieldName
-        ? (reactData.fields[toFieldName]?.value ?? null)
-        : (ageFieldDef.to_date ?? null);
-
-      let computedAge = '';
-      if (fromRawValue) {
-        const fromObj = makeDate(fromRawValue, { noTime: true, noYearCorrection: true });
-        if (!fromObj.error) {
-          const toDate = toRawValue
-            ? (() => { const d = makeDate(toRawValue, { noTime: true, noYearCorrection: true }); return d.error ? null : d.date; })()
-            : (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })();
-          if (toDate) {
-            const from = fromObj.date;
-            if (unit === 'days') {
-              computedAge = String(Math.floor((toDate - from) / (1000 * 60 * 60 * 24)));
-            } else if (unit === 'months') {
-              let months = (toDate.getFullYear() - from.getFullYear()) * 12 + (toDate.getMonth() - from.getMonth());
-              if (toDate.getDate() < from.getDate()) { months--; }
-              computedAge = String(Math.max(0, months));
-            } else {
-              // years (default)
-              let years = toDate.getFullYear() - from.getFullYear();
-              if (toDate.getMonth() < from.getMonth() || (toDate.getMonth() === from.getMonth() && toDate.getDate() < from.getDate())) { years--; }
-              computedAge = String(Math.max(0, years));
-            }
-          }
-        }
-      }
-
-      if (reactData.fields[fieldName].valueText !== computedAge) {
+      if (reactData.fields[fieldName].value !== computedAge || reactData.fields[fieldName].valueText !== computedAgeText) {
         hasChanges = true;
         reactData.fields[fieldName].value = computedAge;
-        reactData.fields[fieldName].valueText = computedAge;
+        reactData.fields[fieldName].valueText = computedAgeText;
       }
       // age fields are always read-only
       reactData.fields[fieldName].options = Object.assign({}, reactData.fields[fieldName].options, { viewOnly: true });
@@ -3301,7 +3356,16 @@ export default ({ request = {}, onClose }) => {
         reactData.fields[this_field].value = current_value;
         reactData.fields[this_field].valueText = listFromArray(current_value);
       }
-      if (shouldPersistFieldValue(reactData.fields[this_field])) {
+      // Defensive recompute at save-time to avoid stale derived age values when users
+      // click directly from a date field into Save/Complete.
+      if (reactData.fields[this_field].type === 'age') {
+        const computedAge = computeAgeValueForField(this_field);
+        reactData.fields[this_field].value = computedAge;
+        reactData.fields[this_field].valueText = computedAge ?? '';
+        reactData.fields[this_field].options = Object.assign({}, reactData.fields[this_field].options, { viewOnly: true });
+      }
+      const includeComputedAge = (reactData.fields[this_field].type === 'age');
+      if (!reactData.fields[this_field].options?.viewOnly || includeComputedAge) {
         field_values[this_field] = reactData.fields[this_field].value;
       }
       if (reactData.fields[this_field].ignore) { continue; }  // load the values, but don't save them anywhere
