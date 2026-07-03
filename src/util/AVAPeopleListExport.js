@@ -539,6 +539,83 @@ export async function downloadRowsAsPdf({
         }
         y += 4;
 
+      } else if (meta?.value_type === 'image') {
+        const rawValue = `${fieldValues[j] ?? ''}`.trim();
+        if (!rawValue) { continue; }
+
+        // Preserve compatibility with semicolon-joined arrays while supporting single URL values.
+        const imageUrls = rawValue
+          .split(';')
+          .map((candidate) => candidate.trim())
+          .filter(Boolean);
+        if (imageUrls.length === 0) { continue; }
+
+        if (y > pageHeight - margin - lineHeight * 3) {
+          doc.addPage();
+          y = margin;
+        }
+
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text(`${label}:`, margin, y);
+        y += lineHeight;
+
+        for (const imageUrl of imageUrls) {
+          const base64 = await loadImageAsBase64(imageUrl);
+          if (!base64) {
+            if (y > pageHeight - margin - lineHeight) {
+              doc.addPage();
+              y = margin;
+            }
+            doc.setFont('Helvetica', 'italic');
+            doc.setFontSize(9);
+            doc.text('[image unavailable]', margin + 8, y);
+            y += lineHeight;
+            continue;
+          }
+
+          const maxImageWidth = contentWidth;
+          const maxImageHeight = 180;
+          let drawWidth = maxImageWidth;
+          let drawHeight = maxImageHeight;
+
+          try {
+            const imageProps = doc.getImageProperties(base64);
+            const widthRatio = maxImageWidth / imageProps.width;
+            const heightRatio = maxImageHeight / imageProps.height;
+            const scale = Math.min(widthRatio, heightRatio);
+            drawWidth = imageProps.width * scale;
+            drawHeight = imageProps.height * scale;
+          } catch {
+            // Keep conservative defaults if metadata isn't available.
+          }
+
+          if (y + drawHeight > pageHeight - margin) {
+            doc.addPage();
+            y = margin;
+          }
+
+          const imageX = margin + ((contentWidth - drawWidth) / 2);
+          try {
+            doc.addImage(base64, 'JPEG', imageX, y, drawWidth, drawHeight);
+          }
+          catch {
+            try {
+              doc.addImage(base64, 'PNG', imageX, y, drawWidth, drawHeight);
+            }
+            catch {
+              doc.setFont('Helvetica', 'italic');
+              doc.setFontSize(9);
+              doc.text('[image unavailable]', margin + 8, y);
+              y += lineHeight;
+              continue;
+            }
+          }
+
+          y += drawHeight + 10;
+        }
+        y += 4;
+
       } else {
         // ── Standard "Label: value" row ──
         const value = `${fieldValues[j] ?? ''}`.trim();

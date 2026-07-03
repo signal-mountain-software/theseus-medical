@@ -1772,13 +1772,31 @@ function resolveWildcardValues(sourceObject, wildcardKey) {
     .filter((keyName) => wildcardRegex.test(keyName))
     .sort(compareWildcardKeys);
 
+  // For occurrence-style keys, include occurrence 1 when it is stored as the base key
+  // (e.g. deceased_date_of_birth + deceased_date_of_birth_occ2, _occ3, ...).
+  // Also include _occ1 if present, while avoiding duplicates.
+  if (wildcardKey.endsWith('_occ*')) {
+    const baseKey = wildcardKey.slice(0, -5);
+    const prefixedKeys = [];
+    if (Object.prototype.hasOwnProperty.call(sourceObject, baseKey)) {
+      prefixedKeys.push(baseKey);
+    }
+    const occ1Key = `${baseKey}_occ1`;
+    if (Object.prototype.hasOwnProperty.call(sourceObject, occ1Key)) {
+      prefixedKeys.push(occ1Key);
+    }
+
+    const dedupedMatchingKeys = matchingKeys.filter((keyName) => !prefixedKeys.includes(keyName));
+    return [...prefixedKeys, ...dedupedMatchingKeys].map((keyName) => sourceObject[keyName]);
+  }
+
   return matchingKeys.map((keyName) => sourceObject[keyName]);
 }
 
 function buildWildcardRegex(wildcardPattern = '') {
   const escapedPattern = wildcardPattern
     .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*');
+    .replace(/\*/g, '\\d+');
 
   return new RegExp(`^${escapedPattern}$`);
 }
@@ -1967,6 +1985,34 @@ async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_
       };
     }
     case 'phone': {
+      if (Array.isArray(rawValue)) {
+        const formattedList = [];
+        const detailsList = [];
+
+        for (const rawEntry of rawValue) {
+          const phoneInput = normalizePhoneInput(rawEntry);
+          if (!phoneInput) {
+            continue;
+          }
+
+          const lastTen = phoneInput.replace(/\D/g, '').slice(-10);
+          if (lastTen.length < 10) {
+            formattedList.push(phoneInput);
+            detailsList.push(null);
+            continue;
+          }
+
+          const phoneObj = validatePhone(lastTen);
+          formattedList.push(phoneObj?.display || phoneInput);
+          detailsList.push(phoneObj || null);
+        }
+
+        return {
+          formatted: formattedList,
+          details: detailsList
+        };
+      }
+
       const phoneInput = normalizePhoneInput(rawValue);
       if (!phoneInput) {
         return {
@@ -1987,7 +2033,46 @@ async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_
         details: phoneObj || null
       };
     }
+    case 'image': {
+      if (Array.isArray(rawValue)) {
+        const formattedList = rawValue
+          .map((entry) => {
+            if ((entry === null) || (entry === undefined)) {
+              return '';
+            }
+            return `${entry}`.trim();
+          })
+          .filter(Boolean);
+        return {
+          formatted: formattedList,
+          details: null
+        };
+      }
+
+      if ((rawValue === null) || (rawValue === undefined)) {
+        return {
+          formatted: null,
+          details: null
+        };
+      }
+
+      return {
+        formatted: `${rawValue}`.trim(),
+        details: null
+      };
+    }
     case 'date': {
+      if (Array.isArray(rawValue)) {
+        const formattedList = rawValue.map((rawEntry) => {
+          const dateObjOut = makeDate(rawEntry);
+          return dateObjOut.slashDate || rawEntry;
+        });
+        const detailsList = rawValue.map((rawEntry) => makeDate(rawEntry));
+        return {
+          formatted: formattedList,
+          details: detailsList
+        };
+      }
       const dateObjOut = makeDate(rawValue);
       return {
         formatted: dateObjOut.slashDate || rawValue,
@@ -1997,6 +2082,17 @@ async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_
     case 'datetime':
     case 'date_time':
     case 'date-time': {
+      if (Array.isArray(rawValue)) {
+        const formattedList = rawValue.map((rawEntry) => {
+          const dateObjOut = makeDate(rawEntry);
+          return dateObjOut.absolute || rawEntry;
+        });
+        const detailsList = rawValue.map((rawEntry) => makeDate(rawEntry));
+        return {
+          formatted: formattedList,
+          details: detailsList
+        };
+      }
       const dateObjOut = makeDate(rawValue);
       return {
         formatted: dateObjOut.absolute || rawValue,
@@ -2006,6 +2102,17 @@ async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_
     case 'time':
     case 'time_only':
     case 'time-only': {
+      if (Array.isArray(rawValue)) {
+        const formattedList = rawValue.map((rawEntry) => {
+          const dateObjOut = makeDate(rawEntry);
+          return dateObjOut.timeOnly || rawEntry;
+        });
+        const detailsList = rawValue.map((rawEntry) => makeDate(rawEntry));
+        return {
+          formatted: formattedList,
+          details: detailsList
+        };
+      }
       const dateObjOut = makeDate(rawValue);
       return {
         formatted: dateObjOut.timeOnly || rawValue,
@@ -2013,6 +2120,17 @@ async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_
       };
     }
     case 'age':{
+      if (Array.isArray(rawValue)) {
+        const formattedList = rawValue.map((rawEntry) => {
+          const dateObjOut = makeDate(rawEntry);
+          return dateObjOut.age || rawEntry;
+        });
+        const detailsList = rawValue.map((rawEntry) => makeDate(rawEntry));
+        return {
+          formatted: formattedList,
+          details: detailsList
+        };
+      }
       const dateObjOut = makeDate(rawValue);      
       return {
         formatted: dateObjOut.age || rawValue,

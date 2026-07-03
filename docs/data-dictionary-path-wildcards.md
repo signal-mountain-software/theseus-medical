@@ -17,6 +17,8 @@ This note documents wildcard path behavior used by dictionary resolution in `res
 - Matching values are returned as an ordered array.
 - Values are sorted by key with numeric suffix awareness (`_2` before `_10`).
 - Empty values are filtered for terminal wildcard results.
+- Wildcard matching is numeric-only in this implementation: `*` expands to one or more digits.
+- That means `food_allergy_*` matches `food_allergy_1` and `food_allergy_12`, but not `food_allergy_extra`.
 
 3. Wildcard-derived indexing
 - A path such as `food_allergies_*.0` means:
