@@ -36,6 +36,56 @@ const HOME = '/theseus';
 var hasError = false;
 let errorInfo = {};
 
+const parsePrimaryFrame = (stackText) => {
+  if (!stackText || typeof stackText !== 'string') {
+    return { fileName: undefined, location: undefined, topFrame: undefined };
+  }
+
+  const lines = stackText.split('\n').map((line) => line.trim()).filter(Boolean);
+  const topFrame = lines.find((line) => line.startsWith('at ')) || lines[1] || lines[0];
+  if (!topFrame) {
+    return { fileName: undefined, location: undefined, topFrame: undefined };
+  }
+
+  const chromeMatch = topFrame.match(/\((.*):(\d+):(\d+)\)$/) || topFrame.match(/at (.*):(\d+):(\d+)$/);
+  if (chromeMatch) {
+    return {
+      fileName: chromeMatch[1],
+      location: `${chromeMatch[2]}:${chromeMatch[3]}`,
+      topFrame
+    };
+  }
+
+  const ffMatch = topFrame.match(/@(.*):(\d+):(\d+)$/);
+  if (ffMatch) {
+    return {
+      fileName: ffMatch[1],
+      location: `${ffMatch[2]}:${ffMatch[3]}`,
+      topFrame
+    };
+  }
+
+  return { fileName: undefined, location: undefined, topFrame };
+};
+
+const toErrorInfo = (error, info) => {
+  const stack = error?.stack || '';
+  const componentStack = info?.componentStack || '';
+  const parsed = parsePrimaryFrame(stack);
+
+  return {
+    name: error?.name || 'Error',
+    message: error?.message || error?.cause || 'Unknown error',
+    cause: error?.cause ? String(error.cause) : undefined,
+    fileName: error?.fileName || parsed.fileName || 'unknown-file',
+    location: error?.lineNumber ? `${error.lineNumber}:${error?.columnNumber || '?'}` : (parsed.location || 'unknown-location'),
+    topFrame: parsed.topFrame,
+    stack,
+    componentStack,
+    toString: error ? String(error) : 'Unknown error',
+  };
+};
+
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -44,18 +94,14 @@ class ErrorBoundary extends React.Component {
 
   static getDerivedStateFromError(error) {
     hasError = true;
-    errorInfo.message = error.message;
-    errorInfo.location = error.lineNumber;
-    errorInfo.fileName = error.fileName;
+    errorInfo = toErrorInfo(error);
     return { hasError: true };
     // handleWriteError(`AVA caught error "${error.message}" at line ${error.lineNumber} in file ${error.fileName}`);
   }
 
   componentDidCatch(error, info) {
     hasError = true;
-    errorInfo.message = error.message || error.cause;
-    errorInfo.location = error.stack;
-    errorInfo.fileName = error.toString();
+    errorInfo = toErrorInfo(error, info);
     // handleWriteError(`AVA caught error.  String is "${error.toString()}". Cause is ${error.cause} on stack ${error.stack}`);
   }
 
@@ -100,10 +146,17 @@ class ErrorBoundary extends React.Component {
           });
         const env = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
         if (env !== 'L') {
+          const compactComponentStack = (errorInfo.componentStack || '')
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .slice(0, 3)
+            .join(' | ');
+
           let messageObj = {
             client: avaUser.client || 'unknown',
             author: avaUser.user_id || 'error-no_cookie',
-            messageText: `AVA ERROR ${errorInfo.message} in ${errorInfo.fileName} at ${errorInfo.location || 'n/a'}.  See Activity Log for User ${avaUser.user_id || 'error-no_cookie'} at ${timestamp}`,
+            messageText: `AVA ERROR ${errorInfo.name}: ${errorInfo.message} in ${errorInfo.fileName} at ${errorInfo.location}. frame=${errorInfo.topFrame || 'n/a'} component=${compactComponentStack || 'n/a'}. See Activity Log for User ${avaUser.user_id || 'error-no_cookie'} at ${timestamp}`,
             thread_id: `error_thread_${timestamp}`,
             recipientList: 'rsteele',
             subject: `AVA ERROR at ${avaUser.client || 'unknown'} for ${avaUser.user_id || 'unknown'} in ${env}`
