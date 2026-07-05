@@ -3080,42 +3080,29 @@ export default ({ start_at }) => {
         }}
         onContextMenu={async (e) => {
           e.preventDefault();
+          const canEditFromAlert = (reactData.is_admin || reactData.is_support);
           updateReactData({
             alert: {
               severity: 'info',
-              title: <Box display='flex' alignItems='center' justifyContent='space-between'>
-                <span>{this_item.description?.short}</span>
-                {(reactData.is_admin || reactData.is_support) &&
-                  <IconButton
-                    size='small'
-                    style={{ color: 'white', padding: 2, marginLeft: 8 }}
-                    onClick={(ev) => {
-                      ev.preventDefault();
-                      ev.stopPropagation();
-                      updateReactData({
-                        alert: false,
-                        editDescriptionDialog: true,
-                        editDescriptionMenuId: this_item.menu_id,
-                        editDescriptionShort: this_item.description?.short || '',
-                        editDescriptionLong: this_item.description?.long || '',
-                        editDescriptionAvailableTo: deepCopy(this_item.available_to || []),
-                        editDescriptionColor: this_item.color || null,
-                        editDescriptionParent: this_cell.parent || null,
-                        editDescriptionCanDelete: canDeleteThisCard,
-                        editDescriptionItemType: (this_item.call?.target === 'MessageForm' && Array.isArray(this_item.call?.params?.options?.recipients) && this_item.call.params.options.recipients.length > 0) ? 'message_target' : null,
-                        editDescriptionTargets: deepCopy(this_item.call?.params?.options?.recipients || []),
-                      }, true);
-                    }}
-                  >
-                    <CreateIcon fontSize='small' />
-                  </IconButton>
-                }
-              </Box>,
+              title: this_item.description?.short,
               message: <div>
                 ID: {this_item.menu_id}<br />
                 Type: {this_item.menu_itemType}{this_item.url && <><br />URL: {this_item.url.length > 60 ? this_item.url.slice(0, 60) + '…' : this_item.url}</>}<br />
                 Security: {describeAvailableTo(this_item.available_to)}<br />
-              </div>
+              </div>,
+              editMenuItem: canEditFromAlert
+                ? {
+                  menu_id: this_item.menu_id,
+                  description_short: this_item.description?.short || '',
+                  description_long: this_item.description?.long || '',
+                  available_to: deepCopy(this_item.available_to || []),
+                  color: this_item.color || null,
+                  parent: this_cell.parent || null,
+                  can_delete: canDeleteThisCard,
+                  item_type: (this_item.call?.target === 'MessageForm' && Array.isArray(this_item.call?.params?.options?.recipients) && this_item.call.params.options.recipients.length > 0) ? 'message_target' : null,
+                  targets: deepCopy(this_item.call?.params?.options?.recipients || []),
+                }
+                : null,
             }
           }, true);
         }}
@@ -5100,7 +5087,46 @@ export default ({ start_at }) => {
           <Alert
             severity={reactData.alert.severity || 'info'}
             variant='filled'
-            style={{ paddingLeft: '24px', paddingRight: '48px', borderRadius: '30px', borderWidth: 4, borderColor: 'black', maxWidth: '420px' }}
+            style={{
+              paddingLeft: '24px',
+              paddingRight: '48px',
+              borderRadius: '30px',
+              borderWidth: 4,
+              borderColor: 'black',
+              width: 'calc(100vw - 24px)',
+              maxWidth: '420px',
+              boxSizing: 'border-box',
+              overflow: 'hidden'
+            }}
+            action={reactData.alert.editMenuItem
+              ? (
+                <IconButton
+                  size='small'
+                  aria-label='Edit menu item'
+                  style={{ color: 'white' }}
+                  onClick={(ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    const edit = reactData.alert.editMenuItem;
+                    updateReactData({
+                      alert: false,
+                      editDescriptionDialog: true,
+                      editDescriptionMenuId: edit.menu_id,
+                      editDescriptionShort: edit.description_short,
+                      editDescriptionLong: edit.description_long,
+                      editDescriptionAvailableTo: deepCopy(edit.available_to || []),
+                      editDescriptionColor: edit.color || null,
+                      editDescriptionParent: edit.parent || null,
+                      editDescriptionCanDelete: !!edit.can_delete,
+                      editDescriptionItemType: edit.item_type || null,
+                      editDescriptionTargets: deepCopy(edit.targets || []),
+                    }, true);
+                  }}
+                >
+                  <CreateIcon fontSize='small' />
+                </IconButton>
+              )
+              : null}
             onClose={() => {
               updateReactData({
                 alert: false
@@ -5108,7 +5134,9 @@ export default ({ start_at }) => {
             }}
           >
             {reactData.alert.title && <AlertTitle>{reactData.alert.title}</AlertTitle>}
-            {reactData.alert.message}
+            <div style={{ maxWidth: '100%', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+              {reactData.alert.message}
+            </div>
           </Alert>
         </Snackbar>
       }
