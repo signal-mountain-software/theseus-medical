@@ -41,6 +41,13 @@ export default ({ currentValues }) => {
     setReactData((prevValues) => (Object.assign({}, prevValues, newData)));
   };
 
+  const getInputValue = (eventOrValue) => {
+    if (eventOrValue && typeof eventOrValue === 'object' && eventOrValue.target) {
+      return eventOrValue.target.value;
+    }
+    return (eventOrValue ?? '').toString();
+  };
+
   const getUploadSettings = (fileSize) => {
     const basePartSize = 10 * 1024 * 1024;
     const baseQueueSize = 4;
@@ -314,8 +321,9 @@ export default ({ currentValues }) => {
                 <Select
                   labelId='doc-category-label'
                   value={reactData.category || 'General'}
-                  onChange={(event) => {
-                    updateReactData({ category: event.target.value });
+                  onChange={(eventOrValue) => {
+                    const category = getInputValue(eventOrValue);
+                    updateReactData({ category });
                   }}
                   disabled={reactData.saving}
                 >
@@ -329,8 +337,9 @@ export default ({ currentValues }) => {
                 margin='dense'
                 label='Document Name'
                 value={reactData.description}
-                onChange={(event) => {
-                  updateReactData({ description: event.target.value });
+                onChange={(eventOrValue) => {
+                  const description = getInputValue(eventOrValue);
+                  updateReactData({ description });
                 }}
                 fullWidth
                 disabled={reactData.saving}
@@ -340,8 +349,9 @@ export default ({ currentValues }) => {
                 margin='dense'
                 label='Comments'
                 value={reactData.comments}
-                onChange={(event) => {
-                  updateReactData({ comments: event.target.value });
+                onChange={(eventOrValue) => {
+                  const comments = getInputValue(eventOrValue);
+                  updateReactData({ comments });
                 }}
                 fullWidth
                 multiline
@@ -355,9 +365,10 @@ export default ({ currentValues }) => {
               <RadioGroup
                 row
                 value={reactData.sourceType}
-                onChange={(event) => {
+                onChange={(eventOrValue) => {
+                  const sourceType = getInputValue(eventOrValue);
                   updateReactData({
-                    sourceType: event.target.value,
+                    sourceType,
                     uploadProgress: 0
                   });
                 }}
@@ -371,8 +382,9 @@ export default ({ currentValues }) => {
                   margin='dense'
                   label='URL'
                   value={reactData.url}
-                  onChange={(event) => {
-                    updateReactData({ url: event.target.value });
+                  onChange={(eventOrValue) => {
+                    const url = getInputValue(eventOrValue);
+                    updateReactData({ url });
                   }}
                   fullWidth
                   disabled={reactData.saving}
@@ -579,7 +591,10 @@ export default ({ currentValues }) => {
                       <Select
                         labelId='edit-doc-category-label'
                         value={editingDoc.category || docCategories[0]}
-                        onChange={e => setEditingDoc(prev => ({ ...prev, category: e.target.value }))}
+                        onChange={(eventOrValue) => {
+                          const category = getInputValue(eventOrValue);
+                          setEditingDoc(prev => ({ ...prev, category }));
+                        }}
                       >
                         {[...new Set([...docCategories, editingDoc.category || docCategories[0]])].sort().map(c => (
                           <MenuItem key={c} value={c}>{c}</MenuItem>
@@ -591,7 +606,10 @@ export default ({ currentValues }) => {
                   <TextField
                     label='Document Name'
                     value={editingDoc.description || ''}
-                    onChange={e => setEditingDoc(prev => ({ ...prev, description: e.target.value }))}
+                    onChange={(eventOrValue) => {
+                      const description = getInputValue(eventOrValue);
+                      setEditingDoc(prev => ({ ...prev, description }));
+                    }}
                     style={{ marginBottom: '16px' }}
                     fullWidth
                   />
@@ -599,7 +617,10 @@ export default ({ currentValues }) => {
                   <TextField
                     label='Comments'
                     value={editingDoc.comments || ''}
-                    onChange={e => setEditingDoc(prev => ({ ...prev, comments: e.target.value }))}
+                    onChange={(eventOrValue) => {
+                      const comments = getInputValue(eventOrValue);
+                      setEditingDoc(prev => ({ ...prev, comments }));
+                    }}
                     multiline
                     minRows={2}
                     variant='outlined'

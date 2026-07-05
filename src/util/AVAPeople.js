@@ -2,6 +2,147 @@ import { isPromise, cl, recordExists, sentenceCase, titleCase, isEmpty, dbClient
 
 let foundPeople = {};
 let savedSession;
+const PERSON_PHOTO_THUMB_KEY_PREFIX = 'ava_person_photo_thumb__';
+const PERSON_PHOTO_THUMB_SIZE = 64;
+const PERSON_PHOTO_THUMB_QUALITY = 0.55;
+const personPhotoThumbCache = {};
+const personPhotoBackfillInProgress = new Set();
+
+function getPersonPhotoThumbStorageKey(person_id) {
+    return `${PERSON_PHOTO_THUMB_KEY_PREFIX}${person_id}`;
+}
+
+function rememberPersonPhotoThumb(person_id, thumbData) {
+    if (!person_id || !thumbData) { return thumbData || null; }
+    personPhotoThumbCache[person_id] = thumbData;
+    if (foundPeople?.[person_id]) {
+        foundPeople[person_id].person_photo = thumbData;
+    }
+    try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+            window.localStorage.setItem(getPersonPhotoThumbStorageKey(person_id), thumbData);
+        }
+    }
+    catch (_error) {
+        // Ignore storage quota/privacy failures; in-memory cache is enough for current session.
+    }
+    return thumbData;
+}
+
+function getRememberedPersonPhotoThumb(person_id) {
+    if (!person_id) { return null; }
+    if (personPhotoThumbCache[person_id]) {
+        return personPhotoThumbCache[person_id];
+    }
+    if (foundPeople?.[person_id]?.person_photo) {
+        return rememberPersonPhotoThumb(person_id, foundPeople[person_id].person_photo);
+    }
+    try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+            const cachedThumb = window.localStorage.getItem(getPersonPhotoThumbStorageKey(person_id));
+            if (cachedThumb) {
+                return rememberPersonPhotoThumb(person_id, cachedThumb);
+            }
+        }
+    }
+    catch (_error) {
+        // Ignore storage access failures.
+    }
+    return null;
+}
+
+function renderSquareThumbFromImage(imageEl) {
+    const canvas = document.createElement('canvas');
+    canvas.width = PERSON_PHOTO_THUMB_SIZE;
+    canvas.height = PERSON_PHOTO_THUMB_SIZE;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) { return null; }
+    const side = Math.min(imageEl.naturalWidth, imageEl.naturalHeight);
+    const sx = (imageEl.naturalWidth - side) / 2;
+    const sy = (imageEl.naturalHeight - side) / 2;
+    ctx.drawImage(imageEl, sx, sy, side, side, 0, 0, PERSON_PHOTO_THUMB_SIZE, PERSON_PHOTO_THUMB_SIZE);
+    return canvas.toDataURL('image/jpeg', PERSON_PHOTO_THUMB_QUALITY);
+}
+
+export function createPersonPhotoThumbFromFile(file) {
+    return new Promise((resolve) => {
+        if (!file || !file.type?.startsWith('image/')) { resolve(null); return; }
+        const imageEl = new Image();
+        const objectUrl = URL.createObjectURL(file);
+        imageEl.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            try {
+                resolve(renderSquareThumbFromImage(imageEl));
+            }
+            catch (_error) {
+                resolve(null);
+            }
+        };
+        imageEl.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            resolve(null);
+        };
+        imageEl.src = objectUrl;
+    });
+}
+
+export function createPersonPhotoThumbFromUrl(imageUrl) {
+    return new Promise((resolve) => {
+        if (!imageUrl || typeof imageUrl !== 'string') { resolve(null); return; }
+        const imageEl = new Image();
+        imageEl.crossOrigin = 'anonymous';
+        imageEl.onload = () => {
+            try {
+                resolve(renderSquareThumbFromImage(imageEl));
+            }
+            catch (_error) {
+                resolve(null);
+            }
+        };
+        imageEl.onerror = () => resolve(null);
+        imageEl.src = imageUrl;
+    });
+}
+
+export async function persistPersonPhotoThumb(person_id, thumbData) {
+    if (!person_id || !thumbData) { return null; }
+    await dbClient.update({
+        TableName: 'People',
+        Key: { person_id },
+        UpdateExpression: 'set person_photo = :thumb',
+        ExpressionAttributeValues: {
+            ':thumb': thumbData
+        }
+    }).promise().catch((error) => {
+        cl({ [`Failed to persist person_photo for ${person_id}`]: error });
+    });
+    return rememberPersonPhotoThumb(person_id, thumbData);
+}
+
+async function backfillPersonPhotoThumb(person_id) {
+    if (!person_id || personPhotoBackfillInProgress.has(person_id)) {
+        return getRememberedPersonPhotoThumb(person_id);
+    }
+    personPhotoBackfillInProgress.add(person_id);
+    try {
+        const personRec = await getPerson(person_id, '*all');
+        if (personRec?.person_photo) {
+            return rememberPersonPhotoThumb(person_id, personRec.person_photo);
+        }
+        const imageUrl = getObject(person_id, 'image');
+        const thumbData = await createPersonPhotoThumbFromUrl(imageUrl);
+        if (!thumbData) { return null; }
+        await persistPersonPhotoThumb(person_id, thumbData);
+        return thumbData;
+    }
+    catch (error) {
+        cl({ [`Failed to backfill person photo thumb for ${person_id}`]: error });
+        return null;
+    }
+    finally {
+        personPhotoBackfillInProgress.delete(person_id);
+    }
+}
 
 export async function makeName(pRec) {
     if (!pRec) { return 'N/A'; }
@@ -38,17 +179,30 @@ export function AVAname(pRec) {
 }
 
 export function getImage(pPerson) {
+    let person_id = '';
     if (typeof (pPerson) === 'string') {
-        let imageLink = getObject(pPerson, 'image');
-        return imageLink;
+        person_id = pPerson;
     }
     else if (Array.isArray(pPerson)) {
-        let imageLink = getObject(pPerson[0], 'image');
-        return imageLink;
+        person_id = pPerson[0];
+    }
+    else if (pPerson?.person_photo) {
+        return rememberPersonPhotoThumb(pPerson.person_id, pPerson.person_photo);
+    }
+    else if (pPerson?.person_id) {
+        person_id = pPerson.person_id;
     }
     else {
         return '';
     }
+
+    const cachedThumb = getRememberedPersonPhotoThumb(person_id);
+    if (cachedThumb) {
+        return cachedThumb;
+    }
+
+    void backfillPersonPhotoThumb(person_id);
+    return getObject(person_id, 'image');
     // return `https://d3sds9ybtm36gy.cloudfront.net/${pPerson}.jpg`;
 };
 
@@ -502,6 +656,9 @@ export async function getPerson(pID, pElement = '*all', override = false) {
             ' ' + (personRec.Item.messaging.voice || '') +
             ' ' + (personRec.Item.messaging.office || '') +
             ' ' + (personRec.Item.messaging.sms || '');
+        if (personRec.Item.person_photo) {
+            rememberPersonPhotoThumb(pID, personRec.Item.person_photo);
+        }
         foundPeople[pID] = personRec.Item;
     }
     switch (pElement.toLowerCase()) {

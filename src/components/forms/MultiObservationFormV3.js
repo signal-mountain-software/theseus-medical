@@ -13,7 +13,7 @@ import PersonFilter from './PersonFilter';
 import AVAConfirm from './AVAConfirm';
 
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
-import { deepCopy, titleCase, sentenceCase, makeArray, s3, isObject, isEmpty, dbClient, cl } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, sentenceCase, makeArray, s3, isObject, isEmpty, dbClient, cl, resolveVariables } from '../../util/AVAUtilities';
 import { getActivity } from '../../util/AVAObservations';
 import { makeDate } from '../../util/AVADateTime';
 import { buildDisplayRows, buildQualifiers } from '../../util/AVAActivityLoaderV3';
@@ -212,6 +212,16 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
 
+  async function resolveRowDisplayVariables(rowDetails) {
+    if (!Array.isArray(rowDetails) || rowDetails.length === 0) { return rowDetails; }
+    for (let i = 0; i < rowDetails.length; i++) {
+      if (typeof rowDetails[i].text === 'string' && /(\[|<).*(\]|>)/.test(rowDetails[i].text)) {
+        rowDetails[i].text = await resolveVariables(rowDetails[i].text, state.session);
+      }
+    }
+    return rowDetails;
+  }
+
   async function extractRequestType(aKey) {
     let activityParts = aKey.split('//');
     let activityCode = activityParts.pop();
@@ -220,7 +230,17 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     return activityRec.request_type || activityRec.name;
   }
 
+  async function resolveActivityDisplayName(rawName, fallbackName = '') {
+    const source = (rawName || fallbackName || '').toString().trim();
+    if (!source) { return ''; }
+    return await resolveVariables(source, state.session);
+  }
+
   async function initialLoad() {
+    const resolvedFactName = await resolveActivityDisplayName(factName || fact?.activity_name || fact?.name, factName || fact?.name || '');
+    if (resolvedFactName) {
+      updateReactData({ factName: resolvedFactName }, false);
+    }
     let defaultObj = buildDefaults(defaultValue);
     let paymentInfo = defaultObj.collectPayment
       || defaultValue.collectPayment
@@ -245,11 +265,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
         let this_requestType = defaultValue.requestType || defaultValue.request_type || await extractRequestType(fact.activity_code) || 'noRType';
         let this_requestName = state.session.service_request_types.hasOwnProperty(this_requestType) ? state.session.service_request_types[this_requestType].description : titleCase(this_requestType);
+        this_requestName = await resolveActivityDisplayName(fact?.activity_name || fact?.activity_rec?.name || fact?.name, this_requestName);
         let this_foreignKey = defaultValue.foreignKey || defaultValue.foreign_key || 'noFKey';
         let fDate = makeDate(this_foreignKey);
         let dName = ([' ', ' ', ' '].concat(this_requestName.split(' ').slice(-3)).concat(fDate.error ? [] : ((fDate.absolute).split(','))));
         localData_maxDName = Math.max((localData_maxDName || 0), dName.length);
         let rowDetails = await buildDisplayRows(listValues, defaultObj, qualifiers);
+        rowDetails = await resolveRowDisplayVariables(rowDetails);
         for (let r = 0; r < rowDetails.length; r++) {
           rowDetails[r].version = 1;
           if (rowDetails[r].checkbox && rowDetails[r].observationKey && !rowDetails[r].qualData) {
@@ -301,11 +323,16 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           let this_activityKey = defaultValue.activities[a].column_defaults.activity_code || defaultValue.activities[a].activityRec.activity_code || fact.activity_code;
           let this_requestType = defaultValue.activities[a].column_defaults.requestType || defaultValue.requestType || defaultValue.request_type || await extractRequestType(this_activityKey) || 'noRType';
           let this_requestName = state.session.service_request_types.hasOwnProperty(this_requestType) ? state.session.service_request_types[this_requestType].description : titleCase(this_requestType);
+          this_requestName = await resolveActivityDisplayName(
+            defaultValue.activities[a]?.activityRec?.name || defaultValue.activities[a]?.activityRec?.activity_name,
+            this_requestName
+          );
           let this_foreignKey = defaultValue.activities[a].column_defaults.foreignKey || defaultValue.foreignKey || defaultValue.foreign_key || 'noFKey';
           let fDate = makeDate(this_foreignKey);
           let dName = ([' ', ' ', ' '].concat(this_requestName.split(' ').slice(-3)).concat(fDate.error ? [] : ((fDate.absolute).split(/,\s*/))));
           localData_maxDName = Math.max((localData_maxDName || 0), dName.length);
           let rowDetails = await buildDisplayRows(defaultValue.activities[a].activityRec.valid_values_list, defaultsToUse, qualifiers);
+          rowDetails = await resolveRowDisplayVariables(rowDetails);
           for (let r = 0; r < rowDetails.length; r++) {
             rowDetails[r].version = 1;
             if (rowDetails[r].checkbox && rowDetails[r].observationKey && !rowDetails[r].qualData) {
@@ -1924,7 +1951,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   bold: true
                 })}
               >
-                {titleCase(reactData.commonText) || factName || fact?.name || ''}
+                {titleCase(reactData.commonText) || reactData.factName || factName || fact?.name || ''}
               </Typography>
               {reactData.titleName.display &&
                 <Typography

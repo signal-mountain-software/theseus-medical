@@ -1044,6 +1044,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   };
 
   var rowsDisplayed;
+  const suppressGroupSelectionUI = !!(preSelectedGroup && preSelectedFunction === 'directory');
 
   const canDragManage = !!(pSession?.adminAccount || reactData.administrative_account);
 
@@ -1250,7 +1251,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
             {`No Groups to show for ${pSession.patient_display_name || 'your account'}`}
           </Typography>
         </Box>
-        :
+        : !suppressGroupSelectionUI
+          ?
         <React.Fragment>
           <Box style={{ borderRadius: '30px 30px 30px 30px', marginRight: '16px' }}
             key={'topRow'}
@@ -1756,8 +1758,15 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
           </Box>
 
         </React.Fragment>
+          : null
       }
-      {reactData.showFieldPicker &&
+      {suppressGroupSelectionUI && (reactData.building === 'done') && !reactData.showPhotoDirectory &&
+        <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' style={{ padding: '32px 16px' }}>
+          <Typography style={{ marginBottom: 16 }}>{'Opening photo directory...'}</Typography>
+          <LinearProgress style={{ width: '80%' }} />
+        </Box>
+      }
+      {!suppressGroupSelectionUI && reactData.showFieldPicker &&
         <Dialog
           open={reactData.showFieldPicker}
           PaperProps={{ style: { borderRadius: '30px', display: 'flex', flexDirection: 'column', maxHeight: '80vh', overflow: 'hidden' } }}

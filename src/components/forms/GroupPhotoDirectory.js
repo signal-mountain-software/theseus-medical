@@ -22,7 +22,7 @@ import useSession from '../../hooks/useSession';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
 import { AVAclasses } from '../../util/AVAStyles';
-import { isEmpty, sentenceCase } from '../../util/AVAUtilities';
+import { isEmpty, sentenceCase, getObject } from '../../util/AVAUtilities';
 import { determineClass, getRole } from '../../util/AVAGroups';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import MakeMessage from './MakeMessage';
@@ -95,7 +95,8 @@ const useStyles = makeStyles(theme => ({
         cursor: 'pointer',
         height: '100%',
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: 'row',
+        alignItems: 'stretch',
         overflow: 'hidden',
         border: `2px solid ${theme.palette.text.primary}`,
         borderRadius: theme.spacing(1),
@@ -103,27 +104,56 @@ const useStyles = makeStyles(theme => ({
             border: `3px solid ${theme.palette.text.primary}`,
         }
     },
+    portraitSlot: {
+        alignSelf: 'center',
+        width: 94,
+        minWidth: 94,
+        maxWidth: 94,
+        height: 94,
+        backgroundColor: theme.palette.action.hover,
+        borderRight: `1px solid ${theme.palette.divider}`,
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        [theme.breakpoints.down('sm')]: {
+            width: 92,
+            minWidth: 92,
+            maxWidth: 92,
+            height: 92,
+        }
+    },
     portraitMedia: {
         width: '100%',
         height: '100%',
-        objectFit: 'contain',
+        objectFit: 'cover',
         objectPosition: 'center',
-        backgroundColor: theme.palette.action.hover,
+    },
+    portraitPlaceholder: {
+        width: '100%',
+        height: '100%',
+        backgroundColor: theme.palette.background.default,
     },
     cardBody: {
-        padding: theme.spacing(1.5),
+        padding: theme.spacing(1),
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        minWidth: 0,
+        flex: 1,
     },
     cardName: {
         fontWeight: 600,
         lineHeight: 1.2,
-        marginBottom: 0,
-        fontSize: '1.7rem',
+        marginBottom: theme.spacing(0.125),
+        fontSize: '1.425rem',
     },
     cardSubtext: {
-        marginTop: theme.spacing(0.5),
-        fontSize: '1.2rem',
+        marginTop: theme.spacing(0.125),
+        fontSize: '0.88rem',
         fontWeight: 400,
         opacity: 0.8,
+        lineHeight: 1.2,
     },
     contactLink: {
         color: 'inherit',
@@ -133,7 +163,7 @@ const useStyles = makeStyles(theme => ({
         gap: theme.spacing(0.5),
     },
     contactIcon: {
-        fontSize: '0.95rem',
+        fontSize: '0.85rem',
     },
     emptyState: {
         padding: theme.spacing(4),
@@ -688,11 +718,17 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                         </Paper>
                     )}
 
-                    <Grid container spacing={2}>
+                    <Grid container spacing={1}>
                         {visiblePeople.map(person => {
                             let personLast, addressValue;
                             let imbeddedTitle;
+                            const personFirst = (person.name?.first || '').trim();
                             [personLast, imbeddedTitle] = (person.name?.last || '').split('~');
+                            personLast = (personLast || '').trim();
+                            const displayName = `${personFirst} ${personLast}`.trim() || (person.display_name || '').trim();
+                            if (!displayName) {
+                                return null;
+                            }
                             const suppressContact = (!showContactInfo || (person?.directory_option === 'no_contact'));
                             const rawCellPhoneValue = suppressContact ? '' : (person.contact_info?.cell?.number || person?.messaging?.sms || '');
                             const rawHomePhoneValue = suppressContact ? '' : (person.contact_info?.landline?.number || person?.messaging?.voice || '');
@@ -718,7 +754,6 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                 }
                                 if (person.address?.address2) { returnValue += `; ${person.address.address2}`; }
                                 if (person.address?.city) { returnValue += `<br/ >${person.address.city}`; }
-                                else if (person.city) { returnValue += `<br />${person.city}`; }
                                 if (person.address?.state) { returnValue += `, ${person.address.state}`; }
                                 else if (person.state) { returnValue += `, ${person.state}`; }
                                 if (person.address?.zip_code || person.address?.zip) { returnValue += ` ${person.address.zip_code || person.address.zip}`; }
@@ -729,7 +764,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                 [addressValue, imbeddedTitle] = person.location.split('~');
                             }
                             return (
-                                <Grid item xs={12} sm={6} md={4} lg={3} key={person?.person_id}>
+                                <Grid item xs={12} sm={6} md={6} lg={4} xl={3} key={person?.person_id}>
                                     <Paper
                                         variant='outlined'
                                         className={classes.card}
@@ -752,15 +787,18 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                             }
                                         }}
                                     >
-                                        {showPortraitImage &&
-                                            <Box
-                                                component='img'
-                                                src={imageSrc}
-                                                alt={`${person.name?.first || ''} ${personLast || ''}`.trim()}
-                                                className={classes.portraitMedia}
-                                                onError={() => hideImageForPerson(person?.person_id)}
-                                            />
-                                        }
+                                        <Box className={classes.portraitSlot}>
+                                            {showPortraitImage
+                                                ? <Box
+                                                    component='img'
+                                                    src={imageSrc}
+                                                    alt={`${person.name?.first || ''} ${personLast || ''}`.trim()}
+                                                    className={classes.portraitMedia}
+                                                    onError={() => hideImageForPerson(person?.person_id)}
+                                                />
+                                                : <Box className={classes.portraitPlaceholder} />
+                                            }
+                                        </Box>
                                         <Box className={classes.cardBody}>
                                             <Typography variant='subtitle1' className={classes.cardName}>
                                                 {`${person.name?.first || ''} ${personLast || ''}`}
@@ -826,7 +864,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                 minWidth={250}
                                 maxWidth={250}
                                 alt=''
-                                src={getImage(superSizeData.person_id)}
+                                src={getObject(superSizeData.person_id, 'image') || getImage(superSizeData.person_id)}
                             />
                         </Box>
                         <Typography className={classes.superSizeLast}>{superSizeData.name?.last || superSizeData.display_name}</Typography>

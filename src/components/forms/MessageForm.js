@@ -41,6 +41,8 @@ import TextField from '@material-ui/core/TextField';
 import DeleteIcon from '@material-ui/icons/Delete';
 import SendIcon from '@material-ui/icons/Send';
 import ZoomInIcon from '@material-ui/icons/ZoomIn';
+import DescriptionIcon from '@material-ui/icons/Description';
+import PriorityHighIcon from '@material-ui/icons/PriorityHigh';
 import AVAConfirm from './AVAConfirm';
 import MessageDetailDialog from '../dialogs/MessageDetailDialog';
 
@@ -327,6 +329,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const isMountedRef = React.useRef(true);
   const refreshIntervalRef = React.useRef(null);
+  const messageTextInputRef = React.useRef(null);
   React.useEffect(() => {
     return () => {
       isMountedRef.current = false;
@@ -340,6 +343,33 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       newData
     )));
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+  };
+
+  const withMobileTextCap = (styleObj, { maxPx = 20, minPx = 13 } = {}) => {
+    if (!reactData.isSmall || !styleObj) {
+      return styleObj;
+    }
+    const nextStyle = { ...styleObj };
+    const rawFontSize = nextStyle.fontSize;
+    if ((typeof rawFontSize === 'string') && rawFontSize.endsWith('rem')) {
+      const remValue = Number.parseFloat(rawFontSize);
+      if (Number.isFinite(remValue)) {
+        const estimatedPx = remValue * 16;
+        const clampedPx = Math.min(maxPx, Math.max(minPx, estimatedPx));
+        nextStyle.fontSize = `${clampedPx}px`;
+      }
+    }
+    nextStyle.wordBreak = 'break-word';
+    nextStyle.overflowWrap = 'anywhere';
+    return nextStyle;
+  };
+
+  const getPendingMessageText = () => {
+    if (reactData.html_message) {
+      return reactData.newMessageText || '';
+    }
+    const liveText = messageTextInputRef.current?.value;
+    return (typeof liveText === 'string') ? liveText : (reactData.newMessageText || '');
   };
 
   // Shared DB error handler — shows an appropriate alert for network vs. server errors
@@ -725,6 +755,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   }
 
   async function sendMessage() {
+    const draftMessageText = getPendingMessageText();
     let postTime = new Date().getTime();
     let message_id;
     if (!reactData.newMessageThread) {
@@ -759,7 +790,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         client_id: pClient,
         deliver_time: postTime,
         from: reactData.newMessageSendFrom,
-        message_text: reactData.newMessageText,
+        message_text: draftMessageText,
         patient_id: reactData.newMessageSendFrom,
         preferred_method: (reactData.newUrgentMessage ? 'urgent' : null),
         recipient_base: 'list',
@@ -777,9 +808,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       PostOfficeRec.Item.sender_spoofedByAccount = pPerson;
       PostOfficeRec.Item.sender_spoofedByUser = state.session.user_id;
     }
-    if (reactData.newMessageText.startsWith('<p')) {
-      PostOfficeRec.Item.html_message_text = reactData.newMessageText;
-      let plain_text = reactData.newMessageText;
+    if (draftMessageText.startsWith('<p')) {
+      PostOfficeRec.Item.html_message_text = draftMessageText;
+      let plain_text = draftMessageText;
       plain_text = plain_text.replace(/<style([\s\S]*?)<\/style>/gi, '');
       plain_text = plain_text.replace(/<script([\s\S]*?)<\/script>/gi, '');
       plain_text = plain_text.replace(/<strong>/ig, '');
@@ -795,7 +826,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       PostOfficeRec.Item.message_text = plain_text;
       PostOfficeRec.Item.s3MessageHTMLdoc = await html_to_pdf({
         client_id: pClient,
-        htmlText: reactData.newMessageText,
+        htmlText: draftMessageText,
         messageKey: message_id
       });
     }
@@ -1914,16 +1945,16 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                           </Box>
 
                           {!reactData.is_reply &&
-                            <Box display='flex' flexDirection='row' alignItems='center' gap={1} marginBottom={2}>
+                            <Box display='flex' flexDirection='row' alignItems='flex-end' gap={1} marginBottom={2} style={{ width: '100%' }}>
                               <Typography
-                                style={AVATextStyle({ size: 0.82, opacity: 0.6, margin: { top: 1.5, right: 0.5, left: 0.13 } })}
+                                style={AVATextStyle({ size: 0.82, opacity: 0.6, overflow: 'visible', margin: { bottom: 0.35, right: 0.5, left: 0.13 } })}
                               >
                                 {'Subject'}
                               </Typography>
                               <TextField
                                 id='Message_subject_new'
                                 autoComplete='off'
-                                style={AVATextStyle({ size: 1.2, width: '90%', bold: true, margin: { right: 1.5 } })}
+                                style={{ ...AVATextStyle({ size: 1.2, bold: true, margin: { right: 1.5 } }), flexGrow: 1, minWidth: 0, width: 'auto' }}
                                 onChange={async (event) => {
                                   updateReactData({
                                     newMessageSubject: event.target.value
@@ -1958,11 +1989,11 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                             variant={'outlined'}
                             autoComplete='off'
                             style={AVATextStyle({ size: 1.2, bold: true, margin: { bottom: 1, right: 1.5 } })}
+                            inputRef={messageTextInputRef}
                             onBlur={async (event) => {
-                              let reactUpdObj = {
+                              updateReactData({
                                 newMessageText: event.target.value
-                              };
-                              updateReactData(reactUpdObj, true);
+                              }, true);
                             }}
                             defaultValue={reactData.newMessageText}
                           />
@@ -2110,7 +2141,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                             size='small'
                             //                       disabled={(reactData.newMessageText.length === 0) || (reactData.newMessageRecipients.length === 0)}
                             onClick={async () => {
-                              if (reactData.newMessageText.length === 0) {
+                              const pendingMessageText = getPendingMessageText();
+                              if (pendingMessageText.length === 0) {
                                 updateReactData({
                                   warning: true,
                                   alert: {
@@ -2131,6 +2163,11 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                 }, true);
                               }
                               else if (!reactData.warning) {
+                                if (pendingMessageText !== reactData.newMessageText) {
+                                  updateReactData({
+                                    newMessageText: pendingMessageText
+                                  }, false);
+                                }
                                 const sendWasSuccessful = await sendMessage();
                                 if (sendWasSuccessful) {
                                   if (options && options.newMessage) {
@@ -2154,8 +2191,11 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                           alignItems={'flex-end'}
                         >
                           {reactData.administrative_account && reactData.allowChangeSender &&
-                            <Typography
-                              style={AVATextStyle({ size: 1 })}
+                            <Box
+                              display='flex'
+                              alignItems='center'
+                              justifyContent='flex-end'
+                              style={{ cursor: 'pointer' }}
                               onClick={async () => {
                                 let selections = [];
                                 if (reactData.newMessageSendFrom) {
@@ -2172,85 +2212,127 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                 }, true);
                               }}
                             >
-                              {'Change Sender'}
-                            </Typography>
+                              <Typography style={withMobileTextCap(AVATextStyle({ size: 1 }))}>
+                                {'Change Sender'}
+                              </Typography>
+                              <ReplyIcon style={{ marginLeft: reactData.isSmall ? 0 : 6 }} fontSize='small' />
+                            </Box>
                           }
-                          <Typography
-                            style={AVATextStyle({ size: 1 })}
+                          <Box
+                            display='flex'
+                            alignItems='center'
+                            justifyContent='flex-end'
+                            style={{ cursor: 'pointer' }}
                             onClick={() => {
                               updateReactData({
                                 getAttachment: true
                               }, true);
                             }}
                           >
-                            {'Add Attachment(s)'}
-                          </Typography>
+                            <Typography style={withMobileTextCap(AVATextStyle({ size: 1 }))}>
+                              {reactData.isSmall ? 'Attach' : 'Add Attachment(s)'}
+                            </Typography>
+                            <AttachmentIcon style={{ marginLeft: reactData.isSmall ? 0 : 6 }} fontSize='small' />
+                          </Box>
                           {(reactData.attachments_to_send.length > 0) &&
-                            <Typography
-                              style={AVATextStyle({ size: 1 })}
+                            <Box
+                              display='flex'
+                              alignItems='center'
+                              justifyContent='flex-end'
+                              style={{ cursor: 'pointer' }}
                               onClick={() => {
                                 updateReactData({
                                   attachments_to_send: []
                                 }, true);
                               }}
                             >
-                              {`Remove ${(reactData.attachments_to_send.length > 2)
-                                ? 'all attachments'
-                                : ((reactData.attachments_to_send.length === 2)
-                                  ? 'both attachments'
-                                  : 'the attachment'
-                                )}`}
-                            </Typography>
+                              <Typography style={withMobileTextCap(AVATextStyle({ size: 1 }))}>
+                                {`Remove ${(reactData.attachments_to_send.length > 2)
+                                  ? 'all attachments'
+                                  : ((reactData.attachments_to_send.length === 2)
+                                    ? 'both attachments'
+                                    : 'the attachment'
+                                  )}`}
+                              </Typography>
+                              <DeleteIcon style={{ marginLeft: reactData.isSmall ? 0 : 6 }} fontSize='small' />
+                            </Box>
                           }
                           {reactData.administrative_account &&
-                            <Typography
-                              style={AVATextStyle({ size: 1 })}
+                            <Box
+                              display='flex'
+                              alignItems='center'
+                              justifyContent='flex-end'
+                              style={{ cursor: 'pointer' }}
                               onClick={() => {
                                 updateReactData({
                                   newUrgentMessage: !reactData.newUrgentMessage
                                 }, true);
                               }}
                             >
-                              {(reactData.newUrgentMessage) ? 'Mark as not urgent' : 'Mark as urgent'}
-                            </Typography>
+                              <Typography style={withMobileTextCap(AVATextStyle({ size: 1 }))}>
+                                {reactData.isSmall ? 'Urgent?' : ((reactData.newUrgentMessage) ? 'Mark as not urgent' : 'Mark as urgent')}
+                              </Typography>
+                              <PriorityHighIcon style={{ marginLeft: reactData.isSmall ? 0 : 6 }} fontSize='small' />
+                            </Box>
                           }
                           {reactData.administrative_account && reactData.showVMAlt &&
-                            <Typography
-                              style={AVATextStyle({ size: 1 })}
+                            <Box
+                              display='flex'
+                              alignItems='center'
+                              justifyContent='flex-end'
+                              style={{ cursor: 'pointer' }}
                               onClick={() => {
                                 updateReactData({
                                   newMessageVMAlternative: !reactData.newMessageVMAlternative
                                 }, true);
                               }}
                             >
-                              {(reactData.newMessageVMAlternative) ? 'Remove VM Alt message' : 'Add VM Alt message'}
-                            </Typography>
+                              <Typography style={withMobileTextCap(AVATextStyle({ size: 1 }))}>
+                                {(reactData.newMessageVMAlternative) ? 'Remove VM Alt message' : 'Add VM Alt message'}
+                              </Typography>
+                              <SettingsIcon style={{ marginLeft: reactData.isSmall ? 0 : 6 }} fontSize='small' />
+                            </Box>
                           }
-                          <Typography
-                            style={AVATextStyle({ size: 1 })}
+                          <Box
+                            display='flex'
+                            alignItems='center'
+                            justifyContent='flex-end'
+                            style={{ cursor: 'pointer' }}
                             onClick={() => {
                               updateReactData({
                                 html_message: !reactData.html_message
                               }, true);
                             }}
                           >
-                            {(reactData.html_message) ? 'Use Plain Text' : 'Use Rich Text Editor'}
-                          </Typography>
+                            <Typography style={withMobileTextCap(AVATextStyle({ size: 1 }))}>
+                              {reactData.isSmall ? 'Rich Text' : ((reactData.html_message) ? 'Use Plain Text' : 'Use Rich Text Editor')}
+                            </Typography>
+                            <ZoomInIcon style={{ marginLeft: reactData.isSmall ? 0 : 6 }} fontSize='small' />
+                          </Box>
                           {reactData.templateList && (reactData.templateList.length > 0) &&
                             reactData.administrative_account &&
-                            <Typography
-                              style={AVATextStyle({ size: 1 })}
+                            <Box
+                              display='flex'
+                              alignItems='center'
+                              justifyContent='flex-end'
+                              style={{ cursor: 'pointer' }}
                               onClick={async () => {
                                 updateReactData({
                                   showSelectTemplate: true,
                                 }, true);
                               }}
                             >
-                              {'Use a Template'}
-                            </Typography>
+                              <Typography style={withMobileTextCap(AVATextStyle({ size: 1 }))}>
+                                {reactData.isSmall ? 'Template' : 'Use a Template'}
+                              </Typography>
+                              <DescriptionIcon style={{ marginLeft: reactData.isSmall ? 0 : 6 }} fontSize='small' />
+                            </Box>
                           }
-                          <Typography
-                            style={AVATextStyle({ size: 1 })}
+                          <Box
+                            display='flex'
+                            alignItems='center'
+                            justifyContent='flex-end'
+                            style={{ cursor: 'pointer' }}
                             onClick={() => {
                               if (options && options.newMessage) {
                                 onReset();
@@ -2270,8 +2352,11 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               }, true);
                             }}
                           >
-                            {'Discard Message'}
-                          </Typography>
+                            <Typography style={withMobileTextCap(AVATextStyle({ size: 1 }))}>
+                              {reactData.isSmall ? 'Discard' : 'Discard Message'}
+                            </Typography>
+                            <CloseIcon style={{ marginLeft: reactData.isSmall ? 0 : 6 }} fontSize='small' />
+                          </Box>
                         </Box>
                       </Box>
                     </Box>

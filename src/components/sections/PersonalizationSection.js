@@ -2,7 +2,8 @@ import React from 'react';
 import Box from '@material-ui/core/Box';
 import { Slider, Typography, Button, Switch, TextField, Checkbox } from '@material-ui/core';
 import { AVATextStyle, AVAclasses, AVADefaults } from '../../util/AVAStyles';
-import { s3, cloudfront, isMobile } from '../../util/AVAUtilities';
+import { s3, cloudfront, isMobile, getObject } from '../../util/AVAUtilities';
+import { createPersonPhotoThumbFromFile } from '../../util/AVAPeople';
 import Select from 'react-dropdown-select';
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
@@ -352,10 +353,20 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
                   .getCroppedCanvas()
                   .toBlob((async (pBlob) => {
                     let editedPhoto = new File([pBlob], `${currentValues.peopleRec.person_id}.jpg`, { type: 'image/jpeg' });
+                    const personThumb = await createPersonPhotoThumbFromFile(editedPhoto);
                     newPhoto = await handleSaveFile({ photo: editedPhoto, temp: false });
+                    if (personThumb) {
+                      await updateField({
+                        updateList: [{
+                          tableName: 'peopleRec',
+                          fieldName: 'person_photo',
+                          newData: personThumb
+                        }]
+                      });
+                    }
                     updateReactData({
                       imageEditing: false,
-                      myImage: newPhoto.Location,
+                      myImage: personThumb || newPhoto.Location,
                       OKtoSave: true,
                     }, true);
                   }), 'image/jpeg');
@@ -407,7 +418,7 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
                 size='small'
                 onClick={async () => {
                   updateReactData({
-                    imageEditing: reactData.myImage
+                    imageEditing: getObject(currentValues.peopleRec.person_id, 'image')
                   }, true);
                 }}
               >
@@ -421,8 +432,12 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
         type="file"
         style={{ display: 'none' }}
         ref={hiddenFileInput}
-        onChange={async (target) => {
-          let s3Data = await handleSaveFile({ photo: target.target.files[0], temp: true });
+        onChange={async (event) => {
+          const photoFile = event.target.files?.[0];
+          if (!photoFile) {
+            return;
+          }
+          let s3Data = await handleSaveFile({ photo: photoFile, temp: true });
           updateReactData({
             imageEditing: s3Data.Location,
           }, true);
@@ -467,18 +482,6 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
               create={true}
               keepSelectedInList={true}
               noDataLabel={''}
-              onInputChange={async (values) => {
-                if (values.length > 0) {
-                  await updateField({
-                    updateList:
-                      [{
-                        tableName: 'peopleRec',
-                        fieldName: 'preferred_language',
-                        newData: values[0].value
-                      }]
-                  });
-                }
-              }}
               onChange={async (values) => {
                 if (values.length > 0) {
                   await updateField({

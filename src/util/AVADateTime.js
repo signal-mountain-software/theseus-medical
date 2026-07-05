@@ -44,7 +44,8 @@ export function makeDate(pInput, optionIn = {}) {
             'absolute_withAge': '',  // 15 years old
             'absolute_full': '',  // Tuesday, August 22, 2023
             'dateOnly': '',  // August 22
-            'timeOnly': '', // 2:45pm
+            'timeOnly': '', // 2:45 pm EDT
+            'timeShort': '', // 2:45pm
             'oaDate': '',   // on Tue, Aug 22, 2023 at 2:45pm
             'date': null,
             'timestamp': 0,
@@ -130,6 +131,7 @@ export function makeDate(pInput, optionIn = {}) {
                 'absolute_full': `${pInput} is not a valid date`,
                 'dateOnly': `${pInput} is not a valid date`,
                 'timeOnly': `${pInput} is not a valid date`,
+                'timeShort': `${pInput} is not a valid date`,
                 'oaDate': `${pInput} is not a valid date`,
                 'date': null,
                 'timestamp': 0,
@@ -188,6 +190,7 @@ export function makeDate(pInput, optionIn = {}) {
                 'absolute_full': foundError,
                 'dateOnly': foundError,
                 'timeOnly': foundError,
+                'timeShort': foundError,
                 'oaDate': foundError,
                 'date': null,
                 'timestamp': 0,
@@ -322,6 +325,10 @@ export function makeDate(pInput, optionIn = {}) {
         + '-' + (targetDate.getDate() + 100).toString().slice(1);
     let regEx = /\.0/g;
     const age = calculateAge(targetDate);
+    const timeOnly = targetDate.toLocaleString([], { timeZone: options.timeZone, hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+    let timeShort = timeOnly.split(' ');
+    timeShort.pop();
+    timeShort = timeShort.join('').toLowerCase();
     return {
         'error': false,
         'relative': titleCase(relDate),
@@ -329,7 +336,8 @@ export function makeDate(pInput, optionIn = {}) {
         'absolute_withAge': `${titleCase(absDate)} (${age} years old)`,
         'absolute_full': titleCase(absFull),
         'age': age,
-        'timeOnly': targetDate.toLocaleString([], { timeZone: options.timeZone, hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }),
+        'timeOnly': timeOnly,
+        'timeShort': timeShort,
         'dateOnly': dateOnly,
         'oaDate': oaDate,
         'date': targetDate,
@@ -370,7 +378,7 @@ export function makeDate(pInput, optionIn = {}) {
 
         // YYWW numeric (e.g., 2610)
         return ((isoYear % 100) * 100) + isoWeek;
-        
+
     }
 
     function calculateAge(birthdate) {

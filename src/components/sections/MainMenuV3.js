@@ -19,6 +19,7 @@ import Alert from '@material-ui/lab/Alert';
 import AlertTitle from '@material-ui/lab/AlertTitle';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
+import useTheme from '@material-ui/core/styles/useTheme';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import Marquee from "react-fast-marquee";
 import ReactPlayer from 'react-player';
@@ -97,6 +98,7 @@ import MultiObservationFormD from '../forms/MultiObservationFormV3';
 import MultiObservationFormC from '../forms/MultiObservationFormC';
 import RequestDashboardV3 from '../dialogs/RequestDashboardV3';
 import IosInstall from '../dialogs/IosInstall';
+import ShowMenuB from '../dialogs/ShowMenuB';
 import useIosCheck from '../../hooks/useIosCheck';
 import useWebPrompt from '../../hooks/useWebPrompt';
 
@@ -178,6 +180,7 @@ const useStyles = makeStyles(theme => ({
 
 export default ({ start_at }) => {
 
+  const theme = useTheme();
   const [, isIOS] = useIosCheck();
   const [webInstallPrompt, , onWebInstall] = useWebPrompt();
   const isMobile = useMediaQuery('(max-width:800px)');
@@ -297,9 +300,12 @@ export default ({ start_at }) => {
     || AVADefaults({ client_style: 'get' })?.backgroundColor
     || '#ffffff';
   const resolvedClientBackgroundHex = normalizeHexColor(resolvedClientBackground);
-  const chromeTextColor = resolvedClientBackgroundHex && isDark(resolvedClientBackgroundHex)
-    ? 'cornsilk'
-    : '#111111';
+  const isThemeDark = theme?.palette?.type === 'dark';
+  const chromeTextColor = isThemeDark
+    ? (theme?.palette?.text?.primary || 'cornsilk')
+    : (resolvedClientBackgroundHex && isDark(resolvedClientBackgroundHex)
+      ? 'cornsilk'
+      : '#111111');
 
   const [forceRedisplay, setForce] = React.useState(false);
   const updateReactData = (newData, force = false) => {
@@ -757,6 +763,23 @@ export default ({ start_at }) => {
         );
       }
     }
+
+    const todayMessage = `Today is ${reactData.current_time.toLocaleDateString('en-US', {
+      timeZone: state.session.client_timezone,
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric'
+    })}`;
+    const weatherIndex = marqueeData.findIndex((line) => {
+      return typeof line?.message === 'string' && /weather/i.test(line.message);
+    });
+    if (weatherIndex >= 0) {
+      marqueeData.splice(weatherIndex, 0, { message: todayMessage });
+    }
+    else {
+      marqueeData.unshift({ message: todayMessage });
+    }
+
     updateReactData({
       marqueeData: marqueeData,
       marqueeVersion: reactData.marqueeVersion++
@@ -2127,6 +2150,7 @@ export default ({ start_at }) => {
     TaskManager,
     MultiObservationFormD,
     MultiObservationFormC,
+    ShowMenuB,
     QuickAdd,
     QuickSearch,
   };
@@ -2242,6 +2266,7 @@ export default ({ start_at }) => {
         pSession={state.session}
         qualifiers={props.options?.qualifiers || props.fact?.qualifiers || null}
         request={props.request || {}}
+        showMenu={true}
         showNewEvent={props.options?.showNewEvent}
         onReset={() => {
           start();
@@ -2862,6 +2887,29 @@ export default ({ start_at }) => {
     return Array.isArray(menuLevel) && menuLevel.some((cell) => !cell.menuItemRec.hidden);
   });
 
+  const withMobileTextCap = (styleObj, { maxPx = 22, minPx = 13 } = {}) => {
+    if (!isMobile || !styleObj) {
+      return styleObj;
+    }
+    const nextStyle = { ...styleObj };
+    const rawFontSize = nextStyle.fontSize;
+    if ((typeof rawFontSize === 'string') && rawFontSize.endsWith('rem')) {
+      const remValue = Number.parseFloat(rawFontSize);
+      if (Number.isFinite(remValue)) {
+        const estimatedPx = remValue * 16;
+        const clampedPx = Math.min(maxPx, Math.max(minPx, estimatedPx));
+        nextStyle.fontSize = `${clampedPx}px`;
+      }
+    }
+    nextStyle.wordBreak = 'break-word';
+    nextStyle.overflowWrap = 'anywhere';
+    return nextStyle;
+  };
+
+  const withMenuMobileTextCap = (styleObj) => {
+    return withMobileTextCap(styleObj, { maxPx: useTileUI ? 18 : 20, minPx: 13 });
+  };
+
   const describeAvailableTo = (available_to) => {
     const rules = available_to || [];
     if (rules.length === 0 || rules.includes('*none')) { return 'No access assigned'; }
@@ -3009,17 +3057,18 @@ export default ({ start_at }) => {
       <Card className={classes.root}
         key={`${keyPrefix}${level_index}_card${item_index}`}
         style={{
-          marginRight: useTileUI ? '8px' : '6px',
-          marginLeft: useTileUI ? '8px' : '6px',
+          marginRight: useTileUI ? '8px' : 0,
+          marginLeft: useTileUI ? '8px' : 0,
           marginTop: useTileUI ? null : (accessibleDepth === 0 ? '16px' : 0),
-          paddingRight: useTileUI ? null : '10px',
+          paddingRight: useTileUI ? null : 0,
           borderRadius: ('30px 30px 30px 30px'),
           backgroundColor: hexToRgb(tileColor, tileOpacity),
           textDecoration: 'none',
           position: 'relative',
-          width: useTileUI ? undefined : 'calc(100% - 12px)',
-          maxWidth: useTileUI ? undefined : 'calc(100% - 12px)',
-          minWidth: useTileUI ? undefined : 'calc(100% - 12px)',
+          width: useTileUI ? undefined : '100%',
+          maxWidth: useTileUI ? undefined : '100%',
+          minWidth: useTileUI ? undefined : '100%',
+          boxSizing: 'border-box',
           minHeight: useTileUI ? undefined : 86,
           maxHeight: useTileUI ? undefined : 'none',
           marginBottom: useTileUI ? 10 : 2,
@@ -3211,6 +3260,11 @@ export default ({ start_at }) => {
             alignItems: useTileUI ? 'stretch' : 'center',
             minHeight: useTileUI ? undefined : 86,
             height: useTileUI ? 100 : 'auto',
+            width: useTileUI ? undefined : '100%',
+            minWidth: 0,
+            paddingTop: useTileUI ? undefined : 12,
+            paddingBottom: useTileUI ? undefined : 12,
+            paddingRight: useTileUI ? undefined : 8,
           }}
         >
           {useTileUI && reactData.editFavorites && !isFavoriteCard && normalizedMenuType !== 'menu' &&
@@ -3248,7 +3302,14 @@ export default ({ start_at }) => {
                 style={hasLinkThumbnail
                   ? (useTileUI
                     ? { height: 100, width: '100%', borderRadius: '30px 30px 30px 30px' }
-                    : { width: 140, minWidth: 140, maxWidth: 140, height: 86, minHeight: 86, borderRadius: '30px 0 0 30px' }
+                    : {
+                      width: isMobile ? 96 : 140,
+                      minWidth: isMobile ? 96 : 140,
+                      maxWidth: isMobile ? 96 : 140,
+                      height: 86,
+                      minHeight: 86,
+                      borderRadius: '30px 0 0 30px'
+                    }
                   )
                   : (useTileUI
                     ? undefined
@@ -3303,7 +3364,10 @@ export default ({ start_at }) => {
                   alignItems: 'flex-start',
                   textAlign: 'left',
                   paddingRight: 12,
+                  paddingTop: 4,
+                  paddingBottom: 4,
                   flexGrow: 1,
+                  minWidth: 0,
                 }
               }
             >
@@ -3319,7 +3383,9 @@ export default ({ start_at }) => {
                   const labelContent = (
                     <Typography
                       key={`${keyPrefix}cardContentLink-${level_index}.${item_index}`}
-                      style={AVATextStyle({ align: useTileUI ? 'center' : 'left', margin: { left: useTileUI ? 0 : (hideCardImage ? 2 : 1) }, size: useTileUI ? 1 : 1.8, bold: true, color: (isDark(tileColor) ? 'cornsilk' : 'black') })}
+                      style={withMenuMobileTextCap(
+                        AVATextStyle({ align: useTileUI ? 'center' : 'left', margin: { left: useTileUI ? 0 : (hideCardImage ? 2 : 1) }, size: useTileUI ? 1 : 1.8, bold: true, color: (isDark(tileColor) ? 'cornsilk' : 'black') })
+                      )}
                     >
                       {menuLabel}
                     </Typography>
@@ -3354,12 +3420,12 @@ export default ({ start_at }) => {
               </Box>
             </CardContent>
           }
-          {!useTileUI && hasChildren &&
+          {!useTileUI && !isMobile && hasChildren &&
             <Box
               display='flex'
               justifyContent='flex-end'
               alignItems='center'
-              style={{ minHeight: 20, minWidth: 72, marginRight: 10 }}
+              style={{ minHeight: 20, minWidth: isMobile ? 40 : 72, marginRight: 10 }}
             >
               {isMobile
                 ? (accessibleChildrenExpanded
@@ -3367,18 +3433,18 @@ export default ({ start_at }) => {
                   : <VisibilityIcon fontSize='small' style={{ color: (isDark(tileColor) ? 'cornsilk' : 'black') }} />)
                 : (
                   <Typography
-                    style={AVATextStyle({
+                    style={withMobileTextCap(AVATextStyle({
                       size: 1,
                       bold: true,
                       color: (isDark(tileColor) ? 'cornsilk' : 'black')
-                    })}
+                    }), { maxPx: 15, minPx: 12 })}
                   >
                     {accessibleChildrenExpanded ? 'Hide' : 'Show'}
                   </Typography>
                 )}
             </Box>
           }
-          {canAddFromThisRow &&
+          {canAddFromThisRow && !isMobile &&
             <Box
               display='flex'
               justifyContent='flex-end'
@@ -3534,13 +3600,13 @@ export default ({ start_at }) => {
                 overflow='auto'
                 flexDirection='column'>
                 <Typography
-                  style={AVATextStyle({ size: 1.5, margin: { right: 1 }, color: chromeTextColor })}
+                  style={withMenuMobileTextCap(AVATextStyle({ size: 1.5, margin: { right: 1 }, color: chromeTextColor }))}
                   id='scroll-dialog-title'
                 >
                   {`${reactData.greetingWords},`}
                 </Typography>
                 <Typography
-                  style={AVATextStyle({ size: 1.5, margin: { right: 1 }, color: chromeTextColor })}
+                  style={withMenuMobileTextCap(AVATextStyle({ size: 1.5, margin: { right: 1 }, color: chromeTextColor }))}
                   id='scroll-dialog-title'
                 >
                   {`${reactData.greetingName}!`}
@@ -3575,10 +3641,13 @@ export default ({ start_at }) => {
                   alt={reactData.greetingName}
                 />
               </Tooltip>
-              {makeDate(reactData.current_time, { timeZone: state.session.client_timezone }).absolute.split(' at ').map((tLine, tX) => (
+              {(isMobile
+                ? [makeDate(reactData.current_time, { timeZone: state.session.client_timezone }).timeShort]
+                : makeDate(reactData.current_time, { timeZone: state.session.client_timezone }).absolute.split(' at ')
+              ).map((tLine, tX) => (
                 <Typography
                   key={`time_${tX}`}
-                  style={AVATextStyle({ align: 'center', size: 0.8, color: chromeTextColor })}
+                  style={withMenuMobileTextCap(AVATextStyle({ align: 'center', size: 0.8, color: chromeTextColor }))}
                   id='scroll-dialog-title'
                 >
                   {tLine}
@@ -4088,7 +4157,7 @@ export default ({ start_at }) => {
                                       display='flex'
                                       alignItems='center'
                                       justifyContent='center'
-                                      width={useTileUI ? '100%' : 'calc(100% - 12px)'}
+                                      width='100%'
                                       style={{ marginTop: 10, marginBottom: 4, gap: 8 }}
                                     >
                                       <Button
@@ -4206,7 +4275,7 @@ export default ({ start_at }) => {
                 >
                   {(reactData.loading || !state.hasOwnProperty('groups') || !state.groups.hasOwnProperty('adminHierarchy') || !state.accessList?.[state.session.client_id]) &&
                     <React.Fragment>
-                      <Typography style={AVATextStyle({ size: 1.5, align: 'center', color: chromeTextColor })}  >{`Loading ${reactData.loading ? 'Your Menu' : 'AVA Data'}`}</Typography>
+                      <Typography style={withMenuMobileTextCap(AVATextStyle({ size: 1.5, align: 'center', color: chromeTextColor }))}  >{`Loading ${reactData.loading ? 'Your Menu' : 'AVA Data'}`}</Typography>
                       <Typography style={AVATextStyle({ size: 0.8, align: 'center', color: chromeTextColor })} >
                         {`AVA version ${reactData.AVA_version}`}
                       </Typography>
@@ -4220,7 +4289,11 @@ export default ({ start_at }) => {
                     reactData.marqueeData.map((marqueeLine, marqueeIndex) => (
                       <Typography
                         key={`marquee_${marqueeIndex}_${reactData.marqueeVersion}`}
-                        style={AVATextStyle(Object.assign({ size: 2, margin: { top: 0.6, left: 20, bottom: 1.4 }, bold: true, align: 'center', color: chromeTextColor }, marqueeLine.style))} >
+                        style={withMenuMobileTextCap(AVATextStyle(Object.assign(
+                          { size: 2, margin: { top: 0.6, left: 20, bottom: 1.4 }, bold: true, align: 'center', color: chromeTextColor },
+                          marqueeLine.style,
+                          isThemeDark ? { color: chromeTextColor } : {}
+                        )))} >
                         {marqueeLine.message}
                       </Typography>
                     ))}
