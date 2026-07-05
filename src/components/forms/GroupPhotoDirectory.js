@@ -22,7 +22,7 @@ import useSession from '../../hooks/useSession';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
 import { AVAclasses } from '../../util/AVAStyles';
-import { isEmpty, sentenceCase } from '../../util/AVAUtilities';
+import { isEmpty, sentenceCase, getObject } from '../../util/AVAUtilities';
 import { determineClass, getRole } from '../../util/AVAGroups';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import MakeMessage from './MakeMessage';
@@ -864,7 +864,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                 minWidth={250}
                                 maxWidth={250}
                                 alt=''
-                                src={getImage(superSizeData.person_id)}
+                                src={getObject(superSizeData.person_id, 'image') || getImage(superSizeData.person_id)}
                             />
                         </Box>
                         <Typography className={classes.superSizeLast}>{superSizeData.name?.last || superSizeData.display_name}</Typography>
