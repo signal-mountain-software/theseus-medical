@@ -432,8 +432,12 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
         type="file"
         style={{ display: 'none' }}
         ref={hiddenFileInput}
-        onChange={async (target) => {
-          let s3Data = await handleSaveFile({ photo: target.target.files[0], temp: true });
+        onChange={async (event) => {
+          const photoFile = event.target.files?.[0];
+          if (!photoFile) {
+            return;
+          }
+          let s3Data = await handleSaveFile({ photo: photoFile, temp: true });
           updateReactData({
             imageEditing: s3Data.Location,
           }, true);
@@ -478,18 +482,6 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
               create={true}
               keepSelectedInList={true}
               noDataLabel={''}
-              onInputChange={async (values) => {
-                if (values.length > 0) {
-                  await updateField({
-                    updateList:
-                      [{
-                        tableName: 'peopleRec',
-                        fieldName: 'preferred_language',
-                        newData: values[0].value
-                      }]
-                  });
-                }
-              }}
               onChange={async (values) => {
                 if (values.length > 0) {
                   await updateField({
