@@ -35,14 +35,26 @@ import { updateDocument, createDocument } from '../../util/AVADocuments';
 import { writeSlot, getCalendarEntries } from '../../util/AVACalendars';
 
 const useStyles = makeStyles(theme => ({
+  dialogPaper: {
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  dialogTitleArea: {
+    flexShrink: 0,
+  },
   dialogBox: {
+    flex: '1 1 auto',
+    minHeight: 0,
     paddingTop: 0,
     paddingLeft: 0,
     paddingBottom: theme.spacing(1),
     overflowX: 'hidden',
     overflowY: 'auto',
-    maxHeight: 'calc(100dvh - 260px)',
     marginLeft: theme.spacing(2),
+  },
+  dialogFooter: {
+    flexShrink: 0,
   },
   buttonArea: {
     justifyContent: 'space-around',
@@ -216,6 +228,7 @@ const useStyles = makeStyles(theme => ({
 
 export default ({ request = {}, onClose }) => {
   const MIN_FIELD_WIDTH_PX = 400;
+  const MAX_FIELD_WIDTH_PERCENT = 93;
   const classes = useStyles();
   const AVAClass = AVAclasses();
   const signatureRef = [React.useRef(null), React.useRef(null), React.useRef(null)];
@@ -243,6 +256,20 @@ export default ({ request = {}, onClose }) => {
   const formContainerRef = React.useRef(null);
   // Print capture area excludes the bottom action bar to better match final form output.
   const printContentRef = React.useRef(null);
+
+  const clampRequestedWidthToContainer = (requestedWidthPx, fallbackWidthPx) => {
+    const requestedWidth = Number(requestedWidthPx);
+    if (Number.isFinite(requestedWidth) && requestedWidth > 0) {
+      return `min(${requestedWidth}px, ${MAX_FIELD_WIDTH_PERCENT}%)`;
+    }
+
+    const fallbackWidth = Number(fallbackWidthPx);
+    if (Number.isFinite(fallbackWidth) && fallbackWidth > 0) {
+      return `min(${fallbackWidth}px, ${MAX_FIELD_WIDTH_PERCENT}%)`;
+    }
+
+    return `${MAX_FIELD_WIDTH_PERCENT}%`;
+  };
 
   const generateHtmlOutput = () => {
     // Access outerHTML when needed
@@ -2597,9 +2624,9 @@ export default ({ request = {}, onClose }) => {
     const helperText = toInlineFieldText(fieldRec.prompt?.helper || '');
     const promptWidth = fieldRec.prompt?.width;
     const containerStyle = {
-      width: `${promptWidth || 320}px`,
-      minWidth: `${MIN_FIELD_WIDTH_PX}px`,
-      maxWidth: '80vw',
+      width: clampRequestedWidthToContainer(promptWidth, 320),
+      minWidth: clampRequestedWidthToContainer(MIN_FIELD_WIDTH_PX, MIN_FIELD_WIDTH_PX),
+      maxWidth: `${MAX_FIELD_WIDTH_PERCENT}%`,
       marginTop: '24px',
       marginLeft: '8px',
       marginRight: '8px',
@@ -2741,17 +2768,17 @@ export default ({ request = {}, onClose }) => {
 
     const containerStyle = props.useFamilySizing
       ? {
-        width: `${fieldRec.prompt?.width || 320}px`,
-        minWidth: `${MIN_FIELD_WIDTH_PX}px`,
-        maxWidth: '80vw',
+        width: clampRequestedWidthToContainer(fieldRec.prompt?.width, 320),
+        minWidth: clampRequestedWidthToContainer(MIN_FIELD_WIDTH_PX, MIN_FIELD_WIDTH_PX),
+        maxWidth: `${MAX_FIELD_WIDTH_PERCENT}%`,
         marginTop: '24px',
         marginLeft: '8px',
         marginRight: '8px',
         marginBottom: '8px'
       }
       : {
-        minWidth: `${MIN_FIELD_WIDTH_PX}px`,
-        maxWidth: '80vw',
+        minWidth: clampRequestedWidthToContainer(MIN_FIELD_WIDTH_PX, MIN_FIELD_WIDTH_PX),
+        maxWidth: `${MAX_FIELD_WIDTH_PERCENT}%`,
         marginTop: '24px',
         marginLeft: '8px',
         marginRight: '8px',
@@ -4453,7 +4480,9 @@ export default ({ request = {}, onClose }) => {
     const promptWidth = fieldRec?.prompt?.width;
     const fallbackMinWidth = (isPhoneType || isNumericValueType || isDateSelectType || isDateOrTimeType) ? '20vw' : '60vw';
     const textRows = Number(fieldRec.prompt?.rows || fieldRec.value?.rows || 1);
-    const resolvedMinWidth = promptWidth ? `${promptWidth}px` : fallbackMinWidth;
+    const resolvedMinWidth = promptWidth
+      ? clampRequestedWidthToContainer(promptWidth, promptWidth)
+      : fallbackMinWidth;
     const valueText = (fieldRec && fieldRec.valueText)
       ? (Array.isArray(fieldRec.valueText) ? fieldRec.valueText[occ_index] : fieldRec.valueText)
       : '';
@@ -4472,8 +4501,8 @@ export default ({ request = {}, onClose }) => {
 
     const containerStyle = {
       width: resolvedMinWidth,
-      minWidth: `${MIN_FIELD_WIDTH_PX}px`,
-      maxWidth: '90%',
+      minWidth: clampRequestedWidthToContainer(MIN_FIELD_WIDTH_PX, MIN_FIELD_WIDTH_PX),
+      maxWidth: `${MAX_FIELD_WIDTH_PERCENT}%`,
       marginTop: '24px',
       marginLeft: '8px',
       marginRight: '8px',
@@ -4778,6 +4807,7 @@ export default ({ request = {}, onClose }) => {
         maxWidth={false}
         BackdropProps={reactData.options?.mode === 'printPDF' ? { style: { visibility: 'hidden' } } : undefined}
         PaperProps={{
+          className: classes.dialogPaper,
           style: {
             minWidth: '80vw',
             maxWidth: '80vw',
@@ -4800,10 +4830,13 @@ export default ({ request = {}, onClose }) => {
         }
         {!isInitializing() &&
           <React.Fragment>
-            <div ref={printContentRef}>
-              <Box m={2}>
+            <div
+              ref={printContentRef}
+              style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0, overflow: 'hidden' }}
+            >
+              <Box m={2} className={classes.dialogTitleArea} style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                 <Typography style={AVATextStyle({
-                size: 1.8, bold: true, margin: {
+                size: isMobile() ? 1.4 : 1.8, bold: true, margin: {
                   bottom: 1,
                   top: 1,
                 }
@@ -5241,7 +5274,7 @@ export default ({ request = {}, onClose }) => {
                                         style={AVATextStyle({
                                           lineHeight: 1,
                                           minWidth: '60vw',
-                                          maxWidth: '90%',
+                                          maxWidth: `${MAX_FIELD_WIDTH_PERCENT}%`,
                                           size: 0.75,
                                           margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
                                         })}
@@ -5282,8 +5315,9 @@ export default ({ request = {}, onClose }) => {
                                         flexDirection='row'
                                         key={`selectParent-${this_field}_${sectionNdx}`}
                                         id={`selectParent-${this_field}`}
-                                        width={`${reactData.fields[this_field].prompt?.width || 200}px`}
-                                        minWidth={`${MIN_FIELD_WIDTH_PX}px`}
+                                        width={clampRequestedWidthToContainer(reactData.fields[this_field].prompt?.width, 200)}
+                                        minWidth={clampRequestedWidthToContainer(MIN_FIELD_WIDTH_PX, MIN_FIELD_WIDTH_PX)}
+                                        maxWidth={`${MAX_FIELD_WIDTH_PERCENT}%`}
                                         flexGrow={1}
                                         marginBottom={0}
                                         justifyContent='flex-start'
@@ -5359,7 +5393,7 @@ export default ({ request = {}, onClose }) => {
                                                 style={AVATextStyle({
                                                   lineHeight: 1,
                                                   minWidth: '60vw',
-                                                  maxWidth: '90%',
+                                                  maxWidth: `${MAX_FIELD_WIDTH_PERCENT}%`,
                                                   size: 0.75,
                                                   opacity: '60%',
                                                   margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
@@ -5446,7 +5480,7 @@ export default ({ request = {}, onClose }) => {
                       })()}
                     </div>
                   ))}
-                  <Box aria-hidden='true' style={{ height: '28vh' }} />
+                  <Box aria-hidden='true' style={{ height: '16px' }} />
                 </React.Fragment>
                 :
                 <Typography style={AVATextStyle({ size: 0.9, margin: { top: 1, bottom: 1, left: 0.5, right: 3 } })}>
@@ -5456,6 +5490,7 @@ export default ({ request = {}, onClose }) => {
             </DialogContent>
             </div>
             <Box
+              className={classes.dialogFooter}
               display='flex'
               flexDirection='row'
               alignItems={'center'}
