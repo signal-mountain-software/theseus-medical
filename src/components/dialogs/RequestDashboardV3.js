@@ -695,7 +695,7 @@ export default function RequestDashboardV3({ factName, request = {}, options = {
             : `${currentUserName} added a note to your ${typeTitle}: "${enteredNote}".`;
         }
         if (!notifyMsg) { continue; }
-        const recipients = notify.filter(n => n === row.workData.enteredBy || n === row.requestor);
+        const recipients = makeArray(notify).filter(n => n === row.workData.enteredBy || n === row.requestor);
         if (recipients.length > 0) {
           await sendMessages({
             client: session.client_id,
