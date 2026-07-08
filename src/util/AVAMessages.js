@@ -1,5 +1,5 @@
 
-import { clt, cl, s3, recordExists, titleCase, uuid, isObject, listFromArray, array_in_array, makeArray, sentenceCase, dbClient, deepCopy, getObject } from './AVAUtilities';
+import { clt, cl, s3, recordExists, titleCase, uuid, isObject, listFromArray, array_in_array, makeArray, sentenceCase, dbClient, deepCopy, getObject, formatSelectEventDisplayValue } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
 import { getCustomizations, getObject64 } from './AVAUtilities';
@@ -1343,16 +1343,13 @@ export async function printDocumentHtmlB({ documentList, options = {} }) {
             break;
           }
           case 'select_event': {
-            // Calendar-derived selection: value key is stored as eventId#YYYYMMDD.
-            // Extract and format the date portion for a readable print display.
             const pt = stripHtml(fieldRec.prompt?.value || '').text;
-            const rawVal = String(fieldRec.valueText || fieldRec.value || '');
-            let displayVal = rawVal;
-            if (rawVal.includes('#')) {
-              const datePart = rawVal.split('#').pop();
-              const parsed = makeDate(datePart);
-              if (!parsed.error) { displayVal = parsed.absolute_full || parsed.absolute || rawVal; }
-            }
+            const { formatted } = await formatSelectEventDisplayValue({
+              rawValue: fieldRec.value || fieldRec.valueText || '',
+              client_id,
+              person_id: docInfo?.person_id || docInfo?.patient_id || fieldRec?.pertains_to || fieldRec?.person_id
+            });
+            const displayVal = String(formatted || fieldRec.valueText || fieldRec.value || '');
             pdfLine(`${pt}: ${displayVal}`, { style: 'normal', size: 'medium', align: 'left', after: 1 });
             break;
           }
@@ -1526,16 +1523,13 @@ export async function printDocumentB({ documentList, options = {} }) {
                 break;
               }
               case 'select_event': {
-                // Calendar-derived selection: value key is stored as eventId#YYYYMMDD.
-                // Extract and format the date portion for a readable print display.
                 const pt = stripHtml(fields[this_field].prompt.value).text;
-                const rawVal = String(fields[this_field].valueText || fields[this_field].value || '');
-                let displayVal = rawVal;
-                if (rawVal.includes('#')) {
-                  const datePart = rawVal.split('#').pop();
-                  const parsed = makeDate(datePart);
-                  if (!parsed.error) { displayVal = parsed.absolute_full || parsed.absolute || rawVal; }
-                }
+                const { formatted } = await formatSelectEventDisplayValue({
+                  rawValue: fields[this_field].value || fields[this_field].valueText || '',
+                  client_id,
+                  person_id: docInfo?.person_id || docInfo?.patient_id || fields[this_field]?.pertains_to || fields[this_field]?.person_id
+                });
+                const displayVal = String(formatted || fields[this_field].valueText || fields[this_field].value || '');
                 pdfLine(`${pt}: ${displayVal}`, { style: 'normal', size: 'medium', align: 'left', after: 1 });
                 break;
               }

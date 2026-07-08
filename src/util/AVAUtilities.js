@@ -2079,6 +2079,31 @@ async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_
         details: dateObjOut
       };
     }
+    case 'select_event': {
+      if (Array.isArray(rawValue)) {
+        const formattedList = [];
+        const detailsList = [];
+        for (const rawEntry of rawValue) {
+          const resolvedEvent = await formatSelectEventDisplayValue({
+            rawValue: rawEntry,
+            client_id,
+            person_id
+          });
+          formattedList.push(resolvedEvent.formatted);
+          detailsList.push(resolvedEvent.details);
+        }
+        return {
+          formatted: formattedList,
+          details: detailsList
+        };
+      }
+
+      return formatSelectEventDisplayValue({
+        rawValue,
+        client_id,
+        person_id
+      });
+    }
     case 'datetime':
     case 'date_time':
     case 'date-time': {
@@ -2186,6 +2211,111 @@ async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_
       };
     }
   }
+}
+
+export async function formatSelectEventDisplayValue({ rawValue, client_id, person_id }) {
+  if (!isGoodResolvedValue(rawValue) || !client_id || !person_id) {
+    return {
+      formatted: rawValue,
+      details: null
+    };
+  }
+
+  const rawKey = String(rawValue).trim();
+  const [event_id, rawOccurrenceDate, rawSlotFromValue] = rawKey.split('#');
+  if (!event_id || !rawOccurrenceDate) {
+    return {
+      formatted: rawValue,
+      details: null
+    };
+  }
+
+  const occurrenceKey = `${event_id}#${rawOccurrenceDate}`;
+  const slotKey = `${occurrenceKey}#${person_id}`;
+
+  const [eventResp, occurrenceResp, slotResp] = await Promise.all([
+    dbClient.get({
+      TableName: 'Calendar',
+      Key: { client: client_id, event_key: event_id }
+    }).promise().catch((error) => {
+      cl({ 'resolveSelectEventDisplayValue event read failed': { client_id, event_id, person_id, error } });
+      return null;
+    }),
+    dbClient.get({
+      TableName: 'Calendar',
+      Key: { client: client_id, event_key: occurrenceKey }
+    }).promise().catch((error) => {
+      cl({ 'resolveSelectEventDisplayValue occurrence read failed': { client_id, occurrenceKey, person_id, error } });
+      return null;
+    }),
+    dbClient.get({
+      TableName: 'Calendar',
+      Key: { client: client_id, event_key: slotKey }
+    }).promise().catch((error) => {
+      cl({ 'resolveSelectEventDisplayValue slot read failed': { client_id, slotKey, person_id, error } });
+      return null;
+    })
+  ]);
+
+  const eventRec = recordExists(eventResp) ? eventResp.Item : null;
+  const occurrenceRec = recordExists(occurrenceResp) ? occurrenceResp.Item : null;
+  const slotRec = recordExists(slotResp) ? slotResp.Item : null;
+
+  const occurrenceDate = occurrenceRec?.occurrence_date || rawOccurrenceDate;
+  const occurrenceDateObj = makeDate(occurrenceDate);
+  const occurrenceDateText = occurrenceDateObj?.slashDate || String(occurrenceDate || '').trim();
+  const eventDescription = eventRec?.eventData?.event_data?.description
+    || occurrenceRec?.description
+    || eventRec?.description
+    || event_id;
+  const defaultStartTime = eventRec?.eventData?.event_data?.time?.from
+    || occurrenceRec?.time?.from
+    || eventRec?.time?.from
+    || '';
+  const rawSlotValue = slotRec?.slotData?.slot;
+  const legacyRawSlot = (rawSlotFromValue !== undefined && rawSlotFromValue !== null && String(rawSlotFromValue) !== String(person_id))
+    ? String(rawSlotFromValue).trim()
+    : '';
+  const slotText = (rawSlotValue !== undefined && rawSlotValue !== null && String(rawSlotValue) !== String(person_id))
+    ? String(rawSlotValue).trim()
+    : (legacyRawSlot || String(defaultStartTime || '').trim());
+
+  let ownerName = '';
+  const slotOwnerId = slotRec?.slotData?.owner;
+  if (slotOwnerId && String(slotOwnerId) !== String(person_id)) {
+    const resolvedOwnerName = await makeName(slotOwnerId);
+    ownerName = String(resolvedOwnerName || '').trim();
+  }
+
+  const formattedParts = [`${eventDescription} - ${occurrenceDateText}`];
+  if (slotText) {
+    formattedParts.push(slotText);
+  }
+
+  let formatted = formattedParts.join(' ').trim();
+  if (ownerName) {
+    formatted = `${formatted} (${ownerName})`;
+  }
+
+  return {
+    formatted: formatted || rawValue,
+    details: {
+      event_id,
+      occurrence_key: occurrenceKey,
+      occurrence_date: occurrenceDate,
+      occurrence_date_text: occurrenceDateText,
+      slot_key: slotKey,
+      slot: slotText || '',
+      raw_slot_from_value: legacyRawSlot || null,
+      slot_owner: slotOwnerId || null,
+      slot_owner_name: ownerName || null,
+      event_description: eventDescription,
+      default_start_time: defaultStartTime || '',
+      event_found: !!eventRec,
+      occurrence_found: !!occurrenceRec,
+      slot_found: !!slotRec,
+    }
+  };
 }
 
 function normalizeBooleanInput(rawValue, dictionaryRec = {}) {
