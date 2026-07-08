@@ -157,6 +157,10 @@ export default ({ defaults, onClose }) => {
     selectedGroupMembers: false,
     showFieldPicker: false,
     loadingExportFields: false,
+    exportInProgress: false,
+    exportProgressCurrent: 0,
+    exportProgressTotal: 0,
+    exportProgressLabel: '',
     exportFieldOptions: [],
     selectedExportFieldNames: [],
     savedReports: [],
@@ -327,7 +331,7 @@ export default ({ defaults, onClose }) => {
       }),
       listSavedReports({
         clientId: state?.session?.client_id,
-        exportScope: 'form_management'
+        exportScope: 'people_list_shared'
       })
     ]);
 
@@ -354,61 +358,81 @@ export default ({ defaults, onClose }) => {
   }
 
   async function downloadCurrentPeopleListCsv() {
-    const exportData = await buildCurrentPeopleListExportData();
-    if (!exportData) {
-      return false;
+    try {
+      const exportData = await buildCurrentPeopleListExportData();
+      if (!exportData) {
+        return false;
+      }
+
+      const {
+        selectedForm,
+        header,
+        rows
+      } = exportData;
+
+      const safeFormName = sanitizeExportBaseName(
+        selectedForm?.form_name || reactData.selectedForm_id,
+        'form'
+      );
+      const fileName = `${safeFormName || 'form'}_people_list.csv`;
+
+      downloadRowsAsCsv({ header, rows, fileName });
+      await saveExportFieldSelections({
+        sessionId: state?.session?.user_id,
+        clientId: state?.session?.client_id,
+        exportScope: 'form_management',
+        selectedFieldNames: reactData.selectedExportFieldNames || [],
+        logLabel: 'form export selections'
+      });
+      return true;
     }
-
-    const {
-      selectedForm,
-      header,
-      rows
-    } = exportData;
-
-    const safeFormName = sanitizeExportBaseName(
-      selectedForm?.form_name || reactData.selectedForm_id,
-      'form'
-    );
-    const fileName = `${safeFormName || 'form'}_people_list.csv`;
-
-    downloadRowsAsCsv({ header, rows, fileName });
-    await saveExportFieldSelections({
-      sessionId: state?.session?.user_id,
-      clientId: state?.session?.client_id,
-      exportScope: 'form_management',
-      selectedFieldNames: reactData.selectedExportFieldNames || [],
-      logLabel: 'form export selections'
-    });
-    return true;
+    finally {
+      updateReactData({
+        exportInProgress: false,
+        exportProgressCurrent: 0,
+        exportProgressTotal: 0,
+        exportProgressLabel: ''
+      }, true);
+    }
   }
 
   async function downloadCurrentPeopleListXlsx() {
-    const exportData = await buildCurrentPeopleListExportData();
-    if (!exportData) {
-      return false;
+    try {
+      const exportData = await buildCurrentPeopleListExportData();
+      if (!exportData) {
+        return false;
+      }
+
+      const {
+        selectedForm,
+        header,
+        rows
+      } = exportData;
+
+      const safeFormName = sanitizeExportBaseName(
+        selectedForm?.form_name || reactData.selectedForm_id,
+        'form'
+      );
+      const fileName = `${safeFormName || 'form'}_people_list.xlsx`;
+
+      downloadRowsAsXlsx({ header, rows, fileName });
+      await saveExportFieldSelections({
+        sessionId: state?.session?.user_id,
+        clientId: state?.session?.client_id,
+        exportScope: 'form_management',
+        selectedFieldNames: reactData.selectedExportFieldNames || [],
+        logLabel: 'form export selections'
+      });
+      return true;
     }
-
-    const {
-      selectedForm,
-      header,
-      rows
-    } = exportData;
-
-    const safeFormName = sanitizeExportBaseName(
-      selectedForm?.form_name || reactData.selectedForm_id,
-      'form'
-    );
-    const fileName = `${safeFormName || 'form'}_people_list.xlsx`;
-
-    downloadRowsAsXlsx({ header, rows, fileName });
-    await saveExportFieldSelections({
-      sessionId: state?.session?.user_id,
-      clientId: state?.session?.client_id,
-      exportScope: 'form_management',
-      selectedFieldNames: reactData.selectedExportFieldNames || [],
-      logLabel: 'form export selections'
-    });
-    return true;
+    finally {
+      updateReactData({
+        exportInProgress: false,
+        exportProgressCurrent: 0,
+        exportProgressTotal: 0,
+        exportProgressLabel: ''
+      }, true);
+    }
   }
 
   async function downloadCurrentPeopleListPdf(resolvedPromptValues = {}) {
@@ -492,12 +516,27 @@ export default ({ defaults, onClose }) => {
     });
 
     if (selectedFieldKeys.length > 0) {
+      const progressTotal = rows.length;
+      updateReactData({
+        exportInProgress: true,
+        exportProgressCurrent: 0,
+        exportProgressTotal: progressTotal,
+        exportProgressLabel: 'Preparing your report data...'
+      }, true);
+
       const personIds = rows.map((rowObj) => rowObj[1]);
       const resolvedByPersonId = await resolveSelectedFieldValuesForPeople({
         clientId: state.session.client_id,
         personIds,
         selectedFieldKeys,
-        selectedFieldOptions
+        selectedFieldOptions,
+        onProgress: ({ completedCount, totalCount }) => {
+          updateReactData({
+            exportProgressCurrent: completedCount,
+            exportProgressTotal: totalCount,
+            exportProgressLabel: 'Preparing your report data...'
+          }, true);
+        }
       });
 
       rows.forEach((rowObj, rowIndex) => {
@@ -2394,7 +2433,7 @@ export default ({ defaults, onClose }) => {
                 onClick={async () => {
                   const reportName = reactData.reportNameInput.trim();
                   const clientId = state?.session?.client_id;
-                  const exportScope = 'form_management';
+                  const exportScope = 'people_list_shared';
                   const reportId = reactData.selectedReportId
                     || (sanitizeExportBaseName(reportName, 'report') + '_' + Date.now());
                   await saveReport({ clientId, exportScope, reportId, reportName, selectedFieldNames: reactData.selectedExportFieldNames });
@@ -2582,7 +2621,7 @@ export default ({ defaults, onClose }) => {
                   }, true);
                 }
               }}
-              disabled={reactData.loadingExportFields || xlsxBlockers.length > 0}
+              disabled={reactData.loadingExportFields || reactData.exportInProgress || xlsxBlockers.length > 0}
             >
               {'Download Excel'}
             </Button>
@@ -2612,6 +2651,17 @@ export default ({ defaults, onClose }) => {
             </Button>
               </span>
             </Tooltip>
+            {reactData.exportInProgress && (reactData.exportProgressTotal > 0) &&
+              <Box mt={1.5} width='100%'>
+                <Typography style={AVATextStyle({ size: 0.9, margin: { bottom: 0.4 } })}>
+                  {`${reactData.exportProgressLabel || 'Preparing export data...'} ${reactData.exportProgressCurrent}/${reactData.exportProgressTotal}`}
+                </Typography>
+                <LinearProgress
+                  variant='determinate'
+                  value={Math.min(100, Math.round((reactData.exportProgressCurrent / reactData.exportProgressTotal) * 100))}
+                />
+              </Box>
+            }
             <Button
               className={AVAClass.AVAButton}
               style={{ backgroundColor: 'red', color: 'white' }}
