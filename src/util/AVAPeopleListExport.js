@@ -1,8 +1,7 @@
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 
-import { dbClient, recordExists, deepCopy, resolveData, cl } from './AVAUtilities';
-import { getImage } from './AVAPeople';
+import { dbClient, recordExists, deepCopy, resolveData, cl, getObject } from './AVAUtilities';
 
 export function formatExportValue(value) {
   if ((value === null) || (value === undefined)) {
@@ -419,7 +418,7 @@ export async function downloadRowsAsPdf({
     let y = margin;
 
     // Photo — centered, square
-    const photoUrl = getImage(personId);
+    const photoUrl = personId ? getObject(personId, 'image') : '';
     if (photoUrl) {
       const base64 = await loadImageAsBase64(photoUrl);
       if (base64) {

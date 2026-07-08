@@ -6,7 +6,7 @@ import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { Box, Typography, Button } from '@material-ui/core/';
 import { formatPhone } from '../../util/AVAPeople';
 import { getPersonGroups, isLeaf } from '../../util/AVAGroups';
-import { deepCopy, titleCase } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, getObject } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import SendIcon from '@material-ui/icons/Send';
@@ -23,6 +23,35 @@ export default ({ currentValues, reactData, updateReactData }) => {
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
 
   const AVAClass = AVAclasses();
+  const personId = currentValues?.peopleRec?.person_id;
+  const fullImageUrl = personId ? getObject(personId, 'image') : '';
+  const [snapshotImageSrc, setSnapshotImageSrc] = React.useState(reactData.myImage || fullImageUrl || '');
+
+  React.useEffect(() => {
+    // Render quickly with the cached thumb (if present), then swap to full image.
+    const fastSrc = reactData.myImage || fullImageUrl || '';
+    setSnapshotImageSrc(fastSrc);
+
+    if (!fullImageUrl || (fullImageUrl === fastSrc)) {
+      return;
+    }
+
+    let isCancelled = false;
+    const preload = new Image();
+    preload.onload = () => {
+      if (!isCancelled) {
+        setSnapshotImageSrc(fullImageUrl);
+      }
+    };
+    preload.onerror = () => {
+      // Keep fastSrc as fallback if full image fails.
+    };
+    preload.src = fullImageUrl;
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [fullImageUrl, reactData.myImage]);
 
   const getCategoryColor = (categoryName) => {
     const palette = [
@@ -189,7 +218,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
           border={1}
           mr={2}
           alt=''
-          src={reactData.myImage}
+          src={snapshotImageSrc}
         />
         <Box
           key={`profileSection_masterBox`}

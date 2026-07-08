@@ -194,6 +194,7 @@ export default ({ start_at }) => {
   const { roles, session } = state;
   const clientUseTileUI = (state.session?.client_style?.ui_tiles === true);
   const canToggleUiMode = !clientUseTileUI;
+  const resolvedSessionClientLogo = state.session?.client_logo_thumb || state.session?.client_logo || process.env.REACT_APP_AVA_LOGO;
 
   const [cookies, , removeCookie] = useCookies(['AVAuser']);
 
@@ -950,7 +951,7 @@ export default ({ start_at }) => {
           else { this_item.color = stringToColor(this_item.menu_id); }
         }
         if (state.session.client_style?.suppress_card_image) { this_item.icon = null; }
-        else if (!this_item.icon) { this_item.icon = state.session.client_logo; }
+        else if (!this_item.icon) { this_item.icon = resolvedSessionClientLogo; }
         const targetParentId = parent?.menu_id || null;
         const alreadyLoaded = reactData.menu_hierarchy[menu_level].some((existingCell) => {
           return (existingCell.menu_id === itemCode) && (existingCell.parent === targetParentId);
@@ -976,32 +977,118 @@ export default ({ start_at }) => {
   const MENU_PAGE_SIZE = 50;  // items shown per page per menu level (prev/next navigation)
 
   /**
-   * Generate a tiny base64 JPEG thumbnail from an image File object.
+   * Generate a tiny base64 JPEG thumbnail from an uploaded image/video File object.
    * Stored in icon_thumb on the MenuV3 record so the grid can display instantly
-   * without any additional image fetches — the data comes back in BatchGet.
-   * Target: 64×64 px at JPEG quality 0.55 ≈ 2–4 KB.
+   * without any additional fetches after BatchGet.
    */
   const generateMenuThumb = (file) => {
     return new Promise((resolve) => {
-      if (!file || !file.type?.startsWith('image/')) { resolve(null); return; }
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const THUMB_SIZE = 64;
+      if (!file || !file.type) { resolve(null); return; }
+
+      const THUMB_SIZE = 64;
+      const toThumbDataUrl = (sourceWidth, sourceHeight, draw) => {
         const canvas = document.createElement('canvas');
         canvas.width = THUMB_SIZE;
         canvas.height = THUMB_SIZE;
         const ctx = canvas.getContext('2d');
-        // Cover-fit: crop to square from center
-        const side = Math.min(img.naturalWidth, img.naturalHeight);
-        const sx = (img.naturalWidth - side) / 2;
-        const sy = (img.naturalHeight - side) / 2;
-        ctx.drawImage(img, sx, sy, side, side, 0, 0, THUMB_SIZE, THUMB_SIZE);
-        resolve(canvas.toDataURL('image/jpeg', 0.55));
+        const side = Math.min(sourceWidth, sourceHeight);
+        const sx = (sourceWidth - side) / 2;
+        const sy = (sourceHeight - side) / 2;
+        draw(ctx, sx, sy, side);
+        return canvas.toDataURL('image/jpeg', 0.55);
       };
-      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
-      img.src = url;
+
+      if (file.type.startsWith('image/')) {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          try {
+            const thumb = toThumbDataUrl(img.naturalWidth, img.naturalHeight, (ctx, sx, sy, side) => {
+              ctx.drawImage(img, sx, sy, side, side, 0, 0, THUMB_SIZE, THUMB_SIZE);
+            });
+            resolve(thumb);
+          }
+          catch {
+            resolve(null);
+          }
+          finally {
+            URL.revokeObjectURL(url);
+          }
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+        img.src = url;
+        return;
+      }
+
+      if (!file.type.startsWith('video/')) {
+        resolve(null);
+        return;
+      }
+
+      const video = document.createElement('video');
+      const url = URL.createObjectURL(file);
+      let settled = false;
+      const cleanup = () => {
+        URL.revokeObjectURL(url);
+        video.removeAttribute('src');
+      };
+      const done = (value) => {
+        if (settled) { return; }
+        settled = true;
+        cleanup();
+        resolve(value);
+      };
+
+      const captureFrame = () => {
+        try {
+          if (!video.videoWidth || !video.videoHeight) {
+            done(null);
+            return;
+          }
+          const thumb = toThumbDataUrl(video.videoWidth, video.videoHeight, (ctx, sx, sy, side) => {
+            ctx.drawImage(video, sx, sy, side, side, 0, 0, THUMB_SIZE, THUMB_SIZE);
+          });
+          done(thumb);
+        }
+        catch {
+          done(null);
+        }
+      };
+
+      video.preload = 'metadata';
+      video.muted = true;
+      video.playsInline = true;
+      video.onloadedmetadata = () => {
+        const duration = Number(video.duration);
+        const targetTime = (Number.isFinite(duration) && duration > 0.25)
+          ? Math.min(1, duration / 4)
+          : 0;
+
+        if (targetTime <= 0) {
+          if (video.readyState >= 2) {
+            captureFrame();
+          }
+          else {
+            video.onloadeddata = captureFrame;
+          }
+          return;
+        }
+
+        video.onseeked = captureFrame;
+        try {
+          video.currentTime = targetTime;
+        }
+        catch {
+          if (video.readyState >= 2) {
+            captureFrame();
+          }
+          else {
+            video.onloadeddata = captureFrame;
+          }
+        }
+      };
+      video.onerror = () => done(null);
+      video.src = url;
     });
   };
 
@@ -1046,11 +1133,23 @@ export default ({ start_at }) => {
    */
   const backfillMenuThumbs = async (menuItems) => {
     const BATCH = 5;  // concurrent image fetches per round — don't hammer the browser
+    const looksLikeImageUrl = (value) => {
+      if (!value || typeof value !== 'string') { return false; }
+      return /\.(jpe?g|png|gif|webp|bmp)(\?.*)?$/i.test(value.trim());
+    };
+    const resolveThumbSourceUrl = (item) => {
+      const menuType = item.menu_type || item.menu_itemType;
+      if ((menuType === 'link') || (menuType === 'live_link')) {
+        return getLinkThumbnailUrl(item.url, item.icon);
+      }
+      if (menuType === 'menu') {
+        return item.icon || null;
+      }
+      return null;
+    };
     const candidates = menuItems.filter(item =>
       !item.icon_thumb &&
-      item.menu_itemType === 'link' &&
-      item.url &&
-      /\.(jpe?g|png|gif|webp|bmp)(\?.*)?$/i.test(item.url.trim()) &&
+      looksLikeImageUrl(resolveThumbSourceUrl(item)) &&
       !_thumbBackfillInProgress.current.has(item.menu_id)
     );
     if (candidates.length === 0) { return; }
@@ -1060,7 +1159,8 @@ export default ({ start_at }) => {
       const chunk = candidates.slice(i, i + BATCH);
       const results = await Promise.all(
         chunk.map(async (item) => {
-          const thumb = await generateMenuThumbFromUrl(item.url);
+          const thumbSourceUrl = resolveThumbSourceUrl(item);
+          const thumb = await generateMenuThumbFromUrl(thumbSourceUrl);
           return { item, thumb };
         })
       );
@@ -1132,7 +1232,7 @@ export default ({ start_at }) => {
           else { this_item.color = stringToColor(this_item.menu_id); }
         }
         if (state.session.client_style?.suppress_card_image) { this_item.icon = null; }
-        else if (!this_item.icon) { this_item.icon = state.session.client_logo; }
+        else if (!this_item.icon) { this_item.icon = resolvedSessionClientLogo; }
         const targetParentId = parent?.menu_id || null;
         const alreadyLoaded = reactData.menu_hierarchy[menu_level].some(
           (existingCell) => existingCell.menu_id === this_item.menu_id && existingCell.parent === targetParentId
@@ -1218,7 +1318,7 @@ export default ({ start_at }) => {
           children: [...normalizedFavorites, ...templateExtras],
           color: template?.color || stringToColor('__v3_favorites__'),
           icon_thumb: template?.icon_thumb || null,
-          icon: template?.icon_thumb || template?.icon || state.session?.client_logo
+          icon: template?.icon_thumb || template?.icon || resolvedSessionClientLogo
         }
       });
     }
@@ -3034,12 +3134,19 @@ export default ({ start_at }) => {
       !['__top__', '__v3_favorites__', 'add_item_instructions'].includes(this_item.menu_id)
     );
     const canDropOnThisCard = !!((menuItemType === 'menu') && canManageMenuChildren(this_item));
-    const hideCardImage = (!useTileUI) && (accessibleDepth > 0);
     const isLinkCard = ['link', 'live_link'].includes(normalizedMenuType);
     const isTelLink = isLinkCard && String(this_item.url || '').trim().toLowerCase().startsWith('tel:');
+    const allowNestedAccessibleThumb = (!useTileUI)
+      && (accessibleDepth > 0)
+      && isLinkCard
+      && !isTelLink
+      && !!this_item.icon_thumb;
+    const hideCardImage = (!useTileUI) && (accessibleDepth > 0) && !allowNestedAccessibleThumb;
+    // Accessibility rows use compact icon treatment; prefer canonical icon URLs for
+    // non-link cards there to avoid rendering artifacts from generated thumbs.
     const cardImageUrl = (isLinkCard && !isTelLink)
       ? (this_item.icon_thumb || getLinkThumbnailUrl(this_item.url, this_item.icon))
-      : (this_item.icon_thumb || this_item.icon);
+      : ((!useTileUI) ? (this_item.icon || this_item.icon_thumb) : (this_item.icon_thumb || this_item.icon));
     const hasLinkThumbnail = (isLinkCard && !isTelLink) && !!(cardImageUrl && cardImageUrl !== this_item.icon);
     const parentColor = (level_index > 0)
       ? reactData.menu_hierarchy[level_index - 1]?.find((parentCell) => parentCell.menu_id === this_cell.parent)?.menuItemRec?.color
@@ -3290,12 +3397,14 @@ export default ({ start_at }) => {
                   ? (useTileUI
                     ? { height: 100, width: '100%', borderRadius: '30px 30px 30px 30px' }
                     : {
-                      width: isMobile ? 96 : 140,
-                      minWidth: isMobile ? 96 : 140,
-                      maxWidth: isMobile ? 96 : 140,
-                      height: 86,
-                      minHeight: 86,
-                      borderRadius: '30px 0 0 30px'
+                         width: 64,
+                      minWidth: 64,
+                      maxWidth: 64,
+                      height: 64,
+                      minHeight: 64,
+                      marginLeft: 18,
+                      marginRight: -8,
+                        borderRadius: '16px',
                     }
                   )
                   : (useTileUI
@@ -3624,7 +3733,7 @@ export default ({ start_at }) => {
                 }
                 placement='bottom-start'>
                 <Avatar
-                  src={state.session?.client_logo || process.env.REACT_APP_AVA_LOGO}
+                  src={resolvedSessionClientLogo}
                   alt={reactData.greetingName}
                 />
               </Tooltip>

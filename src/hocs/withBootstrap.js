@@ -57,8 +57,8 @@ export default Component => props => {
 
   const [reactData, setReactData] = React.useState({
     currentClientLogo:
-      ((state.session && state.session.client_logo)
-        ? state.session.client_logo
+      ((state.session && (state.session.client_logo_thumb || state.session.client_logo))
+        ? (state.session.client_logo_thumb || state.session.client_logo)
         : process.env.REACT_APP_AVA_LOGO
       ),
     customizationData: {
@@ -923,8 +923,10 @@ export default Component => props => {
       });
     if (recordExists(logoRec)) {
       sessionRec.Item.client_icon = logoRec.Item.icon;
+      sessionRec.Item.client_logo = logoRec.Item.icon;
+      sessionRec.Item.client_logo_thumb = logoRec.Item.icon_thumb || null;
       updateReactData({
-        currentClientLogo: sessionRec.Item.client_icon
+        currentClientLogo: sessionRec.Item.client_logo_thumb || sessionRec.Item.client_icon
       });
     }
     return [true, sessionRec.Item];
@@ -1162,9 +1164,12 @@ export default Component => props => {
             AVADefaults({ [cRec.custom_key]: cRec.customization_value });
             switch (cRec.custom_key) {
               case 'logo': {
-                currentSession.client_logo = cRec.icon;
+                const resolvedLogo = cRec.icon || cRec.customization_value || null;
+                currentSession.client_logo = resolvedLogo;
+                currentSession.client_icon = resolvedLogo;
+                currentSession.client_logo_thumb = cRec.icon_thumb || null;
                 updateReactData({
-                  currentClientLogo: cRec.icon
+                  currentClientLogo: currentSession.client_logo_thumb || resolvedLogo
                 });
                 break;
               }
