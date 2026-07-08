@@ -1843,6 +1843,10 @@ export default ({ onClose, options = {} }) => {
    */
   const savePeopleRecord = async (member) => {
     try {
+      const normalizeNameForStorage = (value) => {
+        return titleCase(String(value || '').trim());
+      };
+
       // ── Existing-account update path ─────────────────────────────────────────
       if (member.is_existing_account) {
         // Inline phone conversion (mirrors convertPhoneToStorageFormat below)
@@ -1881,10 +1885,23 @@ export default ({ onClose, options = {} }) => {
             if (!obj[keys[i]]) obj[keys[i]] = {};
             obj = obj[keys[i]];
           }
-          obj[keys[keys.length - 1]] = formRec.value?.type === 'phone'
+          const targetPath = keys.join('.');
+          let saveValue = formRec.value?.type === 'phone'
             ? toPhone(fv[fieldName])
             : fv[fieldName];
+
+          if ((targetPath === 'name.first') || (targetPath === 'name.last')) {
+            saveValue = normalizeNameForStorage(saveValue);
+          }
+
+          obj[keys[keys.length - 1]] = saveValue;
         });
+
+        if (existingRecord.name) {
+          existingRecord.name.first = normalizeNameForStorage(existingRecord.name.first);
+          existingRecord.name.last = normalizeNameForStorage(existingRecord.name.last);
+          existingRecord.display_name = `${existingRecord.name.first || ''} ${existingRecord.name.last || ''}`.trim();
+        }
 
         // Merge preauth groups into existing groups array
         const rawPreauthGroups = member.preauth_extra_fields?._preauth_groups;
@@ -1937,7 +1954,10 @@ export default ({ onClose, options = {} }) => {
         fieldValues['last name'] ||
         '';
 
-      if (!firstName || !lastName) {
+      const normalizedFirstName = normalizeNameForStorage(firstName);
+      const normalizedLastName = normalizeNameForStorage(lastName);
+
+      if (!normalizedFirstName || !normalizedLastName) {
         throw new Error('First name and last name are required');
       }
 
@@ -2019,10 +2039,10 @@ export default ({ onClose, options = {} }) => {
 
       // Build search data following PeopleMaintenance.js pattern (lines 834-854)
       let search_words = [
-        titleCase(firstName),
-        titleCase(lastName),
-        firstName.toLowerCase(),
-        lastName.toLowerCase(),
+        normalizedFirstName,
+        normalizedLastName,
+        normalizedFirstName.toLowerCase(),
+        normalizedLastName.toLowerCase(),
         cellForStorage ? cellForStorage.slice(-10) : ' '
       ];
 
@@ -2043,10 +2063,10 @@ export default ({ onClose, options = {} }) => {
         person_id: member.proposed_user_id,
         client_id: reactData.client_id,
         name: {
-          first: firstName,
-          last: lastName
+          first: normalizedFirstName,
+          last: normalizedLastName
         },
-        display_name: `${firstName} ${lastName}`,
+        display_name: `${normalizedFirstName} ${normalizedLastName}`,
         groups: groups,
         preferred_methods: preferred_methods,
         preferred_method: preferred_method,

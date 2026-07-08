@@ -21,6 +21,33 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
   const preauthFileInputRef = React.useRef(null);
   const [preauthImportStatus, setPreauthImportStatus] = React.useState(null);
 
+  const generateLogoThumbFromUrl = React.useCallback((imageUrl) => {
+    return new Promise((resolve) => {
+      if (!imageUrl || typeof imageUrl !== 'string') { resolve(null); return; }
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const THUMB_SIZE = 64;
+          const canvas = document.createElement('canvas');
+          canvas.width = THUMB_SIZE;
+          canvas.height = THUMB_SIZE;
+          const ctx = canvas.getContext('2d');
+          const side = Math.min(img.naturalWidth, img.naturalHeight);
+          const sx = (img.naturalWidth - side) / 2;
+          const sy = (img.naturalHeight - side) / 2;
+          ctx.drawImage(img, sx, sy, side, side, 0, 0, THUMB_SIZE, THUMB_SIZE);
+          resolve(canvas.toDataURL('image/jpeg', 0.55));
+        }
+        catch (_e) {
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = imageUrl;
+    });
+  }, []);
+
   const handlePreauthUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -827,17 +854,29 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
             }, true);
           }}
           onLoad={async (response) => {
+            const logoUrl = response?.[0]?.fLoc || null;
+            const logoThumb = await generateLogoThumbFromUrl(logoUrl);
             await updateField({
               updateList:
                 [{
                   tableName: 'customizationRecs',
                   fieldName: 'logo.icon',
-                  newData: response[0].fLoc
+                  newData: logoUrl
                 },
                 {
                   tableName: 'customizationRecs',
                   fieldName: 'logo.customization_value',
-                  newData: response[0].fLoc
+                  newData: logoUrl
+                },
+                {
+                  tableName: 'customizationRecs',
+                  fieldName: 'logo.icon_thumb',
+                  newData: logoThumb
+                },
+                {
+                  tableName: 'customizationRecs',
+                  fieldName: 'logo.icon_updated_at',
+                  newData: new Date().toISOString()
                 }],
               reactUpd: {
                 getLogo: false

@@ -92,7 +92,7 @@ const LoginModuleV2 = ({
     : '';
 
   const clientName = branding.clientName || clientNameOverride || state?.session?.client_name || 'AVA Sign-in';
-  const logoUrl = branding.logoUrl || clientLogoOverride || state?.session?.client_logo || state?.session?.client_icon;
+  const logoUrl = branding.logoUrl || clientLogoOverride || state?.session?.client_logo_thumb || state?.session?.client_logo || state?.session?.client_icon;
   const checkinImage = branding.checkinImage || state?.session?.client_style?.checkin_image;
   const backgroundImage = backgroundImageUrl || branding.backgroundImage || state?.session?.client_style?.checkin_image;
   const normalizeCookieValue = (value) => {
@@ -220,7 +220,7 @@ const LoginModuleV2 = ({
       .catch(() => null);
 
     if (clientRec && clientRec.Item) {
-      return clientRec.Item.customization_value || clientRec.Item.icon || '';
+      return clientRec.Item.icon_thumb || clientRec.Item.customization_value || clientRec.Item.icon || '';
     }
     return '';
   }, []);
@@ -697,6 +697,7 @@ const LoginModuleV2 = ({
       switch (cRec.custom_key) {
         case 'logo': {
           updatedSession.client_logo = cRec.icon;
+          updatedSession.client_logo_thumb = cRec.icon_thumb || null;
           updatedSession.client_icon = cRec.icon;
           break;
         }

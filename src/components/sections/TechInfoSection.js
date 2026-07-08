@@ -25,6 +25,38 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
   const [canProceedWithDelete, setCanProceedWithDelete] = React.useState(false);
   const { dbClient } = require('../../util/AVAUtilities');
 
+  const detachDocumentMasterRecords = async (person_id) => {
+    const removedPertainsTo = `${person_id}_REMOVED`;
+    let lastEvaluatedKey;
+
+    do {
+      const queryResult = await dbClient.query({
+        TableName: 'DocumentMaster',
+        IndexName: 'person_form-index',
+        KeyConditionExpression: 'pertains_to = :p',
+        ExpressionAttributeValues: {
+          ':p': person_id
+        },
+        ExclusiveStartKey: lastEvaluatedKey
+      }).promise();
+
+      const docItems = queryResult?.Items || [];
+      for (const docItem of docItems) {
+        await dbClient.update({
+          TableName: 'DocumentMaster',
+          Key: { document_id: docItem.document_id },
+          UpdateExpression: 'set pertains_to = :new_pertains_to',
+          ConditionExpression: 'attribute_exists(document_id)',
+          ExpressionAttributeValues: {
+            ':new_pertains_to': removedPertainsTo
+          }
+        }).promise();
+      }
+
+      lastEvaluatedKey = queryResult?.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+  };
+
   const handleDeleteAccount = async () => {
     try {
       const person_id = currentValues.peopleRec.person_id;
@@ -91,6 +123,9 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
 
   const proceedWithAccountDeletion = async (person_id) => {
     try {
+      // Preserve document records by detaching them from the deleted account ID.
+      await detachDocumentMasterRecords(person_id);
+
       // Delete from People table
       await dbClient.delete({
         TableName: 'People',

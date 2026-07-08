@@ -632,7 +632,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       }),
       listSavedReports({
         clientId: pSession?.client_id,
-        exportScope: 'group_management'
+        exportScope: 'people_list_shared'
       })
     ]);
 
@@ -1843,7 +1843,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 onClick={async () => {
                   const reportName = reactData.reportNameInput.trim();
                   const clientId = pSession?.client_id;
-                  const exportScope = 'group_management';
+                  const exportScope = 'people_list_shared';
                   const reportId = reactData.selectedReportId
                     || (sanitizeExportBaseName(reportName, 'report') + '_' + Date.now());
                   await saveReport({ clientId, exportScope, reportId, reportName, selectedFieldNames: reactData.selectedExportFieldNames });
