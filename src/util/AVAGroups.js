@@ -1094,31 +1094,44 @@ export async function syncDynamicGroupsForClient(client_id, dynamicGroups, optio
   } while (lastEvaluatedKey);
 
   logger.info(`Found ${allPeople.length} people in client ${client_id}`);
-  let dynamicGroupIDs = dynamicGroups.map(g => g.group_id);
   let updatedCount = 0;
   for (let i = 0; i < allPeople.length; i++) {
     let person = allPeople[i];
-    let origGroups = Array.isArray(person.groups) ? [...person.groups] : [];
-    // Remove all dynamic group IDs
-    let newGroups = origGroups.filter(gid => !dynamicGroupIDs.includes(gid));
-    // For each dynamic group, check if person matches
+    const personGroups = new Map();
+    const personRecs = new Map();
+    const firedRules = new Set();
+    const currentActiveGroups = await getPersonGroups(person.person_id, client_id).catch(() => []);
+    personGroups.set(person.person_id, Array.isArray(currentActiveGroups) ? [...currentActiveGroups] : []);
+    personRecs.set(person.person_id, person);
+
+    let personChanged = false;
+    // Reconcile each dynamic group with the authoritative PeopleGroups state.
     for (let dg of dynamicGroups) {
+      const activeGroups = personGroups.get(person.person_id) || [];
+      const isCurrentlyActive = activeGroups.includes(dg.group_id);
       let matches = await doesPersonMatchGroupRules(client_id, dg, person);
-      if (matches) newGroups.push(dg.group_id);
+      if (matches && !isCurrentlyActive) {
+        await addMember(person.person_id, client_id, dg.group_id, {
+          allowParent: true,
+          membershipSource: 'withData',
+          _firedRules: firedRules,
+          _personGroups: personGroups,
+          _personRecs: personRecs,
+        });
+        personChanged = true;
+      }
+      else if (!matches && isCurrentlyActive) {
+        await removeMember(person.person_id, client_id, dg.group_id, {
+          _firedRules: firedRules,
+          _personGroups: personGroups,
+          _personRecs: personRecs,
+        });
+        personChanged = true;
+      }
     }
-    // Only update if changed
-    // (sort for stable comparison)
-    newGroups.sort();
-    origGroups.sort();
-    if (JSON.stringify(newGroups) !== JSON.stringify(origGroups)) {
-      await dbClient.update({
-        Key: { person_id: person.person_id },
-        UpdateExpression: 'set groups = :g',
-        ExpressionAttributeValues: { ':g': newGroups },
-        TableName: 'People',
-      }).promise().catch(e => logger.error('Error updating person', person.person_id, e));
+    if (personChanged) {
       updatedCount++;
-      if (logger.info) logger.info(`Updated ${person.person_id}: ${origGroups} -> ${newGroups}`);
+      if (logger.info) logger.info(`Updated ${person.person_id} dynamic group memberships`);
     }
     if (progress && typeof progress === 'function') progress(i + 1, allPeople.length);
   }
