@@ -3463,6 +3463,7 @@ export default ({ request = {}, onClose }) => {
         .filter(v => !isEmpty(v))
         .map(v => `${v}`);
     };
+   
     for (const this_field in reactData.fields) {
       if (reactData.fields[this_field].bonusText) {   // an extra value added to the end of a list of selections (as in "other - please specify")
         let current_value = [reactData.fields[this_field].value].flat();
