@@ -377,6 +377,33 @@ export default ({ currentValues, errorList, setError, updateField, updateReactDa
           {'Add a Rule'}
         </Button>
 
+        <FormControlLabel
+          style={AVATextStyle({ margin: { left: 0, top: 0.5 } })}
+          control={
+            <Checkbox
+              checked={!!currentValues.peopleRec.ignore_global_rules}
+              onChange={async (event) => {
+                await updateField({
+                  updateList: [
+                    {
+                      tableName: 'peopleRec',
+                      fieldName: 'ignore_global_rules',
+                      newData: event.target.checked
+                    }
+                  ]
+                });
+              }}
+              color='primary'
+              size='small'
+            />
+          }
+          label={
+            <Typography style={AVATextStyle({})}>
+              {'Ignore all Community-wide rules'}
+            </Typography>
+          }
+        />
+
         <Box
           display='flex'
           flexDirection='column'
