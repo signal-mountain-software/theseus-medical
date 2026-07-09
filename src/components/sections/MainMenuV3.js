@@ -986,7 +986,7 @@ export default ({ start_at }) => {
       if (!file || !file.type) { resolve(null); return; }
 
       const THUMB_SIZE = 64;
-      const toThumbDataUrl = (sourceWidth, sourceHeight, draw) => {
+      const toThumbCanvas = (sourceWidth, sourceHeight, draw) => {
         const canvas = document.createElement('canvas');
         canvas.width = THUMB_SIZE;
         canvas.height = THUMB_SIZE;
@@ -995,7 +995,41 @@ export default ({ start_at }) => {
         const sx = (sourceWidth - side) / 2;
         const sy = (sourceHeight - side) / 2;
         draw(ctx, sx, sy, side);
-        return canvas.toDataURL('image/jpeg', 0.55);
+        return canvas;
+      };
+
+      const canvasToDataUrl = (canvas) => canvas.toDataURL('image/jpeg', 0.55);
+
+      // Some uploaded videos begin with fade-in or black leader frames.
+      // Reject near-black captures so cards do not render as black squares.
+      const isCanvasMostlyBlack = (canvas) => {
+        try {
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          let sampleCount = 0;
+          let brightCount = 0;
+          let totalLuma = 0;
+          for (let i = 0; i < data.length; i += 16) { // sample every 4th pixel
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            const luma = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+            totalLuma += luma;
+            if (luma >= 28) {
+              brightCount += 1;
+            }
+            sampleCount += 1;
+          }
+          if (!sampleCount) {
+            return true;
+          }
+          const avgLuma = totalLuma / sampleCount;
+          const brightRatio = brightCount / sampleCount;
+          return (avgLuma < 26) || (brightRatio < 0.03);
+        }
+        catch {
+          return false;
+        }
       };
 
       if (file.type.startsWith('image/')) {
@@ -1003,9 +1037,10 @@ export default ({ start_at }) => {
         const url = URL.createObjectURL(file);
         img.onload = () => {
           try {
-            const thumb = toThumbDataUrl(img.naturalWidth, img.naturalHeight, (ctx, sx, sy, side) => {
+            const canvas = toThumbCanvas(img.naturalWidth, img.naturalHeight, (ctx, sx, sy, side) => {
               ctx.drawImage(img, sx, sy, side, side, 0, 0, THUMB_SIZE, THUMB_SIZE);
             });
+            const thumb = canvasToDataUrl(canvas);
             resolve(thumb);
           }
           catch {
@@ -1042,16 +1077,18 @@ export default ({ start_at }) => {
       const captureFrame = () => {
         try {
           if (!video.videoWidth || !video.videoHeight) {
-            done(null);
-            return;
+            return null;
           }
-          const thumb = toThumbDataUrl(video.videoWidth, video.videoHeight, (ctx, sx, sy, side) => {
+          const canvas = toThumbCanvas(video.videoWidth, video.videoHeight, (ctx, sx, sy, side) => {
             ctx.drawImage(video, sx, sy, side, side, 0, 0, THUMB_SIZE, THUMB_SIZE);
           });
-          done(thumb);
+          if (isCanvasMostlyBlack(canvas)) {
+            return null;
+          }
+          return canvasToDataUrl(canvas);
         }
         catch {
-          done(null);
+          return null;
         }
       };
 
@@ -1060,32 +1097,58 @@ export default ({ start_at }) => {
       video.playsInline = true;
       video.onloadedmetadata = () => {
         const duration = Number(video.duration);
-        const targetTime = (Number.isFinite(duration) && duration > 0.25)
-          ? Math.min(1, duration / 4)
+        const maxTime = (Number.isFinite(duration) && duration > 0)
+          ? Math.max(0, duration - 0.05)
           : 0;
+        const candidateTimes = [0, 0.15, 0.33, 0.6, 0.85]
+          .map((fraction) => (Number.isFinite(duration) && duration > 0 ? Math.min(maxTime, duration * fraction) : 0))
+          .filter((time, index, times) => times.findIndex((t) => Math.abs(t - time) < 0.05) === index);
 
-        if (targetTime <= 0) {
-          if (video.readyState >= 2) {
-            captureFrame();
+        let candidateIndex = 0;
+        const tryNextFrame = () => {
+          if (candidateIndex >= candidateTimes.length) {
+            done(null);
+            return;
           }
-          else {
-            video.onloadeddata = captureFrame;
-          }
-          return;
-        }
 
-        video.onseeked = captureFrame;
-        try {
-          video.currentTime = targetTime;
-        }
-        catch {
-          if (video.readyState >= 2) {
-            captureFrame();
+          const targetTime = candidateTimes[candidateIndex];
+          candidateIndex += 1;
+
+          const captureAtCurrentTime = () => {
+            const thumb = captureFrame();
+            if (thumb) {
+              done(thumb);
+            }
+            else {
+              tryNextFrame();
+            }
+          };
+
+          if (targetTime <= 0) {
+            if (video.readyState >= 2) {
+              captureAtCurrentTime();
+            }
+            else {
+              video.onloadeddata = captureAtCurrentTime;
+            }
+            return;
           }
-          else {
-            video.onloadeddata = captureFrame;
+
+          video.onseeked = captureAtCurrentTime;
+          try {
+            video.currentTime = targetTime;
           }
-        }
+          catch {
+            if (video.readyState >= 2) {
+              captureAtCurrentTime();
+            }
+            else {
+              video.onloadeddata = captureAtCurrentTime;
+            }
+          }
+        };
+
+        tryNextFrame();
       };
       video.onerror = () => done(null);
       video.src = url;
@@ -1318,7 +1381,7 @@ export default ({ start_at }) => {
           children: [...normalizedFavorites, ...templateExtras],
           color: template?.color || stringToColor('__v3_favorites__'),
           icon_thumb: template?.icon_thumb || null,
-          icon: template?.icon_thumb || template?.icon || resolvedSessionClientLogo
+          icon: template?.icon || template?.icon_thumb || resolvedSessionClientLogo
         }
       });
     }
@@ -2636,6 +2699,9 @@ export default ({ start_at }) => {
         try {
           // Generate thumbnail client-side before uploading — stored in DB, no extra fetches needed
           thumbDataUrl = await generateMenuThumb(fileToUpload);
+          if (!thumbDataUrl && fileToUpload?.type?.startsWith('video/')) {
+            thumbDataUrl = 'https://ava-icons.s3.amazonaws.com/movie.png';
+          }
           const uploadResponse = await uploadMenuLinkFile(fileToUpload);
           fileUrl = uploadResponse?.Location || '';
         }
@@ -3142,11 +3208,11 @@ export default ({ start_at }) => {
       && !isTelLink
       && !!this_item.icon_thumb;
     const hideCardImage = (!useTileUI) && (accessibleDepth > 0) && !allowNestedAccessibleThumb;
-    // Accessibility rows use compact icon treatment; prefer canonical icon URLs for
-    // non-link cards there to avoid rendering artifacts from generated thumbs.
+    // Prefer canonical icon URLs for non-link cards in both modes; keep icon_thumb
+    // only as a fallback for legacy records without icon.
     const cardImageUrl = (isLinkCard && !isTelLink)
-      ? (this_item.icon_thumb || getLinkThumbnailUrl(this_item.url, this_item.icon))
-      : ((!useTileUI) ? (this_item.icon || this_item.icon_thumb) : (this_item.icon_thumb || this_item.icon));
+      ? getLinkThumbnailUrl(this_item.url, this_item.icon || this_item.icon_thumb)
+      : (this_item.icon || this_item.icon_thumb);
     const hasLinkThumbnail = (isLinkCard && !isTelLink) && !!(cardImageUrl && cardImageUrl !== this_item.icon);
     const parentColor = (level_index > 0)
       ? reactData.menu_hierarchy[level_index - 1]?.find((parentCell) => parentCell.menu_id === this_cell.parent)?.menuItemRec?.color
@@ -3311,7 +3377,7 @@ export default ({ start_at }) => {
                 const sibType = sibItem.menu_type || sibItem.menu_itemType;
                 const sibIsTel = String(sibItem.url || '').trim().toLowerCase().startsWith('tel:');
                 if (sibIsTel) { return false; }
-                const sibCardImageUrl = sibItem.icon_thumb || getLinkThumbnailUrl(sibItem.url, sibItem.icon);
+                const sibCardImageUrl = getLinkThumbnailUrl(sibItem.url, sibItem.icon || sibItem.icon_thumb);
                 const sibHasLinkThumbnail = !!(sibCardImageUrl && sibCardImageUrl !== sibItem.icon);
                 return (sibType === 'live_link' || (useTileUI && sibHasLinkThumbnail && sibType === 'link'));
               })

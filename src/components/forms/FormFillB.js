@@ -1,10 +1,10 @@
 import React from 'react';
 
-import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile } from '../../util/AVAUtilities';
+import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile, s3, cloudfront } from '../../util/AVAUtilities';
 import { putTask, parseQuickActivity } from '../../util/AVATasks';
 import { addMember, removeMember } from '../../util/AVAGroups';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
-import { formatPhone, makeName } from '../../util/AVAPeople';
+import { formatPhone, makeName, createPersonPhotoThumbFromUrl } from '../../util/AVAPeople';
 import { makeDate, makeTime, addDays } from '../../util/AVADateTime';
 import AVAConfirm from './AVAConfirm';
 import AVAUploadFile from '../../util/AVAUploadFile';
@@ -448,6 +448,7 @@ export default ({ request = {}, onClose }) => {
   function uploadIcon(this_field, occ_index) {
     const IconToRender = (makeArray(reactData.fields[this_field].valueText).length > 1) ? EditIcon : CloudUploadIcon;
     const isDisabled = (reactData.fields[this_field].options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked);
+    const isProfilePhotoField = (reactData.fields[this_field].type === 'profile_photo');
     return (
       <IconButton
         classes={{ root: classes.rowButton }}
@@ -466,13 +467,17 @@ export default ({ request = {}, onClose }) => {
               rawValue: reactData.fields[this_field].prompt?.value,
               this_field
             }),
-            oneOnly: (reactData.fields[this_field].prompt && reactData.fields[this_field].prompt.hasOwnProperty('oneOnly')
+            oneOnly: (isProfilePhotoField
+              ? true
+              : (reactData.fields[this_field].prompt && reactData.fields[this_field].prompt.hasOwnProperty('oneOnly')
               ? reactData.fields[this_field].prompt.oneOnly
               : true
+              )
             ),
             upload_data: {
               prop: this_field,
               occ_index,
+              accept: (isProfilePhotoField ? 'image/*,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg' : null),
             }
           }, true);
         }}
@@ -3227,6 +3232,98 @@ export default ({ request = {}, onClose }) => {
     }
   };
 
+  function parseS3UrlToBucketAndKey(locationUrl) {
+    if (!locationUrl || (typeof locationUrl !== 'string')) {
+      return null;
+    }
+    if (locationUrl.startsWith('s3://')) {
+      const withoutPrefix = locationUrl.replace('s3://', '');
+      const firstSlash = withoutPrefix.indexOf('/');
+      if (firstSlash < 1) {
+        return null;
+      }
+      return {
+        bucket: withoutPrefix.slice(0, firstSlash),
+        key: decodeURIComponent(withoutPrefix.slice(firstSlash + 1))
+      };
+    }
+    try {
+      const parsed = new URL(locationUrl);
+      const host = String(parsed.hostname || '').toLowerCase();
+      let bucket = '';
+      let key = decodeURIComponent(String(parsed.pathname || '').replace(/^\/+/, ''));
+
+      const bucketInHost = host.match(/^(.*?)\.s3(?:[.-][a-z0-9-]+)?\.amazonaws\.com$/i);
+      if (bucketInHost?.[1]) {
+        bucket = bucketInHost[1];
+      }
+      else if (host === 's3.amazonaws.com' || /^s3[.-][a-z0-9-]+\.amazonaws\.com$/i.test(host)) {
+        const parts = key.split('/').filter(Boolean);
+        if (parts.length > 1) {
+          bucket = parts.shift();
+          key = parts.join('/');
+        }
+      }
+
+      if (!bucket || !key) {
+        return null;
+      }
+      return { bucket, key };
+    }
+    catch (_error) {
+      return null;
+    }
+  }
+
+  async function persistProfilePhotoSelection(photoLocation) {
+    if (!photoLocation || !reactData.pertains_to) {
+      return { saved: false, reason: 'missing_photo_or_pertains_to' };
+    }
+
+    const source = parseS3UrlToBucketAndKey(photoLocation);
+    if (!source?.bucket || !source?.key) {
+      return { saved: false, reason: 'invalid_photo_location' };
+    }
+
+    const targetBucket = 'theseus-medical-storage';
+    const targetKey = `public/patients/${reactData.pertains_to}.jpg`;
+    const encodedSourceKey = source.key.split('/').map(pathPart => encodeURIComponent(pathPart)).join('/');
+
+    await s3
+      .copyObject({
+        CopySource: `${source.bucket}/${encodedSourceKey}`,
+        Bucket: targetBucket,
+        Key: targetKey,
+        ACL: 'public-read-write'
+      })
+      .promise();
+
+    let thumbData = await createPersonPhotoThumbFromUrl(photoLocation);
+    if (!thumbData) {
+      thumbData = reactData.peopleRec?.[reactData.pertains_to]?.person_photo || null;
+    }
+
+    if (thumbData) {
+      reactData.peopleRec[reactData.pertains_to].person_photo = thumbData;
+    }
+
+    await cloudfront
+      .createInvalidation({
+        DistributionId: 'E3DXPQ4WCODC8A',
+        InvalidationBatch: {
+          CallerReference: new Date().getTime().toString(),
+          Paths: {
+            Quantity: 1,
+            Items: [`/${reactData.pertains_to}.jpg`]
+          }
+        }
+      })
+      .promise()
+      .catch(() => { });
+
+    return { saved: true, thumbData };
+  }
+
   const handleToggleLock = async () => {
     const currentLockedState = reactData.docRec?.formLocked;
 
@@ -3357,6 +3454,7 @@ export default ({ request = {}, onClose }) => {
     let field_values = {};
     let signatures = [];
     let needsUpdate = { peopleRec: false, sessionRec: false };
+    const profilePhotoSelections = [];
     const selectEventAssignments = new Map(); // Map<valueKey, {event, slot}>
     const selectEventReleases = new Map();    // Map<valueKey, {event, slot}>
     const normalizeSelectEventList = (rawValue) => {
@@ -3387,6 +3485,13 @@ export default ({ request = {}, onClose }) => {
         field_values[this_field] = reactData.fields[this_field].value;
       }
       if (reactData.fields[this_field].ignore) { continue; }  // load the values, but don't save them anywhere
+      if (reactData.fields[this_field].type === 'profile_photo') {
+        const selectedPhoto = makeArray(reactData.fields[this_field].value || reactData.fields[this_field].valueText)
+          .find(v => !!v);
+        if (selectedPhoto) {
+          profilePhotoSelections.push(selectedPhoto);
+        }
+      }
       if ((reactData.fields[this_field].type === 'select_event') && !reactData.fields[this_field].options?.viewOnly) {
         const participantId = reactData.pertains_to || state.session.patient_id;
         const selectionList = reactData.fields[this_field].selectionObj?.selectionList || [];
@@ -3490,6 +3595,18 @@ export default ({ request = {}, onClose }) => {
       }
     }
     // all field data is now prepared for saving
+
+    if (profilePhotoSelections.length > 0) {
+      const selectedProfilePhoto = profilePhotoSelections[profilePhotoSelections.length - 1];
+      const photoPersistResult = await persistProfilePhotoSelection(selectedProfilePhoto)
+        .catch(error => {
+          cl({ profile_photo_save_error: error });
+          return { saved: false, reason: 'copy_failed' };
+        });
+      if (photoPersistResult?.saved) {
+        needsUpdate.peopleRec = true;
+      }
+    }
 
     // check for actions needed leaving or entering stages
     let this_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.current_formStage);
@@ -5034,7 +5151,7 @@ export default ({ request = {}, onClose }) => {
                                     </Box>
                                   </React.Fragment>
                                 }
-                                {(reactData.fields[this_field].type === 'upload') &&
+                                {(['upload', 'profile_photo'].includes(reactData.fields[this_field].type)) &&
                                   <Box
                                     display='flex'
                                     mb={0}
@@ -5672,6 +5789,7 @@ export default ({ request = {}, onClose }) => {
               buttonText: ['Choose', 'Save & Continue'],
               title: [reactData.field_title],
               oneOnly: reactData.hasOwnProperty('oneOnly') ? reactData.oneOnly : true,
+              accept: reactData.upload_data?.accept || undefined,
               prevSelected: ((makeArray(reactData.fields[reactData.upload_data.prop].valueText).length > 0)
                 ? makeArray(reactData.fields[reactData.upload_data.prop].valueText).map(fLoc => {
                   let [fName, fType] = fLoc.split('/').pop().split('.');
