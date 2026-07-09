@@ -985,23 +985,41 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
     }
     // Evaluate dynamic groups and add/remove as needed
     if (state.groups.dynamicGroups && (state.groups.dynamicGroups.length > 0)) {
+      const dynamicGroupPersonId = reactData.current.peopleRec.person_id;
+      const dynamicGroupPersonGroups = new Map();
+      const dynamicGroupPersonRecs = new Map();
+      const dynamicGroupFiredRules = new Set();
+      dynamicGroupPersonGroups.set(dynamicGroupPersonId, Array.isArray(reactData.current.peopleRec.groups)
+        ? [...reactData.current.peopleRec.groups]
+        : []);
+      dynamicGroupPersonRecs.set(dynamicGroupPersonId, deepCopy(reactData.current.peopleRec));
       for (let this_group of state.groups.dynamicGroups) {
         if (this_group.group_id && this_group.group_id !== '__TOP__') {
           const doesMatch = await doesPersonMatchGroupRules(state.session.client_id, this_group, reactData.current.peopleRec);
-          if (doesMatch) {
-            // Add the group if not already present
-            if (!reactData.current.peopleRec.groups.includes(this_group.group_id)) {
-              reactData.current.peopleRec.groups.push(this_group.group_id);
-            }
-          } else {
-            // Remove the group if present
-            const index = reactData.current.peopleRec.groups.indexOf(this_group.group_id);
-            if (index > -1) {
-              reactData.current.peopleRec.groups.splice(index, 1);
-            }
+          const currentDynamicGroups = dynamicGroupPersonGroups.get(dynamicGroupPersonId) || [];
+          const isCurrentlyMember = currentDynamicGroups.includes(this_group.group_id);
+          if (doesMatch && !isCurrentlyMember) {
+            await addMember(dynamicGroupPersonId, state.session.client_id, this_group.group_id, {
+              allowParent: true,
+              membershipSource: 'withData',
+              _firedRules: dynamicGroupFiredRules,
+              _personGroups: dynamicGroupPersonGroups,
+              _personRecs: dynamicGroupPersonRecs,
+            });
+          } else if (!doesMatch && isCurrentlyMember) {
+            await removeMember(dynamicGroupPersonId, state.session.client_id, this_group.group_id, {
+              _firedRules: dynamicGroupFiredRules,
+              _personGroups: dynamicGroupPersonGroups,
+              _personRecs: dynamicGroupPersonRecs,
+            });
           }
         }
       }
+      reactData.current.peopleRec.groups = dynamicGroupPersonGroups.get(dynamicGroupPersonId) || reactData.current.peopleRec.groups;
+      reactData.current.peopleRec.clients = Object.assign({}, reactData.current.peopleRec.clients || {}, {
+        groups: reactData.current.peopleRec.groups,
+        id: reactData.current.peopleRec.client_id || state.session.client_id,
+      });
     }
     // validate that at least one group is selected (not including 'All' or '__Top__')
     let groupOK = reactData.current.peopleRec.groups.some(g => { return ((g.toLowerCase() !== 'all') && (g.toLowerCase() !== '__top__')); });
