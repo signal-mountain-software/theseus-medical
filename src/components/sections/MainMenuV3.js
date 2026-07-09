@@ -765,20 +765,22 @@ export default ({ start_at }) => {
       }
     }
 
-    const todayMessage = `Today is ${reactData.current_time.toLocaleDateString('en-US', {
-      timeZone: state.session.client_timezone,
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric'
-    })}`;
-    const weatherIndex = marqueeData.findIndex((line) => {
-      return typeof line?.message === 'string' && /weather/i.test(line.message);
-    });
-    if (weatherIndex >= 0) {
-      marqueeData.splice(weatherIndex, 0, { message: todayMessage });
-    }
-    else {
-      marqueeData.unshift({ message: todayMessage });
+    if (!state.session.client_style?.marquee_critical_only) {
+      const todayMessage = `Today is ${reactData.current_time.toLocaleDateString('en-US', {
+        timeZone: state.session.client_timezone,
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric'
+      })}`;
+      const weatherIndex = marqueeData.findIndex((line) => {
+        return typeof line?.message === 'string' && /weather/i.test(line.message);
+      });
+      if (weatherIndex >= 0) {
+        marqueeData.splice(weatherIndex, 0, { message: todayMessage });
+      }
+      else {
+        marqueeData.unshift({ message: todayMessage });
+      }
     }
 
     updateReactData({
@@ -4444,11 +4446,11 @@ export default ({ start_at }) => {
                     </React.Fragment>
                   }
                 </Box>
-                <Marquee
-                  speed={75}
-                >
-                  {reactData.marqueeData &&
-                    reactData.marqueeData.map((marqueeLine, marqueeIndex) => (
+                {(reactData.marqueeData?.length > 0) &&
+                  <Marquee
+                    speed={75}
+                  >
+                    {reactData.marqueeData.map((marqueeLine, marqueeIndex) => (
                       <Typography
                         key={`marquee_${marqueeIndex}_${reactData.marqueeVersion}`}
                         style={withMenuMobileTextCap(AVATextStyle(Object.assign(
@@ -4459,7 +4461,8 @@ export default ({ start_at }) => {
                         {marqueeLine.message}
                       </Typography>
                     ))}
-                </Marquee>
+                  </Marquee>
+                }
               </React.Fragment>
             </Box>
           }
