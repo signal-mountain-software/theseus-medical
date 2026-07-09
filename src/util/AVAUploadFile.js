@@ -93,6 +93,30 @@ export default ({ onCancel, onLoad, options = {} }) => {
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
 
+  function isAcceptedByFilter(file, acceptFilter) {
+    if (!acceptFilter) {
+      return true;
+    }
+    const fileName = String(file?.name || '').toLowerCase();
+    const fileType = String(file?.type || '').toLowerCase();
+    const acceptedTokens = String(acceptFilter)
+      .split(',')
+      .map(token => token.trim().toLowerCase())
+      .filter(Boolean);
+    if (acceptedTokens.length === 0) {
+      return true;
+    }
+    return acceptedTokens.some((token) => {
+      if (token.startsWith('.')) {
+        return fileName.endsWith(token);
+      }
+      if (token.endsWith('/*')) {
+        return fileType.startsWith(token.slice(0, -1));
+      }
+      return fileType === token;
+    });
+  }
+
   function loadingInProgress(index = 'all') {
     if (!reactData.loadProgress) {
       return false;
@@ -694,8 +718,13 @@ export default ({ onCancel, onLoad, options = {} }) => {
                       style={{ display: 'none' }}
                       ref={hiddenFileInput}
                       multiple={!options.oneOnly}
+                      accept={options.accept || undefined}
                       onChange={async (target) => {
                         for (let this_file of target.target.files) {
+                          if (!isAcceptedByFilter(this_file, options.accept)) {
+                            enqueueSnackbar(`File type not allowed for ${this_file.name}`, { variant: 'warning' });
+                            continue;
+                          }
                           let s3Data = await handleSaveFile(this_file);
                           console.log(s3Data);
                         }
