@@ -229,6 +229,7 @@ const useStyles = makeStyles(theme => ({
 export default ({ request = {}, onClose }) => {
   const MIN_FIELD_WIDTH_PX = 400;
   const MAX_FIELD_WIDTH_PERCENT = 93;
+  const PRINT_SNAPSHOT_VERSION = 1;
   const classes = useStyles();
   const AVAClass = AVAclasses();
   const signatureRef = [React.useRef(null), React.useRef(null), React.useRef(null)];
@@ -2351,6 +2352,89 @@ export default ({ request = {}, onClose }) => {
     return resolved;
   };
 
+  const buildPrintableFieldsSubset = ({ displaySections, resolvedFields }) => {
+    const printableFieldNames = new Set();
+    for (const sectionObj of (displaySections || [])) {
+      for (const fieldName of makeArray(sectionObj.fields)) {
+        printableFieldNames.add(fieldName);
+      }
+    }
+
+    const fieldSubset = {};
+    for (const fieldName of printableFieldNames) {
+      const sourceField = resolvedFields?.[fieldName] || reactData.fields?.[fieldName];
+      if (!sourceField) {
+        continue;
+      }
+      fieldSubset[fieldName] = {
+        type: sourceField.type,
+        hidden: !!sourceField.hidden,
+        ignore: !!sourceField.ignore,
+        value: sourceField.value,
+        valueText: sourceField.valueText,
+        bonusText: sourceField.bonusText || '',
+        selectionObj: sourceField.selectionObj || null,
+        options: sourceField.options || {},
+        prompt: sourceField.prompt
+          ? {
+            value: sourceField.prompt.value,
+            noPrint: sourceField.prompt.noPrint,
+            compressPrint: sourceField.prompt.compressPrint,
+            showNA: sourceField.prompt.showNA,
+            other: sourceField.prompt.other,
+          }
+          : {},
+      };
+    }
+    return fieldSubset;
+  };
+
+  const buildPrintSnapshotPayload = () => {
+    const { displaySections } = getDisplayState();
+    const resolvedFields = resolveFieldsForPrint();
+    const signatures = collectSignaturesForPrint();
+    return {
+      version: PRINT_SNAPSHOT_VERSION,
+      generated_at: new Date().toISOString(),
+      source_form_id: reactData.form_id,
+      source_document_id: reactData.document_id || null,
+      title: reactData.document_title,
+      sections: deepCopy(displaySections || []),
+      fields: buildPrintableFieldsSubset({ displaySections, resolvedFields }),
+      signatures,
+    };
+  };
+
+  const getPrintDocumentPayloadFromLive = () => {
+    const signatures = collectSignaturesForPrint();
+    const { displaySections } = getDisplayState();
+    return {
+      sections: displaySections,
+      fields: resolveFieldsForPrint(),
+      signatures,
+      docID: reactData.document_id,
+      client_id: state.session.client_id,
+      title: reactData.document_title,
+      person_id: reactData.pertains_to,
+    };
+  };
+
+  const getPrintDocumentPayloadFromSnapshot = () => {
+    const snapshot = reactData.docRec?.print_snapshot;
+    if (!snapshot || !snapshot.sections || !snapshot.fields) {
+      return null;
+    }
+    return {
+      sections: deepCopy(snapshot.sections),
+      fields: deepCopy(snapshot.fields),
+      signatures: deepCopy(snapshot.signatures || []),
+      docID: reactData.document_id || snapshot.source_document_id,
+      client_id: state.session.client_id,
+      title: snapshot.title || reactData.document_title,
+      person_id: reactData.pertains_to,
+    };
+  };
+
   const collectSignaturesForPrint = () => {
     let signatures = [];
     for (const fieldName in reactData.fields) {
@@ -2365,25 +2449,34 @@ export default ({ request = {}, onClose }) => {
   };
 
   const printWithLegacyPdfEngine = async () => {
-    const signatures = collectSignaturesForPrint();
-    const { displaySections } = getDisplayState();
+    const hasUnsavedChanges = valuesChanged();
+    const snapshotVersion = Number(reactData.docRec?.print_snapshot?.version || 0);
+    const shouldUseSnapshot = (!hasUnsavedChanges) && (snapshotVersion >= PRINT_SNAPSHOT_VERSION);
+    const snapshotPayload = shouldUseSnapshot ? getPrintDocumentPayloadFromSnapshot() : null;
+    const payload = snapshotPayload || getPrintDocumentPayloadFromLive();
+    const printSource = snapshotPayload
+      ? 'snapshot'
+      : (hasUnsavedChanges ? 'live_dirty' : 'live_no_snapshot');
+
+    cl({
+      print_source: printSource,
+      document_id: reactData.document_id || payload?.docID || null,
+      form_id: reactData.form_id,
+      snapshot_version: snapshotVersion,
+      has_unsaved_changes: hasUnsavedChanges,
+    });
+
     // Use printDocumentHtmlB: constructs clean HTML from field data and renders it via
     // jsPDF's doc.html() engine, which preserves <strong>, <ol>, <li>, <table> etc.
     await printDocumentHtmlB({
-      documentList: [{
-        sections: displaySections,
-        fields: resolveFieldsForPrint(),
-        signatures,
-        docID: reactData.document_id,
-        client_id: state.session.client_id,
-        title: reactData.document_title
-      }]
+      documentList: [payload]
     });
   };
 
   const printCurrentForm = async () => {
     try {
       if (printContentRef.current) {
+        cl({ print_path: 'wysiwyg_primary' });
         await printElementWysiwygB({
           element: printContentRef.current,
           docID: reactData.document_id,
@@ -2396,7 +2489,19 @@ export default ({ request = {}, onClose }) => {
       console.error('WYSIWYG print failed, falling back to legacy PDF renderer:', error);
     }
 
+    cl({ print_path: 'legacy_fallback' });
     await printWithLegacyPdfEngine();
+  };
+
+  const waitForHiddenPrintRender = async (maxWaitMs = 3000) => {
+    const start = Date.now();
+    while ((Date.now() - start) < maxWaitMs) {
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      if (printContentRef.current && printContentRef.current.scrollHeight > 0) {
+        return true;
+      }
+    }
+    return false;
   };
 
   const resolveFieldKeyForOccurrence = ({ fieldKey, occurrenceNumber }) => {
@@ -3714,7 +3819,9 @@ export default ({ request = {}, onClose }) => {
       options: reactData.formRec.options,
       formLocked: formLocked !== undefined ? formLocked : (reactData.docRec?.formLocked || false),
       history: reactData.docRec?.history || [],
-      form_stage: reactData.current_formStage
+      form_stage: reactData.current_formStage,
+      // Persist print snapshot only during save cycle (never from print-only flows).
+      print_snapshot: buildPrintSnapshotPayload()
     };
 
     const recWritten = await updateDocument({
@@ -4470,8 +4577,12 @@ export default ({ request = {}, onClose }) => {
       }
       else if (reactData.options.mode === 'printPDF') {
         await initialize();
-        // Keep legacy PDF generation in auto-print mode where the dialog is intentionally hidden.
-        await printWithLegacyPdfEngine();
+        // Hidden auto-print path: render FormFillB content first, then run WYSIWYG print.
+        updateReactData({
+          stage: 'fill'
+        }, true);
+        await waitForHiddenPrintRender();
+        await printCurrentForm();
         onClose('print', {
           document_id: reactData.document_id,
           document_title: reactData.document_title,
@@ -5703,16 +5814,7 @@ export default ({ request = {}, onClose }) => {
                   {!reactData.formRec.upload_only &&
                     <Button
                       onClick={async () => {
-                        if (reactData.viewOnlyMode || reactData.clientSampleMode) {
-                          await printCurrentForm();
-                        }
-                        else {
-                          if (valuesChanged()) {
-                            const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
-                            await handleSave({ document_id, final: false });
-                          }
-                          await printCurrentForm();
-                        }
+                        await printCurrentForm();
                       }}
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'lightblue', color: 'black' }}
