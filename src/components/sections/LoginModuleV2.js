@@ -21,6 +21,7 @@ import QuickAdd from './QuickAdd';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 const SESSION_POLICY_STATE_KEY = 'AVA_session_policy_state';
+const THROTTLE_RETRY_DELAY_MS = 12000;
 
 const LoginModuleV2 = ({
   branding = {},
@@ -80,6 +81,21 @@ const LoginModuleV2 = ({
     boxShadow: isDarkMode
       ? '0 12px 30px rgba(0, 0, 0, 0.35)'
       : '0 10px 24px rgba(15, 23, 42, 0.12)'
+  };
+
+  const pause = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+  const isAuthThrottleError = (error) => {
+    const code = String(error?.code || error?.name || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+      code.includes('toomanyrequest')
+      || code.includes('limitexceeded')
+      || message.includes('too many request')
+      || message.includes('request limit exceeded')
+      || message.includes('rate exceeded')
+      || message.includes('throttl')
+    );
   };
 
   const namePromptActive = Array.isArray(altMatchOptions) && altMatchOptions.length > 0;
@@ -1107,12 +1123,7 @@ const LoginModuleV2 = ({
       resolvedSessionRef.current = updatedSession;
       setResolvedSession(updatedSession);
     }
-    try {
-      await Auth.signIn({
-        username: finalUserId,
-        password: String(password).trim(),
-        clientMetadata: { avaAccount: finalUserId }
-      });
+    const completePasswordSignIn = () => {
       setAuthCompleted(true);
       bakeCookies(
         finalUserId,
@@ -1120,8 +1131,38 @@ const LoginModuleV2 = ({
         resolvedPerson?.person_id || finalUserId
       );
       finalizeLoadedSession(resolvedPersonRef.current || resolvedPerson, resolvedSessionRef.current || resolvedSession);
+    };
+    try {
+      await Auth.signIn({
+        username: finalUserId,
+        password: String(password).trim(),
+        clientMetadata: { avaAccount: finalUserId }
+      });
+      completePasswordSignIn();
     }
     catch (error) {
+      if (isAuthThrottleError(error)) {
+        setAlertMessage('AVA is logging you in. We need just a moment please, then we will retry automatically.');
+        await pause(THROTTLE_RETRY_DELAY_MS);
+        try {
+          await Auth.signIn({
+            username: finalUserId,
+            password: String(password).trim(),
+            clientMetadata: { avaAccount: finalUserId }
+          });
+          setAlertMessage('');
+          completePasswordSignIn();
+          if (onSubmitPassword) {
+            await onSubmitPassword(finalUserId, password);
+          }
+          return;
+        }
+        catch (retryError) {
+          setAlertMessage(retryError?.message || 'Unable to sign in. Please wait a few seconds and try again.');
+          setStep('password');
+          return;
+        }
+      }
       setStep('ready');
       return;
     }
@@ -1180,6 +1221,35 @@ const LoginModuleV2 = ({
       }
       catch (error) {
         if (!isActive) return;
+        if (isAuthThrottleError(error)) {
+          setStep('user');
+          setAlertMessage('AVA is logging you in. We need just a moment please, then we will retry automatically.');
+          await pause(THROTTLE_RETRY_DELAY_MS);
+          if (!isActive) return;
+          try {
+            await Auth.signIn({
+              username: genericUser,
+              password: String(genericPass).trim(),
+              clientMetadata: { avaAccount: genericUser }
+            });
+            if (!isActive) return;
+            setAlertMessage('');
+            setAuthCompleted(true);
+            bakeCookies(
+              resolvedUserId || userId,
+              resolvedSession?.client_id || resolvedPerson?.client_id || savedClientCookie?.client || savedClientCookie?.client_id,
+              resolvedPerson?.person_id || resolvedUserId || userId
+            );
+            finalizeLoadedSession(resolvedPersonRef.current || resolvedPerson, resolvedSessionRef.current || resolvedSession);
+            return;
+          }
+          catch (retryError) {
+            if (!isActive) return;
+            setAlertMessage(retryError?.message || 'Unable to sign in. Please wait a few seconds and try again.');
+            setStep('user');
+            return;
+          }
+        }
         setAlertMessage(error?.message || 'Unable to sign in. Please try again.');
         setStep('user');
       }
