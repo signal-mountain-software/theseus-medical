@@ -455,9 +455,40 @@ export async function downloadRowsAsPdf({
 
     // Field rows
     doc.setFontSize(10);
+    let currentCategory = null;
+    const renderCategoryHeader = (categoryName) => {
+      const normalizedCategory = `${categoryName || 'Other'}`.trim() || 'Other';
+      if (currentCategory === normalizedCategory) {
+        return;
+      }
+
+      const requiredSpace = (lineHeight * 3);
+      if (y > pageHeight - margin - requiredSpace) {
+        doc.addPage();
+        y = margin;
+      }
+
+      // Leave breathing room before each category section.
+      y += (lineHeight * 2);
+      if (y > pageHeight - margin - lineHeight) {
+        doc.addPage();
+        y = margin + (lineHeight * 2);
+      }
+
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text(normalizedCategory, margin, y);
+      y += lineHeight;
+
+      doc.setFont('Helvetica', 'normal');
+      doc.setFontSize(10);
+      currentCategory = normalizedCategory;
+    };
+
     for (let j = 0; j < fieldLabels.length; j++) {
       const meta = fieldMeta[j];
       const label = fieldLabels[j] || '';
+      const categoryLabel = meta?.category || 'Other';
 
       if (meta?.value_type === 'notes') {
         // ── Notes block ──
@@ -465,6 +496,8 @@ export async function downloadRowsAsPdf({
         const promptFilters = (meta.filters || []).filter(f => f.source === 'prompt');
         const filteredNotes = evaluateNoteFilters(rawNotes, promptFilters, resolvedPromptValues);
         if (filteredNotes.length === 0) { continue; }
+
+        renderCategoryHeader(categoryLabel);
 
         if (y > pageHeight - margin - lineHeight * 3) { doc.addPage(); y = margin; }
         doc.setFont('Helvetica', 'bold');
@@ -549,6 +582,8 @@ export async function downloadRowsAsPdf({
           .filter(Boolean);
         if (imageUrls.length === 0) { continue; }
 
+        renderCategoryHeader(categoryLabel);
+
         if (y > pageHeight - margin - lineHeight * 3) {
           doc.addPage();
           y = margin;
@@ -619,6 +654,8 @@ export async function downloadRowsAsPdf({
         // ── Standard "Label: value" row ──
         const value = `${fieldValues[j] ?? ''}`.trim();
         if (!value) { continue; }
+
+        renderCategoryHeader(categoryLabel);
 
         if (y > pageHeight - margin - lineHeight) {
           doc.addPage();

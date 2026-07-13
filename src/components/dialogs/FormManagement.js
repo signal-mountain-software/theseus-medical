@@ -455,7 +455,11 @@ export default ({ defaults, onClose }) => {
       selectedFieldOptions
     } = exportData;
 
-    const fieldMeta = selectedFieldOptions.map(opt => ({ value_type: opt.value_type, filters: opt.filters }));
+    const fieldMeta = selectedFieldOptions.map(opt => ({
+      value_type: opt.value_type,
+      filters: opt.filters,
+      category: opt.category,
+    }));
     const safeFormName = sanitizeExportBaseName(
       selectedForm?.form_name || reactData.selectedForm_id,
       'form'

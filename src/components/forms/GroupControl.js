@@ -784,7 +784,11 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         selectedFieldOptions
       } = exportData;
 
-      const fieldMeta = selectedFieldOptions.map(opt => ({ value_type: opt.value_type, filters: opt.filters }));
+      const fieldMeta = selectedFieldOptions.map(opt => ({
+        value_type: opt.value_type,
+        filters: opt.filters,
+        category: opt.category,
+      }));
       const fileName = `${safeGroupName || 'group'}_people_list.pdf`;
       await downloadRowsAsPdf({
         header,
