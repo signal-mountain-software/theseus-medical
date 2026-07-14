@@ -212,6 +212,8 @@ export default ({ defaults, onClose }) => {
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
+  const [selectedFieldDropTargetIndex, setSelectedFieldDropTargetIndex] = React.useState(null);
+  const [selectedFieldDragIndex, setSelectedFieldDragIndex] = React.useState(null);
 
   const handleChangeActivityFilter = selectedValue => {
     let lower = selectedValue.value.toLowerCase();
@@ -355,6 +357,41 @@ export default ({ defaults, onClose }) => {
       selectedExportFieldNames,
       hasUnsavedSelections: true
     }, true);
+  }
+
+  function moveSelectedExportField(fromIndex, toIndex) {
+    if (fromIndex === toIndex) {
+      return;
+    }
+
+    const selectedFields = [...reactData.selectedExportFieldNames];
+    if (
+      fromIndex < 0
+      || toIndex < 0
+      || fromIndex >= selectedFields.length
+      || toIndex >= selectedFields.length
+    ) {
+      return;
+    }
+
+    const [movedField] = selectedFields.splice(fromIndex, 1);
+    selectedFields.splice(toIndex, 0, movedField);
+    updateReactData({
+      selectedExportFieldNames: selectedFields,
+      hasUnsavedSelections: true
+    }, true);
+  }
+
+  function handleSelectedFieldDrop(event, toIndex) {
+    event.preventDefault();
+    const fromIndexRaw = event.dataTransfer.getData('selectedExportFieldIndex');
+    const fromIndex = Number(fromIndexRaw);
+    setSelectedFieldDropTargetIndex(null);
+    setSelectedFieldDragIndex(null);
+    if (!Number.isInteger(fromIndex)) {
+      return;
+    }
+    moveSelectedExportField(fromIndex, toIndex);
   }
 
   async function downloadCurrentPeopleListCsv() {
@@ -2369,7 +2406,7 @@ export default ({ defaults, onClose }) => {
               showFieldPicker: false
             }, true);
           }}
-          maxWidth='sm'
+          maxWidth='md'
           fullWidth
         >
           <Box px={2} pt={2} pb={1} style={{ flexShrink: 0 }}>
@@ -2458,7 +2495,8 @@ export default ({ defaults, onClose }) => {
               :
               <Box
                 display='flex'
-                flexDirection='column'
+                flexDirection={(reactData.window_width < 960) ? 'column' : 'row'}
+                style={{ gap: '12px' }}
               >
                 {reactData.exportFieldOptions.length === 0
                   ?
@@ -2466,65 +2504,187 @@ export default ({ defaults, onClose }) => {
                     {'No DataDictionary fields were found for this client.'}
                   </Typography>
                   :
-                  Object.keys(reactData.exportFieldOptions.reduce((acc, fieldRec) => {
-                    const category = fieldRec.category || 'Other';
-                    if (!acc[category]) {
-                      acc[category] = [];
-                    }
-                    acc[category].push(fieldRec);
-                    return acc;
-                  }, {})).sort((a, b) => a.localeCompare(b)).map((categoryKey) => {
-                    const groupedFields = reactData.exportFieldOptions.filter((fieldRec) => {
-                      return (fieldRec.category || 'Other') === categoryKey;
-                    });
-                    return (
-                      <Box key={`csv_field_group_${categoryKey}`} mb={1}>
-                        <Typography
-                          style={AVATextStyle({ size: 1, bold: true, margin: { left: 1, top: 0.5, bottom: 0.2 } })}
-                        >
-                          {categoryKey}
+                  <React.Fragment>
+                    <Box
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        border: '1px solid #ddd',
+                        borderRadius: '8px',
+                        padding: '8px',
+                        maxHeight: '46vh',
+                        overflowY: 'auto'
+                      }}
+                    >
+                      <Typography style={AVATextStyle({ size: 0.9, bold: true, margin: { left: 0.6, bottom: 0.4 } })}>
+                        {'Available fields'}
+                      </Typography>
+                      {Object.keys(reactData.exportFieldOptions.reduce((acc, fieldRec) => {
+                        const category = fieldRec.category || 'Other';
+                        if (!acc[category]) {
+                          acc[category] = [];
+                        }
+                        acc[category].push(fieldRec);
+                        return acc;
+                      }, {})).sort((a, b) => a.localeCompare(b)).map((categoryKey) => {
+                        const groupedFields = reactData.exportFieldOptions.filter((fieldRec) => {
+                          return (fieldRec.category || 'Other') === categoryKey;
+                        });
+                        return (
+                          <Box key={`csv_field_group_${categoryKey}`} mb={1}>
+                            <Typography
+                              style={AVATextStyle({ size: 0.9, bold: true, margin: { left: 1, top: 0.5, bottom: 0.2 } })}
+                            >
+                              {categoryKey}
+                            </Typography>
+                            {groupedFields.map((fieldRec) => {
+                              const isChecked = reactData.selectedExportFieldNames.includes(fieldRec.field_key);
+                              return (
+                                <FormControlLabel
+                                  key={`csv_field_${fieldRec.field_key}`}
+                                  control={
+                                    <Checkbox
+                                      color='primary'
+                                      style={{ marginLeft: '0.7rem' }}
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        toggleExportFieldSelection(fieldRec.field_key);
+                                      }}
+                                    />
+                                  }
+                                  label={
+                                    <span>
+                                      {fieldRec.description}
+                                      {Array.isArray(fieldRec.export_formats) && (
+                                        <span style={{
+                                          marginLeft: '6px', fontSize: '0.65em', color: 'white',
+                                          backgroundColor: (fieldRec.export_formats.includes('pdf') && !fieldRec.export_formats.includes('csv')) ? '#1565C0' : '#2E7D32',
+                                          borderRadius: '8px', padding: '1px 5px',
+                                        }}>
+                                          {(fieldRec.export_formats.includes('pdf') && !fieldRec.export_formats.includes('csv')) ? 'PDF' : 'CSV/XLS'}
+                                        </span>
+                                      )}
+                                    </span>
+                                  }
+                                />
+                              );
+                            })}
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                    <Box
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        border: '1px solid #ddd',
+                        borderRadius: '8px',
+                        padding: '8px',
+                        maxHeight: '46vh',
+                        overflowY: 'auto'
+                      }}
+                    >
+                      <Typography style={AVATextStyle({ size: 0.9, bold: true, margin: { left: 0.6, bottom: 0.2 } })}>
+                        {`Selected fields (${reactData.selectedExportFieldNames.length})`}
+                      </Typography>
+                      <Typography style={AVATextStyle({ size: 0.8, color: 'textSecondary', margin: { left: 0.6, bottom: 0.6 } })}>
+                        {'Drag rows to change export order.'}
+                      </Typography>
+                      {reactData.selectedExportFieldNames.length === 0
+                        ?
+                        <Typography style={AVATextStyle({ size: 0.9, color: 'textSecondary', margin: { left: 0.6 } })}>
+                          {'No fields selected yet.'}
                         </Typography>
-                        {groupedFields.map((fieldRec) => {
-                            const posIndex = reactData.selectedExportFieldNames.indexOf(fieldRec.field_key);
-                            const isChecked = posIndex !== -1;
+                        :
+                        reactData.selectedExportFieldNames
+                          .map((fieldKey, index) => {
+                            const fieldRec = reactData.exportFieldOptions.find(opt => opt.field_key === fieldKey);
+                            if (!fieldRec) {
+                              return null;
+                            }
+                            const category = fieldRec.category || 'Other';
+                            const previousFieldKey = reactData.selectedExportFieldNames[index - 1];
+                            const previousCategory = previousFieldKey
+                              ? (reactData.exportFieldOptions.find(opt => opt.field_key === previousFieldKey)?.category || 'Other')
+                              : null;
+                            const showCategoryHeader = (index === 0) || (category !== previousCategory);
+
                             return (
-                              <FormControlLabel
-                                key={`csv_field_${fieldRec.field_key}`}
-                                control={
-                                  <Checkbox
-                                    color='primary'
-                                    style={{ marginLeft: '1rem' }}
-                                    checked={isChecked}
-                                    onChange={() => {
-                                      toggleExportFieldSelection(fieldRec.field_key);
-                                    }}
-                                  />
+                              <React.Fragment key={`selected_export_field_row_${fieldRec.field_key}_${index}`}>
+                                {showCategoryHeader &&
+                                  <Typography
+                                    style={AVATextStyle({ size: 0.8, bold: true, margin: { left: 0.6, top: 0.6, bottom: 0.2 } })}
+                                  >
+                                    {category}
+                                  </Typography>
                                 }
-                                label={
-                                  <span>
-                                    {fieldRec.description}
-                                    {Array.isArray(fieldRec.export_formats) && (
-                                      <span style={{
-                                        marginLeft: '6px', fontSize: '0.65em', color: 'white',
-                                        backgroundColor: (fieldRec.export_formats.includes('pdf') && !fieldRec.export_formats.includes('csv')) ? '#1565C0' : '#2E7D32',
-                                        borderRadius: '8px', padding: '1px 5px',
-                                      }}>
-                                        {(fieldRec.export_formats.includes('pdf') && !fieldRec.export_formats.includes('csv')) ? 'PDF' : 'CSV/XLS'}
-                                      </span>
-                                    )}
-                                    {isChecked &&
-                                      <span style={{ marginLeft: '6px', fontSize: '0.75em', color: '#888', fontWeight: 'bold' }}>
-                                        {`#${posIndex + 1}`}
-                                      </span>
+                                <Box
+                                  draggable
+                                  onDragStart={(event) => {
+                                    event.dataTransfer.effectAllowed = 'move';
+                                    event.dataTransfer.setData('selectedExportFieldIndex', `${index}`);
+                                    setSelectedFieldDragIndex(index);
+                                    setSelectedFieldDropTargetIndex(index);
+                                  }}
+                                  onDragEnd={() => {
+                                    setSelectedFieldDropTargetIndex(null);
+                                    setSelectedFieldDragIndex(null);
+                                  }}
+                                  onDragOver={(event) => {
+                                    event.preventDefault();
+                                    if (selectedFieldDropTargetIndex !== index) {
+                                      setSelectedFieldDropTargetIndex(index);
                                     }
-                                  </span>
-                                }
-                              />
+                                  }}
+                                  onDragEnter={() => {
+                                    if (selectedFieldDropTargetIndex !== index) {
+                                      setSelectedFieldDropTargetIndex(index);
+                                    }
+                                  }}
+                                  onDragLeave={(event) => {
+                                    if (!event.currentTarget.contains(event.relatedTarget)) {
+                                      setSelectedFieldDropTargetIndex(null);
+                                    }
+                                  }}
+                                  onDrop={(event) => {
+                                    handleSelectedFieldDrop(event, index);
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    border: (selectedFieldDropTargetIndex === index && selectedFieldDragIndex !== index)
+                                      ? '2px dashed #1976d2'
+                                      : '1px solid #e0e0e0',
+                                    borderRadius: '6px',
+                                    padding: '6px 8px',
+                                    marginBottom: '6px',
+                                    backgroundColor: (selectedFieldDropTargetIndex === index && selectedFieldDragIndex !== index)
+                                      ? '#e3f2fd'
+                                      : '#fafafa'
+                                  }}
+                                >
+                                  <Box style={{ width: '38px', color: '#777', textAlign: 'center', fontWeight: 700 }}>
+                                    {`#${index + 1}`}
+                                  </Box>
+                                  <SwapVertIcon style={{ color: '#777', marginRight: '6px' }} fontSize='small' />
+                                  <Box style={{ flexGrow: 1, minWidth: 0 }}>
+                                    <Typography style={AVATextStyle({ size: 0.88 })}>
+                                      {fieldRec.description}
+                                    </Typography>
+                                  </Box>
+                                  <Button
+                                    size='small'
+                                    onClick={() => toggleExportFieldSelection(fieldRec.field_key)}
+                                    style={{ minWidth: '56px' }}
+                                  >
+                                    {'Remove'}
+                                  </Button>
+                                </Box>
+                              </React.Fragment>
                             );
                           })}
-                      </Box>
-                    );
-                  })
+                    </Box>
+                  </React.Fragment>
                 }
               </Box>
             }
