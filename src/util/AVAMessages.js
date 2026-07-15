@@ -1200,7 +1200,7 @@ export async function printDocumentHtmlB({ documentList, options = {} }) {
       // elements to honour the container width regardless of inline styles from the
       // rich-text editor, preventing right-margin overflow in the rendered image.
       const wrapped =
-        `<div style="font-family:${blockFontFamily};font-size:${blockFontSizePx}px;color:#222;` +
+        `<div style="font-family:${blockFontFamily};font-size:${blockFontSizePx}px;line-height:1.35;` +
         `width:${BLOCK_CONTENT_WIDTH}px;max-width:${BLOCK_CONTENT_WIDTH}px;box-sizing:border-box;">` +
         `<style>* { max-width:100% !important; box-sizing:border-box !important; ` +
         `overflow-wrap:break-word !important; word-wrap:break-word !important; }</style>` +
@@ -1261,16 +1261,38 @@ export async function printDocumentHtmlB({ documentList, options = {} }) {
       pdfCurrent.xPos = page.margin.left;
     };
 
+    const getSelectedDisplayValues = (fieldRec) => {
+      const selectedValues = [fieldRec?.value].flat().filter(v => (v !== null && v !== undefined && `${v}`.trim() !== ''));
+      const selectionMap = new Map();
+      for (const entry of (fieldRec?.selectionObj?.selectionList || [])) {
+        if (entry && typeof entry === 'object') {
+          const optionValue = entry.value ?? entry.id ?? entry.key ?? entry.display ?? entry.label;
+          const optionDisplay = entry.display ?? entry.label ?? entry.value ?? entry.id ?? entry.key;
+          if (optionValue !== undefined && optionValue !== null) {
+            selectionMap.set(String(optionValue), String(optionDisplay));
+          }
+          if (optionDisplay !== undefined && optionDisplay !== null) {
+            selectionMap.set(String(optionDisplay), String(optionDisplay));
+          }
+        } else if (entry !== undefined && entry !== null) {
+          selectionMap.set(String(entry), String(entry));
+        }
+      }
+
+      const selectedDisplayValues = selectedValues.map(v => selectionMap.get(String(v)) || String(v));
+      if (fieldRec?.bonusText && `${fieldRec.bonusText}`.trim() !== '') {
+        selectedDisplayValues.push(String(fieldRec.bonusText));
+      }
+      return selectedDisplayValues;
+    };
+
     for (const sectionObj of sections) {
       if (!okToShowSection(sectionObj, fields)) continue;
 
-      // Section heading — strip HTML and render as bold pdfLine text
+      // Section heading: preserve HTML styling when section_header is rich text.
       if (sectionObj.section_header) {
-        const sectionHeaderBlocks = htmlToBlocks(sectionObj.section_header);
-        // eslint-disable-next-line no-loop-func
-        sectionHeaderBlocks.forEach((block, bIdx) => {
-          pdfLine(block, { protectOrphan: bIdx === 0, style: 'bold', fontSize: (page.font.size.medium * 1.2), align: 'left', before: bIdx === 0 ? 2 : 0, after: 1 });
-        });
+        await renderHtmlBlock(sectionObj.section_header);
+        pdfDown(1);
       } else if (sectionObj.section_name) {
         pdfLine(sectionObj.section_name, { protectOrphan: true, style: 'bold', fontSize: (page.font.size.medium * 1.2), align: 'left', before: 2, after: 1 });
       }
@@ -1316,28 +1338,15 @@ export async function printDocumentHtmlB({ documentList, options = {} }) {
                 page.line_was_compressed = false;
               }
               const pt = stripHtml(fieldRec.prompt?.value || '').text;
+              const selectedDisplayValues = getSelectedDisplayValues(fieldRec);
+              let selectedText = selectedDisplayValues.join(', ');
+              if (!selectedText && fieldRec.prompt?.showNA) {
+                selectedText = 'n/a';
+              }
               if (fieldRec.prompt?.compressPrint) {
-                const vals = [fieldRec.valueText].flat().filter(Boolean);
-                pdfLine(`${pt}: ${vals.join(', ')}`, { style: 'normal', size: 'medium', align: 'left', after: 1 });
+                pdfLine(`${pt}: ${selectedText}`, { style: 'normal', size: 'medium', align: 'left', after: 1 });
               } else {
-                // Use pdfLine with radio:true/radioSelected so the native PDF font handles
-                // the filled/unfilled circle glyphs — no Unicode encoding issues.
-                pdfLine(pt, { style: 'normal', size: 'medium', indent: 0, align: 'left', after: 0 });
-                (fieldRec.selectionObj?.selectionList || []).forEach((entry, tIndex) => {
-                  const text = typeof entry === 'object' ? (entry.label || entry.display || entry.value || '') : String(entry);
-                  const val = typeof entry === 'object' ? (entry.value || entry.label || '') : String(entry);
-                  const radioSelected = [fieldRec.value].flat().includes(val);
-                  if (tIndex === 0) {
-                    pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 2, after: 0, noNewPage: true });
-                  } else {
-                    pdfLine(text, { radio: true, radioSelected, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
-                  }
-                });
-                if (fieldRec.bonusText) {
-                  pdfLine(`${fieldRec.prompt?.other || 'Other'}: ${fieldRec.bonusText}`, { radio: true, radioSelected: true, style: 'normal', size: 'medium', align: 'left', indent: 10, after: 0, noNewLine: true, noNewPage: true });
-                }
-                pdfDown(1);
-                pdfStyle('reset');
+                pdfLine(`${pt}: ${selectedText}`, { style: 'normal', size: 'medium', align: 'left', after: 1 });
               }
             }
             break;

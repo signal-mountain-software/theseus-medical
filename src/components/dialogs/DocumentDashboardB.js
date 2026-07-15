@@ -168,6 +168,9 @@ export default ({ request, onClose }) => {
     selectedForm: false,
     selectedPerson: false,
     loadingPerson: false,
+    batchPrintQueue: [],
+    batchPrintIndex: 0,
+    batchPrintFallbackUrls: [],
     textInput: {},
     setFilter: false,
     documentStatusOptions: [
@@ -424,28 +427,71 @@ export default ({ request, onClose }) => {
     return { docList, rangeObj };
   }
 
-  async function printAll({ document_list }) {
+  const printByWindowUrls = ({ urlList = [] }) => {
     let w = [];
-    document_list.forEach((this_document, ndx) => {
+    urlList.forEach((this_document, ndx) => {
       try {
         w[ndx] = window.open(
           this_document,
           `Print Document ${ndx}`,
-          `name=Print Document - ${ndx + 1} of ${document_list.length}, left=${(ndx * 40) + 10}, top=${(ndx * 20) + 10}, height=400, width=600`
+          `name=Print Document - ${ndx + 1} of ${urlList.length}, left=${(ndx * 40) + 10}, top=${(ndx * 20) + 10}, height=400, width=600`
         );
-        w[ndx].addEventListener("afterprint", (e) => {
-          console.log("After print");
+        w[ndx].addEventListener('afterprint', () => {
+          console.log('After print');
         });
         w[ndx].print();
         w[ndx].focus();
-        w[ndx].onafterprint = (e) => {
-          console.log("onAfterprint");
+        w[ndx].onafterprint = () => {
+          console.log('onAfterprint');
         };
       }
       catch (er) {
         console.log(`caught error ${er} on ${ndx}`);
       }
     });
+  };
+
+  async function printAll({ document_list }) {
+    const normalizedList = makeArray(document_list)
+      .map((entry) => {
+        if (!entry) {
+          return null;
+        }
+        if (typeof entry === 'string') {
+          return { url: entry };
+        }
+        if (entry.document_id) {
+          return {
+            document_id: entry.document_id,
+            form_id: entry.form_id || entry.form_type || entry.formType || null,
+            person_id: entry.person_id || entry.pertains_to || null,
+            document_title: entry.document_title || entry.title || null,
+            url: entry.file_location || entry.location || null
+          };
+        }
+        return {
+          url: entry.file_location || entry.location || null
+        };
+      })
+      .filter(Boolean);
+
+    const queue = normalizedList.filter(entry => !!entry.document_id);
+    const fallbackUrls = normalizedList
+      .filter(entry => !entry.document_id && entry.url)
+      .map(entry => entry.url);
+
+    if (queue.length > 0) {
+      updateReactData({
+        batchPrintQueue: queue,
+        batchPrintIndex: 0,
+        batchPrintFallbackUrls: fallbackUrls
+      }, true);
+      return;
+    }
+
+    if (fallbackUrls.length > 0) {
+      printByWindowUrls({ urlList: fallbackUrls });
+    }
   }
 
   async function formPeople(this_form) {    // gathers all the people tha should (or do) have this form
@@ -909,10 +955,22 @@ export default ({ request, onClose }) => {
                                                         classes={{ root: classes.rowButton }}
                                                         onClick={() => {
                                                           printAll({
-                                                            document_list: ([this_doc.file_location || this_doc.location]).concat(
+                                                            document_list: ([{
+                                                              document_id: this_doc.document_id,
+                                                              form_id: this_doc.form_id || this_doc.form_type || this_doc.formType || this_form,
+                                                              person_id: this_doc.pertains_to,
+                                                              document_title: this_doc.document_title || this_doc.title,
+                                                              file_location: this_doc.file_location || this_doc.location
+                                                            }]).concat(
                                                               this_doc.amendments
                                                                 ? this_doc.amendments.map(this_amendment => {
-                                                                  return this_amendment.file_location;
+                                                                  return {
+                                                                    document_id: this_amendment.document_id,
+                                                                    form_id: this_amendment.form_id || this_amendment.form_type || this_amendment.formType || reactData.formList[this_form].amendment_form_id || this_form,
+                                                                    person_id: this_doc.pertains_to,
+                                                                    document_title: this_amendment.document_title,
+                                                                    file_location: this_amendment.file_location
+                                                                  };
                                                                 })
                                                                 : null
                                                             )
@@ -1546,6 +1604,36 @@ export default ({ request, onClose }) => {
                   updateReactData({
                     printEmptyForm: false,
                   }, true);
+                }}
+              />
+            }
+            {(reactData.batchPrintQueue.length > 0) && reactData.batchPrintQueue[reactData.batchPrintIndex] &&
+              <FormFillB
+                key={`batch_print_${reactData.batchPrintQueue[reactData.batchPrintIndex].document_id}_${reactData.batchPrintIndex}`}
+                request={{
+                  form_id: reactData.batchPrintQueue[reactData.batchPrintIndex].form_id,
+                  document_id: reactData.batchPrintQueue[reactData.batchPrintIndex].document_id,
+                  person_id: reactData.batchPrintQueue[reactData.batchPrintIndex].person_id,
+                  mode: 'printPDF'
+                }}
+                onClose={() => {
+                  const nextIndex = reactData.batchPrintIndex + 1;
+                  if (nextIndex < reactData.batchPrintQueue.length) {
+                    updateReactData({
+                      batchPrintIndex: nextIndex
+                    }, true);
+                    return;
+                  }
+
+                  const fallbackUrls = makeArray(reactData.batchPrintFallbackUrls).filter(Boolean);
+                  updateReactData({
+                    batchPrintQueue: [],
+                    batchPrintIndex: 0,
+                    batchPrintFallbackUrls: []
+                  }, true);
+                  if (fallbackUrls.length > 0) {
+                    printByWindowUrls({ urlList: fallbackUrls });
+                  }
                 }}
               />
             }

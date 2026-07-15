@@ -1,3 +1,19 @@
+## Branch Promotion Guardrail
+
+Expected promotion flow:
+
+`local -> test -> develop -> master`
+
+This repo includes a shared Git `pre-push` hook at `.githooks/pre-push` that warns when pushing to any branch other than `test`.
+
+Enable it locally once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook is warning-only (it does not block the push).
+
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
 ## Available Scripts

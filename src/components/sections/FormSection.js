@@ -5,7 +5,7 @@ import { dbClient, recordExists, cl, deepCopy, array_in_array } from '../../util
 import { AVATextStyle } from '../../util/AVAStyles';
 import { makeDate } from '../../util/AVADateTime';
 
-import { Typography, Box } from '@material-ui/core/';
+import { Typography, Box, IconButton, Tooltip, CircularProgress } from '@material-ui/core/';
 
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import EditIcon from '@material-ui/icons/Edit';
@@ -14,6 +14,7 @@ import AddCircleIcon from '@material-ui/icons/AddCircle';
 import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
 import DynamicFeedIcon from '@material-ui/icons/DynamicFeed';
 import LockIcon from '@material-ui/icons/Lock';
+import LockOpenIcon from '@material-ui/icons/LockOpen';
 
 import FormFillB from '../forms/FormFillB';
 
@@ -31,6 +32,10 @@ export default ({ currentValues, reactData, updateReactData }) => {
   const orangePencilDisplayed = React.useRef(false);
   const greenPencilDisplayed = React.useRef(false);
   const pencilDisplayed = React.useRef(false);
+
+  const [lockAllInProgress, setLockAllInProgress] = React.useState({});
+  const [sectionPrintQueue, setSectionPrintQueue] = React.useState([]);
+  const [sectionPrintIndex, setSectionPrintIndex] = React.useState(0);
 
   const addAmendmentDisplayed = React.useRef(false);
   const historyAmendmentDisplayed = React.useRef(false);
@@ -427,6 +432,253 @@ export default ({ currentValues, reactData, updateReactData }) => {
     return null;
   };
 
+  const normalizeCategory = (value) => {
+    return String(value || 'Uncategorized').trim() || 'Uncategorized';
+  };
+
+  const getFormIdsInScope = ({ myFormListObj, category }) => {
+    return Object.keys(myFormListObj).filter((this_formID) => {
+      const myDocs = myFormListObj[this_formID];
+      return (normalizeCategory(myDocs?.category) === category) || !reactData.showCategoryList;
+    });
+  };
+
+  const collectDocumentStateFromFormDocs = (myDocs) => {
+    const docs = [
+      ...(myDocs?.wipDocs || []),
+      ...(myDocs?.assignedDocs || []),
+      ...(myDocs?.completedDocs || []),
+    ];
+    return docs
+      .filter(doc => !!doc?.document_id)
+      .map(doc => ({ document_id: doc.document_id, formLocked: !!doc.formLocked }));
+  };
+
+  const getCategoryPersonDocumentState = ({ myFormListObj, category }) => {
+    const formIdsInScope = getFormIdsInScope({ myFormListObj, category });
+    const docStateMap = new Map();
+    for (const this_formID of formIdsInScope) {
+      const theseDocs = collectDocumentStateFromFormDocs(myFormListObj[this_formID]);
+      for (const this_doc of theseDocs) {
+        // Prefer a locked=true value if we ever see conflicting local state for the same document.
+        if (!docStateMap.has(this_doc.document_id)) {
+          docStateMap.set(this_doc.document_id, this_doc.formLocked);
+        }
+        else if (this_doc.formLocked) {
+          docStateMap.set(this_doc.document_id, true);
+        }
+      }
+    }
+    const eligibleDocumentIds = Array.from(docStateMap.keys());
+    const lockedCount = Array.from(docStateMap.values()).filter(Boolean).length;
+    const eligibleCount = eligibleDocumentIds.length;
+    const allLocked = eligibleCount > 0 && (lockedCount === eligibleCount);
+    const hasUnlocked = lockedCount < eligibleCount;
+    return {
+      formIdsInScope,
+      documentStateMap: docStateMap,
+      eligibleDocumentIds,
+      eligibleCount,
+      lockedCount,
+      allLocked,
+      hasUnlocked,
+    };
+  };
+
+  const applyLocalLockedState = ({ person_id, formIds, affectedDocumentSet, lockedValue }) => {
+    for (const this_formID of formIds) {
+      const myDocs = reactData.masterFormList?.[person_id]?.myFormListObj?.[this_formID];
+      if (!myDocs) {
+        continue;
+      }
+      ['wipDocs', 'assignedDocs', 'completedDocs'].forEach((docListName) => {
+        if (!Array.isArray(myDocs[docListName])) {
+          return;
+        }
+        myDocs[docListName] = myDocs[docListName].map((this_doc) => {
+          if (affectedDocumentSet.has(this_doc.document_id)) {
+            return Object.assign({}, this_doc, { formLocked: lockedValue });
+          }
+          return this_doc;
+        });
+      });
+    }
+  };
+
+  const handleSetLockAllForCategoryPerson = async ({ person_id, myFormListObj, category, lockedValue }) => {
+    if (!reactData.administrative_account) {
+      return;
+    }
+
+    const lockKey = `${person_id}::${category}`;
+    if (lockAllInProgress[lockKey]) {
+      return;
+    }
+
+    setLockAllInProgress(prev => Object.assign({}, prev, { [lockKey]: true }));
+    try {
+      const {
+        formIdsInScope,
+        documentStateMap,
+        eligibleDocumentIds,
+        eligibleCount,
+      } = getCategoryPersonDocumentState({
+        myFormListObj,
+        category
+      });
+
+      const documentIds = eligibleDocumentIds.filter((document_id) => {
+        const currentLockedValue = !!documentStateMap.get(document_id);
+        return currentLockedValue !== !!lockedValue;
+      });
+
+      const alreadyInStateCount = eligibleCount - documentIds.length;
+
+      if (eligibleDocumentIds.length === 0) {
+        updateReactData({
+          alert: {
+            severity: 'info',
+            title: lockedValue ? 'Nothing to lock' : 'Nothing to unlock',
+            message: 'No existing documents were found in this section. Forms that have not been started are skipped.'
+          }
+        }, true);
+        return;
+      }
+
+      if (documentIds.length === 0) {
+        updateReactData({
+          alert: {
+            severity: 'info',
+            title: lockedValue ? 'Already locked' : 'Already unlocked',
+            message: lockedValue
+              ? `All ${eligibleCount} existing document(s) are already locked.`
+              : `All ${eligibleCount} existing document(s) are already unlocked.`
+          }
+        }, true);
+        return;
+      }
+
+      const results = await Promise.allSettled(documentIds.map((document_id) => {
+        return dbClient.update({
+          TableName: 'DocumentMaster',
+          Key: {
+            document_id,
+          },
+          UpdateExpression: 'set formLocked = :locked',
+          ExpressionAttributeValues: {
+            ':locked': !!lockedValue,
+          },
+        }).promise();
+      }));
+
+      const successCount = results.filter(r => r.status === 'fulfilled').length;
+      const failureCount = results.length - successCount;
+      const affectedDocumentSet = new Set(documentIds.filter((_, idx) => results[idx].status === 'fulfilled'));
+
+      if (failureCount > 0) {
+        const failureDetails = results
+          .map((result, index) => ({
+            result,
+            document_id: documentIds[index],
+          }))
+          .filter(item => item.result.status === 'rejected')
+          .map(item => {
+            const reason = item.result.reason || {};
+            return {
+              document_id: item.document_id,
+              code: reason.code || 'UnknownError',
+              message: reason.message || `${reason}`,
+            };
+          });
+        cl({
+          [lockedValue ? 'lock_all_failures' : 'unlock_all_failures']: failureDetails
+        });
+      }
+
+      applyLocalLockedState({
+        person_id,
+        formIds: formIdsInScope,
+        affectedDocumentSet,
+        lockedValue
+      });
+
+      updateReactData({
+        masterFormList: reactData.masterFormList,
+        alert: {
+          severity: failureCount ? 'warning' : 'success',
+          title: failureCount
+            ? `${lockedValue ? 'Lock All' : 'Unlock All'} completed with warnings`
+            : `${lockedValue ? 'Lock All' : 'Unlock All'} complete`,
+          message: makeCompletionMessage({ lockedValue, successCount, alreadyInStateCount, failureCount })
+        }
+      }, true);
+    }
+    catch (error) {
+      cl(`FormSection handleSetLockAllForCategoryPerson error: ${error}`);
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: `${lockedValue ? 'Lock All' : 'Unlock All'} failed`,
+          message: `There was a problem ${lockedValue ? 'locking' : 'unlocking'} these documents. Please try again.`
+        }
+      }, true);
+    }
+    finally {
+      setLockAllInProgress(prev => Object.assign({}, prev, { [lockKey]: false }));
+    }
+  };
+
+  const makeCompletionMessage = ({ lockedValue, successCount, alreadyInStateCount, failureCount }) => {
+    let response = `${lockedValue ? 'Locked' : 'Unlocked'} ${successCount} document(s)`;
+    if (alreadyInStateCount > 0) {
+      response += `, ${alreadyInStateCount} already ${lockedValue ? 'locked' : 'unlocked'}`;
+    }
+    if (failureCount > 0) {
+      response += `, ${failureCount} could not be updated. See console log for details.`;
+    }
+    return response;
+  };
+
+  const handleLockAllForCategoryPerson = async ({ person_id, myFormListObj, category }) => {
+    await handleSetLockAllForCategoryPerson({ person_id, myFormListObj, category, lockedValue: true });
+  };
+
+  const handleUnlockAllForCategoryPerson = async ({ person_id, myFormListObj, category }) => {
+    await handleSetLockAllForCategoryPerson({ person_id, myFormListObj, category, lockedValue: false });
+  };
+
+  const handlePrintAllForCategoryPerson = ({ person_id, myFormListObj, category }) => {
+    const formIdsInScope = getFormIdsInScope({ myFormListObj, category });
+    const printQueue = formIdsInScope.map((this_formID) => {
+      const myDocs = myFormListObj[this_formID] || {};
+      const document_id = (
+        myDocs.completedDocs?.[0]?.document_id
+        || myDocs.wipDocs?.[0]?.document_id
+        || myDocs.assignedDocs?.[0]?.document_id
+        || 'new'
+      );
+      return {
+        form_id: this_formID,
+        document_id,
+        person_id,
+      };
+    });
+
+    if (printQueue.length === 0) {
+      updateReactData({
+        alert: {
+          severity: 'info',
+          title: 'Nothing to print',
+          message: 'No forms were found in this section.'
+        }
+      }, true);
+      return;
+    }
+
+    setSectionPrintQueue(printQueue);
+    setSectionPrintIndex(0);
+  };
+
   React.useEffect(() => {
     initialize();
     isMounted.current = true;
@@ -490,26 +742,134 @@ export default ({ currentValues, reactData, updateReactData }) => {
                   <React.Fragment key={`person_filter${cat_index}_${pIndex}`}>
                     {Object.keys(myFormListObj).some((this_formID) => {
                       const myDocs = reactData.masterFormList[person_id].myFormListObj[this_formID];
-                      return (((myDocs.category || '').trim() === this_category) || !reactData.showCategoryList);
+                      return ((normalizeCategory(myDocs.category) === this_category) || !reactData.showCategoryList);
                     }) &&
                       <React.Fragment
                         key={`myName_frag${pIndex}`}
                       >
+                        {(() => {
+                          const sectionDocState = getCategoryPersonDocumentState({
+                            myFormListObj,
+                            category: this_category
+                          });
+                          const showUnlockAll = sectionDocState.allLocked;
+                          const showLockAll = sectionDocState.eligibleCount > 0 && sectionDocState.hasUnlocked;
+                          const isBusy = !!lockAllInProgress[`${person_id}::${this_category}`];
+                          const isSectionPrintBusy = sectionPrintQueue.length > 0;
 
-                        <Typography
-                          key={`myName_${cat_index}_${pIndex}`}
-                          style={AVATextStyle({
-                            size: 1.35,
-                            bold: true,
-                            margin: { top: 1, left: 0 },
-                          })}
+                          return (
+                        <Box
+                          display='flex'
+                          flexDirection='row'
+                          justifyContent='space-between'
+                          alignItems='center'
                         >
-                          {`${person_first_name}'s Forms`}
-                        </Typography>
+                          <Typography
+                            key={`myName_${cat_index}_${pIndex}`}
+                            style={AVATextStyle({
+                              size: 1.35,
+                              bold: true,
+                              margin: { top: 1, left: 0 },
+                            })}
+                          >
+                            {`${person_first_name}'s Forms`}
+                          </Typography>
+                          {reactData.administrative_account && (
+                            <Box
+                              display='flex'
+                              flexDirection='row'
+                              alignItems='center'
+                              justifyContent='center'
+                              style={{ marginTop: '16px' }}
+                            >
+                              {showLockAll && (
+                                <Tooltip title='Lock all existing documents in this section'>
+                                  <Box
+                                    display='flex'
+                                    flexDirection='column'
+                                    alignItems='center'
+                                    justifyContent='center'
+                                  >
+                                    <IconButton
+                                      size='small'
+                                      aria-label='Lock all documents'
+                                      disabled={isBusy || isSectionPrintBusy}
+                                      onClick={() => {
+                                        handleLockAllForCategoryPerson({
+                                          person_id,
+                                          myFormListObj,
+                                          category: this_category
+                                        });
+                                      }}
+                                    >
+                                      {isBusy
+                                        ? <CircularProgress size={18} />
+                                        : <LockIcon style={{ fontSize: '1.2rem' }} />}
+                                    </IconButton>
+                                  </Box>
+                                </Tooltip>
+                              )}
+                              {showUnlockAll && (
+                                <Tooltip title='Unlock all existing documents in this section'>
+                                  <Box
+                                    display='flex'
+                                    flexDirection='column'
+                                    alignItems='center'
+                                    justifyContent='center'
+                                  >
+                                    <IconButton
+                                      size='small'
+                                      aria-label='Unlock all documents'
+                                      disabled={isBusy || isSectionPrintBusy}
+                                      onClick={() => {
+                                        handleUnlockAllForCategoryPerson({
+                                          person_id,
+                                          myFormListObj,
+                                          category: this_category
+                                        });
+                                      }}
+                                    >
+                                      {isBusy
+                                        ? <CircularProgress size={18} />
+                                        : <LockOpenIcon style={{ fontSize: '1.2rem' }} />}
+                                    </IconButton>
+                                  </Box>
+                                </Tooltip>
+                              )}
+                              <Tooltip title='Print all forms in this section'>
+                                <Box
+                                  display='flex'
+                                  flexDirection='column'
+                                  alignItems='center'
+                                  justifyContent='center'
+                                >
+                                  <IconButton
+                                    size='small'
+                                    aria-label='Print all documents'
+                                    disabled={isBusy || isSectionPrintBusy}
+                                    onClick={() => {
+                                      handlePrintAllForCategoryPerson({
+                                        person_id,
+                                        myFormListObj,
+                                        category: this_category
+                                      });
+                                    }}
+                                  >
+                                    {isSectionPrintBusy
+                                      ? <CircularProgress size={18} />
+                                      : <PrintIcon style={{ fontSize: '1.2rem' }} />}
+                                  </IconButton>
+                                </Box>
+                              </Tooltip>
+                            </Box>
+                          )}
+                        </Box>
+                          );
+                        })()}
                         {
                           Object.keys(myFormListObj).map((this_formID, form_index) => {
                             const myDocs = reactData.masterFormList[person_id].myFormListObj[this_formID];
-                            if (((myDocs.category || '').trim() === this_category) || !reactData.showCategoryList) {
+                            if ((normalizeCategory(myDocs.category) === this_category) || !reactData.showCategoryList) {
                               return (
                                 <React.Fragment
                                   key={`wrapperFrag-col_form${cat_index}_${pIndex}_${form_index}`}
@@ -840,6 +1200,26 @@ export default ({ currentValues, reactData, updateReactData }) => {
             );
           })}
         </Box >
+      }
+      {(sectionPrintQueue.length > 0) && sectionPrintQueue[sectionPrintIndex] &&
+        <FormFillB
+          key={`section_print_${sectionPrintQueue[sectionPrintIndex].form_id}_${sectionPrintQueue[sectionPrintIndex].document_id}_${sectionPrintIndex}`}
+          request={{
+            form_id: sectionPrintQueue[sectionPrintIndex].form_id,
+            document_id: sectionPrintQueue[sectionPrintIndex].document_id,
+            person_id: sectionPrintQueue[sectionPrintIndex].person_id,
+            mode: 'printPDF'
+          }}
+          onClose={() => {
+            const nextIndex = sectionPrintIndex + 1;
+            if (nextIndex < sectionPrintQueue.length) {
+              setSectionPrintIndex(nextIndex);
+              return;
+            }
+            setSectionPrintQueue([]);
+            setSectionPrintIndex(0);
+          }}
+        />
       }
       {reactData.isViewingForm &&
         <FormFillB
