@@ -2008,7 +2008,13 @@ export async function printOccurrenceSheet(body) {
       doc.line(detail_indent, yPos + 3, detail_indent + 300, yPos + 3, 'F');
     }
     else if (occupiedSlot) {
-      pdfLine('image', page.font.size.large, 'normal', 0, 1.5, 0, { image: `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${oData.slots[sID].owner}.jpg` });
+      let pRec = null;
+      if (oData.slots[sID].owner) {
+        pRec = await getPerson(oData.slots[sID].owner, '*all');
+      }
+      if (pRec?.person_photo) {
+        pdfLine('image', page.font.size.large, 'normal', 0, 1.5, 0, { image: pRec.person_photo });
+      }
       pdfLine(outName, page.font.size.large, 'bold', 0, 0.5, 0, { noNewLine: true });
       let nameY = yPos;
       if (oData.type === 'time') {
@@ -2018,23 +2024,25 @@ export async function printOccurrenceSheet(body) {
         pdfLine(`${oData.slots[sID].name}`, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
       }
       if (oData.slots[sID].owner && body.request_type === 'full') {
-        let pRec = await getPerson(oData.slots[sID].owner);
-        if (pRec) {
-          if (pRec.person_id !== 'void') {
-            if (pRec.location) {
-              pdfLine(pRec.location, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
-            }
-            totalLines++;
-            // eslint-disable-next-line
-            Object.values(pRec.messaging).forEach(mVal => {
-              if (mVal && (typeof (mVal) === 'string') && (mVal !== '')) {
-                let outVal = mVal;
-                if (!isNaN(Number(mVal))) { outVal = formatPhone(mVal); }
-                pdfLine(outVal, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
-                totalLines++;
-              }
-            });
+        if (!pRec) {
+          pRec = await getPerson(oData.slots[sID].owner, '*all');
+        }
+        // the slot owner does not exist in the Db; this is unexpected, but we will just skip over it and continue
+        const personId = pRec?.person_id;
+        if (personId && personId !== 'void') {
+          if (pRec.location) {
+            pdfLine(pRec.location, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
           }
+          totalLines++;
+          // eslint-disable-next-line
+          Object.values(pRec.messaging).forEach(mVal => {
+            if (mVal && (typeof (mVal) === 'string') && (mVal !== '')) {
+              let outVal = mVal;
+              if (!isNaN(Number(mVal))) { outVal = formatPhone(mVal); }
+              pdfLine(outVal, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
+              totalLines++;
+            }
+          });
         }
       };
       if (oData.slots[sID].marked) {

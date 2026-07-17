@@ -625,6 +625,12 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     }
   };
 
+  const okToShowSlot = (this_slot) => {
+    return (this_slot?.slotData?.show_this_slot !== false
+      && (['time', 'seats'].includes(pOccData.signup_type)
+      || ((this_slot?.slotData?.status || this_slot?.slotData?.current?.status) !== "released")));
+  };
+
   const getHistoryTimes = (this_item) => {
     let currentHistory = this_item.slotData.status.history;
     let foundTimes = ['no Value', 'no Value'];
@@ -910,7 +916,9 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       }
       whereToGo = -1;
       if (pRelease) {
-        if (pSlot !== newPersonID) {
+        // if this is a time-based nor a seat-based signup, we need to clear the slotData for this entry
+        // otherwise we need to remove the entry from the workingList
+        if (['time', 'seats'].includes(pOccData.signup_type)) {
           let updatedSlotData = Object.assign(workingList[pIndex].slotData, {
             name: '',
             owner: '',
@@ -1721,7 +1729,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
         <Paper component={Box} className={classes.page} elevation={0} overflow='auto' square>
           <List  >
             {eventSlotList && eventSlotList.length > 0 && eventSlotList.map((this_item, index) => (
-              (!this_item.slotData.hasOwnProperty('show_this_slot') || this_item.slotData.show_this_slot) &&
+              (okToShowSlot(this_item)) &&
               <Box display='flex' flexDirection='row' alignItems='center'
                 key={`slotLine_${index}`}
                 minHeight={50}
@@ -1733,9 +1741,8 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                 {/* Slot Name above Slot owner info */}
                 <Box display='flex'
                   width='100%' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                  {/* Slot Name */}
-                  {(this_item.slotData.id !== this_item.slotData.owner) &&
-                    (['time', 'seats'].includes(pOccData.signup_type) || !this_item.slotData.slot_id_name) &&
+                  {/* Slot Name - only for "seats" and "time" signup types */}
+                  {(['time', 'seats'].includes(pOccData.signup_type)) &&
                     <Box display='flex' mr={1} ml={0}
                       flexDirection='row' justifyContent='center' alignItems='center'
                     >
@@ -1743,10 +1750,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                         size: 1,
                         align: 'left',
                       })} className={classes.standard} >
-                        {this_item.slotData.hasOwnProperty('slot_description')
-                          ? this_item.slotData.slot_description
-                          : makeSlotName(this_item.slotData.id)
-                        }
+                        {this_item.slotData?.slot_description?.trim() || makeSlotName(this_item.slotData?.id)}
                       </Typography>
                     </Box>
                   }
@@ -1838,7 +1842,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                             maxHeight={50}
                             border={1}
                             alt=''
-                            src={getImage(this_item.slotData.owner)}
+                            src={getImage(this_item.slotData.owner, { allowS3Fallback: false, allowS3Backfill: false })}
                           />
                         }
                         <Box display='flex' flexDirection='column' width='100%'>
