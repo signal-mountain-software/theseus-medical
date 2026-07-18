@@ -119,7 +119,8 @@ export async function persistPersonPhotoThumb(person_id, thumbData) {
     return rememberPersonPhotoThumb(person_id, thumbData);
 }
 
-async function backfillPersonPhotoThumb(person_id) {
+async function backfillPersonPhotoThumb(person_id, options = {}) {
+    const allowS3Backfill = options.allowS3Backfill !== false;
     if (!person_id || personPhotoBackfillInProgress.has(person_id)) {
         return getRememberedPersonPhotoThumb(person_id);
     }
@@ -128,6 +129,9 @@ async function backfillPersonPhotoThumb(person_id) {
         const personRec = await getPerson(person_id, '*all');
         if (personRec?.person_photo) {
             return rememberPersonPhotoThumb(person_id, personRec.person_photo);
+        }
+        if (!allowS3Backfill) {
+            return null;
         }
         const imageUrl = getObject(person_id, 'image');
         const thumbData = await createPersonPhotoThumbFromUrl(imageUrl);
@@ -178,7 +182,9 @@ export function AVAname(pRec) {
     else { return pRec.person_id; }
 }
 
-export function getImage(pPerson) {
+export function getImage(pPerson, options = {}) {
+    const allowS3Fallback = options.allowS3Fallback !== false;
+    const allowS3Backfill = options.allowS3Backfill !== false;
     let person_id = '';
     if (typeof (pPerson) === 'string') {
         person_id = pPerson;
@@ -201,7 +207,10 @@ export function getImage(pPerson) {
         return cachedThumb;
     }
 
-    void backfillPersonPhotoThumb(person_id);
+    void backfillPersonPhotoThumb(person_id, { allowS3Backfill });
+    if (!allowS3Fallback) {
+        return '';
+    }
     return getObject(person_id, 'image');
     // return `https://d3sds9ybtm36gy.cloudfront.net/${pPerson}.jpg`;
 };

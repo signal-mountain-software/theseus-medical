@@ -36,6 +36,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
   const [lockAllInProgress, setLockAllInProgress] = React.useState({});
   const [sectionPrintQueue, setSectionPrintQueue] = React.useState([]);
   const [sectionPrintIndex, setSectionPrintIndex] = React.useState(0);
+  const [sectionPrintTargetKey, setSectionPrintTargetKey] = React.useState('');
 
   const addAmendmentDisplayed = React.useRef(false);
   const historyAmendmentDisplayed = React.useRef(false);
@@ -649,6 +650,8 @@ export default ({ currentValues, reactData, updateReactData }) => {
 
   const handlePrintAllForCategoryPerson = ({ person_id, myFormListObj, category }) => {
     const formIdsInScope = getFormIdsInScope({ myFormListObj, category });
+    const safeCategory = String(category || 'Uncategorized').replace(/[^a-zA-Z0-9_-]+/g, '_');
+    const batchFileName = `section_${person_id}_${safeCategory}_${Date.now()}`;
     const printQueue = formIdsInScope.map((this_formID) => {
       const myDocs = myFormListObj[this_formID] || {};
       const document_id = (
@@ -661,6 +664,8 @@ export default ({ currentValues, reactData, updateReactData }) => {
         form_id: this_formID,
         document_id,
         person_id,
+        printBatchFileName: batchFileName,
+        printSectionKey: `${person_id}::${category}`,
       };
     });
 
@@ -677,6 +682,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
 
     setSectionPrintQueue(printQueue);
     setSectionPrintIndex(0);
+    setSectionPrintTargetKey(`${person_id}::${category}`);
   };
 
   React.useEffect(() => {
@@ -755,7 +761,9 @@ export default ({ currentValues, reactData, updateReactData }) => {
                           const showUnlockAll = sectionDocState.allLocked;
                           const showLockAll = sectionDocState.eligibleCount > 0 && sectionDocState.hasUnlocked;
                           const isBusy = !!lockAllInProgress[`${person_id}::${this_category}`];
+                          const thisSectionKey = `${person_id}::${this_category}`;
                           const isSectionPrintBusy = sectionPrintQueue.length > 0;
+                          const isThisSectionPrinting = isSectionPrintBusy && (sectionPrintTargetKey === thisSectionKey);
 
                           return (
                         <Box
@@ -855,7 +863,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                                       });
                                     }}
                                   >
-                                    {isSectionPrintBusy
+                                    {isThisSectionPrinting
                                       ? <CircularProgress size={18} />
                                       : <PrintIcon style={{ fontSize: '1.2rem' }} />}
                                   </IconButton>
@@ -1208,7 +1216,14 @@ export default ({ currentValues, reactData, updateReactData }) => {
             form_id: sectionPrintQueue[sectionPrintIndex].form_id,
             document_id: sectionPrintQueue[sectionPrintIndex].document_id,
             person_id: sectionPrintQueue[sectionPrintIndex].person_id,
-            mode: 'printPDF'
+            mode: (sectionPrintQueue.length === 1)
+              ? 'printPDF'
+              : ((sectionPrintIndex === 0)
+                ? 'printFirstPDF'
+                : ((sectionPrintIndex === (sectionPrintQueue.length - 1))
+                  ? 'printLastPDF'
+                  : 'printMidPDF')),
+            printBatchFileName: sectionPrintQueue[sectionPrintIndex].printBatchFileName,
           }}
           onClose={() => {
             const nextIndex = sectionPrintIndex + 1;
@@ -1218,6 +1233,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
             }
             setSectionPrintQueue([]);
             setSectionPrintIndex(0);
+            setSectionPrintTargetKey('');
           }}
         />
       }

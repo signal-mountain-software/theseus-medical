@@ -2448,7 +2448,7 @@ export default ({ request = {}, onClose }) => {
     return signatures;
   };
 
-  const printWithLegacyPdfEngine = async () => {
+  const printWithLegacyPdfEngine = async (printOptions = {}) => {
     const hasUnsavedChanges = valuesChanged();
     const snapshotVersion = Number(reactData.docRec?.print_snapshot?.version || 0);
     const shouldUseSnapshot = (!hasUnsavedChanges) && (snapshotVersion >= PRINT_SNAPSHOT_VERSION);
@@ -2469,11 +2469,12 @@ export default ({ request = {}, onClose }) => {
     // Use printDocumentHtmlB: constructs clean HTML from field data and renders it via
     // jsPDF's doc.html() engine, which preserves <strong>, <ol>, <li>, <table> etc.
     await printDocumentHtmlB({
-      documentList: [payload]
+      documentList: [payload],
+      options: printOptions,
     });
   };
 
-  const printCurrentForm = async () => {
+  const printCurrentForm = async (printOptions = {}) => {
     try {
       if (printContentRef.current) {
         cl({ print_path: 'wysiwyg_primary' });
@@ -2481,7 +2482,8 @@ export default ({ request = {}, onClose }) => {
           element: printContentRef.current,
           docID: reactData.document_id,
           client_id: state.session.client_id,
-          title: reactData.document_title
+          title: reactData.document_title,
+          options: printOptions,
         });
         return;
       }
@@ -2490,7 +2492,7 @@ export default ({ request = {}, onClose }) => {
     }
 
     cl({ print_path: 'legacy_fallback' });
-    await printWithLegacyPdfEngine();
+    await printWithLegacyPdfEngine(printOptions);
   };
 
   const waitForHiddenPrintRender = async (maxWaitMs = 3000) => {
@@ -4575,14 +4577,36 @@ export default ({ request = {}, onClose }) => {
         });
         onClose();
       }
-      else if (reactData.options.mode === 'printPDF') {
+      else if (['printPDF', 'printFirstPDF', 'printMidPDF', 'printLastPDF'].includes(reactData.options.mode)) {
         await initialize();
         // Hidden auto-print path: render FormFillB content first, then run WYSIWYG print.
         updateReactData({
           stage: 'fill'
         }, true);
         await waitForHiddenPrintRender();
-        await printCurrentForm();
+        const printOptions = {};
+        if (reactData.options.mode === 'printFirstPDF') {
+          printOptions.multiPrint = {
+            firstDoc: true,
+            lastDoc: false,
+            fileName: reactData.options.printBatchFileName,
+          };
+        }
+        else if (reactData.options.mode === 'printMidPDF') {
+          printOptions.multiPrint = {
+            firstDoc: false,
+            lastDoc: false,
+            fileName: reactData.options.printBatchFileName,
+          };
+        }
+        else if (reactData.options.mode === 'printLastPDF') {
+          printOptions.multiPrint = {
+            firstDoc: false,
+            lastDoc: true,
+            fileName: reactData.options.printBatchFileName,
+          };
+        }
+        await printCurrentForm(printOptions);
         onClose('print', {
           document_id: reactData.document_id,
           document_title: reactData.document_title,
@@ -4715,7 +4739,11 @@ export default ({ request = {}, onClose }) => {
     const valueText = (fieldRec && fieldRec.valueText)
       ? (Array.isArray(fieldRec.valueText) ? fieldRec.valueText[occ_index] : fieldRec.valueText)
       : '';
-    const hasLongValueText = String(valueText || '').length > 90;
+    const rawValue = (fieldRec && fieldRec.value)
+      ? (Array.isArray(fieldRec.value) ? fieldRec.value[occ_index] : fieldRec.value)
+      : '';
+    const effectiveTextForWrap = String(valueText || rawValue || '');
+    const hasLongValueText = effectiveTextForWrap.length > 90;
     const shouldAutoWrapText = isTextType && ((textRows > 1) || hasLongValueText);
     const resolvedTextRows = (textRows > 1)
       ? textRows
@@ -5034,14 +5062,18 @@ export default ({ request = {}, onClose }) => {
         onClose={(event, reason) => { if (reason !== 'backdropClick') { handleAbort(); } }}
         classes={{ paper: classes.clientBackground }}
         maxWidth={false}
-        BackdropProps={reactData.options?.mode === 'printPDF' ? { style: { visibility: 'hidden' } } : undefined}
+        BackdropProps={['printPDF', 'printFirstPDF', 'printMidPDF', 'printLastPDF'].includes(reactData.options?.mode)
+          ? { style: { visibility: 'hidden' } }
+          : undefined}
         PaperProps={{
           className: classes.dialogPaper,
           style: {
             minWidth: '80vw',
             maxWidth: '80vw',
             maxHeight: 'calc(100dvh - 32px)',
-            ...(reactData.options?.mode === 'printPDF' ? { visibility: 'hidden', pointerEvents: 'none' } : {})
+            ...(['printPDF', 'printFirstPDF', 'printMidPDF', 'printLastPDF'].includes(reactData.options?.mode)
+              ? { visibility: 'hidden', pointerEvents: 'none' }
+              : {})
           }
         }}
       >

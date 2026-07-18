@@ -1741,7 +1741,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                 : null
                             }}
                           >
-                            <Avatar className={classes.assignment_avatar} src={getImage(this_candidate.person_id)} >
+                            <Avatar className={classes.assignment_avatar} src={getImage(this_candidate, { allowS3Fallback: false, allowS3Backfill: false })} >
                               {`${this_candidate.first_name.slice(0, 1)}${this_candidate.last_name.slice(0, 1)}`}
                             </Avatar>
                           </Box>
