@@ -994,7 +994,18 @@ export async function printElementWysiwygB({ element, client_id, docID, title, o
     throw new Error('printElementWysiwygB requires a valid DOM element');
   }
 
-  await pdfLaunch({ client_id, pdf: options.pdf || {} });
+  const multiPrint = options.multiPrint || null;
+  const useMultiPrint = !!multiPrint;
+  const isFirstDoc = useMultiPrint ? !!multiPrint.firstDoc : true;
+  const isLastDoc = useMultiPrint ? !!multiPrint.lastDoc : true;
+
+  await pdfLaunch({
+    client_id,
+    pdf: options.pdf || {},
+    multiPrint: useMultiPrint
+      ? { firstDoc: isFirstDoc, lastDoc: isLastDoc }
+      : undefined,
+  });
 
   const safeClientId = client_id || page.client_id || 'unknown_client';
   const safeDocId = docID || `document_${Date.now()}`;
@@ -1134,18 +1145,21 @@ export async function printElementWysiwygB({ element, client_id, docID, title, o
     pageIndex++;
   }
 
-  doc.save(`${safeDocId}.pdf`);
+  if (!useMultiPrint || isLastDoc) {
+    const finalDocId = (useMultiPrint && multiPrint.fileName) ? multiPrint.fileName : safeDocId;
+    doc.save(`${finalDocId}.pdf`);
 
-  let pdfInfo = {
-    s3Key: `${safeClientId}_${safeDocId}.pdf`,
-    s3Bucket: (options.S3_bucket || 'theseus-medical-storage')
-  };
-  let pdfResp = await savePDF(doc, pdfInfo, { local: false, S3: true, onSave: false });
-  if (pdfResp.responseData.s3Resp) {
-    pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
+    let pdfInfo = {
+      s3Key: `${safeClientId}_${finalDocId}.pdf`,
+      s3Bucket: (options.S3_bucket || 'theseus-medical-storage')
+    };
+    let pdfResp = await savePDF(doc, pdfInfo, { local: false, S3: true, onSave: false });
+    if (pdfResp.responseData.s3Resp) {
+      pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
+    }
+    return [pdfInfo];
   }
-
-  return [pdfInfo];
+  return [];
 }
 
 // Hybrid print engine: pdfLine (doc.text) for all plain-text fields — so Unicode radio
@@ -1159,13 +1173,26 @@ export async function printDocumentHtmlB({ documentList, options = {} }) {
     documentList = [documentList];
   }
 
+  const numberOfDocuments = documentList.length;
+  let docIndex = 0;
+
   for (const docInfo of documentList) {
+    docIndex++;
     const { sections, fields, docID, client_id, title, signatures = [] } = docInfo;
     const safeDocId = docID || `document_${Date.now()}`;
     const safeClientId = client_id || 'unknown';
+    const multiPrint = options.multiPrint || null;
+    const useMultiPrint = !!multiPrint;
+    const isFirstDoc = useMultiPrint ? !!multiPrint.firstDoc : (docIndex === 1);
+    const isLastDoc = useMultiPrint ? !!multiPrint.lastDoc : (docIndex === numberOfDocuments);
 
     // Initialize the PDF engine — sets up the module-level doc, page, and pdfCurrent
-    await pdfLaunch({ client_id });
+    await pdfLaunch({
+      client_id,
+      multiPrint: useMultiPrint
+        ? { firstDoc: isFirstDoc, lastDoc: isLastDoc }
+        : undefined,
+    });
     page.title = title;
     page.document_id = safeDocId;
     page.client_id = safeClientId;
@@ -1406,17 +1433,21 @@ export async function printDocumentHtmlB({ documentList, options = {} }) {
     }
 
     pdfLine(page.footerText, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
-    doc.save(`${safeDocId}.pdf`);
 
-    let pdfInfo = {
-      s3Key: `${safeClientId}_${safeDocId}.pdf`,
-      s3Bucket: options.S3_bucket || 'theseus-medical-storage'
-    };
-    const pdfResp = await savePDF(doc, pdfInfo, { local: false, S3: true, onSave: false });
-    if (pdfResp.responseData.s3Resp) {
-      pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
+    if (!useMultiPrint || isLastDoc) {
+      const finalDocId = (useMultiPrint && multiPrint.fileName) ? multiPrint.fileName : safeDocId;
+      doc.save(`${finalDocId}.pdf`);
+
+      let pdfInfo = {
+        s3Key: `${safeClientId}_${finalDocId}.pdf`,
+        s3Bucket: options.S3_bucket || 'theseus-medical-storage'
+      };
+      const pdfResp = await savePDF(doc, pdfInfo, { local: false, S3: true, onSave: false });
+      if (pdfResp.responseData.s3Resp) {
+        pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
+      }
+      response.push(pdfInfo);
     }
-    response.push(pdfInfo);
   }
   return response;
 }

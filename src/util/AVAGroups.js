@@ -453,6 +453,7 @@ export async function getGroupAccess(client_id, person_id, options) {
     if (this_group.dynamic_group) {
       resultObj.is_dynamic = true;
       resultObj.rules = this_group.rules || [];
+      resultObj.group_rules = this_group.group_rules || [];
     }
     if (resultObj.role === 'non-member' && !is_accessible) {
       rejectObject[this_group.group_id] = resultObj;
@@ -767,6 +768,86 @@ export function determineClass(gList, group_assignments, options = {}) {
  * @param {string|object} personArg - person_id or PeopleRec
  * @returns {Promise<boolean>} true if any rule matches, else false
  */
+function getValueAtPath(sourceObj, pathSpec) {
+  if (!sourceObj || !pathSpec || (typeof pathSpec !== 'string')) {
+    return undefined;
+  }
+  let pathParts = pathSpec.split('.').map(p => p.trim()).filter(Boolean);
+  if (['peopleRec', 'personRec'].includes(pathParts[0])) {
+    pathParts = pathParts.slice(1);
+  }
+  return pathParts.reduce((obj, key) => {
+    if (obj === null || obj === undefined) {
+      return undefined;
+    }
+    return obj[key];
+  }, sourceObj);
+}
+
+function normalizeBooleanToken(rawValue) {
+  if (rawValue === null || rawValue === undefined) {
+    return null;
+  }
+  if (typeof rawValue === 'boolean') {
+    return rawValue;
+  }
+  if (typeof rawValue === 'number') {
+    if (rawValue === 1) { return true; }
+    if (rawValue === 0) { return false; }
+    return null;
+  }
+  const token = `${rawValue}`.trim().toLowerCase();
+  if (!token) {
+    return null;
+  }
+  const trueTokens = new Set(['true', 't', 'yes', 'y', '1', 'on', 'checked', 'active', 'enabled']);
+  const falseTokens = new Set(['false', 'f', 'no', 'n', '0', 'off', 'unchecked', 'inactive', 'disabled', 'none', 'null']);
+  if (trueTokens.has(token)) {
+    return true;
+  }
+  if (falseTokens.has(token)) {
+    return false;
+  }
+  return null;
+}
+
+function compareRuleValue({ sourceValue, testType, testValue }) {
+  const normalizedTestType = `${testType || 'eq'}`.trim().toLowerCase();
+  const sourceBool = normalizeBooleanToken(sourceValue);
+  const testBool = normalizeBooleanToken(testValue);
+
+  // Boolean-aware equality for dynamic withData rules.
+  if (['eq', 'ne'].includes(normalizedTestType) && sourceBool !== null && testBool !== null) {
+    return (normalizedTestType === 'eq') ? (sourceBool === testBool) : (sourceBool !== testBool);
+  }
+
+  const left = `${sourceValue ?? ''}`.trim().toLowerCase();
+  const right = `${testValue ?? ''}`.trim().toLowerCase();
+
+  switch (normalizedTestType) {
+    case 'eq':
+      return left === right;
+    case 'ne':
+      return left !== right;
+    case 'contains':
+      return left.includes(right);
+    case 'gt': {
+      const nLeft = Number(left);
+      const nRight = Number(right);
+      if (isNaN(nLeft) || isNaN(nRight)) { return false; }
+      return nLeft > nRight;
+    }
+    case 'lt': {
+      const nLeft = Number(left);
+      const nRight = Number(right);
+      if (isNaN(nLeft) || isNaN(nRight)) { return false; }
+      return nLeft < nRight;
+    }
+    default:
+      return false;
+  }
+}
+
 export async function doesPersonMatchGroupRules(client_id, groupArg, personArg) {
   // dbClient and state are available in this module
   let groupRec = groupArg;
@@ -789,22 +870,49 @@ export async function doesPersonMatchGroupRules(client_id, groupArg, personArg) 
     }).promise().catch(() => null);
     peopleRec = result && result.Item ? result.Item : null;
   }
-  if (!groupRec || !peopleRec || !Array.isArray(groupRec.rules)) return false;
-  for (const rule of groupRec.rules) {
-    if (!rule || !rule.source || !Array.isArray(rule.test)) continue;
-    // Support dot notation in source, e.g., 'name.last' or 'peopleRec.name.last'
-    let sourcePath = rule.source.split('.');
-    // Ignore first element if it is 'peopleRec' or 'personRec'
-    if (['peopleRec', 'personRec'].includes(sourcePath[0])) {
-      sourcePath = sourcePath.slice(1);
-    }
-    let value = sourcePath.reduce((obj, key) => (obj && obj[key] !== undefined ? obj[key] : undefined), peopleRec);
-    if (typeof value === 'string') {
-      value = value.toLowerCase();
-      if (rule.test.some(testVal => typeof testVal === 'string' && value === testVal.toLowerCase())) {
+  const matchingRules = (Array.isArray(groupRec.group_rules) && groupRec.group_rules.length > 0)
+    ? groupRec.group_rules
+    : (Array.isArray(groupRec.rules) ? groupRec.rules : []);
+  if (!groupRec || !peopleRec || matchingRules.length === 0) return false;
+
+  for (const rule of matchingRules) {
+    // New dynamic rule shape: { rule_type:'withData', data_test:{ field_path|dictionaryField, test, testValue, is_array_field } }
+    if (rule?.rule_type === 'withData' && rule?.data_test) {
+      const testData = rule.data_test;
+      const fieldPath = testData.field_path || testData.dictionaryField;
+      if (!fieldPath) {
+        continue;
+      }
+      const sourceValue = getValueAtPath(peopleRec, fieldPath);
+      const testValue = testData.testValue;
+      const isArrayField = !!testData.is_array_field || Array.isArray(sourceValue);
+      if (isArrayField) {
+        const valueList = Array.isArray(sourceValue) ? sourceValue : [sourceValue];
+        if (testData.test === 'ne') {
+          if (valueList.every(this_value => !compareRuleValue({ sourceValue: this_value, testType: 'eq', testValue }))) {
+            return true;
+          }
+        }
+        else if (valueList.some(this_value => compareRuleValue({ sourceValue: this_value, testType: testData.test, testValue }))) {
+          return true;
+        }
+      }
+      else if (compareRuleValue({ sourceValue, testType: testData.test, testValue })) {
         return true;
       }
-    } else if (Array.isArray(value)) {
+      continue;
+    }
+
+    // Legacy dynamic rule shape: { source, test: [] }
+    if (!rule || !rule.source || !Array.isArray(rule.test)) continue;
+    const value = getValueAtPath(peopleRec, rule.source);
+    if (typeof value === 'string') {
+      const normalizedValue = value.toLowerCase();
+      if (rule.test.some(testVal => typeof testVal === 'string' && normalizedValue === testVal.toLowerCase())) {
+        return true;
+      }
+    }
+    else if (Array.isArray(value)) {
       // If value is an array, check if any element matches
       for (const v of value) {
         if (typeof v === 'string' && rule.test.some(testVal => typeof testVal === 'string' && v.toLowerCase() === testVal.toLowerCase())) {
@@ -2250,7 +2358,8 @@ export async function getAllGroupTypes(pClient_id, person_id) {
       dynamicGroups.push({
         group_id: thisGroup.group_id,
         group_name: thisGroup.name,
-        rules: thisGroup.rules || []
+        rules: thisGroup.rules || [],
+        group_rules: thisGroup.group_rules || []
       });
     }
   }
@@ -2282,7 +2391,12 @@ export async function getAllGroups(person_id, client_id) {
       privateGroups[gid] = { group_name: g.group_name, group_id: gid, role: g.role };
     }
     if (g.is_dynamic) {
-      dynamicGroups.push({ group_id: gid, group_name: g.group_name, rules: g.rules || [] });
+      dynamicGroups.push({
+        group_id: gid,
+        group_name: g.group_name,
+        rules: g.rules || [],
+        group_rules: g.group_rules || []
+      });
     }
   }
   // belongsTo: sorted accessible-group map — replaces the former getGroupsBelongTo({sort:true}) call.
