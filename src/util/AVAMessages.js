@@ -1130,6 +1130,80 @@ export async function printElementWysiwygB({ element, client_id, docID, title, o
     }
   }
 
+  const prefetchedBlobUrls = [];
+  const imageBlobBySource = new Map();
+
+  const awaitImageReady = (img) => {
+    if (img.complete && img.naturalWidth > 0) {
+      return Promise.resolve(true);
+    }
+    if (typeof img.decode === 'function') {
+      return img.decode()
+        .then(() => true)
+        .catch(() => new Promise((resolve) => {
+          const onDone = () => resolve(img.naturalWidth > 0);
+          img.addEventListener('load', onDone, { once: true });
+          img.addEventListener('error', () => resolve(false), { once: true });
+        }));
+    }
+    return new Promise((resolve) => {
+      if (img.complete) {
+        resolve(img.naturalWidth > 0);
+        return;
+      }
+      img.addEventListener('load', () => resolve(true), { once: true });
+      img.addEventListener('error', () => resolve(false), { once: true });
+    });
+  };
+
+  const prefetchPrintableImages = async (images) => {
+    const timeoutMs = Math.max(1000, Number(options?.imagePrefetchMs) || 4000);
+    for (const img of images) {
+      const originalSrc = img.getAttribute('src') || img.src || '';
+      if (!originalSrc || originalSrc.startsWith('data:') || originalSrc.startsWith('blob:')) {
+        continue;
+      }
+
+      try {
+        let blobUrl = imageBlobBySource.get(originalSrc);
+        if (!blobUrl) {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), timeoutMs);
+          let response;
+          try {
+            response = await fetch(originalSrc, {
+              mode: 'cors',
+              cache: 'no-store',
+              credentials: 'omit',
+              signal: controller.signal,
+            });
+          } finally {
+            clearTimeout(timer);
+          }
+
+          if (!response.ok) {
+            throw new Error(`Image fetch failed with status ${response.status}`);
+          }
+
+          const fetchedBlob = await response.blob();
+          if (!fetchedBlob || !`${fetchedBlob.type || ''}`.toLowerCase().startsWith('image/')) {
+            throw new Error('Fetched resource is not an image blob');
+          }
+
+          blobUrl = URL.createObjectURL(fetchedBlob);
+          imageBlobBySource.set(originalSrc, blobUrl);
+          prefetchedBlobUrls.push(blobUrl);
+        }
+
+        img.src = blobUrl;
+        img.setAttribute('src', blobUrl);
+      }
+      catch {
+        // Keep original image source when deterministic prefetch fails.
+      }
+    }
+  };
+
   const waitForPrintableImages = async () => {
     const timeoutMs = Math.max(1000, Number(options?.imageWaitMs) || 3000);
     const images = Array.from(printContainer.querySelectorAll('img')).filter((img) => {
@@ -1140,28 +1214,9 @@ export async function printElementWysiwygB({ element, client_id, docID, title, o
       return;
     }
 
-    const imagePromises = images.map((img) => {
-      if (img.complete && img.naturalWidth > 0) {
-        return Promise.resolve(true);
-      }
-      if (typeof img.decode === 'function') {
-        return img.decode()
-          .then(() => true)
-          .catch(() => new Promise((resolve) => {
-            const onDone = () => resolve(img.naturalWidth > 0);
-            img.addEventListener('load', onDone, { once: true });
-            img.addEventListener('error', () => resolve(false), { once: true });
-          }));
-      }
-      return new Promise((resolve) => {
-        if (img.complete) {
-          resolve(img.naturalWidth > 0);
-          return;
-        }
-        img.addEventListener('load', () => resolve(true), { once: true });
-        img.addEventListener('error', () => resolve(false), { once: true });
-      });
-    });
+    await prefetchPrintableImages(images);
+
+    const imagePromises = images.map((img) => awaitImageReady(img));
 
     await Promise.race([
       Promise.allSettled(imagePromises),
@@ -1210,6 +1265,14 @@ export async function printElementWysiwygB({ element, client_id, docID, title, o
       windowHeight: captureHeight
     });
   } finally {
+    prefetchedBlobUrls.forEach((blobUrl) => {
+      try {
+        URL.revokeObjectURL(blobUrl);
+      }
+      catch {
+        // no-op
+      }
+    });
     document.body.removeChild(printContainer);
   }
 
