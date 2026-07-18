@@ -4739,7 +4739,11 @@ export default ({ request = {}, onClose }) => {
     const valueText = (fieldRec && fieldRec.valueText)
       ? (Array.isArray(fieldRec.valueText) ? fieldRec.valueText[occ_index] : fieldRec.valueText)
       : '';
-    const hasLongValueText = String(valueText || '').length > 90;
+    const rawValue = (fieldRec && fieldRec.value)
+      ? (Array.isArray(fieldRec.value) ? fieldRec.value[occ_index] : fieldRec.value)
+      : '';
+    const effectiveTextForWrap = String(valueText || rawValue || '');
+    const hasLongValueText = effectiveTextForWrap.length > 90;
     const shouldAutoWrapText = isTextType && ((textRows > 1) || hasLongValueText);
     const resolvedTextRows = (textRows > 1)
       ? textRows

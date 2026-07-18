@@ -774,12 +774,9 @@ export async function formatRequestDetails(body, summaryType) {
 export async function printFromHTML({ htmlContent, client_id, title, docID }) {
   // Prep the PDF output
   await pdfLaunch({ client_id });
-  let checkpoint3 = { type: typeof htmlContent, isElement: htmlContent instanceof Element, outerHTMLLength: htmlContent?.outerHTML?.length };
-  console.log('printFromHTML received:', checkpoint3);
 
   // Extract outerHTML if it's a DOM element
   const htmlToRender = (htmlContent instanceof Element) ? htmlContent.outerHTML : htmlContent;
-  console.log('printFromHTML rendering:', { isString: typeof htmlToRender === 'string', length: htmlToRender?.length });
 
   doc.html(htmlToRender, {
     callback: function (doc) {
@@ -1021,25 +1018,160 @@ export async function printElementWysiwygB({ element, client_id, docID, title, o
   // onclone approach didn't work: MUI CSS class rules were still clipping the clone.
   // After attaching, we walk every descendant and force overflow:visible / height:auto
   // with !important so no class-based rule can re-clip the content.
+  const sourceRect = element.getBoundingClientRect();
+  const sourceWidth = Math.ceil(sourceRect.width || element.scrollWidth || element.offsetWidth || 900);
+  const captureWidthPx = Math.max(320, sourceWidth);
+
   const printContainer = document.createElement('div');
   printContainer.style.cssText =
-    'position:fixed;left:-9999px;top:0;width:900px;background:#ffffff;' +
+    `position:fixed;left:-9999px;top:0;width:${captureWidthPx}px;background:#ffffff;` +
     'overflow:visible;pointer-events:none;z-index:-1;';
   printContainer.innerHTML = element.innerHTML;
   document.body.appendChild(printContainer);
 
+  // Copy runtime control state so cloned inputs/textareas reflect current rendered values.
+  const sourceControls = element.querySelectorAll('textarea, input, select');
+  const clonedControls = printContainer.querySelectorAll('textarea, input, select');
+  const controlCount = Math.min(sourceControls.length, clonedControls.length);
+  for (let i = 0; i < controlCount; i++) {
+    const sourceControl = sourceControls[i];
+    const clonedControl = clonedControls[i];
+    const sourceTag = (sourceControl.tagName || '').toUpperCase();
+    const sourceType = `${sourceControl.type || ''}`.toLowerCase();
+
+    if (sourceTag === 'TEXTAREA') {
+      clonedControl.value = sourceControl.value;
+      clonedControl.textContent = sourceControl.value;
+    }
+    else if (sourceTag === 'INPUT') {
+      if (['checkbox', 'radio'].includes(sourceType)) {
+        clonedControl.checked = sourceControl.checked;
+      }
+      else {
+        clonedControl.value = sourceControl.value;
+        clonedControl.setAttribute('value', sourceControl.value || '');
+      }
+    }
+    else if (sourceTag === 'SELECT') {
+      clonedControl.selectedIndex = sourceControl.selectedIndex;
+    }
+  }
+
+  // html2canvas can render textarea soft-wrap inconsistently; convert textarea controls
+  // into static block elements so line wrapping is captured exactly as painted text.
+  for (const textarea of printContainer.querySelectorAll('textarea')) {
+    const textareaStyle = window.getComputedStyle(textarea);
+    const numericHeight = parseFloat(textareaStyle.height || '0') || 0;
+    const isShadowTextarea =
+      (textarea.getAttribute('aria-hidden') === 'true')
+      || (textareaStyle.visibility === 'hidden')
+      || (textareaStyle.display === 'none')
+      || (numericHeight <= 1 && `${textarea.value || ''}`.trim().toLowerCase() === 'x');
+
+    if (isShadowTextarea) {
+      if (textarea.parentNode) {
+        textarea.parentNode.removeChild(textarea);
+      }
+      continue;
+    }
+
+    const mirror = document.createElement('div');
+    mirror.textContent = textarea.value || textarea.textContent || '';
+    mirror.style.setProperty('display', 'block', 'important');
+    mirror.style.setProperty('width', '100%', 'important');
+    mirror.style.setProperty('max-width', '100%', 'important');
+    mirror.style.setProperty('align-self', 'stretch', 'important');
+    mirror.style.setProperty('min-height', `${textarea.offsetHeight || parseFloat(textareaStyle.minHeight) || 0}px`, 'important');
+    mirror.style.setProperty('padding', textareaStyle.padding, 'important');
+    mirror.style.setProperty('border', textareaStyle.border, 'important');
+    mirror.style.setProperty('border-radius', textareaStyle.borderRadius, 'important');
+    mirror.style.setProperty('box-sizing', textareaStyle.boxSizing || 'border-box', 'important');
+    mirror.style.setProperty('background-color', textareaStyle.backgroundColor || '#ffffff', 'important');
+    mirror.style.setProperty('color', textareaStyle.color || '#000000', 'important');
+    mirror.style.setProperty('font-family', textareaStyle.fontFamily, 'important');
+    mirror.style.setProperty('font-size', textareaStyle.fontSize, 'important');
+    mirror.style.setProperty('font-weight', textareaStyle.fontWeight, 'important');
+    mirror.style.setProperty('font-style', textareaStyle.fontStyle, 'important');
+    mirror.style.setProperty('line-height', textareaStyle.lineHeight, 'important');
+    mirror.style.setProperty('letter-spacing', textareaStyle.letterSpacing, 'important');
+    mirror.style.setProperty('white-space', 'pre-wrap', 'important');
+    mirror.style.setProperty('overflow-wrap', 'break-word', 'important');
+    mirror.style.setProperty('word-break', 'break-word', 'important');
+    mirror.style.setProperty('overflow', 'visible', 'important');
+    if (textarea.parentNode) {
+      textarea.parentNode.replaceChild(mirror, textarea);
+    }
+  }
+
   const safeTagsForAutoHeight = new Set(['INPUT', 'TEXTAREA', 'SELECT', 'IMG', 'VIDEO', 'CANVAS', 'SVG']);
   for (const el of printContainer.querySelectorAll('*')) {
-    el.style.setProperty('overflow', 'visible', 'important');
-    el.style.setProperty('overflow-y', 'visible', 'important');
+    const computedStyle = window.getComputedStyle(el);
+    const hasRoundedCorners = (computedStyle.borderRadius && computedStyle.borderRadius !== '0px');
+    const likelyImageTile = hasRoundedCorners && el.querySelector('img');
+
+    if (likelyImageTile) {
+      // Keep clipping for rounded image containers so corners match on-screen UI.
+      el.style.setProperty('overflow', 'hidden', 'important');
+      el.style.setProperty('overflow-y', 'hidden', 'important');
+    }
+    else {
+      el.style.setProperty('overflow', 'visible', 'important');
+      el.style.setProperty('overflow-y', 'visible', 'important');
+    }
+
     el.style.setProperty('max-height', 'none', 'important');
+    if ((el.tagName || '').toUpperCase() === 'TEXTAREA') {
+      el.style.setProperty('white-space', 'pre-wrap', 'important');
+      el.style.setProperty('overflow-wrap', 'anywhere', 'important');
+      el.style.setProperty('word-break', 'break-word', 'important');
+    }
     if (!safeTagsForAutoHeight.has((el.tagName || '').toUpperCase())) {
       el.style.setProperty('height', 'auto', 'important');
     }
   }
 
+  const waitForPrintableImages = async () => {
+    const timeoutMs = Math.max(1000, Number(options?.imageWaitMs) || 3000);
+    const images = Array.from(printContainer.querySelectorAll('img')).filter((img) => {
+      const src = img.getAttribute('src') || img.src || '';
+      return !!src;
+    });
+    if (images.length === 0) {
+      return;
+    }
+
+    const imagePromises = images.map((img) => {
+      if (img.complete && img.naturalWidth > 0) {
+        return Promise.resolve(true);
+      }
+      if (typeof img.decode === 'function') {
+        return img.decode()
+          .then(() => true)
+          .catch(() => new Promise((resolve) => {
+            const onDone = () => resolve(img.naturalWidth > 0);
+            img.addEventListener('load', onDone, { once: true });
+            img.addEventListener('error', () => resolve(false), { once: true });
+          }));
+      }
+      return new Promise((resolve) => {
+        if (img.complete) {
+          resolve(img.naturalWidth > 0);
+          return;
+        }
+        img.addEventListener('load', () => resolve(true), { once: true });
+        img.addEventListener('error', () => resolve(false), { once: true });
+      });
+    });
+
+    await Promise.race([
+      Promise.allSettled(imagePromises),
+      new Promise((resolve) => setTimeout(resolve, timeoutMs))
+    ]);
+  };
+
   // Two animation frames let the browser measure the natural layout height after style overrides.
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  await waitForPrintableImages();
 
   // Collect element bounds (DOM pixels relative to printContainer top) for smart page-break detection.
   // We walk up to 5 levels deep and record any element tall enough to be a logical content block (≥ 20px).
@@ -2988,7 +3120,6 @@ function pdfLine(text, options = {}) {
         case 'center': {
           xOffset = page.centerPoint - (imageWidth / 2);
           for (let this_image of makeArray(options.image)) {
-            console.log(this_image);
             doc.addImage(this_image, 'JPEG', xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
           }
           pdfCurrent.xPos = page.centerPoint + (imageWidth / 2);
@@ -3006,8 +3137,7 @@ function pdfLine(text, options = {}) {
           xOffset = pdfCurrent.xPos + pdfCurrent.indent;
           //    let imageProps = doc.getImageProperties(options.image);
           for (let this_image of makeArray(options.image)) {
-            let [pdir, imageURI] = this_image.split(/\/(?!.*\/)/);
-            console.log(pdir, imageURI);
+            let [, imageURI] = this_image.split(/\/(?!.*\/)/);
             let imageBucket = 'theseus-medical-storage';
             let gotObject =
               s3.getSignedUrl('getObject', {
@@ -3018,8 +3148,7 @@ function pdfLine(text, options = {}) {
             let pParts = imageURI.split('.');
             attachments.push(gotObject);
             try {
-              let jsConfirm = doc.addImage(gotObject, pParts.pop(), xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
-              console.log(jsConfirm);
+              doc.addImage(gotObject, pParts.pop(), xOffset, pdfCurrent.yPos, imageWidth, imageHeight);
               pdfCurrent.yPos += imageHeight;
             }
             catch {
@@ -3057,7 +3186,6 @@ function pdfLine(text, options = {}) {
     doc.setFontSize(pdfCurrent.fontSize);
   }
   else if (options.html) {
-    console.log(`html at right:${pdfCurrent.xPos}; top:${pdfCurrent.yPos}; width:${page.width - page.margin.right}`);
     doc.html(text, {
       callback: function (doc) {
         return doc;
