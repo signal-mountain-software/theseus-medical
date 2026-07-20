@@ -334,9 +334,20 @@ export function downloadRowsAsCsv({ header = [], rows = [], fileName = 'export.c
   URL.revokeObjectURL(csvUrl);
 }
 
-export function downloadRowsAsXlsx({ header = [], rows = [], fileName = 'export.xlsx' }) {
+export function downloadRowsAsXlsx({
+  header = [],
+  rows = [],
+  fileName = 'export.xlsx',
+  hiddenHeaderLabels = []
+}) {
   const workbook = XLSX.utils.book_new();
   const worksheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  const hiddenLabelSet = new Set(
+    [hiddenHeaderLabels]
+      .flat()
+      .map((label) => `${label ?? ''}`.trim().toLowerCase())
+      .filter(Boolean)
+  );
 
   const maxColumnWidth = 60;
   worksheet['!cols'] = header.map((headerLabel, columnIndex) => {
@@ -347,7 +358,8 @@ export function downloadRowsAsXlsx({ header = [], rows = [], fileName = 'export.
     }, `${headerLabel ?? ''}`.length);
 
     return {
-      wch: Math.min(Math.max(maxValueLength + 2, 10), maxColumnWidth)
+      wch: Math.min(Math.max(maxValueLength + 2, 10), maxColumnWidth),
+      hidden: hiddenLabelSet.has(`${headerLabel ?? ''}`.trim().toLowerCase())
     };
   });
 

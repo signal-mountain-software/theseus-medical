@@ -780,7 +780,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       } = exportData;
 
       const fileName = `${safeGroupName || 'group'}_people_list.xlsx`;
-      downloadRowsAsXlsx({ header, rows, fileName });
+      downloadRowsAsXlsx({
+        header,
+        rows,
+        fileName,
+        hiddenHeaderLabels: ['ID', 'First Name', 'Last Name']
+      });
       await saveExportFieldSelections({
         sessionId: state?.session?.user_id,
         clientId: pSession?.client_id,
