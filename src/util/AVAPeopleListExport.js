@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { jsPDF } from 'jspdf';
 
 import { dbClient, recordExists, deepCopy, resolveData, cl, getObject } from './AVAUtilities';
@@ -340,17 +340,21 @@ export function downloadRowsAsXlsx({
   fileName = 'export.xlsx',
   hiddenHeaderLabels = []
 }) {
-  const workbook = XLSX.utils.book_new();
-  const worksheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('People List', {
+    views: [{ state: 'frozen', ySplit: 1 }]
+  });
   const hiddenLabelSet = new Set(
     [hiddenHeaderLabels]
       .flat()
       .map((label) => `${label ?? ''}`.trim().toLowerCase())
       .filter(Boolean)
   );
+  worksheet.addRow(header);
+  rows.forEach((row) => worksheet.addRow(row));
 
   const maxColumnWidth = 60;
-  worksheet['!cols'] = header.map((headerLabel, columnIndex) => {
+  worksheet.columns = header.map((headerLabel, columnIndex) => {
     const maxValueLength = rows.reduce((longest, row) => {
       const value = row[columnIndex];
       const length = `${value ?? ''}`.length;
@@ -358,13 +362,40 @@ export function downloadRowsAsXlsx({
     }, `${headerLabel ?? ''}`.length);
 
     return {
-      wch: Math.min(Math.max(maxValueLength + 2, 10), maxColumnWidth),
+      width: Math.min(Math.max(maxValueLength + 2, 10), maxColumnWidth),
       hidden: hiddenLabelSet.has(`${headerLabel ?? ''}`.trim().toLowerCase())
     };
   });
 
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'People List');
-  XLSX.writeFile(workbook, fileName);
+  // Wrap long values within each cell so content stays inside the column width.
+  worksheet.eachRow((row) => {
+    row.eachCell((cell) => {
+      cell.alignment = {
+        ...(cell.alignment || {}),
+        wrapText: true,
+        vertical: 'top'
+      };
+    });
+  });
+
+  workbook.xlsx.writeBuffer()
+    .then((buffer) => {
+      const xlsxBlob = new Blob(
+        [buffer],
+        { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+      );
+      const xlsxUrl = URL.createObjectURL(xlsxBlob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = xlsxUrl;
+      downloadLink.setAttribute('download', fileName);
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      URL.revokeObjectURL(xlsxUrl);
+    })
+    .catch((error) => {
+      cl({ 'Error creating xlsx export': error });
+    });
 }
 
 // Load an image URL into a base64 data-URI for embedding in jsPDF.
