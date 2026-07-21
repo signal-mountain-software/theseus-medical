@@ -242,6 +242,12 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           if (!peopleRec.account_class) {
             peopleRec.account_class = determineClass(peopleRec.groups, state.session.group_assignments);
           }
+          if (typeof (peopleRec?.address) === 'string') {
+            const string_address = peopleRec.address;
+            peopleRec.address = {
+              address: string_address
+            }
+          }
           if (peopleRec.checkout_status) {
             const checkoutDefault = peopleRec.checkout_default
               || (['admin', 'staff', 'resident', 'student', 'camper'].includes(peopleRec.account_class) ? 'in' : 'out');
