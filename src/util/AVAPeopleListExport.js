@@ -3,7 +3,8 @@ import { jsPDF } from 'jspdf';
 
 import { dbClient, recordExists, deepCopy, resolveData, cl, getObject } from './AVAUtilities';
 
-export function formatExportValue(value) {
+export function formatExportValue(value, options = {}) {
+  const arraySeparator = (typeof options?.arraySeparator === 'string') ? options.arraySeparator : '; ';
   if ((value === null) || (value === undefined)) {
     return '';
   }
@@ -20,7 +21,7 @@ export function formatExportValue(value) {
     }
   }
   if (Array.isArray(value)) {
-    return value.join('; ');
+    return value.join(arraySeparator);
   }
   if (typeof value === 'object') {
     try {
@@ -193,6 +194,7 @@ export async function resolveSelectedFieldValuesForPeople({
   personIds = [],
   selectedFieldKeys = [],
   selectedFieldOptions = [],
+  arraySeparator = '; ',
   onProgress = null
 }) {
   if (!Array.isArray(selectedFieldKeys) || selectedFieldKeys.length === 0) {
@@ -230,7 +232,7 @@ export async function resolveSelectedFieldValuesForPeople({
         const staticFilters = (fieldOpt.filters || []).filter(f => f.source !== 'prompt');
         return evaluateNoteFilters(rawNotes, staticFilters);
       }
-      return formatExportValue(resolvedField?.formatted);
+      return formatExportValue(resolvedField?.formatted, { arraySeparator });
     });
 
     completedCount += 1;
@@ -803,6 +805,8 @@ export async function downloadPeopleListWithPreselectedFields({
 
   let header = [...normalizedBaseHeader];
   let rows = normalizedRows.map((row) => [...row]);
+  const normalizedDownloadType = `${downloadType || 'csv'}`.trim().toLowerCase();
+  const selectedArraySeparator = (normalizedDownloadType === 'xlsx' || normalizedDownloadType === 'xls') ? '\n' : '; ';
 
   if (normalizedSelectedFieldKeys.length > 0) {
     const selectedFieldDefinitions = await getExportFieldDefinitionsByKey({
@@ -816,6 +820,7 @@ export async function downloadPeopleListWithPreselectedFields({
       clientId,
       personIds: resolvedPersonIds,
       selectedFieldKeys: normalizedSelectedFieldKeys,
+      arraySeparator: selectedArraySeparator,
       onProgress
     });
 
@@ -826,7 +831,6 @@ export async function downloadPeopleListWithPreselectedFields({
     });
   }
 
-  const normalizedDownloadType = `${downloadType || 'csv'}`.trim().toLowerCase();
   const safeBaseName = sanitizeExportBaseName(fileBaseName, 'people_list');
 
   if (normalizedDownloadType === 'csv') {

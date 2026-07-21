@@ -435,7 +435,7 @@ export default ({ defaults, onClose }) => {
 
   async function downloadCurrentPeopleListXlsx() {
     try {
-      const exportData = await buildCurrentPeopleListExportData();
+      const exportData = await buildCurrentPeopleListExportData({ arraySeparator: '\n' });
       if (!exportData) {
         return false;
       }
@@ -523,7 +523,8 @@ export default ({ defaults, onClose }) => {
     return true;
   }
 
-  async function buildCurrentPeopleListExportData() {
+  async function buildCurrentPeopleListExportData(options = {}) {
+    const arraySeparator = (typeof options?.arraySeparator === 'string') ? options.arraySeparator : '; ';
     if (!reactData.selectedForm_id) {
       return false;
     }
@@ -571,6 +572,7 @@ export default ({ defaults, onClose }) => {
         personIds,
         selectedFieldKeys,
         selectedFieldOptions,
+        arraySeparator,
         onProgress: ({ completedCount, totalCount }) => {
           updateReactData({
             exportProgressCurrent: completedCount,
