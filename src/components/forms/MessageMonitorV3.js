@@ -559,6 +559,74 @@ function getReplyTextFromResultEntry(resultEntry) {
     return replyCandidate || '';
 }
 
+function escapeRegexKeyword(value) {
+    return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getRuleKeywordListFromMessage(message) {
+    return [message?.rule_keywords_matched, message?.recipient_list?.rule_keywords_matched]
+        .flat(2)
+        .map((keywordValue) => String(keywordValue || '').trim())
+        .filter(Boolean)
+        .filter((keywordValue, keywordIndex, keywordArray) => {
+            const normalizedKeyword = keywordValue.toLowerCase();
+            return keywordArray.findIndex((candidateKeyword) => candidateKeyword.toLowerCase() === normalizedKeyword) === keywordIndex;
+        });
+}
+
+function renderTextWithHighlightedKeywords(rawText, keywordList = []) {
+    const textValue = String(rawText || '');
+    if (!textValue) {
+        return textValue;
+    }
+
+    const normalizedKeywords = (Array.isArray(keywordList) ? keywordList : [])
+        .map((keywordValue) => String(keywordValue || '').trim())
+        .filter(Boolean)
+        .sort((a, b) => b.length - a.length);
+
+    if (normalizedKeywords.length === 0) {
+        return textValue;
+    }
+
+    const escapedKeywords = normalizedKeywords.map((keywordValue) => escapeRegexKeyword(keywordValue));
+    const keywordRegex = new RegExp(`\\b(${escapedKeywords.join('|')})\\b`, 'gi');
+    const fragments = [];
+    let startIndex = 0;
+    let match;
+
+    while ((match = keywordRegex.exec(textValue)) !== null) {
+        const matchText = String(match[0] || '');
+        const matchIndex = Number(match.index || 0);
+        const matchEndIndex = matchIndex + matchText.length;
+
+        if (matchIndex > startIndex) {
+            fragments.push(textValue.slice(startIndex, matchIndex));
+        }
+
+        fragments.push(
+            <span
+                key={`held_kw_${matchIndex}_${matchEndIndex}`}
+                style={{ backgroundColor: '#fff59d', fontWeight: 700, borderRadius: 2, padding: '0 1px' }}
+            >
+                {textValue.slice(matchIndex, matchEndIndex)}
+            </span>
+        );
+        startIndex = matchEndIndex;
+
+        // Defensive guard for zero-length matches.
+        if (keywordRegex.lastIndex === matchIndex) {
+            keywordRegex.lastIndex += 1;
+        }
+    }
+
+    if (startIndex < textValue.length) {
+        fragments.push(textValue.slice(startIndex));
+    }
+
+    return fragments.length > 0 ? fragments : textValue;
+}
+
 function makeResultDisplay(message, options = {}) {
     const otherPersonByAddress = options.otherPersonByAddress || (() => '');
     const currentRecipientId = options.currentRecipientId || '';
@@ -570,6 +638,8 @@ function makeResultDisplay(message, options = {}) {
         .map((ruleValue) => String(ruleValue || '').trim())
         .filter(Boolean)
         .join(', ');
+    const heldKeywordList = getRuleKeywordListFromMessage(message);
+    const heldKeywordText = heldKeywordList.map((keywordValue) => `"${keywordValue}"`).join(', ');
     const heldMethodText = method === 'held'
         ? `held${heldRuleUsedText ? ` (rule: ${heldRuleUsedText})` : ''}`
         : method;
@@ -592,7 +662,7 @@ function makeResultDisplay(message, options = {}) {
     }
     else if (method === 'held') {
         methodMsg = `held${heldRuleUsedText ? ` (rule: ${heldRuleUsedText})` : ''}`;
-        resultText = `Held${heldRuleUsedText ? ` by rule ${heldRuleUsedText} ` : ''}`;
+        resultText = `Held${heldRuleUsedText ? ` by rule ${heldRuleUsedText}` : ''}${heldKeywordText ? ` (${heldKeywordText})` : ''} `;
         resultText += makeDate(message.created_time).oaDate;
     }
     else if (normalizeStatus(message) === 'complaint') {
@@ -3852,6 +3922,9 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                 const selectedReceivers = getUniqueReceiversFromDeliveries(selectedDeliveryItems);
                                 const selectedReceiverText = summarizeReceivers(selectedReceivers, personNameFromAccessList, 10);
                                 const selectedDeliveryCount = selectedDeliveryItems.length;
+                                const selectedHeldKeywordList = Array.from(new Set(
+                                    selectedDeliveryItems.flatMap((deliveryItem) => getRuleKeywordListFromMessage(deliveryItem))
+                                ));
                                 const recipientSummaries = buildRecipientSummaries(selectedDeliveryItems, personNameFromAccessList);
                                 const unresolvedHoldRecipientSummaries = recipientSummaries.filter((recipientSummary) => !!recipientSummary.isUnresolvedHold);
                                 const hasUnresolvedHoldRecipients = unresolvedHoldRecipientSummaries.length > 0;
@@ -3911,9 +3984,15 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                                 className={classes.messageBoxBody}
                                                 style={thisMessageBodyHeightStyle}
                                             >
-                                                {getMessageText(selectedMessage, {
-                                                    signatureKey: getSignatureKeyForPerson(selectedMessage?.sent_from)
-                                                }) || '[No message text available]'}
+                                                {(() => {
+                                                    const thisMessageText = getMessageText(selectedMessage, {
+                                                        signatureKey: getSignatureKeyForPerson(selectedMessage?.sent_from)
+                                                    }) || '';
+                                                    if (!thisMessageText) {
+                                                        return '[No message text available]';
+                                                    }
+                                                    return renderTextWithHighlightedKeywords(thisMessageText, selectedHeldKeywordList);
+                                                })()}
                                             </Typography>
                                         </Box>
 
