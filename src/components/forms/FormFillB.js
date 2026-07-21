@@ -3407,12 +3407,10 @@ export default ({ request = {}, onClose }) => {
 
     let thumbData = await createPersonPhotoThumbFromUrl(photoLocation);
     if (!thumbData) {
-      thumbData = reactData.peopleRec?.[reactData.pertains_to]?.person_photo || null;
+      thumbData = null;
     }
 
-    if (thumbData) {
-      reactData.peopleRec[reactData.pertains_to].person_photo = thumbData;
-    }
+    reactData.peopleRec[reactData.pertains_to].person_photo = thumbData;
 
     await cloudfront
       .createInvalidation({

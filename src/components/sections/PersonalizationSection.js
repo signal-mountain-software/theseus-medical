@@ -387,13 +387,13 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
           <Box
             style={{ marginLeft: '40px' }}
             component="img"
-            minWidth={150}
-            maxWidth={150}
-            minHeight={150}
-            maxHeight={150}
+            width={150}
+            height={150}
             border={1}
             alt=''
             src={reactData.myImage}
+            objectFit='cover'
+            objectPosition='center'
           />
           <Box display='flex'
             flexDirection='row'

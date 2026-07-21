@@ -211,14 +211,13 @@ export default ({ currentValues, reactData, updateReactData }) => {
         justifyContent='flex-start' flexDirection='row'>
         <Box
           component="img"
-          minWidth={150}
-          maxWidth={150}
-          minHeight={150}
-          maxHeight={150}
+          width={150}
+          height={150}
           border={1}
           mr={2}
           alt=''
           src={snapshotImageSrc}
+          style={{ objectFit: 'cover', objectPosition: 'center' }}
         />
         <Box
           key={`profileSection_masterBox`}

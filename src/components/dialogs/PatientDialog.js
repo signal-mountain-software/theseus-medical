@@ -1448,13 +1448,12 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
             >
               <Box
                 component="img"
-                minWidth={150}
-                maxWidth={150}
-                minHeight={150}
-                maxHeight={150}
+                width={150}
+                height={150}
                 border={1}
                 alt=''
                 src={localData.photoURL}
+                style={{ objectFit: 'cover', objectPosition: 'center' }}
               />
               <br />
               <Box display='flex'
