@@ -4,7 +4,7 @@ import "cropperjs/dist/cropper.css";
 import { API, graphqlOperation } from 'aws-amplify';
 import { getPerson, getSession, makeName, makeSearchData, formatPhone, getImage, createPersonPhotoThumbFromFile, persistPersonPhotoThumb } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
-import { getObject, cl, dbClient, s3, lambda, cloudfront, titleCase, deepCopy } from '../../util/AVAUtilities';
+import { getObject, cl, dbClient, s3, lambda, cloudfront, deepCopy } from '../../util/AVAUtilities';
 import { createPutFact } from '../../graphql/mutations';
 import useSession from '../../hooks/useSession';
 import { syncPersonToSessionCaches } from '../../util/AVASessionSync';
@@ -307,8 +307,8 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
         let workLocalData = {
           ready: true,
           patient_id: (localPersonRec.person_id || ''),
-          firstName: (titleCase(localPersonRec.name?.first) || ''),
-          lastName: (titleCase(localPersonRec.name?.last) || ''),
+          firstName: (localPersonRec.name?.first || ''),
+          lastName: (localPersonRec.name?.last || ''),
           email: (localPersonRec.messaging?.email || ''),
           cell: (localPersonRec.messaging?.sms ? formatPhone(localPersonRec.messaging?.sms) : ''),
           voice: (localPersonRec.messaging?.voice ? formatPhone(localPersonRec.messaging?.voice) : ''),

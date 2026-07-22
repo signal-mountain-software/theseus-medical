@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Typography } from '@material-ui/core/';
 import { formatPhone } from '../../util/AVAPeople';
-import { isEmpty, titleCase } from '../../util/AVAUtilities';
+import { isEmpty } from '../../util/AVAUtilities';
 
 import { AVATextStyle } from '../../util/AVAStyles';
 import TextField from '@material-ui/core/TextField';
@@ -29,7 +29,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
           key={`FirstName_${currentValues.peopleRec?.name?.first}`}
           autoComplete='off'
           onBlur={async (event) => {
-            let preparedFirst = titleCase(event.target.value.trim());
+            let preparedFirst = event.target.value.trim();
             await updateField({
               updateList:
                 [{
@@ -60,7 +60,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
           error={errorList.hasOwnProperty('last_name')}
           helperText={errorList.hasOwnProperty('last_name') ? errorList.last_name.errorMessage : 'Last'}
           onBlur={async (event) => {
-            let preparedLast = titleCase(event.target.value.trim());
+            let preparedLast = event.target.value.trim();
             if (isEmpty(preparedLast) && isEmpty(currentValues.peopleRec.name?.first)) {
               // No name at all.  This is an error.
               setError({

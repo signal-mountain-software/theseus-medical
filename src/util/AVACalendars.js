@@ -1945,7 +1945,7 @@ export async function printOccurrenceSheet(body) {
   doc.info = { author: 'AVA', title: titleCase(titleWords) };
   pdfLine(page.info.title, page.font.size.large, 'bold', 0, 0, 0, { align: 'center' });
   if (body.client_name) {
-    let outClientName = titleCase(body.client_name);
+    let outClientName = String(body.client_name || '').trim();
     pdfLine(outClientName, page.font.size.large, 'normal', 0, 0, 0, { align: 'center' });
   }
   pdfLine(oData.date.absolute, page.font.size.small, 'normal', 0, 0, 0, { align: 'center' });
@@ -2140,7 +2140,7 @@ export async function printOccurrenceSheet(body) {
         let yOffset = page.margin.top;
         doc.text(page.info.title, xOffset, yOffset);
         if (body.client_name) {
-          let outClientName = titleCase(body.client_name);
+          let outClientName = String(body.client_name || '').trim();
           xOffset = page.centerPoint - (doc.getTextWidth(outClientName) / 2);
           yOffset += page.font.size.large;
           doc.text(outClientName, xOffset, yOffset);

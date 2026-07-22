@@ -2691,7 +2691,7 @@ export async function mealTicketFormat(body, requestRec = {}) {
   htmlText.push(`<div style=${style}><b>${outTitle}</b></div>`);
   plainText.push(outTitle);
   if (body.client_name) {
-    let outClientName = titleCase(body.client_name);
+    let outClientName = String(body.client_name || '').trim();
     pdfLineMealTicket(outClientName, page.font.size.large, 'normal', 0, 0, 0, { align: 'center' });
     htmlText.push(`<div style=${style}><b>${outClientName}</b></div>`);
     plainText.push(outClientName);
@@ -2708,7 +2708,7 @@ export async function mealTicketFormat(body, requestRec = {}) {
   let table_key = body.tableNumberKey || 'Table Number';
   let location_key = body.locationKey || 'Room Number';
   style = `"text-align:center; font-size: ${page.font.size.small};"`;
-  let outAuthor = titleCase(author_name);
+  let outAuthor = String(author_name || '').trim();
   pdfLineMealTicket(`Created by: ${outAuthor}`, page.font.size.small, 'normal', 0, -0.2, 0, { align: 'center' });
   htmlText.push(`<dt style=${style}>Created by: ${outAuthor}</dt>`);
   plainText.push(outAuthor);

@@ -2,7 +2,7 @@
 import React from 'react';
 
 import { getPerson, getImage } from '../../util/AVAPeople';
-import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount, titleCase, resolveData } from '../../util/AVAUtilities';
+import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount, resolveData } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle, isDark } from '../../util/AVAStyles';
 import { determineClass, doesPersonMatchGroupRules, addMember, removeMember, getPersonGroups } from '../../util/AVAGroups';
 import { SET_GROUPS } from '../../contexts/Session/actions';
@@ -1136,9 +1136,47 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       reactData.current.peopleRec.name = { first: '', last: '' };
     }
 
+    // eslint-disable-next-line
+    const containsControlCharacters = (value) => /[\u0000-\u001F\u007F-\u009F]/.test(String(value || ''));
+    const firstNameValue = String(reactData.current.peopleRec.name.first || '');
+    const lastNameValue = String(reactData.current.peopleRec.name.last || '');
+
+    delete reactData.errorList['name.first'];
+    delete reactData.errorList['name.last'];
+
+    const nameCharacterErrors = {};
+    if (containsControlCharacters(firstNameValue)) {
+      nameCharacterErrors['name.first'] = {
+        errorField: 'name.first',
+        errorValue: firstNameValue,
+        isError: true,
+        errorMessage: 'First name contains unsupported control characters.'
+      };
+    }
+    if (containsControlCharacters(lastNameValue)) {
+      nameCharacterErrors['name.last'] = {
+        errorField: 'name.last',
+        errorValue: lastNameValue,
+        isError: true,
+        errorMessage: 'Last name contains unsupported control characters.'
+      };
+    }
+    if (Object.keys(nameCharacterErrors).length > 0) {
+      Object.assign(reactData.errorList, nameCharacterErrors);
+      updateReactData({
+        errorList: reactData.errorList,
+        alert: {
+          severity: 'error',
+          title: 'Invalid Name Characters',
+          message: 'Names cannot include line breaks or other control characters.'
+        }
+      }, true);
+      return false;
+    }
+
     let search_words = [
-      titleCase(reactData.current.peopleRec.name.first || ''),
-      titleCase(reactData.current.peopleRec.name.last || ''),
+      firstNameValue,
+      lastNameValue,
       (reactData.current.peopleRec.name.first || '').toLowerCase(),
       (reactData.current.peopleRec.name.last || '').toLowerCase(),
       reactData.current.peopleRec.contact_info?.cell?.number
