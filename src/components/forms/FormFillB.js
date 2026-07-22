@@ -3042,6 +3042,8 @@ export default ({ request = {}, onClose }) => {
                       autoComplete='off'
                       disabled={isDisabled}
                       id={`${props.prop}_otherText`}
+                      multiline
+                      maxRows={4}
                       defaultValue={fieldRec.bonusText || ''}
                       onChange={(event) => {
                         if (!fieldRec.value) { fieldRec.value = []; }
@@ -3072,7 +3074,11 @@ export default ({ request = {}, onClose }) => {
                       inputProps={{
                         style: {
                           fontSize: `${reactData.user_fontSize * 0.85}rem`,
-                          padding: '0 2px 2px'
+                          padding: '0 2px 2px',
+                          width: '400px',
+                          whiteSpace: 'pre-wrap',
+                          overflowWrap: 'anywhere',
+                          wordBreak: 'break-word'
                         }
                       }}
                       style={{ marginRight: '16px', marginTop: '5px' }}
