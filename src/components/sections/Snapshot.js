@@ -84,56 +84,56 @@ export default ({ currentValues, reactData, updateReactData }) => {
   const thumbnailImageSrc = reactData.myImage || currentValues?.peopleRec?.person_photo || '';
   const [snapshotImageSrc, setSnapshotImageSrc] = React.useState(thumbnailImageSrc || standardImageUrl || peoplePhotoSourceUrl || '');
 
-  const parseS3UrlToBucketAndKey = (locationUrl) => {
-    if (!locationUrl || (typeof locationUrl !== 'string')) {
-      return null;
-    }
-    if (locationUrl.startsWith('s3://')) {
-      const withoutPrefix = locationUrl.replace('s3://', '');
-      const firstSlash = withoutPrefix.indexOf('/');
-      if (firstSlash < 1) {
-        return null;
-      }
-      return {
-        bucket: withoutPrefix.slice(0, firstSlash),
-        key: decodeURIComponent(withoutPrefix.slice(firstSlash + 1))
-      };
-    }
-    try {
-      const parsed = new URL(locationUrl);
-      const host = String(parsed.hostname || '').toLowerCase();
-      let bucket = '';
-      let key = decodeURIComponent(String(parsed.pathname || '').replace(/^\/+/, ''));
-
-      const bucketInHost = host.match(/^(.*?)\.s3(?:[.-][a-z0-9-]+)?\.amazonaws\.com$/i);
-      if (bucketInHost?.[1]) {
-        bucket = bucketInHost[1];
-      }
-      else if (host === 's3.amazonaws.com' || /^s3[.-][a-z0-9-]+\.amazonaws\.com$/i.test(host)) {
-        const parts = key.split('/').filter(Boolean);
-        if (parts.length > 1) {
-          bucket = parts.shift();
-          key = parts.join('/');
-        }
-      }
-
-      if (!bucket || !key) {
-        return null;
-      }
-      return { bucket, key };
-    }
-    catch (_error) {
-      return null;
-    }
-  };
-
-  const uploadPhotoSourceToCanonical = async (photoUrl) => {
+  const uploadPhotoSourceToCanonical = React.useCallback(async (photoUrl) => {
     if (!personId || !photoUrl) {
       return false;
     }
     if (canonicalUploadInProgressRef.current[personId]) {
       return false;
     }
+
+    const parseS3UrlToBucketAndKey = (locationUrl) => {
+      if (!locationUrl || (typeof locationUrl !== 'string')) {
+        return null;
+      }
+      if (locationUrl.startsWith('s3://')) {
+        const withoutPrefix = locationUrl.replace('s3://', '');
+        const firstSlash = withoutPrefix.indexOf('/');
+        if (firstSlash < 1) {
+          return null;
+        }
+        return {
+          bucket: withoutPrefix.slice(0, firstSlash),
+          key: decodeURIComponent(withoutPrefix.slice(firstSlash + 1))
+        };
+      }
+      try {
+        const parsed = new URL(locationUrl);
+        const host = String(parsed.hostname || '').toLowerCase();
+        let bucket = '';
+        let key = decodeURIComponent(String(parsed.pathname || '').replace(/^\/+/, ''));
+
+        const bucketInHost = host.match(/^(.*?)\.s3(?:[.-][a-z0-9-]+)?\.amazonaws\.com$/i);
+        if (bucketInHost?.[1]) {
+          bucket = bucketInHost[1];
+        }
+        else if (host === 's3.amazonaws.com' || /^s3[.-][a-z0-9-]+\.amazonaws\.com$/i.test(host)) {
+          const parts = key.split('/').filter(Boolean);
+          if (parts.length > 1) {
+            bucket = parts.shift();
+            key = parts.join('/');
+          }
+        }
+
+        if (!bucket || !key) {
+          return null;
+        }
+        return { bucket, key };
+      }
+      catch (_error) {
+        return null;
+      }
+    };
 
     canonicalUploadInProgressRef.current[personId] = true;
     try {
@@ -201,7 +201,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
     finally {
       delete canonicalUploadInProgressRef.current[personId];
     }
-  };
+  }, [personId]);
 
   React.useEffect(() => {
     let isCancelled = false;
@@ -320,7 +320,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
     return () => {
       isCancelled = true;
     };
-  }, [standardImageUrl, peoplePhotoSourceUrl, personId, thumbnailImageSrc]);
+  }, [standardImageUrl, peoplePhotoSourceUrl, personId, thumbnailImageSrc, currentValues, updateReactData, uploadPhotoSourceToCanonical]);
 
   const getCategoryColor = (categoryName) => {
     const palette = [
