@@ -88,25 +88,65 @@ export default () => {
     const { state } = useSession();
     const { session } = state;
 
-    const [, , removeCookie] = useCookies(['AVAuser', 'AVAaction']);
+    const [cookies, , removeCookie] = useCookies(['AVAuser', 'AVAaction', 'AVAclient']);
+    const avaClientCookie = cookies ? cookies.AVAclient : undefined;
+    const sessionClientId = String((session && session.client_id) || '').trim();
 
     const [clientIcon, setClientIcon] = React.useState(null);
     const [clientName, setClientName] = React.useState(null);
 
     React.useEffect(() => {
         removeCookie('AVAuser', { path: '/' });
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const clientIdFromAvaCookie = React.useMemo(() => {
+        const cookieValue = avaClientCookie;
+        if (!cookieValue) {
+            return '';
+        }
+
+        if (typeof cookieValue === 'string') {
+            const trimmed = cookieValue.trim();
+            if (!trimmed) {
+                return '';
+            }
+            try {
+                const parsed = JSON.parse(trimmed);
+                return String(parsed?.client || parsed?.client_id || '').trim();
+            }
+            catch {
+                return trimmed;
+            }
+        }
+
+        if (typeof cookieValue === 'object') {
+            return String(cookieValue?.client || cookieValue?.client_id || '').trim();
+        }
+
+        return '';
+    }, [avaClientCookie]);
+
+    const queryClientId = React.useMemo(() => {
         const params = new URLSearchParams(window.location.search);
-        const clientId = params.get('client');
+        return String(params.get('client') || '').trim();
+    }, []);
+
+    React.useEffect(() => {
+        const clientId = queryClientId
+            || clientIdFromAvaCookie
+            || sessionClientId;
         if (clientId) {
             Promise.all([
                 dbClient.get({ Key: { client_id: clientId, custom_key: 'logo' }, TableName: 'Customizations' }).promise().catch(() => null),
                 dbClient.get({ Key: { client_id: clientId, custom_key: 'client_name' }, TableName: 'Customizations' }).promise().catch(() => null),
             ]).then(([logoRec, nameRec]) => {
-                if (logoRec?.Item?.customization_value) { setClientIcon(logoRec.Item.customization_value); }
-                if (nameRec?.Item?.customization_value) { setClientName(nameRec.Item.customization_value); }
+                const nextIcon = logoRec?.Item?.customization_value || null;
+                const nextName = nameRec?.Item?.customization_value || null;
+                setClientIcon((prev) => (prev === nextIcon ? prev : nextIcon));
+                setClientName((prev) => (prev === nextName ? prev : nextName));
             });
         }
-    }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+    }, [queryClientId, clientIdFromAvaCookie, sessionClientId]);  // eslint-disable-line react-hooks/exhaustive-deps
 
     const resolvedIcon = clientIcon || session?.client_icon || 'https://ava-icons.s3.amazonaws.com/AVA-logo.jpg';
     const resolvedName = clientName || session?.client_name || '';

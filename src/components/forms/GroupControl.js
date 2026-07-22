@@ -768,7 +768,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
   async function downloadCurrentPeopleListXlsx() {
     try {
-      const exportData = await buildCurrentPeopleListExportData();
+      const exportData = await buildCurrentPeopleListExportData({ arraySeparator: '\n' });
       if (!exportData) {
         return false;
       }
@@ -861,7 +861,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     }
   }
 
-  async function buildCurrentPeopleListExportData() {
+  async function buildCurrentPeopleListExportData(options = {}) {
+    const arraySeparator = (typeof options?.arraySeparator === 'string') ? options.arraySeparator : '; ';
     const visibleMemberIds = (reactData.lower_people_filter
       ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
       : reactData.sortedGroupMembers
@@ -916,6 +917,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         personIds,
         selectedFieldKeys,
         selectedFieldOptions,
+        arraySeparator,
         onProgress: ({ completedCount, totalCount }) => {
           updateReactData({
             exportProgressCurrent: completedCount,
@@ -2351,10 +2353,84 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
             sectionToShow: ['snapshot']
           }}
           onClose={async () => {
+            const editedPersonId = reactData.viewPeopleMaintenance;
             let reactUpd = {
               viewPeopleMaintenance: false,
               updatesMade: true,
             };
+
+            if (editedPersonId) {
+              const freshPerson = await getPerson(editedPersonId, '*all', true).catch(() => null);
+              const freshDisplayName = String(
+                freshPerson?.display_name
+                || `${freshPerson?.name?.first || ''} ${freshPerson?.name?.last || ''}`.trim()
+                || ''
+              ).trim();
+
+              if (freshPerson?.person_id && state.accessList?.[pSession.client_id]?.list) {
+                dispatch({
+                  type: SET_ACCESSLIST,
+                  payload: {
+                    ...state.accessList,
+                    [pSession.client_id]: {
+                      ...state.accessList[pSession.client_id],
+                      list: state.accessList[pSession.client_id].list.map((personRec) => {
+                        if (personRec.person_id !== editedPersonId) {
+                          return personRec;
+                        }
+                        return {
+                          ...personRec,
+                          ...freshPerson,
+                          name: freshPerson.name || personRec.name,
+                          display_name: freshDisplayName || personRec.display_name,
+                          search_data: freshPerson.search_data || personRec.search_data,
+                        };
+                      })
+                    }
+                  }
+                });
+              }
+
+              if (reactData.selectedGroupMembers?.[editedPersonId]) {
+                reactUpd.selectedGroupMembers = {
+                  ...reactData.selectedGroupMembers,
+                  [editedPersonId]: {
+                    ...reactData.selectedGroupMembers[editedPersonId],
+                    ...(freshPerson || {}),
+                    name: freshPerson?.name || reactData.selectedGroupMembers[editedPersonId]?.name,
+                    display_name: freshDisplayName || reactData.selectedGroupMembers[editedPersonId]?.display_name,
+                    search_data: freshPerson?.search_data || reactData.selectedGroupMembers[editedPersonId]?.search_data,
+                  }
+                };
+                reactUpd.sortedGroupMembers = sortGroupMembers(reactUpd.selectedGroupMembers);
+              }
+
+              if (reactData.selectedGroupMembersPerGroup && Object.keys(reactData.selectedGroupMembersPerGroup).length > 0) {
+                const nextMembersPerGroup = { ...reactData.selectedGroupMembersPerGroup };
+                let changed = false;
+                Object.keys(nextMembersPerGroup).forEach((groupId) => {
+                  const thisGroupMembers = nextMembersPerGroup[groupId] || {};
+                  if (!thisGroupMembers[editedPersonId]) {
+                    return;
+                  }
+                  nextMembersPerGroup[groupId] = {
+                    ...thisGroupMembers,
+                    [editedPersonId]: {
+                      ...thisGroupMembers[editedPersonId],
+                      ...(freshPerson || {}),
+                      name: freshPerson?.name || thisGroupMembers[editedPersonId]?.name,
+                      display_name: freshDisplayName || thisGroupMembers[editedPersonId]?.display_name,
+                      search_data: freshPerson?.search_data || thisGroupMembers[editedPersonId]?.search_data,
+                    }
+                  };
+                  changed = true;
+                });
+                if (changed) {
+                  reactUpd.selectedGroupMembersPerGroup = nextMembersPerGroup;
+                }
+              }
+            }
+
             if (reactData.selectedGroup_id) {
               // Live DB fetch (bypass cache) so edits are visible immediately
               reactUpd.selectedGroupMembers = await selectMembers(reactData.selectedGroup_id, { live: true });

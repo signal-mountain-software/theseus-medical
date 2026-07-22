@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile, s3, cloudfront } from '../../util/AVAUtilities';
+import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile, s3, cloudfront, getObject } from '../../util/AVAUtilities';
 import { putTask, parseQuickActivity } from '../../util/AVATasks';
 import { addMember, removeMember } from '../../util/AVAGroups';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
@@ -3042,6 +3042,8 @@ export default ({ request = {}, onClose }) => {
                       autoComplete='off'
                       disabled={isDisabled}
                       id={`${props.prop}_otherText`}
+                      multiline
+                      maxRows={4}
                       defaultValue={fieldRec.bonusText || ''}
                       onChange={(event) => {
                         if (!fieldRec.value) { fieldRec.value = []; }
@@ -3072,7 +3074,11 @@ export default ({ request = {}, onClose }) => {
                       inputProps={{
                         style: {
                           fontSize: `${reactData.user_fontSize * 0.85}rem`,
-                          padding: '0 2px 2px'
+                          padding: '0 2px 2px',
+                          width: '400px',
+                          whiteSpace: 'pre-wrap',
+                          overflowWrap: 'anywhere',
+                          wordBreak: 'break-word'
                         }
                       }}
                       style={{ marginRight: '16px', marginTop: '5px' }}
@@ -3388,24 +3394,86 @@ export default ({ request = {}, onClose }) => {
     }
 
     const source = parseS3UrlToBucketAndKey(photoLocation);
-    if (!source?.bucket || !source?.key) {
-      return { saved: false, reason: 'invalid_photo_location' };
-    }
 
     const targetBucket = 'theseus-medical-storage';
-    const targetKey = `public/patients/${reactData.pertains_to}.jpg`;
-    const encodedSourceKey = source.key.split('/').map(pathPart => encodeURIComponent(pathPart)).join('/');
+    const sourceFileName = source?.key?.split('/').filter(Boolean).pop()
+      || (() => {
+        try {
+          const parsed = new URL(photoLocation);
+          return parsed.pathname.split('/').filter(Boolean).pop() || '';
+        }
+        catch (_error) {
+          return '';
+        }
+      })();
+    const extensionMatch = sourceFileName.match(/\.([a-zA-Z0-9]+)$/);
+    const sourceExtension = (extensionMatch?.[1] || 'jpg').toLowerCase();
+    const targetKey = `public/patients/${reactData.pertains_to}.${sourceExtension}`;
 
-    await s3
-      .copyObject({
-        CopySource: `${source.bucket}/${encodedSourceKey}`,
-        Bucket: targetBucket,
-        Key: targetKey,
-        ACL: 'public-read-write'
-      })
-      .promise();
+    let canonicalSaved = false;
+    if (source?.bucket && source?.key) {
+      try {
+        const encodedSourceKey = source.key.split('/').map(pathPart => encodeURIComponent(pathPart)).join('/');
+        await s3
+          .copyObject({
+            CopySource: `${source.bucket}/${encodedSourceKey}`,
+            Bucket: targetBucket,
+            Key: targetKey,
+            ACL: 'public-read-write'
+          })
+          .promise();
+        canonicalSaved = true;
+      }
+      catch (copyError) {
+        cl({ formfill_profile_photo_copy_warning: copyError, photoLocation, source, targetKey });
+      }
+    }
 
-    let thumbData = await createPersonPhotoThumbFromUrl(photoLocation);
+    if (!canonicalSaved) {
+      let sourceBlob = null;
+      try {
+        const sourceResponse = await fetch(photoLocation);
+        if (sourceResponse.ok) {
+          sourceBlob = await sourceResponse.blob();
+        }
+      }
+      catch (_error) {
+        sourceBlob = null;
+      }
+
+      if (!sourceBlob || sourceBlob.size === 0) {
+        return { saved: false, reason: 'photo_fetch_failed' };
+      }
+
+      await s3
+        .upload({
+          Bucket: targetBucket,
+          Key: targetKey,
+          Body: sourceBlob,
+          ACL: 'public-read-write',
+          ContentType: sourceBlob.type || `image/${sourceExtension === 'jpg' ? 'jpeg' : sourceExtension}`
+        })
+        .promise();
+    }
+
+    const canonicalPhotoUrl = `https://${targetBucket}.s3.amazonaws.com/${targetKey}`;
+    let thumbData = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const thumbCandidates = [
+        canonicalPhotoUrl,
+        getObject(`${reactData.pertains_to}.${sourceExtension}`, 'image'),
+        photoLocation,
+      ].filter(Boolean);
+      for (const candidate of thumbCandidates) {
+        thumbData = await createPersonPhotoThumbFromUrl(candidate);
+        if (thumbData) {
+          break;
+        }
+      }
+      if (thumbData) {
+        break;
+      }
+    }
     if (!thumbData) {
       thumbData = null;
     }
@@ -3419,7 +3487,7 @@ export default ({ request = {}, onClose }) => {
           CallerReference: new Date().getTime().toString(),
           Paths: {
             Quantity: 1,
-            Items: [`/${reactData.pertains_to}.jpg`]
+            Items: [`/${reactData.pertains_to}.${sourceExtension}`]
           }
         }
       })

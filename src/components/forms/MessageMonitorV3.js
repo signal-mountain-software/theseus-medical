@@ -559,6 +559,74 @@ function getReplyTextFromResultEntry(resultEntry) {
     return replyCandidate || '';
 }
 
+function escapeRegexKeyword(value) {
+    return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getRuleKeywordListFromMessage(message) {
+    return [message?.rule_keywords_matched, message?.recipient_list?.rule_keywords_matched]
+        .flat(2)
+        .map((keywordValue) => String(keywordValue || '').trim())
+        .filter(Boolean)
+        .filter((keywordValue, keywordIndex, keywordArray) => {
+            const normalizedKeyword = keywordValue.toLowerCase();
+            return keywordArray.findIndex((candidateKeyword) => candidateKeyword.toLowerCase() === normalizedKeyword) === keywordIndex;
+        });
+}
+
+function renderTextWithHighlightedKeywords(rawText, keywordList = []) {
+    const textValue = String(rawText || '');
+    if (!textValue) {
+        return textValue;
+    }
+
+    const normalizedKeywords = (Array.isArray(keywordList) ? keywordList : [])
+        .map((keywordValue) => String(keywordValue || '').trim())
+        .filter(Boolean)
+        .sort((a, b) => b.length - a.length);
+
+    if (normalizedKeywords.length === 0) {
+        return textValue;
+    }
+
+    const escapedKeywords = normalizedKeywords.map((keywordValue) => escapeRegexKeyword(keywordValue));
+    const keywordRegex = new RegExp(`\\b(${escapedKeywords.join('|')})\\b`, 'gi');
+    const fragments = [];
+    let startIndex = 0;
+    let match;
+
+    while ((match = keywordRegex.exec(textValue)) !== null) {
+        const matchText = String(match[0] || '');
+        const matchIndex = Number(match.index || 0);
+        const matchEndIndex = matchIndex + matchText.length;
+
+        if (matchIndex > startIndex) {
+            fragments.push(textValue.slice(startIndex, matchIndex));
+        }
+
+        fragments.push(
+            <span
+                key={`held_kw_${matchIndex}_${matchEndIndex}`}
+                style={{ backgroundColor: '#fff59d', fontWeight: 700, borderRadius: 2, padding: '0 1px' }}
+            >
+                {textValue.slice(matchIndex, matchEndIndex)}
+            </span>
+        );
+        startIndex = matchEndIndex;
+
+        // Defensive guard for zero-length matches.
+        if (keywordRegex.lastIndex === matchIndex) {
+            keywordRegex.lastIndex += 1;
+        }
+    }
+
+    if (startIndex < textValue.length) {
+        fragments.push(textValue.slice(startIndex));
+    }
+
+    return fragments.length > 0 ? fragments : textValue;
+}
+
 function makeResultDisplay(message, options = {}) {
     const otherPersonByAddress = options.otherPersonByAddress || (() => '');
     const currentRecipientId = options.currentRecipientId || '';
@@ -570,6 +638,8 @@ function makeResultDisplay(message, options = {}) {
         .map((ruleValue) => String(ruleValue || '').trim())
         .filter(Boolean)
         .join(', ');
+    const heldKeywordList = getRuleKeywordListFromMessage(message);
+    const heldKeywordText = heldKeywordList.map((keywordValue) => `"${keywordValue}"`).join(', ');
     const heldMethodText = method === 'held'
         ? `held${heldRuleUsedText ? ` (rule: ${heldRuleUsedText})` : ''}`
         : method;
@@ -592,7 +662,7 @@ function makeResultDisplay(message, options = {}) {
     }
     else if (method === 'held') {
         methodMsg = `held${heldRuleUsedText ? ` (rule: ${heldRuleUsedText})` : ''}`;
-        resultText = `Held${heldRuleUsedText ? ` by rule ${heldRuleUsedText} ` : ''}`;
+        resultText = `Held${heldRuleUsedText ? ` by rule ${heldRuleUsedText}` : ''}${heldKeywordText ? ` (${heldKeywordText})` : ''} `;
         resultText += makeDate(message.created_time).oaDate;
     }
     else if (normalizeStatus(message) === 'complaint') {
@@ -914,6 +984,8 @@ const STATUS_FILTER_OPTIONS = [
     'was_responded_to',
     'has_attachment'
 ];
+
+const EMPTY_ACCESS_LIST = [];
 
 function normalizeStatusFilterValue(statusValue) {
     const normalized = String(statusValue || '*all').trim().toLowerCase();
@@ -1579,11 +1651,18 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
     const classes = useStyles();
     const { state } = useSession();
 
+    const singleDeliveryAccessToken = String(
+        defaults?.accessTokenOnly || defaults?.access_token || defaults?.m || ''
+    ).trim();
+    const singleDeliveryMode = singleDeliveryAccessToken !== '';
+
     const AVAClass = AVAclasses();
     const myPatientId = state?.patient?.patient_id || state?.session?.patient_id || '';
     const currentClientId = state?.session?.client_id;
+    const userAccountClass = state.user?.account_class || '';
+    const isAdmin = ['master', 'admin'].includes(userAccountClass);
     const accessListReady = !!(state?.accessList && state?.accessList?.[currentClientId]);
-    const accessList = state?.accessList?.[currentClientId]?.list || [];
+    const accessList = state?.accessList?.[currentClientId]?.list || EMPTY_ACCESS_LIST;
     const quickSearchSpecialValues = React.useMemo(() => {
         return [
             { person_id: '*anyone', first: '*anyone', last: '', groups: [] },
@@ -1592,12 +1671,12 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
     }, []);
 
     React.useEffect(() => {
-        if (!accessListReady) {
+        if (!singleDeliveryMode && !accessListReady) {
             onClose({
                 message: 'AVA is still loading.  Please wait a moment.'
             });
         }
-    }, [accessListReady]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [accessListReady, singleDeliveryMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
     React.useEffect(() => {
         if (defaults.autoSearch && accessListReady) {
@@ -1652,6 +1731,9 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         errorText: '',
         message: null
     });
+    const [personDisplayNameById, setPersonDisplayNameById] = React.useState({});
+    const personDisplayNameFetchAttemptedRef = React.useRef(new Set());
+    const isMountedRef = React.useRef(true);
     const [showParty1QuickSearch, setShowParty1QuickSearch] = React.useState(false);
     const [showParty2QuickSearch, setShowParty2QuickSearch] = React.useState(false);
     const [party1EditText, setParty1EditText] = React.useState(null);
@@ -1665,16 +1747,19 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
     const [autoCcForwardNameByRecipientId, setAutoCcForwardNameByRecipientId] = React.useState({});
     const autoCcForwardNameByRecipientIdRef = React.useRef({});
     const autoCcLookupAttemptedRef = React.useRef(new Set());
+    const singleDeliveryLoadedTokenRef = React.useRef('');
     const [party1QuickSearchData, setParty1QuickSearchData] = React.useState({
         selections: [],
-        accessList,
-        special_values: quickSearchSpecialValues,
     });
     const [party2QuickSearchData, setParty2QuickSearchData] = React.useState({
         selections: [],
-        accessList,
-        special_values: quickSearchSpecialValues,
     });
+
+    React.useEffect(() => {
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
 
     const updateFilter = (key, value) => {
         setPendingSearchChanges(true);
@@ -1713,19 +1798,6 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         setShowParty2QuickSearch(true);
     };
 
-    React.useEffect(() => {
-        setParty1QuickSearchData(prev => ({
-            ...prev,
-            accessList,
-            special_values: quickSearchSpecialValues
-        }));
-        setParty2QuickSearchData(prev => ({
-            ...prev,
-            accessList,
-            special_values: quickSearchSpecialValues
-        }));
-    }, [accessList, quickSearchSpecialValues]);
-
     const accessListByPersonId = React.useMemo(() => {
         const lookup = new Map();
         accessList.forEach((person) => {
@@ -1741,13 +1813,236 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
     const personNameFromAccessList = React.useCallback((personId) => {
         const normalizedPersonId = String(personId || '').trim();
         if (!normalizedPersonId) { return ''; }
+        const personIdLower = normalizedPersonId.toLowerCase();
         const found = accessListByPersonId.get(normalizedPersonId.toLowerCase());
-        if (!found) { return personId; }
+        if (!found) {
+            const overrideName = String(personDisplayNameById[personIdLower] || '').trim();
+            return overrideName || personId;
+        }
         const first = found.first || found?.name?.first || '';
         const last = found.last || found?.name?.last || '';
         const full = `${first} ${last}`.trim();
-        return full || found.display_name || normalizedPersonId;
-    }, [accessListByPersonId]);
+        const displayName = String(found.display_name || '').trim();
+        if (full || displayName) {
+            return full || displayName;
+        }
+
+        const overrideName = String(personDisplayNameById[personIdLower] || '').trim();
+        return overrideName || normalizedPersonId;
+    }, [accessListByPersonId, personDisplayNameById]);
+
+    React.useEffect(() => {
+        const loadMissingDisplayNames = async () => {
+            const selectedDeliveryItems = selectedMessage
+                ? (Array.isArray(selectedMessage.delivery_items) ? selectedMessage.delivery_items : [selectedMessage])
+                : [];
+            const listDeliveryItems = (Array.isArray(baseMessages) ? baseMessages : [])
+                .flatMap((message) => (Array.isArray(message?.delivery_items) ? message.delivery_items : [message]));
+
+            const candidateIds = [
+                selectedMessage?.sent_from,
+                replyToContext?.message?.sent_from,
+                ...selectedDeliveryItems.flatMap((deliveryItem) => normalizeReceivers(deliveryItem)),
+                ...listDeliveryItems.flatMap((deliveryItem) => [
+                    deliveryItem?.sent_from,
+                    ...normalizeReceivers(deliveryItem)
+                ])
+            ]
+                .map((personId) => String(personId || '').trim())
+                .filter(Boolean);
+
+            const uniqueCandidateIds = Array.from(new Set(candidateIds));
+            const idsToLookup = uniqueCandidateIds.filter((personId) => {
+                const personIdLower = personId.toLowerCase();
+                const accessListPerson = accessListByPersonId.get(personIdLower);
+                if (accessListPerson) {
+                    const accessFirst = String(accessListPerson?.first || accessListPerson?.name?.first || '').trim();
+                    const accessLast = String(accessListPerson?.last || accessListPerson?.name?.last || '').trim();
+                    const accessDisplayName = String(accessListPerson?.display_name || '').trim();
+                    const hasAccessListName = !!(`${accessFirst} ${accessLast}`.trim() || accessDisplayName);
+                    if (hasAccessListName) {
+                        return false;
+                    }
+                }
+                if (personDisplayNameById[personIdLower] !== undefined) {
+                    return false;
+                }
+                if (personDisplayNameFetchAttemptedRef.current.has(personIdLower)) {
+                    return false;
+                }
+                return true;
+            });
+
+            if (idsToLookup.length === 0) {
+                return;
+            }
+
+            idsToLookup.forEach((personId) => {
+                personDisplayNameFetchAttemptedRef.current.add(personId.toLowerCase());
+            });
+
+            const resolvedEntries = await Promise.all(idsToLookup.map(async (personId) => {
+                try {
+                    const personResponse = await dbClient
+                        .get({
+                            TableName: 'People',
+                            Key: { person_id: personId }
+                        })
+                        .promise();
+
+                    const personItem = personResponse?.Item;
+                    const first = String(personItem?.name?.first || '').trim();
+                    const last = String(personItem?.name?.last || '').trim();
+                    const displayName = String(personItem?.display_name || '').trim();
+                    const peopleName = `${first} ${last}`.trim() || displayName;
+                    const fallbackMakeName = String((await makeName(personId)) || '').trim();
+                    const resolvedName = peopleName || fallbackMakeName || personId;
+
+                    return {
+                        personIdLower: personId.toLowerCase(),
+                        resolvedName
+                    };
+                }
+                catch {
+                    const fallbackMakeName = String((await makeName(personId)) || '').trim();
+                    return {
+                        personIdLower: personId.toLowerCase(),
+                        resolvedName: fallbackMakeName || personId
+                    };
+                }
+            }));
+
+            if (!isMountedRef.current) {
+                return;
+            }
+
+            setPersonDisplayNameById((prev) => {
+                const next = { ...prev };
+                let changed = false;
+                resolvedEntries.forEach(({ personIdLower, resolvedName }) => {
+                    if (!(personIdLower in next)) {
+                        next[personIdLower] = resolvedName;
+                        changed = true;
+                    }
+                });
+                return changed ? next : prev;
+            });
+        };
+
+        loadMissingDisplayNames();
+    }, [selectedMessage, replyToContext, baseMessages, accessListByPersonId, personDisplayNameById]);
+
+    const loadSingleDeliveryMessage = React.useCallback(async () => {
+        if (!singleDeliveryMode) {
+            return;
+        }
+
+        setLoading(true);
+        setErrorText('');
+
+        try {
+            let lastKey;
+            let pageGuard = 0;
+            let deliveryItems = [];
+
+            do {
+                const response = await dbClient
+                    .query({
+                        TableName: 'TheseusMessages',
+                        IndexName: 'AccessTokens',
+                        KeyConditionExpression: 'access_token = :accessToken',
+                        ExpressionAttributeValues: {
+                            ':accessToken': singleDeliveryAccessToken,
+                            ':recordType': 'delivery'
+                        },
+                        FilterExpression: 'record_type = :recordType',
+                        ExclusiveStartKey: lastKey,
+                        ScanIndexForward: false,
+                        Limit: 25
+                    })
+                    .promise();
+
+                if (Array.isArray(response?.Items) && response.Items.length > 0) {
+                    deliveryItems.push(...response.Items);
+                }
+
+                lastKey = response?.LastEvaluatedKey;
+                pageGuard++;
+            } while (lastKey && (pageGuard < 4));
+
+            if (deliveryItems.length === 0) {
+                setSelectedMessage(null);
+                setErrorText('No delivery record was found for this message link.');
+                return;
+            }
+
+            const selectedDelivery = deliveryItems
+                .slice()
+                .sort((a, b) => {
+                    const aTime = Number(normalizeDateValue(a) || 0) || new Date(normalizeDateValue(a) || 0).getTime() || 0;
+                    const bTime = Number(normalizeDateValue(b) || 0) || new Date(normalizeDateValue(b) || 0).getTime() || 0;
+                    return bTime - aTime;
+                })[0];
+
+            const receiverIds = normalizeReceivers(selectedDelivery)
+                .map((receiverId) => String(receiverId || '').trim().toLowerCase())
+                .filter(Boolean);
+            const hasAutoCcReceiver = receiverIds.some((receiverId) => {
+                const receiverPerson = accessListByPersonId.get(receiverId);
+                if (!receiverPerson) {
+                    return false;
+                }
+
+                const preferredMethod = String(receiverPerson?.preferred_method || '').trim().toLowerCase();
+                const preferredMethods = Array.isArray(receiverPerson?.preferred_methods)
+                    ? receiverPerson.preferred_methods
+                        .map((methodValue) => String(methodValue || '').trim().toLowerCase())
+                        .filter(Boolean)
+                    : [];
+
+                return (preferredMethod === 'family_primary') || preferredMethods.includes('family_primary');
+            });
+
+            const derivedFlags = {
+                ...getResultFlags(selectedDelivery),
+                ...getRecipientFlags(selectedDelivery),
+                auto_cc: hasAutoCcReceiver
+            };
+
+            const enrichedDelivery = {
+                ...selectedDelivery,
+                derived_flags: derivedFlags
+            };
+
+            setSelectedMessage({
+                ...enrichedDelivery,
+                message_identity_key: getMessageIdentityKey(enrichedDelivery),
+                delivery_items: [enrichedDelivery],
+                derived_flags: derivedFlags
+            });
+            setHasSearchedOnce(true);
+        }
+        catch (error) {
+            setSelectedMessage(null);
+            setErrorText(`Unable to load message: ${error?.message || error}`);
+        }
+
+        setLoading(false);
+    }, [singleDeliveryAccessToken, singleDeliveryMode, accessListByPersonId]);
+
+    React.useEffect(() => {
+        if (!singleDeliveryMode) {
+            singleDeliveryLoadedTokenRef.current = '';
+            return;
+        }
+
+        if (singleDeliveryLoadedTokenRef.current === singleDeliveryAccessToken) {
+            return;
+        }
+
+        singleDeliveryLoadedTokenRef.current = singleDeliveryAccessToken;
+        loadSingleDeliveryMessage();
+    }, [singleDeliveryMode, singleDeliveryAccessToken, loadSingleDeliveryMessage]);
 
     const getSignatureKeyFromAccessList = React.useCallback((personId) => {
         const normalizedPersonId = String(personId || '').trim();
@@ -1832,12 +2127,14 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
 
             setSignatureKeyByPersonId((prev) => {
                 const next = { ...prev };
+                let changed = false;
                 fetchedEntries.forEach(({ personId, signatureKey }) => {
                     if (!(personId in next)) {
                         next[personId] = signatureKey;
+                        changed = true;
                     }
                 });
-                return next;
+                return changed ? next : prev;
             });
         };
 
@@ -1966,10 +2263,15 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
 
             setAutoCcForwardNameByRecipientId((prev) => {
                 const next = { ...prev };
+                let changed = false;
                 resolvedEntries.forEach(({ recipientKey, forwardName }) => {
-                    next[recipientKey] = String(forwardName || '').trim();
+                    const nextValue = String(forwardName || '').trim();
+                    if (next[recipientKey] !== nextValue) {
+                        next[recipientKey] = nextValue;
+                        changed = true;
+                    }
                 });
-                return next;
+                return changed ? next : prev;
             });
         };
 
@@ -2417,9 +2719,14 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
             window.alert(`Released ${successCount} held recipient${successCount === 1 ? '' : 's'}.`);
         }
 
-        setSelectedMessage(null);
-        runSearchRef.current();
-    }, [releaseHeldByCompositeKey]);
+        if (singleDeliveryMode) {
+            await loadSingleDeliveryMessage();
+        }
+        else {
+            setSelectedMessage(null);
+            runSearchRef.current();
+        }
+    }, [releaseHeldByCompositeKey, singleDeliveryMode, loadSingleDeliveryMessage]);
 
     const requestReleaseHeldRecipients = React.useCallback((recipientSummaryList = []) => {
         const unresolvedRecipients = (Array.isArray(recipientSummaryList) ? recipientSummaryList : []).filter((recipientSummary) => {
@@ -3238,6 +3545,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
             TransitionComponent={Transition}
         >
             <DialogContent className={classes.dialogBox}>
+                {!singleDeliveryMode && (
                 <Box className={classes.wrapper}>
                     <Box className={classes.topBar}>
                         <Typography
@@ -3495,11 +3803,49 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                         </Box>
                     </Box>
                 </Box>
+                )}
+                {singleDeliveryMode && !selectedMessage && (
+                    <Box className={classes.wrapper}>
+                        <Box className={classes.scrollArea}>
+                            {loading && (
+                                <Box p={2} display='flex' alignItems='center' gridGap={8}>
+                                    <CircularProgress size={18} />
+                                    <Typography variant='body2'>Loading message...</Typography>
+                                </Box>
+                            )}
+                            {!loading && !!errorText && (
+                                <Alert severity='error'>{errorText}</Alert>
+                            )}
+                            {!loading && !errorText && (
+                                <Typography variant='body2' className={classes.muted}>
+                                    {'No message is available for this link.'}
+                                </Typography>
+                            )}
+                        </Box>
+                        <Box className={classes.bottomBar}>
+                            <Box className={classes.actions}>
+                                <Button
+                                    className={AVAClass.AVAButton}
+                                    style={{ backgroundColor: 'red', color: 'white' }}
+                                    size='small'
+                                    startIcon={<CloseIcon fontSize="small" />}
+                                    onClick={onClose}
+                                >
+                                    {'Close'}
+                                </Button>
+                            </Box>
+                        </Box>
+                    </Box>
+                )}
             </DialogContent>
 
             {showParty1QuickSearch && (
                 <QuickSearch
-                    reactData={party1QuickSearchData}
+                    reactData={{
+                        ...party1QuickSearchData,
+                        accessList,
+                        special_values: quickSearchSpecialValues
+                    }}
                     updateReactData={updateParty1QuickSearchData}
                     options={{
                         pickAndGo: true,
@@ -3525,7 +3871,11 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
 
             {showParty2QuickSearch && (
                 <QuickSearch
-                    reactData={party2QuickSearchData}
+                    reactData={{
+                        ...party2QuickSearchData,
+                        accessList,
+                        special_values: quickSearchSpecialValues
+                    }}
                     updateReactData={updateParty2QuickSearchData}
                     options={{
                         pickAndGo: true,
@@ -3553,7 +3903,12 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                 <Dialog
                     open={!!selectedMessage}
                     onClose={() => {
-                        setSelectedMessage(null);
+                        if (singleDeliveryMode) {
+                            onClose();
+                        }
+                        else {
+                            setSelectedMessage(null);
+                        }
                     }}
                     maxWidth='md'
                     fullWidth
@@ -3567,6 +3922,9 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                 const selectedReceivers = getUniqueReceiversFromDeliveries(selectedDeliveryItems);
                                 const selectedReceiverText = summarizeReceivers(selectedReceivers, personNameFromAccessList, 10);
                                 const selectedDeliveryCount = selectedDeliveryItems.length;
+                                const selectedHeldKeywordList = Array.from(new Set(
+                                    selectedDeliveryItems.flatMap((deliveryItem) => getRuleKeywordListFromMessage(deliveryItem))
+                                ));
                                 const recipientSummaries = buildRecipientSummaries(selectedDeliveryItems, personNameFromAccessList);
                                 const unresolvedHoldRecipientSummaries = recipientSummaries.filter((recipientSummary) => !!recipientSummary.isUnresolvedHold);
                                 const hasUnresolvedHoldRecipients = unresolvedHoldRecipientSummaries.length > 0;
@@ -3626,9 +3984,15 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                                 className={classes.messageBoxBody}
                                                 style={thisMessageBodyHeightStyle}
                                             >
-                                                {getMessageText(selectedMessage, {
-                                                    signatureKey: getSignatureKeyForPerson(selectedMessage?.sent_from)
-                                                }) || '[No message text available]'}
+                                                {(() => {
+                                                    const thisMessageText = getMessageText(selectedMessage, {
+                                                        signatureKey: getSignatureKeyForPerson(selectedMessage?.sent_from)
+                                                    }) || '';
+                                                    if (!thisMessageText) {
+                                                        return '[No message text available]';
+                                                    }
+                                                    return renderTextWithHighlightedKeywords(thisMessageText, selectedHeldKeywordList);
+                                                })()}
                                             </Typography>
                                         </Box>
 
@@ -3792,24 +4156,34 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                 >
                                     {'Forward'}
                                 </Button>
-                                <Button
-                                    className={AVAClass.AVAButton}
-                                    size='small'
-                                    variant='outlined'
-                                    startIcon={<ForumIcon fontSize='small' />}
-                                    onClick={() => {
-                                        const threadId = String(selectedMessage?.thread_id || '').trim();
-                                        if (!threadId) { return; }
-                                        setThreadSigExpanded({});
-                                        setThreadViewData({
-                                            loading: true,
-                                            threadId,
-                                            subject: getMessageSubject(selectedMessage)
-                                        });
-                                    }}
-                                >
-                                    {'View Thread'}
-                                </Button>
+                                {(() => {
+                                    const myId = String(myPatientId || '').trim().toLowerCase();
+                                    const senderId = String(selectedMessage?.sent_from || '').trim().toLowerCase();
+                                    const canViewThread = !!isAdmin || (!!myId && (senderId === myId));
+                                    if (!canViewThread) {
+                                        return null;
+                                    }
+                                    return (
+                                        <Button
+                                            className={AVAClass.AVAButton}
+                                            size='small'
+                                            variant='outlined'
+                                            startIcon={<ForumIcon fontSize='small' />}
+                                            onClick={() => {
+                                                const threadId = String(selectedMessage?.thread_id || '').trim();
+                                                if (!threadId) { return; }
+                                                setThreadSigExpanded({});
+                                                setThreadViewData({
+                                                    loading: true,
+                                                    threadId,
+                                                    subject: getMessageSubject(selectedMessage)
+                                                });
+                                            }}
+                                        >
+                                            {'View Thread'}
+                                        </Button>
+                                    );
+                                })()}
                                 {(() => {
                                     const myId = String(myPatientId || '').trim().toLowerCase();
                                     if (!myId) { return null; }
@@ -3837,7 +4211,12 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                 style={{ backgroundColor: 'red', color: 'white' }}
                                 size='small'
                                 onClick={() => {
-                                    setSelectedMessage(null);
+                                    if (singleDeliveryMode) {
+                                        onClose();
+                                    }
+                                    else {
+                                        setSelectedMessage(null);
+                                    }
                                 }}
                             >
                                 {'Close'}

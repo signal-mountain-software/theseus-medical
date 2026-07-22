@@ -4,9 +4,9 @@ import useSession from '../../hooks/useSession';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { Box, Typography, Button } from '@material-ui/core/';
-import { formatPhone } from '../../util/AVAPeople';
+import { formatPhone, createPersonPhotoThumbFromUrl, persistPersonPhotoThumb } from '../../util/AVAPeople';
 import { getPersonGroups, isLeaf } from '../../util/AVAGroups';
-import { deepCopy, titleCase, getObject } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, getObject, s3, cloudfront, cl } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import SendIcon from '@material-ui/icons/Send';
@@ -21,37 +21,306 @@ export default ({ currentValues, reactData, updateReactData }) => {
   const { state } = useSession();
   const isMounted = React.useRef(false);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
+  const thumbBackfillInProgressRef = React.useRef({});
+  const canonicalUploadInProgressRef = React.useRef({});
 
   const AVAClass = AVAclasses();
   const personId = currentValues?.peopleRec?.person_id;
-  const fullImageUrl = personId ? getObject(personId, 'image') : '';
-  const [snapshotImageSrc, setSnapshotImageSrc] = React.useState(reactData.myImage || fullImageUrl || '');
+  const standardImageUrl = personId ? getObject(personId, 'image') : '';
+  const resolvePhotoSourceCandidate = (sourceValue) => {
+    const pickSourceString = (value) => {
+      if (!value) { return ''; }
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        return trimmed || '';
+      }
+      if (Array.isArray(value)) {
+        for (const entry of value) {
+          const found = pickSourceString(entry);
+          if (found) { return found; }
+        }
+        return '';
+      }
+      if (typeof value === 'object') {
+        const preferredKeys = ['url', 'location', 'Location', 'value', 'src', 'href', 'photo_source', 'photoSource'];
+        for (const key of preferredKeys) {
+          const found = pickSourceString(value[key]);
+          if (found) { return found; }
+        }
+        for (const nested of Object.values(value)) {
+          const found = pickSourceString(nested);
+          if (found) { return found; }
+        }
+      }
+      return '';
+    };
 
-  React.useEffect(() => {
-    // Render quickly with the cached thumb (if present), then swap to full image.
-    const fastSrc = reactData.myImage || fullImageUrl || '';
-    setSnapshotImageSrc(fastSrc);
-
-    if (!fullImageUrl || (fullImageUrl === fastSrc)) {
-      return;
+    const rawCandidate = pickSourceString(sourceValue);
+    if (!rawCandidate) {
+      return '';
     }
 
+    if (rawCandidate.startsWith('http://') || rawCandidate.startsWith('https://') || rawCandidate.startsWith('data:image/')) {
+      return rawCandidate;
+    }
+
+    if (rawCandidate.startsWith('s3://')) {
+      const withoutPrefix = rawCandidate.slice(5);
+      const firstSlash = withoutPrefix.indexOf('/');
+      if (firstSlash > 0) {
+        const bucket = withoutPrefix.slice(0, firstSlash);
+        const key = withoutPrefix.slice(firstSlash + 1);
+        return `https://${bucket}.s3.amazonaws.com/${encodeURI(key)}`;
+      }
+      return '';
+    }
+
+    return getObject(rawCandidate);
+  };
+
+  const peoplePhotoSourceUrl = resolvePhotoSourceCandidate(
+    currentValues?.peopleRec?.photo_source || currentValues?.peopleRec?.photoSource
+  );
+  const thumbnailImageSrc = reactData.myImage || currentValues?.peopleRec?.person_photo || '';
+  const [snapshotImageSrc, setSnapshotImageSrc] = React.useState(thumbnailImageSrc || standardImageUrl || peoplePhotoSourceUrl || '');
+
+  const parseS3UrlToBucketAndKey = (locationUrl) => {
+    if (!locationUrl || (typeof locationUrl !== 'string')) {
+      return null;
+    }
+    if (locationUrl.startsWith('s3://')) {
+      const withoutPrefix = locationUrl.replace('s3://', '');
+      const firstSlash = withoutPrefix.indexOf('/');
+      if (firstSlash < 1) {
+        return null;
+      }
+      return {
+        bucket: withoutPrefix.slice(0, firstSlash),
+        key: decodeURIComponent(withoutPrefix.slice(firstSlash + 1))
+      };
+    }
+    try {
+      const parsed = new URL(locationUrl);
+      const host = String(parsed.hostname || '').toLowerCase();
+      let bucket = '';
+      let key = decodeURIComponent(String(parsed.pathname || '').replace(/^\/+/, ''));
+
+      const bucketInHost = host.match(/^(.*?)\.s3(?:[.-][a-z0-9-]+)?\.amazonaws\.com$/i);
+      if (bucketInHost?.[1]) {
+        bucket = bucketInHost[1];
+      }
+      else if (host === 's3.amazonaws.com' || /^s3[.-][a-z0-9-]+\.amazonaws\.com$/i.test(host)) {
+        const parts = key.split('/').filter(Boolean);
+        if (parts.length > 1) {
+          bucket = parts.shift();
+          key = parts.join('/');
+        }
+      }
+
+      if (!bucket || !key) {
+        return null;
+      }
+      return { bucket, key };
+    }
+    catch (_error) {
+      return null;
+    }
+  };
+
+  const uploadPhotoSourceToCanonical = async (photoUrl) => {
+    if (!personId || !photoUrl) {
+      return false;
+    }
+    if (canonicalUploadInProgressRef.current[personId]) {
+      return false;
+    }
+
+    canonicalUploadInProgressRef.current[personId] = true;
+    try {
+      const targetBucket = 'theseus-medical-storage';
+      const targetKey = `public/patients/${personId}.jpg`;
+
+      let canonicalSaved = false;
+      const source = parseS3UrlToBucketAndKey(photoUrl);
+
+      if (source?.bucket && source?.key) {
+        try {
+          const encodedSourceKey = source.key.split('/').map(pathPart => encodeURIComponent(pathPart)).join('/');
+          await s3.copyObject({
+            CopySource: `${source.bucket}/${encodedSourceKey}`,
+            Bucket: targetBucket,
+            Key: targetKey,
+            ACL: 'public-read-write'
+          }).promise();
+          canonicalSaved = true;
+        }
+        catch (copyError) {
+          cl({ snapshot_canonical_copy_warning: copyError, personId, photoUrl });
+        }
+      }
+
+      if (!canonicalSaved) {
+        const sourceResponse = await fetch(photoUrl);
+        if (!sourceResponse.ok) {
+          return false;
+        }
+        const sourceBlob = await sourceResponse.blob();
+        if (!sourceBlob || sourceBlob.size === 0) {
+          return false;
+        }
+
+        await s3.upload({
+          Bucket: targetBucket,
+          Key: targetKey,
+          Body: sourceBlob,
+          ACL: 'public-read-write',
+          ContentType: sourceBlob.type || 'image/jpeg'
+        }).promise();
+      }
+
+      await cloudfront
+        .createInvalidation({
+          DistributionId: 'E3DXPQ4WCODC8A',
+          InvalidationBatch: {
+            CallerReference: new Date().getTime().toString(),
+            Paths: {
+              Quantity: 1,
+              Items: [`/${personId}.jpg`]
+            }
+          }
+        })
+        .promise()
+        .catch(() => { });
+
+      return true;
+    }
+    catch (error) {
+      cl({ snapshot_canonical_upload_error: error, personId, photoUrl });
+      return false;
+    }
+    finally {
+      delete canonicalUploadInProgressRef.current[personId];
+    }
+  };
+
+  React.useEffect(() => {
     let isCancelled = false;
-    const preload = new Image();
-    preload.onload = () => {
+    const safeSetImage = (src) => {
       if (!isCancelled) {
-        setSnapshotImageSrc(fullImageUrl);
+        setSnapshotImageSrc(src || '');
       }
     };
-    preload.onerror = () => {
-      // Keep fastSrc as fallback if full image fails.
+
+    const canLoadImage = (src) => {
+      return new Promise((resolve) => {
+        if (!src) {
+          resolve(false);
+          return;
+        }
+        const preload = new Image();
+        preload.onload = () => resolve(true);
+        preload.onerror = () => resolve(false);
+        preload.src = src;
+      });
     };
-    preload.src = fullImageUrl;
+
+    const loadProfileImage = async () => {
+      safeSetImage(thumbnailImageSrc || standardImageUrl || peoplePhotoSourceUrl || '');
+      let loadedThumbnailSrc = '';
+
+      if (thumbnailImageSrc) {
+        const thumbLoaded = await canLoadImage(thumbnailImageSrc);
+        if (thumbLoaded) {
+          loadedThumbnailSrc = thumbnailImageSrc;
+          safeSetImage(thumbnailImageSrc);
+        }
+      }
+
+      let resolvedFullImageSrc = '';
+      let resolvedFromPhotoSourceFallback = false;
+      if (standardImageUrl && (await canLoadImage(standardImageUrl))) {
+        resolvedFullImageSrc = standardImageUrl;
+      }
+      else if (peoplePhotoSourceUrl && (await canLoadImage(peoplePhotoSourceUrl))) {
+        resolvedFullImageSrc = peoplePhotoSourceUrl;
+        resolvedFromPhotoSourceFallback = true;
+      }
+
+      if (!resolvedFullImageSrc) {
+        if (!loadedThumbnailSrc) {
+          safeSetImage('');
+        }
+        return;
+      }
+
+      if (resolvedFromPhotoSourceFallback && personId) {
+        const uploadedToCanonical = await uploadPhotoSourceToCanonical(resolvedFullImageSrc);
+        if (uploadedToCanonical) {
+          const refreshedCanonicalUrl = getObject(personId, 'image');
+          if (refreshedCanonicalUrl && (await canLoadImage(refreshedCanonicalUrl))) {
+            resolvedFullImageSrc = refreshedCanonicalUrl;
+            resolvedFromPhotoSourceFallback = false;
+          }
+        }
+      }
+
+      safeSetImage(resolvedFullImageSrc);
+
+      const hasUsableThumb = !!loadedThumbnailSrc;
+      const isBackfillInProgress = !!thumbBackfillInProgressRef.current[personId];
+      if (!personId || hasUsableThumb || isBackfillInProgress) {
+        return;
+      }
+
+      thumbBackfillInProgressRef.current[personId] = true;
+      try {
+        let generatedThumb = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          let thumbCandidates = [resolvedFullImageSrc];
+          if (personId) {
+            thumbCandidates.unshift(getObject(personId, 'image'));
+          }
+          thumbCandidates = thumbCandidates.filter(Boolean);
+
+          for (const candidate of thumbCandidates) {
+            generatedThumb = await createPersonPhotoThumbFromUrl(candidate);
+            if (generatedThumb) {
+              break;
+            }
+          }
+          if (generatedThumb) {
+            break;
+          }
+        }
+        if (!generatedThumb && resolvedFromPhotoSourceFallback && standardImageUrl) {
+          generatedThumb = await createPersonPhotoThumbFromUrl(standardImageUrl);
+        }
+        if (!generatedThumb) {
+          return;
+        }
+
+        await persistPersonPhotoThumb(personId, generatedThumb);
+        if (isCancelled) {
+          return;
+        }
+
+        currentValues.peopleRec.person_photo = generatedThumb;
+        updateReactData({
+          myImage: generatedThumb,
+          currentValues
+        }, true);
+      }
+      finally {
+        delete thumbBackfillInProgressRef.current[personId];
+      }
+    };
+
+    void loadProfileImage();
 
     return () => {
       isCancelled = true;
     };
-  }, [fullImageUrl, reactData.myImage]);
+  }, [standardImageUrl, peoplePhotoSourceUrl, personId, thumbnailImageSrc]);
 
   const getCategoryColor = (categoryName) => {
     const palette = [

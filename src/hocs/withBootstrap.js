@@ -827,6 +827,27 @@ export default Component => props => {
       console.log(key, value);
       returnObject[key] = value;
     });
+    Object.keys(returnObject).forEach((paramKey) => {
+      const normalizedKey = String(paramKey || '').trim();
+      const normalizedValue = String(returnObject[paramKey] || '').trim();
+
+      // Support compact deep-link syntax like ?m:<access_token>
+      if (normalizedKey.startsWith('m:') && !returnObject.m) {
+        returnObject.m = normalizedKey.slice(2).trim();
+        delete returnObject[paramKey];
+      }
+
+      // Support explicit key syntax like ?m=m:<access_token>
+      if ((normalizedKey === 'm') && normalizedValue.toLowerCase().startsWith('m:')) {
+        returnObject.m = normalizedValue.slice(2).trim();
+      }
+
+      // Support legacy key carrying m-style token like ?message=m:<access_token>
+      if ((normalizedKey === 'message') && normalizedValue.toLowerCase().startsWith('m:')) {
+        returnObject.m = normalizedValue.slice(2).trim();
+        delete returnObject.message;
+      }
+    });
     if (Object.keys(returnObject).length > 0) {
       if (returnObject.message) {
         returnObject = await extractMessageData(returnObject);

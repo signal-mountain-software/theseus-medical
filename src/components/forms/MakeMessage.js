@@ -234,7 +234,7 @@ export default ({
       setReactData(reactData);
     }
     console.log(sendToName);
-    let senderName = await makeName(state.session.user_id);
+    let senderName = await makeName(state.session.patient_id);
     let principalMessageText = '';
     let voiceMailText = '';
     let subjectText = '';
@@ -267,8 +267,9 @@ export default ({
     if (!subjectText) {
       subjectText = `Message from ${senderName}`;
     }
-    else {
-      principalMessageText += `\r\n\n(sent by ${senderName})`;
+    if (state.session.patient_id !== state.session.user_id) {
+      const sent_by = await makeName(state.session.user_id);
+      principalMessageText += `\r\n\n(sent by ${sent_by})`;
     }
     let request = {
       client: sender.client_id,

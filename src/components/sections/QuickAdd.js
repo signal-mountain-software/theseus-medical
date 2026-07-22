@@ -2426,8 +2426,8 @@ export default ({ onClose, options = {} }) => {
     }
 
     if (formatType === 'sentenceCase') {
-      // Convert to sentence case: first letter uppercase, rest lowercase
-      return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+      // Use shared titleCase utility so name parts after '-' and "'" are also capitalized.
+      return titleCase(value);
     }
 
     return value;
