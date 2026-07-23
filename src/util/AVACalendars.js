@@ -1263,6 +1263,15 @@ export async function writeSlot(body) {
   let occurrence = body.occurrence_date || occ_id;
   let occDateOut = makeDate(occurrence, { noTime: true });
   if (!body.slot && body.id) { body.slot = body.id; }
+  const participantToken = makeString(body.slot || body.id, 1);
+  const slotOwnerToken = makeString(body.owner, 1);
+  let signUpType = body.signup_type;
+  if (!signUpType) {
+    let [eventTypeRec] = await getCalendarEntries({ client: body.client, event: event_id, type: 'event' });
+    signUpType = eventTypeRec?.eventData?.sign_up?.type;
+  }
+  const shouldPropagateParticipantRows = !['seats', 'time'].includes(signUpType);
+  // TODO(calendar-time): support multiple attendees sharing one time slot without changing seats behavior.
   let event_key;
   if (occ_id) {
     event_key = `${event_id}#${occ_id}#${body.slot}`;
@@ -1297,6 +1306,15 @@ export async function writeSlot(body) {
   if (body.owner) {
     slotDataObj.owner = body.owner;
     if (body.override_name) { slotDataObj.display_name = body.override_name; }
+    else if (shouldPropagateParticipantRows && participantToken && (participantToken !== slotOwnerToken)) {
+      if (participantToken.toLowerCase().startsWith('guest:')) {
+        slotDataObj.display_name = titleCase(participantToken.slice(6).replace(/_/g, ' '));
+      }
+      else {
+        slotDataObj.display_name = await makeName(participantToken);
+      }
+      if (!slotDataObj.display_name) { slotDataObj.display_name = participantToken; }
+    }
     else { slotDataObj.display_name = await makeName(body.owner); }
   }
   slotDataObj.name = slotDataObj.display_name;
@@ -1366,6 +1384,78 @@ export async function writeSlot(body) {
       cl(`caught error updating Calendar; error is:`, error);
     });
 
+  if (shouldPropagateParticipantRows
+    && !body.skipParticipantPropagation
+    && participantToken
+    && slotOwnerToken
+    && (participantToken !== slotOwnerToken)) {
+    const slotStatus = body.status || 'selected';
+    if (['selected', 'notes'].includes(slotStatus)) {
+      let [ownerSlot] = await getCalendarEntries({
+        client: body.client,
+        event: `${event_id}#${occurrence}#${slotOwnerToken}`,
+        type: 'slot'
+      });
+      if (!ownerSlot || ['released', 'available'].includes(ownerSlot?.slotData?.status?.current)) {
+        await writeSlot({
+          ...body,
+          event: `${event_id}#${occurrence}`,
+          owner: slotOwnerToken,
+          slot: slotOwnerToken,
+          override_name: await makeName(slotOwnerToken),
+          status: 'selected',
+          show_this_slot: true,
+          no_messaging: true,
+          default_forms: null,
+          customizations: null,
+          guests: null,
+          skipParticipantPropagation: true,
+          signup_type: signUpType,
+        });
+      }
+    }
+    else if (slotStatus === 'released') {
+      let occurrenceSlots = await getCalendarEntries({
+        client: body.client,
+        event: `${event_id}#${occurrence}`,
+        type: 'slot'
+      });
+      let hasDependentRows = occurrenceSlots.some(slotRec => {
+        let recParticipant = slotRec?.slotData?.slot || slotRec?.slotData?.id;
+        let recOwner = slotRec?.slotData?.owner || slotRec?.slot_owner;
+        let recStatus = slotRec?.slotData?.status?.current;
+        return (recOwner === slotOwnerToken)
+          && (recParticipant !== slotOwnerToken)
+          && ['selected', 'notes'].includes(recStatus)
+          && (slotRec.event_key !== event_key);
+      });
+      if (!hasDependentRows) {
+        let [ownerSlot] = await getCalendarEntries({
+          client: body.client,
+          event: `${event_id}#${occurrence}#${slotOwnerToken}`,
+          type: 'slot'
+        });
+        if (ownerSlot && ['selected', 'notes'].includes(ownerSlot?.slotData?.status?.current)) {
+          await writeSlot({
+            ...body,
+            event: `${event_id}#${occurrence}`,
+            owner: slotOwnerToken,
+            slot: slotOwnerToken,
+            override_name: await makeName(slotOwnerToken),
+            status: 'released',
+            show_this_slot: false,
+            no_messaging: true,
+            default_forms: null,
+            customizations: null,
+            guests: null,
+            skipParticipantPropagation: true,
+            signup_type: signUpType,
+          });
+        }
+      }
+    }
+  }
+
   // assign a form?
   let ownerRec;
   let documents_assigned;
@@ -1419,7 +1509,8 @@ export async function writeSlot(body) {
     if (recordExists(event_slots)) {
       for (let this_slot of event_slots.Items) {
         if (this_slot.slotData.status.current === 'selected') {
-          event_parties[this_slot.slot_owner] = {
+          let party_key = this_slot.slotData?.slot || this_slot.slotData?.id || this_slot.slot_owner;
+          event_parties[party_key] = {
             event_key: this_slot.event_key,
             party_name: this_slot.slotData.display_name || this_slot.slotData.name
           };
@@ -1457,6 +1548,9 @@ export async function writeSlot(body) {
       // first, determine if this form pertains to ANYONE that is currently assigned to a slot
       let pertainsToList = [];
       for (let this_person in event_parties) {     // go back through the parties
+        if (makeString(this_person, 1).toLowerCase().startsWith('guest:')) {
+          continue;
+        }
         // if a party is a member of any group in the pertains_to list
         // eslint-disable-next-line
         for (let this_group of this_formObj.pertains_to) {
@@ -1469,6 +1563,9 @@ export async function writeSlot(body) {
       }
       if (pertainsToList.length > 0) {    // it pertains to one or people on the event
         for (let this_person in event_parties) {     // go back through the parties
+          if (makeString(this_person, 1).toLowerCase().startsWith('guest:')) {
+            continue;
+          }
           let shouldAssign = false;
           for (let this_group of this_formObj.assign_groups) {
             shouldAssign = await isMemberOf(body.client, this_person, this_group);
@@ -1971,33 +2068,135 @@ export async function printOccurrenceSheet(body) {
   // let nameRow_indent = detail_indent - 10;
   let signup_total = 0;
   let guest_total = 0;
+  const detailRowPadding = 6;
+  const detailRowMinHeight = (page.font.size.large * 3) + (detailRowPadding * 2);
+  const detailPhotoSize = page.font.size.large * 3;
+  const detailTextX = page.margin.left + detailPhotoSize + 14;
 
-  let slotList = Object.keys(oData.slots).sort();
+  const signUpType = eoData?.occRec?.occData?.sign_up?.type
+    || eoData?.eventRec?.eventData?.sign_up?.type
+    || oData.type;
+  const isTimeSignup = (signUpType === 'time');
+  const isSeatSignup = (signUpType === 'seats');
+  const isParticipantSignup = !isTimeSignup && !isSeatSignup;
 
-  for (let s = 0; s < slotList.length; s++) {
-    let sID = slotList[s];
+  const isOccupiedSlot = (slotRec) => {
+    return !!(slotRec?.owner
+      && (slotRec.owner !== 'available')
+      && (slotRec.owner !== '')
+      && (slotRec.status !== 'released'));
+  };
+
+  const normalizeSortName = (slotRec) => {
+    const rawName = `${slotRec?.display_name || slotRec?.name || slotRec?.owner || ''}`.trim();
+    if (!rawName) {
+      return { first: '', last: '' };
+    }
+    if (rawName.includes(',')) {
+      const splitName = rawName.split(',');
+      return {
+        last: (splitName.shift() || '').trim().toLowerCase(),
+        first: splitName.join(',').trim().toLowerCase()
+      };
+    }
+    const parts = rawName.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) {
+      return { first: parts[0].toLowerCase(), last: parts[0].toLowerCase() };
+    }
+    return {
+      first: parts.slice(0, -1).join(' ').toLowerCase(),
+      last: parts[parts.length - 1].toLowerCase()
+    };
+  };
+
+  const readableDisplayName = (nameIn) => {
+    const raw = `${nameIn || ''}`.trim();
+    if (!raw) {
+      return '';
+    }
+    if (!raw.includes(',')) {
+      return raw;
+    }
+    let oParts = raw.split(',');
+    if (oParts.length === 1) {
+      return oParts[0].trim();
+    }
+    return (`${oParts.slice(1).join(',').trim()} ${oParts[0].trim()}`).trim();
+  };
+
+  const ownerLabelCache = {};
+
+  const resolveOwnerLabel = async (ownerId, fallback = '') => {
+    const ownerKey = `${ownerId || ''}`.trim();
+    if (!ownerKey) {
+      return `${fallback || ''}`.trim();
+    }
+    if (ownerLabelCache[ownerKey]) {
+      return ownerLabelCache[ownerKey];
+    }
+    const ownerSlot = oData.slots?.[ownerKey];
+    if (ownerSlot?.display_name) {
+      ownerLabelCache[ownerKey] = readableDisplayName(ownerSlot.display_name);
+      return ownerLabelCache[ownerKey];
+    }
+    let ownerRec = await getPerson(ownerKey, '*all');
+    let resolvedLabel = `${ownerRec?.display_name || ownerRec?.name?.first || ''}`.trim();
+    if (ownerRec?.name?.last) {
+      resolvedLabel = `${ownerRec.name.first || ''} ${ownerRec.name.last || ''}`.trim();
+    }
+    if (!resolvedLabel) {
+      resolvedLabel = `${fallback || ownerKey}`.trim();
+    }
+    ownerLabelCache[ownerKey] = resolvedLabel;
+    return resolvedLabel;
+  };
+
+  let sortedSlotEntries = Object.entries(oData.slots || {}).sort(([aKey, aSlot], [bKey, bSlot]) => {
+    if (isParticipantSignup) {
+      const aName = normalizeSortName(aSlot);
+      const bName = normalizeSortName(bSlot);
+      if (aName.last === bName.last) {
+        return aName.first.localeCompare(bName.first);
+      }
+      return aName.last.localeCompare(bName.last);
+    }
+
+    const aSort = `${aSlot?.slot_sort || aKey}`;
+    const bSort = `${bSlot?.slot_sort || bKey}`;
+    if (aSort === bSort) {
+      return `${aKey}`.localeCompare(`${bKey}`);
+    }
+    return aSort.localeCompare(bSort);
+  });
+
+  // Participant sign-up sheets should list active signups only (no empty numbering gaps).
+  if (isParticipantSignup && body.request_type === 'sign-up') {
+    sortedSlotEntries = sortedSlotEntries.filter(([, slotRec]) => isOccupiedSlot(slotRec));
+  }
+
+  for (let s = 0; s < sortedSlotEntries.length; s++) {
+    let [sID, slotRec] = sortedSlotEntries[s];
     let outName;
-    let occupiedSlot = false;
-    if (oData.slots[sID].owner && (oData.slots[sID].owner !== 'available') && (oData.slots[sID].owner !== '') && (oData.slots[sID].status !== 'released')) {
-      occupiedSlot = true;
+    let occupiedSlot = isOccupiedSlot(slotRec);
+    if (occupiedSlot) {
       signup_total++;
-      if (!oData.slots[sID].display_name) { outName = oData.slots[sID].owner; }
+      if (!slotRec.display_name) { outName = slotRec.owner; }
       else {
-        let oParts = oData.slots[sID].display_name.split(',');
+        let oParts = slotRec.display_name.split(',');
         if (oParts.length === 1) { outName = oParts[0].trim(); }
         else { outName = (`${oParts[1].trim()} ${oParts[0].trim()}`).trim(); }
       }
     };
-    if ((oData.slots[sID].guests) && (Number(oData.slots[sID].guests) > 0)) {
-      outName += ` (${oData.slots[sID].guests} Guest${(Number(oData.slots[sID].guests) > 1) ? 's' : ''})`;
-      guest_total += Number(oData.slots[sID].guests);
+    if ((slotRec.guests) && (Number(slotRec.guests) > 0)) {
+      outName += ` (${slotRec.guests} Guest${(Number(slotRec.guests) > 1) ? 's' : ''})`;
+      guest_total += Number(slotRec.guests);
     }
     if (body.request_type === 'sign-up') {
-      if (oData.type === 'time') {
+      if (isTimeSignup) {
         pdfLine(formatTime(sID), page.font.size.large, 'normal', 0, 1.5, 0, { align: 'left', noNewLine: true });
       }
-      else if ((oData.type === 'seats') && (oData.slots[sID].name !== oData.slots[sID].display_name)) {
-        pdfLine(oData.slots[sID].name, page.font.size.large, 'normal', 0, 1.5, 0, { align: 'left', noNewLine: true });
+      else if (isSeatSignup && (slotRec.name !== slotRec.display_name)) {
+        pdfLine(slotRec.name, page.font.size.large, 'normal', 0, 1.5, 0, { align: 'left', noNewLine: true });
       }
       else {
         pdfLine(`${s + 1}`, page.font.size.large, 'normal', 0, 1.5, 0, { align: 'left', noNewLine: true });
@@ -2008,24 +2207,47 @@ export async function printOccurrenceSheet(body) {
       doc.line(detail_indent, yPos + 3, detail_indent + 300, yPos + 3, 'F');
     }
     else if (occupiedSlot) {
+      const rowStartY = yPos;
+      const rowStartPage = page.number;
+      yPos += detailRowPadding;
       let pRec = null;
-      if (oData.slots[sID].owner) {
-        pRec = await getPerson(oData.slots[sID].owner, '*all');
+      const isGuestToken = (`${sID || ''}`.toLowerCase().startsWith('guest:') || slotRec.guest === true);
+      let personForDetails = null;
+      if (!isGuestToken) {
+        personForDetails = isParticipantSignup ? sID : slotRec.owner;
+      }
+      const ownerLabel = await resolveOwnerLabel(slotRec?.owner, slotRec?.slot_owner_name || slotRec?.owner);
+      const relationshipLine = (isGuestToken && ownerLabel)
+        ? `(guest of ${ownerLabel})`
+        : ((isParticipantSignup && slotRec?.owner && (slotRec.owner !== sID) && ownerLabel)
+          ? `(with ${ownerLabel})`
+          : '');
+      if (personForDetails) {
+        pRec = await getPerson(personForDetails, '*all');
       }
       if (pRec?.person_photo) {
         pdfLine('image', page.font.size.large, 'normal', 0, 1.5, 0, { image: pRec.person_photo });
       }
-      pdfLine(outName, page.font.size.large, 'bold', 0, 0.5, 0, { noNewLine: true });
+      else {
+        // Keep no-photo rows vertically aligned with photo rows.
+        yPos += (1.5 * page.font.size.large);
+      }
+      pdfLine(outName, page.font.size.large, 'bold', 0, 0.75, 0, { xPos: detailTextX, noNewLine: true });
       let nameY = yPos;
-      if (oData.type === 'time') {
+      const nameLineEndX = detailTextX + doc.getTextWidth(outName || '');
+      const checkAnchorX = Math.max(detailTextX + 54, nameLineEndX + 8);
+      if (isTimeSignup) {
         pdfLine(`${formatTime(sID)}`, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
       }
-      else if ((oData.type === 'seats') && (oData.slots[sID].name !== oData.slots[sID].display_name)) {
-        pdfLine(`${oData.slots[sID].name}`, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
+      else if (isSeatSignup && (slotRec.name !== slotRec.display_name)) {
+        pdfLine(`${slotRec.name}`, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
       }
-      if (oData.slots[sID].owner && body.request_type === 'full') {
+      if (relationshipLine) {
+        pdfLine(relationshipLine, page.font.size.small, 'normal', 0, 0, 0, { xPos: detailTextX, noBreak: true });
+      }
+      if (personForDetails && body.request_type === 'full') {
         if (!pRec) {
-          pRec = await getPerson(oData.slots[sID].owner, '*all');
+          pRec = await getPerson(personForDetails, '*all');
         }
         // the slot owner does not exist in the Db; this is unexpected, but we will just skip over it and continue
         const personId = pRec?.person_id;
@@ -2046,7 +2268,26 @@ export async function printOccurrenceSheet(body) {
         }
       };
       if (oData.slots[sID].marked) {
-        pdfLine('image', page.font.size.small, 'normal', 0, 0, 0, { yPos: nameY, noNewLine: true, align: 'right', image: `https://ava-icons.s3.amazonaws.com/icons8-check-192.png` });
+        const checkSize = 14;
+        const checkY = nameY - checkSize + 4;
+        const checkX = Math.min(
+          page.width - page.margin.right - checkSize,
+          checkAnchorX
+        );
+        pdfLine('image', page.font.size.small, 'normal', 0, 0, 0, {
+          yPos: checkY,
+          noNewLine: true,
+          xPos: checkX,
+          imageSize: checkSize,
+          image: `https://ava-icons.s3.amazonaws.com/icons8-check-192.png`
+        });
+      }
+      if (page.number === rowStartPage) {
+        yPos = Math.max(yPos + detailRowPadding, rowStartY + detailRowMinHeight);
+      }
+      else {
+        // A page break occurred while rendering this row, so rowStartY is stale.
+        yPos += detailRowPadding;
       }
     }
     totalLines += 2;
@@ -2186,9 +2427,13 @@ export async function printOccurrenceSheet(body) {
         textArray.splice(a, 0, nextLine);
       }
       if (options.image) {
-        let imageSize = size * 3;
+        let imageSize = options.imageSize || (size * 3);
         let xOffset;
-        switch (options.align) {
+        if (options.xPos !== undefined) {
+          xOffset = options.xPos;
+        }
+        else {
+          switch (options.align) {
           case 'center': {
             xOffset = page.centerPoint - (imageSize / 2);
             break;
@@ -2200,6 +2445,7 @@ export async function printOccurrenceSheet(body) {
           default: {
             xOffset = xPos + indent;
           }
+        }
         }
         doc.addImage(options.image, 'JPEG', xOffset, yPos, imageSize, imageSize);
         previousXPos = xOffset;
@@ -2696,24 +2942,30 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
         Object.assign(response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id], occurrenceRec);
       }
       else if ((occurrenceRec.record_type === 'slot') && ((occurrenceRec.slotData.status.current === 'selected') || (occurrenceRec.slotData.status.current === 'notes'))) {
-        if (response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners.hasOwnProperty(occurrenceRec.slotData.owner)) {
-          response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[`${occurrenceRec.slotData.owner}%%${c}`] =
-            found_events[occurrenceRec.event_id]?.slot_names?.[occurrenceRec.slotData.slot] || ((found_events[occurrenceRec.event_id].type === 'seats') ? '' : occurrenceRec.slotData.slot);
+        let thisEventType = found_events[occurrenceRec.event_id]?.type;
+        let participantToken = occurrenceRec.slotData.slot || occurrenceRec.slotData.id || occurrenceRec.slotData.owner;
+        let slotIdentity = ['seats', 'time'].includes(thisEventType)
+          ? occurrenceRec.slotData.owner
+          : participantToken;
+        if (response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners.hasOwnProperty(slotIdentity)) {
+          response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[`${slotIdentity}%%${c}`] =
+            found_events[occurrenceRec.event_id]?.slot_names?.[occurrenceRec.slotData.slot]
+            || ((found_events[occurrenceRec.event_id].type === 'seats') ? '' : occurrenceRec.slotData.slot);
         }
         else {
-          response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[occurrenceRec.slotData.owner] =
+          response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[slotIdentity] =
             found_events[occurrenceRec.event_id]?.slot_names?.[occurrenceRec.slotData.slot]
             || ((found_events[occurrenceRec.event_id]?.type === 'seats')
               ? ''
               : occurrenceRec.slotData.slot
             );
         }
-        if (!peopleInfo.hasOwnProperty(occurrenceRec.slotData.owner)) {
-          peopleInfo[occurrenceRec.slotData.owner] = [];
-          conflicts[occurrenceRec.slotData.owner] = {};
+        if (!peopleInfo.hasOwnProperty(slotIdentity)) {
+          peopleInfo[slotIdentity] = [];
+          conflicts[slotIdentity] = {};
         }
         let slotTimesResponse = slotTimes(found_events[occurrenceRec.event_id], response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id], occurrenceRec);
-        peopleInfo[occurrenceRec.slotData.owner].push(Object.assign({},
+        peopleInfo[slotIdentity].push(Object.assign({},
           {
             occurrence_date: occurrenceRec.occurrence_date,
             event_id: occurrenceRec.event_id,
@@ -2723,21 +2975,21 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
           },
           occurrenceRec.slotData)
         );
-        if (!conflicts[occurrenceRec.slotData.owner].hasOwnProperty(occurrenceRec.occurrence_date)) {
-          conflicts[occurrenceRec.slotData.owner][occurrenceRec.occurrence_date] = [{ time: 0, open: true }];
+        if (!conflicts[slotIdentity].hasOwnProperty(occurrenceRec.occurrence_date)) {
+          conflicts[slotIdentity][occurrenceRec.occurrence_date] = [{ time: 0, open: true }];
         }
         let this_date = makeDate(occurrenceRec.occurrence_date);
         let this_Sunday = makeDate(addDays(this_date.date, -(this_date.dayOfWeek)));
-        if (!conflicts[occurrenceRec.slotData.owner].hasOwnProperty('summaries')) {
-          conflicts[occurrenceRec.slotData.owner].summaries = {
+        if (!conflicts[slotIdentity].hasOwnProperty('summaries')) {
+          conflicts[slotIdentity].summaries = {
             [this_Sunday.numeric$]: {
               description: this_Sunday.dateOnly,
               minutes: 0
             }
           };
         }
-        else if (!conflicts[occurrenceRec.slotData.owner].summaries.hasOwnProperty(this_Sunday.numeric$)) {
-          conflicts[occurrenceRec.slotData.owner].summaries[this_Sunday.numeric$] = {
+        else if (!conflicts[slotIdentity].summaries.hasOwnProperty(this_Sunday.numeric$)) {
+          conflicts[slotIdentity].summaries[this_Sunday.numeric$] = {
             description: this_Sunday.dateOnly,
             minutes: 0
           };
@@ -2752,13 +3004,13 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
           minutes_booked = end_time.minutesSinceMidnight - start_time.minutesSinceMidnight;
         }
         if (minutes_booked < 1200) {
-          conflicts[occurrenceRec.slotData.owner].summaries[this_Sunday.numeric$].minutes += minutes_booked;
+          conflicts[slotIdentity].summaries[this_Sunday.numeric$].minutes += minutes_booked;
         }
         let titleOut = `${found_events[occurrenceRec.event_id].description} ${this_date.relative}`;
         if (!found_events[occurrenceRec.event_id]?.time.allDay) {
           titleOut += ` from ${found_events[occurrenceRec.event_id].time.from} to ${found_events[occurrenceRec.event_id].time.to}`;
         }
-        conflicts[occurrenceRec.slotData.owner][occurrenceRec.occurrence_date].push(
+        conflicts[slotIdentity][occurrenceRec.occurrence_date].push(
           {
             time: start_time.numeric24,
             open: false,
