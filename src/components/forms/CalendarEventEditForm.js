@@ -2642,7 +2642,15 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
             onSelect={async (selectedPerson) => {
               setSelectNewSlotOwner(false);
               let nArray = selectedPerson.split('%%');
-              let pID = nArray[Math.min(1, nArray.length - 1)];
+              let pID;
+              if (nArray.length === 1) {
+                pID = nArray[0]; 
+                selectedPerson = nArray[0]; 
+              }
+              else {
+                pID = nArray[1];
+                selectedPerson = `${nArray[0]}%%${nArray[1]}`;
+              }
               let availability_list = await (myAvailability(
                 {
                   check_date: pOccData.date,
@@ -2662,7 +2670,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                   });
                 }
                 if ((listIndex < 0) || (!listIndex && (listIndex !== 0))) {   // no assigned slot
-                  slotObj.slot = selectedPerson.person_id;
+                  slotObj.slot = pID;
                   slotObj.index = eventSlotList.length;
                   newSlotStart24 = 0;
                   newSlotEnd24 = 2359;
