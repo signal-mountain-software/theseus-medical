@@ -184,6 +184,8 @@ export async function accountAccess(person_id, pClient_id) {
           };
           if (client_id === session.client_id) {
             pRec2Push.directory_option = this_person.directory_option;
+            pRec2Push.directory_partner = this_person.directory_partner;
+            pRec2Push.role_or_title = this_person.role_or_title;
             pRec2Push.groups = this_person.groups;
             pRec2Push.location = this_person.location;
             pRec2Push.messaging = this_person.messaging;
