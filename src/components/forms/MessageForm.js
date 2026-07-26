@@ -2997,7 +2997,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                       </Box>
                     </Dialog>
                   }
-                  {!reactData.viewOnly &&
+                  {!reactData.viewOnly
+                    && !(reactData.options?.newMessage && Array.isArray(reactData.options?.recipients) && reactData.options.recipients.length > 0)
+                    &&
                     <Button
                       onClick={async () => {
                         let reactUpd = {

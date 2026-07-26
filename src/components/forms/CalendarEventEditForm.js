@@ -47,14 +47,16 @@ import DeleteIcon from '@material-ui/icons/Delete';
 import EditIcon from '@material-ui/icons/Edit';
 import SaveIcon from '@material-ui/icons/Save';
 import IconButton from '@material-ui/core/IconButton';
+import MoreHorizIcon from '@material-ui/icons/MoreHoriz';
+import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import AllOut from '@material-ui/icons/PlaylistAddCheck';
 import MarkedOut from '@material-ui/icons/CheckCircle';
 import AllIn from '@material-ui/icons/PeopleOutline';
 import MarkedIn from '@material-ui/icons/AccountCircle';
-import RadioButtonCheckedIcon from '@material-ui/icons/RadioButtonChecked';
 import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
 
 import PersonFilter from '../forms/PersonFilter';
+import QuickSearch from '../sections/QuickSearch';
 import AVATextInput from '../forms/AVATextInput';
 import AVAConfirm from '../forms/AVAConfirm';
 import useSession from '../../hooks/useSession';
@@ -225,6 +227,8 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
 
   const [editNoteNumber, setEditNoteNumber] = React.useState(-1);
   const [newNote, setNewNote] = React.useState('');
+  const [rowActionAnchorEl, setRowActionAnchorEl] = React.useState(null);
+  const [rowActionIndex, setRowActionIndex] = React.useState(-1);
 
   const isEventOwner = pOccData?.owner?.includes(pPatient) || state.session.adminAccount;
 
@@ -285,7 +289,14 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     signup_window: checkSignupWindow(),
     waitList: pOccData.wait_list || [],
     editWaitList: false,
-    editForm: false
+    editForm: false,
+    addGuestInfo: false,
+    selectGuestFromDirectory: false,
+    guestQuickSearch: {
+      accessList: [],
+      selections: [],
+      linkedPersonFilter: { raw: '', lower: '' }
+    }
   });
 
   const updateReactData = (newData, force = false) => {
@@ -324,8 +335,368 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     return (slotData.owner === pPatient);
   }
 
+  function getParticipantSubtitle(slotData) {
+    if ((slotData.id === slotData.owner)
+      || ['time', 'seats'].includes(pOccData.signup_type)
+      || !slotData.slot_owner_name) {
+      return '';
+    }
+
+    if (`${slotData.id || ''}`.toLowerCase().startsWith('guest:')) {
+      return `(guest of ${slotData.slot_owner_name})`;
+    }
+
+    return `(with ${slotData.slot_owner_name})`;
+  }
+
+  function getSortNameParts(displayName = '') {
+    const cleanedName = `${displayName || ''}`.trim();
+    if (!cleanedName) {
+      return { first: '', last: '' };
+    }
+
+    const nameParts = cleanedName.split(/\s+/).filter(Boolean);
+    if (nameParts.length === 1) {
+      return { first: nameParts[0], last: nameParts[0] };
+    }
+
+    return {
+      first: nameParts.slice(0, -1).join(' '),
+      last: nameParts[nameParts.length - 1]
+    };
+  }
+
+  function getGuestLimitPolicy() {
+    const rawLimit = pOccData?.number_of_guests;
+    if ((rawLimit === undefined) || (rawLimit === null) || (rawLimit === '')) {
+      return { mode: 'unlimited', max: null };
+    }
+    const numericLimit = Number(rawLimit);
+    if (numericLimit === -1) {
+      return { mode: 'none', max: 0 };
+    }
+    if (numericLimit > 0) {
+      return { mode: 'limited', max: numericLimit };
+    }
+    return { mode: 'unlimited', max: null };
+  }
+
+  function isActiveSlot(row) {
+    const status = row?.slotData?.status?.current || row?.slotData?.status;
+    return !['released', 'available'].includes(`${status || ''}`);
+  }
+
+  function isGuestRow(row) {
+    const participantId = `${row?.slotData?.id || ''}`.toLowerCase();
+    return row?.slotData?.guest === true || participantId.startsWith('guest:');
+  }
+
+  function getGuestUsage(ownerId) {
+    if (!ownerId) {
+      return { used: 0, max: null, remaining: null, allowsGuests: false, unlimited: false };
+    }
+
+    const policy = getGuestLimitPolicy();
+    if (policy.mode === 'none') {
+      return { used: 0, max: 0, remaining: 0, allowsGuests: false, unlimited: false };
+    }
+
+    const used = eventSlotList.filter(row => {
+      return (row?.slotData?.owner === ownerId)
+        && isGuestRow(row)
+        && isActiveSlot(row);
+    }).length;
+
+    if (policy.mode === 'unlimited') {
+      return { used, max: null, remaining: null, allowsGuests: true, unlimited: true };
+    }
+
+    const max = policy.max;
+    const remaining = Math.max(0, max - used);
+    return { used, max, remaining, allowsGuests: remaining > 0, unlimited: false };
+  }
+
+  function normalizeManualGuestName(rawGuestName = '') {
+    const trimmed = `${rawGuestName || ''}`.trim().replace(/\s+/g, ' ');
+    if (!trimmed) {
+      return '';
+    }
+
+    const lettersOnly = trimmed.replace(/[^a-zA-Z]/g, '');
+    const looksAllCaps = lettersOnly.length > 0 && lettersOnly === lettersOnly.toUpperCase();
+    if (looksAllCaps) {
+      return trimmed
+        .toLowerCase()
+        .replace(/(^|[\s\-'])([a-z])/g, (match, lead, ch) => `${lead}${ch.toUpperCase()}`);
+    }
+
+    return trimmed.replace(/(^|[\s\-'])([a-z])/g, (match, lead, ch) => `${lead}${ch.toUpperCase()}`);
+  }
+
+  function mapChoiceListToQuickSearchAccessList(choiceList = []) {
+    return choiceList
+      .filter(choice => !!choice?.person_id)
+      .map(choice => {
+        let first = '';
+        let last = '';
+        const displayName = `${choice.display_name || ''}`.trim();
+        if (displayName.includes(',')) {
+          const parts = displayName.split(',');
+          last = (parts.shift() || '').trim();
+          first = parts.join(',').trim();
+        }
+        else {
+          const nameParts = displayName.split(/\s+/).filter(Boolean);
+          if (nameParts.length === 1) {
+            first = nameParts[0];
+            last = '';
+          }
+          else {
+            first = nameParts.slice(0, -1).join(' ');
+            last = nameParts[nameParts.length - 1];
+          }
+        }
+        return {
+          person_id: choice.person_id,
+          first,
+          last,
+          search_data: choice.searchString || displayName,
+          groups: []
+        };
+      });
+  }
+
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
+  };
+
+  const openRowActionMenu = (event, index) => {
+    setRowActionAnchorEl(event.currentTarget);
+    setRowActionIndex(index);
+  };
+
+  const closeRowActionMenu = () => {
+    setRowActionAnchorEl(null);
+    setRowActionIndex(-1);
+  };
+
+  const openSlotDocuments = async (slotItem, index) => {
+    closeRowActionMenu();
+    if (slotItem.slotData.documents.length > 1) {
+      let docRecs = [];
+      for (const this_doc of slotItem.slotData.documents) {
+        let dR = await getDoc(this_doc);
+        if (!isEmpty(dR)) {
+          docRecs.push(dR);
+        }
+      }
+      if (docRecs.length > 1) {
+        updateReactData({
+          selectForm: true,
+          selectedDoc_id: docRecs,
+          selectedSlotIndex: index
+        }, true);
+        return;
+      }
+      else if (docRecs.length === 1) {
+        updateReactData({
+          editForm: true,
+          selectedDoc_id: docRecs[0].document_id,
+          selectedPerson_id: docRecs[0].person_id,
+          selectedDocMode: determineMode(docRecs[0]),
+          selectedSlotIndex: index
+        }, true);
+      }
+    }
+    else {
+      let docRec = await getDoc(slotItem.slotData.documents[0]);
+      if (!isEmpty(docRec)) {
+        updateReactData({
+          editForm: true,
+          selectedDoc_id: slotItem.slotData.documents[0],
+          selectedPerson_id: docRec.person_id,
+          selectedDocMode: determineMode(docRec),
+          selectedSlotIndex: index
+        }, true);
+      }
+    }
+  };
+
+  const openTimeEntryEditor = (slotItem, index) => {
+    closeRowActionMenu();
+    updateReactData({
+      editTimeEntries: Object.assign({},
+        slotItem.slotData,
+        {
+          index,
+          title: `${pOccData.description} ${makeDate(pOccData.date).relative}${(!isEmpty(pOccData.time)) ? ' - ' + pOccData.time$ : ''}`,
+          appointmentDateTimeStamp: makeDate(pOccData.date, { noTime: true }).timestamp
+        }
+      )
+    }, true);
+  };
+
+  const promptAddGuest = (slotItem, index) => {
+    closeRowActionMenu();
+    const guestUsage = getGuestUsage(slotItem?.slotData?.owner);
+    if (!guestUsage.allowsGuests) {
+      updateReactData({
+        alert: {
+          severity: 'warning',
+          title: 'Guests not allowed',
+          message: guestUsage.max === 0
+            ? 'This event is configured to allow no guests.'
+            : `This owner already has the maximum guest count (${guestUsage.max}) for this occurrence.`
+        }
+      }, true);
+      return;
+    }
+
+    updateReactData({
+      addGuestInfo: {
+        index,
+        owner: slotItem.slotData.owner,
+        ownerName: slotItem.slotData.slot_owner_name || slotItem.slotData.display_name,
+        errorText: [],
+        remaining: guestUsage.remaining,
+        unlimited: guestUsage.unlimited,
+        mode: null
+      },
+      alert: {
+        severity: 'info',
+        title: 'Add Guest',
+        message: `How would you like to add a guest for ${slotItem.slotData.slot_owner_name || slotItem.slotData.display_name}?`,
+        action: [
+          {
+            text: 'Search directory',
+            function: async () => {
+              const directoryChoices = await setChoices({ pGroups: peopleList });
+              const guestAccessList = mapChoiceListToQuickSearchAccessList(directoryChoices || []);
+              updateReactData({
+                alert: false,
+                selectGuestFromDirectory: true,
+                guestQuickSearch: {
+                  accessList: guestAccessList,
+                  selections: [],
+                  linkedPersonFilter: { raw: '', lower: '' }
+                }
+              }, true);
+            }
+          },
+          {
+            text: 'Enter name',
+            function: () => {
+              updateReactData({
+                alert: false,
+                addGuestInfo: Object.assign({}, reactData.addGuestInfo, {
+                  mode: 'manual'
+                })
+              }, true);
+            }
+          },
+          {
+            text: 'Cancel',
+            function: () => {
+              updateReactData({
+                alert: false,
+                addGuestInfo: false
+              }, true);
+            }
+          }
+        ]
+      }
+    }, true);
+  };
+
+  const addGuestForOwner = async ({ ownerId, ownerName, guestDisplayName, guestParticipantId, fromDirectory = false }) => {
+    const guestUsage = getGuestUsage(ownerId);
+    if (!guestUsage.allowsGuests) {
+      updateReactData({
+        alert: {
+          severity: 'warning',
+          title: 'Guest limit reached',
+          message: guestUsage.max === 0
+            ? 'This event is configured to allow no guests.'
+            : `This owner already has the maximum guest count (${guestUsage.max}) for this occurrence.`
+        }
+      }, true);
+      return;
+    }
+
+    let participantToken = guestParticipantId;
+    if (!participantToken) {
+      const guestSlug = guestDisplayName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'guest';
+      participantToken = `guest:${guestSlug}_${Date.now().toString(36)}`;
+    }
+
+    const addedIndexAt = await handleAllocateSlot({
+      body: {
+        person: `${guestDisplayName}:${participantToken}`,
+        owner: ownerId,
+        no_messaging: true,
+        slotData: {
+          guest: true,
+          guest_source: fromDirectory ? 'directory' : 'freeform',
+          guest_owner_name: ownerName
+        }
+      }
+    });
+
+    updateReactData({
+      addGuestInfo: false,
+      selectGuestFromDirectory: false
+    }, true);
+    setOwnerOfSlots(true);
+    if (pOccData.notes_required) {
+      setEditNoteNumber(addedIndexAt);
+    }
+  };
+
+  const removeSlotCascade = async (slotItem) => {
+    const isParticipantSignup = !['time', 'seats'].includes(pOccData.signup_type);
+    const ownerId = slotItem?.slotData?.owner;
+    const participantId = slotItem?.slotData?.id;
+    if (!ownerId || !participantId) {
+      return;
+    }
+
+    let rowsToRemove = [slotItem];
+    const removingOwnerSelf = isParticipantSignup && (participantId === ownerId);
+
+    if (removingOwnerSelf) {
+      const dependentRows = eventSlotList.filter(row => {
+        const rowOwner = row?.slotData?.owner;
+        const rowParticipant = row?.slotData?.id;
+        const rowStatus = row?.slotData?.status?.current || row?.slotData?.status;
+        return (rowOwner === ownerId)
+          && (rowParticipant !== ownerId)
+          && !['released', 'available'].includes(`${rowStatus || ''}`);
+      });
+      // Remove dependents first so we do not leave orphan participant rows.
+      rowsToRemove = [...dependentRows, slotItem];
+    }
+
+    for (const row of rowsToRemove) {
+      const currentIndex = eventSlotList.findIndex(current => {
+        return (current?.slotData?.id === row?.slotData?.id)
+          && (current?.slotData?.owner === row?.slotData?.owner);
+      });
+      if (currentIndex < 0) {
+        continue;
+      }
+
+      await handleAllocateSlot({
+        body: {
+          person: `${row.slotData.name}%%${row.slotData.owner}`,
+          slot: row.slotData.id,
+          release: true,
+          index: currentIndex
+        }
+      });
+    }
   };
 
   const setChoices = async ({ pGroups, noCurrent }) => {
@@ -407,6 +778,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     updateReactData({
       choiceList: response
     }, false);
+    return response;
   };
 
   async function getDoc(this_doc) {
@@ -513,11 +885,27 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
         if (!firstAvailableChoice) { firstAvailableChoice = o; }
       }
       if (slotInfo.slotObj[o].owner) {
-        let resolvedName = await makeName(slotInfo.slotObj[o].owner);
-        if (resolvedName) { slotInfo.slotObj[o].display_name = resolvedName; }
-        if (o !== slotInfo.slotObj[o].owner && !['time', 'seats'].includes(pOccData.signup_type)) {
-          let slotIdName = await makeName(o);
-          if (slotIdName && slotIdName !== o) { slotInfo.slotObj[o].slot_id_name = slotIdName; }
+        let resolvedOwnerName = await makeName(slotInfo.slotObj[o].owner);
+        if (resolvedOwnerName) {
+          slotInfo.slotObj[o].slot_owner_name = resolvedOwnerName;
+        }
+        if ((o !== slotInfo.slotObj[o].owner) && !['time', 'seats'].includes(pOccData.signup_type)) {
+          let participantName = slotInfo.slotObj[o].display_name;
+          if (!participantName || (participantName === slotInfo.slotObj[o].owner)) {
+            if (o.toLowerCase().startsWith('guest:')) {
+              participantName = titleCase(o.slice(6).replace(/_/g, ' '));
+            }
+            else {
+              let slotIdName = await makeName(o);
+              if (slotIdName && slotIdName !== o) {
+                participantName = slotIdName;
+              }
+            }
+          }
+          slotInfo.slotObj[o].display_name = participantName || slotInfo.slotObj[o].display_name || o;
+        }
+        else if (!slotInfo.slotObj[o].display_name) {
+          slotInfo.slotObj[o].display_name = resolvedOwnerName || o;
         }
       }
       if (slotInfo.slotObj[o].display_name) {
@@ -543,11 +931,34 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       });
     }
     slotList.sort((a, b) => {
-      if (a.slotData.slot_sort) {
-        return ((a.slotData.slot_sort > b.slotData.slot_sort) ? 1 : -1);
+      if (['time', 'seats'].includes(pOccData.signup_type)
+        && (a.slotData.slot_sort || b.slotData.slot_sort)) {
+        if (a.slotData.slot_sort && b.slotData.slot_sort) {
+          if (a.slotData.slot_sort === b.slotData.slot_sort) {
+            return 0;
+          }
+          return ((a.slotData.slot_sort > b.slotData.slot_sort) ? 1 : -1);
+        }
+        return (a.slotData.slot_sort ? -1 : 1);
       }
-      else if (a.slotData.id > b.slotData.id) { return 1; }
-      else { return -1; }
+
+      if (!['time', 'seats'].includes(pOccData.signup_type)) {
+        const aName = getSortNameParts(a.display_name);
+        const bName = getSortNameParts(b.display_name);
+        const aLast = `${aName.last}`.toLowerCase();
+        const bLast = `${bName.last}`.toLowerCase();
+        if (aLast !== bLast) {
+          return aLast.localeCompare(bLast);
+        }
+
+        const aFirst = `${aName.first}`.toLowerCase();
+        const bFirst = `${bName.first}`.toLowerCase();
+        if (aFirst !== bFirst) {
+          return aFirst.localeCompare(bFirst);
+        }
+      }
+
+      return `${a.slotData.id || ''}`.localeCompare(`${b.slotData.id || ''}`);
     });
     let slotOwnerList = slotList.map(this_slot => {
       return this_slot.slotData.owner;
@@ -795,11 +1206,22 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     if (body.hasOwnProperty('index')) {
       pIndex = body.index;
     }
-    let workingList = eventSlotList;
+    let workingList = [...eventSlotList];
     let whereToGo = -1;
     pPerson = makeArray(body.person);
     for (let p = 0; p < pPerson.length; p++) {
-      let nArray = pPerson[p].split(/:|%%/);
+      let nArray;
+      if (typeof pPerson[p] === 'string' && pPerson[p].includes('%%')) {
+        let splitAt = pPerson[p].split('%%');
+        nArray = [splitAt[0], splitAt.slice(1).join('%%')];
+      }
+      else if (typeof pPerson[p] === 'string' && pPerson[p].includes(':')) {
+        let splitAt = pPerson[p].indexOf(':');
+        nArray = [pPerson[p].slice(0, splitAt), pPerson[p].slice(splitAt + 1)];
+      }
+      else {
+        nArray = [pPerson[p]];
+      }
       if (body.slot) { pSlot = body.slot; }
       else { pSlot = nArray[Math.min(1, nArray.length - 1)]; }
       let newPersonName, newPersonID;
@@ -812,6 +1234,11 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
         newPersonName = nArray[0];
       }
       let [first, last] = newPersonName.split(/\s(.*)/);
+      let slotOwnerID = body.slot_owner || body.owner || newPersonID;
+      let slotOwnerName = body.slot_owner_name || '';
+      if (!slotOwnerName && slotOwnerID && (slotOwnerID !== newPersonID)) {
+        slotOwnerName = await makeName(slotOwnerID);
+      }
       let newPersonLocation = null;
       let this_person = await getPerson(newPersonID, '*all');
       if (this_person.client_id) {
@@ -824,16 +1251,18 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
         }
         newPersonName = (`${first || ''} ${last}`).trim();
       }
+      const rowExtraSlotData = deepCopy(body.slotData || {});
+
       let writeRequest = {
         "client": pClient,
         "person_id": state.session.patient_id,
         "event": allocateEventCode,
         "occurrence_date": allocateOccurrence,
-        "owner": newPersonID,
+        "owner": slotOwnerID,
         "override_name": newPersonName,
         "slot": pSlot || newPersonID,
         "status": (pRelease ? 'released' : 'selected'),
-        "show_this_slot": ((pRelease && (pSlot === newPersonID)) ? false : true),
+        "show_this_slot": ((pRelease && (pSlot === slotOwnerID)) ? false : true),
         "no_messaging": (body.no_messaging === true) ? true : isEventOwner
       };
       if (pOccData.description) {
@@ -951,18 +1380,19 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
             first,
             last,
             display_name: newPersonName,
-            slotData: {
+            slotData: Object.assign({}, rowExtraSlotData, {
               name: newPersonName,
               display_name: newPersonName,
               id: pSlot,
-              owner: newPersonID,
+              owner: slotOwnerID,
+              slot_owner_name: slotOwnerName,
               owner_location: newPersonLocation,
               notes: body.notes,
               guests: body.guests,
               slot_description: workingList[whereToGo].slotData.slot_description,
               slot_sort: workingList[whereToGo].slotData.slot_sort,
               documents: slotInfo.documents || null
-            }
+            })
           };
         }
         else {
@@ -971,23 +1401,24 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
             first,
             last,
             display_name: newPersonName,
-            slotData: {
+            slotData: Object.assign({}, rowExtraSlotData, {
               name: newPersonName,
-              id: newPersonID,
+              id: pSlot || newPersonID,
               display_name: newPersonName,
-              owner: newPersonID,
+              owner: slotOwnerID,
+              slot_owner_name: slotOwnerName,
               owner_location: newPersonLocation,
               notes: body.notes,
               guests: body.guests,
               documents: slotInfo.documents || null
-            }
+            })
           });
           whereToGo--;
         }
       }
     };
-    setEventSlotList(workingList);
-    setForceRedisplay(!forceRedisplay);
+    setEventSlotList([...workingList]);
+    setForceRedisplay(prev => !prev);
     return whereToGo;
   };
 
@@ -1733,7 +2164,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               <Box display='flex' flexDirection='row' alignItems='center'
                 key={`slotLine_${index}`}
                 minHeight={50}
-                justifyContent={'space-between'} my={1} pl={2}
+                justifyContent={'space-between'} my={1} py={0.5} pl={2}
               >
                 <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                   {rowsWritten++}
@@ -1762,7 +2193,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                       flexWrap='wrap'
                       justifyContent='space-between' alignItems='center'
                     >
-                      <Box display='flex' mr={0} flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                      <Box display='flex' mr={0} width='100%' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                         {/* Mark an item - Radio button */}
 
                         <Box minWidth={40} maxWidth={40} display='flex' mr={0} flexDirection='column' justifyContent='center' alignItems='center'>
@@ -1817,7 +2248,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                                 ? ((isSlotOwner(this_item.slotData)
                                   || (this_item.slotData.documents && (this_item.slotData.documents.length > 0)))
                                   ? <TimerOffIcon mr={0} ml={0} />
-                                  : <RadioButtonCheckedIcon mr={0} ml={0} />
+                                  : <CheckCircleIcon mr={0} ml={0} />
                                 )
                                 : ((isSlotOwner(this_item.slotData)
                                   || (this_item.slotData.documents && (this_item.slotData.documents.length > 0)))
@@ -1829,37 +2260,52 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                           </Tooltip>}
                         </Box>
                         {/* Image and Name */}
-                        {(!(state.user.account_class
-                          && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
-                          && !(isEventOwner || isSlotOwner(this_item.slotData))
-                        )) &&
-                          <Box
-                            component="img"
-                            mr={1}
-                            minWidth={50}
-                            maxWidth={50}
-                            minHeight={50}
-                            maxHeight={50}
-                            border={1}
-                            alt=''
-                            src={getImage(this_item.slotData.owner, { allowS3Fallback: false, allowS3Backfill: false })}
-                          />
-                        }
-                        <Box display='flex' flexDirection='column' width='100%'>
-                          <Typography style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}  >
-                            {(state.user.account_class
-                              && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
-                              && !(isEventOwner || isSlotOwner(this_item.slotData))
-                            ) ? 'Reserved' : this_item.slotData.display_name
-                            }
-                          </Typography>
-                          {(this_item.slotData.id !== this_item.slotData.owner) &&
-                            !['time', 'seats'].includes(pOccData.signup_type) &&
-                            this_item.slotData.slot_id_name &&
-                            <Typography style={AVATextStyle({ size: 1, align: 'left' })} className={classes.standard}>
-                              {this_item.slotData.slot_id_name}
-                            </Typography>
+                        <Box display='flex' flexDirection='row' alignItems='flex-start' flexGrow={1} minWidth={0}>
+                          {(!(state.user.account_class
+                            && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
+                            && !(isEventOwner || isSlotOwner(this_item.slotData))
+                          )) &&
+                            (isGuestRow(this_item)
+                              ? <Box mr={1} minWidth={50} maxWidth={50} minHeight={50} maxHeight={50} />
+                              : <Box
+                                component="img"
+                                mr={1}
+                                minWidth={50}
+                                maxWidth={50}
+                                minHeight={50}
+                                maxHeight={50}
+                                border={1}
+                                alt=''
+                                src={getImage(((!['time', 'seats'].includes(pOccData.signup_type)
+                                  && (this_item.slotData.id !== this_item.slotData.owner)
+                                  && !(`${this_item.slotData.id}`.toLowerCase().startsWith('guest:')))
+                                  ? this_item.slotData.id
+                                  : this_item.slotData.owner), { allowS3Fallback: false, allowS3Backfill: false })}
+                              />)
                           }
+                          <Box display='flex' flexDirection='column' flexGrow={1} minWidth={0}>
+                            <Typography style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}  >
+                              {(state.user.account_class
+                                && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
+                                && !(isEventOwner || isSlotOwner(this_item.slotData))
+                              ) ? 'Reserved' : this_item.slotData.display_name
+                              }
+                            </Typography>
+                            {!!getParticipantSubtitle(this_item.slotData) &&
+                              <Typography
+                                style={Object.assign(
+                                  {},
+                                  AVATextStyle({ size: 0.95, align: 'left', margin: { right: 1 } }),
+                                  {
+                                    paddingLeft: '10px',
+                                    opacity: 0.72
+                                  }
+                                )}
+                                className={classes.standard}
+                              >
+                                {getParticipantSubtitle(this_item.slotData)}
+                              </Typography>
+                            }
                           {this_item.marked
                             && (isSlotOwner(this_item.slotData) || (this_item.slotData.documents && (this_item.slotData.documents.length > 0)))
                             && (this_item.check_in || this_item.slotData.check_in)
@@ -1917,133 +2363,38 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                               {pOccData.notes_required}
                             </Typography>
                           }
-                          {(isEventOwner || isSlotOwner(this_item.slotData)) &&
-                            (editNoteNumber === -1) &&
-                            <Box display='flex' mr={2} flexDirection='row' justifyContent='flex-start' alignItems='center'
-                              key={`docTopBox_${index}_${this_item.slotData.docStatus}`}
-                            >
-                              {(isEventOwner || isSlotOwner(this_item.slotData)) &&
-                                (this_item.slotData.documents) &&
-                                (this_item.slotData.documents.length > 0) &&
-                                <Box display='flex' mr={2}
-                                  color={this_item.slotData.docStatus === 'not_started' ? 'red' : (this_item.slotData.docStatus === 'complete' ? 'green' : 'orange')}
-                                  flexDirection='row' justifyContent='center' alignItems='center'
-                                  key={`docMidBox_${index}_${this_item.slotData.docStatus}`}
-                                >
-                                  <Tooltip title={`View documents`} >
-                                    <AssignmentTurnedInIcon
-                                      onClick={async () => {
-                                        if (this_item.slotData.documents.length > 1) {
-                                          let docRecs = [];
-                                          for (const this_doc of this_item.slotData.documents) {
-                                            let dR = await getDoc(this_doc);
-                                            if (!isEmpty(dR)) {
-                                              docRecs.push(dR);
-                                            }
-                                          }
-                                          if (docRecs.length > 1) {
-                                            updateReactData({
-                                              selectForm: true,
-                                              selectedDoc_id: docRecs,
-                                              selectedSlotIndex: index
-                                            }, true);
-                                            return;
-                                          }
-                                          else if (docRecs.length === 1) {
-                                            updateReactData({
-                                              editForm: true,
-                                              selectedDoc_id: docRecs[0].document_id,
-                                              selectedPerson_id: docRecs[0].person_id,
-                                              selectedDocMode: determineMode(docRecs[0]),
-                                              selectedSlotIndex: index
-                                            }, true);
-                                          }
-                                        }
-                                        else {
-                                          let docRec = await getDoc(this_item.slotData.documents[0]);
-                                          if (!isEmpty(docRec)) {
-                                            updateReactData({
-                                              editForm: true,
-                                              selectedDoc_id: this_item.slotData.documents[0],
-                                              selectedPerson_id: docRec.person_id,
-                                              selectedDocMode: determineMode(docRec),
-                                              selectedSlotIndex: index
-                                            }, true);
-                                          }
-                                        }
-                                      }}
-                                    />
-                                  </Tooltip>
-                                </Box>
-                              }
-                              {isEventOwner && !isSlotOwner(this_item.slotData) &&
-                                <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
-                                  <Tooltip title={`Send a message to ${this_item.slotData.display_name}`} >
-                                    <SendIcon
-                                      onClick={() => {
-                                        updateReactData({
-                                          promptForMessage: true,
-                                          messageType: '',
-                                          recipient: (`${this_item.slotData.display_name}%%${this_item.slotData.owner}`)
-                                        }, true);
-                                      }}
-                                    />
-                                  </Tooltip>
-                                </Box>
-                              }
-                              <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
-                                <Tooltip title={`${this_item.slotData.notes ? 'Update' : 'Add a'} note...`}>
-                                  <EditIcon
-                                    onClick={() => {
-                                      setEditNoteNumber(index);
-                                    }}
-                                  />
-                                </Tooltip>
-                              </Box>
-                              {!pViewOnly &&
-                                ((isEventOwner)
-                                  || (isSlotOwner(this_item.slotData) && !reactData.defaultValues.prohibit_removeSelf)
-                                ) &&
-                                <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
-                                  <Tooltip title={`Remove ${isEventOwner ? this_item.slotData.display_name : 'me'}`}>
-                                    <PersonAddDisabledIcon
-                                      onClick={async () => {
-                                        await handleAllocateSlot({
-                                          body: {
-                                            person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
-                                            slot: this_item.slotData.id,
-                                            release: true,
-                                            index: (index || 0)
-                                          }
-                                        });
-                                      }}
-                                    />
-                                  </Tooltip>
-                                </Box>
-                              }
-                              {(isEventOwner && !pViewOnly) &&
-                                (this_item.slotData.documents && (this_item.slotData.documents.length > 0)) &&
-                                <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
-                                  <Tooltip title={`Update clock in/out times`}>
-                                    <RestoreIcon
-                                      onClick={async () => {
-                                        updateReactData({
-                                          editTimeEntries: Object.assign({},
-                                            this_item.slotData,
-                                            {
-                                              index,
-                                              title: `${pOccData.description} ${makeDate(pOccData.date).relative}${(!isEmpty(pOccData.time)) ? ' - ' + pOccData.time$ : ''}`,
-                                              appointmentDateTimeStamp: makeDate(pOccData.date, { noTime: true }).timestamp
-                                            }
-                                          )
-                                        }, true);
-                                      }}
-                                    />
-                                  </Tooltip>
-                                </Box>
-                              }
-                            </Box>
-                          }
+                        </Box>
+                        {(() => {
+                          const canManageSlot = (isEventOwner || isSlotOwner(this_item.slotData)) && (editNoteNumber === -1);
+                          const canViewDocuments = canManageSlot
+                            && this_item.slotData.documents
+                            && (this_item.slotData.documents.length > 0);
+                          const canMessage = canManageSlot && isEventOwner && !isSlotOwner(this_item.slotData);
+                          const canRemove = canManageSlot && !pViewOnly
+                            && (isEventOwner || (isSlotOwner(this_item.slotData) && !reactData.defaultValues.prohibit_removeSelf));
+                          const canEditClock = canManageSlot && isEventOwner && !pViewOnly
+                            && this_item.slotData.documents
+                            && (this_item.slotData.documents.length > 0);
+                            const canAddGuest = canManageSlot && !pViewOnly
+                              && !['time', 'seats'].includes(pOccData.signup_type)
+                              && getGuestUsage(this_item.slotData.owner).allowsGuests;
+                          const hasOverflowActions = canViewDocuments || canMessage || canRemove || canEditClock || canAddGuest || canManageSlot;
+
+                          return hasOverflowActions ? (
+                            <Tooltip title={'More actions'}>
+                              <IconButton
+                                aria-label={`slot actions for ${this_item.slotData.display_name}`}
+                                onClick={(event) => {
+                                  openRowActionMenu(event, index);
+                                }}
+                                size='small'
+                                style={{ marginLeft: 'auto', marginRight: 8, paddingRight: 4 }}
+                              >
+                                <MoreHorizIcon />
+                              </IconButton>
+                            </Tooltip>
+                          ) : null;
+                        })()}
                           {/* Guests are allowed and I am the event or slot owner */}
                           {(((pOccData.number_of_guests && (pOccData.number_of_guests > 0))
                             && (isEventOwner || isSlotOwner(this_item.slotData)))) &&
@@ -2291,7 +2642,15 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
             onSelect={async (selectedPerson) => {
               setSelectNewSlotOwner(false);
               let nArray = selectedPerson.split('%%');
-              let pID = nArray[Math.min(1, nArray.length - 1)];
+              let pID;
+              if (nArray.length === 1) {
+                pID = nArray[0]; 
+                selectedPerson = nArray[0]; 
+              }
+              else {
+                pID = nArray[1];
+                selectedPerson = `${nArray[0]}%%${nArray[1]}`;
+              }
               let availability_list = await (myAvailability(
                 {
                   check_date: pOccData.date,
@@ -2311,7 +2670,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                   });
                 }
                 if ((listIndex < 0) || (!listIndex && (listIndex !== 0))) {   // no assigned slot
-                  slotObj.slot = selectedPerson.person_id;
+                  slotObj.slot = pID;
                   slotObj.index = eventSlotList.length;
                   newSlotStart24 = 0;
                   newSlotEnd24 = 2359;
@@ -2488,6 +2847,90 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
             }}
             setMethod={null}
             allowCancel={true}
+          />
+        }
+        {reactData.addGuestInfo &&
+          (reactData.addGuestInfo.mode === 'manual') &&
+          !reactData.selectGuestFromDirectory &&
+          <AVATextInput
+            titleText={`Add guest for ${reactData.addGuestInfo.ownerName}`}
+            promptText={[
+              reactData.addGuestInfo.unlimited
+                ? 'Guest name'
+                : `Guest name (${reactData.addGuestInfo.remaining} remaining)`
+            ]}
+            errorText={reactData.addGuestInfo.errorText || []}
+            buttonText={'Add guest'}
+            onCancel={() => {
+              updateReactData({
+                addGuestInfo: false,
+                selectGuestFromDirectory: false
+              }, true);
+            }}
+            onSave={async ([guestName]) => {
+              const trimmedGuestName = normalizeManualGuestName(guestName);
+              if (!trimmedGuestName) {
+                updateReactData({
+                  addGuestInfo: Object.assign({}, reactData.addGuestInfo, {
+                    errorText: ['Please enter a guest name']
+                  })
+                }, true);
+                return;
+              }
+
+              await addGuestForOwner({
+                ownerId: reactData.addGuestInfo.owner,
+                ownerName: reactData.addGuestInfo.ownerName,
+                guestDisplayName: trimmedGuestName,
+                fromDirectory: false
+              });
+            }}
+            allowCancel={true}
+          />
+        }
+        {reactData.selectGuestFromDirectory && reactData.addGuestInfo &&
+          <QuickSearch
+            reactData={reactData.guestQuickSearch || {
+              accessList: [],
+              selections: [],
+              linkedPersonFilter: { raw: '', lower: '' }
+            }}
+            updateReactData={(newData) => {
+              updateReactData({
+                guestQuickSearch: Object.assign({}, reactData.guestQuickSearch || {}, newData)
+              }, true);
+            }}
+            options={{
+              keepSelections: true,
+              withGroups: false,
+              withPreferred: false,
+              hidePeople: false,
+              pickOne: true,
+              showAll: true,
+              title: `Select guest for ${reactData.addGuestInfo.ownerName}`,
+              buttonText: { empty: 'Cancel', selected: 'Add guest' }
+            }}
+            onClose={async (selections) => {
+              if (Array.isArray(selections) && selections.length > 0 && selections[0].person_id) {
+                const selected = selections[0];
+                const selectedPersonId = selected.person_id;
+                const selectedPersonName = selected.person_name
+                  || (`${selected.person_firstName || selected.first || ''} ${selected.person_lastName || selected.last || ''}`).trim()
+                  || selected.person_id;
+                await addGuestForOwner({
+                  ownerId: reactData.addGuestInfo.owner,
+                  ownerName: reactData.addGuestInfo.ownerName,
+                  guestDisplayName: selectedPersonName,
+                  guestParticipantId: selectedPersonId,
+                  fromDirectory: true
+                });
+              }
+              else {
+                updateReactData({
+                  selectGuestFromDirectory: false
+                }, true);
+              }
+            }}
           />
         }
         {reactData.editEventInfo &&
@@ -2747,6 +3190,99 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
             }}
           />
         }
+        <Menu
+          id='row-action-menu'
+          anchorEl={rowActionAnchorEl}
+          open={!!rowActionAnchorEl && rowActionIndex > -1}
+          onClose={closeRowActionMenu}
+          keepMounted
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        >
+          {rowActionIndex > -1 && eventSlotList[rowActionIndex] && (() => {
+            const selectedSlot = eventSlotList[rowActionIndex];
+            const canManageSlot = isEventOwner || isSlotOwner(selectedSlot.slotData);
+            const canViewDocuments = canManageSlot
+              && selectedSlot.slotData.documents
+              && (selectedSlot.slotData.documents.length > 0);
+            const canMessage = isEventOwner && !isSlotOwner(selectedSlot.slotData);
+            const canRemove = !pViewOnly
+              && (isEventOwner || (isSlotOwner(selectedSlot.slotData) && !reactData.defaultValues.prohibit_removeSelf));
+            const canEditClock = isEventOwner && !pViewOnly
+              && selectedSlot.slotData.documents
+              && (selectedSlot.slotData.documents.length > 0);
+            const canAddGuest = !pViewOnly
+              && !['time', 'seats'].includes(pOccData.signup_type)
+              && canManageSlot
+              && getGuestUsage(selectedSlot.slotData.owner).allowsGuests;
+
+            return (
+              <MenuList className={classes.popUpMenu}>
+                {canViewDocuments &&
+                  <MenuItem onClick={() => { openSlotDocuments(selectedSlot, rowActionIndex); }}>
+                    <Box display='flex' flexDirection='row' alignItems='center'>
+                      <AssignmentTurnedInIcon />
+                      <Typography className={classes.popUpMenuRow}>{'View documents'}</Typography>
+                    </Box>
+                  </MenuItem>
+                }
+                {canMessage &&
+                  <MenuItem onClick={() => {
+                    closeRowActionMenu();
+                    updateReactData({
+                      promptForMessage: true,
+                      messageType: '',
+                      recipient: (`${selectedSlot.slotData.display_name}%%${selectedSlot.slotData.owner}`)
+                    }, true);
+                  }}>
+                    <Box display='flex' flexDirection='row' alignItems='center'>
+                      <SendIcon />
+                      <Typography className={classes.popUpMenuRow}>{`Message ${selectedSlot.slotData.display_name}`}</Typography>
+                    </Box>
+                  </MenuItem>
+                }
+                {canManageSlot &&
+                  <MenuItem onClick={() => {
+                    closeRowActionMenu();
+                    setEditNoteNumber(rowActionIndex);
+                  }}>
+                    <Box display='flex' flexDirection='row' alignItems='center'>
+                      <EditIcon />
+                      <Typography className={classes.popUpMenuRow}>{selectedSlot.slotData.notes ? 'Edit note' : 'Add note'}</Typography>
+                    </Box>
+                  </MenuItem>
+                }
+                {canAddGuest &&
+                  <MenuItem onClick={() => { promptAddGuest(selectedSlot, rowActionIndex); }}>
+                    <Box display='flex' flexDirection='row' alignItems='center'>
+                      <PersonAddIcon />
+                      <Typography className={classes.popUpMenuRow}>{'Add guest'}</Typography>
+                    </Box>
+                  </MenuItem>
+                }
+                {canRemove &&
+                  <MenuItem onClick={async () => {
+                    closeRowActionMenu();
+                    await removeSlotCascade(selectedSlot);
+                  }}>
+                    <Box display='flex' flexDirection='row' alignItems='center'>
+                      <PersonAddDisabledIcon />
+                      <Typography className={classes.popUpMenuRow}>{`Remove ${isEventOwner ? selectedSlot.slotData.display_name : 'me'}`}</Typography>
+                    </Box>
+                  </MenuItem>
+                }
+                {canEditClock &&
+                  <MenuItem onClick={() => { openTimeEntryEditor(selectedSlot, rowActionIndex); }}>
+                    <Box display='flex' flexDirection='row' alignItems='center'>
+                      <RestoreIcon />
+                      <Typography className={classes.popUpMenuRow}>{'Update clock in/out times'}</Typography>
+                    </Box>
+                  </MenuItem>
+                }
+              </MenuList>
+            );
+          })()}
+        </Menu>
         {!loading &&
           <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
             <Box display='flex' flexDirection='column'>
@@ -2769,7 +3305,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                           summaryInfo.totalSlots++;
                           if (s.slotData.owner) {
                             summaryInfo.ownedSlots++;
-                            summaryInfo.slot_owners[s.slotData.owner] = s.slotData.slot_description || s.slotData.id;
+                            summaryInfo.slot_owners[s.slotData.id] = s.slotData.owner;
                           }
                           if (s.marked) {
                             summaryInfo.markedSlots++;

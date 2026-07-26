@@ -1,13 +1,10 @@
 import React from 'react';
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
 
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
 import Paper from '@material-ui/core/Paper';
 import Grid from '@material-ui/core/Grid';
-import IconButton from '@material-ui/core/IconButton';
 import TextField from '@material-ui/core/TextField';
 import Typography from '@material-ui/core/Typography';
 import InputAdornment from '@material-ui/core/InputAdornment';
@@ -16,23 +13,23 @@ import SearchIcon from '@material-ui/icons/Search';
 import CloseIcon from '@material-ui/icons/ExitToApp';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
 import SendIcon from '@material-ui/icons/Send';
-import PictureAsPdfIcon from '@material-ui/icons/PictureAsPdf';
+import PrintIcon from '@material-ui/icons/Print';
 
 import useSession from '../../hooks/useSession';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
 import { AVAclasses } from '../../util/AVAStyles';
-import { isEmpty, sentenceCase, getObject } from '../../util/AVAUtilities';
+import { isEmpty, sentenceCase, getObject, lambda } from '../../util/AVAUtilities';
 import { determineClass, getRole } from '../../util/AVAGroups';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import MakeMessage from './MakeMessage';
+import { useSnackbar } from 'notistack';
 
 import List from '@material-ui/core/List';
 
 const INITIAL_RENDER_COUNT = 30;
 const RENDER_BATCH_COUNT = 30;
 const PERSON_LOAD_BATCH_SIZE = 20;
-const PDF_CAPTURE_SCALE = 1.35;
 
 const useStyles = makeStyles(theme => ({
     wrapper: {
@@ -69,16 +66,6 @@ const useStyles = makeStyles(theme => ({
         flex: 1,
         minWidth: 0,
         overflowWrap: 'anywhere',
-    },
-    closeIconButton: {
-        flexShrink: 0,
-        alignSelf: 'flex-start',
-        padding: theme.spacing(0.5),
-    },
-    titleActions: {
-        display: 'inline-flex',
-        alignItems: 'center',
-        flexShrink: 0,
     },
     topBar: {
         marginBottom: theme.spacing(2),
@@ -181,8 +168,10 @@ const useStyles = makeStyles(theme => ({
     bottomActionBar: {
         flexShrink: 0,
         display: 'flex',
-        justifyContent: 'center',
+        justifyContent: 'space-between',
         alignItems: 'center',
+        paddingLeft: theme.spacing(2),
+        paddingRight: theme.spacing(2),
         paddingTop: theme.spacing(1.5),
         paddingBottom: theme.spacing(1.5),
         backgroundColor: theme.palette.background.paper,
@@ -293,12 +282,13 @@ const toMailtoHref = (emailValue = '') => {
 export default function GroupPhotoDirectory({ options = {}, onReset = () => { } }) {
     const classes = useStyles();
     const { state } = useSession();
-    const wrapperRef = React.useRef(null);
+    const { enqueueSnackbar } = useSnackbar();
     const gridScrollerRef = React.useRef(null);
 
     const AVAClass = AVAclasses();
 
     const { groupMemberList, pClient, pGroupName, pStyle, pRole, pPatient, pPatientName } = options;
+    const directoryTitle = pGroupName || 'Photo Directory';
     const showContactInfo = !(
         options?.showContactInfo === false
         || options?.withContactInfo === false
@@ -317,17 +307,28 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
     const [memberOverrides, setMemberOverrides] = React.useState({});
     const [hiddenImagePeople, setHiddenImagePeople] = React.useState({});
     const [renderCount, setRenderCount] = React.useState(INITIAL_RENDER_COUNT);
-    const [downloadingPdf, setDownloadingPdf] = React.useState(false);
     const [viewPeopleMaintenance, setViewPeopleMaintenance] = React.useState(false);
     const [showSuperSize, setShowSuperSize] = React.useState(false);
     const [superSizeData, setSuperSizeData] = React.useState(false);
     const [promptForMessage, setPromptForMessage] = React.useState(false);
     const [recipient, setRecipient] = React.useState('');
     const [messageType, setMessageType] = React.useState('');
+    const [requestingPrint, setRequestingPrint] = React.useState(false);
 
     const rawMembers = React.useMemo(() => {
         return normalizeList({ groupMemberList, pClient });
     }, [groupMemberList, pClient]);
+
+    const requestedPersonIDs = React.useMemo(() => {
+        return rawMembers
+            .map((member) => {
+                if (typeof member === 'string') {
+                    return member.trim();
+                }
+                return `${member?.person_id || ''}`.trim();
+            })
+            .filter(Boolean);
+    }, [rawMembers]);
 
     const preloadedList = state?.accessList?.[pClient]?.list;
 
@@ -449,6 +450,20 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
         const lowerSearch = searchValue.trim().toLowerCase();
         return records.filter(person => getSearchBlob(person).includes(lowerSearch));
     }, [rawMembers, personCache, memberOverrides, searchValue]);
+
+    const peopleByID = React.useMemo(() => {
+        const response = {
+            ...preloadedPeopleByID,
+            ...personCache,
+            ...memberOverrides,
+        };
+        rawMembers.forEach((member) => {
+            if (member && (typeof member === 'object') && member.person_id && !response[member.person_id]) {
+                response[member.person_id] = member;
+            }
+        });
+        return response;
+    }, [preloadedPeopleByID, personCache, memberOverrides, rawMembers]);
 
     const refreshDirectoryPerson = React.useCallback(async (personID) => {
         if (!personID) {
@@ -582,104 +597,58 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
         });
     }
 
-    async function waitForPaint(delay = 60) {
-        await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-
-    async function downloadDirectoryPdf() {
-        if (downloadingPdf || !wrapperRef.current || !gridScrollerRef.current || (directoryPeople.length === 0)) {
+    async function handlePrintDirectory() {
+        if (requestingPrint) {
             return;
         }
 
-        setDownloadingPdf(true);
+        if (!pClient || requestedPersonIDs.length === 0) {
+            enqueueSnackbar('No accounts are available to print for this directory.', {
+                variant: 'warning'
+            });
+            return;
+        }
 
-        const wrapperEl = wrapperRef.current;
-        const gridEl = gridScrollerRef.current;
-        const originalRenderCount = renderCount;
-        const originalScrollTop = gridEl.scrollTop;
+        const invokeParams = {
+            FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:printDirectory',
+            Payload: JSON.stringify({
+                body: {
+                    client_id: pClient,
+                    requestor: pPatient,
+                    report_title: directoryTitle,
+                    paperSize: (state?.session?.directory_format?.paperSize || [563, 750]),
+                    showImages: true,
+                    person_id: requestedPersonIDs,
+                }
+            })
+        };
 
-        try {
-            setRenderCount(directoryPeople.length);
-            await waitForPaint(120);
-
-            gridEl.scrollTop = 0;
-
-            const pdfDoc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-            const pageWidth = pdfDoc.internal.pageSize.getWidth();
-            const pageHeight = pdfDoc.internal.pageSize.getHeight();
-            const horizontalMargin = 24;
-            const verticalMargin = 24;
-            const printableWidth = pageWidth - (horizontalMargin * 2);
-            const printableHeight = pageHeight - (verticalMargin * 2);
-
-            const scrollerViewportHeight = gridEl.clientHeight;
-            const totalScrollableHeight = gridEl.scrollHeight;
-            const pageCount = Math.max(1, Math.ceil(totalScrollableHeight / scrollerViewportHeight));
-
-            for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
-                gridEl.scrollTop = pageIndex * scrollerViewportHeight;
-                await waitForPaint(60);
-
-                const canvas = await html2canvas(wrapperEl, {
-                    scale: PDF_CAPTURE_SCALE,
-                    useCORS: true,
-                    backgroundColor: '#ffffff',
-                    logging: false,
-                    scrollX: 0,
-                    scrollY: 0,
-                    windowWidth: wrapperEl.clientWidth,
-                    windowHeight: wrapperEl.clientHeight,
+        setRequestingPrint(true);
+        await lambda
+            .invoke(invokeParams)
+            .promise()
+            .then(() => {
+                enqueueSnackbar(`Directory print request for ${directoryTitle} has been submitted.`, {
+                    variant: 'success'
                 });
-
-                let imageData = canvas.toDataURL('image/jpeg', 0.92);
-                if (!imageData.startsWith('data:image/')) {
-                    imageData = canvas.toDataURL('image/png');
-                }
-                const mimeType = imageData.slice(5, imageData.indexOf(';')).toLowerCase();
-                const imageFormat = mimeType.includes('png') ? 'PNG' : 'JPEG';
-                const imageProps = pdfDoc.getImageProperties(imageData);
-                const renderedImageHeight = (imageProps.height * printableWidth) / imageProps.width;
-
-                if (pageIndex > 0) {
-                    pdfDoc.addPage();
-                }
-                pdfDoc.addImage(imageData, imageFormat, horizontalMargin, verticalMargin, printableWidth, Math.min(renderedImageHeight, printableHeight));
-                await waitForPaint(20);
-            }
-
-            const safeName = `${pGroupName || 'photo_directory'}`
-                .replace(/\s+/g, '_')
-                .replace(/[^a-zA-Z0-9_-]/g, '')
-                .slice(0, 60);
-
-            pdfDoc.save(`${safeName || 'photo_directory'}.pdf`);
-        }
-        finally {
-            setRenderCount(originalRenderCount);
-            setDownloadingPdf(false);
-            await waitForPaint(20);
-            gridEl.scrollTop = originalScrollTop;
-        }
+            })
+            .catch((error) => {
+                enqueueSnackbar(`AVA encountered an error while requesting a Group Directory. Error is ${error.message}`, {
+                    variant: 'error'
+                });
+            });
+        setRequestingPrint(false);
     }
 
     return (
-        <Box className={classes.wrapper} ref={wrapperRef}>
+        <Box className={classes.wrapper}>
             {!showSuperSize && <Box className={classes.fixedHeader}>
 
                 <Box className={classes.titleRow}>
                     <Typography variant='h6' className={classes.titleText}>
-                        {pGroupName || 'Photo Directory'}
+                        {directoryTitle}
                     </Typography>
-                    {false && <Box className={classes.titleActions}>
-                        <IconButton
-                            className={classes.closeIconButton}
-                            aria-label='download directory pdf'
-                            onClick={downloadDirectoryPdf}
-                            disabled={downloadingPdf || (directoryPeople.length === 0)}
-                        >
-                            <PictureAsPdfIcon />
-                        </IconButton>
-                    </Box>}
+                    {false && <Box className={classes.titleActions} />}
                 </Box>
 
                 <Box className={classes.topBar} display='flex' alignItems='center'>
@@ -741,8 +710,23 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                             const homePhoneHref = suppressContact ? '' : toTelHref(rawHomePhoneValue);
                             const workPhoneHref = suppressContact ? '' : toTelHref(rawWorkPhoneValue);
                             const emailHref = suppressContact ? '' : toMailtoHref(emailValue);
-                            const imageSrc = getImage(person.person_id);
+                            const imageSrc = getImage(person, { allowS3Fallback: false, allowS3Backfill: false });
                             const showPortraitImage = Boolean(imageSrc) && !hiddenImagePeople[person?.person_id];
+                            const roleOrTitle = (person?.role_or_title || '').trim();
+                            const directoryPartnerId = `${person?.directory_partner || ''}`.trim();
+                            let mergePartnerLabel = '';
+                            if ((person?.directory_option === 'merge') && directoryPartnerId) {
+                                const partnerRec = peopleByID[directoryPartnerId];
+                                const partnerFirst = (partnerRec?.name?.first || '').trim();
+                                let partnerLast = ((partnerRec?.name?.last || '').split('~')[0] || '').trim();
+                                if (partnerLast && personLast && (partnerLast.toLowerCase() === personLast.toLowerCase())) {
+                                    partnerLast = '';
+                                }
+                                const partnerName = [partnerFirst, partnerLast].filter(Boolean).join(' ').trim();
+                                if (partnerName) {
+                                    mergePartnerLabel = `(and ${partnerName})`;
+                                }
+                            }
                             if (!isEmpty(person.address)) {
                                 let returnValue = '';
                                 let splitAddress = person.address?.address?.split('~') || [''];
@@ -764,7 +748,15 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                 [addressValue, imbeddedTitle] = person.location.split('~');
                             }
                             return (
-                                <Grid item xs={12} sm={6} md={6} lg={4} xl={3} key={person?.person_id}>
+                                <Grid
+                                    item
+                                    key={person?.person_id}
+                                    xs={12}
+                                    sm={6}
+                                    md={6}
+                                    lg={4}
+                                    xl={3}
+                                >
                                     <Paper
                                         variant='outlined'
                                         className={classes.card}
@@ -803,13 +795,23 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                             <Typography variant='subtitle1' className={classes.cardName}>
                                                 {`${person.name?.first || ''} ${personLast || ''}`}
                                             </Typography>
+                                            {roleOrTitle && (
+                                                <Typography variant='caption' color='textSecondary' style={{ marginTop: '-4px', fontWeight: 700 }}>
+                                                    {roleOrTitle}
+                                                </Typography>
+                                            )}
+                                            {mergePartnerLabel && (
+                                                <Typography variant='caption' color='textSecondary' className={classes.cardSubtext}>
+                                                    {mergePartnerLabel}
+                                                </Typography>
+                                            )}
                                             {imbeddedTitle && (
-                                                <Typography variant='caption' color='textSecondary'>
+                                                <Typography variant='caption' color='textSecondary' className={classes.cardSubtext}>
                                                     {imbeddedTitle}
                                                 </Typography>
                                             )}
                                             {addressValue && (
-                                                <Typography variant='caption' color='textSecondary'>
+                                                <Typography variant='caption' color='textSecondary' className={classes.cardSubtext}>
                                                     {addressValue}
                                                 </Typography>
                                             )}
@@ -973,6 +975,16 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                     onClick={() => onReset({ updatesMade: false })}
                 >
                     Exit
+                </Button>
+                <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'blue', color: 'white' }}
+                    size='small'
+                    startIcon={<PrintIcon fontSize='small' />}
+                    onClick={handlePrintDirectory}
+                    disabled={requestingPrint || requestedPersonIDs.length === 0}
+                >
+                    {requestingPrint ? 'Submitting...' : 'Print'}
                 </Button>
             </Box>
 

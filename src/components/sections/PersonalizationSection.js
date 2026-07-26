@@ -2,8 +2,9 @@ import React from 'react';
 import Box from '@material-ui/core/Box';
 import { Slider, Typography, Button, Switch, TextField, Checkbox } from '@material-ui/core';
 import { AVATextStyle, AVAclasses, AVADefaults } from '../../util/AVAStyles';
-import { s3, cloudfront, isMobile, getObject } from '../../util/AVAUtilities';
+import { s3, cloudfront, isMobile, getObject, dbClient } from '../../util/AVAUtilities';
 import { createPersonPhotoThumbFromFile } from '../../util/AVAPeople';
+import QuickSearch from './QuickSearch';
 import Select from 'react-dropdown-select';
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
@@ -13,6 +14,55 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
   const AVAClass = AVAclasses();
   const hiddenFileInput = React.useRef(null);
   const voiceAudioPlayer = React.useRef(new Audio());
+  const [showDirectoryQuickSearch, setShowDirectoryQuickSearch] = React.useState(false);
+  const [directoryQuickSearch, setDirectoryQuickSearch] = React.useState({
+    selections: [],
+    linkedPersonFilter: { raw: '', lower: '' }
+  });
+  const [directoryPartnerName, setDirectoryPartnerName] = React.useState('');
+  const directoryPartnerId = currentValues?.peopleRec?.directory_partner;
+  const currentPersonId = currentValues?.peopleRec?.person_id;
+  const currentFirstName = currentValues?.peopleRec?.name?.first;
+  const currentLastName = currentValues?.peopleRec?.name?.last;
+  const personId = currentValues?.peopleRec?.person_id;
+  const standardImageUrl = personId ? getObject(personId, 'image') : '';
+  const thumbnailImageSrc = reactData.myImage || currentValues?.peopleRec?.person_photo || '';
+  const [profileImageSrc, setProfileImageSrc] = React.useState(thumbnailImageSrc || standardImageUrl || '');
+
+  React.useEffect(() => {
+    let active = true;
+    const resolveDirectoryPartnerName = async () => {
+      const partnerId = directoryPartnerId;
+      if (!partnerId) {
+        if (active) { setDirectoryPartnerName(''); }
+        return;
+      }
+
+      const selfId = currentPersonId;
+      if (partnerId === selfId) {
+        const selfName = `${currentFirstName || ''} ${currentLastName || ''}`.trim();
+        if (active) { setDirectoryPartnerName(selfName || partnerId); }
+        return;
+      }
+
+      const peopleRec = await dbClient
+        .get({
+          Key: { person_id: partnerId },
+          TableName: 'People'
+        })
+        .promise()
+        .catch(() => null);
+
+      if (!active) { return; }
+      const foundName = `${peopleRec?.Item?.name?.first || ''} ${peopleRec?.Item?.name?.last || ''}`.trim();
+      setDirectoryPartnerName(foundName || partnerId);
+    };
+
+    resolveDirectoryPartnerName();
+    return () => {
+      active = false;
+    };
+  }, [directoryPartnerId, currentPersonId, currentFirstName, currentLastName]);
 
   React.useEffect(() => {
     const audioEl = voiceAudioPlayer.current;
@@ -22,6 +72,45 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
       audioEl.src = '';
     };
   }, []);
+
+  React.useEffect(() => {
+    let isCancelled = false;
+    const safeSetImage = (src) => {
+      if (!isCancelled) {
+        setProfileImageSrc(src || '');
+      }
+    };
+
+    const canLoadImage = (src) => {
+      return new Promise((resolve) => {
+        if (!src) {
+          resolve(false);
+          return;
+        }
+        const preload = new Image();
+        preload.onload = () => resolve(true);
+        preload.onerror = () => resolve(false);
+        preload.src = src;
+      });
+    };
+
+    const loadProfileImage = async () => {
+      safeSetImage(thumbnailImageSrc || standardImageUrl || '');
+
+      if (thumbnailImageSrc && (await canLoadImage(thumbnailImageSrc))) {
+        safeSetImage(thumbnailImageSrc);
+      }
+
+      if (standardImageUrl && (await canLoadImage(standardImageUrl))) {
+        safeSetImage(standardImageUrl);
+      }
+    };
+
+    void loadProfileImage();
+    return () => {
+      isCancelled = true;
+    };
+  }, [thumbnailImageSrc, standardImageUrl]);
 
   const languageTable = [
     { label: "English", value: "en" },
@@ -385,15 +474,13 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
           marginTop={1}
         >
           <Box
-            style={{ marginLeft: '40px' }}
+            style={{ marginLeft: '40px', objectFit: 'cover', objectPosition: 'center' }}
             component="img"
             width={150}
             height={150}
             border={1}
             alt=''
-            src={reactData.myImage}
-            objectFit='cover'
-            objectPosition='center'
+            src={profileImageSrc}
           />
           <Box display='flex'
             flexDirection='row'
@@ -679,6 +766,29 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
 
 
 
+      <Typography
+        style={AVATextStyle({ margin: { top: 2, bottom: 0.4 } })}
+      >
+        {`Enter (optional) text below to display with ${currentValues.peopleRec.name?.first || 'this person'}'s directory listing`}
+      </Typography>
+      <TextField
+        multiline
+        style={isMobile ? AVATextStyle({ width: '60%', margin: { left: 0.5 } }) : AVATextStyle({ margin: { left: 1 } })}
+        key={`role_or_title`}
+        defaultValue={currentValues.peopleRec.role_or_title || ''}
+        helperText='Role/Title'
+        onBlur={async (event) => {
+          await updateField({
+            updateList:
+              [{
+                tableName: 'peopleRec',
+                fieldName: 'role_or_title',
+                newData: event.target.value
+              }]
+          });
+        }}
+      />
+
       
               <React.Fragment>
                 <Typography
@@ -693,9 +803,10 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
                   marginTop={-0}
                   flexWrap={'wrap'}
                 >
-                  {[{ option: 'normal', label: 'Include my info' },
+                  {[{ option: 'include', label: 'Include my info' },
                   { option: 'exclude', label: 'Exclude me' },
                   { option: 'no_contact', label: `Include me, but do not show my Contact Info` },
+                  { option: 'merge', label: `Show with someone else${directoryPartnerName ? ` (${directoryPartnerName})` : ''}` },
                   ].map((this_option, tIndex) => (
                     <Box
                       display='flex'
@@ -711,15 +822,32 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
                         style={{ paddingTop: '2px', paddingBottom: '2px' }}
                         size='small'
                         checked={((currentValues.peopleRec.directory_option === this_option.option)
-                          || ((this_option.option === 'normal') && !currentValues.peopleRec.directory_option))
+                          || ((this_option.option === 'include')
+                            && (!currentValues.peopleRec.directory_option || currentValues.peopleRec.directory_option === 'normal')))
                         }
                         onClick={async () => {
+                          if (this_option.option === 'merge') {
+                            if (currentValues.peopleRec.directory_option === 'merge') {
+                              return;
+                            }
+                            setDirectoryQuickSearch({
+                              selections: [],
+                              linkedPersonFilter: { raw: '', lower: '' }
+                            });
+                            setShowDirectoryQuickSearch(true);
+                            return;
+                          }
                           await updateField({
                             updateList:
                               [{
                                 tableName: 'peopleRec',
                                 fieldName: 'directory_option',
                                 newData: this_option.option
+                              },
+                              {
+                                tableName: 'peopleRec',
+                                fieldName: 'directory_partner',
+                                newData: null
                               }]
                           });
                         }}
@@ -733,6 +861,56 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
                   ))}
                 </Box>
               </React.Fragment>
+
+      {showDirectoryQuickSearch &&
+        <QuickSearch
+          reactData={directoryQuickSearch}
+          updateReactData={(newData) => {
+            setDirectoryQuickSearch(prev => Object.assign({}, prev, newData));
+          }}
+          options={{
+            keepSelections: true,
+            withGroups: false,
+            withPreferred: false,
+            hidePeople: false,
+            pickOne: true,
+            showAll: true,
+            title: 'Select the account to show with',
+            buttonText: { empty: 'Cancel', selected: 'Select' }
+          }}
+          onClose={async (selections) => {
+            setShowDirectoryQuickSearch(false);
+            if (Array.isArray(selections) && selections.length > 0 && selections[0].person_id) {
+              await updateField({
+                updateList: [{
+                  tableName: 'peopleRec',
+                  fieldName: 'directory_option',
+                  newData: 'merge'
+                },
+                {
+                  tableName: 'peopleRec',
+                  fieldName: 'directory_partner',
+                  newData: selections[0].person_id
+                }]
+              });
+            }
+            else {
+              await updateField({
+                updateList: [{
+                  tableName: 'peopleRec',
+                  fieldName: 'directory_partner',
+                  newData: null
+                },
+                {
+                  tableName: 'peopleRec',
+                  fieldName: 'directory_option',
+                  newData: 'include'
+                }]
+              });
+            }
+          }}
+        />
+      }
       
 
 

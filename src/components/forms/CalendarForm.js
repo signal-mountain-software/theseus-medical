@@ -609,6 +609,9 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   };
 
   const getPersonName = (idToFind) => {
+    if (typeof idToFind === 'string' && idToFind.toLowerCase().startsWith('guest:')) {
+      return titleCase(idToFind.slice(6).replace(/_/g, ' '));
+    }
     if (!state.accessList?.[state.session.client_id]?.list) {
       return idToFind;
     }

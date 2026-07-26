@@ -1052,11 +1052,38 @@ const LoginModuleV2 = ({
     if (!clientStyle?.no_tfa && (resolved.inputType === 'email' || resolved.inputType === 'phone')) {
       const tempPass = uuid(6);
       const clientLabel = await getClientNameForId(personRec?.client_id);
-      const prefMethod = resolved.inputType === 'email' ? 'email' : 'sms';
-      const expectedAddress = prefMethod === 'email'
-        ? (personRec?.messaging?.email || userId)
-        : (personRec?.messaging?.sms || userId);
+      let prefMethod = resolved.inputType === 'email' ? 'email' : 'sms';
+      const my_email = personRec?.contact_info?.email?.address || personRec?.messaging?.email || null;
+      const my_phone = personRec?.contact_info?.cell?.number || personRec?.messaging?.sms || null;
+      const expectedAddress = (() => {
+        if (prefMethod === 'email') {
+          if (my_email) { return my_email; }
+          else if (my_phone) {
+            prefMethod = 'sms'
+            return my_phone;
+          }
+          else {
+            return null;
+          }
+        }
+        else {
+         if (my_phone) { return my_phone; }
+         else if (my_email) {
+           prefMethod = 'email';
+           return my_email;
+         }
+         else {
+           return null;
+         }
+        }
+      });
 
+      const resolvedAddress = expectedAddress();
+      if (!resolvedAddress) {
+        setAlertMessage('We could not determine a valid contact method for sending the security code.');
+        setStep('user');
+        return;
+      }
       try {
         await sendMessages({
           client: personRec?.client_id,
@@ -1075,8 +1102,8 @@ const LoginModuleV2 = ({
       }
 
       const promptMessage = prefMethod === 'email'
-        ? `We've sent an e-Mail to ${expectedAddress}. Look for a security code in that message and enter it here.`
-        : `We've sent a text to (${String(expectedAddress).slice(2, 5)}) ${String(expectedAddress).slice(5, 8)}-${String(expectedAddress).slice(8)}. Look for a security code in that message and enter it here.`;
+        ? `We've sent an e-Mail to ${resolvedAddress}. Look for a security code in that message and enter it here.`
+        : `We've sent a text to (${String(resolvedAddress).slice(2, 5)}) ${String(resolvedAddress).slice(5, 8)}-${String(resolvedAddress).slice(8)}. Look for a security code in that message and enter it here.`;
 
       setTfaCode(tempPass);
       setTfaInput('');
