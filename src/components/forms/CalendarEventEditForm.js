@@ -890,19 +890,17 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
           slotInfo.slotObj[o].slot_owner_name = resolvedOwnerName;
         }
         if ((o !== slotInfo.slotObj[o].owner) && !['time', 'seats'].includes(pOccData.signup_type)) {
-          let participantName = slotInfo.slotObj[o].display_name;
-          if (!participantName || (participantName === slotInfo.slotObj[o].owner)) {
-            if (o.toLowerCase().startsWith('guest:')) {
-              participantName = titleCase(o.slice(6).replace(/_/g, ' '));
-            }
-            else {
-              let slotIdName = await makeName(o);
-              if (slotIdName && slotIdName !== o) {
-                participantName = slotIdName;
-              }
+          let participantName;
+          if (o.toLowerCase().startsWith('guest:')) {
+            participantName = titleCase(o.slice(6).replace(/_/g, ' '));
+          }
+          else {
+            let slotIdName = await makeName(o);
+            if (slotIdName && slotIdName !== o) {
+              participantName = slotIdName;
             }
           }
-          slotInfo.slotObj[o].display_name = participantName || slotInfo.slotObj[o].display_name || o;
+          slotInfo.slotObj[o].display_name = participantName || o;
         }
         else if (!slotInfo.slotObj[o].display_name) {
           slotInfo.slotObj[o].display_name = resolvedOwnerName || o;
