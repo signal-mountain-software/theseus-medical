@@ -2151,6 +2151,22 @@ export async function printOccurrenceSheet(body) {
     return resolvedLabel;
   };
 
+  // Pre-resolve participant names so sorting and display both use the correct name
+  // (stored display_name can be stale/wrong when slot key differs from owner)
+  if (isParticipantSignup) {
+    for (const [sID, slotRec] of Object.entries(oData.slots || {})) {
+      if (isOccupiedSlot(slotRec) && slotRec.owner && sID !== slotRec.owner) {
+        if (sID.toLowerCase().startsWith('guest:')) {
+          slotRec.display_name = titleCase(sID.slice(6).replace(/_/g, ' '));
+        } else {
+          const resolved = await makeName(sID);
+          if (resolved) { slotRec.display_name = resolved; }
+          else { slotRec.display_name = sID; }
+        }
+      }
+    }
+  }
+
   let sortedSlotEntries = Object.entries(oData.slots || {}).sort(([aKey, aSlot], [bKey, bSlot]) => {
     if (isParticipantSignup) {
       const aName = normalizeSortName(aSlot);
@@ -2180,7 +2196,7 @@ export async function printOccurrenceSheet(body) {
     let occupiedSlot = isOccupiedSlot(slotRec);
     if (occupiedSlot) {
       signup_total++;
-      if (!slotRec.display_name) { outName = slotRec.owner; }
+      if (!slotRec.display_name) { outName = sID; }
       else {
         let oParts = slotRec.display_name.split(',');
         if (oParts.length === 1) { outName = oParts[0].trim(); }
