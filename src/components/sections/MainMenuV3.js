@@ -6,8 +6,8 @@ import { getImage } from '../../util/AVAPeople';
 import { AVATextStyle, AVAclasses, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
 import { clearPushSubscriptionFromDB, initPushNotifications, unsubscribeFromPush, isPushSupported, isPushOptedIn, syncAlertDeliveryMethod } from '../../util/AVAPushNotifications';
 import { getActivityDetail } from '../../util/AVAActivityLoaderV3';
+import { loadAndQueueNotifications, markNotificationShown, priorityToSeverity, getNotificationDisplayOptions, INITIAL_NOTIFICATION_CHECK_TIME, playNotificationSound } from '../../util/AVANotifications';
 import QuickAdd from './QuickAdd';
-
 
 import Card from '@material-ui/core/Card';
 import CardActionArea from '@material-ui/core/CardActionArea';
@@ -35,6 +35,9 @@ import Avatar from '@material-ui/core/Avatar';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
 import Dialog from '@material-ui/core/Dialog';
+import DialogTitle from '@material-ui/core/DialogTitle';
+import DialogContent from '@material-ui/core/DialogContent';
+import DialogActions from '@material-ui/core/DialogActions';
 import Button from '@material-ui/core/Button';
 import TextField from '@material-ui/core/TextField';
 import FormControlLabel from '@material-ui/core/FormControlLabel';
@@ -273,6 +276,11 @@ export default ({ start_at }) => {
     liveLinkCurrentIndex: -1,
     showIosInstall: false,
     alert: false,
+    notification: null,
+    notificationQueue: [],
+    notificationCurrentIndex: 0,
+    notificationSoundNeeded: false,
+    lastNotificationCheckTime: INITIAL_NOTIFICATION_CHECK_TIME,
     testMode: ["T", "L"].includes(window.location.href.split('//')[1].slice(0, 1).toUpperCase()),
     levelPages: {}    // tracks current page (0-indexed) per level for paginated display
   });
@@ -728,6 +736,7 @@ export default ({ start_at }) => {
       cl(`Update while idle at ${now.toLocaleString()}.`);
       await updateMarquee();
       await rebuildMenuHierarchy();
+      await loadMenuNotifications();
       updateReactData({
         lastActiveTime: now,
       }, true);
@@ -965,7 +974,7 @@ export default ({ start_at }) => {
             parent: targetParentId
           });
         }
-            if (this_item.hidden && this_item.menu_itemType === 'menu') {  // hidden menu item? process children immediately
+        if (this_item.hidden && this_item.menu_itemType === 'menu') {  // hidden menu item? process children immediately
           await batchGetMenuItems(this_item.children || [], menu_level + 1, this_item);
         }
       }
@@ -1251,6 +1260,118 @@ export default ({ start_at }) => {
         updateReactData({ menu_hierarchy: reactData.menu_hierarchy }, true);
       }
     }
+  };
+
+  /**
+   * Load pending notifications for current user and queue for display.
+   * Called after menu rebuild, on component return, and on idle recovery.
+   */
+  const loadMenuNotifications = async () => {
+    try {
+      if (!state.session || !state.session.client_id || !state.session.user_id) {
+        return;
+      }
+
+      const result = await loadAndQueueNotifications({
+        dbClient,
+        clientId: state.session.client_id,
+        userId: state.session.user_id,
+        lastCheckTime: reactData.lastNotificationCheckTime,
+        authorizedToMenuItem
+      });
+
+      // Policy: after initial app-start notification discovery, always attempt sound for attention,
+      // regardless of per-notification play_sound flags.
+      const isPostInitialCheck = result.effectiveLastCheckTime !== INITIAL_NOTIFICATION_CHECK_TIME;
+
+      if (result.success && result.notificationQueue.length > 0) {
+        // Queue loaded; display first notification
+        const firstNotif = result.notificationQueue[0];
+        const displayOptions = getNotificationDisplayOptions(firstNotif);
+        updateReactData({
+          notificationQueue: result.notificationQueue,
+          notificationCurrentIndex: 0,
+          //    notificationSoundNeeded: isPostInitialCheck,
+          lastNotificationCheckTime: result.lastCheckTime,
+          notification: {
+            severity: priorityToSeverity(firstNotif.priority || 'low'),
+            title: firstNotif.title,
+            message: firstNotif.message,
+            notification_id: firstNotif.notification_id,
+            action_url: firstNotif.action_url,
+            dismissible: firstNotif.dismissible !== false,
+            persist_until_dismissed: !!firstNotif.persist_until_dismissed,
+            position_vertical: firstNotif.position_vertical,
+            position_horizontal: firstNotif.position_horizontal,
+            autoHideDuration: displayOptions.autoHideDuration,
+            anchorOrigin: displayOptions.anchorOrigin
+          }
+        }, true);
+        if (isPostInitialCheck) {
+          playNotificationSound();
+        }
+      } else {
+        // No new notifications, just update check time
+        updateReactData({
+          notificationSoundNeeded: false,
+          lastNotificationCheckTime: result.lastCheckTime
+        });
+      }
+    } catch (err) {
+      console.error('Error loading notifications:', err);
+    }
+  };
+
+  /**
+   * Move to next notification in queue and display.
+   */
+  const showNextNotification = async () => {
+    const queue = reactData.notificationQueue || [];
+    const nextIndex = (reactData.notificationCurrentIndex || 0) + 1;
+
+    if (nextIndex < queue.length) {
+      const nextNotif = queue[nextIndex];
+      const displayOptions = getNotificationDisplayOptions(nextNotif);
+      updateReactData({
+        notificationCurrentIndex: nextIndex,
+        notification: {
+          severity: priorityToSeverity(nextNotif.priority || 'low'),
+          title: nextNotif.title,
+          message: nextNotif.message,
+          notification_id: nextNotif.notification_id,
+          action_url: nextNotif.action_url,
+          dismissible: nextNotif.dismissible !== false,
+          persist_until_dismissed: !!nextNotif.persist_until_dismissed,
+          position_vertical: nextNotif.position_vertical,
+          position_horizontal: nextNotif.position_horizontal,
+          autoHideDuration: displayOptions.autoHideDuration,
+          anchorOrigin: displayOptions.anchorOrigin
+        }
+      }, true);
+    } else {
+      // No more notifications
+      updateReactData({
+        notification: null,
+        notificationQueue: [],
+        notificationCurrentIndex: 0
+      }, true);
+    }
+  };
+
+  /**
+   * Dismiss current notification and load next, or clear if queue exhausted.
+   */
+  const dismissNotification = async () => {
+    const currentNotificationId = reactData.notification?.notification_id;
+    if (currentNotificationId && state.session?.user_id) {
+      void markNotificationShown({
+        dbClient,
+        notificationId: currentNotificationId,
+        userId: state.session.user_id
+      });
+    }
+
+    await showNextNotification();
   };
 
   /**
@@ -2229,6 +2350,7 @@ export default ({ start_at }) => {
         // rebuild when the user later toggles the display mode.
         updateReactData({ uiTilesOverrideLoaded: true }, false);
         await updateMarquee();
+        await loadMenuNotifications();
       }
       else {
         updateReactData({
@@ -2438,12 +2560,14 @@ export default ({ start_at }) => {
           updateReactData({
             renderFunctionCall: false
           }, true);
+          void loadMenuNotifications();
         }}
         onAbort={() => {
           start();
           updateReactData({
             renderFunctionCall: false
           }, true);
+          void loadMenuNotifications();
         }}
         onSave={(saveResponse) => {
           const closeAlert = buildAlertFromCloseResponse(saveResponse);
@@ -2455,6 +2579,7 @@ export default ({ start_at }) => {
             reactUpd.alert = closeAlert;
           }
           updateReactData(reactUpd, true);
+          void loadMenuNotifications();
         }}
         onClose={(closeResponse) => {
           const closeAlert = buildAlertFromCloseResponse(closeResponse);
@@ -2466,6 +2591,7 @@ export default ({ start_at }) => {
             reactUpd.alert = closeAlert;
           }
           updateReactData(reactUpd, true);
+          void loadMenuNotifications();
         }}
       />);
   }
@@ -3119,9 +3245,9 @@ export default ({ start_at }) => {
   // The three named star-values that can appear as access rules in available_to
   // and need to be selectable (and pre-selected) in the QuickSearch dialog.
   const SPECIAL_ACCESS_VALUES = [
-    { person_id: '*all',     first: '* Everybody',      last: '' },
-    { person_id: '*admin',   first: '* Administrators',  last: '' },
-    { person_id: '*support', first: '* Support Staff',   last: '' },
+    { person_id: '*all', first: '* Everybody', last: '' },
+    { person_id: '*admin', first: '* Administrators', last: '' },
+    { person_id: '*support', first: '* Support Staff', last: '' },
   ];
 
   // Returns the initialized available_to array for a new menu item:
@@ -3465,14 +3591,14 @@ export default ({ start_at }) => {
                   ? (useTileUI
                     ? { height: 100, width: '100%', borderRadius: '30px 30px 30px 30px' }
                     : {
-                         width: 64,
+                      width: 64,
                       minWidth: 64,
                       maxWidth: 64,
                       height: 64,
                       minHeight: 64,
                       marginLeft: 18,
                       marginRight: -8,
-                        borderRadius: '16px',
+                      borderRadius: '16px',
                     }
                   )
                   : (useTileUI
@@ -4821,33 +4947,33 @@ export default ({ start_at }) => {
                 >
                   {/\.(jpe?g|png|gif|webp|svg|bmp)(\?.*)?$/i.test((reactData.liveLinkUrl || '').trim())
                     ? <Box
-                        component='img'
-                        src={reactData.liveLinkUrl}
-                        alt={reactData.liveLinkTitle || ''}
-                        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-                      />
-                    : canPlayAsMedia(reactData.liveLinkUrl)
-                    ?
-                    <ReactPlayer
-                      url={reactData.liveLinkUrl}
-                      width='100%'
-                      height='100%'
-                      playing
-                      controls
-                      muted
-                    />
-                    :
-                    <iframe
-                      title={reactData.liveLinkTitle || 'Live Link'}
+                      component='img'
                       src={reactData.liveLinkUrl}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        border: 'none'
-                      }}
-                      allow='autoplay; fullscreen'
-                      allowFullScreen
+                      alt={reactData.liveLinkTitle || ''}
+                      style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                     />
+                    : canPlayAsMedia(reactData.liveLinkUrl)
+                      ?
+                      <ReactPlayer
+                        url={reactData.liveLinkUrl}
+                        width='100%'
+                        height='100%'
+                        playing
+                        controls
+                        muted
+                      />
+                      :
+                      <iframe
+                        title={reactData.liveLinkTitle || 'Live Link'}
+                        src={reactData.liveLinkUrl}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          border: 'none'
+                        }}
+                        allow='autoplay; fullscreen'
+                        allowFullScreen
+                      />
                   }
                 </Box>
               </Box>
@@ -5141,41 +5267,41 @@ export default ({ start_at }) => {
                       className={AVAClass.AVAButton}
                       size='small'
                       style={{ backgroundColor: reactData.addMenuDialogDenyMode ? '#ffcdd2' : '#c8e6c9' }}
-                    onClick={() => {
-                      const isDenyMode = !!reactData.addMenuDialogDenyMode;
-                      const existingSelections = (reactData.addMenuDialogAvailableTo || [])
-                        .filter(r => isDenyMode ? r.startsWith('!') : (r.startsWith('group:') || r.startsWith('person:') || r.startsWith('*')))
-                        .map(r => {
-                          const raw = isDenyMode ? r.slice(1) : r;
-                          if (raw.startsWith('group:')) { return { group_id: raw.slice(6) }; }
-                          if (raw.startsWith('*')) {
-                            const sv = SPECIAL_ACCESS_VALUES.find(s => s.person_id === raw);
-                            return { person_id: raw, person_name: sv ? sv.first : raw };
-                          }
-                          const personId = raw.slice(7);
-                          let personName = null;
-                          if (personId === state.session.patient_id) {
-                            personName = reactData.greetingName || null;
-                          } else if (personId === state.session.user_id) {
-                            personName = state.session.user_display_name || null;
-                          } else if (reactData.accessList) {
-                            const found = reactData.accessList.find(p => p.person_id === personId);
-                            if (found) { personName = (`${found.first || ''} ${found.last || ''}`).trim() || null; }
-                          }
-                          return { person_id: personId, ...(personName ? { person_name: personName } : {}) };
-                        });
-                      updateReactData({
-                        showAddAccessToSearch: true,
-                        groupInfo: null,
-                        linkedPersonFilter: { raw: '', lower: '' },
-                        selections: existingSelections,
-                        special_values: SPECIAL_ACCESS_VALUES,
-                      }, true);
-                    }}
-                    disabled={reactData.addMenuDialogSaving}
-                  >
-                    {`${reactData.addMenuDialogAccessReviewed ? 'Change' : 'Set'} ${reactData.addMenuDialogDenyMode ? 'Exclusions' : 'Access'}`}
-                  </Button>
+                      onClick={() => {
+                        const isDenyMode = !!reactData.addMenuDialogDenyMode;
+                        const existingSelections = (reactData.addMenuDialogAvailableTo || [])
+                          .filter(r => isDenyMode ? r.startsWith('!') : (r.startsWith('group:') || r.startsWith('person:') || r.startsWith('*')))
+                          .map(r => {
+                            const raw = isDenyMode ? r.slice(1) : r;
+                            if (raw.startsWith('group:')) { return { group_id: raw.slice(6) }; }
+                            if (raw.startsWith('*')) {
+                              const sv = SPECIAL_ACCESS_VALUES.find(s => s.person_id === raw);
+                              return { person_id: raw, person_name: sv ? sv.first : raw };
+                            }
+                            const personId = raw.slice(7);
+                            let personName = null;
+                            if (personId === state.session.patient_id) {
+                              personName = reactData.greetingName || null;
+                            } else if (personId === state.session.user_id) {
+                              personName = state.session.user_display_name || null;
+                            } else if (reactData.accessList) {
+                              const found = reactData.accessList.find(p => p.person_id === personId);
+                              if (found) { personName = (`${found.first || ''} ${found.last || ''}`).trim() || null; }
+                            }
+                            return { person_id: personId, ...(personName ? { person_name: personName } : {}) };
+                          });
+                        updateReactData({
+                          showAddAccessToSearch: true,
+                          groupInfo: null,
+                          linkedPersonFilter: { raw: '', lower: '' },
+                          selections: existingSelections,
+                          special_values: SPECIAL_ACCESS_VALUES,
+                        }, true);
+                      }}
+                      disabled={reactData.addMenuDialogSaving}
+                    >
+                      {`${reactData.addMenuDialogAccessReviewed ? 'Change' : 'Set'} ${reactData.addMenuDialogDenyMode ? 'Exclusions' : 'Access'}`}
+                    </Button>
                     <FormControlLabel
                       style={{ marginTop: 4 }}
                       control={
@@ -5319,6 +5445,85 @@ export default ({ start_at }) => {
         </Snackbar>
       }
 
+      {
+        reactData.notification &&
+        <Dialog
+          open={!!reactData.notification}
+          onClose={dismissNotification}
+          fullWidth
+          maxWidth='sm'
+          PaperProps={{
+            style: {
+              borderRadius: '30px',
+              boxShadow: '0 12px 35px rgba(0, 0, 0, 0.25)',
+              maxHeight: '85vh',
+              overflow: 'hidden',
+              width: 'min(92vw, 560px)'
+            }
+          }}
+          BackdropProps={{
+            style: {
+              backgroundColor: 'rgba(0, 0, 0, 0.35)'
+            }
+          }}
+        >
+          <DialogTitle style={{
+            padding: '16px 20px 12px',
+            borderBottom: '1px solid rgba(0,0,0,0.12)',
+            fontSize: '1.1rem',
+            fontWeight: 600,
+            backgroundColor: reactData.notification.severity === 'error'
+              ? '#fdecea'
+              : reactData.notification.severity === 'warning'
+                ? '#fff8e1'
+                : null
+          }}>
+            {reactData.notification.title || 'Notification'}
+          </DialogTitle>
+          <DialogContent dividers style={{
+            padding: '64px 20px',
+            maxHeight: '60vh',
+            minHeight: '40vh',
+            overflowY: 'auto',
+            overflowX: 'hidden'
+          }}>
+            <div style={{
+              maxWidth: '100%',
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
+              whiteSpace: 'pre-wrap',
+              lineHeight: 1.5
+            }}>
+              {reactData.notification.message}
+            </div>
+          </DialogContent>
+          <DialogActions style={{ padding: '12px 16px 16px', justifyContent: 'flex-end' }}>
+            {reactData.notification.action_url &&
+              <Button
+                className={AVAClass.AVAButton}
+                color='primary'
+                onClick={(ev) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  window.open(reactData.notification.action_url, '_blank');
+                  dismissNotification();
+                }}
+              >
+                Open
+              </Button>
+            }
+            <Button
+              className={AVAClass.AVAButton}
+              variant='contained'
+              color='secondary'
+              onClick={dismissNotification}
+            >
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+      }
+
       {reactData.deleteMenuConfirm &&
         <AVAConfirm
           promptText={[
@@ -5436,30 +5641,30 @@ export default ({ start_at }) => {
                   className={AVAClass.AVAButton}
                   style={{ marginLeft: 8, backgroundColor: reactData.editDescriptionDenyMode ? '#ffcdd2' : '#c8e6c9' }}
                   size='small'
-                onClick={() => {
-                  const isDenyMode = !!reactData.editDescriptionDenyMode;
-                  const existingSelections = (reactData.editDescriptionAvailableTo || [])
-                    .filter(r => isDenyMode ? r.startsWith('!') : (r.startsWith('group:') || r.startsWith('person:') || r.startsWith('*')))
-                    .map(r => {
-                      const raw = isDenyMode ? r.slice(1) : r;
-                      if (raw.startsWith('group:')) { return { group_id: raw.slice(6) }; }
-                      if (raw.startsWith('*')) {
-                        const sv = SPECIAL_ACCESS_VALUES.find(s => s.person_id === raw);
-                        return { person_id: raw, person_name: sv ? sv.first : raw };
-                      }
-                      return { person_id: raw.slice(7) };
-                    });
-                  updateReactData({
-                    showAccessToSearch: true,
-                    groupInfo: null,
-                    linkedPersonFilter: { raw: '', lower: '' },
-                    selections: existingSelections,
-                    special_values: SPECIAL_ACCESS_VALUES,
-                  }, true);
-                }}
-              >
-                {reactData.editDescriptionDenyMode ? 'Edit Exclusions' : 'Edit Access'}
-              </Button>
+                  onClick={() => {
+                    const isDenyMode = !!reactData.editDescriptionDenyMode;
+                    const existingSelections = (reactData.editDescriptionAvailableTo || [])
+                      .filter(r => isDenyMode ? r.startsWith('!') : (r.startsWith('group:') || r.startsWith('person:') || r.startsWith('*')))
+                      .map(r => {
+                        const raw = isDenyMode ? r.slice(1) : r;
+                        if (raw.startsWith('group:')) { return { group_id: raw.slice(6) }; }
+                        if (raw.startsWith('*')) {
+                          const sv = SPECIAL_ACCESS_VALUES.find(s => s.person_id === raw);
+                          return { person_id: raw, person_name: sv ? sv.first : raw };
+                        }
+                        return { person_id: raw.slice(7) };
+                      });
+                    updateReactData({
+                      showAccessToSearch: true,
+                      groupInfo: null,
+                      linkedPersonFilter: { raw: '', lower: '' },
+                      selections: existingSelections,
+                      special_values: SPECIAL_ACCESS_VALUES,
+                    }, true);
+                  }}
+                >
+                  {reactData.editDescriptionDenyMode ? 'Edit Exclusions' : 'Edit Access'}
+                </Button>
                 <FormControlLabel
                   style={{ marginTop: 4 }}
                   control={

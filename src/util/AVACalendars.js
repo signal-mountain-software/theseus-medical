@@ -2223,9 +2223,21 @@ export async function printOccurrenceSheet(body) {
       doc.line(detail_indent, yPos + 3, detail_indent + 300, yPos + 3, 'F');
     }
     else if (occupiedSlot) {
+      // Force a page break if there's not enough space for the entire row,
+      // by rendering a blank line that triggers pdfLine's page-break logic
+      // (which properly re-renders headers)
+      const spaceAvailable = page.height - page.margin.bottom - yPos;
+      if (spaceAvailable < detailRowMinHeight) {
+        pdfLine('', page.font.size.small, 'normal', 0, Math.ceil(detailRowMinHeight / page.font.size.small), 0);
+      }
+      
+      // Capture row start AFTER potential page break
       const rowStartY = yPos;
       const rowStartPage = page.number;
+      
+      // Start each row with consistent padding
       yPos += detailRowPadding;
+      
       let pRec = null;
       const isGuestToken = (`${sID || ''}`.toLowerCase().startsWith('guest:') || slotRec.guest === true);
       let personForDetails = null;
@@ -2241,14 +2253,16 @@ export async function printOccurrenceSheet(body) {
       if (personForDetails) {
         pRec = await getPerson(personForDetails, '*all');
       }
+      
+      // Render photo with noBreak to keep it with name on same page
       if (pRec?.person_photo) {
-        pdfLine('image', page.font.size.large, 'normal', 0, 1.5, 0, { image: pRec.person_photo });
+        pdfLine('image', page.font.size.large, 'normal', 0, 0, 0, { image: pRec.person_photo, noBreak: true });
       }
       else {
         // Keep no-photo rows vertically aligned with photo rows.
         yPos += (1.5 * page.font.size.large);
       }
-      pdfLine(outName, page.font.size.large, 'bold', 0, 0.75, 0, { xPos: detailTextX, noNewLine: true });
+      pdfLine(outName, page.font.size.large, 'bold', 0, 0.75, 0, { xPos: detailTextX, noNewLine: true, noBreak: true });
       let nameY = yPos;
       const nameLineEndX = detailTextX + doc.getTextWidth(outName || '');
       const checkAnchorX = Math.max(detailTextX + 54, nameLineEndX + 8);
@@ -2299,10 +2313,11 @@ export async function printOccurrenceSheet(body) {
         });
       }
       if (page.number === rowStartPage) {
+        // Enforce consistent row height on the same page
         yPos = Math.max(yPos + detailRowPadding, rowStartY + detailRowMinHeight);
       }
       else {
-        // A page break occurred while rendering this row, so rowStartY is stale.
+        // A page break occurred; add padding after the row
         yPos += detailRowPadding;
       }
     }
