@@ -1,11 +1,45 @@
 import React from 'react';
 import moment from 'moment';
 
-const getPromptLastSeen = prompt => localStorage.getItem(`${prompt}PromptLastSeen`);
+const getStorage = () => {
+  try {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    return window.localStorage || null;
+  }
+  catch {
+    return null;
+  }
+};
+
+const getPromptLastSeen = prompt => {
+  const storage = getStorage();
+  if (!storage) {
+    return null;
+  }
+
+  try {
+    return storage.getItem(`${prompt}PromptLastSeen`);
+  }
+  catch {
+    return null;
+  }
+};
 
 const setPromptLastSeen = prompt => {
   const today = moment().toISOString();
-  localStorage.setItem(`${prompt}PromptLastSeen`, today);
+  const storage = getStorage();
+  if (!storage) {
+    return;
+  }
+
+  try {
+    storage.setItem(`${prompt}PromptLastSeen`, today);
+  }
+  catch {
+    // Ignore storage write failures and keep prompt logic functional.
+  }
 };
 
 const getPromptVisibility = (prompt, waitTime, unitOfTime) => {
