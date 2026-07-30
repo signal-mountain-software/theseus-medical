@@ -23,7 +23,9 @@ import { isEmpty, sentenceCase, getObject, lambda } from '../../util/AVAUtilitie
 import { determineClass, getRole } from '../../util/AVAGroups';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import MakeMessage from './MakeMessage';
-import { useSnackbar } from 'notistack';
+import { Snackbar } from '@material-ui/core';
+import Alert from '@material-ui/lab/Alert';
+import AlertTitle from '@material-ui/lab/AlertTitle';
 
 import List from '@material-ui/core/List';
 
@@ -282,7 +284,7 @@ const toMailtoHref = (emailValue = '') => {
 export default function GroupPhotoDirectory({ options = {}, onReset = () => { } }) {
     const classes = useStyles();
     const { state } = useSession();
-    const { enqueueSnackbar } = useSnackbar();
+    const [snackbar, setSnackbar] = React.useState(false);
     const gridScrollerRef = React.useRef(null);
 
     const AVAClass = AVAclasses();
@@ -603,9 +605,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
         }
 
         if (!pClient || requestedPersonIDs.length === 0) {
-            enqueueSnackbar('No accounts are available to print for this directory.', {
-                variant: 'warning'
-            });
+            setSnackbar({ severity: 'warning', message: 'No accounts are available to print for this directory.' });
             return;
         }
 
@@ -613,8 +613,8 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
             FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:printDirectory',
             Payload: JSON.stringify({
                 body: {
-                    client_id: pClient,
-                    requestor: pPatient,
+                    client_id: pClient || state.session.client_id,
+                    requestor: pPatient || state.session.patient_id,
                     report_title: directoryTitle,
                     paperSize: (state?.session?.directory_format?.paperSize || [563, 750]),
                     showImages: true,
@@ -624,19 +624,34 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
         };
 
         setRequestingPrint(true);
-        await lambda
+        let goodSubmit = true;
+        lambda
             .invoke(invokeParams)
             .promise()
-            .then(() => {
-                enqueueSnackbar(`Directory print request for ${directoryTitle} has been submitted.`, {
-                    variant: 'success'
-                });
-            })
+            //        .then((lambda_response) => {
+            //            if (lambda_response.StatusCode === 200) {
+            //                const response = JSON.parse(lambda_response.Payload);
+            //                const url = response?.body?.Location || '';
+            //                setSnackbar({
+            //                    severity: 'success',
+            //                    title: 'Directory Ready',
+            //                    message: url
+            //                        ? <span>Directory print complete. <a href={url} target='_blank' rel='noopener noreferrer' style={{ color: 'white' }}>Tap here to view it.</a></span>
+            //                        : 'Directory print has completed.'
+            //                });
+            //            }
+            //        })
             .catch((error) => {
-                enqueueSnackbar(`AVA encountered an error while requesting a Group Directory. Error is ${error.message}`, {
-                    variant: 'error'
-                });
+                goodSubmit = false;
+                setSnackbar({ severity: 'error', title: 'Print Failed', message: `AVA encountered an error while requesting a Group Directory. Error is ${error.message}` });
             });
+        if (goodSubmit) {
+            setSnackbar({
+                severity: 'success',
+                title: 'Directory Print Submitted',
+                message: `We'll notify you when it's ready.`
+            });
+        }
         setRequestingPrint(false);
     }
 
@@ -1020,9 +1035,9 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                     promptUse={['subject', 'message', 'voicemail']}
                     buttonText={'Send'}
                     sender={{
-                        "client_id": pClient,
-                        "patient_id": pPatient,
-                        "patient_display_name": pPatientName
+                        "client_id": pClient || state.session.client_id,
+                        "patient_id": pPatient || state.session.patient_id,
+                        "patient_display_name": pPatientName || ""
                     }}
                     pRecipientID={recipient ? recipient.split(':')[1] : ''}
                     pRecipientName={recipient ? recipient.split(':')[0] : ''}
@@ -1031,6 +1046,33 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                     setMethod={(messageType === 'AVA') ? 'AVA' : (messageType && messageType.includes('URGENT') ? 'voice' : null)}
                     allowCancel={true}
                 />
+            }
+            {snackbar &&
+                <Snackbar
+                    open={!!snackbar}
+                    autoHideDuration={snackbar.severity === 'success' ? 10000 : snackbar.severity === 'error' ? null : 5000}
+                    onClose={() => setSnackbar(false)}
+                    anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+                >
+                    <Alert
+                        severity={snackbar.severity || 'info'}
+                        variant='filled'
+                        style={{
+                            paddingLeft: '24px',
+                            paddingRight: '48px',
+                            borderRadius: '30px',
+                            borderWidth: 4,
+                            borderColor: 'black',
+                            width: 'calc(100vw - 24px)',
+                            maxWidth: '420px',
+                            boxSizing: 'border-box',
+                        }}
+                        onClose={() => setSnackbar(false)}
+                    >
+                        {snackbar.title && <AlertTitle>{snackbar.title}</AlertTitle>}
+                        {snackbar.message}
+                    </Alert>
+                </Snackbar>
             }
         </Box>
     );
