@@ -5484,10 +5484,15 @@ export default ({ start_at }) => {
             padding: '64px 20px',
             maxHeight: '60vh',
             minHeight: '40vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
             overflowY: 'auto',
             overflowX: 'hidden'
           }}>
             <div style={{
+              ...withMenuMobileTextCap(AVATextStyle({ size: 1, align: 'center' })),
+              width: '100%',
               maxWidth: '100%',
               overflowWrap: 'anywhere',
               wordBreak: 'break-word',
