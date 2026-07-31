@@ -140,12 +140,21 @@ export async function getMarqueeMessage(client_id, options = {}) {
       if (mRec.end_time && (mRec.end_time < now)) {
         return false;
       }
-      if (!options.belongsTo) {
+      if (!options.belongsTo && !options.authorizedToMenuItem) {
         return true;
+      }
+      // available_to (same rule format as Notifications/MenuV3) takes precedence over the
+      // older raw groups[] attribute, which is still honored for backward compatibility.
+      if (mRec.available_to) {
+        if (options.authorizedToMenuItem) {
+          return options.authorizedToMenuItem(mRec.available_to);
+        }
+        return mRec.available_to.some(rule => (rule === '*all')
+          || (rule.startsWith('group:') && options.belongsTo && options.belongsTo.hasOwnProperty(rule.slice(6))));
       }
       if (mRec.groups && (mRec.groups.length > 0)) {
         return (mRec.groups.some((allowedGroup) => {
-          return (options.belongsTo.hasOwnProperty(allowedGroup));
+          return (options.belongsTo && options.belongsTo.hasOwnProperty(allowedGroup));
         }));
       }
       return true;
