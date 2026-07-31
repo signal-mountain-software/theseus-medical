@@ -3281,6 +3281,27 @@ export default ({ start_at }) => {
     return (availableTo || []).every(r => r.startsWith('*') || defaultPersonEntries.has(r));
   };
 
+  const renderNotificationMessage = (message) => {
+    if (typeof message !== 'string') {
+      return message;
+    }
+
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) {
+      return '';
+    }
+
+    const sanitizedMessage = trimmedMessage
+      .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+      .replace(/<iframe[\s\S]*?>[\s\S]*?<\/iframe>/gi, '')
+      .replace(/<object[\s\S]*?>[\s\S]*?<\/object>/gi, '')
+      .replace(/<embed[\s\S]*?>[\s\S]*?<\/embed>/gi, '')
+      .replace(/\son\w+=(['"]).*?\1/gi, '')
+      .replace(/\s(href|src)=(['"])\s*javascript:[\s\S]*?\2/gi, ' $1="#"');
+
+    return <span dangerouslySetInnerHTML={{ __html: sanitizedMessage }} />;
+  };
+
   function renderAccessibleSubMenu(parentMenuId, level_index, accessibleDepth = 1) {
     if (useTileUI) {
       return null;
@@ -5449,7 +5470,11 @@ export default ({ start_at }) => {
         reactData.notification &&
         <Dialog
           open={!!reactData.notification}
-          onClose={dismissNotification}
+          onClose={(_event, reason) => {
+            if (reason === 'escapeKeyDown') {
+              dismissNotification();
+            }
+          }}
           fullWidth
           maxWidth='sm'
           PaperProps={{
@@ -5499,7 +5524,7 @@ export default ({ start_at }) => {
               whiteSpace: 'pre-wrap',
               lineHeight: 1.5
             }}>
-              {reactData.notification.message}
+              {renderNotificationMessage(reactData.notification.message)}
             </div>
           </DialogContent>
           <DialogActions style={{ padding: '12px 16px 16px', justifyContent: 'flex-end' }}>
