@@ -93,7 +93,7 @@ import LoadSpreadsheet from '../forms/LoadSpreadsheet';
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageMonitorV3 from '../forms/MessageMonitorV3';
 import CheckInCheckOut from '../forms/CheckInCheckOut';
-import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
+import NotificationMaintenance from '../dialogs/NotificationMaintenance';
 import MessageTemplateManager from '../dialogs/MessageTemplateManager';
 import GroupPhotoDirectory from '../forms/GroupPhotoDirectory';
 import TaskManager from '../dialogs/TaskManager';
@@ -748,7 +748,8 @@ export default ({ start_at }) => {
     let options = {
       belongsTo: (state.groups ? state.groups.belongsTo : {}),
       client_weather: state.session.client_weather,
-      critical_only: state.session.client_style?.marquee_critical_only || false
+      critical_only: state.session.client_style?.marquee_critical_only || false,
+      authorizedToMenuItem
     };
     let marqueeData = [];
     marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
@@ -2431,7 +2432,10 @@ export default ({ start_at }) => {
     MessageMonitorV3,
     RequestDashboardV3,
     CheckInCheckOut,
-    MarqueeMaintenance,
+    // Both legacy target names route to the same merged Notification/Marquee manager,
+    // so existing MenuV3 records referencing either target keep working with no DB migration.
+    MarqueeMaintenance: NotificationMaintenance,
+    NotificationMaintenance,
     MessageTemplateManager,
     GroupPhotoDirectory,
     TaskManager,
@@ -2555,6 +2559,7 @@ export default ({ start_at }) => {
         request={props.request || {}}
         showMenu={true}
         showNewEvent={props.options?.showNewEvent}
+        initialMode={call_instructions.target === 'MarqueeMaintenance' ? 'marquee' : undefined}
         onReset={() => {
           start();
           updateReactData({
@@ -3279,6 +3284,27 @@ export default ({ start_at }) => {
       ...(patientId && patientId !== userId ? [`person:${patientId}`] : []),
     ]);
     return (availableTo || []).every(r => r.startsWith('*') || defaultPersonEntries.has(r));
+  };
+
+  const renderNotificationMessage = (message) => {
+    if (typeof message !== 'string') {
+      return message;
+    }
+
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) {
+      return '';
+    }
+
+    const sanitizedMessage = trimmedMessage
+      .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+      .replace(/<iframe[\s\S]*?>[\s\S]*?<\/iframe>/gi, '')
+      .replace(/<object[\s\S]*?>[\s\S]*?<\/object>/gi, '')
+      .replace(/<embed[\s\S]*?>[\s\S]*?<\/embed>/gi, '')
+      .replace(/\son\w+=(['"]).*?\1/gi, '')
+      .replace(/\s(href|src)=(['"])\s*javascript:[\s\S]*?\2/gi, ' $1="#"');
+
+    return <span dangerouslySetInnerHTML={{ __html: sanitizedMessage }} />;
   };
 
   function renderAccessibleSubMenu(parentMenuId, level_index, accessibleDepth = 1) {
@@ -5449,7 +5475,11 @@ export default ({ start_at }) => {
         reactData.notification &&
         <Dialog
           open={!!reactData.notification}
-          onClose={dismissNotification}
+          onClose={(_event, reason) => {
+            if (reason === 'escapeKeyDown') {
+              dismissNotification();
+            }
+          }}
           fullWidth
           maxWidth='sm'
           PaperProps={{
@@ -5484,17 +5514,22 @@ export default ({ start_at }) => {
             padding: '64px 20px',
             maxHeight: '60vh',
             minHeight: '40vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
             overflowY: 'auto',
             overflowX: 'hidden'
           }}>
             <div style={{
+              ...withMenuMobileTextCap(AVATextStyle({ size: 1, align: 'center' })),
+              width: '100%',
               maxWidth: '100%',
               overflowWrap: 'anywhere',
               wordBreak: 'break-word',
               whiteSpace: 'pre-wrap',
               lineHeight: 1.5
             }}>
-              {reactData.notification.message}
+              {renderNotificationMessage(reactData.notification.message)}
             </div>
           </DialogContent>
           <DialogActions style={{ padding: '12px 16px 16px', justifyContent: 'flex-end' }}>

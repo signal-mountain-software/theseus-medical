@@ -51,6 +51,26 @@ export const normalizeNotificationSince = (lastCheckTime) => {
     return lastCheckTime;
 };
 
+const normalizeIsoOrDefault = (inputValue, defaultIso) => {
+    if (inputValue !== null && inputValue !== undefined && inputValue !== '') {
+        const parsed = makeDate(inputValue);
+        if (!parsed?.error && parsed?.iso) {
+            return parsed.iso;
+        }
+    }
+    return defaultIso;
+};
+
+// Shared by createNotification/updateNotification - blank dates default to "now" / "1 month out".
+const resolveNotificationWindow = (notificationRec) => {
+    const nowIso = new Date().toISOString();
+    const defaultDontShowAfter = addMonths(new Date(), 1)?.iso || makeDate(Date.now() + (30 * 24 * 60 * 60 * 1000)).iso;
+    return {
+        dont_show_before: normalizeIsoOrDefault(notificationRec.dont_show_before, nowIso),
+        dont_show_after: normalizeIsoOrDefault(notificationRec.dont_show_after, defaultDontShowAfter)
+    };
+};
+
 export const getNotificationDisplayOptions = (notif = {}) => {
     const priority = notif.priority || 'low';
     const severity = priorityToSeverity(priority);
@@ -201,22 +221,6 @@ export const createNotification = async ({
             };
         }
 
-        const normalizeIsoOrDefault = (inputValue, defaultIso) => {
-            if (inputValue !== null && inputValue !== undefined && inputValue !== '') {
-                const parsed = makeDate(inputValue);
-                if (!parsed?.error && parsed?.iso) {
-                    return parsed.iso;
-                }
-            }
-            return defaultIso;
-        };
-
-        const defaultDontShowBefore = nowIso;
-        const defaultDontShowAfter = addMonths(new Date(), 1)?.iso || makeDate(Date.now() + (30 * 24 * 60 * 60 * 1000)).iso;
-
-        const normalizedDontShowBefore = normalizeIsoOrDefault(notificationRec.dont_show_before, defaultDontShowBefore);
-        const normalizedDontShowAfter = normalizeIsoOrDefault(notificationRec.dont_show_after, defaultDontShowAfter);
-
         const item = {
             ...notificationRec,
             client_id: clientId,
@@ -224,8 +228,7 @@ export const createNotification = async ({
             created_at: notificationRec.created_at || nowIso,
             status: notificationRec.status || 'active',
             available_to: Array.isArray(notificationRec.available_to) ? notificationRec.available_to : ['*all'],
-            dont_show_before: normalizedDontShowBefore,
-            dont_show_after: normalizedDontShowAfter
+            ...resolveNotificationWindow(notificationRec)
         };
 
         const makeRandomNotificationId = () => {
@@ -281,6 +284,84 @@ export const createNotification = async ({
 };
 
 /**
+ * Update an existing notification record in place (overwrites the item).
+ * Unlike createNotification, this requires notification_id to already be set
+ * and does not attempt to generate a new one.
+ *
+ * @param {object} params
+ * @param {object} params.dbClient - AWS DynamoDB client
+ * @param {object} params.notificationRec - Full notification record (must include notification_id, client_id, created_at, status)
+ * @returns {Promise<object>} { success, notification }
+ */
+export const updateNotification = async ({ dbClient, notificationRec }) => {
+    try {
+        if (!dbClient || !notificationRec?.notification_id || !notificationRec?.client_id) {
+            return {
+                success: false,
+                notification: null
+            };
+        }
+
+        const requiredMessage = `${notificationRec.message || ''}`.trim();
+        if (!requiredMessage) {
+            return {
+                success: false,
+                notification: null
+            };
+        }
+
+        const item = {
+            ...notificationRec,
+            message: requiredMessage,
+            available_to: Array.isArray(notificationRec.available_to) ? notificationRec.available_to : ['*all'],
+            ...resolveNotificationWindow(notificationRec)
+        };
+
+        await dbClient.put({
+            TableName: 'Notifications',
+            Item: item
+        }).promise();
+
+        return {
+            success: true,
+            notification: item
+        };
+    } catch (err) {
+        console.error('Error updating notification:', err);
+        return {
+            success: false,
+            notification: null
+        };
+    }
+};
+
+/**
+ * List everyone who has seen/dismissed a given notification (NotificationsShown is
+ * only written at dismiss-time, so shown_at doubles as the dismissal timestamp).
+ *
+ * @param {object} params
+ * @param {object} params.dbClient - AWS DynamoDB client
+ * @param {string} params.notificationId - notification_id to look up
+ * @returns {Promise<Array>} [{ notification_id, user_id, shown_at, ttl }]
+ */
+export const listNotificationViewers = async ({ dbClient, notificationId }) => {
+    try {
+        const result = await dbClient.query({
+            TableName: 'NotificationsShown',
+            KeyConditionExpression: 'notification_id = :n',
+            ExpressionAttributeValues: { ':n': notificationId }
+        }).promise().catch(err => {
+            console.error('Error listing NotificationsShown:', err);
+            return { Items: [] };
+        });
+        return result.Items || [];
+    } catch (err) {
+        console.error('listNotificationViewers error:', err);
+        return [];
+    }
+};
+
+/**
  * Mark a notification as shown for the current user by writing to NotificationsShown table.
  * 
  * @param {object} params
@@ -310,6 +391,106 @@ export const markNotificationShown = async ({
         return true;
     } catch (err) {
         console.error('Error marking notification as shown:', err);
+        return false;
+    }
+};
+
+/**
+ * Reset (un-dismiss) a notification for a single viewer by deleting their
+ * NotificationsShown record, so it will be shown to them again.
+ *
+ * @param {object} params
+ * @param {object} params.dbClient - AWS DynamoDB client
+ * @param {string} params.notificationId - notification_id to reset
+ * @param {string} params.userId - user_id whose viewed/dismissed record should be cleared
+ * @returns {Promise<boolean>} true if successful
+ */
+export const resetNotificationViewer = async ({ dbClient, notificationId, userId }) => {
+    try {
+        await dbClient.delete({
+            TableName: 'NotificationsShown',
+            Key: { notification_id: notificationId, user_id: userId }
+        }).promise();
+        return true;
+    } catch (err) {
+        console.error('Error resetting notification viewer:', err);
+        return false;
+    }
+};
+
+/**
+ * Reset (un-dismiss) a notification for all viewers by deleting every
+ * NotificationsShown record for that notification_id.
+ *
+ * @param {object} params
+ * @param {object} params.dbClient - AWS DynamoDB client
+ * @param {string} params.notificationId - notification_id to reset
+ * @returns {Promise<boolean>} true if successful
+ */
+export const resetAllNotificationViewers = async ({ dbClient, notificationId }) => {
+    try {
+        const viewers = await listNotificationViewers({ dbClient, notificationId });
+        await Promise.all(viewers.map(viewer => dbClient.delete({
+            TableName: 'NotificationsShown',
+            Key: { notification_id: notificationId, user_id: viewer.user_id }
+        }).promise()));
+        return true;
+    } catch (err) {
+        console.error('Error resetting all notification viewers:', err);
+        return false;
+    }
+};
+
+/**
+ * List notifications created for a client (newest first), for management/maintenance UI.
+ * Unlike loadAndQueueNotifications, this returns all statuses and ignores per-user dedup.
+ *
+ * @param {object} params
+ * @param {object} params.dbClient - AWS DynamoDB client
+ * @param {string} params.clientId - Current client_id
+ * @returns {Promise<Array>} notification records, newest first
+ */
+export const listNotificationsForClient = async ({ dbClient, clientId }) => {
+    try {
+        const result = await dbClient.query({
+            TableName: 'Notifications',
+            IndexName: 'client_id-created_at-index',
+            KeyConditionExpression: 'client_id = :cid',
+            ExpressionAttributeValues: { ':cid': clientId },
+            ScanIndexForward: false
+        }).promise().catch(err => {
+            console.error('Error listing Notifications:', err);
+            return { Items: [] };
+        });
+        return result.Items || [];
+    } catch (err) {
+        console.error('listNotificationsForClient error:', err);
+        return [];
+    }
+};
+
+/**
+ * Stop a notification immediately - marks it cancelled so it's excluded from
+ * future queries (loadAndQueueNotifications filters on status pending/active).
+ *
+ * @param {object} params
+ * @param {object} params.dbClient - AWS DynamoDB client
+ * @param {string} params.notificationId - notification_id to cancel
+ * @returns {Promise<boolean>} true if successful
+ */
+export const cancelNotification = async ({ dbClient, notificationId }) => {
+    try {
+        const nowIso = new Date().toISOString();
+        await dbClient.update({
+            TableName: 'Notifications',
+            Key: { notification_id: notificationId },
+            UpdateExpression: 'set #status = :cancelled, dont_show_after = :now',
+            ExpressionAttributeNames: { '#status': 'status' },
+            ExpressionAttributeValues: { ':cancelled': 'cancelled', ':now': nowIso }
+        }).promise();
+        return true;
+    } catch (err) {
+        console.error('Error cancelling notification:', err);
         return false;
     }
 };
