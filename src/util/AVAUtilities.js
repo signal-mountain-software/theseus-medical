@@ -684,7 +684,7 @@ export async function normalizeImageOrientation(file) {
     canvas.width = bitmap.width;
     canvas.height = bitmap.height;
     canvas.getContext('2d').drawImage(bitmap, 0, 0);
-    bitmap.close?.();
+    if (typeof bitmap.close === 'function') { bitmap.close(); }
     const outputType = (file.type === 'image/png') ? 'image/png' : 'image/jpeg';
     const blob = await new Promise(resolve => canvas.toBlob(resolve, outputType, 0.92));
     if (!blob) { return file; }
