@@ -480,7 +480,7 @@ export default ({ defaults, onClose }) => {
       updateReactData({ showExportFilterPrompt: true, exportFilterPromptSpecs: promptSpecs }, true);
       return null;
     }
-    const exportData = await buildCurrentPeopleListExportData();
+    const exportData = await buildCurrentPeopleListExportData({ arraySeparator: '\n', preserveGroupedRaw: true });
     if (!exportData) {
       return false;
     }
@@ -496,6 +496,7 @@ export default ({ defaults, onClose }) => {
       value_type: opt.value_type,
       filters: opt.filters,
       category: opt.category,
+      pdf_data_group: opt.pdf_data_group,
     }));
     const safeFormName = sanitizeExportBaseName(
       selectedForm?.form_name || reactData.selectedForm_id,
@@ -525,6 +526,7 @@ export default ({ defaults, onClose }) => {
 
   async function buildCurrentPeopleListExportData(options = {}) {
     const arraySeparator = (typeof options?.arraySeparator === 'string') ? options.arraySeparator : '; ';
+    const preserveGroupedRaw = !!options?.preserveGroupedRaw;
     if (!reactData.selectedForm_id) {
       return false;
     }
@@ -573,6 +575,7 @@ export default ({ defaults, onClose }) => {
         selectedFieldKeys,
         selectedFieldOptions,
         arraySeparator,
+        preserveGroupedRaw,
         onProgress: ({ completedCount, totalCount }) => {
           updateReactData({
             exportProgressCurrent: completedCount,

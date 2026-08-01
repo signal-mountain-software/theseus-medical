@@ -148,6 +148,7 @@ export async function getExportFieldPickerData({ sessionId, clientId, exportScop
         value_type: fieldRec?.type,
         export_formats: Array.isArray(fieldRec?.export_formats) ? fieldRec.export_formats : null,
         filters: Array.isArray(fieldRec?.filters) ? fieldRec.filters : null,
+        pdf_data_group: fieldRec?.pdf_data_group || null,
       }))
       .sort((a, b) => {
         const catCompare = (a.category || '').localeCompare(b.category || '');
@@ -195,6 +196,7 @@ export async function resolveSelectedFieldValuesForPeople({
   selectedFieldKeys = [],
   selectedFieldOptions = [],
   arraySeparator = '; ',
+  preserveGroupedRaw = false,
   onProgress = null
 }) {
   if (!Array.isArray(selectedFieldKeys) || selectedFieldKeys.length === 0) {
@@ -231,6 +233,10 @@ export async function resolveSelectedFieldValuesForPeople({
         const rawNotes = Array.isArray(resolvedField?.raw) ? resolvedField.raw : [];
         const staticFilters = (fieldOpt.filters || []).filter(f => f.source !== 'prompt');
         return evaluateNoteFilters(rawNotes, staticFilters);
+      }
+      // Keep the pre-join array for grouped fields so the PDF renderer can transpose instances by index.
+      if (preserveGroupedRaw && fieldOpt?.pdf_data_group) {
+        return resolvedField?.formatted;
       }
       return formatExportValue(resolvedField?.formatted, { arraySeparator });
     });
@@ -452,6 +458,16 @@ export async function downloadRowsAsPdf({
 
   const fieldLabels = header.slice(identityColCount);
 
+  // Fields sharing a pdf_data_group are transposed by instance (see renderGroupedFieldSet below)
+  // instead of being listed one field at a time.
+  const groupFieldIndexes = {};
+  for (let j = 0; j < fieldLabels.length; j++) {
+    const groupKey = fieldMeta[j]?.pdf_data_group;
+    if (!groupKey) { continue; }
+    if (!groupFieldIndexes[groupKey]) { groupFieldIndexes[groupKey] = []; }
+    groupFieldIndexes[groupKey].push(j);
+  }
+
   for (let i = 0; i < rows.length; i++) {
     if (i > 0) { doc.addPage(); }
 
@@ -530,10 +546,121 @@ export async function downloadRowsAsPdf({
       currentCategory = normalizedCategory;
     };
 
+    // Shared "Label: value" line renderer — wraps, paginates, and aligns the value after the label.
+    const renderLabelValueRow = (labelText, value) => {
+      if (y > pageHeight - margin - lineHeight) {
+        doc.addPage();
+        y = margin;
+      }
+
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text(labelText, margin, y);
+      // Trailing spaces aren't reliably measured by getTextWidth, so add an explicit gap
+      // rather than relying on a trailing space in labelText (which rendered inconsistently field-to-field).
+      const labelGap = 4;
+      const labelWidth = doc.getTextWidth(labelText) + labelGap;
+
+      doc.setFont('Helvetica', 'normal');
+      const valueLines = doc.splitTextToSize(value, contentWidth - labelWidth);
+      doc.text(valueLines[0], margin + labelWidth, y);
+      y += lineHeight;
+
+      for (let k = 1; k < valueLines.length; k++) {
+        if (y > pageHeight - margin - lineHeight) {
+          doc.addPage();
+          y = margin;
+        }
+        doc.text(valueLines[k], margin + labelWidth, y);
+        y += lineHeight;
+      }
+    };
+
+    const groupSpacing = 8;
+    const addGroupGap = () => {
+      if (y > pageHeight - margin - groupSpacing) {
+        doc.addPage();
+        y = margin;
+      } else {
+        y += groupSpacing;
+      }
+    };
+
+    // Renders a pdf_data_group's fields transposed by instance: all "instance 1" answers together,
+    // then all "instance 2" answers, etc., instead of one field's full answer list at a time.
+    const renderGroupedFieldSet = (groupIndexes) => {
+      const arraysByIndex = groupIndexes.map((idx) => {
+        const rawFieldValue = fieldValues[idx];
+        return Array.isArray(rawFieldValue) ? rawFieldValue : [rawFieldValue];
+      });
+      const instanceCount = Math.max(0, ...arraysByIndex.map((arr) => arr.length));
+      if (instanceCount === 0) { return; }
+
+      renderCategoryHeader(fieldMeta[groupIndexes[0]]?.category || 'Other');
+
+      for (let instanceIdx = 0; instanceIdx < instanceCount; instanceIdx++) {
+        for (let g = 0; g < groupIndexes.length; g++) {
+          const idx = groupIndexes[g];
+          const value = `${arraysByIndex[g][instanceIdx] ?? ''}`.trim();
+          if (!value) { continue; }
+          renderLabelValueRow(`${fieldLabels[idx] || ''} ${instanceIdx + 1}:`, value);
+        }
+        // Separate each instance's block of answers from the next one.
+        if (instanceIdx < instanceCount - 1) {
+          addGroupGap();
+        }
+      }
+    };
+
+    const renderedGroupKeys = new Set();
+    let previousGroupKey = null;
+    let previousGroupHadData = false;
+
     for (let j = 0; j < fieldLabels.length; j++) {
       const meta = fieldMeta[j];
       const label = fieldLabels[j] || '';
       const categoryLabel = meta?.category || 'Other';
+      const groupKey = meta?.pdf_data_group || null;
+
+      let groupIndexes = null;
+      let groupHasData = false;
+      if (groupKey) {
+        groupIndexes = groupFieldIndexes[groupKey] || [j];
+        groupHasData = groupIndexes.some((idx) => {
+          const rawValue = fieldValues[idx];
+          const arr = Array.isArray(rawValue) ? rawValue : [rawValue];
+          return arr.some((v) => `${v ?? ''}`.trim() !== '');
+        });
+      }
+
+      // Give a data-bearing pdf_data_group set breathing room, whether entering or leaving one.
+      // A set with no data at all doesn't render anything, so it shouldn't leave a stray blank line.
+      if (groupKey !== previousGroupKey) {
+        if ((groupKey && groupHasData) || (previousGroupKey && previousGroupHadData)) {
+          addGroupGap();
+        }
+        previousGroupKey = groupKey;
+        previousGroupHadData = groupHasData;
+      }
+
+      if (groupKey) {
+        if (renderedGroupKeys.has(groupKey)) { continue; }
+
+        // Base the grouping decision on the largest instance count in the set (not just the
+        // first field) so a single-entry case never triggers grouping/numbering unnecessarily.
+        const groupInstanceCount = Math.max(0, ...groupIndexes.map((idx) => {
+          const rawValue = fieldValues[idx];
+          if (Array.isArray(rawValue)) { return rawValue.length; }
+          return ((rawValue === undefined) || (rawValue === null) || (rawValue === '')) ? 0 : 1;
+        }));
+        if (groupInstanceCount > 1) {
+          renderGroupedFieldSet(groupIndexes);
+          renderedGroupKeys.add(groupKey);
+          continue;
+        }
+        // Only one instance present — fall through to normal per-field rendering below.
+      }
+
 
       if (meta?.value_type === 'notes') {
         // ── Notes block ──
@@ -620,9 +747,9 @@ export async function downloadRowsAsPdf({
         const rawValue = `${fieldValues[j] ?? ''}`.trim();
         if (!rawValue) { continue; }
 
-        // Preserve compatibility with semicolon-joined arrays while supporting single URL values.
+        // Preserve compatibility with semicolon- or line-break-joined arrays while supporting single URL values.
         const imageUrls = rawValue
-          .split(';')
+          .split(/[;\n]+/)
           .map((candidate) => candidate.trim())
           .filter(Boolean);
         if (imageUrls.length === 0) { continue; }
@@ -701,31 +828,7 @@ export async function downloadRowsAsPdf({
         if (!value) { continue; }
 
         renderCategoryHeader(categoryLabel);
-
-        if (y > pageHeight - margin - lineHeight) {
-          doc.addPage();
-          y = margin;
-        }
-
-        doc.setFont('Helvetica', 'bold');
-        doc.setFontSize(10);
-        const labelText = `${label}: `;
-        doc.text(labelText, margin, y);
-        const labelWidth = doc.getTextWidth(labelText);
-
-        doc.setFont('Helvetica', 'normal');
-        const valueLines = doc.splitTextToSize(value, contentWidth - labelWidth);
-        doc.text(valueLines[0], margin + labelWidth, y);
-        y += lineHeight;
-
-        for (let k = 1; k < valueLines.length; k++) {
-          if (y > pageHeight - margin - lineHeight) {
-            doc.addPage();
-            y = margin;
-          }
-          doc.text(valueLines[k], margin + labelWidth, y);
-          y += lineHeight;
-        }
+        renderLabelValueRow(`${label}:`, value);
       }
     }
   }

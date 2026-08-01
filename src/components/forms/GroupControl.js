@@ -814,7 +814,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       return null;
     }
     try {
-      const exportData = await buildCurrentPeopleListExportData();
+      const exportData = await buildCurrentPeopleListExportData({ arraySeparator: '\n', preserveGroupedRaw: true });
       if (!exportData) {
         return false;
       }
@@ -830,6 +830,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         value_type: opt.value_type,
         filters: opt.filters,
         category: opt.category,
+        pdf_data_group: opt.pdf_data_group,
       }));
       const fileName = `${safeGroupName || 'group'}_people_list.pdf`;
       await downloadRowsAsPdf({
@@ -863,6 +864,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
   async function buildCurrentPeopleListExportData(options = {}) {
     const arraySeparator = (typeof options?.arraySeparator === 'string') ? options.arraySeparator : '; ';
+    const preserveGroupedRaw = !!options?.preserveGroupedRaw;
     const visibleMemberIds = (reactData.lower_people_filter
       ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
       : reactData.sortedGroupMembers
@@ -918,6 +920,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         selectedFieldKeys,
         selectedFieldOptions,
         arraySeparator,
+        preserveGroupedRaw,
         onProgress: ({ completedCount, totalCount }) => {
           updateReactData({
             exportProgressCurrent: completedCount,
