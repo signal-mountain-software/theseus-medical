@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { s3, mediaconvert, makeArray, deepCopy, dbClient } from '../util/AVAUtilities';
+import { s3, mediaconvert, makeArray, deepCopy, dbClient, normalizeImageOrientation } from '../util/AVAUtilities';
 import useSession from '../hooks/useSession';
 
 import Dialog from '@material-ui/core/Dialog';
@@ -725,7 +725,8 @@ export default ({ onCancel, onLoad, options = {} }) => {
                             enqueueSnackbar(`File type not allowed for ${this_file.name}`, { variant: 'warning' });
                             continue;
                           }
-                          let s3Data = await handleSaveFile(this_file);
+                          const normalizedFile = await normalizeImageOrientation(this_file);
+                          let s3Data = await handleSaveFile(normalizedFile);
                           console.log(s3Data);
                         }
                       }}

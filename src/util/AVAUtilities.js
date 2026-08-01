@@ -672,6 +672,30 @@ export function isValidEmail(pIn) {
   return emailRegex.test(pIn);
 }
 
+// Re-draws an image file to a canvas using EXIF-corrected orientation, so downstream consumers
+// (S3 uploads, jsPDF, etc.) that don't apply EXIF rotation themselves get an already-corrected file.
+export async function normalizeImageOrientation(file) {
+  if (!file || !String(file.type || '').startsWith('image/') || (typeof createImageBitmap !== 'function')) {
+    return file;
+  }
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0);
+    bitmap.close?.();
+    const outputType = (file.type === 'image/png') ? 'image/png' : 'image/jpeg';
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, outputType, 0.92));
+    if (!blob) { return file; }
+    return new File([blob], file.name, { type: outputType, lastModified: file.lastModified || Date.now() });
+  }
+  catch (e) {
+    console.log(`normalizeImageOrientation failed, using original file: ${e}`);
+    return file;
+  }
+}
+
 export async function getIcon(pIcon) {
   const imageBucket = 'ava-icons';
   const imageURI = `${pIcon}.png`;
