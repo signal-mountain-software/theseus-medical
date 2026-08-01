@@ -903,6 +903,27 @@ export async function deepResolve(pKey, pSession, options = {}) {
 }
 
 /**
+ * Named rules applied to a DataDictionary field's raw resolved value, before type formatting.
+ * A field's `rules` array (e.g. `["filter_when_all"]`) is run in order against the raw value.
+ */
+const FIELD_RAW_RULES = {
+  // If any element is (case-insensitively) "all" or "*all", collapse the array to just ["ALL"].
+  filter_when_all: (value) => {
+    if (!Array.isArray(value)) { return value; }
+    const hasAllMarker = value.some((item) => (typeof item === 'string') && ['*all', 'all'].includes(item.trim().toLowerCase()));
+    return hasAllMarker ? ['ALL'] : value;
+  }
+};
+
+function applyFieldRules(rawValue, rules) {
+  if (!Array.isArray(rules) || rules.length === 0) { return rawValue; }
+  return rules.reduce((currentValue, ruleName) => {
+    const ruleFn = FIELD_RAW_RULES[ruleName];
+    return ruleFn ? ruleFn(currentValue) : currentValue;
+  }, rawValue);
+}
+
+/**
  * Resolve one or more DataDictionary fields for a person.
  *
  * @param {string} client_id
@@ -990,7 +1011,7 @@ export async function resolveData(client_id, person_id, field_ids = [], options 
     });
 
     const effectiveDictionaryRec = resolution.dictionaryRec || dictionaryRec;
-    const resolvedRaw = resolution.rawValue;
+    const resolvedRaw = applyFieldRules(resolution.rawValue, effectiveDictionaryRec.rules);
 
     const resolvedOutput = await formatResolvedValue({
       rawValue: resolvedRaw,
