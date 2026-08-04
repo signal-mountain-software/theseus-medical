@@ -40,6 +40,7 @@ import TextField from '@material-ui/core/TextField';
 
 import DeleteIcon from '@material-ui/icons/Delete';
 import SendIcon from '@material-ui/icons/Send';
+import ScheduleIcon from '@material-ui/icons/Schedule';
 import ZoomInIcon from '@material-ui/icons/ZoomIn';
 import DescriptionIcon from '@material-ui/icons/Description';
 import PriorityHighIcon from '@material-ui/icons/PriorityHigh';
@@ -290,6 +291,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
     newMessageVMAlternative: false,
     newMessageVMAltText: '',
     newUrgentMessage: false,
+    scheduledSend: false,
+    scheduledSendTime: null,
+    showScheduleDialog: false,
     options,
     preferred_recipients: [],
     replyToList: [],
@@ -707,9 +711,14 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         if (recordExists(theseusMessage_og)) {
           cl(`Found original thread`);
           console.log(theseusMessage_og);
-          // we are retrying a single message from a thread; send to the specific recipient
-          po_og.Item.recipient_base = 'list';
-          po_og.Item.recipient_key = [theseusMessage_og.Item.deliver_to];
+          if (theseusMessage_og.Item.deliver_to) {
+            // a per-recipient delivery record; retry just that one recipient
+            po_og.Item.recipient_base = 'list';
+            po_og.Item.recipient_key = [theseusMessage_og.Item.deliver_to];
+          }
+          else {
+            cl(`Composite key matched a message-level record (no deliver_to) - resending to all original recipients`);
+          }
         }
         else {
           cl(`Thread not found - this will be sent as a new thread`);
@@ -757,6 +766,13 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   async function sendMessage() {
     const draftMessageText = getPendingMessageText();
     let postTime = new Date().getTime();
+    let deliverTime = postTime;
+    if (reactData.scheduledSend && reactData.scheduledSendTime) {
+      let scheduled = makeDate(reactData.scheduledSendTime).date;
+      if (scheduled && !scheduled.error && (scheduled.getTime() > postTime)) {
+        deliverTime = scheduled.getTime();
+      }
+    }
     let message_id;
     if (!reactData.newMessageThread) {
       reactData.newMessageThread = `${postTime}.${uuid(6)}`;
@@ -788,7 +804,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         allowReplyAll: reactData.allowReplyAll,
         attachments: reactData.attachments_to_send,
         client_id: pClient,
-        deliver_time: postTime,
+        deliver_time: deliverTime,
         from: reactData.newMessageSendFrom,
         message_text: draftMessageText,
         patient_id: reactData.newMessageSendFrom,
@@ -915,12 +931,17 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
         newMessageVMAlternative: false,
         newMessageVMAltText: '',
         attachments_to_send: [],
+        scheduledSend: false,
+        scheduledSendTime: null,
+        showScheduleDialog: false,
         is_public: false,
         is_reply: false,
         alert: {
           severity: 'success',
           title: 'Your Message',
-          message: `Your message is on the way to ${recipientMessageText}`
+          message: (deliverTime > postTime)
+            ? `Your message will be sent to ${recipientMessageText} at ${makeDate(deliverTime).absolute}`
+            : `Your message is on the way to ${recipientMessageText}`
         }
       }, true);
       // Re-refresh after Lambda delivery latency (~30s for processing)
@@ -1241,7 +1262,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
           reactData.threads[this_deliveryRec.thread_id].messages[message_number].recipients[recipient_number].methods[this_method] = {
             last_update_time: this_deliveryRec.created_time,
             result: this_deliveryRec.results.success.includes(this_recipient_key) ? 'Sucessfully sent' :
-              (this_deliveryRec.results.duplicate.includes(this_recipient_key) ? 'Not sent - duplicate destination address' : 'Failed to send'),
+              (this_deliveryRec.results.duplicate.includes(this_recipient_key) ? 'Not sent - duplicate destination address' :
+                (this_deliveryRec.results.pending.includes(this_recipient_key) ? 'Scheduled - not yet sent' : 'Failed to send')),
             composite_key: `${this_deliveryRec.composite_key}~D:${this_recipient_key}`
           };
         }
@@ -2162,6 +2184,18 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                   }
                                 }, true);
                               }
+                              else if (reactData.scheduledSend
+                                && (!reactData.scheduledSendTime || (makeDate(reactData.scheduledSendTime).date.getTime() <= new Date().getTime()))
+                              ) {
+                                updateReactData({
+                                  warning: true,
+                                  alert: {
+                                    severity: 'warning',
+                                    title: `Need a Delivery Time`,
+                                    message: `Choose a future date and time to schedule this message, or turn off scheduling.`,
+                                  }
+                                }, true);
+                              }
                               else if (!reactData.warning) {
                                 if (pendingMessageText !== reactData.newMessageText) {
                                   updateReactData({
@@ -2179,10 +2213,58 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                 }
                               }
                             }}
-                            startIcon={<SendIcon className={classes.tightRight} size="small" />}
+                            startIcon={(reactData.scheduledSend ? <ScheduleIcon className={classes.tightRight} size="small" /> : <SendIcon className={classes.tightRight} size="small" />)}
                           >
-                            {'Send'}
+                            {reactData.scheduledSend ? 'Schedule Send' : 'Send'}
                           </Button>
+                          {reactData.showScheduleDialog &&
+                            <Dialog open onClose={() => updateReactData({ showScheduleDialog: false }, true)} maxWidth='xs'>
+                              <Box p={3} display='flex' flexDirection='column' style={{ gap: '16px', minWidth: '280px' }}>
+                                <Typography variant='subtitle1' style={{ fontWeight: 600 }}>{'Schedule this message'}</Typography>
+                                <TextField
+                                  type='datetime-local'
+                                  label='Deliver on'
+                                  InputLabelProps={{ shrink: true }}
+                                  defaultValue={reactData.scheduledSendTime || ''}
+                                  inputProps={{
+                                    min: (() => {
+                                      const now = new Date();
+                                      const pad = (n) => String(n).padStart(2, '0');
+                                      return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+                                    })()
+                                  }}
+                                  id='scheduled_send_time_input'
+                                />
+                                <Box display='flex' flexDirection='row' justifyContent='flex-end' style={{ gap: '8px' }}>
+                                  <Button size='small' onClick={() => updateReactData({ showScheduleDialog: false }, true)}>{'Cancel'}</Button>
+                                  <Button
+                                    size='small'
+                                    variant='contained'
+                                    color='primary'
+                                    onClick={() => {
+                                      const val = document.getElementById('scheduled_send_time_input').value;
+                                      if (!val || (makeDate(val).date.getTime() <= new Date().getTime())) {
+                                        updateReactData({
+                                          warning: true,
+                                          alert: {
+                                            severity: 'warning',
+                                            title: `Need a Delivery Time`,
+                                            message: `Choose a future date and time to schedule this message.`,
+                                          }
+                                        }, true);
+                                        return;
+                                      }
+                                      updateReactData({
+                                        showScheduleDialog: false,
+                                        scheduledSend: true,
+                                        scheduledSendTime: val,
+                                      }, true);
+                                    }}
+                                  >{'Schedule'}</Button>
+                                </Box>
+                              </Box>
+                            </Dialog>
+                          }
                         </Box>
                         <Box display='flex'
                           key={'newMessage_c_reply_text'}
@@ -2309,6 +2391,32 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                             </Typography>
                             <ZoomInIcon style={{ marginLeft: reactData.isSmall ? 0 : 6 }} fontSize='small' />
                           </Box>
+                          <Box
+                            display='flex'
+                            alignItems='center'
+                            justifyContent='flex-end'
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => {
+                              if (reactData.scheduledSend) {
+                                updateReactData({
+                                  scheduledSend: false,
+                                  scheduledSendTime: null,
+                                }, true);
+                              }
+                              else {
+                                updateReactData({ showScheduleDialog: true }, true);
+                              }
+                            }}
+                          >
+                            <Typography style={withMobileTextCap(AVATextStyle({ size: 1 }))}>
+                              {reactData.isSmall
+                                ? (reactData.scheduledSend ? 'Cancel Schedule' : 'Schedule')
+                                : (reactData.scheduledSend
+                                  ? `Cancel scheduled send (${makeDate(reactData.scheduledSendTime).absolute})`
+                                  : 'Schedule for later')}
+                            </Typography>
+                            <ScheduleIcon style={{ marginLeft: reactData.isSmall ? 0 : 6 }} fontSize='small' />
+                          </Box>
                           {reactData.templateList && (reactData.templateList.length > 0) &&
                             reactData.administrative_account &&
                             <Box
@@ -2349,6 +2457,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                 newMessageMode: false,
                                 is_reply: false,
                                 is_public: false,
+                                scheduledSend: false,
+                                scheduledSendTime: null,
+                                showScheduleDialog: false,
                               }, true);
                             }}
                           >
@@ -3012,6 +3123,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                           is_reply: false,
                           replyToList: [],
                           newMessageThread: false,
+                          scheduledSend: false,
+                          scheduledSendTime: null,
+                          showScheduleDialog: false,
                         };
                         if (reactData.personFilter) {
                           reactUpd.newMessageRecipients = [{
