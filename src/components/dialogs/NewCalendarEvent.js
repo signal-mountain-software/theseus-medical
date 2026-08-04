@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { prepareTargets } from '../../util/AVAGroups';
 import { makeArray, titleCase, listFromArray } from '../../util/AVAUtilities';
 import { addEvent, writeSlot } from '../../util/AVACalendars';
 import { AVAclasses } from '../../util/AVAStyles';
@@ -13,8 +12,6 @@ import Select from "react-dropdown-select";
 import { makeDate, makeTime, addMonths, addDays, daysDiff } from '../../util/AVADateTime';
 
 import { useSnackbar } from 'notistack';
-
-import PersonFilter from '../forms/PersonFilter';
 
 import { AVATextStyle } from '../../util/AVAStyles';
 
@@ -36,7 +33,6 @@ import {
   Radio,
   FormControlLabel,
   FormControl,
-  ListItem,
   makeStyles
 } from '@material-ui/core';
 import { Close as CloseIcon } from '@material-ui/icons';
@@ -204,11 +200,11 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   const AVAClass = AVAclasses();
 
   const { state } = useSession();
-  const { session } = state;
-  const [ownerTargetInfo, setOwnerTargetInfo] = React.useState();
 
   const [last_date, setLastDate] = React.useState(' ');
   const [lastAsADate, setLastAsADate] = React.useState();
+  const [publish_date, setPublishDate] = React.useState(' ');
+  const [publishAsADate, setPublishAsADate] = React.useState();
   const [specificPeople, setSpecificPeople] = React.useState(' ');
   const [customizeButton, setcustomizeButton] = React.useState(false);
   const [specificOwners, setSpecificOwners] = React.useState(' ');
@@ -216,13 +212,14 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   const [defaultSlotOwners, setDefaultSlotOwners] = React.useState('none');
   const [slot_max_seats, setSlotMaxSeats] = React.useState(' ');
   const [signup_start, setSignup_start] = React.useState(' ');
-  const [max_guests, setmaxGuests] = React.useState(0);
+  const [max_guests, setmaxGuests] = React.useState(null);
   const [signup_end, setSignup_end] = React.useState(' ');
   const [slot_interval, setSlotInterval] = React.useState(' ');
   const [eventDateAsDisplayString, setEventDateAsDisplayString] = React.useState((options.setDate ? options.setDate.dateObj.absolute : ' '));
   const [displayTimes, setIntervalDisplay] = React.useState([]);
-  const [showOwnerSelect, setShowOwnerSelect] = React.useState(false);
-  const [ownerList, setOwnerList] = React.useState([patient.person_id || patient.patient_id]);
+  const [ownerQuickSearch, setOwnerQuickSearch] = React.useState({
+    selections: [{ person_id: (patient.person_id || patient.patient_id), person_name: patient.display_name }]
+  });
 
   const [checkedDays, setCheckedDays] = React.useState({});
 
@@ -338,9 +335,12 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
         "defaultSlotOwners": defaultSlotOwners,
         "occDays": oDays,
         "location": reactData.event_location,
-        "owner": ownerList,
+        "owner": ownerQuickSearch.selections.map(s => s.person_id),
         "personal_event": !!personalEvent && !isAppointment,
         "restrictions": reactData.restrictToGroups,
+        "visible_after": publishAsADate?.getTime() || null,
+        // null = guests allowed with no limit; a number (including 0) is a strict cap
+        "number_of_guests": (max_guests === null || max_guests === undefined) ? null : max_guests,
         "signup_type": signup_type,
         "slot_max_seats": slot_max_seats,
         "signup_end": signup_end,
@@ -351,9 +351,6 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
         "reminder_minutes_NotEnrolled": 0
       }
     };
-    if (max_guests > 0) {
-      payload.calendar_info.number_of_guests = max_guests;
-    }
     let response = await addEvent(payload);
     response.slots = [];
     if (!!personalEvent
@@ -470,6 +467,34 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
 
   const handleChangeOwnersToggle = event => {
     setSpecificOwners(event.target.value);
+    if (event.target.value === 'no') {
+      setOwnerQuickSearch({
+        selections: [{ person_id: (patient.person_id || patient.patient_id), person_name: patient.display_name }]
+      });
+    }
+  };
+
+  const handleChangePublishDate = event => {
+    setPublishAsADate(null);
+    setPublishDate(event.target.value);
+  };
+
+  const handlePublishDateExit = event => {
+    if (event.key === 'Enter' || event.type === 'blur') {
+      if (!event.target.value) {
+        setPublishDate('');
+        setPublishAsADate(null);
+        return;
+      }
+      let goodDate = new Date(event.target.value);
+      if (isNaN(goodDate.getTime())) {
+        setPublishDate('');
+        setPublishAsADate(null);
+        return;
+      }
+      setPublishDate(goodDate.toDateString());
+      setPublishAsADate(goodDate);
+    }
   };
 
   const handleChangePeopleToggle = event => {
@@ -797,12 +822,41 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                 />
               </div>
               <div>
-                <TextField
-                  id='location'
-                  value={reactData.event_location}
-                  fullWidth
-                  onChange={event => (handleChangeLocation(event.target.value))}
-                  helperText='Location'
+                <Typography
+                  style={AVATextStyle({
+                    size: 0.75,
+                    opacity: '60%',
+                    margin: { top: 1.2, bottom: 0.5, left: 0, right: 0 }
+                  })}
+                >
+                  {'Location'}
+                </Typography>
+                <Select
+                  options={makeArray(state.session.campus_locations).map(this_location => ({ value: this_location, label: this_location }))}
+                  values={reactData.event_location ? [{ value: reactData.event_location, label: reactData.event_location }] : []}
+                  labelField={'label'}
+                  valueField={'value'}
+                  searchBy={'label'}
+                  dropdownHandle={true}
+                  searchable={true}
+                  create={true}
+                  clearOnSelect={true}
+                  closeOnSelect={true}
+                  key={`selectLocation`}
+                  style={{
+                    lineHeight: 1,
+                    fontSize: `1rem`,
+                    marginLeft: 0,
+                    marginBottom: '16px',
+                    border: '1px solid rgba(0, 0, 0, 0.42)',
+                    borderRadius: '4px',
+                    padding: '4px 8px',
+                    width: '40%',
+                    color: 'black',
+                  }}
+                  placeholder={'(optional) Select or enter a location'}
+                  noDataLabel={`No locations match`}
+                  onChange={values => (handleChangeLocation(values.length > 0 ? values[0].value : ''))}
                 />
               </div>
               <div>
@@ -1164,6 +1218,31 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                 </Typography>
               </Box>
               {!personalEvent && !isAppointment && !options.simpleForm &&
+                <Box
+                  display="flex"
+                  pt={2}
+                  pb={1}
+                  flexDirection='column'
+                  justifyContent="center"
+                >
+                  <TextField
+                    id='publish_date'
+                    value={publish_date || ''}
+                    style={{ width: '450px' }}
+                    onKeyPress={handlePublishDateExit}
+                    onChange={handleChangePublishDate}
+                    onBlur={handlePublishDateExit}
+                    helperText={
+                      <React.Fragment>
+                        Publish date? (optional)
+                        <br />
+                        Visible only to Admin and Owners before this date
+                      </React.Fragment>
+                    }
+                  />
+                </Box>
+              }
+              {!personalEvent && !isAppointment && !options.simpleForm &&
                 <React.Fragment>
                   <Box
                     display="flex"
@@ -1270,21 +1349,23 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                     flexDirection='column'
                     justifyContent="center"
                   >
-                    <Typography className={classes.radioText}>Allow Guests?</Typography>
                     <TextField
                       key='max_guests'
-                      value={max_guests}
+                      value={(max_guests === null || max_guests === undefined) ? '' : max_guests}
                       style={{ width: '200px', marginRight: '16px' }}
                       onChange={(event) => {
-                        let number = Number(event.target.value);
-                        if (isNaN(number) || (number < 1) || (number > 9)) {
-                          setmaxGuests(0);
+                        const raw = event.target.value;
+                        if (raw === '') {
+                          setmaxGuests(null);
+                          return;
                         }
-                        else {
-                          setmaxGuests(number);
+                        let number = Number(raw);
+                        if (isNaN(number) || (number < 0) || (number > 9)) {
+                          return;
                         }
+                        setmaxGuests(number);
                       }}
-                      helperText='Maximum # of guests per person'
+                      helperText='Maximum # of guests per person (blank = unlimited)'
                     />
                   </Box>
                 </React.Fragment>
@@ -1460,8 +1541,8 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                       defaultValue={'no'}
                       aria-label="ownership"
                       name="ownership"
-                      value={specificOwners}
-                      onChange={handleChangeOwnersToggle}
+                      value={ownerQuickSearch.selections.length > 1 ? 'yes' : 'no'}
+                      onClick={handleChangeOwnersToggle}
                     >
                       <FormControlLabel
                         className={classes.formControlLbl}
@@ -1483,49 +1564,46 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                       />
                     </RadioGroup>
                   </FormControl>
+                  {ownerQuickSearch.selections.length > 1 &&
+                    <Box
+                      display="flex"
+                      pt={1}
+                      flexDirection='column'
+                      justifyContent="flex-start"
+                      style={{ marginLeft: '16px' }}
+                    >
+                      <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>
+                        Selected Owners:
+                      </Typography>
+                      {ownerQuickSearch.selections.map((ownerEntry, index) => (
+                        <Typography key={`owner_${index}`} className={classes.radioText} style={{ marginLeft: '8px' }}>
+                          • {ownerEntry.person_name || ownerEntry.person_id}
+                        </Typography>
+                      ))}
+                    </Box>
+                  }
                 </Box>
               }
               {(specificOwners === 'yes') &&
-                <div>
-                  {ownerList.length > 0 ?
-                    ownerList.map((ownerEntry, x) => (
-                      (
-                        <ListItem
-                          key={`${ownerEntry}_selected_${x}`}
-                          className={classes.noRow}
-                        >
-                          <Typography
-                            className={classes.radioText}>
-                            {ownerTargetInfo && ownerTargetInfo[ownerEntry] &&
-                              ((typeof ownerTargetInfo[ownerEntry].name === 'object')
-                                ? `${ownerTargetInfo[ownerEntry].name.first} ${ownerTargetInfo[ownerEntry].name.last}`
-                                : ownerTargetInfo[ownerEntry].name
-                              )
-                            }
-                          </Typography>
-                        </ListItem>
-                      )
-                    ))
-                    : (
-                      <Typography
-                        className={classes.radioText}>
-                        {'Tap the button below to choose...'}
-                      </Typography>
-                    )
-                  }
-                  <Button
-                    className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'green', color: 'white' }}
-                    size='small'
-                    onClick={async () => {
-                      let ownerTargetObj = await prepareTargets(session.user_id, session.client_id, { includeGroups: false, includePeople: true });
-                      setOwnerTargetInfo(ownerTargetObj.responsibleObj);
-                      setShowOwnerSelect(true);
-                    }}
-                  >
-                    {`Tap to select`}
-                  </Button>
-                </div>
+                <QuickSearch
+                  reactData={ownerQuickSearch}
+                  updateReactData={(newData) => {
+                    setOwnerQuickSearch(prev => Object.assign({}, prev, newData));
+                  }}
+                  options={{
+                    keepSelections: true,
+                    withGroups: false,
+                    hidePeople: false,
+                    showAll: true,
+                    pickAndGo: true,
+                    title: `Who else should be listed as an owner for ${reactData.event_title}?`,
+                    buttonText: { empty: 'Exit', selected: 'Save & Exit' }
+                  }}
+                  onClose={(selections) => {
+                    setOwnerQuickSearch({ selections: makeArray(selections) });
+                    setSpecificOwners(null);
+                  }}
+                />
               }
             </Box>
           </DialogContent>
@@ -1556,22 +1634,6 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
               </DialogActions>
             </Box>
           </Box>
-          {showOwnerSelect &&
-            <PersonFilter
-              prompt={`Who else should be listed as an owner for ${reactData.event_title}?`}
-              peopleList={state.accessList[state.session.client_id].list}
-              multiSelect={true}
-              alreadyChecked={ownerList}
-              onCancel={() => {
-                setShowOwnerSelect(false);
-              }}
-              onSelect={(pChoices) => {
-                setOwnerList(makeArray(pChoices));
-                setShowOwnerSelect(false);
-              }}
-            >
-            </PersonFilter>
-          }
         </React.Fragment>
       }
       {showNewEvent && customizeButton &&

@@ -10,6 +10,7 @@ import { getGroupsBelongTo, getMemberList, getGroupMembers } from '../../util/AV
 
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
+import Avatar from '@material-ui/core/Avatar';
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import DialogContent from '@material-ui/core/DialogContent';
@@ -87,6 +88,10 @@ const useStyles = makeStyles(theme => ({
       width: theme.spacing(8),
       height: theme.spacing(8),
     },
+  },
+  loadingLogo: {
+    width: 150,
+    height: 150,
   },
   radioText: {
     fontSize: theme.typography.fontSize * 0.8,
@@ -430,6 +435,7 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
           this_person: patient.patient_id,
           start_date: startDate,
           end_date: endDate,
+          includeUnpublished: ['admin', 'support', 'master'].includes(state.user?.account_class),
           filter: { group: filterGroup }
         }, onStatusUpdate
       );
@@ -629,11 +635,10 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
                 key={'loadingBox'}
                 ml={2} mr={2} mb={2} mt={8}
               >
-                <Box
-                  component="img"
-                  mb={2}
-                  minWidth={150}
-                  maxWidth={150}
+                <Avatar
+                  variant='square'
+                  className={classes.loadingLogo}
+                  style={{ marginBottom: 16 }}
                   alt=''
                   src={patient.client_logo || process.env.REACT_APP_AVA_LOGO}
                 />

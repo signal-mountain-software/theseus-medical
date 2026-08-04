@@ -6,13 +6,15 @@ import { getCalendarEntries, writeSlot, getSlotList, publishCalendar } from '../
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import AVATextInput from './AVATextInput';
 import { Alert, AlertTitle } from '@material-ui/lab/';
+import Select from 'react-dropdown-select';
 
-import { Snackbar, Box, Typography, Avatar } from '@material-ui/core';
+import { Snackbar, Box, Typography, Avatar, IconButton } from '@material-ui/core';
 import Tooltip from '@material-ui/core/Tooltip';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import CloseIcon from '@material-ui/icons/ExitToApp';
-import FilterListIcon from '@material-ui/icons/FilterList';
+import SearchIcon from '@material-ui/icons/Search';
+import ClearIcon from '@material-ui/icons/Clear';
 
 import CalendarEventEditForm from './CalendarEventEditForm';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
@@ -24,18 +26,19 @@ import DateRangeIcon from '@material-ui/icons/DateRange';
 import CalendarViewDayIcon from '@material-ui/icons/CalendarViewDay';
 import GroupIcon from '@material-ui/icons/Group';
 import PersonAddDisabledIcon from '@material-ui/icons/PersonAddDisabled';
-import FormatAlignJustifyIcon from '@material-ui/icons/FormatAlignJustify';
-import FormatLineSpacingIcon from '@material-ui/icons/FormatLineSpacing';
-import TextureIcon from '@material-ui/icons/Texture';
 import EventIcon from '@material-ui/icons/Event';
 import AssignmentTurnedInIcon from '@material-ui/icons/AssignmentTurnedIn';
 
 import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
+import ArrowBackIcon from '@material-ui/icons/ArrowBack';
+import TodayIcon from '@material-ui/icons/Today';
 
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
 import DialogContent from '@material-ui/core/DialogContent';
+import DialogTitle from '@material-ui/core/DialogTitle';
+import DialogActions from '@material-ui/core/DialogActions';
 import Dialog from '@material-ui/core/Dialog';
 
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
@@ -227,28 +230,6 @@ const useStyles = makeStyles(theme => ({
     minWidth: '100%',
     minHeight: '100%',
   },
-  denseView: {
-    display: 'flex',
-    flexDirection: 'column',
-    paddingLeft: '16px',
-    paddingRight: '16px',
-    paddingBottom: '16px',
-    marginTop: 0,
-    marginBottom: '24px',
-    maxWidth: '195px',
-    justifyContent: 'flex-start',
-    overflow: 'auto',
-    overflowX: 'hidden',
-  },
-  relaxedView: {
-    display: 'flex',
-    flexDirection: 'column',
-    padding: '16px',
-    marginTop: 0,
-    marginBottom: '8px',
-    variant: 'outlined',
-    justifyContent: 'flex-start',
-  },
   idText: {
     fontSize: theme.typography.fontSize * 1.4,
     marginTop: 10,
@@ -320,27 +301,6 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     defaultValues.template__List = [];
   }
 
-  const setInitialView = (defaultValues) => {
-    if (!defaultValues.hasOwnProperty('%%initialized%%')) {
-      if (defaultValues.agendaView) {
-        return { '*all': false };
-      }
-      else if (defaultValues.weekView) {
-        return { '*all': true };
-      }
-      defaultValues['%%initialized%%'] = true;
-      if ((!defaultValues.hasOwnProperty('denseView')
-        && defaultValues.hasOwnProperty('relaxedView')
-        && !defaultValues.relaxedView)
-        || (defaultValues.denseView && !defaultValues.relaxedView)) {
-        return { '*all': true };
-      }
-      else {
-        return { '*all': false };
-      }
-    }
-  };
-
   const defaultColorScheme = {
     unavailable: 'purple',
     owned: 'green',
@@ -358,6 +318,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       myCalendar,
       display_name: state.patient?.name?.first || 'My',
       filterTextLower: null,
+      searchForcedAgenda: false,
+      locationFilter: '*all',
       selectDate: null,
       clicked_on_date: false,
       administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
@@ -368,8 +330,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       pWidth: 60,
       defaultValues: defaultValues,
       selectedPersonRec: {},
-      denseView: setInitialView(defaultValues) || { '*all': false },
-      factor7: defaultValues.weekView ? Math.min(((window.window.innerWidth - 220) / 1400), 1) : 1,
+      dayDetailsIndex: null,
       conflictInfo: conflictInfo,
       colorScheme: Object.assign({}, defaultColorScheme, defaultValues.colorScheme),
       calendar_fill: isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_fill : null,
@@ -561,10 +522,10 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
         }, true);
       }
     };
+    // re-render so agendaView()/isMobileWidth() reflect the current window width
     function handleResize() {
-      updateReactData({
-        factor7: defaultValues.weekView ? Math.min(((window.window.innerWidth - 220) / 1400), 1) : 1,
-      }, true);
+      setCellFitCounts({});
+      updateReactData({}, true);
     }
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -589,8 +550,66 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     setAnchorEl(event.currentTarget);
   };
 
+  const isMobileWidth = () => (window.window.innerWidth < 800);
+
   const agendaView = () => {
-    return reactData.defaultValues.agendaView || (window.window.innerWidth < 800);
+    return reactData.defaultValues.agendaView || isMobileWidth();
+  };
+
+  // jump the loaded calendar window to the 4-week block (Sun-Sat x4) containing pDate
+  const navigateToWindow = (pDate) => {
+    let dObj = makeDate(pDate, { noTime: true, noYearCorrection: true });
+    if (!dObj.error) {
+      onClose({
+        action: 'reset',
+        newStartDate: addDays(dObj.date, -dObj.dayOfWeek),
+        newEndDate: addDays(dObj.date, 27 - dObj.dayOfWeek)
+      });
+    }
+  };
+
+  // grid-cell overflow trimming: how many event entries actually fit a date's fixed-height box, keyed by dateIndex
+  const cellContentRefs = React.useRef({});
+  const cellShownCountsRef = React.useRef({});
+  const [cellFitCounts, setCellFitCounts] = React.useState({});
+
+  // the set of events/filters changed - let every cell start over from "show all" so it can grow back, not just shrink
+  React.useEffect(() => {
+    setCellFitCounts({});
+  }, [reactData.myCalendar, reactData.filterTextLower, reactData.locationFilter, reactData.eventIDFilter, reactData.idFilter]);
+
+  // after every render, shrink any grid cell whose entries overflow its fixed-height box, one entry at a time, until it fits
+  // intentionally runs on every render (no dep array) since layout/content can change for reasons not worth tracking individually
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  React.useLayoutEffect(() => {
+    if (agendaView()) { return; }
+    const overflowing = Object.keys(cellContentRefs.current).filter((key) => {
+      const el = cellContentRefs.current[key];
+      return el && (el.scrollHeight > el.clientHeight + 1) && (cellShownCountsRef.current[key] > 0);
+    });
+    if (overflowing.length === 0) { return; }
+    setCellFitCounts((prev) => {
+      const next = { ...prev };
+      overflowing.forEach((key) => {
+        next[key] = cellShownCountsRef.current[key] - 1;
+      });
+      return next;
+    });
+  });
+
+  // clears the active search and, if search had forced Agenda view, restores whatever view the user was in before
+  const clearSearch = (extra = {}) => {
+    let reactUpdObj = Object.assign({
+      filterTextLower: false,
+      idFilter: false,
+      eventIDFilter: false
+    }, extra);
+    if (reactData.searchForcedAgenda) {
+      reactData.defaultValues.agendaView = false;
+      reactUpdObj.defaultValues = reactData.defaultValues;
+      reactUpdObj.searchForcedAgenda = false;
+    }
+    updateReactData(reactUpdObj, true);
   };
 
   const eventsToShow = (this_date) => {
@@ -673,8 +692,30 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     return (Object.keys(this_event.slot_owners).length === 0);
   };
 
+  function getLocationOptions() {
+    let foundLocations = new Set(makeArray(state.session.campus_locations).filter(loc => (loc && (loc.trim() !== ''))));
+    let hasNoLocationEvent = false;
+    reactData.myCalendar.forEach(this_date => {
+      this_date.eventList.forEach(this_event => {
+        const description = this_event.location?.description?.trim();
+        if (description) { foundLocations.add(description); }
+        else { hasNoLocationEvent = true; }
+      });
+    });
+    let options = [{ value: '*all', label: 'All Locations' }];
+    if (hasNoLocationEvent) { options.push({ value: '*none*', label: '(No Location)' }); }
+    return options.concat(Array.from(foundLocations).sort((a, b) => a.localeCompare(b)).map(loc => ({ value: loc, label: loc })));
+  }
+
   function okToShow(this_event) {
     if (this_event.date === '29991231') { return false; }   // event was soft-deleted
+    if (reactData.locationFilter && (reactData.locationFilter !== '*all')) {
+      const description = this_event.location?.description?.trim();
+      if (reactData.locationFilter === '*none*') {
+        if (description) { return false; }
+      }
+      else if (description !== reactData.locationFilter) { return false; }
+    }
     if (reactData.defaultValues.hasOwnProperty('onlyRegistered')
       && (!this_event.slot_owners.hasOwnProperty(reactData.selectedPerson_id))) {
       return false;
@@ -1153,48 +1194,6 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     return { slotAssigned: slotToUse, slotUpdates };
   };
 
-  // isDense is now a stateful map, recalculated only on mount and when window.innerWidth changes
-  const [isDenseMap, setIsDenseMap] = React.useState({});
-
-  // Helper to recalculate isDenseMap
-  const recalculateIsDenseMap = React.useCallback(() => {
-    const newMap = {};
-    const width = window.innerWidth || window.window.innerWidth;
-    if (width < 800) {
-      // All false if mobile
-      if (reactData.myCalendar) {
-        reactData.myCalendar.forEach(dateObj => {
-          newMap[dateObj.dateObj.numeric$] = false;
-        });
-      }
-    } else {
-      if (reactData.myCalendar) {
-        reactData.myCalendar.forEach(dateObj => {
-          if (reactData.denseView.hasOwnProperty(dateObj.dateObj.numeric$)) {
-            newMap[dateObj.dateObj.numeric$] = reactData.denseView[dateObj.dateObj.numeric$];
-          } else {
-            newMap[dateObj.dateObj.numeric$] = reactData.denseView['*all'];
-          }
-        });
-      }
-    }
-    setIsDenseMap(newMap);
-  }, [reactData.myCalendar, reactData.denseView]);
-
-  React.useEffect(() => {
-    recalculateIsDenseMap();
-    const handleResize = () => {
-      recalculateIsDenseMap();
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [recalculateIsDenseMap]);
-
-  // Use this function in place of the old isDense
-  const isDense = (dateNumeric) => {
-    return isDenseMap[dateNumeric] || false;
-  };
-
   const setTextColor = (this_event, this_date, agendaView) => {
     if (!agendaView && reactData.idFilter && isUnAvailable(this_date, reactData.idFilter)) {
       return { color: contrastColor(hexColors[reactData.colorScheme.unavailable]) };
@@ -1276,6 +1275,28 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     else { return i; }
   }
 
+  // compact "1-3pm" / "11am-1pm" / "1:30-3pm" style range, falling back to makeCalendarTime when from/to can't both be parsed
+  function makeSmartCalendarTime(i) {
+    if (!isObject(i) || !i.from || !i.to) { return makeCalendarTime(i); }
+    const fromT = makeTime(i.from);
+    const toT = makeTime(i.to);
+    if (fromT.error || toT.error) { return makeCalendarTime(i); }
+    const bothOnHour = (fromT.mm === 0) && (toT.mm === 0);
+    const fromStr = bothOnHour ? `${fromT.hh}` : `${fromT.hh}:${fromT.mm.toString().padStart(2, '0')}`;
+    const toStr = bothOnHour ? `${toT.hh}` : `${toT.hh}:${toT.mm.toString().padStart(2, '0')}`;
+    // only show am/pm on the first time too when the range spans noon (crosses am/pm)
+    return (fromT.ampm === toT.ampm)
+      ? `${fromStr}-${toStr}${toT.ampm}`
+      : `${fromStr}${fromT.ampm}-${toStr}${toT.ampm}`;
+  }
+
+  // trims long event descriptions to a fixed word count so they never overflow the grid cell
+  function truncateDescription(text, maxWords = 3) {
+    if (!text) { return text; }
+    const words = text.trim().split(/\s+/);
+    return (words.length <= maxWords) ? text : `${words.slice(0, maxWords).join(' ')}…`;
+  }
+
   function ordinal(n) {
     let ord = 'th';
     if (n % 10 === 1 && n % 100 !== 11) {
@@ -1290,6 +1311,160 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     return `${n}${ord}`;
   }
 
+  // shared event row, used both inline in a grid cell (limited count, truncated) and in the "day details" dialog (full list, expanded=true lets it wrap)
+  const renderEventBox = (this_event, eventIndex, this_date, dateIndex, expanded = false) => (
+    <Box
+      zIndex={2000}
+      onDragOver={(e) =>
+        handleDragOver(e, {
+          type: 'event',
+          data: { droppedOn_event: this_event, eventIndex, dateIndex }
+        })
+      }
+      onDrop={async (e) => {
+        await handleDrop(e, 'event');
+      }}
+      display='flex' flexDirection='column'
+      py={1}
+      px={1}
+      mt={0.5}
+      mb={0.5}
+      variant='outlined'
+      textAlign={agendaView() ? 'flex-start' : 'center'}
+      style={{ minWidth: 0, width: '100%', overflow: 'hidden', flexShrink: 0 }}
+      key={`details${this_date.dateObj.numeric$}_${eventIndex}`}
+      onClick={async () => {
+        switch (this_event.type) {
+          case 'holiday': {
+            break;
+          }
+          case 'birthday': {
+            break;
+          }
+          default: {
+            let [eventInfo, occInfo] = await getCalendarEntries({
+              person_id: reactData.selectedPerson_id,
+              client: this_event.client,
+              event_id: this_event.event_key
+            });
+            this_event.occData = Object.assign({},
+              eventInfo.eventData.event_data,
+              eventInfo.eventData,
+              { location: eventInfo.eventData.event_data.location.description },
+              { signup_type: eventInfo.eventData.sign_up.type },
+              { signup_window: eventInfo.eventData.sign_up.window || { start: null, end: null } },
+              occInfo,
+              { date: occInfo.occurrence_date },
+              { time$: this_event.time$ },
+              { time24: this_event.time24 }
+            );
+            this_event.date_index = dateIndex;
+            this_event.event_index = eventIndex;
+            updateReactData({
+              event_being_edited: this_event
+            }, true);
+          }
+        }
+      }}
+    >
+      <Box display='flex' flexDirection='row'
+        justifyContent={agendaView() ? 'flex-start' : 'center'}
+        alignItems='center'
+        color={setTextColor(this_event, this_date, agendaView()).color}
+        style={{ minWidth: 0, width: '100%' }}
+      >
+        <Box display='flex' flexDirection='column'
+          justifyContent={agendaView() ? 'flex-start' : 'center'}
+          ml={agendaView() ? 0 : 1}
+          mr={1}
+          alignItems={agendaView() ? 'flex-start' : 'center'}
+          color={setTextColor(this_event, this_date, agendaView()).color}
+          style={{ minWidth: 0, maxWidth: '100%' }}
+        >
+          <Typography noWrap={!expanded}
+            style={AVATextStyle({
+              size: 1,
+              bold: true,
+            })}>
+            {(agendaView() || expanded) ? titleCase(this_event.description) : truncateDescription(titleCase(this_event.description))}
+          </Typography>
+          {this_event.location && this_event.location.description
+            && (!reactData.locationFilter || (reactData.locationFilter === '*all')) &&
+            <Typography
+              noWrap={true}
+              style={AVATextStyle({ size: 0.8 })}
+            >
+              {this_event.location.description}
+            </Typography>
+          }
+          {isWaitListed(this_event) &&
+            <Typography
+              noWrap={true}
+              style={AVATextStyle({ size: 1.2, italic: true })}
+            >
+              {`You're on the Waitlist`}
+            </Typography>
+          }
+          {this_event.slot_owners.hasOwnProperty(reactData.selectedPerson_id)
+            ?
+            <React.Fragment>
+              {!reactData.defaultValues.onlyRegistered
+                && (this_date.dateObj.numeric >= reactData.todayYMD)
+                && (![this_event.owner].flat().includes(reactData.selectedPerson_id))
+                &&
+                <Typography
+                  noWrap={true}
+                  style={AVATextStyle({ size: 1.2, italic: true })}
+                >
+                  {`You're on the list`}
+                </Typography>
+              }
+              <Typography
+                noWrap={true}
+                style={AVATextStyle({
+                  size: 0.8,
+                })}
+              >
+                {((this_event.type === 'time')
+                  ? (makeTime(this_event.slot_owners[reactData.selectedPerson_id]).time)
+                  : (makeSmartCalendarTime(this_event.time)))
+                }
+              </Typography>
+            </React.Fragment>
+            :
+            <React.Fragment>
+              {this_event.time
+                &&
+                <Typography
+                  noWrap={true}
+                  style={AVATextStyle({
+                    size: 0.8,
+                  })}
+                >
+                  {makeSmartCalendarTime(this_event.time)}
+                </Typography>
+              }
+            </React.Fragment>
+          }
+        </Box>
+      </Box>
+      {showSlots() && this_event.slot_owners
+        && (Object.keys(this_event.slot_owners).length > 0)
+        && (Object.keys(this_event.slot_owners).sort((a, b) => {
+          return ((this_event.slot_owners[a] > this_event.slot_owners[b]) ? 1 : -1);
+        })).map(this_owner => (
+          <Typography
+            key={`event_${this_event}_slot_owner_${this_owner}`}
+            noWrap={true}
+            style={AVATextStyle({
+              size: 0.8,
+            })}>
+            {`${(this_event.type === 'time') ? makeTime(this_event.slot_owners[this_owner]).short + ' ' : ''}${getPersonName(this_owner.split('%%')[0])}`}
+          </Typography>
+        ))}
+    </Box>
+  );
+
   return (
     <Dialog
       open={(true || forceRedisplay)}
@@ -1301,7 +1476,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           <Box
             display='flex' flexDirection='column'
             className={classes.client_background}
-            style={{ paddingLeft: '8px', paddingRight: '8px' }}
+            style={{ paddingLeft: '8px', paddingRight: '8px', paddingTop: '16px', paddingBottom: '16px' }}
             alignItems={'center'}
             key={'topBox'}
           >
@@ -1323,6 +1498,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               >
                 <Box
                   display='flex' flexDirection='row'
+                  alignItems='center'
                   className={classes.client_backgroundCenter}
                   key={'nameBox'}
                 >
@@ -1334,10 +1510,10 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                       className={classes.title}
                       style={AVATextStyle({ size: 1.2, bold: true, margin: { left: 0.5, right: 1 } })}
                     >
-                      {reactData.defaultValues.assignmentView
+                      {(reactData.defaultValues.assignmentView
                         ? `Calendar Management`
                         : `${reactData.display_name}${reactData.display_name.slice(-1) === 's' ? "'" : "'s"} Calendar`
-                      }
+                      ) + (reactData.filterTextLower ? ` - events containing "${reactData.filterTextLower}"` : '')}
                     </Typography>
                     {reactData.defaultValues.subtitle &&
                       <Typography
@@ -1348,7 +1524,46 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                       </Typography>
                     }
                   </Box>
+                  {reactData.filterTextLower &&
+                    <IconButton
+                      aria-label='Clear search'
+                      size='small'
+                      onClick={() => clearSearch()}
+                    >
+                      <ClearIcon fontSize='small' />
+                    </IconButton>
+                  }
                 </Box>
+                {(getLocationOptions().length > 1) &&
+                  <Box style={{ position: 'relative', zIndex: 2100, width: '40vw', marginTop: 4, marginBottom: 4 }}>
+                    <Select
+                      options={getLocationOptions()}
+                      values={getLocationOptions().filter(this_option => (this_option.value === reactData.locationFilter))}
+                      labelField={'label'}
+                      valueField={'value'}
+                      searchBy={'label'}
+                      dropdownHandle={true}
+                      searchable={true}
+                      clearOnSelect={false}
+                      closeOnSelect={true}
+                      key={`selectLocationFilter`}
+                      style={{
+                        lineHeight: 1,
+                        fontSize: '0.85rem',
+                        width: '100%',
+                        marginLeft: '4px',
+                        border: '1px solid rgba(0, 0, 0, 0.3)',
+                        borderRadius: '4px',
+                        padding: '2px 6px',
+                        color: 'black',
+                        backgroundColor: ((reactData.locationFilter && (reactData.locationFilter !== '*all')) ? '#fff3cd' : 'white')
+                      }}
+                      onChange={(values) => {
+                        updateReactData({ locationFilter: (values.length > 0 ? values[0].value : '*all') }, true);
+                      }}
+                    />
+                  </Box>
+                }
                 {(reactData.myCalendar.length === 0) &&
                   <Box
                     display='flex' flexDirection='row' alignItems={'center'}
@@ -1362,22 +1577,34 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                   </Box>
                 }
               </Box>
-              <Box
-                component="img"
-                m={2}
-                aria-controls='hidden-menu'
-                aria-haspopup='true'
-                minWidth={30}
-                minHeight={30}
-                maxHeight={30}
+              <IconButton
+                aria-label='Search calendar'
+                onClick={() => {
+                  updateReactData({
+                    setSearch: true
+                  }, true);
+                }}
+                onDragOver={(e) =>
+                  handleDragOver(e, {
+                    type: 'filter_button'
+                  })
+                }
+                onDrop={async (e) => {
+                  await handleDrop(e, 'filter_button');
+                }}
+                style={{
+                  color: (reactData.filterTextLower || reactData.idFilter || reactData.eventIDFilter) ? '#b8860b' : undefined
+                }}
+              >
+                <SearchIcon fontSize='large' />
+              </IconButton>
+              <Avatar className={AVAClass.AVAAvatar} src={state.session?.client_logo || process.env.REACT_APP_AVA_LOGO} alt={reactData.client_id}
                 onClick={(event) => {
                   handleClick(event);
                   updateReactData({
                     popUpOpen: true
                   }, true);
                 }}
-                alt=''
-                src={state.session?.client_logo || process.env.REACT_APP_AVA_LOGO}
               />
               <Menu
                 id='hidden-menu'
@@ -1410,41 +1637,12 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                       </Box>
                     </MenuItem>
                   }
-                  <MenuItem
-                    onClick={() => {
-                      if (agendaView()) {
-                        // switching to calendar view, use rememberedDenseData
-                        reactData.defaultValues.agendaView = false;
-                        if (reactData.defaultValues.rememberedDenseData) {
-                          reactData.denseView = deepCopy(reactData.defaultValues.rememberedDenseData);
-                        }
-                      }
-                      else {
-                        // switching to agendaView, dense should be false
-                        reactData.defaultValues.agendaView = true;
-                        reactData.defaultValues.rememberedDenseData = deepCopy(reactData.denseView);
-                        reactData.denseView = { '*all': false };
-                      }
-                      updateReactData({
-                        defaultValues: reactData.defaultValues,
-                        denseView: reactData.denseView,
-                        popUpOpen: false
-                      }, true);
-                    }}
-                  >
-                    <Box
-                      display='flex' flexDirection='row' alignItems={'center'}
-                      key={'vRowHome'}
-                    >
-                      {agendaView() ? <DateRangeIcon /> : <CalendarViewDayIcon />}
-                      <Typography className={classes.popUpMenuRow} >{agendaView() ? 'Calendar view' : 'Agenda view'}</Typography>
-                    </Box>
-                  </MenuItem>
-                  {!agendaView() &&
+                  {!isMobileWidth() &&
                     <MenuItem
                       onClick={() => {
+                        reactData.defaultValues.agendaView = !agendaView();
                         updateReactData({
-                          denseView: { '*all': !reactData.denseView['*all'] },
+                          defaultValues: reactData.defaultValues,
                           popUpOpen: false
                         }, true);
                       }}
@@ -1453,8 +1651,8 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                         display='flex' flexDirection='row' alignItems={'center'}
                         key={'vRowHome'}
                       >
-                        {(reactData.denseView && reactData.denseView['*all']) ? <FormatLineSpacingIcon /> : <FormatAlignJustifyIcon />}
-                        <Typography className={classes.popUpMenuRow} >{reactData.denseView['*all'] ? 'Relaxed view' : 'Dense view'}</Typography>
+                        {agendaView() ? <DateRangeIcon /> : <CalendarViewDayIcon />}
+                        <Typography className={classes.popUpMenuRow} >{agendaView() ? 'Calendar view' : 'Agenda view'}</Typography>
                       </Box>
                     </MenuItem>
                   }
@@ -1473,24 +1671,6 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                     >
                       {showSlots() ? <PersonAddDisabledIcon /> : <GroupIcon />}
                       <Typography className={classes.popUpMenuRow} >{showSlots() ? 'Hide people' : 'Show people'}</Typography>
-                    </Box>
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      updateReactData({
-                        setFilter: true,
-                        popUpOpen: false
-                      }, true);
-                    }}
-                  >
-                    <Box
-                      display='flex' flexDirection='row' alignItems={'center'}
-                      key={'vRowHome'}
-                    >
-                      {<FilterListIcon />}
-                      <Typography className={classes.popUpMenuRow} >
-                        {'Filter entries'}
-                      </Typography>
                     </Box>
                   </MenuItem>
                   <MenuItem
@@ -1802,427 +1982,268 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 className={classes.dialogBox}
               >
                 <Box
-                  display='flex'
-                  alignItems='flex-start'
-                  flexDirection={agendaView() ? 'column' : 'row'}
-                  flexWrap={'wrap'}
+                  display={agendaView() ? 'flex' : 'grid'}
+                  alignItems={agendaView() ? 'flex-start' : 'stretch'}
+                  flexDirection={agendaView() ? 'column' : undefined}
                   key={`whole_calendar_${agendaView() ? 'A' : 'C'}`}
                   style={{
                     paddingLeft: '16px',
+                    paddingRight: agendaView() ? 0 : '16px',
                     minHeight: `${Math.min(reactData.visible_y - 400, 350)}px`,
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    ...(agendaView() ? {} : { gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' })
                   }}
                   id='dialog-content'
                 >
+                  {!agendaView() && ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((this_weekday, wX) => (
+                    <Box key={`weekday_header_${wX}`} display='flex' justifyContent='center' py={0.5}>
+                      <Typography style={AVATextStyle({ size: 1, bold: true, color: reactData.calendar_fill_text })}>
+                        {this_weekday}
+                      </Typography>
+                    </Box>
+                  ))}
+                  {!agendaView() && (reactData.myCalendar[0] && !reactData.myCalendar[0].dateObj.error
+                    ? Array.from({ length: reactData.myCalendar[0].dateObj.dayOfWeek })
+                    : []
+                  ).map((_, bX) => (
+                    <Box key={`leading_blank_${bX}`} />
+                  ))}
                   {reactData.myCalendar && (reactData.myCalendar.length > 0) &&
-                    reactData.myCalendar.map((this_date, dateIndex) => (        // an array of dates
-                      (!this_date.dateObj.error &&
-                        <React.Fragment
-                          key={`dateBox_container-${dateIndex}`}
+                    reactData.myCalendar.map((this_date, dateIndex) => {        // an array of dates
+                      if (this_date.dateObj.error) { return null; }
+                      if (agendaView() && !eventsToShow(this_date) && (dateIndex !== 0)) { return null; }
+                      const visibleEntries = this_date.eventList
+                        .map((this_event, eventIndex) => ({ this_event, eventIndex }))
+                        .filter(entry => okToShow(entry.this_event));
+                      // grid view: start by assuming everything fits; the shrink-to-fit effect trims this down when it doesn't
+                      const maxShow = agendaView()
+                        ? visibleEntries.length
+                        : Math.max(0, Math.min(visibleEntries.length, cellFitCounts[dateIndex] ?? visibleEntries.length));
+                      const shownEntries = visibleEntries.slice(0, maxShow);
+                      const overflowCount = visibleEntries.length - shownEntries.length;
+                      if (!agendaView()) { cellShownCountsRef.current[dateIndex] = maxShow; }
+                      return (
+                        <Box
+                          display='flex'
+                          key={`dateBox_cell-${dateIndex}_${agendaView() ? 'A' : 'C'}`}
+                          ref={(this_date.dateObj.numeric$ === reactData.selectDate)
+                            ? selectedDate
+                            : null
+                          }
+                          border={agendaView() ? 0 : 2}
+                          style={agendaView() ? {} : {
+                            aspectRatio: '1 / 1',
+                            borderRadius: '16px 16px 16px 16px',
+                            borderColor: reactData.calendar_fill_text,
+                            backgroundColor: setBackgroundColor(this_date),
+                            opacity: (this_date.dateObj.numeric < reactData.todayYMD ? 0.6 : 1),
+                            overflow: 'hidden'
+                          }}
+                          ml={agendaView() ? 1 : 0} mr={agendaView() ? 1 : 0} mt={1}
+                          justifyContent='flex-start'
+                          alignItems={agendaView() ? 'flex-start' : 'stretch'}
+                          flexDirection='column'
+                          zIndex={1900}
                         >
-                          {((!agendaView()) || eventsToShow(this_date) || (dateIndex === 0)) &&
-                            <Box
-                              display='flex'
-                              key={`dateBox_cell-${dateIndex}_${agendaView() ? 'A' : 'C'}`}
-                              ref={(this_date.dateObj.numeric$ === reactData.selectDate)
-                                ? selectedDate
-                                : null
+                          { /* Date in calendar cell */}
+                          <Box
+                            display='flex'
+                            width='-webkit-fill-available'
+                            mb={0.5}
+                            mx={agendaView() ? 2 : 1} pt={1}
+                            px={agendaView() ? 0 : 1}
+                            borderBottom={2}
+                            mt={1}
+                            justifyContent='center'
+                            style={{
+                              borderColor: setTextColor(null, this_date, agendaView()).color,
+                              cursor: agendaView() ? 'default' : 'pointer'
+                            }}
+                            onClick={() => {
+                              let clicked_on_date = false;
+                              if (!reactData.clicked_on_date || (reactData.clicked_on_date.numeric$ !== this_date.dateObj.numeric$)) {
+                                clicked_on_date = this_date.dateObj;
                               }
-                              border={agendaView() ? 0 : 2}
-                              style={agendaView() ? {} : {
-                                minWidth: isDense(this_date.dateObj.numeric$) ? `${reactData.factor7 * 200}px` : `250px`,
-                                maxWidth: isDense(this_date.dateObj.numeric$) ? `${(reactData.factor7 < 1) ? (reactData.factor7 * 200) : 999}px` : '',
-                                minHeight: isDense(this_date.dateObj.numeric$) ? `${reactData.factor7 * 280}px` : null,
-                                maxHeight: isDense(this_date.dateObj.numeric$) ? `${reactData.factor7 * 280}px` : null,
-                                borderRadius: '30px 30px 30px 30px',
-                                marginTop: '10px',
-                                marginBottom: '10px',
-                                borderColor: reactData.calendar_fill_text,
-                                backgroundColor: setBackgroundColor(this_date),
-                                opacity: (this_date.dateObj.numeric < reactData.todayYMD ? 0.6 : 1)
-                              }}
-                              ml={1} mr={1} mt={1}
-                              justifyContent='flex-start'
-                              alignItems={agendaView() ? 'flex-start' : 'center'}
-                              flexDirection='column'
-                              zIndex={1900}
-                            >
-                              { /* Date in calendar cell */}
-                              <Box
-                                display='flex'
-                                width='-webkit-fill-available'
-                                mb={0.5}
-                                mx={2} pt={1}
-                                px={agendaView() ? 0 : 2}
-                                borderBottom={(!isDense(this_date.dateObj.numeric$) || (reactData.factor7 > .45)) ? 2 : 0}
-                                mt={1}
-                                justifyContent={'center'}
-                                style={{
-                                  borderColor: setTextColor(null, this_date, agendaView()).color,
-                                }}
-                                onDragOver={(e) =>
-                                  handleDragOver(e, {
-                                    type: 'calendar_cell',
-                                    data: {
-                                      this_date,
-                                      dateIndex
-                                    }
-                                  })
+                              let reactUpdObj = { clicked_on_date };
+                              if (!agendaView()) { reactUpdObj.dayDetailsIndex = dateIndex; }
+                              updateReactData(reactUpdObj, true);
+                            }}
+                            onDragOver={(e) =>
+                              handleDragOver(e, {
+                                type: 'calendar_cell',
+                                data: {
+                                  this_date,
+                                  dateIndex
                                 }
-                                onDrop={async (e) => {
-                                  await handleDrop(e, 'calendar_cell');
-                                }}
+                              })
+                            }
+                            onDrop={async (e) => {
+                              await handleDrop(e, 'calendar_cell');
+                            }}
+                          >
+                            {agendaView() &&
+                              <Typography
+                                style={AVATextStyle({
+                                  size: 1.2,
+                                  margin: { left: 0.2, right: 0.2 },
+                                  color: setTextColor(null, this_date, agendaView()).color,
+                                })}
+                                key={this_date.dateObj.numeric$ + 'head1' + dateIndex}
                               >
-                                <Box
-                                  display='flex'
-                                  flexWrap={'wrap'}
-                                  flexGrow={1}
-                                  flexDirection={(!isDense(this_date.dateObj.numeric$) || (reactData.factor7 > .45)) ? 'row' : 'column'}
-                                  justifyContent={agendaView() ? 'flex-start' : 'center'}
-                                  alignItems={'center'}
-                                  onClick={() => {
-                                    let clicked_on_date = false;
-                                    if (agendaView()) {
-                                      if (!reactData.clicked_on_date || (reactData.clicked_on_date.numeric$ !== this_date.dateObj.numeric$)) {
-                                        clicked_on_date = this_date.dateObj;
-                                      }
-                                      updateReactData({
-                                        clicked_on_date
-                                      }, true);
-                                    }
-                                    else {
-                                      let denseView = {
-                                        '*all': reactData.denseView['*all']
-                                      };
-                                      if (!reactData.denseView.hasOwnProperty(this_date.dateObj.numeric$) ||
-                                        (reactData.denseView[this_date.dateObj.numeric$] === reactData.denseView['*all'])) {
-                                        denseView[this_date.dateObj.numeric$] = !reactData.denseView['*all'];
-                                        clicked_on_date = (denseView[this_date.dateObj.numeric$] ? false : this_date.dateObj);
-                                      }
-                                      updateReactData({
-                                        clicked_on_date,
-                                        denseView
-                                      }, true);
-                                    }
-                                  }}
-                                >
-                                  <Typography
-                                    style={AVATextStyle({
-                                      size: 1.2,
-                                      margin: { left: 0.2, right: 0.2 },
-                                      color: setTextColor(null, this_date, agendaView()).color,
-                                    })}
-                                    key={this_date.dateObj.numeric$ + 'head1' + dateIndex}
-                                  >
-                                    {isDense(this_date.dateObj.numeric$)
-                                      ? this_date.dateObj.dayOfWeek_word.slice(0, 3)
-                                      : this_date.dateObj.dayOfWeek_word
-                                    }
-                                  </Typography>
-                                  <Typography
-                                    key={this_date.dateObj.numeric$ + 'skiprow' + dateIndex}
-                                    style={{
-                                      flexBasis: '100%',
-                                      height: 0
-                                    }}
-                                  >
-                                    {''}
-                                  </Typography>
-                                  {((dateIndex === 0) || (this_date.dateObj.date.getDate() === 1)) &&
-                                    <Typography
-                                      style={AVATextStyle({
-                                        size: 1.2,
-                                        margin: { left: 0.2, right: 0.2 },
-                                        color: setTextColor(null, this_date, agendaView()).color,
-                                      })}
-                                      key={this_date.dateObj.numeric$ + 'month2' + dateIndex}
-                                    >
-                                      {this_date.dateObj.date.toLocaleString([], { month: 'short' })}
-                                    </Typography>
-                                  }
-                                  <Typography
-                                    style={AVATextStyle({
-                                      size: 1.2,
-                                      color: setTextColor(null, this_date, agendaView()).color,
-                                      margin: { left: 0.2, right: 0.2 }
-                                    })}
-                                    key={this_date.dateObj.numeric$ + 'head2' + dateIndex}
-                                  >
-                                    {ordinal(this_date.dateObj.date.getDate())}
-                                  </Typography>
-                                </Box>
-                              </Box>
+                                {this_date.dateObj.dayOfWeek_word}
+                              </Typography>
+                            }
+                            {((dateIndex === 0) || (this_date.dateObj.date.getDate() === 1)) &&
+                              <Typography
+                                style={AVATextStyle({
+                                  size: 1.2,
+                                  margin: { left: 0.2, right: 0.2 },
+                                  color: setTextColor(null, this_date, agendaView()).color,
+                                })}
+                                key={this_date.dateObj.numeric$ + 'month2' + dateIndex}
+                              >
+                                {this_date.dateObj.date.toLocaleString([], { month: 'short' })}
+                              </Typography>
+                            }
+                            <Typography
+                              style={AVATextStyle({
+                                size: 1.2,
+                                color: setTextColor(null, this_date, agendaView()).color,
+                                margin: { left: 0.2, right: 0.2 }
+                              })}
+                              key={this_date.dateObj.numeric$ + 'head2' + dateIndex}
+                            >
+                              {ordinal(this_date.dateObj.date.getDate())}
+                            </Typography>
+                          </Box>
 
-                              { /* Calendar cell contents */}
-                              {(!isDense(this_date.dateObj.numeric$) || (reactData.factor7 > .45)) &&
-                                <React.Fragment>
-                                  {((this_date.eventList.length === 0) || (!eventsToShow(this_date))) ?
-                                    <Box style={isDense(this_date.dateObj.numeric$)
-                                      ? {
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        paddingLeft: '16px',
-                                        paddingRight: '16px',
-                                        marginTop: 0,
-                                        marginBottom: '24px',
-                                        maxWidth: `${((reactData.factor7 * 220)) - ((reactData.factor7 < 1) ? 25 : 0)}px`,
-                                        justifyContent: 'flex-start',
-                                        overflow: 'auto',
-                                        scrollbarWidth: 'thin',
-                                        overflowX: 'hidden',
-                                      } : {
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        padding: '16px',
-                                        marginTop: 0,
-                                        marginBottom: '8px',
-                                        variant: 'outlined',
-                                        justifyContent: 'flex-start',
-                                      }}
-                                      alignItems={agendaView() ? 'flex-start' : 'center'}
-                                      textAlign={agendaView() ? 'flex-start' : 'center'}
-                                      key={`details${this_date.dateObj.numeric$}_noEvents`}
-                                      onDragOver={(e) =>
-                                        handleDragOver(e, {
-                                          type: 'calendar_cell',
-                                          data: {
-                                            this_date,
-                                            dateIndex
-                                          }
-                                        })
-                                      }
-                                      onDrop={async (e) => {
-                                        await handleDrop(e, 'calendar_cell');
-                                      }}
-                                    >
-                                      <Typography style={AVATextStyle({
-                                        color: reactData.calendar_fill_text,
-                                        size: 1,
-                                        textWrap: 'wrap',
-                                        padding: { left: 0.5 }
-                                      })}>
-                                        {((this_date.eventList.length === 0) ? `No Events Scheduled` : `No Events Match your Filter`)}
-                                      </Typography>
-                                    </Box>
-                                    :
-                                    <Box style={isDense(this_date.dateObj.numeric$)
-                                      ? {
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        paddingLeft: '16px',
-                                        paddingRight: '16px',
-                                        marginTop: 0,
-                                        marginBottom: '24px',
-                                        maxWidth: `${((reactData.factor7 * 220)) - ((reactData.factor7 < 1) ? 25 : 0)}px`,
-                                        justifyContent: 'flex-start',
-                                        overflow: 'auto',
-                                        scrollbarWidth: 'thin',
-                                        overflowX: 'hidden',
-                                      } : {
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        padding: '16px',
-                                        marginTop: 0,
-                                        marginBottom: '8px',
-                                        variant: 'outlined',
-                                        justifyContent: 'flex-start',
-                                      }}
-                                      alignItems={agendaView() ? 'flex-start' : 'center'}
-                                      key={`details${this_date.dateObj.numeric$}_eventBox`}
-                                    >
-                                      {this_date.eventList.map((this_event, eventIndex) => (        // an array of events on this date
-                                        okToShow(this_event) &&
-                                        <Box
-                                          style={{
-                                            transform: `scale(${isDense(this_date.dateObj.numeric$) ? Math.min(reactData.factor7 * 1.5, 1) : 1})`
-                                          }}
-                                          zIndex={2000}
-                                          onDragOver={(e) =>
-                                            handleDragOver(e, {
-                                              type: 'event',
-                                              data: { droppedOn_event: this_event, eventIndex, dateIndex }
-                                            })
-                                          }
-                                          onDrop={async (e) => {
-                                            await handleDrop(e, 'event');
-                                          }}
-                                          display='flex' flexDirection='column'
-                                          py={isDense(this_date.dateObj.numeric$) ? reactData.factor7 : 1}
-                                          px={1}
-                                          mt={0}
-                                          mb={isDense(this_date.dateObj.numeric$) ? reactData.factor7 : 1}
-                                          variant='outlined'
-                                          textAlign={agendaView() ? 'flex-start' : 'center'}
-                                          key={`details${this_date.dateObj.numeric$}_${eventIndex}`}
-                                          onClick={async () => {
-                                            switch (this_event.type) {
-                                              case 'holiday': {
-                                                break;
-                                              }
-                                              case 'birthday': {
-                                                break;
-                                              }
-                                              default: {
-                                                let [eventInfo, occInfo] = await getCalendarEntries({
-                                                  person_id: reactData.selectedPerson_id,
-                                                  client: this_event.client,
-                                                  event_id: this_event.event_key
-                                                });
-                                                this_event.occData = Object.assign({},
-                                                  eventInfo.eventData.event_data,
-                                                  eventInfo.eventData,
-                                                  { location: eventInfo.eventData.event_data.location.description },
-                                                  { signup_type: eventInfo.eventData.sign_up.type },
-                                                  { signup_window: eventInfo.eventData.sign_up.window || { start: null, end: null } },
-                                                  occInfo,
-                                                  { date: occInfo.occurrence_date },
-                                                  { time$: this_event.time$ },
-                                                  { time24: this_event.time24 }
-                                                );
-                                                this_event.date_index = dateIndex;
-                                                this_event.event_index = eventIndex;
-                                                updateReactData({
-                                                  event_being_edited: this_event
-                                                }, true);
-                                              }
-                                            }
-                                          }}
-                                        >
-                                          <Box display='flex' flexDirection='row'
-                                            justifyContent={agendaView() ? 'flex-start' : 'center'}
-                                            alignItems='center'
-                                            color={setTextColor(this_event, this_date, agendaView()).color}
-                                          >
-                                            <Box display='flex' flexDirection='column'
-                                              justifyContent={agendaView() ? 'flex-start' : 'center'}
-                                              ml={agendaView() ? 0 : 1}
-                                              mr={1}
-                                              alignItems={agendaView() ? 'flex-start' : 'center'}
-                                              color={setTextColor(this_event, this_date, agendaView()).color}
-                                            >
-                                              <Typography style={AVATextStyle({
-                                                size: 1,
-                                                bold: true,
-                                              })}>
-                                                {titleCase(this_event.description)}
-                                              </Typography>
-                                              {isWaitListed(this_event) &&
-                                                <Typography
-                                                  noWrap={true}
-                                                  style={AVATextStyle({ size: 1.2, italic: true })}
-                                                >
-                                                  {`You're on the Waitlist`}
-                                                </Typography>
-                                              }
-                                              {this_event.slot_owners.hasOwnProperty(reactData.selectedPerson_id)
-                                                ?
-                                                <React.Fragment>
-                                                  {!reactData.defaultValues.onlyRegistered
-                                                    && (this_date.dateObj.numeric >= reactData.todayYMD)
-                                                    && (![this_event.owner].flat().includes(reactData.selectedPerson_id))
-                                                    &&
-                                                    <Typography
-                                                      noWrap={true}
-                                                      style={AVATextStyle({ size: 1.2, italic: true })}
-                                                    >
-                                                      {`You're on the list`}
-                                                    </Typography>
-                                                  }
-                                                  <Typography
-                                                    noWrap={true}
-                                                    style={AVATextStyle({
-                                                      size: 1.0,
-                                                    })}
-                                                  >
-                                                    {((this_event.type === 'time')
-                                                      ? (makeTime(this_event.slot_owners[reactData.selectedPerson_id]).time)
-                                                      : (makeCalendarTime(this_event.time)))
-                                                    }
-                                                  </Typography>
-                                                </React.Fragment>
-                                                :
-                                                <React.Fragment>
-                                                  {this_event.time
-                                                    &&
-                                                    <Typography
-                                                      noWrap={true}
-                                                      style={AVATextStyle({
-                                                        size: 1.0,
-                                                      })}
-                                                    >
-                                                      {makeCalendarTime(this_event.time)}
-                                                    </Typography>
-                                                  }
-                                                </React.Fragment>
-                                              }
-                                            </Box>
-                                          </Box>
-                                          {showSlots() && this_event.slot_owners
-                                            && (Object.keys(this_event.slot_owners).length > 0)
-                                            && (Object.keys(this_event.slot_owners).sort((a, b) => {
-                                              return ((this_event.slot_owners[a] > this_event.slot_owners[b]) ? 1 : -1);
-                                            })).map(this_owner => (
-                                              <Typography
-                                                key={`event_${this_event}_slot_owner_${this_owner}`}
-                                                noWrap={true}
-                                                style={AVATextStyle({
-                                                  size: 0.8,
-                                                })}>
-                                                {`${(this_event.type === 'time') ? makeTime(this_event.slot_owners[this_owner]).short + ' ' : ''}${getPersonName(this_owner.split('%%')[0])}`}
-                                              </Typography>
+                          { /* Calendar cell contents */}
+                          <Box
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              padding: agendaView() ? '16px' : '2px 8px',
+                              justifyContent: 'flex-start',
+                              overflow: 'hidden',
+                              flexGrow: 1,
+                              minHeight: 0
+                            }}
+                            alignItems={agendaView() ? 'flex-start' : 'center'}
+                            textAlign={agendaView() ? 'flex-start' : 'center'}
+                            key={`details${this_date.dateObj.numeric$}_eventBox`}
+                          >
+                            {/* this is the box that actually gets squeezed by flex - measure IT for overflow, not its parent */}
+                            <Box
+                              ref={(el) => {
+                                if (agendaView()) { return; }
+                                if (el) { cellContentRefs.current[dateIndex] = el; }
+                                else { delete cellContentRefs.current[dateIndex]; }
+                              }}
+                              style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, flex: '1 1 auto', width: '100%' }}
+                            >
 
-                                            ))}
-                                        </Box>
-                                      ))}
-                                    </Box>
-                                  }
-                                </React.Fragment>
+                              {/* only genuinely empty dates get this message - a cell trimmed down to 0 shown (but with entries waiting behind "+n more") should not */}
+                              {visibleEntries.length === 0
+                                ?
+                                <Typography style={AVATextStyle({
+                                  color: reactData.calendar_fill_text,
+                                  size: 1,
+                                  textWrap: 'wrap',
+                                  padding: { left: 0.5 }
+                                })}>
+                                  {((this_date.eventList.length === 0) ? `No Events Scheduled` : `No Events Match your Filter`)}
+                                </Typography>
+                                :
+                                shownEntries.map(({ this_event, eventIndex }) => (
+                                  renderEventBox(this_event, eventIndex, this_date, dateIndex)
+                                ))
                               }
                             </Box>
-                          }
-                          {(((dateIndex + 1) % 7) === 0)
-                            && reactData.defaultValues.weekView
-                            && !agendaView()
-                            &&
-                            <Box
-                              flexBasis={'100%'}
-                              width={0}
-                            />
-                          }
-                        </React.Fragment>
-                      )
-                    ))
+                            {overflowCount > 0 &&
+                              <Typography
+                                onClick={() => updateReactData({ dayDetailsIndex: dateIndex }, true)}
+                                style={{ ...AVATextStyle({ size: 0.8, italic: true }), cursor: 'pointer', textDecoration: 'underline', flexShrink: 0 }}
+                              >
+                                {`+${overflowCount} more`}
+                              </Typography>
+                            }
+                          </Box>
+                        </Box>
+                      );
+                    })
                   }
                 </Box>
               </Box>
             </DialogContent>
           }
-          {!reactData.loading && reactData.setFilter &&
+          {!reactData.loading && (reactData.dayDetailsIndex !== null) && (reactData.dayDetailsIndex !== undefined) &&
+            reactData.myCalendar[reactData.dayDetailsIndex] &&
+            <Dialog
+              open={true}
+              onClose={() => updateReactData({ dayDetailsIndex: null }, true)}
+              PaperProps={{ style: { borderRadius: '30px', minWidth: '30vw', maxHeight: '80vh' } }}
+            >
+              <DialogTitle>
+                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                  <Typography style={AVATextStyle({ size: 1.2, bold: true })}>
+                    {`${reactData.myCalendar[reactData.dayDetailsIndex].dateObj.dayOfWeek_word}, ${reactData.myCalendar[reactData.dayDetailsIndex].dateObj.date.toLocaleString([], { month: 'long' })} ${ordinal(reactData.myCalendar[reactData.dayDetailsIndex].dateObj.date.getDate())}`}
+                  </Typography>
+                </Box>
+              </DialogTitle>
+              <DialogContent dividers={true}>
+                {reactData.myCalendar[reactData.dayDetailsIndex].eventList
+                  .map((this_event, eventIndex) => ({ this_event, eventIndex }))
+                  .filter(entry => okToShow(entry.this_event))
+                  .map(({ this_event, eventIndex }) => (
+                    renderEventBox(this_event, eventIndex, reactData.myCalendar[reactData.dayDetailsIndex], reactData.dayDetailsIndex, true)
+                  ))
+                }
+              </DialogContent>
+              <DialogActions style={{ justifyContent: 'center' }}>
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'red', color: 'white' }}
+                  size='small'
+            
+                  onClick={() => updateReactData({ dayDetailsIndex: null }, true)}
+                >
+                  {'Close'}
+                </Button>
+              </DialogActions>
+            </Dialog>
+          }
+          {!reactData.loading && reactData.setSearch &&
             <AVATextInput
-              titleText={'Filter Calendar Entries'}
-              promptText={['Words to filter on']}
-              buttonText={['Set Filter', 'Cancel/Go Back', 'Clear Filter',]}
+              titleText={'Search Calendar'}
+              promptText={['Words to search for']}
+              buttonText={['Search', 'Cancel/Go Back', 'Clear Search',]}
               valueText={[reactData.filterTextLower]}
               options={{
                 save_on_enter: true
               }}
               onCancel={() => {
                 updateReactData({
-                  setFilter: false
+                  setSearch: false
                 }, true);
               }}
               onSave={async (response, buttonPressed) => {
-                let reactUpdObj = {
-                  setFilter: false
-                };
                 if ((response.length === 0) || (response[0].length === 0) || (buttonPressed === 2)) {
-                  reactUpdObj.filterTextLower = false;
-                  reactUpdObj.idFilter = false;
-                  reactUpdObj.eventIDFilter = false;
+                  clearSearch({ setSearch: false });
                 }
                 else {
-                  reactUpdObj.filterTextLower = response[0].toLowerCase();
+                  let reactUpdObj = {
+                    setSearch: false,
+                    filterTextLower: response[0].toLowerCase()
+                  };
+                  // a word search reads best in the linear Agenda layout, so force it on
+                  if (!agendaView()) {
+                    reactData.defaultValues.agendaView = true;
+                    reactUpdObj.defaultValues = reactData.defaultValues;
+                    reactUpdObj.searchForcedAgenda = true;
+                  }
+                  updateReactData(reactUpdObj, true);
                 }
-                updateReactData(reactUpdObj, true);
               }}
             />
           }
@@ -2828,29 +2849,6 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           >
             {'Done'}
           </Button>
-          {(window.window.innerWidth >= 800) &&
-            <Button
-              className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'gray', color: 'black' }}
-              size='small'
-              startIcon={<TextureIcon fontSize="small" />}
-              onClick={() => {
-                updateReactData({
-                  setFilter: true,
-                }, true);
-              }}
-              onDragOver={(e) =>
-                handleDragOver(e, {
-                  type: 'filter_button'
-                })
-              }
-              onDrop={async (e) => {
-                await handleDrop(e, 'filter_button');
-              }}
-            >
-              {'Filter'}
-            </Button>
-          }
           {!reactData.defaultValues.assignmentView &&
             <Button
               className={AVAClass.AVAButton}
@@ -2868,15 +2866,33 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 updateReactData(reactUpdObj, true);
               }}
             >
-              {(reactData.selectedPerson_id !== state.session.person_id) ? 'Make an Appointment' : 'Add a Personal Event'}
+              {(reactData.selectedPerson_id !== state.session.person_id) ? 'Make an Appointment' : 'Add an Event'}
             </Button>
           }
         </Box>
         <Box display='flex' flexWrap='noWrap' flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
+          <Tooltip title='Previous 4 weeks'>
+            <IconButton
+              size='small'
+              style={{ backgroundColor: 'blue', color: 'white', marginRight: '4px' }}
+              onClick={() => { navigateToWindow(addDays(reactData.defaultValues?.start_date || new Date(), -28)); }}
+            >
+              <ArrowBackIcon fontSize='small' />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title='Jump to today'>
+            <IconButton
+              size='small'
+              style={{ backgroundColor: 'blue', color: 'white', marginRight: '4px' }}
+              onClick={() => { navigateToWindow(new Date()); }}
+            >
+              <TodayIcon fontSize='small' />
+            </IconButton>
+          </Tooltip>
           <input
             type="date"
             id={`select_date`}
-            key={`select_date`}
+            key={`select_date_${makeDate(reactData.defaultValues?.start_date || new Date()).numeric}`}
             ref={dateSelectRef}
             style={{
               backgroundColor: 'blue',
@@ -2886,56 +2902,28 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               paddingTop: '5px',
               paddingLeft: '16px',
               paddingBottom: '5px',
-              marginLeft: '16px',
-              marginRight: '-3.2px',
-              borderTop: '0.75px',
-              borderRight: '0px',
-              borderBottom: '0.75px',
-              borderLeft: '0.75px',
-              borderRadius: '30px 0px 0px 30px',
+              marginLeft: '0px',
+              marginRight: '4px',
+              border: '0.75px solid white',
+              borderRadius: '30px',
               textWrap: 'nowrap',
               minHeight: '30px',
               maxHeight: '30px'
             }}
             defaultValue={makeDate(reactData.defaultValues?.start_date || new Date()).input}
+            onChange={(ev) => {
+              if (ev.target.value) { navigateToWindow(ev.target.value); }
+            }}
           />
-          <Button
-            style={{
-              backgroundColor: 'blue',
-              color: 'white',
-              fontFamily: 'Roboto',
-              paddingLeft: '0px',
-              paddingRight: '0px',
-              paddingTop: '5px',
-              paddingBottom: '5px',
-              marginRight: '16px',
-              marginLeft: '0px',
-              borderTop: '0.75px',
-              borderRight: '0.75px',
-              borderBottom: '0.75px',
-              borderLeft: '0px',
-              borderRadius: '0px 30px 30px 0px',
-              minHeight: '30px',
-              maxHeight: '30px',
-              textWrap: 'nowrap'
-            }}
-            size='small'
-            endIcon={<ArrowForwardIcon fontSize="small" />}
-            onClick={() => {
-              if (dateSelectRef.current && dateSelectRef.current.value) {
-                let dObj = makeDate(dateSelectRef.current.value, { noTime: true, noYearCorrection: true });
-                if (!dObj.error) {
-                  onClose({
-                    action: 'reset',
-                    newStartDate: addDays(dObj.date, -dObj.dayOfWeek),
-                    newEndDate: addDays(dObj.date, 27 - dObj.dayOfWeek)
-                  });
-                }
-              }
-            }}
-          >
-            {''}
-          </Button>
+          <Tooltip title='Next 4 weeks'>
+            <IconButton
+              size='small'
+              style={{ backgroundColor: 'blue', color: 'white', marginLeft: '0px' }}
+              onClick={() => { navigateToWindow(addDays(reactData.defaultValues?.start_date || new Date(), 28)); }}
+            >
+              <ArrowForwardIcon fontSize='small' />
+            </IconButton>
+          </Tooltip>
         </Box>
       </Box>
       {

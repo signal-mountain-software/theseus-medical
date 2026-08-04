@@ -157,7 +157,13 @@ export async function addEvent(body) {
           // code:  (future)
           description: body.calendar_info.location
         },
-        time: body.calendar_info.timeObj
+        time: body.calendar_info.timeObj,
+        // when set, hides this event from residents until this timestamp (null = visible immediately)
+        visible_after: body.calendar_info.visible_after || null,
+        // null/undefined = guests allowed with no limit; a number (including 0) is a strict cap
+        number_of_guests: (body.calendar_info.number_of_guests === undefined || body.calendar_info.number_of_guests === null || body.calendar_info.number_of_guests === '')
+          ? null
+          : Number(body.calendar_info.number_of_guests)
       },
       occPattern,
       start_Date: occPattern.first_date || (occPattern.specified ? occPattern.specified[0] : makeDate('today').numeric),
@@ -167,7 +173,6 @@ export async function addEvent(body) {
         reminder_minutes_Enrolled: body.calendar_info.reminder_minutes_Enrolled,
         reminder_minutes_NotEnrolled: body.calendar_info.reminder_minutes_NotEnrolled
       },
-      number_of_guests: body.calendar_info.number_of_guests,
       sign_up: {
         name_security: (body.calendar_info.slot_visibility && (body.calendar_info.slot_visibility !== 'show_name')),
         type: body.calendar_info.signup_type,
@@ -3311,6 +3316,11 @@ export async function v2buildCalendar(body, screenStatus = () => { }) {
           skip_event = true;
           continue;
         };
+        const visible_after = eRec.Item.eventData?.event_data?.visible_after;
+        if (!body.includeUnpublished && visible_after && (visible_after > Date.now())) {
+          skip_event = true;
+          continue;
+        }
         skip_event = false;
         this_event = Object.assign({},
           eRec.Item,
