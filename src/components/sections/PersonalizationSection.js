@@ -474,6 +474,7 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
           marginTop={1}
         >
           <Box
+            key={`profileImg_${profileImageSrc}`}
             style={{ marginLeft: '40px', objectFit: 'cover', objectPosition: 'center' }}
             component="img"
             width={150}

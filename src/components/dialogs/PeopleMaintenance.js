@@ -1720,7 +1720,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
               }}
               key={'personBox'}
             >
-              <Avatar className={AVAClass.AVAAvatar} src={reactData.myImage} alt={reactData.greetingName} />
+              <Avatar key={`peopleMaintAvatar_${reactData.myImage}`} className={AVAClass.AVAAvatar} src={reactData.myImage} alt={reactData.greetingName} />
               <Typography
                 key={`personName`}
                 style={AVATextStyle({
