@@ -3,13 +3,13 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 
 import { createNewGroup, getGroupMembers, getMemberList, addMember, removeMember } from '../../util/AVAGroups';
-import { dbClient, isObject, listFromArray, cl } from '../../util/AVAUtilities';
+import { dbClient, isObject, listFromArray, cl, recordExists } from '../../util/AVAUtilities';
 import AVATextInput from '../forms/AVATextInput';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import GroupMaintenance from '../dialogs/GroupMaintenance';
 import { getPerson } from '../../util/AVAPeople';
 
-import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Checkbox, FormControlLabel, LinearProgress, Tooltip } from '@material-ui/core';
+import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Checkbox, FormControlLabel, LinearProgress, Tooltip, Avatar, Menu, MenuList, MenuItem, CircularProgress } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 import {
   getExportFieldPickerData,
@@ -39,6 +39,10 @@ import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import HighlightOffIcon from '@material-ui/icons/HighlightOff';
 import GetAppIcon from '@material-ui/icons/GetApp';
 import PhotoLibraryIcon from '@material-ui/icons/PhotoLibrary';
+import HomeIcon from '@material-ui/icons/Home';
+import AutorenewIcon from '@material-ui/icons/Autorenew';
+import PeopleIcon from '@material-ui/icons/People';
+import SupervisorAccountIcon from '@material-ui/icons/SupervisorAccount';
 
 import { SET_GROUPS, SET_ACCESSLIST } from '../../contexts/Session/actions';
 
@@ -122,6 +126,20 @@ const useStyles = makeStyles(theme => ({
     display: 'none',
     visibility: 'hidden'
   },
+  popUpMenu: {
+    marginRight: theme.spacing(3),
+    paddingRight: 2,
+  },
+  popUpMenuRow: {
+    marginLeft: theme.spacing(1),
+    fontSize: theme.typography.fontSize * 1.0,
+  },
+  popUpFooter: {
+    fontSize: theme.typography.fontSize * 0.8,
+  },
+  clientPopUp: {
+    borderRadius: '30px 30px 30px 30px',
+  },
 }));
 
 // Persists expand/collapse state across GroupControl mounts within the same session
@@ -134,6 +152,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   const filterTimeoutRef = React.useRef(null);
   const personRowDragActiveRef = React.useRef(false);
   const personRowDragResetRef = React.useRef(null);
+  const familyDataCacheRef = React.useRef({});
   const [selectedFieldDropTargetIndex, setSelectedFieldDropTargetIndex] = React.useState(null);
   const [selectedFieldDragIndex, setSelectedFieldDragIndex] = React.useState(null);
 
@@ -189,6 +208,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     selectedPersonLastName: '',
     showGroupSelect: false,
     showQuickSearch: false,
+    showFamilyMembers: false,
+    showPrimaryCaregivers: false,
+    extraPeople: [],
+    loadingExtraPeople: false,
     selectedGroup_id: null,
     selectedGroupIds: [],
     selectedGroupMembersPerGroup: {},
@@ -273,6 +296,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         reactUpdObj.selectedGroupRec = groupsManagedObject[listEntry];
         reactUpdObj.selectedGroupMembers = memberList;
         reactUpdObj.sortedGroupMembers = sortGroupMembers(memberList);
+        reactUpdObj.showFamilyMembers = false;
+        reactUpdObj.showPrimaryCaregivers = false;
       };
       if (!vCheck || vCheck === '') {
         reactUpdObj.people_filter_reset = reactData.people_filter_reset + 1;
@@ -286,6 +311,117 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       window_width: window.window.innerWidth,
     }, true);
   }
+
+  function handleToggleShowFamilyMembers() {
+    updateReactData({
+      showFamilyMembers: !reactData.showFamilyMembers,
+      popUpOpen: false
+    }, true);
+  }
+
+  function handleToggleShowPrimaryCaregivers() {
+    updateReactData({
+      showPrimaryCaregivers: !reactData.showPrimaryCaregivers,
+      popUpOpen: false
+    }, true);
+  }
+
+  // resolves display name from the client's accessList when available, else falls back to the FamilyGroups record's stored name
+  function resolveDisplayName(person_id, fallbackName) {
+    const found = state.accessList?.[pSession.client_id]?.list?.find(p => p.person_id === person_id);
+    return found ? `${found.name.first} ${found.name.last}` : (fallbackName || person_id);
+  }
+
+  // same FamilyGroups lookup used by PeopleMaintenance's Snapshot section, cached per person_id;
+  // only gathers the categories currently requested so family members aren't fetched unless asked for.
+  // "Family Members" implies both primary_contact AND other_members; "Primary Caregivers" is primary_contact only
+  async function loadFamilyRecordsForPerson(person_id, { wantCaregivers, wantFamilyMembers }) {
+    const needPrimary = wantCaregivers || wantFamilyMembers;
+    const needOther = wantFamilyMembers;
+    const cached = familyDataCacheRef.current[person_id];
+    if (cached && (!needPrimary || cached.primaryContacts) && (!needOther || cached.otherMembers)) {
+      return cached;
+    }
+    const personRec = await getPerson(person_id);
+    cl({ 'GroupControl: family_groups lookup': { person_id, family_groups: personRec?.family_groups || [] } });
+    const primaryContacts = needPrimary ? [] : (cached?.primaryContacts || null);
+    const otherMembers = needOther ? [] : (cached?.otherMembers || null);
+    for (const family_id of (personRec?.family_groups || [])) {
+      const familyRec = await dbClient
+        .query({
+          KeyConditionExpression: 'family_id = :f',
+          TableName: 'FamilyGroups',
+          IndexName: 'family_id-index',
+          ExpressionAttributeValues: { ':f': family_id }
+        })
+        .promise()
+        .catch(error => { cl({ 'GroupControl: Error reading FamilyGroups': error }); });
+      if (recordExists(familyRec)) {
+        const rec = familyRec.Items[0];
+        if (needPrimary && rec.primary_contact?.id) { primaryContacts.push(rec.primary_contact); }
+        if (needOther) { (rec.other_members || []).forEach(m => { if (m.id) { otherMembers.push(m); } }); }
+      }
+    }
+    const result = { primaryContacts, otherMembers };
+    familyDataCacheRef.current[person_id] = result;
+    return result;
+  }
+
+  // builds the deduplicated list of family members / primary caregivers to layer onto the right-hand people list
+  React.useEffect(() => {
+    if (!reactData.showFamilyMembers && !reactData.showPrimaryCaregivers) {
+      if ((reactData.extraPeople || []).length > 0) {
+        updateReactData({ extraPeople: [] }, true);
+      }
+      return;
+    }
+    let cancelled = false;
+    updateReactData({ loadingExtraPeople: true }, true);
+    (async () => {
+      const basePeopleIds = Object.keys(reactData.selectedGroupMembers || {});
+      const seen = new Set(basePeopleIds);
+      // keyed by extra person_id so the same family member/caregiver linked to multiple
+      // primary accounts keeps every association — needed so the text filter can match on any of them
+      const extrasById = new Map();
+      const addExtra = (candidate, kind, linkedTo) => {
+        if (extrasById.has(candidate.id)) {
+          extrasById.get(candidate.id).linkedPersonIds.add(linkedTo);
+          return;
+        }
+        if (seen.has(candidate.id)) { return; }
+        seen.add(candidate.id);
+        extrasById.set(candidate.id, {
+          person_id: candidate.id,
+          display_name: resolveDisplayName(candidate.id, candidate.name),
+          kind,
+          linkedPersonIds: new Set([linkedTo])
+        });
+      };
+      for (const person_id of basePeopleIds) {
+        const { primaryContacts, otherMembers } = await loadFamilyRecordsForPerson(person_id, {
+          wantCaregivers: reactData.showPrimaryCaregivers,
+          wantFamilyMembers: reactData.showFamilyMembers
+        });
+        // Family Members (when on) covers primary_contact + other_members;
+        // Primary Caregivers (when family members is off) covers primary_contact only
+        if (reactData.showFamilyMembers) {
+          for (const contact of primaryContacts) { addExtra(contact, 'family', person_id); }
+          for (const member of otherMembers) { addExtra(member, 'family', person_id); }
+        }
+        else if (reactData.showPrimaryCaregivers) {
+          for (const contact of primaryContacts) { addExtra(contact, 'caregiver', person_id); }
+        }
+      }
+      if (!cancelled) {
+        const extraPeople = [...extrasById.values()]
+          .map(extra => ({ ...extra, linkedPersonIds: [...extra.linkedPersonIds] }))
+          .sort((a, b) => (a.display_name > b.display_name ? 1 : -1));
+        cl({ 'GroupControl: family/caregiver lookup complete': { basePeopleCount: basePeopleIds.length, extraPeopleFound: extraPeople.length } });
+        updateReactData({ extraPeople, loadingExtraPeople: false }, true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [reactData.showFamilyMembers, reactData.showPrimaryCaregivers, reactData.selectedGroupMembers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function calcMinimumGroupLevel() {
     let response = 99;
@@ -445,6 +581,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       const freshMembers = await selectMembers(reactData.selectedGroup_id, { live: true });
       reactUpdObj.selectedGroupMembers = freshMembers;
       reactUpdObj.sortedGroupMembers = sortGroupMembers(freshMembers);
+      reactUpdObj.showFamilyMembers = false;
+      reactUpdObj.showPrimaryCaregivers = false;
     }
     updateReactData(reactUpdObj, true);
   };
@@ -520,6 +658,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       },
       selectedGroupMembers: reactData.selectedGroup_id ? freshMembersAfterMove : reactData.selectedGroupMembers,
       sortedGroupMembers: sortGroupMembers(reactData.selectedGroup_id ? freshMembersAfterMove : reactData.selectedGroupMembers),
+      showFamilyMembers: false,
+      showPrimaryCaregivers: false,
     }, true);
   };
 
@@ -574,6 +714,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       } : false,
       selectedGroupMembers: reactData.selectedGroup_id ? freshMembersAfterRemove : reactData.selectedGroupMembers,
       sortedGroupMembers: sortGroupMembers(reactData.selectedGroup_id ? freshMembersAfterRemove : reactData.selectedGroupMembers),
+      showFamilyMembers: false,
+      showPrimaryCaregivers: false,
     }, true);
   };
 
@@ -967,6 +1109,51 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     return searchString.includes(reactData.lower_people_filter);
   };
 
+  // merges real group members with any extra family/caregiver entries into one alphabetically sorted list
+  function buildDisplayRows() {
+    const baseIds = (reactData.lower_people_filter
+      ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
+      : reactData.sortedGroupMembers
+    )?.filter(p => !!reactData.selectedGroupMembers[p]) || [];
+
+    const baseRows = baseIds.map(person_id => ({
+      person_id,
+      first: reactData.selectedGroupMembers[person_id].name.first,
+      last: reactData.selectedGroupMembers[person_id].name.last,
+      isExtra: false
+    }));
+
+    // when a text filter is active, an extra person is only shown if one of the
+    // primary accounts it's linked to still passes the filter — not its own name
+    const baseIdSet = new Set(baseIds);
+    const extraRows = (reactData.extraPeople || [])
+      .filter(this_extra => !reactData.lower_people_filter || (this_extra.linkedPersonIds || []).some(pid => baseIdSet.has(pid)))
+      .map(this_extra => {
+        const [first, ...rest] = (this_extra.display_name || '').split(' ');
+        return {
+          person_id: this_extra.person_id,
+          first: first || this_extra.display_name,
+          last: rest.join(' '),
+          display_name: this_extra.display_name,
+          isExtra: true,
+          kind: this_extra.kind
+        };
+      });
+
+    const combinedRows = [...baseRows, ...extraRows];
+    combinedRows.sort((a, b) => {
+      if (state.session.client_style.sort_order === 'last_first') {
+        if (a.last === b.last) { return (a.first > b.first) ? 1 : -1; }
+        return (a.last > b.last) ? 1 : -1;
+      }
+      else {
+        if (a.first === b.first) { return (a.last > b.last) ? 1 : -1; }
+        return (a.first > b.first) ? 1 : -1;
+      }
+    });
+    return combinedRows;
+  }
+
   const handleDrop_removePerson = async (ev) => {
     ev.preventDefault();
     let draggedFrom = JSON.parse(ev.dataTransfer.getData('id'));
@@ -1064,6 +1251,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
               : { group_id: null, group_name: 'Multiple Groups', multi: true };
           reactUpdObj.selectedGroupMembers = Object.keys(newGroupMembers).length > 0 ? newGroupMembers : false;
           reactUpdObj.sortedGroupMembers = sortGroupMembers(newGroupMembers);
+          reactUpdObj.showFamilyMembers = false;
+          reactUpdObj.showPrimaryCaregivers = false;
         }
         updateReactData(reactUpdObj, true);
       }
@@ -1345,6 +1534,86 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 autoComplete='off'
               />
             </Box>
+            <Avatar
+              className={AVAClass.AVAAvatar}
+              src={state.session?.client_logo || process.env.REACT_APP_AVA_LOGO}
+              alt={pSession.client_id}
+              style={{ cursor: 'pointer', marginBottom: '40px' }}
+              onClick={(event) => {
+                updateReactData({
+                  anchorEl: event.currentTarget,
+                  popUpOpen: true
+                }, true);
+              }}
+            />
+            <Menu
+              id='hidden-menu'
+              anchorEl={reactData.anchorEl}
+              open={reactData.popUpOpen}
+              classes={{ paper: classes.clientPopUp }}
+              onClose={() => {
+                updateReactData({
+                  popUpOpen: false
+                }, true);
+              }}
+              keepMounted
+            >
+              <MenuList className={classes.popUpMenu}>
+                {reactData.administrative_account &&
+                  <MenuItem
+                    onClick={() => {
+                      handleToggleShowFamilyMembers();
+                    }}
+                  >
+                    <Box display='flex' flexDirection='row' alignItems={'center'} key={'vRowFamily'}>
+                      <PeopleIcon />
+                      <Typography className={classes.popUpMenuRow}>{reactData.showFamilyMembers ? 'Hide Family Members' : 'Show Family Members'}</Typography>
+                    </Box>
+                  </MenuItem>
+                }
+                {reactData.administrative_account &&
+                  <MenuItem
+                    onClick={() => {
+                      handleToggleShowPrimaryCaregivers();
+                    }}
+                  >
+                    <Box display='flex' flexDirection='row' alignItems={'center'} key={'vRowCaregivers'}>
+                      <SupervisorAccountIcon />
+                      <Typography className={classes.popUpMenuRow}>{reactData.showPrimaryCaregivers ? 'Hide Primary Caregivers' : 'Show Primary Caregivers'}</Typography>
+                    </Box>
+                  </MenuItem>
+                }
+                <MenuItem
+                  onClick={() => {
+                    updateReactData({ popUpOpen: false }, true);
+                    onCancel();
+                  }}
+                >
+                  <Box display='flex' flexDirection='row' alignItems={'center'} key={'vRowHome'}>
+                    <HomeIcon />
+                    <Typography className={classes.popUpMenuRow}>{'Go to AVA Menu'}</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    let jumpTo = window.location.origin;
+                    window.location.replace(jumpTo);
+                  }}
+                >
+                  <Box display='flex' flexDirection='row' alignItems={'center'} key={'vRowRefresh'}>
+                    <AutorenewIcon />
+                    <Typography className={classes.popUpMenuRow}>{'Restart AVA'}</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem>
+                  <Box display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'} key={'vRowFooter'}>
+                    <Typography className={classes.popUpFooter}>{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                    <Typography className={classes.popUpFooter}>{`User ${state.session.user_id}`}</Typography>
+                    <Typography className={classes.popUpFooter}>{`Function: Manage Groups`}</Typography>
+                  </Box>
+                </MenuItem>
+              </MenuList>
+            </Menu>
           </Box>
 
           <Box display='flex' flexDirection={isSmallScreen() ? 'column' : 'row'} style={{ flexGrow: 1, height: '100px' }}>
@@ -1505,6 +1774,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                   selectedPersonRec: false,
                                   selectedPersonFirstName: false,
                                   selectedPersonLastName: false,
+                                  showFamilyMembers: false,
+                                  showPrimaryCaregivers: false,
                                 }, true);
                               }}
                               style={AVATextStyle({
@@ -1661,16 +1932,33 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                   })}>
                   {reactData.selectedGroupRec.group_name}
                 </Typography>
-                <Typography
-                  style={AVATextStyle({
-                    size: 0.9,
-                    margin: { top: 0, bottom: (reactData.lower_people_filter ? 0 : 1.2) },
-                    color: 'textSecondary',
-                    overflow: 'visible'
-                  })}
-                >
-                  {`${reactData.sortedGroupMembers?.length || 0} ${(reactData.selectedGroupIds || []).length > 1 ? 'people across selected groups' : 'people in the group'}`}
-                </Typography>
+                <Box display='flex' flexDirection='row' alignItems='center'>
+                  <Typography
+                    style={AVATextStyle({
+                      size: 0.9,
+                      margin: { top: 0, bottom: (reactData.lower_people_filter ? 0 : 1.2) },
+                      color: 'textSecondary',
+                      overflow: 'visible'
+                    })}
+                  >
+                    {`${reactData.sortedGroupMembers?.length || 0} ${(reactData.selectedGroupIds || []).length > 1 ? 'people across selected groups' : 'people in the group'}${(reactData.extraPeople?.length > 0) ? ` (+${reactData.extraPeople.length} ${reactData.showFamilyMembers ? 'family members' : 'primary caregivers'})` : ''}`}
+                  </Typography>
+                  {reactData.loadingExtraPeople &&
+                    <CircularProgress size={14} style={{ marginLeft: '8px', marginBottom: (reactData.lower_people_filter ? 0 : '12px') }} />
+                  }
+                </Box>
+                {!reactData.loadingExtraPeople && (reactData.showFamilyMembers || reactData.showPrimaryCaregivers) && (reactData.extraPeople?.length === 0) &&
+                  <Typography
+                    style={AVATextStyle({
+                      size: 0.9,
+                      margin: { top: 0, bottom: 1.2 },
+                      color: 'textSecondary',
+                      overflow: 'visible'
+                    })}
+                  >
+                    {`No linked ${reactData.showFamilyMembers ? 'family members' : 'primary caregivers'} found`}
+                  </Typography>
+                }
                 {reactData.lower_people_filter &&
                   <Box display='flex' flexDirection='row'
                     justifyContent='flex-start'
@@ -1700,62 +1988,79 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     justifyContent='flex-start'
                     alignItems='flex-start'
                   >
-                    {(reactData.lower_people_filter
-                      ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
-                      : reactData.sortedGroupMembers
-                    )?.filter(p => !!reactData.selectedGroupMembers[p])
-                    .map((this_person, cX) => (
-                      <Typography
-                        key={`g_textpeople-${cX}`}
-                        style={AVATextStyle({
-                          overflow: 'visible',
-                          size: 1.2,
-                          cursor: canDragManage ? 'grab' : null,
-                          userSelect: 'none',
-                          margin: { top: 0, bottom: 0.8 },
-                        })}
-                        onClick={async () => {
-                          if (personRowDragActiveRef.current) {
-                            return;
-                          }
-                          updateReactData({
-                            viewPeopleMaintenance: this_person
-                          }, true);
-                        }}
-                        onContextMenu={async (e) => {
-                          e.preventDefault();
-                          updateReactData({
-                            selectedPerson_id: reactData.selectedGroupMembers[this_person].person_id,
-                            selectedPersonRec: await getPerson(reactData.selectedGroupMembers[this_person].person_id, '*all', true),
-                            selectedPersonFirstName: reactData.selectedGroupMembers[this_person].name.first,
-                            selectedPersonLastName: reactData.selectedGroupMembers[this_person].name.last,
-                            alert: {
-                              severity: 'info',
-                              title: `${reactData.selectedGroupMembers[this_person].name.first} ${reactData.selectedGroupMembers[this_person].name.last}`,
-                              message: <div>
-                                Person ID: <strong>{reactData.selectedGroupMembers[this_person].person_id}</strong></div>
+                    {buildDisplayRows().map((this_row, cX) => (
+                      this_row.isExtra ?
+                        <Typography
+                          key={`g_textextra-${cX}`}
+                          style={{
+                            ...AVATextStyle({
+                              overflow: 'visible',
+                              size: 1.2,
+                              userSelect: 'none',
+                              margin: { top: 0, bottom: 0.8 },
+                            }),
+                            opacity: 0.6
+                          }}
+                          onClick={() => {
+                            updateReactData({
+                              viewPeopleMaintenance: this_row.person_id
+                            }, true);
+                          }}
+                        >
+                          {this_row.display_name}
+                        </Typography>
+                        :
+                        <Typography
+                          key={`g_textpeople-${cX}`}
+                          style={AVATextStyle({
+                            overflow: 'visible',
+                            size: 1.2,
+                            cursor: canDragManage ? 'grab' : null,
+                            userSelect: 'none',
+                            margin: { top: 0, bottom: 0.8 },
+                          })}
+                          onClick={async () => {
+                            if (personRowDragActiveRef.current) {
+                              return;
                             }
-                          }, true);
-                        }}
-                        draggable={canDragManage}
-                        onDragStart={(e) => {
-                          personRowDragActiveRef.current = true;
-                          clearTimeout(personRowDragResetRef.current);
-                          handleDragStart(e, {
-                            personGroup: reactData.selectedGroup_id,
-                            personObj: reactData.selectedGroupMembers[this_person],
-                            intent: 'person'
-                          });
-                        }}
-                        onDragEnd={() => {
-                          clearTimeout(personRowDragResetRef.current);
-                          personRowDragResetRef.current = setTimeout(() => {
-                            personRowDragActiveRef.current = false;
-                          }, 150);
-                        }}
-                      >
-                        {`${reactData.selectedGroupMembers[this_person].name.first} ${reactData.selectedGroupMembers[this_person].name.last}`}
-                      </Typography>
+                            updateReactData({
+                              viewPeopleMaintenance: this_row.person_id
+                            }, true);
+                          }}
+                          onContextMenu={async (e) => {
+                            e.preventDefault();
+                            updateReactData({
+                              selectedPerson_id: reactData.selectedGroupMembers[this_row.person_id].person_id,
+                              selectedPersonRec: await getPerson(reactData.selectedGroupMembers[this_row.person_id].person_id, '*all', true),
+                              selectedPersonFirstName: reactData.selectedGroupMembers[this_row.person_id].name.first,
+                              selectedPersonLastName: reactData.selectedGroupMembers[this_row.person_id].name.last,
+                              alert: {
+                                severity: 'info',
+                                title: `${reactData.selectedGroupMembers[this_row.person_id].name.first} ${reactData.selectedGroupMembers[this_row.person_id].name.last}`,
+                                message: <div>
+                                  Person ID: <strong>{reactData.selectedGroupMembers[this_row.person_id].person_id}</strong></div>
+                              }
+                            }, true);
+                          }}
+                          draggable={canDragManage}
+                          onDragStart={(e) => {
+                            personRowDragActiveRef.current = true;
+                            clearTimeout(personRowDragResetRef.current);
+                            handleDragStart(e, {
+                              personGroup: reactData.selectedGroup_id,
+                              personObj: reactData.selectedGroupMembers[this_row.person_id],
+                              intent: 'person'
+                            });
+                          }}
+                          onDragEnd={() => {
+                            clearTimeout(personRowDragResetRef.current);
+                            personRowDragResetRef.current = setTimeout(() => {
+                              personRowDragActiveRef.current = false;
+                            }, 150);
+                          }}
+                        >
+                          {`${this_row.first} ${this_row.last}`}
+                        </Typography>
                     ))}
                   </Box>
                 </Paper>
@@ -2438,6 +2743,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
               // Live DB fetch (bypass cache) so edits are visible immediately
               reactUpd.selectedGroupMembers = await selectMembers(reactData.selectedGroup_id, { live: true });
               reactUpd.sortedGroupMembers = sortGroupMembers(reactUpd.selectedGroupMembers);
+              reactUpd.showFamilyMembers = false;
+              reactUpd.showPrimaryCaregivers = false;
             }
             updateReactData(reactUpd, true);
             // Silent background re-check after Lambda has had time to run
@@ -2449,6 +2756,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 updateReactData({
                   selectedGroupMembers: freshMembers,
                   sortedGroupMembers: sortGroupMembers(freshMembers),
+                  showFamilyMembers: false,
+                  showPrimaryCaregivers: false,
                 }, true);
               }, 4000);
             }
@@ -2495,6 +2804,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 reactUpd.updatesMade = true;
                 reactUpd.selectedGroupMembers = await selectMembers(reactData.viewGroupMaintenance, { live: true });
                 reactUpd.sortedGroupMembers = sortGroupMembers(reactUpd.selectedGroupMembers);
+                reactUpd.showFamilyMembers = false;
+                reactUpd.showPrimaryCaregivers = false;
               }
             }
             reactUpd.viewGroupMaintenance = false;
