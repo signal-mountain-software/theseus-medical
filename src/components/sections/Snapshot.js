@@ -479,6 +479,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
         flexWrap={'wrap'}
         justifyContent='flex-start' flexDirection='row'>
         <Box
+          key={`snapshotImg_${snapshotImageSrc}`}
           component="img"
           width={150}
           height={150}

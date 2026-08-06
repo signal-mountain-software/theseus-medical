@@ -2,7 +2,7 @@ import React from 'react';
 import Box from '@material-ui/core/Box';
 import { Slider, Typography, Button, Switch, TextField, Checkbox } from '@material-ui/core';
 import { AVATextStyle, AVAclasses, AVADefaults } from '../../util/AVAStyles';
-import { s3, cloudfront, isMobile, getObject, dbClient } from '../../util/AVAUtilities';
+import { s3, cloudfront, isMobile, getObject, dbClient, normalizeImageOrientation } from '../../util/AVAUtilities';
 import { createPersonPhotoThumbFromFile } from '../../util/AVAPeople';
 import QuickSearch from './QuickSearch';
 import Select from 'react-dropdown-select';
@@ -474,6 +474,7 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
           marginTop={1}
         >
           <Box
+            key={`profileImg_${profileImageSrc}`}
             style={{ marginLeft: '40px', objectFit: 'cover', objectPosition: 'center' }}
             component="img"
             width={150}
@@ -524,7 +525,8 @@ export default ({ currentValues, reactData, errorList, setError, updateReactData
           if (!photoFile) {
             return;
           }
-          let s3Data = await handleSaveFile({ photo: photoFile, temp: true });
+          const normalizedPhoto = await normalizeImageOrientation(photoFile);
+          let s3Data = await handleSaveFile({ photo: normalizedPhoto, temp: true });
           updateReactData({
             imageEditing: s3Data.Location,
           }, true);

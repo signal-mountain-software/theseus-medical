@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
 
 import { dbClient, recordExists, deepCopy, resolveData, cl, getObject } from './AVAUtilities';
 
@@ -148,6 +149,9 @@ export async function getExportFieldPickerData({ sessionId, clientId, exportScop
         value_type: fieldRec?.type,
         export_formats: Array.isArray(fieldRec?.export_formats) ? fieldRec.export_formats : null,
         filters: Array.isArray(fieldRec?.filters) ? fieldRec.filters : null,
+        pdf_data_group: fieldRec?.pdf_data_group || null,
+        table_info: fieldRec?.table_info || null,
+        ignore_section: !!fieldRec?.ignore_section,
       }))
       .sort((a, b) => {
         const catCompare = (a.category || '').localeCompare(b.category || '');
@@ -195,6 +199,7 @@ export async function resolveSelectedFieldValuesForPeople({
   selectedFieldKeys = [],
   selectedFieldOptions = [],
   arraySeparator = '; ',
+  preserveGroupedRaw = false,
   onProgress = null
 }) {
   if (!Array.isArray(selectedFieldKeys) || selectedFieldKeys.length === 0) {
@@ -231,6 +236,10 @@ export async function resolveSelectedFieldValuesForPeople({
         const rawNotes = Array.isArray(resolvedField?.raw) ? resolvedField.raw : [];
         const staticFilters = (fieldOpt.filters || []).filter(f => f.source !== 'prompt');
         return evaluateNoteFilters(rawNotes, staticFilters);
+      }
+      // Keep the pre-join array for grouped fields so the PDF renderer can transpose instances by index.
+      if (preserveGroupedRaw && fieldOpt?.pdf_data_group) {
+        return resolvedField?.formatted;
       }
       return formatExportValue(resolvedField?.formatted, { arraySeparator });
     });
@@ -452,6 +461,16 @@ export async function downloadRowsAsPdf({
 
   const fieldLabels = header.slice(identityColCount);
 
+  // Fields sharing a pdf_data_group are transposed by instance (see renderGroupedFieldSet below)
+  // instead of being listed one field at a time.
+  const groupFieldIndexes = {};
+  for (let j = 0; j < fieldLabels.length; j++) {
+    const groupKey = fieldMeta[j]?.pdf_data_group;
+    if (!groupKey) { continue; }
+    if (!groupFieldIndexes[groupKey]) { groupFieldIndexes[groupKey] = []; }
+    groupFieldIndexes[groupKey].push(j);
+  }
+
   for (let i = 0; i < rows.length; i++) {
     if (i > 0) { doc.addPage(); }
 
@@ -498,26 +517,56 @@ export async function downloadRowsAsPdf({
     doc.setDrawColor(0, 0, 0);
     y += 14;
 
+    // Per-person page counter for overflow continuation pages, kept in a stable ref object (rather
+    // than a loop-scoped let) so closures over it don't trip the no-loop-func lint rule.
+    const personPageNumRef = { current: 1 };
+
+    // Draws the "<name> (page N)" + underline banner at the top of a fresh overflow-continuation page.
+    const drawContinuationHeader = () => {
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text(`${personName || '(no name)'} (page ${personPageNumRef.current})`, margin, margin);
+      doc.setLineWidth(0.75);
+      doc.setDrawColor(0, 0, 0);
+      doc.line(margin, margin + 6, pageWidth - margin, margin + 6);
+      doc.setFont('Helvetica', 'normal');
+      doc.setFontSize(10);
+      return margin + 6 + lineHeight;
+    };
+
+    // Call this instead of a bare doc.addPage() for any overflow-driven page break within a
+    // person's content: stamps a small "continued onto next page" footer on the page being left,
+    // then starts the new page with the person's name/page-number banner. Returns the new y.
+    const addOverflowPage = () => {
+      doc.setFont('Helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(120, 120, 120);
+      doc.text(`${personName || '(no name)'} continued onto next page`, pageWidth / 2, pageHeight - 20, { align: 'center' });
+      doc.setTextColor(0, 0, 0);
+
+      doc.addPage();
+      personPageNumRef.current++;
+      return drawContinuationHeader();
+    };
+
     // Field rows
     doc.setFontSize(10);
     let currentCategory = null;
-    const renderCategoryHeader = (categoryName) => {
-      const normalizedCategory = `${categoryName || 'Other'}`.trim() || 'Other';
+    const renderCategoryHeader = (categoryName, { allowBlank = false } = {}) => {
+      const normalizedCategory = allowBlank ? `${categoryName || ''}`.trim() : (`${categoryName || 'Other'}`.trim() || 'Other');
       if (currentCategory === normalizedCategory) {
         return;
       }
 
       const requiredSpace = (lineHeight * 3);
       if (y > pageHeight - margin - requiredSpace) {
-        doc.addPage();
-        y = margin;
+        y = addOverflowPage();
       }
 
       // Leave breathing room before each category section.
       y += (lineHeight * 2);
       if (y > pageHeight - margin - lineHeight) {
-        doc.addPage();
-        y = margin + (lineHeight * 2);
+        y = addOverflowPage() + (lineHeight * 2);
       }
 
       doc.setFont('Helvetica', 'bold');
@@ -530,10 +579,131 @@ export async function downloadRowsAsPdf({
       currentCategory = normalizedCategory;
     };
 
+    // ignore_section fields never start a new section — they render into whatever section is
+    // already active. If one happens to be the very first field on the page (no section shown
+    // yet), a header is still rendered (for consistent spacing) but with blank text.
+    const renderSectionHeader = (fieldMetaEntry, categoryName) => {
+      if (fieldMetaEntry?.ignore_section) {
+        if (currentCategory === null) {
+          renderCategoryHeader('', { allowBlank: true });
+        }
+        return;
+      }
+      renderCategoryHeader(categoryName);
+    };
+
+    // Shared "Label: value" line renderer — wraps, paginates, and aligns the value after the label.
+    const renderLabelValueRow = (labelText, value) => {
+      if (y > pageHeight - margin - lineHeight) {
+        y = addOverflowPage();
+      }
+
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text(labelText, margin, y);
+      // Trailing spaces aren't reliably measured by getTextWidth, so add an explicit gap
+      // rather than relying on a trailing space in labelText (which rendered inconsistently field-to-field).
+      const labelGap = 4;
+      const labelWidth = doc.getTextWidth(labelText) + labelGap;
+
+      doc.setFont('Helvetica', 'normal');
+      const valueLines = doc.splitTextToSize(value, contentWidth - labelWidth);
+      doc.text(valueLines[0], margin + labelWidth, y);
+      y += lineHeight;
+
+      for (let k = 1; k < valueLines.length; k++) {
+        if (y > pageHeight - margin - lineHeight) {
+          y = addOverflowPage();
+        }
+        doc.text(valueLines[k], margin + labelWidth, y);
+        y += lineHeight;
+      }
+    };
+
+    const groupSpacing = 8;
+    const addGroupGap = () => {
+      if (y > pageHeight - margin - groupSpacing) {
+        y = addOverflowPage();
+      } else {
+        y += groupSpacing;
+      }
+    };
+
+    // Renders a pdf_data_group's fields transposed by instance: all "instance 1" answers together,
+    // then all "instance 2" answers, etc., instead of one field's full answer list at a time.
+    const renderGroupedFieldSet = (groupIndexes) => {
+      const arraysByIndex = groupIndexes.map((idx) => {
+        const rawFieldValue = fieldValues[idx];
+        return Array.isArray(rawFieldValue) ? rawFieldValue : [rawFieldValue];
+      });
+      const instanceCount = Math.max(0, ...arraysByIndex.map((arr) => arr.length));
+      if (instanceCount === 0) { return; }
+
+      renderSectionHeader(fieldMeta[groupIndexes[0]], fieldMeta[groupIndexes[0]]?.category || 'Other');
+
+      for (let instanceIdx = 0; instanceIdx < instanceCount; instanceIdx++) {
+        for (let g = 0; g < groupIndexes.length; g++) {
+          const idx = groupIndexes[g];
+          const value = `${arraysByIndex[g][instanceIdx] ?? ''}`.trim();
+          if (!value) { continue; }
+          renderLabelValueRow(`${fieldLabels[idx] || ''} ${instanceIdx + 1}:`, value);
+        }
+        // Separate each instance's block of answers from the next one.
+        if (instanceIdx < instanceCount - 1) {
+          addGroupGap();
+        }
+      }
+    };
+
+    const renderedGroupKeys = new Set();
+    let previousGroupKey = null;
+    let previousGroupHadData = false;
+
     for (let j = 0; j < fieldLabels.length; j++) {
       const meta = fieldMeta[j];
       const label = fieldLabels[j] || '';
       const categoryLabel = meta?.category || 'Other';
+      const groupKey = meta?.pdf_data_group || null;
+
+      let groupIndexes = null;
+      let groupHasData = false;
+      if (groupKey) {
+        groupIndexes = groupFieldIndexes[groupKey] || [j];
+        groupHasData = groupIndexes.some((idx) => {
+          const rawValue = fieldValues[idx];
+          const arr = Array.isArray(rawValue) ? rawValue : [rawValue];
+          return arr.some((v) => `${v ?? ''}`.trim() !== '');
+        });
+      }
+
+      // Give a data-bearing pdf_data_group set breathing room, whether entering or leaving one.
+      // A set with no data at all doesn't render anything, so it shouldn't leave a stray blank line.
+      if (groupKey !== previousGroupKey) {
+        if ((groupKey && groupHasData) || (previousGroupKey && previousGroupHadData)) {
+          addGroupGap();
+        }
+        previousGroupKey = groupKey;
+        previousGroupHadData = groupHasData;
+      }
+
+      if (groupKey) {
+        if (renderedGroupKeys.has(groupKey)) { continue; }
+
+        // Base the grouping decision on the largest instance count in the set (not just the
+        // first field) so a single-entry case never triggers grouping/numbering unnecessarily.
+        const groupInstanceCount = Math.max(0, ...groupIndexes.map((idx) => {
+          const rawValue = fieldValues[idx];
+          if (Array.isArray(rawValue)) { return rawValue.length; }
+          return ((rawValue === undefined) || (rawValue === null) || (rawValue === '')) ? 0 : 1;
+        }));
+        if (groupInstanceCount > 1) {
+          renderGroupedFieldSet(groupIndexes);
+          renderedGroupKeys.add(groupKey);
+          continue;
+        }
+        // Only one instance present — fall through to normal per-field rendering below.
+      }
+
 
       if (meta?.value_type === 'notes') {
         // ── Notes block ──
@@ -542,9 +712,9 @@ export async function downloadRowsAsPdf({
         const filteredNotes = evaluateNoteFilters(rawNotes, promptFilters, resolvedPromptValues);
         if (filteredNotes.length === 0) { continue; }
 
-        renderCategoryHeader(categoryLabel);
+        renderSectionHeader(meta, categoryLabel);
 
-        if (y > pageHeight - margin - lineHeight * 3) { doc.addPage(); y = margin; }
+        if (y > pageHeight - margin - lineHeight * 3) { y = addOverflowPage(); }
         doc.setFont('Helvetica', 'bold');
         doc.setFontSize(10);
         doc.text(label ? `${label}:` : 'Notes:', margin, y);
@@ -552,7 +722,7 @@ export async function downloadRowsAsPdf({
 
         for (let n = 0; n < filteredNotes.length; n++) {
           const note = filteredNotes[n];
-          if (y > pageHeight - margin - lineHeight * 4) { doc.addPage(); y = margin; }
+          if (y > pageHeight - margin - lineHeight * 4) { y = addOverflowPage(); }
 
           // Name line (bold; urgent in red)
           doc.setFontSize(9);
@@ -575,7 +745,7 @@ export async function downloadRowsAsPdf({
             doc.setFont('Helvetica', 'normal');
             const noteLines = doc.splitTextToSize(note.noteText, contentWidth - 16);
             for (const noteLine of noteLines) {
-              if (y > pageHeight - margin - lineHeight) { doc.addPage(); y = margin; }
+              if (y > pageHeight - margin - lineHeight) { y = addOverflowPage(); }
               doc.text(noteLine, margin + 8, y);
               y += lineHeight - 2;
             }
@@ -586,7 +756,7 @@ export async function downloadRowsAsPdf({
           doc.setFontSize(7);
           doc.setTextColor(130, 130, 130);
           if (note.category) {
-            if (y > pageHeight - margin - lineHeight) { doc.addPage(); y = margin; }
+            if (y > pageHeight - margin - lineHeight) { y = addOverflowPage(); }
             doc.text(note.category, margin + 8, y);
             y += lineHeight - 2;
           }
@@ -597,7 +767,7 @@ export async function downloadRowsAsPdf({
             return isNaN(d.getTime()) ? `1/1/${new Date().getFullYear()}` : d.toLocaleDateString();
           })()].filter(Boolean).join(' · ');
           if (byline) {
-            if (y > pageHeight - margin - lineHeight) { doc.addPage(); y = margin; }
+            if (y > pageHeight - margin - lineHeight) { y = addOverflowPage(); }
             doc.text(byline, margin + 8, y);
             y += lineHeight - 2;
           }
@@ -606,7 +776,7 @@ export async function downloadRowsAsPdf({
 
           // Thin divider between notes (not after the last one)
           if (n < filteredNotes.length - 1) {
-            if (y > pageHeight - margin - 6) { doc.addPage(); y = margin; }
+            if (y > pageHeight - margin - 6) { y = addOverflowPage(); }
             doc.setLineWidth(0.25);
             doc.setDrawColor(210, 210, 210);
             doc.line(margin + 8, y, pageWidth - margin, y);
@@ -620,18 +790,17 @@ export async function downloadRowsAsPdf({
         const rawValue = `${fieldValues[j] ?? ''}`.trim();
         if (!rawValue) { continue; }
 
-        // Preserve compatibility with semicolon-joined arrays while supporting single URL values.
+        // Preserve compatibility with semicolon- or line-break-joined arrays while supporting single URL values.
         const imageUrls = rawValue
-          .split(';')
+          .split(/[;\n]+/)
           .map((candidate) => candidate.trim())
           .filter(Boolean);
         if (imageUrls.length === 0) { continue; }
 
-        renderCategoryHeader(categoryLabel);
+        renderSectionHeader(meta, categoryLabel);
 
         if (y > pageHeight - margin - lineHeight * 3) {
-          doc.addPage();
-          y = margin;
+          y = addOverflowPage();
         }
 
         doc.setFont('Helvetica', 'bold');
@@ -643,8 +812,7 @@ export async function downloadRowsAsPdf({
           const base64 = await loadImageAsBase64(imageUrl);
           if (!base64) {
             if (y > pageHeight - margin - lineHeight) {
-              doc.addPage();
-              y = margin;
+              y = addOverflowPage();
             }
             doc.setFont('Helvetica', 'italic');
             doc.setFontSize(9);
@@ -670,8 +838,7 @@ export async function downloadRowsAsPdf({
           }
 
           if (y + drawHeight > pageHeight - margin) {
-            doc.addPage();
-            y = margin;
+            y = addOverflowPage();
           }
 
           const imageX = margin + ((contentWidth - drawWidth) / 2);
@@ -695,37 +862,82 @@ export async function downloadRowsAsPdf({
         }
         y += 4;
 
+      } else if (meta?.value_type === 'static_table' && meta?.table_info) {
+        // ── Static/blank fill-in table (e.g. printable log sheet) ──
+        renderSectionHeader(meta, categoryLabel);
+        y += lineHeight; // blank line before the table, per spec
+        if (y > pageHeight - margin - lineHeight) { y = addOverflowPage(); }
+
+        const tableInfo = meta.table_info;
+        const columnDefs = (tableInfo.columns?.values || []).filter((c) => c?.header);
+        if (columnDefs.length > 0) {
+          const rawColumnWidths = columnDefs.map((c) => Number(c.width) || 0);
+          const totalRawWidth = rawColumnWidths.reduce((sum, w) => sum + w, 0);
+          // Shrink proportionally to fit the printable width; never scale up.
+          const widthScale = (totalRawWidth > contentWidth) ? (contentWidth / totalRawWidth) : 1;
+          const columnWidths = rawColumnWidths.map((w) => w * widthScale);
+
+          const rowHeight = Number(tableInfo.rows?.height) || lineHeight;
+          const headerRowHeight = Number(tableInfo.rows?.header_height) || rowHeight;
+          const blankRowCount = Math.max(0, Number(tableInfo.rows?.minimum) || 0);
+          const bodyRows = Array.from({ length: blankRowCount }, () => columnDefs.map(() => ''));
+
+          const gridLineWidth = Number(tableInfo.borders?.grid) || 1;
+          const outsideLineWidth = Number(tableInfo.borders?.outside) || gridLineWidth;
+          const afterHeaderLineWidth = Number(tableInfo.borders?.after_header) || gridLineWidth;
+
+          const columnStyles = {};
+          columnWidths.forEach((w, idx) => { columnStyles[idx] = { cellWidth: w }; });
+
+          const tableStartY = y;
+          // If the table's own blank rows overflow a page on their own (no manual overflow check
+          // above caught it), autoTable paginates internally — track its page breaks here so the
+          // continuation banner still appears, even though we don't get a chance to add the
+          // "continued onto next page" footer on the page being left in that specific case.
+          let lastHandledTablePage = doc.internal.getCurrentPageInfo().pageNumber;
+          doc.autoTable({
+            head: [columnDefs.map((c) => c.header)],
+            body: bodyRows,
+            startY: tableStartY,
+            margin: { left: margin, right: margin, top: margin + 6 + lineHeight },
+            theme: 'grid',
+            // 'wrap' keeps the border/width tied to the actual columns instead of the full page width,
+            // and lets tableLineWidth/tableLineColor draw the outer edge per-page — a page break splits
+            // this rect manually (using startY/finalY, which live on different pages) into a bogus box.
+            tableWidth: 'wrap',
+            tableLineWidth: outsideLineWidth,
+            tableLineColor: [0, 0, 0],
+            styles: { lineWidth: gridLineWidth, lineColor: [0, 0, 0], minCellHeight: rowHeight, valign: 'middle' },
+            headStyles: { fontStyle: 'bold', halign: 'left', fillColor: [240, 240, 240], textColor: [0, 0, 0], minCellHeight: headerRowHeight },
+            columnStyles,
+            didDrawPage: () => {
+              const currentPageNumber = doc.internal.getCurrentPageInfo().pageNumber;
+              if (currentPageNumber > lastHandledTablePage) {
+                lastHandledTablePage = currentPageNumber;
+                personPageNumRef.current++;
+                drawContinuationHeader();
+              }
+            },
+            didDrawCell: (data) => {
+              // Give the header/body divider its own (heavier) weight, distinct from the internal grid.
+              if (data.section === 'head') {
+                doc.setLineWidth(afterHeaderLineWidth);
+                doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
+                doc.setLineWidth(gridLineWidth);
+              }
+            }
+          });
+
+          y = doc.lastAutoTable.finalY + (lineHeight / 2);
+        }
+
       } else {
         // ── Standard "Label: value" row ──
         const value = `${fieldValues[j] ?? ''}`.trim();
         if (!value) { continue; }
 
-        renderCategoryHeader(categoryLabel);
-
-        if (y > pageHeight - margin - lineHeight) {
-          doc.addPage();
-          y = margin;
-        }
-
-        doc.setFont('Helvetica', 'bold');
-        doc.setFontSize(10);
-        const labelText = `${label}: `;
-        doc.text(labelText, margin, y);
-        const labelWidth = doc.getTextWidth(labelText);
-
-        doc.setFont('Helvetica', 'normal');
-        const valueLines = doc.splitTextToSize(value, contentWidth - labelWidth);
-        doc.text(valueLines[0], margin + labelWidth, y);
-        y += lineHeight;
-
-        for (let k = 1; k < valueLines.length; k++) {
-          if (y > pageHeight - margin - lineHeight) {
-            doc.addPage();
-            y = margin;
-          }
-          doc.text(valueLines[k], margin + labelWidth, y);
-          y += lineHeight;
-        }
+        renderSectionHeader(meta, categoryLabel);
+        renderLabelValueRow(`${label}:`, value);
       }
     }
   }

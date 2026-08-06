@@ -4,7 +4,7 @@ import "cropperjs/dist/cropper.css";
 import { API, graphqlOperation } from 'aws-amplify';
 import { getPerson, getSession, makeName, makeSearchData, formatPhone, getImage, createPersonPhotoThumbFromFile, persistPersonPhotoThumb } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
-import { getObject, cl, dbClient, s3, lambda, cloudfront, deepCopy } from '../../util/AVAUtilities';
+import { getObject, cl, dbClient, s3, lambda, cloudfront, deepCopy, normalizeImageOrientation } from '../../util/AVAUtilities';
 import { createPutFact } from '../../graphql/mutations';
 import useSession from '../../hooks/useSession';
 import { syncPersonToSessionCaches } from '../../util/AVASessionSync';
@@ -1567,7 +1567,8 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
                 ref={hiddenFileInput}
                 onChange={async (target) => {
                   if (target.target.files.length > 0) {
-                    setEditPhoto(await handleSaveTemporaryPhoto(target.target.files[0]));
+                    const normalizedFile = await normalizeImageOrientation(target.target.files[0]);
+                    setEditPhoto(await handleSaveTemporaryPhoto(normalizedFile));
                   }
                 }}
               />

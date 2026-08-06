@@ -865,6 +865,7 @@ export default ({ session, filter = {}, onClose }) => {
       >
         <Box
           component="img"
+          key={`loadingLogo_${session?.client_logo || 'default'}`}
           mb={2}
           minWidth={150}
           maxWidth={150}

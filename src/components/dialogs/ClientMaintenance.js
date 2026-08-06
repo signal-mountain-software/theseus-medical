@@ -12,6 +12,7 @@ import WeatherSection from '../sections/WeatherSection';
 import GlobalMessagePreferencesSection from '../sections/GlobalMessagePreferencesSection';
 import ClientImportSection from '../sections/ClientImportSection';
 import SessionSecuritySection from '../sections/SessionSecuritySection';
+import CampusLocationsSection from '../sections/CampusLocationsSection';
 
 import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -125,6 +126,9 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
       },
       ClientImportSection: {
         component_id: ClientImportSection,
+      },
+      CampusLocationsSection: {
+        component_id: CampusLocationsSection,
       }
 
     },
@@ -160,6 +164,14 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
           isAuthorized: true,
           version_id: 0,
           component_name: 'ClientProfileSection'
+        },
+        {
+          section_name: 'Campus Locations',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'CampusLocationsSection'
         },
         {
           section_name: 'QR Codes',
@@ -262,6 +274,11 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
             client_id: reactData.client_id,
             custom_key: 'session_policy',
             customization_value: deepCopy(defaultSessionPolicy)
+          },
+          campus_locations: {
+            client_id: reactData.client_id,
+            custom_key: 'campus_locations',
+            customization_value: []
           },
         }
       };

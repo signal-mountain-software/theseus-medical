@@ -25,11 +25,6 @@ import TimerOffIcon from '@material-ui/icons/TimerOff';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 
-import FormControlLabel from '@material-ui/core/FormControlLabel';
-import FormControl from '@material-ui/core/FormControl';
-import Checkbox from '@material-ui/core/Checkbox';
-import FormGroup from '@material-ui/core/FormGroup';
-
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
@@ -368,17 +363,14 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
 
   function getGuestLimitPolicy() {
     const rawLimit = pOccData?.number_of_guests;
-    if ((rawLimit === undefined) || (rawLimit === null) || (rawLimit === '')) {
+    if ((rawLimit === undefined) || (rawLimit === null) || (rawLimit === '') || (rawLimit === false)) {
       return { mode: 'unlimited', max: null };
     }
     const numericLimit = Number(rawLimit);
-    if (numericLimit === -1) {
+    if (isNaN(numericLimit) || (numericLimit <= 0)) {
       return { mode: 'none', max: 0 };
     }
-    if (numericLimit > 0) {
-      return { mode: 'limited', max: numericLimit };
-    }
-    return { mode: 'unlimited', max: null };
+    return { mode: 'limited', max: numericLimit };
   }
 
   function isActiveSlot(row) {
@@ -1705,25 +1697,6 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     return eventSlotList;
   };
 
-  const handleChangeGuests = async (updatedIndex, pGuests) => {
-    eventSlotList[updatedIndex].slotData.guests = pGuests;
-    let slotUpdate = Object.assign(
-      {},
-      eventSlotList[updatedIndex],
-      eventSlotList[updatedIndex].slotData,
-      {
-        event: eventSlotList[updatedIndex].event_key,
-        client: pClient
-      }
-    );
-    slotUpdate.status = 'guests';
-    slotUpdate.no_messaging = true;
-    await writeSlot(slotUpdate);
-    setEventSlotList(eventSlotList);
-    setForceRedisplay(!forceRedisplay);
-    return eventSlotList;
-  };
-
   // ********************
 
   React.useEffect(() => {
@@ -2393,47 +2366,6 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                             </Tooltip>
                           ) : null;
                         })()}
-                          {/* Guests are allowed and I am the event or slot owner */}
-                          {(((pOccData.number_of_guests && (pOccData.number_of_guests > 0))
-                            && (isEventOwner || isSlotOwner(this_item.slotData)))) &&
-                            <Box display={'flex'} flexDirection={'column'}>
-                              <Typography style={AVATextStyle({ size: 0.8, margin: { top: 0.5, bottom: 0.5 } })} >
-                                {`How many guests?`}
-                              </Typography>
-                              <Box display={'flex'} flexDirection={'row'} flexWrap={'wrap'} >
-                                <FormControl className={classes.formControl} component="fieldset">
-                                  <FormGroup row aria-label={`message_routedays_method`} name="method">
-                                    {new Array(pOccData.number_of_guests + 1).fill('x').map((this_entry, gIndex) => (
-                                      <FormControlLabel
-                                        className={classes.formControlDays}
-                                        key={`guest_label_${gIndex}`}
-                                        control={
-                                          <Checkbox
-                                            className={classes.centerCenter}
-                                            key={`guest_check_${gIndex}`}
-                                            value={this_item.slotData.guests || 0}
-                                            checked={(this_item.slotData.guests || 0) === gIndex}
-                                            name={`guest_check_${gIndex}`}
-                                            onClick={() => {
-                                              this_item.slotData.guests = gIndex;
-                                              handleChangeGuests(index, this_item.slotData.guests);
-                                            }}
-                                            disableRipple
-                                            inputProps={{ 'aria-labelledby': `message_routing_0` }}
-                                          />
-                                        }
-                                        label={
-                                          <Typography style={AVATextStyle({ size: 0.8, margin: { top: -0.5 } })} >
-                                            {gIndex}
-                                          </Typography>}
-                                        labelPlacement='bottom'
-                                      />
-                                    ))}
-                                  </FormGroup>
-                                </FormControl>
-                              </Box>
-                            </Box>
-                          }
                         </Box>
                       </Box>
                     </Box>
@@ -3303,7 +3235,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                           summaryInfo.totalSlots++;
                           if (s.slotData.owner) {
                             summaryInfo.ownedSlots++;
-                            summaryInfo.slot_owners[s.slotData.id] = s.slotData.owner;
+                            summaryInfo.slot_owners[s.slotData.owner] = s.slotData.id;
                           }
                           if (s.marked) {
                             summaryInfo.markedSlots++;

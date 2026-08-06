@@ -672,6 +672,30 @@ export function isValidEmail(pIn) {
   return emailRegex.test(pIn);
 }
 
+// Re-draws an image file to a canvas using EXIF-corrected orientation, so downstream consumers
+// (S3 uploads, jsPDF, etc.) that don't apply EXIF rotation themselves get an already-corrected file.
+export async function normalizeImageOrientation(file) {
+  if (!file || !String(file.type || '').startsWith('image/') || (typeof createImageBitmap !== 'function')) {
+    return file;
+  }
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0);
+    if (typeof bitmap.close === 'function') { bitmap.close(); }
+    const outputType = (file.type === 'image/png') ? 'image/png' : 'image/jpeg';
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, outputType, 0.92));
+    if (!blob) { return file; }
+    return new File([blob], file.name, { type: outputType, lastModified: file.lastModified || Date.now() });
+  }
+  catch (e) {
+    console.log(`normalizeImageOrientation failed, using original file: ${e}`);
+    return file;
+  }
+}
+
 export async function getIcon(pIcon) {
   const imageBucket = 'ava-icons';
   const imageURI = `${pIcon}.png`;
@@ -903,6 +927,27 @@ export async function deepResolve(pKey, pSession, options = {}) {
 }
 
 /**
+ * Named rules applied to a DataDictionary field's raw resolved value, before type formatting.
+ * A field's `rules` array (e.g. `["filter_when_all"]`) is run in order against the raw value.
+ */
+const FIELD_RAW_RULES = {
+  // If any element is (case-insensitively) "all" or "*all", collapse the array to just ["ALL"].
+  filter_when_all: (value) => {
+    if (!Array.isArray(value)) { return value; }
+    const hasAllMarker = value.some((item) => (typeof item === 'string') && ['*all', 'all'].includes(item.trim().toLowerCase()));
+    return hasAllMarker ? ['ALL'] : value;
+  }
+};
+
+function applyFieldRules(rawValue, rules) {
+  if (!Array.isArray(rules) || rules.length === 0) { return rawValue; }
+  return rules.reduce((currentValue, ruleName) => {
+    const ruleFn = FIELD_RAW_RULES[ruleName];
+    return ruleFn ? ruleFn(currentValue) : currentValue;
+  }, rawValue);
+}
+
+/**
  * Resolve one or more DataDictionary fields for a person.
  *
  * @param {string} client_id
@@ -990,7 +1035,7 @@ export async function resolveData(client_id, person_id, field_ids = [], options 
     });
 
     const effectiveDictionaryRec = resolution.dictionaryRec || dictionaryRec;
-    const resolvedRaw = resolution.rawValue;
+    const resolvedRaw = applyFieldRules(resolution.rawValue, effectiveDictionaryRec.rules);
 
     const resolvedOutput = await formatResolvedValue({
       rawValue: resolvedRaw,
