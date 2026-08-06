@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
 
 import { dbClient, recordExists, deepCopy, resolveData, cl, getObject } from './AVAUtilities';
 
@@ -149,6 +150,8 @@ export async function getExportFieldPickerData({ sessionId, clientId, exportScop
         export_formats: Array.isArray(fieldRec?.export_formats) ? fieldRec.export_formats : null,
         filters: Array.isArray(fieldRec?.filters) ? fieldRec.filters : null,
         pdf_data_group: fieldRec?.pdf_data_group || null,
+        table_info: fieldRec?.table_info || null,
+        ignore_section: !!fieldRec?.ignore_section,
       }))
       .sort((a, b) => {
         const catCompare = (a.category || '').localeCompare(b.category || '');
@@ -514,26 +517,56 @@ export async function downloadRowsAsPdf({
     doc.setDrawColor(0, 0, 0);
     y += 14;
 
+    // Per-person page counter for overflow continuation pages, kept in a stable ref object (rather
+    // than a loop-scoped let) so closures over it don't trip the no-loop-func lint rule.
+    const personPageNumRef = { current: 1 };
+
+    // Draws the "<name> (page N)" + underline banner at the top of a fresh overflow-continuation page.
+    const drawContinuationHeader = () => {
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text(`${personName || '(no name)'} (page ${personPageNumRef.current})`, margin, margin);
+      doc.setLineWidth(0.75);
+      doc.setDrawColor(0, 0, 0);
+      doc.line(margin, margin + 6, pageWidth - margin, margin + 6);
+      doc.setFont('Helvetica', 'normal');
+      doc.setFontSize(10);
+      return margin + 6 + lineHeight;
+    };
+
+    // Call this instead of a bare doc.addPage() for any overflow-driven page break within a
+    // person's content: stamps a small "continued onto next page" footer on the page being left,
+    // then starts the new page with the person's name/page-number banner. Returns the new y.
+    const addOverflowPage = () => {
+      doc.setFont('Helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(120, 120, 120);
+      doc.text(`${personName || '(no name)'} continued onto next page`, pageWidth / 2, pageHeight - 20, { align: 'center' });
+      doc.setTextColor(0, 0, 0);
+
+      doc.addPage();
+      personPageNumRef.current++;
+      return drawContinuationHeader();
+    };
+
     // Field rows
     doc.setFontSize(10);
     let currentCategory = null;
-    const renderCategoryHeader = (categoryName) => {
-      const normalizedCategory = `${categoryName || 'Other'}`.trim() || 'Other';
+    const renderCategoryHeader = (categoryName, { allowBlank = false } = {}) => {
+      const normalizedCategory = allowBlank ? `${categoryName || ''}`.trim() : (`${categoryName || 'Other'}`.trim() || 'Other');
       if (currentCategory === normalizedCategory) {
         return;
       }
 
       const requiredSpace = (lineHeight * 3);
       if (y > pageHeight - margin - requiredSpace) {
-        doc.addPage();
-        y = margin;
+        y = addOverflowPage();
       }
 
       // Leave breathing room before each category section.
       y += (lineHeight * 2);
       if (y > pageHeight - margin - lineHeight) {
-        doc.addPage();
-        y = margin + (lineHeight * 2);
+        y = addOverflowPage() + (lineHeight * 2);
       }
 
       doc.setFont('Helvetica', 'bold');
@@ -546,11 +579,23 @@ export async function downloadRowsAsPdf({
       currentCategory = normalizedCategory;
     };
 
+    // ignore_section fields never start a new section — they render into whatever section is
+    // already active. If one happens to be the very first field on the page (no section shown
+    // yet), a header is still rendered (for consistent spacing) but with blank text.
+    const renderSectionHeader = (fieldMetaEntry, categoryName) => {
+      if (fieldMetaEntry?.ignore_section) {
+        if (currentCategory === null) {
+          renderCategoryHeader('', { allowBlank: true });
+        }
+        return;
+      }
+      renderCategoryHeader(categoryName);
+    };
+
     // Shared "Label: value" line renderer — wraps, paginates, and aligns the value after the label.
     const renderLabelValueRow = (labelText, value) => {
       if (y > pageHeight - margin - lineHeight) {
-        doc.addPage();
-        y = margin;
+        y = addOverflowPage();
       }
 
       doc.setFont('Helvetica', 'bold');
@@ -568,8 +613,7 @@ export async function downloadRowsAsPdf({
 
       for (let k = 1; k < valueLines.length; k++) {
         if (y > pageHeight - margin - lineHeight) {
-          doc.addPage();
-          y = margin;
+          y = addOverflowPage();
         }
         doc.text(valueLines[k], margin + labelWidth, y);
         y += lineHeight;
@@ -579,8 +623,7 @@ export async function downloadRowsAsPdf({
     const groupSpacing = 8;
     const addGroupGap = () => {
       if (y > pageHeight - margin - groupSpacing) {
-        doc.addPage();
-        y = margin;
+        y = addOverflowPage();
       } else {
         y += groupSpacing;
       }
@@ -596,7 +639,7 @@ export async function downloadRowsAsPdf({
       const instanceCount = Math.max(0, ...arraysByIndex.map((arr) => arr.length));
       if (instanceCount === 0) { return; }
 
-      renderCategoryHeader(fieldMeta[groupIndexes[0]]?.category || 'Other');
+      renderSectionHeader(fieldMeta[groupIndexes[0]], fieldMeta[groupIndexes[0]]?.category || 'Other');
 
       for (let instanceIdx = 0; instanceIdx < instanceCount; instanceIdx++) {
         for (let g = 0; g < groupIndexes.length; g++) {
@@ -669,9 +712,9 @@ export async function downloadRowsAsPdf({
         const filteredNotes = evaluateNoteFilters(rawNotes, promptFilters, resolvedPromptValues);
         if (filteredNotes.length === 0) { continue; }
 
-        renderCategoryHeader(categoryLabel);
+        renderSectionHeader(meta, categoryLabel);
 
-        if (y > pageHeight - margin - lineHeight * 3) { doc.addPage(); y = margin; }
+        if (y > pageHeight - margin - lineHeight * 3) { y = addOverflowPage(); }
         doc.setFont('Helvetica', 'bold');
         doc.setFontSize(10);
         doc.text(label ? `${label}:` : 'Notes:', margin, y);
@@ -679,7 +722,7 @@ export async function downloadRowsAsPdf({
 
         for (let n = 0; n < filteredNotes.length; n++) {
           const note = filteredNotes[n];
-          if (y > pageHeight - margin - lineHeight * 4) { doc.addPage(); y = margin; }
+          if (y > pageHeight - margin - lineHeight * 4) { y = addOverflowPage(); }
 
           // Name line (bold; urgent in red)
           doc.setFontSize(9);
@@ -702,7 +745,7 @@ export async function downloadRowsAsPdf({
             doc.setFont('Helvetica', 'normal');
             const noteLines = doc.splitTextToSize(note.noteText, contentWidth - 16);
             for (const noteLine of noteLines) {
-              if (y > pageHeight - margin - lineHeight) { doc.addPage(); y = margin; }
+              if (y > pageHeight - margin - lineHeight) { y = addOverflowPage(); }
               doc.text(noteLine, margin + 8, y);
               y += lineHeight - 2;
             }
@@ -713,7 +756,7 @@ export async function downloadRowsAsPdf({
           doc.setFontSize(7);
           doc.setTextColor(130, 130, 130);
           if (note.category) {
-            if (y > pageHeight - margin - lineHeight) { doc.addPage(); y = margin; }
+            if (y > pageHeight - margin - lineHeight) { y = addOverflowPage(); }
             doc.text(note.category, margin + 8, y);
             y += lineHeight - 2;
           }
@@ -724,7 +767,7 @@ export async function downloadRowsAsPdf({
             return isNaN(d.getTime()) ? `1/1/${new Date().getFullYear()}` : d.toLocaleDateString();
           })()].filter(Boolean).join(' · ');
           if (byline) {
-            if (y > pageHeight - margin - lineHeight) { doc.addPage(); y = margin; }
+            if (y > pageHeight - margin - lineHeight) { y = addOverflowPage(); }
             doc.text(byline, margin + 8, y);
             y += lineHeight - 2;
           }
@@ -733,7 +776,7 @@ export async function downloadRowsAsPdf({
 
           // Thin divider between notes (not after the last one)
           if (n < filteredNotes.length - 1) {
-            if (y > pageHeight - margin - 6) { doc.addPage(); y = margin; }
+            if (y > pageHeight - margin - 6) { y = addOverflowPage(); }
             doc.setLineWidth(0.25);
             doc.setDrawColor(210, 210, 210);
             doc.line(margin + 8, y, pageWidth - margin, y);
@@ -754,11 +797,10 @@ export async function downloadRowsAsPdf({
           .filter(Boolean);
         if (imageUrls.length === 0) { continue; }
 
-        renderCategoryHeader(categoryLabel);
+        renderSectionHeader(meta, categoryLabel);
 
         if (y > pageHeight - margin - lineHeight * 3) {
-          doc.addPage();
-          y = margin;
+          y = addOverflowPage();
         }
 
         doc.setFont('Helvetica', 'bold');
@@ -770,8 +812,7 @@ export async function downloadRowsAsPdf({
           const base64 = await loadImageAsBase64(imageUrl);
           if (!base64) {
             if (y > pageHeight - margin - lineHeight) {
-              doc.addPage();
-              y = margin;
+              y = addOverflowPage();
             }
             doc.setFont('Helvetica', 'italic');
             doc.setFontSize(9);
@@ -797,8 +838,7 @@ export async function downloadRowsAsPdf({
           }
 
           if (y + drawHeight > pageHeight - margin) {
-            doc.addPage();
-            y = margin;
+            y = addOverflowPage();
           }
 
           const imageX = margin + ((contentWidth - drawWidth) / 2);
@@ -822,12 +862,81 @@ export async function downloadRowsAsPdf({
         }
         y += 4;
 
+      } else if (meta?.value_type === 'static_table' && meta?.table_info) {
+        // ── Static/blank fill-in table (e.g. printable log sheet) ──
+        renderSectionHeader(meta, categoryLabel);
+        y += lineHeight; // blank line before the table, per spec
+        if (y > pageHeight - margin - lineHeight) { y = addOverflowPage(); }
+
+        const tableInfo = meta.table_info;
+        const columnDefs = (tableInfo.columns?.values || []).filter((c) => c?.header);
+        if (columnDefs.length > 0) {
+          const rawColumnWidths = columnDefs.map((c) => Number(c.width) || 0);
+          const totalRawWidth = rawColumnWidths.reduce((sum, w) => sum + w, 0);
+          // Shrink proportionally to fit the printable width; never scale up.
+          const widthScale = (totalRawWidth > contentWidth) ? (contentWidth / totalRawWidth) : 1;
+          const columnWidths = rawColumnWidths.map((w) => w * widthScale);
+
+          const rowHeight = Number(tableInfo.rows?.height) || lineHeight;
+          const headerRowHeight = Number(tableInfo.rows?.header_height) || rowHeight;
+          const blankRowCount = Math.max(0, Number(tableInfo.rows?.minimum) || 0);
+          const bodyRows = Array.from({ length: blankRowCount }, () => columnDefs.map(() => ''));
+
+          const gridLineWidth = Number(tableInfo.borders?.grid) || 1;
+          const outsideLineWidth = Number(tableInfo.borders?.outside) || gridLineWidth;
+          const afterHeaderLineWidth = Number(tableInfo.borders?.after_header) || gridLineWidth;
+
+          const columnStyles = {};
+          columnWidths.forEach((w, idx) => { columnStyles[idx] = { cellWidth: w }; });
+
+          const tableStartY = y;
+          // If the table's own blank rows overflow a page on their own (no manual overflow check
+          // above caught it), autoTable paginates internally — track its page breaks here so the
+          // continuation banner still appears, even though we don't get a chance to add the
+          // "continued onto next page" footer on the page being left in that specific case.
+          let lastHandledTablePage = doc.internal.getCurrentPageInfo().pageNumber;
+          doc.autoTable({
+            head: [columnDefs.map((c) => c.header)],
+            body: bodyRows,
+            startY: tableStartY,
+            margin: { left: margin, right: margin, top: margin + 6 + lineHeight },
+            theme: 'grid',
+            // 'wrap' keeps the border/width tied to the actual columns instead of the full page width,
+            // and lets tableLineWidth/tableLineColor draw the outer edge per-page — a page break splits
+            // this rect manually (using startY/finalY, which live on different pages) into a bogus box.
+            tableWidth: 'wrap',
+            tableLineWidth: outsideLineWidth,
+            tableLineColor: [0, 0, 0],
+            styles: { lineWidth: gridLineWidth, lineColor: [0, 0, 0], minCellHeight: rowHeight, valign: 'middle' },
+            headStyles: { fontStyle: 'bold', halign: 'left', fillColor: [240, 240, 240], textColor: [0, 0, 0], minCellHeight: headerRowHeight },
+            columnStyles,
+            didDrawPage: () => {
+              const currentPageNumber = doc.internal.getCurrentPageInfo().pageNumber;
+              if (currentPageNumber > lastHandledTablePage) {
+                lastHandledTablePage = currentPageNumber;
+                personPageNumRef.current++;
+                drawContinuationHeader();
+              }
+            },
+            didDrawCell: (data) => {
+              // Give the header/body divider its own (heavier) weight, distinct from the internal grid.
+              if (data.section === 'head') {
+                doc.setLineWidth(afterHeaderLineWidth);
+                doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
+                doc.setLineWidth(gridLineWidth);
+              }
+            }
+          });
+
+          y = doc.lastAutoTable.finalY + (lineHeight / 2);
+        }
+
       } else {
         // ── Standard "Label: value" row ──
         const value = `${fieldValues[j] ?? ''}`.trim();
         if (!value) { continue; }
 
-        renderCategoryHeader(categoryLabel);
+        renderSectionHeader(meta, categoryLabel);
         renderLabelValueRow(`${label}:`, value);
       }
     }

@@ -497,6 +497,8 @@ export default ({ defaults, onClose }) => {
       filters: opt.filters,
       category: opt.category,
       pdf_data_group: opt.pdf_data_group,
+      table_info: opt.table_info,
+      ignore_section: opt.ignore_section,
     }));
     const safeFormName = sanitizeExportBaseName(
       selectedForm?.form_name || reactData.selectedForm_id,

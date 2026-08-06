@@ -329,7 +329,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   // resolves display name from the client's accessList when available, else falls back to the FamilyGroups record's stored name
   function resolveDisplayName(person_id, fallbackName) {
     const found = state.accessList?.[pSession.client_id]?.list?.find(p => p.person_id === person_id);
-    return found ? `${found.name.first} ${found.name.last}` : (fallbackName || person_id);
+    return found ? `${(found.name.first || '').trim()} ${(found.name.last || '').trim()}` : (fallbackName || person_id);
   }
 
   // same FamilyGroups lookup used by PeopleMaintenance's Snapshot section, cached per person_id;
@@ -488,7 +488,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         alert: {
           severity: 'info',
           title: 'Move or Copy?',
-          message: `${draggedFrom.personObj.name.first} ${draggedFrom.personObj.name.last} → ${groupsManagedObject[droppedOn.group_id].group_name}`,
+          message: `${(draggedFrom.personObj.name.first || '').trim()} ${(draggedFrom.personObj.name.last || '').trim()} → ${groupsManagedObject[droppedOn.group_id].group_name}`,
           action: [
             {
               text: 'Copy',
@@ -506,7 +506,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
   const executeDrop_copyPerson = async (draggedFrom, droppedOn) => {
     const person_id = draggedFrom.personObj.person_id;
-    const firstName = draggedFrom.personObj.name?.first || 'This person';
+    const firstName = (draggedFrom.personObj.name?.first || '').trim() || 'This person';
 
     // guard against dropping on an inactive group
     if (state.session.group_assignments?.inactive?.includes(droppedOn.group_id)) {
@@ -589,7 +589,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
   const executeMovePerson = async (draggedFrom, droppedOn) => {
     const person_id = draggedFrom.personObj.person_id;
-    const firstName = draggedFrom.personObj.name?.first || 'This person';
+    const firstName = (draggedFrom.personObj.name?.first || '').trim() || 'This person';
 
     if (state.session.group_assignments?.inactive?.includes(droppedOn.group_id)) {
       updateReactData({
@@ -665,7 +665,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
   const executeRemovePersonFromGroup = async (draggedFrom) => {
     const person_id = draggedFrom.personObj.person_id;
-    const firstName = draggedFrom.personObj.name?.first || 'This person';
+    const firstName = (draggedFrom.personObj.name?.first || '').trim() || 'This person';
 
     // get current groups from accessList for alert diff
     const accessEntry = state.accessList?.[pSession.client_id]?.list?.find(p => p.person_id === person_id);
@@ -973,6 +973,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         filters: opt.filters,
         category: opt.category,
         pdf_data_group: opt.pdf_data_group,
+        table_info: opt.table_info,
+        ignore_section: opt.ignore_section,
       }));
       const fileName = `${safeGroupName || 'group'}_people_list.pdf`;
       await downloadRowsAsPdf({
@@ -1040,8 +1042,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     const rows = visibleMemberIds.map((this_person) => {
       const personRec = reactData.selectedGroupMembers?.[this_person] || {};
       const person_id = personRec.person_id || '';
-      const firstName = personRec.name?.first || '';
-      const lastName = personRec.name?.last || '';
+      const firstName = (personRec.name?.first || '').trim();
+      const lastName = (personRec.name?.last || '').trim();
       const fullName = `${firstName} ${lastName}`.trim();
       return [person_id, firstName, lastName, fullName];
     });
@@ -1118,8 +1120,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
     const baseRows = baseIds.map(person_id => ({
       person_id,
-      first: reactData.selectedGroupMembers[person_id].name.first,
-      last: reactData.selectedGroupMembers[person_id].name.last,
+      first: (reactData.selectedGroupMembers[person_id].name.first || '').trim(),
+      last: (reactData.selectedGroupMembers[person_id].name.last || '').trim(),
       isExtra: false
     }));
 
@@ -1851,7 +1853,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                         if (p) {
                           sendMessage.push({
                             person_id,
-                            person_name: `${p.name.first} ${p.name.last}`
+                            person_name: `${(p.name.first || '').trim()} ${(p.name.last || '').trim()}`
                           });
                         }
                       }
@@ -1888,7 +1890,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     if (draggedFrom.hasOwnProperty('personObj')) {
                       sendMessage.push({
                         person_id: draggedFrom.personObj.person_id,
-                        person_name: `${draggedFrom.personObj.name.first} ${draggedFrom.personObj.name.last}`
+                        person_name: `${(draggedFrom.personObj.name.first || '').trim()} ${(draggedFrom.personObj.name.last || '').trim()}`
                       });
                     }
                     else {
@@ -2032,11 +2034,11 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                             updateReactData({
                               selectedPerson_id: reactData.selectedGroupMembers[this_row.person_id].person_id,
                               selectedPersonRec: await getPerson(reactData.selectedGroupMembers[this_row.person_id].person_id, '*all', true),
-                              selectedPersonFirstName: reactData.selectedGroupMembers[this_row.person_id].name.first,
-                              selectedPersonLastName: reactData.selectedGroupMembers[this_row.person_id].name.last,
+                              selectedPersonFirstName: (reactData.selectedGroupMembers[this_row.person_id].name.first || '').trim(),
+                              selectedPersonLastName: (reactData.selectedGroupMembers[this_row.person_id].name.last || '').trim(),
                               alert: {
                                 severity: 'info',
-                                title: `${reactData.selectedGroupMembers[this_row.person_id].name.first} ${reactData.selectedGroupMembers[this_row.person_id].name.last}`,
+                                title: `${(reactData.selectedGroupMembers[this_row.person_id].name.first || '').trim()} ${(reactData.selectedGroupMembers[this_row.person_id].name.last || '').trim()}`,
                                 message: <div>
                                   Person ID: <strong>{reactData.selectedGroupMembers[this_row.person_id].person_id}</strong></div>
                               }
