@@ -732,11 +732,16 @@ export default ({ start_at }) => {
     if ((minutesSinceActive > 60) || (state.session?.kiosk_mode && state.profile?.kiosk_mode)) {
       window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
     }
-    else if ((now.getTime() - reactData.lastActiveTime.getTime()) > (5 * oneMinute)) {
+    else {
+      // Cheap, cursor-based poll — run on every idle tick (every 1 min) so a notification
+      // can't be missed indefinitely just because activity keeps resetting the 5-min refresh below.
+      await loadMenuNotifications();
+    }
+    if ((minutesSinceActive <= 60) && !(state.session?.kiosk_mode && state.profile?.kiosk_mode)
+      && ((now.getTime() - reactData.lastActiveTime.getTime()) > (5 * oneMinute))) {
       cl(`Update while idle at ${now.toLocaleString()}.`);
       await updateMarquee();
       await rebuildMenuHierarchy();
-      await loadMenuNotifications();
       updateReactData({
         lastActiveTime: now,
       }, true);
