@@ -35,6 +35,37 @@ export function formatExportValue(value, options = {}) {
   return value;
 }
 
+// Truthiness for logical_and/logical_or evaluation — mirrors formatExportValue's yes/no
+// string handling so 'true'/'false' strings and booleans are treated consistently.
+function isTruthyExportValue(value) {
+  if ((value === null) || (value === undefined) || (value === '')) {
+    return false;
+  }
+  if (typeof value === 'string') {
+    const normalizedValue = value.trim().toLowerCase();
+    if (normalizedValue === 'false') { return false; }
+    if (normalizedValue === 'no') { return false; }
+    if (normalizedValue === 'n') { return false; }
+    if (normalizedValue === '0') { return false; }
+    if (normalizedValue === '') { return false; }
+    return true;
+  }
+  return !!value;
+}
+
+/**
+ * Collapse a list of resolved values to a single "yes"/"no" string.
+ * @param {'and'|'or'} mode 'and' requires every value truthy; 'or' requires at least one.
+ */
+export function evaluateLogicalFieldValues(rawValue, mode) {
+  const values = Array.isArray(rawValue) ? rawValue : [rawValue];
+  if (values.length === 0) { return 'no'; }
+  const isMatch = (mode === 'and')
+    ? values.every(isTruthyExportValue)
+    : values.some(isTruthyExportValue);
+  return isMatch ? 'yes' : 'no';
+}
+
 export function sanitizeExportBaseName(baseName, fallback = 'export') {
   return String(baseName || fallback)
     .replace(/[^a-z0-9]+/gi, '_')
@@ -236,6 +267,9 @@ export async function resolveSelectedFieldValuesForPeople({
         const rawNotes = Array.isArray(resolvedField?.raw) ? resolvedField.raw : [];
         const staticFilters = (fieldOpt.filters || []).filter(f => f.source !== 'prompt');
         return evaluateNoteFilters(rawNotes, staticFilters);
+      }
+      if (fieldOpt?.value_type === 'logical_and' || fieldOpt?.value_type === 'logical_or') {
+        return evaluateLogicalFieldValues(resolvedField?.raw, (fieldOpt.value_type === 'logical_and') ? 'and' : 'or');
       }
       // Keep the pre-join array for grouped fields so the PDF renderer can transpose instances by index.
       if (preserveGroupedRaw && fieldOpt?.pdf_data_group) {
@@ -629,6 +663,74 @@ export async function downloadRowsAsPdf({
       }
     };
 
+    // Draws a static/blank fill-in table (e.g. printable log sheet) at the current y position.
+    // Shared by the single-field render path and by each iteration of a pdf_data_group, since a
+    // static_table field carries no per-instance value of its own to loop over.
+    const drawStaticTable = (meta) => {
+      const tableInfo = meta.table_info;
+      const columnDefs = (tableInfo.columns?.values || []).filter((c) => c?.header);
+      if (columnDefs.length === 0) { return; }
+
+      const rawColumnWidths = columnDefs.map((c) => Number(c.width) || 0);
+      const totalRawWidth = rawColumnWidths.reduce((sum, w) => sum + w, 0);
+      // Shrink proportionally to fit the printable width; never scale up.
+      const widthScale = (totalRawWidth > contentWidth) ? (contentWidth / totalRawWidth) : 1;
+      const columnWidths = rawColumnWidths.map((w) => w * widthScale);
+
+      const rowHeight = Number(tableInfo.rows?.height) || lineHeight;
+      const headerRowHeight = Number(tableInfo.rows?.header_height) || rowHeight;
+      const blankRowCount = Math.max(0, Number(tableInfo.rows?.minimum) || 0);
+      const bodyRows = Array.from({ length: blankRowCount }, () => columnDefs.map(() => ''));
+
+      const gridLineWidth = Number(tableInfo.borders?.grid) || 1;
+      const outsideLineWidth = Number(tableInfo.borders?.outside) || gridLineWidth;
+      const afterHeaderLineWidth = Number(tableInfo.borders?.after_header) || gridLineWidth;
+
+      const columnStyles = {};
+      columnWidths.forEach((w, idx) => { columnStyles[idx] = { cellWidth: w }; });
+
+      const tableStartY = y;
+      // If the table's own blank rows overflow a page on their own (no manual overflow check
+      // above caught it), autoTable paginates internally — track its page breaks here so the
+      // continuation banner still appears, even though we don't get a chance to add the
+      // "continued onto next page" footer on the page being left in that specific case.
+      let lastHandledTablePage = doc.internal.getCurrentPageInfo().pageNumber;
+      doc.autoTable({
+        head: [columnDefs.map((c) => c.header)],
+        body: bodyRows,
+        startY: tableStartY,
+        margin: { left: margin, right: margin, top: margin + 6 + lineHeight },
+        theme: 'grid',
+        // 'wrap' keeps the border/width tied to the actual columns instead of the full page width,
+        // and lets tableLineWidth/tableLineColor draw the outer edge per-page — a page break splits
+        // this rect manually (using startY/finalY, which live on different pages) into a bogus box.
+        tableWidth: 'wrap',
+        tableLineWidth: outsideLineWidth,
+        tableLineColor: [0, 0, 0],
+        styles: { lineWidth: gridLineWidth, lineColor: [0, 0, 0], minCellHeight: rowHeight, valign: 'middle' },
+        headStyles: { fontStyle: 'bold', halign: 'left', fillColor: [240, 240, 240], textColor: [0, 0, 0], minCellHeight: headerRowHeight },
+        columnStyles,
+        didDrawPage: () => {
+          const currentPageNumber = doc.internal.getCurrentPageInfo().pageNumber;
+          if (currentPageNumber > lastHandledTablePage) {
+            lastHandledTablePage = currentPageNumber;
+            personPageNumRef.current++;
+            drawContinuationHeader();
+          }
+        },
+        didDrawCell: (data) => {
+          // Give the header/body divider its own (heavier) weight, distinct from the internal grid.
+          if (data.section === 'head') {
+            doc.setLineWidth(afterHeaderLineWidth);
+            doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
+            doc.setLineWidth(gridLineWidth);
+          }
+        }
+      });
+
+      y = doc.lastAutoTable.finalY + lineHeight;
+    };
+
     // Renders a pdf_data_group's fields transposed by instance: all "instance 1" answers together,
     // then all "instance 2" answers, etc., instead of one field's full answer list at a time.
     const renderGroupedFieldSet = (groupIndexes) => {
@@ -641,16 +743,32 @@ export async function downloadRowsAsPdf({
 
       renderSectionHeader(fieldMeta[groupIndexes[0]], fieldMeta[groupIndexes[0]]?.category || 'Other');
 
+      let renderedInstanceCount = 0;
       for (let instanceIdx = 0; instanceIdx < instanceCount; instanceIdx++) {
+        // The group's first field identifies whether this instance exists at all (e.g. the
+        // medication name) — if it's blank, skip the whole instance, static_table included.
+        const primaryValue = `${arraysByIndex[0][instanceIdx] ?? ''}`.trim();
+        if (!primaryValue) { continue; }
+
+        if (renderedInstanceCount > 0) {
+          addGroupGap();
+        }
+        renderedInstanceCount++;
+
         for (let g = 0; g < groupIndexes.length; g++) {
           const idx = groupIndexes[g];
+          const groupFieldMeta = fieldMeta[idx];
+          // A static_table member has no per-instance value to look up — draw it once per
+          // iteration of the group instead of falling through the label/value rendering below.
+          if (groupFieldMeta?.value_type === 'static_table' && groupFieldMeta?.table_info) {
+            y += lineHeight / 4;
+            if (y > pageHeight - margin - lineHeight) { y = addOverflowPage(); }
+            drawStaticTable(groupFieldMeta);
+            continue;
+          }
           const value = `${arraysByIndex[g][instanceIdx] ?? ''}`.trim();
           if (!value) { continue; }
           renderLabelValueRow(`${fieldLabels[idx] || ''} ${instanceIdx + 1}:`, value);
-        }
-        // Separate each instance's block of answers from the next one.
-        if (instanceIdx < instanceCount - 1) {
-          addGroupGap();
         }
       }
     };
@@ -702,6 +820,12 @@ export async function downloadRowsAsPdf({
           continue;
         }
         // Only one instance present — fall through to normal per-field rendering below.
+
+        // A blank/nullish first field means this group instance doesn't exist at all — suppress
+        // every field in the group (not just the ones that happen to also be blank).
+        const rawPrimaryValue = fieldValues[groupIndexes[0]];
+        const primaryValue = `${(Array.isArray(rawPrimaryValue) ? rawPrimaryValue[0] : rawPrimaryValue) ?? ''}`.trim();
+        if (!primaryValue) { continue; }
       }
 
 
@@ -865,71 +989,9 @@ export async function downloadRowsAsPdf({
       } else if (meta?.value_type === 'static_table' && meta?.table_info) {
         // ── Static/blank fill-in table (e.g. printable log sheet) ──
         renderSectionHeader(meta, categoryLabel);
-        y += lineHeight; // blank line before the table, per spec
+        y += lineHeight / 4; // blank line before the table, per spec
         if (y > pageHeight - margin - lineHeight) { y = addOverflowPage(); }
-
-        const tableInfo = meta.table_info;
-        const columnDefs = (tableInfo.columns?.values || []).filter((c) => c?.header);
-        if (columnDefs.length > 0) {
-          const rawColumnWidths = columnDefs.map((c) => Number(c.width) || 0);
-          const totalRawWidth = rawColumnWidths.reduce((sum, w) => sum + w, 0);
-          // Shrink proportionally to fit the printable width; never scale up.
-          const widthScale = (totalRawWidth > contentWidth) ? (contentWidth / totalRawWidth) : 1;
-          const columnWidths = rawColumnWidths.map((w) => w * widthScale);
-
-          const rowHeight = Number(tableInfo.rows?.height) || lineHeight;
-          const headerRowHeight = Number(tableInfo.rows?.header_height) || rowHeight;
-          const blankRowCount = Math.max(0, Number(tableInfo.rows?.minimum) || 0);
-          const bodyRows = Array.from({ length: blankRowCount }, () => columnDefs.map(() => ''));
-
-          const gridLineWidth = Number(tableInfo.borders?.grid) || 1;
-          const outsideLineWidth = Number(tableInfo.borders?.outside) || gridLineWidth;
-          const afterHeaderLineWidth = Number(tableInfo.borders?.after_header) || gridLineWidth;
-
-          const columnStyles = {};
-          columnWidths.forEach((w, idx) => { columnStyles[idx] = { cellWidth: w }; });
-
-          const tableStartY = y;
-          // If the table's own blank rows overflow a page on their own (no manual overflow check
-          // above caught it), autoTable paginates internally — track its page breaks here so the
-          // continuation banner still appears, even though we don't get a chance to add the
-          // "continued onto next page" footer on the page being left in that specific case.
-          let lastHandledTablePage = doc.internal.getCurrentPageInfo().pageNumber;
-          doc.autoTable({
-            head: [columnDefs.map((c) => c.header)],
-            body: bodyRows,
-            startY: tableStartY,
-            margin: { left: margin, right: margin, top: margin + 6 + lineHeight },
-            theme: 'grid',
-            // 'wrap' keeps the border/width tied to the actual columns instead of the full page width,
-            // and lets tableLineWidth/tableLineColor draw the outer edge per-page — a page break splits
-            // this rect manually (using startY/finalY, which live on different pages) into a bogus box.
-            tableWidth: 'wrap',
-            tableLineWidth: outsideLineWidth,
-            tableLineColor: [0, 0, 0],
-            styles: { lineWidth: gridLineWidth, lineColor: [0, 0, 0], minCellHeight: rowHeight, valign: 'middle' },
-            headStyles: { fontStyle: 'bold', halign: 'left', fillColor: [240, 240, 240], textColor: [0, 0, 0], minCellHeight: headerRowHeight },
-            columnStyles,
-            didDrawPage: () => {
-              const currentPageNumber = doc.internal.getCurrentPageInfo().pageNumber;
-              if (currentPageNumber > lastHandledTablePage) {
-                lastHandledTablePage = currentPageNumber;
-                personPageNumRef.current++;
-                drawContinuationHeader();
-              }
-            },
-            didDrawCell: (data) => {
-              // Give the header/body divider its own (heavier) weight, distinct from the internal grid.
-              if (data.section === 'head') {
-                doc.setLineWidth(afterHeaderLineWidth);
-                doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
-                doc.setLineWidth(gridLineWidth);
-              }
-            }
-          });
-
-          y = doc.lastAutoTable.finalY + (lineHeight / 2);
-        }
+        drawStaticTable(meta);
 
       } else {
         // ── Standard "Label: value" row ──
