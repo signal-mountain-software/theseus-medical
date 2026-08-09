@@ -1850,6 +1850,46 @@ export async function isLeaf(group_id, personGroupIds, client_id) {
   return !belongsToChild;
 }
 
+/**
+ * Builds the same "Parent / Group" (or bare "Group") display lines the Snapshot section shows
+ * under its "Groups:" heading — one line per leaf group the person belongs to, prefixed with its
+ * admin/parent group name when the group is nested under one.
+ *
+ * @param {string} person_id
+ * @param {string} client_id
+ * @returns {Promise<string[]>}
+ */
+export async function getPersonGroupDisplayLines(person_id, client_id) {
+  const allGroups = await getPersonGroups(person_id, client_id);
+  const leafGroupIds = [];
+  for (const g of allGroups) {
+    if (await isLeaf(g, allGroups, client_id)) { leafGroupIds.push(g.trim()); }
+  }
+  if (leafGroupIds.length === 0) { return []; }
+
+  if (!cachedHierarchy) {
+    const h = await getGroupHierarchy(client_id, { sort: true });
+    cachedHierarchy = { adminHierarchy: h.hierarchy, parent_of: h.parent_of };
+  }
+  const { adminHierarchy } = cachedHierarchy;
+  const [groups_person_belongsTo, rejectObject] = await getGroupAccess(client_id, person_id);
+  const allResults = Object.assign({}, groups_person_belongsTo, rejectObject);
+
+  const lines = [];
+  for (const group_id of leafGroupIds) {
+    const groupInfo = adminHierarchy?.find(g => g.id === group_id);
+    const groupName = groupInfo?.name || allResults[group_id]?.group_name || null;
+    if (!groupName) { continue; }
+
+    const parentId = groupInfo?.belongs_to;
+    const parentInfo = parentId ? adminHierarchy?.find(g => g.id === parentId) : null;
+    const parentName = parentInfo?.name || null;
+
+    lines.push(parentName ? `${parentName} / ${groupName}` : groupName);
+  }
+  return lines;
+}
+
 export async function addAdministrator(pPerson, pGroup) {
   let sessionRec = await getSession(pPerson);
   if (sessionRec?.session_id) {

@@ -3,6 +3,7 @@ import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 
 import { dbClient, recordExists, deepCopy, resolveData, cl, getObject } from './AVAUtilities';
+import { getPersonGroupDisplayLines } from './AVAGroups';
 
 export function formatExportValue(value, options = {}) {
   const arraySeparator = (typeof options?.arraySeparator === 'string') ? options.arraySeparator : '; ';
@@ -260,7 +261,7 @@ export async function resolveSelectedFieldValuesForPeople({
       }
     );
 
-    outputByPersonId[personId] = selectedFieldKeys.map((fieldKey, fieldIndex) => {
+    outputByPersonId[personId] = await Promise.all(selectedFieldKeys.map(async (fieldKey, fieldIndex) => {
       const resolvedField = resolvedFieldList[fieldIndex];
       const fieldOpt = fieldOptionByKey[fieldKey];
       if (fieldOpt?.value_type === 'notes') {
@@ -271,12 +272,17 @@ export async function resolveSelectedFieldValuesForPeople({
       if (fieldOpt?.value_type === 'logical_and' || fieldOpt?.value_type === 'logical_or') {
         return evaluateLogicalFieldValues(resolvedField?.raw, (fieldOpt.value_type === 'logical_and') ? 'and' : 'or');
       }
+      // Same leaf-group / parent-group display lines shown in the Snapshot section's Groups list.
+      if (fieldOpt?.value_type === 'person_groups') {
+        const groupLines = await getPersonGroupDisplayLines(personId, clientId);
+        return formatExportValue(groupLines, { arraySeparator });
+      }
       // Keep the pre-join array for grouped fields so the PDF renderer can transpose instances by index.
       if (preserveGroupedRaw && fieldOpt?.pdf_data_group) {
         return resolvedField?.formatted;
       }
       return formatExportValue(resolvedField?.formatted, { arraySeparator });
-    });
+    }));
 
     completedCount += 1;
     if (onProgress && ((completedCount % progressUpdateEvery === 0) || (completedCount === totalCount))) {
