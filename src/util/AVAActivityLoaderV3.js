@@ -487,49 +487,62 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
 }
 
 let rememberedQualifiers = {};
+async function fetchQualifierData(qKey) {
+  let selections = {};
+  let data = {};
+  let moreInfo = {};
+  let docLineList = [];
+  let oItem = await getObservationItems(qKey);
+  if (oItem.__dbError) {
+    return { dbError: true };
+  }
+  for (let prop in oItem) {
+    if (prop === 'options') {
+      data = await getObservationOptions(oItem.options.observation_key);
+      if (data.__dbError) {
+        return { dbError: true };
+      }
+      oItem.options.display_value.forEach(v => {
+        if (v.default) {
+          selections[v.title] = {};
+          makeArray(v.default).forEach(dVal => {
+            selections[v.title][dVal] = true;
+          });
+        }
+      });
+    }
+    else if (prop.startsWith('doc_line')) {
+      docLineList[Number(prop.split(':')[1])] = oItem[prop].display_value;
+    }
+    else if (prop !== 'observation_name') {
+      if (oItem[prop].display_value) {
+        moreInfo[prop] = oItem[prop].display_value;
+      }
+      else if (oItem[prop].value) {
+        moreInfo[prop] = `${oItem[prop].value}${oItem[prop].uom || ''}`;
+      }
+      else {
+        moreInfo[prop] = ' ';
+      }
+    }
+  }
+  return { selections, data, moreInfo, docLines: docLineList.join('') };
+}
+
 export async function buildQualifiers(qKey) {
   if (!qKey) {
     return [{}, {}];
   }
   if (!rememberedQualifiers[qKey]) {
-    rememberedQualifiers[qKey] = {
-      selections: {},
-      data: {},
-      moreInfo: {}
-    };
-    let docLineList = [];
-    let oItem = await getObservationItems(qKey);
-    if (oItem) {
-      for (let prop in oItem) {
-        if (prop === 'options') {
-          rememberedQualifiers[qKey].data = await getObservationOptions(oItem.options.observation_key);
-          oItem.options.display_value.forEach(v => {
-            if (v.default) {
-              rememberedQualifiers[qKey].selections[v.title] = {};
-              makeArray(v.default).forEach(dVal => {
-                rememberedQualifiers[qKey].selections[v.title][dVal] = true;
-              });
-            }
-          });
-        }
-        else if (prop.startsWith('doc_line')) {
-          docLineList[Number(prop.split(':')[1])] = oItem[prop].display_value;
-        }
-        else if (prop !== 'observation_name') {
-          if (oItem[prop].display_value) {
-            rememberedQualifiers[qKey].moreInfo[prop] = oItem[prop].display_value;
-          }
-          else if (oItem[prop].value) {
-            rememberedQualifiers[qKey].moreInfo[prop] = `${oItem[prop].value}${oItem[prop].uom || ''}`;
-          }
-          else {
-            rememberedQualifiers[qKey].moreInfo[prop] = ' ';
-          }
-        }
-      }
+    let built = await fetchQualifierData(qKey);
+    if (built.dbError) {
+      built = await fetchQualifierData(qKey);   // one automatic retry in case it was a transient DB read failure
     }
-    rememberedQualifiers[qKey].docLines = docLineList.join('');
+    if (built.dbError) {
+      // don't cache a failed read - leave it un-remembered so the next check attempt tries the DB again
+      return { selections: {}, data: {}, moreInfo: {}, dbError: true };
+    }
+    rememberedQualifiers[qKey] = built;
   }
-  // return [rememberedQualifiers[qKey].selections, rememberedQualifiers[qKey].data, rememberedQualifiers[qKey].docLines];
   return rememberedQualifiers[qKey];
 }

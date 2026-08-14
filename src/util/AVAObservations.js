@@ -27,15 +27,20 @@ export async function getObservationItems(pObsKey) {
     },
     TableName: "Observation_Items",
   };
+  let dbError = false;
   let obsItemRec = await dbClient
     .query(pObsQkey)
     .promise()
-    .catch(error => { cl('ERROR reading Observation_Items.  Caught error is:', error); });
+    .catch(error => { cl('ERROR reading Observation_Items.  Caught error is:', error); dbError = true; });
   if (recordExists(obsItemRec)) {
     obsItemRec.Items.forEach((oiRec) => {
       returnObj[oiRec.characteristic] = oiRec;
     });
   };
+  if (dbError) {
+    // non-enumerable so it doesn't get treated as an observation characteristic by callers that iterate this object
+    Object.defineProperty(returnObj, '__dbError', { value: true, enumerable: false, configurable: true });
+  }
   return returnObj;
 }
 
@@ -296,6 +301,7 @@ export async function makeObservationList(pObs, pSession, variables = {}, option
 }
 
 export async function getObservationOptions(pObs) {
+  let dbError = false;
   let options = await dbClient
     .query({
       KeyConditionExpression: 'observation_key = :p AND characteristic = :o',
@@ -303,9 +309,13 @@ export async function getObservationOptions(pObs) {
       TableName: "Observation_Items"
     })
     .promise()
-    .catch(error => { cl(`Problem reading Observation_Items with key ${pObs} is: ${error}`); });
-  if (recordExists(options)) { return options.Items[0].display_value; }
-  else { return []; }
+    .catch(error => { cl(`Problem reading Observation_Items with key ${pObs} is: ${error}`); dbError = true; });
+  let result = recordExists(options) ? options.Items[0].display_value : [];
+  if (dbError) {
+    // non-enumerable so it doesn't get mistaken for a real (empty) options list by callers
+    Object.defineProperty(result, '__dbError', { value: true, enumerable: false, configurable: true });
+  }
+  return result;
 }
 
 export async function getActivity(pClient, pCode) {
