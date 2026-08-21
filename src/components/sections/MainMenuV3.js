@@ -75,6 +75,8 @@ import NotificationsActiveIcon from '@material-ui/icons/NotificationsActive';
 import NotificationsOffIcon from '@material-ui/icons/NotificationsOff';
 import VisibilityIcon from '@material-ui/icons/Visibility';
 import VisibilityOffIcon from '@material-ui/icons/VisibilityOff';
+import PauseIcon from '@material-ui/icons/Pause';
+import PlayArrowIcon from '@material-ui/icons/PlayArrow';
 
 import Tooltip from '@material-ui/core/Tooltip';
 import QuickSearch from './QuickSearch';
@@ -274,6 +276,9 @@ export default ({ start_at }) => {
     liveLinkTitle: '',
     liveLinkSiblings: [],
     liveLinkCurrentIndex: -1,
+    liveLinkIsSlideshow: false,
+    liveLinkPaused: false,
+    liveLinkManualNavToken: 0,
     showIosInstall: false,
     alert: false,
     notification: null,
@@ -838,6 +843,29 @@ export default ({ start_at }) => {
       start();
     }
   }, [reactData.renderFunctionCall, pause, start]);
+
+  // Keep a ref in sync with the current slide so the interval below always reads a fresh index
+  // without needing to be re-armed (and thus re-created) on every single tick.
+  const liveLinkSlideIndexRef = React.useRef(-1);
+  React.useEffect(() => {
+    liveLinkSlideIndexRef.current = reactData.liveLinkCurrentIndex;
+  }, [reactData.liveLinkCurrentIndex]);
+
+  // Auto-advance slideshow-style Live Links (array of slide images), looping back to the first slide.
+  // Re-armed on pause/resume and on manual nav (via liveLinkManualNavToken) to restart the countdown,
+  // but NOT on every auto-tick, so it doesn't fall prey to the batching race that caused it to stall.
+  React.useEffect(() => {
+    if (!reactData.showLiveLink || !reactData.liveLinkIsSlideshow || reactData.liveLinkPaused) { return undefined; }
+    const siblings = reactData.liveLinkSiblings || [];
+    if (siblings.length <= 1) { return undefined; }
+    const interval = setInterval(() => {
+      const nextIndex = (liveLinkSlideIndexRef.current + 1) % siblings.length;
+      const nextSlide = siblings[nextIndex];
+      liveLinkSlideIndexRef.current = nextIndex;
+      updateReactData({ liveLinkUrl: nextSlide.url, liveLinkTitle: nextSlide.title, liveLinkCurrentIndex: nextIndex }, true);
+    }, DEFAULT_SLIDESHOW_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [reactData.showLiveLink, reactData.liveLinkIsSlideshow, reactData.liveLinkPaused, reactData.liveLinkSiblings, reactData.liveLinkManualNavToken]);
 
   // Fire any start_at activation that was deferred because groups/accessList weren't loaded yet
   React.useEffect(() => {
@@ -1735,6 +1763,16 @@ export default ({ start_at }) => {
       authorizedToMenuItem(menuItemRec.allow_add)
     );
   };
+
+  const DEFAULT_SLIDESHOW_INTERVAL_MS = 5000;
+
+  // slide_show menu items store their images as (possibly nested) arrays; flatten to a clean list of URLs
+  const normalizeSlideShowUrls = (rawUrl) => {
+    const flatten = (value) => Array.isArray(value) ? value.flatMap(flatten) : (value ? [value] : []);
+    return flatten(rawUrl).filter(entry => typeof entry === 'string' && entry.trim());
+  };
+
+  const getPrimaryLinkUrl = (rawUrl) => Array.isArray(rawUrl) ? rawUrl[0] : rawUrl;
 
   const isPowerPointLink = (url = '') => {
     if (!url || typeof url !== 'string') {
@@ -3359,8 +3397,8 @@ export default ({ start_at }) => {
       !['__top__', '__v3_favorites__', 'add_item_instructions'].includes(this_item.menu_id)
     );
     const canDropOnThisCard = !!((menuItemType === 'menu') && canManageMenuChildren(this_item));
-    const isLinkCard = ['link', 'live_link'].includes(normalizedMenuType);
-    const isTelLink = isLinkCard && String(this_item.url || '').trim().toLowerCase().startsWith('tel:');
+    const isLinkCard = ['link', 'live_link', 'slide_show'].includes(normalizedMenuType);
+    const isTelLink = isLinkCard && String(getPrimaryLinkUrl(this_item.url) || '').trim().toLowerCase().startsWith('tel:');
     const allowNestedAccessibleThumb = (!useTileUI)
       && (accessibleDepth > 0)
       && isLinkCard
@@ -3370,7 +3408,7 @@ export default ({ start_at }) => {
     // Prefer canonical icon URLs for non-link cards in both modes; keep icon_thumb
     // only as a fallback for legacy records without icon.
     const cardImageUrl = (isLinkCard && !isTelLink)
-      ? getLinkThumbnailUrl(this_item.url, this_item.icon || this_item.icon_thumb)
+      ? getLinkThumbnailUrl(getPrimaryLinkUrl(this_item.url), this_item.icon || this_item.icon_thumb)
       : (this_item.icon || this_item.icon_thumb);
     const hasLinkThumbnail = (isLinkCard && !isTelLink) && !!(cardImageUrl && cardImageUrl !== this_item.icon);
     const parentColor = (level_index > 0)
@@ -3419,7 +3457,7 @@ export default ({ start_at }) => {
               title: this_item.description?.short,
               message: <div>
                 ID: {this_item.menu_id}<br />
-                Type: {this_item.menu_itemType}{this_item.url && <><br />URL: {this_item.url.length > 60 ? this_item.url.slice(0, 60) + '…' : this_item.url}</>}<br />
+                Type: {this_item.menu_itemType}{this_item.url && <><br />URL: {Array.isArray(this_item.url) ? `${this_item.url.length} slide(s)` : (this_item.url.length > 60 ? this_item.url.slice(0, 60) + '…' : this_item.url)}</>}<br />
                 Security: {describeAvailableTo(this_item.available_to)}<br />
               </div>,
               editMenuItem: canEditFromAlert
@@ -3516,7 +3554,38 @@ export default ({ start_at }) => {
               }, true);
             }
           }
-          else if (!isTelLink && (normalizedMenuType === 'live_link' || (useTileUI && hasLinkThumbnail && normalizedMenuType === 'link'))) {
+          else if (!isTelLink && (normalizedMenuType === 'live_link' || normalizedMenuType === 'slide_show' || (useTileUI && hasLinkThumbnail && normalizedMenuType === 'link'))) {
+            const itemTitle = this_item.description?.short || this_item.menu_id;
+            if (normalizedMenuType === 'slide_show') {
+              const slideUrls = normalizeSlideShowUrls(this_item.url)
+                .map(slideSrc => buildLiveLinkEmbedUrl(slideSrc))
+                .filter(Boolean);
+              if (slideUrls.length === 0) {
+                updateReactData({
+                  alert: {
+                    severity: 'warning',
+                    title: 'Missing URL',
+                    message: 'This Slide Show does not have any slide images configured.'
+                  }
+                }, true);
+                return;
+              }
+              const slideSiblings = slideUrls.map((url, slideIndex) => ({
+                url,
+                title: `${itemTitle} — Slide ${slideIndex + 1} of ${slideUrls.length}`
+              }));
+              updateReactData({
+                showLiveLink: true,
+                liveLinkUrl: slideSiblings[0].url,
+                liveLinkTitle: slideSiblings[0].title,
+                liveLinkSiblings: slideSiblings,
+                liveLinkCurrentIndex: 0,
+                liveLinkIsSlideshow: true,
+                liveLinkPaused: false,
+                liveLinkManualNavToken: 0
+              }, true);
+              return;
+            }
             const frameUrl = buildLiveLinkEmbedUrl(this_item.url);
             if (!frameUrl) {
               updateReactData({
@@ -3548,9 +3617,12 @@ export default ({ start_at }) => {
             updateReactData({
               showLiveLink: true,
               liveLinkUrl: frameUrl,
-              liveLinkTitle: this_item.description?.short || this_item.menu_id,
+              liveLinkTitle: itemTitle,
               liveLinkSiblings: urlSiblings,
-              liveLinkCurrentIndex: currentSiblingIndex
+              liveLinkCurrentIndex: currentSiblingIndex,
+              liveLinkIsSlideshow: false,
+              liveLinkPaused: false,
+              liveLinkManualNavToken: 0
             }, true);
           }
         }}
@@ -3835,7 +3907,7 @@ export default ({ start_at }) => {
       </Card>
     );
 
-    const wrappedCard = ((['link', 'live_link'].includes(normalizedMenuType)) && this_item.description?.long)
+    const wrappedCard = ((['link', 'live_link', 'slide_show'].includes(normalizedMenuType)) && this_item.description?.long)
       ? (
         <Tooltip
           key={`${keyPrefix}${level_index}_tooltip${item_index}`}
@@ -4876,7 +4948,10 @@ export default ({ start_at }) => {
                   liveLinkUrl: '',
                   liveLinkTitle: '',
                   liveLinkSiblings: [],
-                  liveLinkCurrentIndex: -1
+                  liveLinkCurrentIndex: -1,
+                  liveLinkIsSlideshow: false,
+                  liveLinkPaused: false,
+                  liveLinkManualNavToken: 0
                 }, true);
               }}
               maxWidth={false}
@@ -4900,11 +4975,19 @@ export default ({ start_at }) => {
                     {(reactData.liveLinkSiblings?.length > 1) &&
                       <IconButton
                         size='small'
-                        disabled={reactData.liveLinkCurrentIndex <= 0}
+                        disabled={!reactData.liveLinkIsSlideshow && reactData.liveLinkCurrentIndex <= 0}
                         onClick={() => {
-                          const newIndex = reactData.liveLinkCurrentIndex - 1;
+                          const siblingCount = reactData.liveLinkSiblings.length;
+                          const newIndex = reactData.liveLinkIsSlideshow
+                            ? (reactData.liveLinkCurrentIndex - 1 + siblingCount) % siblingCount
+                            : reactData.liveLinkCurrentIndex - 1;
                           const sibling = reactData.liveLinkSiblings[newIndex];
-                          updateReactData({ liveLinkUrl: sibling.url, liveLinkTitle: sibling.title, liveLinkCurrentIndex: newIndex }, true);
+                          updateReactData({
+                            liveLinkUrl: sibling.url,
+                            liveLinkTitle: sibling.title,
+                            liveLinkCurrentIndex: newIndex,
+                            liveLinkManualNavToken: reactData.liveLinkManualNavToken + 1
+                          }, true);
                         }}
                       >
                         <NavigateBeforeIcon />
@@ -4913,14 +4996,33 @@ export default ({ start_at }) => {
                     {(reactData.liveLinkSiblings?.length > 1) &&
                       <IconButton
                         size='small'
-                        disabled={reactData.liveLinkCurrentIndex >= (reactData.liveLinkSiblings.length - 1)}
+                        disabled={!reactData.liveLinkIsSlideshow && reactData.liveLinkCurrentIndex >= (reactData.liveLinkSiblings.length - 1)}
                         onClick={() => {
-                          const newIndex = reactData.liveLinkCurrentIndex + 1;
+                          const siblingCount = reactData.liveLinkSiblings.length;
+                          const newIndex = reactData.liveLinkIsSlideshow
+                            ? (reactData.liveLinkCurrentIndex + 1) % siblingCount
+                            : reactData.liveLinkCurrentIndex + 1;
                           const sibling = reactData.liveLinkSiblings[newIndex];
-                          updateReactData({ liveLinkUrl: sibling.url, liveLinkTitle: sibling.title, liveLinkCurrentIndex: newIndex }, true);
+                          updateReactData({
+                            liveLinkUrl: sibling.url,
+                            liveLinkTitle: sibling.title,
+                            liveLinkCurrentIndex: newIndex,
+                            liveLinkManualNavToken: reactData.liveLinkManualNavToken + 1
+                          }, true);
                         }}
                       >
                         <NavigateNextIcon />
+                      </IconButton>
+                    }
+                    {reactData.liveLinkIsSlideshow &&
+                      <IconButton
+                        size='small'
+                        title={reactData.liveLinkPaused ? 'Resume Slide Show' : 'Pause Slide Show'}
+                        onClick={() => {
+                          updateReactData({ liveLinkPaused: !reactData.liveLinkPaused }, true);
+                        }}
+                      >
+                        {reactData.liveLinkPaused ? <PlayArrowIcon /> : <PauseIcon />}
                       </IconButton>
                     }
                     <IconButton
@@ -4955,7 +5057,10 @@ export default ({ start_at }) => {
                           liveLinkUrl: '',
                           liveLinkTitle: '',
                           liveLinkSiblings: [],
-                          liveLinkCurrentIndex: -1
+                          liveLinkCurrentIndex: -1,
+                          liveLinkIsSlideshow: false,
+                          liveLinkPaused: false,
+                          liveLinkManualNavToken: 0
                         }, true);
                       }}
                     >
@@ -5634,7 +5739,7 @@ export default ({ start_at }) => {
               variant='outlined'
               fullWidth
               multiline
-              rows={3}
+              minRows={3}
               style={{ marginBottom: 24 }}
             />
             <Box display='flex' alignItems='center' style={{ marginBottom: 16 }}>
