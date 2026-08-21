@@ -1227,7 +1227,11 @@ export default ({ start_at }) => {
         }
       };
       img.onerror = () => resolve(null);
-      img.src = imageUrl;
+      // Force a distinct URL from any plain <img> that may have already cached this same
+      // resource as an opaque (no-cors) response — reusing that cached entry for a
+      // crossOrigin='anonymous' request gets silently blocked with no real network call.
+      const cacheBustSeparator = imageUrl.includes('?') ? '&' : '?';
+      img.src = `${imageUrl}${cacheBustSeparator}_thumbgen=1`;
     });
   };
 
