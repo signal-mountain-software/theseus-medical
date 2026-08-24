@@ -929,6 +929,7 @@ export async function doesPersonMatchGroupRules(client_id, groupArg, personArg) 
 export async function getMemberList(pGroups, pClient_id, options = {}) {
   // returns an array of peopleRecs that are members of the group(s) in pGroups
   // if you happen to include a person_id in the pGroups list, getMemberList returns those too
+  // TODO(groups-migration): reads legacy People.groups; PeopleGroups table is now the authoritative membership source (see /memories/repo/people-groups-migration-notes.md)
   let returnArray = [];
   let foundIDs = [];
   let foundGroups = {};
@@ -1134,6 +1135,7 @@ export async function getMemberList(pGroups, pClient_id, options = {}) {
           }
           else {
             // if you belong to a group that has a parent, you belong to the parent
+            // TODO(groups-migration): this ancestor-injection mutates legacy People.groups and feeds state.accessList (QuickSearch source of truth) - confirmed root cause of over-inclusive group membership; needs PeopleGroups-based rewrite
             if (i.groups) {
               for (let g = 0; g < i.groups.length; g++) {
                 if ((foundGroups[i.groups[g]]?.belongs_to) && (!i.groups.includes(foundGroups[i.groups[g]].belongs_to))) {

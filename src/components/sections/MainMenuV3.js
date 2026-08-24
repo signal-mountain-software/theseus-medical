@@ -924,8 +924,8 @@ export default ({ start_at }) => {
     };
   };
 
-  const authorizedToMenuItem = (available_to) => {
-    if (reactData.is_master) {
+  const authorizedToMenuItem = (available_to, options = {}) => {
+    if (reactData.is_master && !options.ignoreMasterBypass) {
       return true;
     }
 
@@ -1315,7 +1315,9 @@ export default ({ start_at }) => {
         clientId: state.session.client_id,
         userId: state.session.user_id,
         lastCheckTime: reactData.lastNotificationCheckTime,
-        authorizedToMenuItem
+        // Notifications must not honor the master-account bypass - master accounts should only see
+        // notifications actually targeted to them, not every notification in the client.
+        authorizedToMenuItem: (available_to) => authorizedToMenuItem(available_to, { ignoreMasterBypass: true })
       });
 
       // Policy: after initial app-start notification discovery, always attempt sound for attention,
