@@ -774,6 +774,11 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     }
   }
 
+  function onlyLocationFilterActive() {
+    return !!(reactData.locationFilter && (reactData.locationFilter !== '*all')
+      && !reactData.filterTextLower && !reactData.idFilter && !reactData.eventIDFilter);
+  }
+
   const handleDragStart = (ev, id) => {
     ev.dataTransfer.setData('id', id);
   };
@@ -2152,7 +2157,11 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                   textWrap: 'wrap',
                                   padding: { left: 0.5 }
                                 })}>
-                                  {((this_date.eventList.length === 0) ? `No Events Scheduled` : `No Events Match your Filter`)}
+                                  {(this_date.eventList.length === 0)
+                                    ? `No Events Scheduled`
+                                    : (onlyLocationFilterActive()
+                                      ? `No Events in ${(reactData.locationFilter === '*none*') ? '(No Location)' : reactData.locationFilter}`
+                                      : `No Events Match your Filter`)}
                                 </Typography>
                                 :
                                 shownEntries.map(({ this_event, eventIndex }) => (
