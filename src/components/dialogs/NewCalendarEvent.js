@@ -1,12 +1,13 @@
 import React from 'react';
 
 import { makeArray, titleCase, listFromArray } from '../../util/AVAUtilities';
-import { addEvent, writeSlot } from '../../util/AVACalendars';
+import { addEvent, writeSlot, checkLocationAvailability } from '../../util/AVACalendars';
 import { AVAclasses } from '../../util/AVAStyles';
 import { Alert, AlertTitle } from '@material-ui/lab/';
 
 import QuickSearch from '../sections/QuickSearch';
 import EditList from '../forms/EditList';
+import AVAConfirm from '../forms/AVAConfirm';
 import Select from "react-dropdown-select";
 
 import { makeDate, makeTime, addMonths, addDays, daysDiff } from '../../util/AVADateTime';
@@ -658,6 +659,57 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
       updateReactData({ initialized: true }, true);
     }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useEffect(() => {
+    if (!reactData.event_location
+      || !reactData.event_date || reactData.event_date.error
+      || reactData.allDay
+      || !reactData.startObj.good || !reactData.endObj.good
+    ) {
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const result = await checkLocationAvailability({
+        client_id: patient.client_id,
+        date: reactData.event_date.date,
+        location: reactData.event_location,
+        start_minutes: reactData.startObj.minutesSinceMidnight,
+        end_minutes: reactData.endObj.minutesSinceMidnight,
+        known_locations: makeArray(state.session.campus_locations)
+      });
+      if (cancelled) { return; }
+      if (!result.available) {
+        updateReactData({
+          // kept separate from `alert` so a dismissed/expired toast can't hide a still-live conflict from the Save handler
+          locationConflict: { ...result.conflictingEvent, location: reactData.event_location },
+          alert: {
+            severity: 'warning',
+            title: `${reactData.event_location} is not available`,
+            message: `${result.conflictingEvent?.description || 'Another event'} is already scheduled there`
+              + `${result.conflictingEvent?.time$ ? ` (${result.conflictingEvent.time$})` : ''} on ${reactData.event_date.absolute}. `
+              + ((result.otherAvailableLocations.length > 0)
+                ? `Available locations at that time: ${result.otherAvailableLocations.join(', ')}.`
+                : `AVA found no other open locations at that time.`)
+          }
+        }, true);
+      }
+      else if (reactData.prefMethod && (reactData.prefMethod !== 'specific_date')) {
+        // recurring event - only the first occurrence was actually checked
+        updateReactData({
+          locationConflict: null,
+          alert: {
+            severity: 'info',
+            message: `${reactData.event_location} is available for ${reactData.event_date.absolute}. AVA did not check availability for future occurrences.`
+          }
+        }, true);
+      }
+      else {
+        updateReactData({ locationConflict: null }, true);
+      }
+    }, 500);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [reactData.event_location, reactData.event_date, reactData.startObj, reactData.endObj, reactData.allDay, reactData.prefMethod]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // **************************
 
@@ -1622,7 +1674,12 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                 {OK2Save() &&
                   <Button
                     onClick={() => {
-                      handleUpdate();
+                      if (reactData.locationConflict) {
+                        updateReactData({ confirmSaveDespiteConflict: true }, true);
+                      }
+                      else {
+                        handleUpdate();
+                      }
                     }}
                     className={AVAClass.AVAButton}
                     style={{ backgroundColor: 'green', color: 'white' }}
@@ -1630,6 +1687,23 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                   >
                     {'Save'}
                   </Button>
+                }
+                {reactData.confirmSaveDespiteConflict &&
+                  <AVAConfirm
+                    promptText={[
+                      `${reactData.locationConflict?.location} may already be in use by "${reactData.locationConflict?.description}"${reactData.locationConflict?.time$ ? ` (${reactData.locationConflict.time$})` : ''} on ${reactData.event_date?.absolute}.`,
+                      `Save this event anyway?`
+                    ]}
+                    cancelText={`Go back`}
+                    confirmText={`Save anyway`}
+                    onCancel={() => {
+                      updateReactData({ confirmSaveDespiteConflict: false }, true);
+                    }}
+                    onConfirm={() => {
+                      updateReactData({ confirmSaveDespiteConflict: false }, true);
+                      handleUpdate();
+                    }}
+                  />
                 }
               </DialogActions>
             </Box>
@@ -1656,7 +1730,8 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
           px={3}
           key={`alert_wrapper`}
           autoHideDuration={(reactData.alert.severity === 'success') ? 5000 : ((reactData.alert.severity === 'info') ? 15000 : null)}
-          onClose={() => {
+          onClose={(event, reason) => {
+            if (reason === 'clickaway') { return; }   // don't let an accidental click elsewhere silently dismiss a conflict warning
             updateReactData({
               warning: false,
               alert: false

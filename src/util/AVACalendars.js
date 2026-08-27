@@ -3625,6 +3625,59 @@ export async function v2buildCalendar(body, screenStatus = () => { }) {
 
 }
 
+export async function checkLocationAvailability(body) {
+  /*
+  body: {
+    client_id,
+    date,              // anything makeDate() can parse
+    location,          // the location being requested
+    start_minutes,     // requested start time, as minutesSinceMidnight (see makeTime())
+    end_minutes,       // requested end time, as minutesSinceMidnight
+    known_locations,   // (optional) array of all selectable locations, used to build otherAvailableLocations
+    exclude_event_id   // (optional) event_id to ignore (e.g. when editing an existing event)
+  }
+  returns: {
+    available: boolean,
+    conflictingEvent: { event_id, description, time$ } | null,
+    otherAvailableLocations: [locationString, ...]   // sorted, excludes the requested location
+  }
+  Only checks the single date passed in - callers dealing with recurring events should treat this
+  as a check of the first occurrence only.
+  */
+  const targetDate = makeDate(body.date, { noTime: true });
+  const dayCalendar = await v2buildCalendar({ client_id: body.client_id, start_date: targetDate.date, end_date: targetDate.date });
+  const dayEvents = Object.entries(dayCalendar[targetDate.numeric]?.events || {})
+    .filter(([event_id]) => (event_id !== body.exclude_event_id))
+    .map(([event_id, occ]) => ({ event_id, ...occ }));
+
+  const locationOf = (occ) => (((typeof occ.location === 'object') ? occ.location?.description : occ.location) || '');
+
+  const overlapsRequestedWindow = (occ) => {
+    if (!occ.time || occ.time.allDay) { return true; }
+    const occStart = makeTime(occ.time.from);
+    const occEnd = makeTime(occ.time.to);
+    if (occStart.error || occEnd.error) { return true; }   // can't tell what time it is - assume it blocks
+    const s2 = occStart.minutesSinceMidnight;
+    const e2 = (occEnd.minutesSinceMidnight <= s2) ? 1440 : occEnd.minutesSinceMidnight;   // wraps past midnight - block through end of this day
+    return ((body.start_minutes < e2) && (s2 < body.end_minutes));
+  };
+
+  const overlappingEvents = dayEvents.filter(overlapsRequestedWindow);
+  const conflict = overlappingEvents.find(occ => (locationOf(occ) === body.location)) || null;
+
+  const locationsInUse = new Set(overlappingEvents.map(locationOf).filter(Boolean));
+  const candidateLocations = new Set([...makeArray(body.known_locations), ...dayEvents.map(locationOf)].filter(Boolean));
+  const otherAvailableLocations = Array.from(candidateLocations)
+    .filter(loc => ((loc !== body.location) && !locationsInUse.has(loc)))
+    .sort((a, b) => a.localeCompare(b));
+
+  return {
+    available: !conflict,
+    conflictingEvent: conflict ? { event_id: conflict.event_id, description: conflict.description, time$: conflict.time$ } : null,
+    otherAvailableLocations
+  };
+}
+
 export function occurrenceDateBuilder(eventRec, start_date, end_date) {
   let responseArray = [];
   if (!eventRec || !eventRec.eventData || !eventRec.eventData.occPattern) { return []; }
