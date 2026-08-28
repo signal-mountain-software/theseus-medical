@@ -2,7 +2,7 @@ import React from 'react';
 
 import useSession from '../../hooks/useSession';
 
-import { createNewGroup, getGroupMembers, getMemberList, addMember, removeMember } from '../../util/AVAGroups';
+import { createNewGroup, getGroupMembers, getMemberList, addMember, removeMember, getRole } from '../../util/AVAGroups';
 import { dbClient, isObject, listFromArray, cl, recordExists } from '../../util/AVAUtilities';
 import AVATextInput from '../forms/AVATextInput';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
@@ -508,6 +508,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     const person_id = draggedFrom.personObj.person_id;
     const firstName = (draggedFrom.personObj.name?.first || '').trim() || 'This person';
 
+    if (!(await guardGroupAuthorization(droppedOn.group_id))) { return; }
+
     // guard against dropping on an inactive group
     if (state.session.group_assignments?.inactive?.includes(droppedOn.group_id)) {
       updateReactData({
@@ -591,6 +593,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     const person_id = draggedFrom.personObj.person_id;
     const firstName = (draggedFrom.personObj.name?.first || '').trim() || 'This person';
 
+    if (!(await guardGroupAuthorization(draggedFrom.personGroup))) { return; }
+    if (!(await guardGroupAuthorization(droppedOn.group_id))) { return; }
+
     if (state.session.group_assignments?.inactive?.includes(droppedOn.group_id)) {
       updateReactData({
         alert: {
@@ -666,6 +671,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   const executeRemovePersonFromGroup = async (draggedFrom) => {
     const person_id = draggedFrom.personObj.person_id;
     const firstName = (draggedFrom.personObj.name?.first || '').trim() || 'This person';
+
+    if (!(await guardGroupAuthorization(draggedFrom.personGroup))) { return; }
 
     // get current groups from accessList for alert diff
     const accessEntry = state.accessList?.[pSession.client_id]?.list?.find(p => p.person_id === person_id);
@@ -1164,6 +1171,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       await executeRemovePersonFromGroup(draggedFrom);
     }
     else if (draggedFrom.hasOwnProperty('groupObj')) {
+      if (!(await guardGroupAuthorization(draggedFrom.groupObj.group_id))) { return; }
       if (Object.keys(reactData.selectedGroupMembers).length > 0) {
         updateReactData({
           alert: {
@@ -1283,6 +1291,27 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       }
     }
     return result;
+  };
+
+  // True for global admin-class accounts, or if the current person is (or climbs up to) a
+  // 'responsible' role for this group — getRole() already walks the belongs_to chain upward.
+  const isAuthorizedForGroup = async (group_id) => {
+    if (pSession?.adminAccount || reactData.administrative_account) { return true; }
+    const role = await getRole(group_id, state.session.person_id || state.session.patient_id);
+    return role === 'responsible';
+  };
+
+  // Pops the standard "not authorized" alert and returns false when the check fails.
+  const guardGroupAuthorization = async (group_id) => {
+    if (await isAuthorizedForGroup(group_id)) { return true; }
+    updateReactData({
+      alert: {
+        severity: 'error',
+        title: 'Not Authorized',
+        message: `You are not authorized to edit ${groupsManagedObject[group_id]?.group_name || group_id}`
+      }
+    }, true);
+    return false;
   };
 
   var rowsDisplayed;
@@ -1676,6 +1705,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                             onContextMenu={async (e) => {
                               if (groupsManagedObject[listEntry].group_type === 'header') return;
                               e.preventDefault();
+                              if (!(await guardGroupAuthorization(listEntry))) { return; }
                               updateReactData({
                                 viewGroupMaintenance: listEntry
                               }, true);
@@ -1919,7 +1949,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
               >
                 <Typography
                   key={`g_name`}
-                  onClick={reactData.selectedGroupRec.multi ? undefined : () => {
+                  onClick={reactData.selectedGroupRec.multi ? undefined : async () => {
+                    if (!(await guardGroupAuthorization(reactData.selectedGroupRec.group_id))) { return; }
                     updateReactData({
                       viewGroupMaintenance: reactData.selectedGroupRec.group_id
                     }, true);

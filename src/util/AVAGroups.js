@@ -296,6 +296,10 @@ export async function isMemberOf(client_id, person_id, pGroup_id) {
   return (Object.keys(loadedGroupObj).includes(pGroup_id));
 };
 
+// Bulk, whole-client role/visibility computation — feeds session bootstrap & cached belongsTo.
+// `role`/is_responsible is a DIRECT admin_list check only (no parent climbing); NOT a security
+// gate for edits — use getRole() for that. Kept flat deliberately for performance (avoids one
+// getRole()-style DB climb per group; see getGroupHierarchy's roleFor and getAllGroups below).
 export async function getGroupAccess(client_id, person_id, options) {
   var groups_person_belongsTo = {};
   var rejectObject = {};
@@ -704,6 +708,9 @@ export async function getGroup(pGroup_id, pClient_id) {
   return {};
 };
 
+// The authoritative, single-group check — climbs the belongs_to chain (a parent's admin_list
+// makes you 'responsible' for its descendants too). This is the one to call before gating any
+// group edit/mutation; getGroupAccess/roleFor are cached, non-climbing, and view-only.
 export async function getRole(pGroup, pPerson) {
   // will return 'responsible' if you are responsible for this group, 'member' if you are a member of this group, and 'non-member' if you are not a member of this group
   // if pGroup is an array of group_ids, will return 'member' if you are a member of all of the groups in the array, and 'non-member' if you are not a member of at least one of the groups in the array 
@@ -2358,6 +2365,8 @@ export async function getAllGroupTypes(pClient_id, person_id) {
   ]);
   if (!recordExists(groupRec)) { return { publicGroups: {}, privateGroups: {}, dynamicGroups: [] }; }
   // Build role purely from session data + PeopleGroups membership — no DB reads per group.
+  // Same flat (non-climbing) semantics as getGroupAccess's is_responsible — view/display only,
+  // not an authorization gate. See getRole() for the climbing, edit-gating equivalent.
   const responsible_for = makeArray(session?.responsible_for || []).map(g => g.split('~')[0].trim());
   const groups_managed_ids = makeArray(session?.groups_managed || []).map(g => g.split('~')[0].trim());
   const roleFor = (thisGroup) => {
