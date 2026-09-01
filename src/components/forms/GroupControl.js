@@ -152,6 +152,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   const filterTimeoutRef = React.useRef(null);
   const personRowDragActiveRef = React.useRef(false);
   const personRowDragResetRef = React.useRef(null);
+  const personRowShiftAnchorRef = React.useRef(null); // last ctrl/shift-clicked row index, for shift-range selection
   const familyDataCacheRef = React.useRef({});
   const [selectedFieldDropTargetIndex, setSelectedFieldDropTargetIndex] = React.useState(null);
   const [selectedFieldDragIndex, setSelectedFieldDragIndex] = React.useState(null);
@@ -219,6 +220,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     selectedGroupRec: false,
     selectedGroupMembers: false,
     sortedGroupMembers: [],
+    selectedPersonRowIds: [], // ctrl/shift-selected subset of the right-side people list; when non-empty, Send/Directory/Export target only these
     showFieldPicker: false,
     showPhotoDirectory: false,
     photoDirectoryPeople: [],
@@ -749,10 +751,11 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   }
 
   async function openFieldPicker() {
+    const rowSelection = reactData.selectedPersonRowIds || [];
     const visibleMemberIds = (reactData.lower_people_filter
       ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
       : reactData.sortedGroupMembers
-    ) || [];
+    )?.filter((p) => ((rowSelection.length === 0) || rowSelection.includes(p))) || [];
 
     if (visibleMemberIds.length === 0) {
       updateReactData({
@@ -800,10 +803,11 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   }
 
   function getVisiblePeopleForDirectory() {
+    const rowSelection = reactData.selectedPersonRowIds || [];
     const visibleMemberIds = (reactData.lower_people_filter
       ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
       : reactData.sortedGroupMembers
-    ) || [];
+    )?.filter((p) => ((rowSelection.length === 0) || rowSelection.includes(p))) || [];
 
     // When explicit group IDs were requested (directoryGroupIds), bypass the accessList.list
     // filter — return raw person_id strings so GroupPhotoDirectory fetches any missing records
@@ -1016,10 +1020,11 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   async function buildCurrentPeopleListExportData(options = {}) {
     const arraySeparator = (typeof options?.arraySeparator === 'string') ? options.arraySeparator : '; ';
     const preserveGroupedRaw = !!options?.preserveGroupedRaw;
+    const rowSelection = reactData.selectedPersonRowIds || [];
     const visibleMemberIds = (reactData.lower_people_filter
       ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
       : reactData.sortedGroupMembers
-    ) || [];
+    )?.filter((p) => ((rowSelection.length === 0) || rowSelection.includes(p))) || [];
 
     if (visibleMemberIds.length === 0) {
       updateReactData({
@@ -1161,6 +1166,29 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       }
     });
     return combinedRows;
+  }
+
+  // Ctrl/Cmd-click toggles one row; Shift-click selects the range since the last ctrl/shift click.
+  // Returns true when the click was consumed as a selection action (caller should skip its normal
+  // click behavior, e.g. opening the person's maintenance dialog).
+  function handlePersonRowSelectClick(e, this_row, rowIndex, displayRows) {
+    if (e.shiftKey) {
+      const anchor = personRowShiftAnchorRef.current ?? rowIndex;
+      const [from, to] = (anchor <= rowIndex) ? [anchor, rowIndex] : [rowIndex, anchor];
+      const rangeIds = displayRows.slice(from, to + 1).map((r) => r.person_id);
+      updateReactData({ selectedPersonRowIds: Array.from(new Set(rangeIds)) }, true);
+      return true;
+    }
+    if (e.ctrlKey || e.metaKey) {
+      personRowShiftAnchorRef.current = rowIndex;
+      const current = reactData.selectedPersonRowIds || [];
+      const next = current.includes(this_row.person_id)
+        ? current.filter((id) => (id !== this_row.person_id))
+        : [...current, this_row.person_id];
+      updateReactData({ selectedPersonRowIds: next }, true);
+      return true;
+    }
+    return false;
   }
 
   const handleDrop_removePerson = async (ev) => {
@@ -1318,6 +1346,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   const suppressGroupSelectionUI = !!(preSelectedGroup && preSelectedFunction === 'directory');
 
   const canDragManage = !!(pSession?.adminAccount || reactData.administrative_account);
+  const personListDisplayRows = buildDisplayRows();
+  const personRowSelectedStyle = (person_id) => (reactData.selectedPersonRowIds || []).includes(person_id) ? {
+    backgroundColor: reactData.isDarkMode ? '#0d47a1' : '#90caf9',
+    color: reactData.isDarkMode ? '#ffffff' : '#0d47a1',
+    fontWeight: 'bold',
+  } : {};
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -1806,6 +1840,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                   selectedPersonRec: false,
                                   selectedPersonFirstName: false,
                                   selectedPersonLastName: false,
+                                  selectedPersonRowIds: [],
                                   showFamilyMembers: false,
                                   showPrimaryCaregivers: false,
                                 }, true);
@@ -1866,75 +1901,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     ))}
                   </Box>
                 </Paper>
-                <SendIcon
-                  classes={{ root: classes.rowButton }}
-                  size='medium'
-                  style={{ alignSelf: 'center', cursor: 'pointer' }}
-                  aria-label="send_mail_icon"
-                  onClick={() => {
-                    const selectedIds = reactData.selectedGroupIds || [];
-                    if (selectedIds.length === 0) { return; }
-                    let sendMessage = [];
-                    if (reactData.intersectionMode) {
-                      // ctrl-tap union mode: send to the individuals shown in the right column
-                      const members = reactData.selectedGroupMembers || {};
-                      for (const person_id of (reactData.sortedGroupMembers || [])) {
-                        const p = members[person_id];
-                        if (p) {
-                          sendMessage.push({
-                            person_id,
-                            person_name: `${(p.name.first || '').trim()} ${(p.name.last || '').trim()}`
-                          });
-                        }
-                      }
-                    } else {
-                      // Normal selection: send to root-of-selection groups
-                      // (those whose parent is NOT also selected)
-                      // parentOf is built from adminHierarchy where belongs_to is the actual parent group_id string
-                      const selectedSet = new Set(selectedIds);
-                      const parentOf = {};
-                      for (const h of (state.groups.adminHierarchy || [])) {
-                        if (h.belongs_to) { parentOf[h.id] = h.belongs_to; }
-                      }
-                      for (const group_id of selectedIds) {
-                        const grp = groupsManagedObject[group_id];
-                        if (!grp) { continue; }
-                        const parent_id = parentOf[group_id];
-                        if (!parent_id || !selectedSet.has(parent_id)) {
-                          sendMessage.push({
-                            group_id,
-                            group_name: grp.group_name
-                          });
-                        }
-                      }
-                    }
-                    if (sendMessage.length > 0) {
-                      updateReactData({ sendMessage }, true);
-                    }
-                  }}
-                  onDragOver={(e) => handleDragOver(e)}
-                  onDrop={async (e) => {
-                    e.preventDefault();
-                    let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
-                    let sendMessage = [];
-                    if (draggedFrom.hasOwnProperty('personObj')) {
-                      sendMessage.push({
-                        person_id: draggedFrom.personObj.person_id,
-                        person_name: `${(draggedFrom.personObj.name.first || '').trim()} ${(draggedFrom.personObj.name.last || '').trim()}`
-                      });
-                    }
-                    else {
-                      sendMessage.push({
-                        group_id: draggedFrom.group_id,
-                        group_name: draggedFrom.groupObj.group_name
-                      });
-                    }
-                    updateReactData({
-                      sendMessage
-                    }, true);
-                  }}
-                  edge="start"
-                />
               </Box>
             }
 
@@ -1980,6 +1946,28 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     <CircularProgress size={14} style={{ marginLeft: '8px', marginBottom: (reactData.lower_people_filter ? 0 : '12px') }} />
                   }
                 </Box>
+                {(reactData.selectedPersonRowIds?.length > 0) &&
+                  <Box display='flex' flexDirection='row'
+                    justifyContent='flex-start'
+                    alignItems='center'
+                    style={{ marginBottom: 18, marginTop: -20 }}
+                    onClick={() => {
+                      updateReactData({ selectedPersonRowIds: [] }, true);
+                    }}
+                  >
+                    <Typography
+                      style={AVATextStyle({
+                        size: 0.9,
+                        margin: { top: 0, bottom: 0, right: 1 },
+                        color: 'textSecondary',
+                        overflow: 'visible'
+                      })}
+                    >
+                      {`${reactData.selectedPersonRowIds.length} selected.  Tap to clear`}
+                    </Typography>
+                    <HighlightOffIcon />
+                  </Box>
+                }
                 {!reactData.loadingExtraPeople && (reactData.showFamilyMembers || reactData.showPrimaryCaregivers) && (reactData.extraPeople?.length === 0) &&
                   <Typography
                     style={AVATextStyle({
@@ -2021,7 +2009,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     justifyContent='flex-start'
                     alignItems='flex-start'
                   >
-                    {buildDisplayRows().map((this_row, cX) => (
+                    {personListDisplayRows.map((this_row, cX) => (
                       this_row.isExtra ?
                         <Typography
                           key={`g_textextra-${cX}`}
@@ -2032,9 +2020,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                               userSelect: 'none',
                               margin: { top: 0, bottom: 0.8 },
                             }),
-                            opacity: 0.6
+                            opacity: 0.6,
+                            borderRadius: '4px',
+                            ...personRowSelectedStyle(this_row.person_id),
                           }}
-                          onClick={() => {
+                          onClick={(e) => {
+                            if (handlePersonRowSelectClick(e, this_row, cX, personListDisplayRows)) { return; }
                             updateReactData({
                               viewPeopleMaintenance: this_row.person_id
                             }, true);
@@ -2045,17 +2036,22 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                         :
                         <Typography
                           key={`g_textpeople-${cX}`}
-                          style={AVATextStyle({
-                            overflow: 'visible',
-                            size: 1.2,
-                            cursor: canDragManage ? 'grab' : null,
-                            userSelect: 'none',
-                            margin: { top: 0, bottom: 0.8 },
-                          })}
-                          onClick={async () => {
+                          style={{
+                            ...AVATextStyle({
+                              overflow: 'visible',
+                              size: 1.2,
+                              cursor: canDragManage ? 'grab' : null,
+                              userSelect: 'none',
+                              margin: { top: 0, bottom: 0.8 },
+                            }),
+                            borderRadius: '4px',
+                            ...personRowSelectedStyle(this_row.person_id),
+                          }}
+                          onClick={async (e) => {
                             if (personRowDragActiveRef.current) {
                               return;
                             }
+                            if (handlePersonRowSelectClick(e, this_row, cX, personListDisplayRows)) { return; }
                             updateReactData({
                               viewPeopleMaintenance: this_row.person_id
                             }, true);
@@ -2104,6 +2100,92 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                   alignItems='center'
                   style={{ alignSelf: 'center', marginTop: '6px' }}
                 >
+                  <SendIcon
+                    classes={{ root: classes.rowButton }}
+                    size='medium'
+                    style={{ marginRight: '12px', cursor: 'pointer' }}
+                    aria-label="send_mail_icon"
+                    onClick={() => {
+                      const rowSelection = reactData.selectedPersonRowIds || [];
+                      if (rowSelection.length > 0) {
+                        // A specific ctrl/shift-selected subset of the right-side list takes
+                        // priority over the left-side group selection.
+                        const sendMessage = rowSelection.map((person_id) => {
+                          const member = reactData.selectedGroupMembers?.[person_id];
+                          if (member) {
+                            return { person_id, person_name: `${(member.name.first || '').trim()} ${(member.name.last || '').trim()}` };
+                          }
+                          const extra = (reactData.extraPeople || []).find((p) => (p.person_id === person_id));
+                          return { person_id, person_name: extra?.display_name || '' };
+                        });
+                        if (sendMessage.length > 0) {
+                          updateReactData({ sendMessage }, true);
+                        }
+                        return;
+                      }
+                      const selectedIds = reactData.selectedGroupIds || [];
+                      if (selectedIds.length === 0) { return; }
+                      let sendMessage = [];
+                      if (reactData.intersectionMode) {
+                        // ctrl-tap union mode: send to the individuals shown in the right column
+                        const members = reactData.selectedGroupMembers || {};
+                        for (const person_id of (reactData.sortedGroupMembers || [])) {
+                          const p = members[person_id];
+                          if (p) {
+                            sendMessage.push({
+                              person_id,
+                              person_name: `${(p.name.first || '').trim()} ${(p.name.last || '').trim()}`
+                            });
+                          }
+                        }
+                      } else {
+                        // Normal selection: send to root-of-selection groups
+                        // (those whose parent is NOT also selected)
+                        // parentOf is built from adminHierarchy where belongs_to is the actual parent group_id string
+                        const selectedSet = new Set(selectedIds);
+                        const parentOf = {};
+                        for (const h of (state.groups.adminHierarchy || [])) {
+                          if (h.belongs_to) { parentOf[h.id] = h.belongs_to; }
+                        }
+                        for (const group_id of selectedIds) {
+                          const grp = groupsManagedObject[group_id];
+                          if (!grp) { continue; }
+                          const parent_id = parentOf[group_id];
+                          if (!parent_id || !selectedSet.has(parent_id)) {
+                            sendMessage.push({
+                              group_id,
+                              group_name: grp.group_name
+                            });
+                          }
+                        }
+                      }
+                      if (sendMessage.length > 0) {
+                        updateReactData({ sendMessage }, true);
+                      }
+                    }}
+                    onDragOver={(e) => handleDragOver(e)}
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
+                      let sendMessage = [];
+                      if (draggedFrom.hasOwnProperty('personObj')) {
+                        sendMessage.push({
+                          person_id: draggedFrom.personObj.person_id,
+                          person_name: `${(draggedFrom.personObj.name.first || '').trim()} ${(draggedFrom.personObj.name.last || '').trim()}`
+                        });
+                      }
+                      else {
+                        sendMessage.push({
+                          group_id: draggedFrom.group_id,
+                          group_name: draggedFrom.groupObj.group_name
+                        });
+                      }
+                      updateReactData({
+                        sendMessage
+                      }, true);
+                    }}
+                    edge="start"
+                  />
                   <PhotoLibraryIcon
                     classes={{ root: classes.rowButton }}
                     size='medium'
