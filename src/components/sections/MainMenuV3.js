@@ -6,7 +6,7 @@ import { getImage } from '../../util/AVAPeople';
 import { AVATextStyle, AVAclasses, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
 import { clearPushSubscriptionFromDB, initPushNotifications, unsubscribeFromPush, isPushSupported, isPushOptedIn, syncAlertDeliveryMethod } from '../../util/AVAPushNotifications';
 import { getActivityDetail } from '../../util/AVAActivityLoaderV3';
-import { loadAndQueueNotifications, markNotificationShown, priorityToSeverity, getNotificationDisplayOptions, INITIAL_NOTIFICATION_CHECK_TIME, playNotificationSound } from '../../util/AVANotifications';
+import { loadAndQueueNotifications, markNotificationShown, resolveNotification, priorityToSeverity, getNotificationDisplayOptions, INITIAL_NOTIFICATION_CHECK_TIME, playNotificationSound, unlockNotificationSound } from '../../util/AVANotifications';
 import QuickAdd from './QuickAdd';
 
 import Card from '@material-ui/core/Card';
@@ -77,6 +77,10 @@ import VisibilityIcon from '@material-ui/icons/Visibility';
 import VisibilityOffIcon from '@material-ui/icons/VisibilityOff';
 import PauseIcon from '@material-ui/icons/Pause';
 import PlayArrowIcon from '@material-ui/icons/PlayArrow';
+import ErrorOutlineIcon from '@material-ui/icons/ErrorOutline';
+import WarningRoundedIcon from '@material-ui/icons/WarningRounded';
+import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
+import CheckCircleOutlineIcon from '@material-ui/icons/CheckCircleOutline';
 
 import Tooltip from '@material-ui/core/Tooltip';
 import QuickSearch from './QuickSearch';
@@ -737,11 +741,8 @@ export default ({ start_at }) => {
     if ((minutesSinceActive > 60) || (state.session?.kiosk_mode && state.profile?.kiosk_mode)) {
       window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
     }
-    else {
-      // Cheap, cursor-based poll — run on every idle tick (every 1 min) so a notification
-      // can't be missed indefinitely just because activity keeps resetting the 5-min refresh below.
-      await loadMenuNotifications();
-    }
+    // Notification polling now runs on its own always-on interval (see useEffect near useIdleTimer),
+    // independent of idle state, so it's no longer done here.
     if ((minutesSinceActive <= 60) && !(state.session?.kiosk_mode && state.profile?.kiosk_mode)
       && ((now.getTime() - reactData.lastActiveTime.getTime()) > (5 * oneMinute))) {
       cl(`Update while idle at ${now.toLocaleString()}.`);
@@ -843,6 +844,41 @@ export default ({ start_at }) => {
       start();
     }
   }, [reactData.renderFunctionCall, pause, start]);
+
+  // Notification poll, independent of the idle timer - previously this only ran on onIdle,
+  // so a continuously-active user (whose actions kept resetting the idle countdown) could go
+  // many minutes without ever being checked. Deliberately keeps polling while the tab is hidden
+  // (per user preference, 2026-09-01) so a notification can still pop/sound while the app is
+  // backgrounded, not just when the user comes back to look at it; still does an immediate
+  // catch-up check the moment the tab becomes visible again in case the background tick was throttled.
+  React.useEffect(() => {
+    if (!state.session?.client_id || !state.session?.user_id) { return undefined; }
+    const interval = setInterval(() => {
+      void loadMenuNotifications();
+    }, oneMinute);
+    const onVisibilityChange = () => {
+      if (!document.hidden) { void loadMenuNotifications(); }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [state.session?.client_id, state.session?.user_id]);
+
+  // Browser autoplay policies block audio.play() unless a real user gesture (click/keydown/touchstart)
+  // is in progress - re-prime the shared notification sound element on EVERY gesture (not just the
+  // first) so a later revocation of the unlock (e.g. after the tab spends time backgrounded) gets
+  // re-armed the next time the user interacts, instead of silently staying broken for the rest of the session.
+  React.useEffect(() => {
+    const unlockOnGesture = () => { unlockNotificationSound(); };
+    document.addEventListener('pointerdown', unlockOnGesture);
+    document.addEventListener('keydown', unlockOnGesture);
+    return () => {
+      document.removeEventListener('pointerdown', unlockOnGesture);
+      document.removeEventListener('keydown', unlockOnGesture);
+    };
+  }, []);
 
   // Keep a ref in sync with the current slide so the interval below always reads a fresh index
   // without needing to be re-armed (and thus re-created) on every single tick.
@@ -1302,8 +1338,28 @@ export default ({ start_at }) => {
 
   /**
    * Load pending notifications for current user and queue for display.
-   * Called after menu rebuild, on component return, and on idle recovery.
+   * Called on mount, on a 60s always-on interval (see useEffect near useIdleTimer), and
+   * whenever a rendered dialog/form closes.
    */
+  // Builds the shape rendered by the notification Dialog from a raw queued notification record.
+  const buildNotificationDisplay = (notifRec) => {
+    const displayOptions = getNotificationDisplayOptions(notifRec);
+    return {
+      severity: priorityToSeverity(notifRec.priority || 'low'),
+      title: notifRec.title,
+      message: notifRec.message,
+      notification_id: notifRec.notification_id,
+      action_url: notifRec.action_url,
+      dismissible: notifRec.dismissible !== false,
+      persist_until_dismissed: !!notifRec.persist_until_dismissed,
+      resolution: notifRec.resolution,
+      position_vertical: notifRec.position_vertical,
+      position_horizontal: notifRec.position_horizontal,
+      autoHideDuration: displayOptions.autoHideDuration,
+      anchorOrigin: displayOptions.anchorOrigin
+    };
+  };
+
   const loadMenuNotifications = async () => {
     try {
       if (!state.session || !state.session.client_id || !state.session.user_id) {
@@ -1325,29 +1381,30 @@ export default ({ start_at }) => {
       const isPostInitialCheck = result.effectiveLastCheckTime !== INITIAL_NOTIFICATION_CHECK_TIME;
 
       if (result.success && result.notificationQueue.length > 0) {
-        // Queue loaded; display first notification
-        const firstNotif = result.notificationQueue[0];
-        const displayOptions = getNotificationDisplayOptions(firstNotif);
-        updateReactData({
-          notificationQueue: result.notificationQueue,
-          notificationCurrentIndex: 0,
-          //    notificationSoundNeeded: isPostInitialCheck,
-          lastNotificationCheckTime: result.lastCheckTime,
-          notification: {
-            severity: priorityToSeverity(firstNotif.priority || 'low'),
-            title: firstNotif.title,
-            message: firstNotif.message,
-            notification_id: firstNotif.notification_id,
-            action_url: firstNotif.action_url,
-            dismissible: firstNotif.dismissible !== false,
-            persist_until_dismissed: !!firstNotif.persist_until_dismissed,
-            position_vertical: firstNotif.position_vertical,
-            position_horizontal: firstNotif.position_horizontal,
-            autoHideDuration: displayOptions.autoHideDuration,
-            anchorOrigin: displayOptions.anchorOrigin
-          }
-        }, true);
-        if (isPostInitialCheck) {
+        // Merge newly-discovered notifications into whatever is already queued rather than
+        // replacing it outright - lastCheckTime-based querying guarantees no duplicates, but
+        // overwriting here used to stomp a notification the user was actively reading.
+        const existingQueue = reactData.notificationQueue || [];
+        const existingIds = new Set(existingQueue.map(n => n.notification_id));
+        const newlyArrived = result.notificationQueue.filter(n => !existingIds.has(n.notification_id));
+        const mergedQueue = [...existingQueue, ...newlyArrived];
+
+        if (reactData.notification) {
+          // Something is already on-screen - just extend the queue in the background; the user
+          // can reach the new arrival(s) via the Next button instead of losing their current spot.
+          updateReactData({
+            notificationQueue: mergedQueue,
+            lastNotificationCheckTime: result.lastCheckTime
+          }, true);
+        } else {
+          updateReactData({
+            notificationQueue: mergedQueue,
+            notificationCurrentIndex: 0,
+            lastNotificationCheckTime: result.lastCheckTime,
+            notification: buildNotificationDisplay(mergedQueue[0])
+          }, true);
+        }
+        if (newlyArrived.length > 0 && isPostInitialCheck) {
           playNotificationSound();
         }
       } else {
@@ -1363,39 +1420,45 @@ export default ({ start_at }) => {
   };
 
   /**
-   * Move to next notification in queue and display.
+   * Navigate to an arbitrary slot in the notification queue (Next/Previous) without marking
+   * anything as shown/dismissed - purely a display change so the user can page through everything
+   * currently queued.
    */
-  const showNextNotification = async () => {
+  const showNotificationAtIndex = (index) => {
     const queue = reactData.notificationQueue || [];
-    const nextIndex = (reactData.notificationCurrentIndex || 0) + 1;
+    if (index < 0 || index >= queue.length) { return; }
+    updateReactData({
+      notificationCurrentIndex: index,
+      notification: buildNotificationDisplay(queue[index])
+    }, true);
+  };
 
-    if (nextIndex < queue.length) {
-      const nextNotif = queue[nextIndex];
-      const displayOptions = getNotificationDisplayOptions(nextNotif);
-      updateReactData({
-        notificationCurrentIndex: nextIndex,
-        notification: {
-          severity: priorityToSeverity(nextNotif.priority || 'low'),
-          title: nextNotif.title,
-          message: nextNotif.message,
-          notification_id: nextNotif.notification_id,
-          action_url: nextNotif.action_url,
-          dismissible: nextNotif.dismissible !== false,
-          persist_until_dismissed: !!nextNotif.persist_until_dismissed,
-          position_vertical: nextNotif.position_vertical,
-          position_horizontal: nextNotif.position_horizontal,
-          autoHideDuration: displayOptions.autoHideDuration,
-          anchorOrigin: displayOptions.anchorOrigin
-        }
-      }, true);
-    } else {
-      // No more notifications
-      updateReactData({
-        notification: null,
-        notificationQueue: [],
-        notificationCurrentIndex: 0
-      }, true);
+  const showPreviousNotification = () => {
+    showNotificationAtIndex((reactData.notificationCurrentIndex || 0) - 1);
+  };
+
+  const showNextNotification = () => {
+    showNotificationAtIndex((reactData.notificationCurrentIndex || 0) + 1);
+  };
+
+  /**
+   * Removes the notification at `index` from the queue (it's been dismissed/resolved) and
+   * displays whatever now occupies that slot, clamping to the end of the queue if needed.
+   */
+  const advancePastQueueIndex = (index) => {
+    const queue = [...(reactData.notificationQueue || [])];
+    if (index >= 0 && index < queue.length) { queue.splice(index, 1); }
+
+    if (queue.length === 0) {
+      updateReactData({ notification: null, notificationQueue: [], notificationCurrentIndex: 0 }, true);
+      return;
     }
+    const nextIndex = Math.min(index, queue.length - 1);
+    updateReactData({
+      notificationQueue: queue,
+      notificationCurrentIndex: nextIndex,
+      notification: buildNotificationDisplay(queue[nextIndex])
+    }, true);
   };
 
   /**
@@ -1411,7 +1474,24 @@ export default ({ start_at }) => {
       });
     }
 
-    await showNextNotification();
+    advancePastQueueIndex(reactData.notificationCurrentIndex || 0);
+  };
+
+  /**
+   * Resolve a 'shared' notification (any one qualifying viewer handling it clears it for the
+   * whole available_to audience), then advance past it same as a normal dismiss.
+   */
+  const resolveCurrentNotification = async () => {
+    const currentNotificationId = reactData.notification?.notification_id;
+    if (currentNotificationId) {
+      await resolveNotification({
+        dbClient,
+        notificationId: currentNotificationId,
+        userId: state.session?.user_id
+      });
+    }
+
+    advancePastQueueIndex(reactData.notificationCurrentIndex || 0);
   };
 
   /**
@@ -3333,6 +3413,17 @@ export default ({ start_at }) => {
       ...(patientId && patientId !== userId ? [`person:${patientId}`] : []),
     ]);
     return (availableTo || []).every(r => r.startsWith('*') || defaultPersonEntries.has(r));
+  };
+
+  const NOTIFICATION_SEVERITY_STYLE = {
+    error: { icon: ErrorOutlineIcon, color: '#c62828', background: '#fdecea' },
+    warning: { icon: WarningRoundedIcon, color: '#e65100', background: '#fff8e1' },
+    success: { icon: CheckCircleOutlineIcon, color: '#2e7d32', background: '#e8f5e9' },
+    info: { icon: InfoOutlinedIcon, color: '#1565c0', background: '#e3f2fd' },
+  };
+
+  const getNotificationSeverityStyle = (severity) => {
+    return NOTIFICATION_SEVERITY_STYLE[severity] || NOTIFICATION_SEVERITY_STYLE.info;
   };
 
   const renderNotificationMessage = (message) => {
@@ -5589,90 +5680,131 @@ export default ({ start_at }) => {
 
       {
         reactData.notification &&
-        <Dialog
-          open={!!reactData.notification}
-          onClose={(_event, reason) => {
-            if (reason === 'escapeKeyDown') {
-              dismissNotification();
-            }
-          }}
-          fullWidth
-          maxWidth='sm'
-          PaperProps={{
-            style: {
-              borderRadius: '30px',
-              boxShadow: '0 12px 35px rgba(0, 0, 0, 0.25)',
-              maxHeight: '85vh',
-              overflow: 'hidden',
-              width: 'min(92vw, 560px)'
-            }
-          }}
-          BackdropProps={{
-            style: {
-              backgroundColor: 'rgba(0, 0, 0, 0.35)'
-            }
-          }}
-        >
-          <DialogTitle style={{
-            padding: '16px 20px 12px',
-            borderBottom: '1px solid rgba(0,0,0,0.12)',
-            fontSize: '1.1rem',
-            fontWeight: 600,
-            backgroundColor: reactData.notification.severity === 'error'
-              ? '#fdecea'
-              : reactData.notification.severity === 'warning'
-                ? '#fff8e1'
-                : null
-          }}>
-            {reactData.notification.title || 'Notification'}
-          </DialogTitle>
-          <DialogContent dividers style={{
-            padding: '64px 20px',
-            maxHeight: '60vh',
-            minHeight: '40vh',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflowY: 'auto',
-            overflowX: 'hidden'
-          }}>
-            <div style={{
-              ...withMenuMobileTextCap(AVATextStyle({ size: 1, align: 'center' })),
-              width: '100%',
-              maxWidth: '100%',
-              overflowWrap: 'anywhere',
-              wordBreak: 'break-word',
-              whiteSpace: 'pre-wrap',
-              lineHeight: 1.5
-            }}>
-              {renderNotificationMessage(reactData.notification.message)}
-            </div>
-          </DialogContent>
-          <DialogActions style={{ padding: '12px 16px 16px', justifyContent: 'flex-end' }}>
-            {reactData.notification.action_url &&
-              <Button
-                className={AVAClass.AVAButton}
-                color='primary'
-                onClick={(ev) => {
-                  ev.preventDefault();
-                  ev.stopPropagation();
-                  window.open(reactData.notification.action_url, '_blank');
+        (() => {
+          const severityStyle = getNotificationSeverityStyle(reactData.notification.severity);
+          const SeverityIcon = severityStyle.icon;
+          return (
+            <Dialog
+              open={!!reactData.notification}
+              onClose={(_event, reason) => {
+                if (reason === 'escapeKeyDown') {
                   dismissNotification();
+                }
+              }}
+              fullWidth
+              maxWidth='sm'
+              PaperProps={{
+                style: {
+                  borderRadius: '20px',
+                  boxShadow: '0 12px 35px rgba(0, 0, 0, 0.25)',
+                  maxHeight: '80vh',
+                  overflow: 'hidden',
+                  width: 'min(92vw, 480px)',
+                  borderTop: `5px solid ${severityStyle.color}`
+                }
+              }}
+              BackdropProps={{
+                style: {
+                  backgroundColor: 'rgba(0, 0, 0, 0.35)'
+                }
+              }}
+            >
+              <Box
+                display='flex'
+                alignItems='center'
+                style={{
+                  padding: '16px 20px',
+                  gap: 12,
+                  backgroundColor: severityStyle.background
                 }}
               >
-                Open
-              </Button>
-            }
-            <Button
-              className={AVAClass.AVAButton}
-              variant='contained'
-              color='secondary'
-              onClick={dismissNotification}
-            >
-              Close
-            </Button>
-          </DialogActions>
-        </Dialog>
+                <SeverityIcon style={{ fontSize: '1.7rem', color: severityStyle.color, flexShrink: 0 }} />
+                <Typography style={{ fontSize: '1.1rem', fontWeight: 700, flexGrow: 1, color: '#222' }}>
+                  {reactData.notification.title || 'Notification'}
+                </Typography>
+                {(reactData.notificationQueue?.length || 0) > 1 &&
+                  <Typography style={{ fontSize: '0.8rem', color: '#555', flexShrink: 0, marginRight: 4 }}>
+                    {`${(reactData.notificationCurrentIndex || 0) + 1} of ${reactData.notificationQueue.length}`}
+                  </Typography>
+                }
+              </Box>
+              <DialogContent style={{
+                padding: '20px 24px',
+                maxHeight: '52vh',
+                overflowY: 'auto',
+                overflowX: 'hidden'
+              }}>
+                <div style={{
+                  ...withMenuMobileTextCap(AVATextStyle({ size: 1 })),
+                  width: '100%',
+                  maxWidth: '100%',
+                  overflowWrap: 'anywhere',
+                  wordBreak: 'break-word',
+                  whiteSpace: 'pre-wrap',
+                  lineHeight: 1.5
+                }}>
+                  {renderNotificationMessage(reactData.notification.message)}
+                </div>
+              </DialogContent>
+              <DialogActions style={{ padding: '10px 16px 16px', justifyContent: 'space-between' }}>
+                <Box display='flex' alignItems='center'>
+                  {(reactData.notificationQueue?.length || 0) > 1 &&
+                    <React.Fragment>
+                      <IconButton
+                        size='small'
+                        disabled={(reactData.notificationCurrentIndex || 0) <= 0}
+                        onClick={showPreviousNotification}
+                      >
+                        <NavigateBeforeIcon />
+                      </IconButton>
+                      <IconButton
+                        size='small'
+                        disabled={(reactData.notificationCurrentIndex || 0) >= (reactData.notificationQueue.length - 1)}
+                        onClick={showNextNotification}
+                      >
+                        <NavigateNextIcon />
+                      </IconButton>
+                    </React.Fragment>
+                  }
+                </Box>
+                <Box display='flex' alignItems='center'>
+                  {reactData.notification.action_url &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      color='primary'
+                      onClick={(ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        window.open(reactData.notification.action_url, '_blank');
+                        dismissNotification();
+                      }}
+                    >
+                      Open
+                    </Button>
+                  }
+                  {reactData.notification.resolution === 'shared' &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      variant='contained'
+                      color='primary'
+                      onClick={resolveCurrentNotification}
+                    >
+                      Resolve for Everyone
+                    </Button>
+                  }
+                  <Button
+                    className={AVAClass.AVAButton}
+                    variant='contained'
+                    color='secondary'
+                    onClick={dismissNotification}
+                  >
+                    Close
+                  </Button>
+                </Box>
+              </DialogActions>
+            </Dialog>
+          );
+        })()
       }
 
       {reactData.deleteMenuConfirm &&

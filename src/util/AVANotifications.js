@@ -17,6 +17,7 @@ import { makeDate, addMonths } from './AVADateTime';
 export const INITIAL_NOTIFICATION_CHECK_TIME = new Date('1990-01-01T00:00:00.000Z').toISOString();
 
 let notificationAudioRef = null;
+let unlockProbeRef = null;
 
 export const playNotificationSound = () => {
     try {
@@ -33,13 +34,58 @@ export const playNotificationSound = () => {
         notificationAudioRef.currentTime = 0;
         const playbackPromise = notificationAudioRef.play();
         if (playbackPromise && typeof playbackPromise.catch === 'function') {
-            playbackPromise.catch(() => {
-                // Ignore autoplay restrictions and other browser playback blocks.
+            playbackPromise.catch((err) => {
+                // Surfaced (not silently swallowed) so a still-blocked autoplay policy is visible in devtools
+                // instead of just looking like "nothing happened".
+                console.warn('Notification sound blocked:', err?.name || err);
             });
         }
         return true;
     } catch (err) {
         console.warn('Unable to play notification sound:', err);
+        return false;
+    }
+};
+
+/**
+ * "Primes" autoplay permission on every user gesture (click/keydown) using a dedicated, permanently
+ * MUTED audio element - kept entirely separate from notificationAudioRef so priming during a gesture
+ * can never restart/cut off a real alert that happens to be playing at that moment, and so the
+ * priming itself is never audible (the original version played the real, unmuted element to "unlock"
+ * it, which caused an audible chirp on every single tap once we started re-arming on every gesture).
+ * Call this from a document-level click/keydown listener (repeatedly - browsers can revoke the
+ * unlocked state after the tab spends time backgrounded, so re-priming on every gesture is intentional).
+ *
+ * @returns {boolean} true if the unlock attempt was made
+ */
+export const unlockNotificationSound = () => {
+    try {
+        if (typeof window === 'undefined') {
+            return false;
+        }
+
+        if (!unlockProbeRef) {
+            unlockProbeRef = new Audio(AVA_AlertSound);
+            unlockProbeRef.preload = 'auto';
+            unlockProbeRef.muted = true;
+            unlockProbeRef.volume = 0;
+        }
+
+        const playbackPromise = unlockProbeRef.play();
+        const rewind = () => {
+            unlockProbeRef.pause();
+            unlockProbeRef.currentTime = 0;
+        };
+        if (playbackPromise && typeof playbackPromise.then === 'function') {
+            playbackPromise.then(rewind).catch(() => {
+                // Gesture wasn't sufficient to unlock playback - later programmatic plays will keep failing too.
+            });
+        } else {
+            rewind();
+        }
+        return true;
+    } catch (err) {
+        console.warn('Unable to unlock notification sound:', err);
         return false;
     }
 };
@@ -228,6 +274,9 @@ export const createNotification = async ({
             created_at: notificationRec.created_at || nowIso,
             status: notificationRec.status || 'active',
             available_to: Array.isArray(notificationRec.available_to) ? notificationRec.available_to : ['*all'],
+            // 'broadcast' (default): each viewer dismisses independently. 'shared': any one qualifying
+            // viewer resolving it (see resolveNotification) clears it for the whole available_to audience.
+            resolution: notificationRec.resolution === 'shared' ? 'shared' : 'broadcast',
             ...resolveNotificationWindow(notificationRec)
         };
 
@@ -314,6 +363,7 @@ export const updateNotification = async ({ dbClient, notificationRec }) => {
             ...notificationRec,
             message: requiredMessage,
             available_to: Array.isArray(notificationRec.available_to) ? notificationRec.available_to : ['*all'],
+            resolution: notificationRec.resolution === 'shared' ? 'shared' : 'broadcast',
             ...resolveNotificationWindow(notificationRec)
         };
 
@@ -491,6 +541,35 @@ export const cancelNotification = async ({ dbClient, notificationId }) => {
         return true;
     } catch (err) {
         console.error('Error cancelling notification:', err);
+        return false;
+    }
+};
+
+/**
+ * Resolve a 'shared' notification on behalf of the whole available_to audience - unlike
+ * markNotificationShown (which only hides it for the one viewer), this flips the record's own
+ * status so loadAndQueueNotifications stops surfacing it to anyone. Intended for action-item
+ * notifications where any one qualifying person handling it satisfies the whole group.
+ *
+ * @param {object} params
+ * @param {object} params.dbClient - AWS DynamoDB client
+ * @param {string} params.notificationId - notification_id to resolve
+ * @param {string} params.userId - user_id who resolved it, recorded for the audit trail
+ * @returns {Promise<boolean>} true if successful
+ */
+export const resolveNotification = async ({ dbClient, notificationId, userId }) => {
+    try {
+        const nowIso = new Date().toISOString();
+        await dbClient.update({
+            TableName: 'Notifications',
+            Key: { notification_id: notificationId },
+            UpdateExpression: 'set #status = :resolved, resolved_by = :userId, resolved_at = :now, dont_show_after = :now',
+            ExpressionAttributeNames: { '#status': 'status' },
+            ExpressionAttributeValues: { ':resolved': 'resolved', ':userId': userId || null, ':now': nowIso }
+        }).promise();
+        return true;
+    } catch (err) {
+        console.error('Error resolving notification:', err);
         return false;
     }
 };

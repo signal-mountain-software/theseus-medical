@@ -41,6 +41,7 @@ const EMPTY_FORM_STATE = {
     dismissible: true,
     persistUntilDismissed: true,
     playSound: false,
+    resolution: 'broadcast',
     actionUrl: '',
     dontShowBeforeDisplay: '',
     dontShowAfterDisplay: '',
@@ -59,6 +60,9 @@ const EMPTY_FORM_STATE = {
 // it can still be cancelled (i.e. hasn't already been cancelled or expired).
 const describeStatus = (notificationRec) => {
     const now = Date.now();
+    if (notificationRec.status === 'resolved') {
+        return { label: 'Resolved', color: '#2e7d32', cancellable: false };
+    }
     if (notificationRec.status === 'cancelled') {
         return { label: 'Cancelled', color: '#9e9e9e', cancellable: false };
     }
@@ -69,6 +73,45 @@ const describeStatus = (notificationRec) => {
         return { label: 'Upcoming', color: '#1565c0', cancellable: true };
     }
     return { label: 'Active', color: '#2e7d32', cancellable: true };
+};
+
+// No title was supplied - fall back to the first sentence (or so) of the message body,
+// rather than showing the unhelpful literal '(untitled)' in the list.
+const getNotificationDisplayTitle = (notificationRec) => {
+    if (notificationRec.title && notificationRec.title.trim()) { return notificationRec.title; }
+    const plainText = (notificationRec.message || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    if (!plainText) { return '(untitled)'; }
+    const firstSentence = (plainText.match(/^.*?[.!?](?=\s|$)/) || [plainText])[0];
+    return firstSentence.length > 80 ? `${firstSentence.slice(0, 77)}...` : firstSentence;
+};
+
+const NOTIFICATION_STAR_LABELS = { '*all': 'Everyone', '*admin': 'Administrators', '*support': 'Support Staff' };
+
+// Decodes available_to into a human-readable, comma-separated list of group/person names
+// (rather than the count-based summary describeAvailableTo below uses for the create/edit form).
+const resolveAvailableToDisplay = async (available_to) => {
+    const rules = available_to || [];
+    if (rules.length === 0) { return 'No access assigned'; }
+    const parts = await Promise.all(rules.map(async (rule) => {
+        if (rule.startsWith('group:')) {
+            const groupRec = await getGroup(rule.slice(6));
+            return groupRec?.name || rule.slice(6);
+        }
+        if (rule.startsWith('person:')) {
+            return await makeName(rule.slice(7));
+        }
+        return NOTIFICATION_STAR_LABELS[rule] || rule;
+    }));
+    return parts.join(', ');
+};
+
+// A notification only reliably counts as fully seen (Chip: 'Seen by: ALL', status: Complete) when
+// it targets exactly one person and that person has dismissed it - group/broadcast audience size
+// can't be safely inferred here without expanding group membership.
+const resolveNotificationViewerMeta = async ({ dbClient, notificationRec }) => {
+    const viewers = await listNotificationViewers({ dbClient, notificationId: notificationRec.notification_id });
+    const isSinglePersonTarget = (notificationRec.available_to || []).length === 1 && notificationRec.available_to[0].startsWith('person:');
+    return { viewerCount: viewers.length, isFullySeen: isSinglePersonTarget && viewers.length >= 1 };
 };
 
 const useStyles = makeStyles(theme => ({
@@ -169,7 +212,14 @@ export default ({ initialMode, showNewEvent, onClose }) => {
                     }
                 }
             }
-            updateReactData({ notificationList, marqueeList: marqueeRaw }, true);
+            const notificationsWithMeta = await Promise.all(notificationList.map(async (notificationRec) => {
+                const [recipientsDisplay, viewerMeta] = await Promise.all([
+                    resolveAvailableToDisplay(notificationRec.available_to),
+                    resolveNotificationViewerMeta({ dbClient, notificationRec })
+                ]);
+                return { ...notificationRec, recipientsDisplay, ...viewerMeta };
+            }));
+            updateReactData({ notificationList: notificationsWithMeta, marqueeList: marqueeRaw }, true);
         }
         initialize();
     }, []);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -245,6 +295,7 @@ export default ({ initialMode, showNewEvent, onClose }) => {
             dismissible: notificationRec.dismissible !== false,
             persistUntilDismissed: notificationRec.persist_until_dismissed !== false,
             playSound: !!notificationRec.play_sound,
+            resolution: notificationRec.resolution === 'shared' ? 'shared' : 'broadcast',
             actionUrl: notificationRec.action_url || '',
             dontShowBeforeDisplay: notificationRec.dont_show_before ? makeDate(notificationRec.dont_show_before).absolute : '',
             dontShowAfterDisplay: notificationRec.dont_show_after ? makeDate(notificationRec.dont_show_after).absolute : '',
@@ -345,6 +396,7 @@ export default ({ initialMode, showNewEvent, onClose }) => {
             dismissible: reactData.dismissible,
             persist_until_dismissed: reactData.persistUntilDismissed,
             play_sound: reactData.playSound,
+            resolution: reactData.resolution,
             ...(reactData.actionUrl.trim() ? { action_url: reactData.actionUrl.trim() } : {}),
             available_to: reactData.availableTo,
             ...(reactData.StartAsADateObj?.iso ? { dont_show_before: reactData.StartAsADateObj.iso } : {}),
@@ -357,12 +409,17 @@ export default ({ initialMode, showNewEvent, onClose }) => {
 
         closeSnackbar();
         if (result.success) {
+            const [recipientsDisplay, viewerMeta] = await Promise.all([
+                resolveAvailableToDisplay(result.notification.available_to),
+                resolveNotificationViewerMeta({ dbClient, notificationRec: result.notification })
+            ]);
+            const enrichedNotification = { ...result.notification, recipientsDisplay, ...viewerMeta };
             if (existingRec) {
                 const foundAt = reactData.notificationList.findIndex(n => n.notification_id === existingRec.notification_id);
-                if (foundAt > -1) { reactData.notificationList[foundAt] = result.notification; }
+                if (foundAt > -1) { reactData.notificationList[foundAt] = enrichedNotification; }
             }
             else {
-                reactData.notificationList.unshift(result.notification);
+                reactData.notificationList.unshift(enrichedNotification);
             }
             updateReactData({
                 notificationList: reactData.notificationList,
@@ -520,6 +577,27 @@ export default ({ initialMode, showNewEvent, onClose }) => {
                                         />
                                     }
                                 </Box>
+                                {(reactData.mode === 'notification') &&
+                                    <Box mt={1} mb={1} width={'90%'} marginLeft={1}>
+                                        <Typography className={classes.radioText}>{'Notification Type'}</Typography>
+                                        <RadioGroup
+                                            row
+                                            value={reactData.resolution || 'broadcast'}
+                                            onChange={(event) => updateReactData({ resolution: event.target.value }, true)}
+                                        >
+                                            <FormControlLabel
+                                                value='broadcast'
+                                                control={<Radio color='primary' size='small' />}
+                                                label={<Typography className={classes.radioText}>{'Broadcast - everyone should see it, each dismisses on their own'}</Typography>}
+                                            />
+                                            <FormControlLabel
+                                                value='shared'
+                                                control={<Radio color='primary' size='small' />}
+                                                label={<Typography className={classes.radioText}>{'Shared action item - anyone resolving it clears it for everyone'}</Typography>}
+                                            />
+                                        </RadioGroup>
+                                    </Box>
+                                }
                                 <div>
                                     <TextField
                                         key={`input_fromDate`}
@@ -676,7 +754,11 @@ export default ({ initialMode, showNewEvent, onClose }) => {
                                 <Typography variant='h6' style={{ marginBottom: 12 }}>{'All Notifications'}</Typography>
                                 <List style={{ width: '100%' }}>
                                     {reactData.notificationList.map((this_notification, index) => {
-                                        const statusInfo = describeStatus(this_notification);
+                                        let statusInfo = describeStatus(this_notification);
+                                        if (this_notification.isFullySeen && (statusInfo.label === 'Active')) {
+                                            statusInfo = { ...statusInfo, label: 'Complete', color: '#00796b' };
+                                        }
+                                        const viewerCount = this_notification.viewerCount || 0;
                                         return (
                                             <ListItem
                                                 key={`notif_row_${index}`}
@@ -686,8 +768,33 @@ export default ({ initialMode, showNewEvent, onClose }) => {
                                                 onClick={() => selectNotification(this_notification)}
                                             >
                                                 <ListItemText
-                                                    primary={this_notification.title || '(untitled)'}
-                                                    secondary={`Start: ${this_notification.dont_show_before ? makeDate(this_notification.dont_show_before).absolute : 'Immediately'}`}
+                                                    primary={getNotificationDisplayTitle(this_notification)}
+                                                    secondary={
+                                                        <React.Fragment>
+                                                            <Typography component='span' variant='body2' color='textSecondary' style={{ display: 'block' }}>
+                                                                {(this_notification.status === 'resolved')
+                                                                    ? `Resolved ${this_notification.resolved_at ? makeDate(this_notification.resolved_at).absolute : ''}`
+                                                                    : `Start: ${this_notification.dont_show_before ? makeDate(this_notification.dont_show_before).absolute : 'Immediately'}`}
+                                                            </Typography>
+                                                            <Typography component='span' variant='body2' color='textSecondary' style={{ display: 'block' }}>
+                                                                {`Recipients: ${this_notification.recipientsDisplay || '...'}`}
+                                                            </Typography>
+                                                        </React.Fragment>
+                                                    }
+                                                />
+                                                {this_notification.resolution === 'shared' &&
+                                                    <Chip
+                                                        size='small'
+                                                        variant='outlined'
+                                                        label='Shared'
+                                                        style={{ marginRight: 8 }}
+                                                    />
+                                                }
+                                                <Chip
+                                                    size='small'
+                                                    variant='outlined'
+                                                    label={this_notification.isFullySeen ? 'Seen by: ALL' : `Seen by: ${viewerCount} ${viewerCount === 1 ? 'person' : 'people'}`}
+                                                    style={{ marginRight: 8 }}
                                                 />
                                                 <Chip
                                                     size='small'
