@@ -1687,6 +1687,123 @@ export async function removeMember(pPerson, pClient, pGroup, options = {}) {
 }
 
 /**
+ * Read-only audit for a single group: finds active PeopleGroups members of group_id who no
+ * longer have any OTHER active leaf-group membership whose ancestor chain reaches group_id.
+ * This is the same "orphan" condition removeMember() cleans up automatically for a single
+ * person on a single leaf removal, but exposed here as a batch check - needed because
+ * re-parenting a group (moving it to a different parent) never calls removeMember/addMember
+ * at all, so any pre-existing orphaned ancestor memberships from a move are left behind.
+ * Always loads a FRESH hierarchy (ignores the module-level addMember/removeMember cache) since
+ * this is a correctness-critical, infrequent admin action - a stale cached hierarchy (left over
+ * from earlier in the session, before a move was saved) would silently hide real orphans.
+ * Returns { orphans: [{ person_id, display_name }], evaluatedCount, descendantGroups: [{group_id, group_name}] } - makes no writes.
+ */
+export async function findOrphanedGroupMembers(client_id, group_id) {
+  const h = await getGroupHierarchy(client_id, { sort: true });
+  const adminHierarchy = h.hierarchy;
+  const parent_of = h.parent_of;
+  const parentOf = {};
+  const nameOf = {};
+  adminHierarchy.forEach(g => {
+    nameOf[g.id] = g.name;
+    if (g.belongs_to) { parentOf[g.id] = g.belongs_to; }
+  });
+  const isLeaf = (g) => !parent_of?.[g]?.length;
+  const reachesGroup = (leafId) => {
+    let current = leafId;
+    while (current) {
+      if (current === group_id) { return true; }
+      current = parentOf[current];
+    }
+    return false;
+  };
+
+  // All descendants of group_id (direct + nested) - purely for diagnostic/console reporting.
+  const descendantGroups = adminHierarchy
+    .filter(g => reachesGroup(g.id) && (g.id !== group_id))
+    .map(g => ({ group_id: g.id, group_name: g.name }));
+
+  // Base table isn't keyed by client_group_id alone - needs status-index (same as checkGroupHasMembers
+  // in GroupHierarchySection.js), or this query throws ValidationException and silently returns nothing.
+  const membersResult = await queryAllPages({
+    TableName: 'PeopleGroups',
+    IndexName: 'status-index',
+    KeyConditionExpression: 'client_group_id = :cg AND membership_status = :s',
+    ExpressionAttributeValues: { ':cg': `${client_id}~${group_id}`, ':s': 'active' },
+  });
+
+  const orphans = [];
+  for (const member of membersResult) {
+    const pgResult = await queryAllPages({
+      TableName: 'PeopleGroups',
+      IndexName: 'person-index',
+      KeyConditionExpression: 'person_id = :p AND membership_status = :s',
+      ExpressionAttributeValues: { ':p': member.person_id, ':s': 'active' },
+    });
+    const activeGroupIds = pgResult
+      .filter(row => row.client_group_id.startsWith(client_id + '~'))
+      .map(row => row.client_group_id.split('~')[1]);
+    const stillReached = activeGroupIds.some(g => (g !== group_id) && isLeaf(g) && reachesGroup(g));
+    if (!stillReached) {
+      orphans.push({ person_id: member.person_id, display_name: member.display_name || member.person_id });
+    }
+  }
+  cl({
+    'findOrphanedGroupMembers': `evaluated ${membersResult.length} active member(s) of "${nameOf[group_id] || group_id}"`,
+    'descendant groups inspected': descendantGroups.map(g => `${g.group_name} (${g.group_id})`),
+    'orphans found': orphans.length,
+  });
+  return { orphans, evaluatedCount: membersResult.length, descendantGroups };
+}
+
+/** Runs a DynamoDB query to completion, following LastEvaluatedKey across pages. */
+async function queryAllPages(params) {
+  let items = [];
+  let lastKey;
+  do {
+    const p = lastKey ? { ...params, ExclusiveStartKey: lastKey } : params;
+    const result = await dbClient.query(p).promise().catch(error => { clt({ 'Bad query in queryAllPages': error }); return null; });
+    items = items.concat(result?.Items || []);
+    lastKey = result?.LastEvaluatedKey;
+  } while (lastKey);
+  return items;
+}
+
+
+
+/**
+ * Applies the fix for the exact orphan list returned by findOrphanedGroupMembers: soft-deletes
+ * each person's PeopleGroups row on group_id and removes group_id from their People.groups[].
+ * Does not fire onRemove group_rules - this is a data-integrity repair, not a membership event.
+ */
+export async function removeOrphanedGroupMembers(client_id, group_id, personIds) {
+  const removedDate = makeDate(new Date()).numeric;
+  let updated = 0;
+  for (const person_id of makeArray(personIds)) {
+    await dbClient.update({
+      TableName: 'PeopleGroups',
+      Key: { client_group_id: `${client_id}~${group_id}`, person_id },
+      UpdateExpression: 'set membership_status = :s, removed_date = :d',
+      ExpressionAttributeValues: { ':s': 'inactive', ':d': removedDate },
+    }).promise().catch(error => { clt({ 'Bad update to PeopleGroups in removeOrphanedGroupMembers': error }); });
+
+    const personRec = await getPerson(person_id).catch(() => null);
+    if (personRec?.person_id && Array.isArray(personRec.groups) && personRec.groups.includes(group_id)) {
+      await dbClient.update({
+        TableName: 'People',
+        Key: { person_id },
+        UpdateExpression: 'set #g = :g',
+        ExpressionAttributeNames: { '#g': 'groups' },
+        ExpressionAttributeValues: { ':g': personRec.groups.filter(g => g !== group_id) },
+        ConditionExpression: 'attribute_exists(person_id)',
+      }).promise().catch(error => { clt({ 'Bad update to People in removeOrphanedGroupMembers': error }); });
+    }
+    updated++;
+  }
+  return { updated, total: makeArray(personIds).length };
+}
+
+/**
  * Resolves the family_id for a person: People.family_groups[0] || People.family_id.
  * Then queries FamilyGroups to return { primary_id, all_ids[] }.
  * Returns null if no family record found.

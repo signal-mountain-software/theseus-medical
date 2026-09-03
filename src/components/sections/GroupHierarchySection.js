@@ -1,6 +1,8 @@
 import React from 'react';
 
-import { Box, Typography, Paper, TextField, IconButton, Menu, MenuItem, ListItemIcon, ListItemText } from '@material-ui/core/';
+import {
+  Box, Typography, Paper, TextField, IconButton, Menu, MenuItem, ListItemIcon, ListItemText
+} from '@material-ui/core/';
 
 import { AVATextStyle } from '../../util/AVAStyles';
 import { dbClient, cl } from '../../util/AVAUtilities';
