@@ -1369,10 +1369,14 @@ export async function writeSlot(body) {
       })
       .promise();
 
-    if (getResult.Item && body.rejectDuplicate) {
+    if (getResult.Item) {
       const existingStatus = getResult.Item?.slotData?.status?.current;
-      if (existingStatus !== 'released') {
+      if (body.rejectDuplicate && (existingStatus !== 'released')) {
         return { success: false, message: "Duplicate slot assignment rejected", existing: getResult.Item }; // Indicate that the slot was not assigned due to duplicate rejection
+      }
+      const existingFrozen = getResult.Item?.slotData?.frozen === true;
+      if (existingFrozen && (existingStatus === 'released') && (body.status !== 'released') && !body.allowFrozenAssignment) {
+        return { success: false, message: "Slot is frozen pending wait-list assignment", existing: getResult.Item };
       }
     }
   } catch (error) {
@@ -3357,7 +3361,8 @@ export async function v2buildCalendar(body, screenStatus = () => { }) {
         {
           default_forms: this_event.default_forms || [],
           customizations: this_event.customizations || [],
-          slot_owners: {}
+          slot_owners: {},
+          slot_holder_names: {}
         }
       );
       continue;
@@ -3365,7 +3370,15 @@ export async function v2buildCalendar(body, screenStatus = () => { }) {
     // if we arrive here, we have a slot record in the current occurrence
     if (!this_occurrence) { continue; }
     if (this_oRec.record_type !== 'slot') { continue; }
-    if ((this_oRec.slotData.status.current !== 'selected') && (this_oRec.slotData.status.current !== 'notes')) { continue; }
+    const isFrozenHold = this_oRec.slotData.frozen === true;
+    if (!isFrozenHold && (this_oRec.slotData.status.current !== 'selected') && (this_oRec.slotData.status.current !== 'notes')) { continue; }
+    if (isFrozenHold) {
+      // frozen holds have no real owner; count toward slot_owners so allSlotsFull() stays accurate, without polluting person-conflict bookkeeping below
+      const frozenKey = `frozen:${this_oRec.slotData.slot}`;
+      this_occurrence.slot_owners[frozenKey] = '';
+      this_occurrence.slot_holder_names[frozenKey] = 'Reserved (wait list)';
+      continue;
+    }
     let this_owner = this_oRec.slotData.owner;
     let instance_number = 0;
 
@@ -3390,6 +3403,8 @@ export async function v2buildCalendar(body, screenStatus = () => { }) {
     else {
       this_occurrence.slot_owners[this_owner] = '';
     }
+    // slotData.display_name is the actual slot holder's name (may differ from slotData.owner for family/guest sign-ups)
+    this_occurrence.slot_holder_names[this_owner] = this_oRec.slotData.display_name || this_oRec.slotData.name || this_oRec.slotData.owner;
     // set up people info
     if (!peopleInfo.hasOwnProperty(this_oRec.slotData.owner)) {
       peopleInfo[this_oRec.slotData.owner] = [];

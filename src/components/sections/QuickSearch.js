@@ -39,6 +39,7 @@ const useStyles = makeStyles(theme => ({
  * @param {boolean} [options.showGroupList] - When combined with withGroups=true, automatically show the group list on initialization
  * @param {string} [options.buttonColor] - Custom color for the exit button (default: red when no selections, green when selections exist)
  * @param {string|Object} [options.buttonText] - Custom text for the exit button (default: "Select"). Can be a string or an object with 'empty' and 'selected' keys for conditional text based on selections
+ * @param {Object} [options.secondaryAction] - Optional extra button shown between Cancel and the main action: { text, onClick }
  * 
  * Behavior Notes:
  * - restrictGroups: Prevents seeing parent/sibling groups, only shows groups where user is a member at lowest hierarchy level
@@ -999,6 +1000,16 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
         >
           {'Cancel'}
         </Button>
+        {options.secondaryAction &&
+          <Button
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'gray', color: 'white', marginRight: 8 }}
+            size='small'
+            onClick={options.secondaryAction.onClick}
+          >
+            {options.secondaryAction.text}
+          </Button>
+        }
         <Button
           className={AVAClass.AVAButton}
           style={{

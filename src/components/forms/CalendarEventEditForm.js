@@ -169,6 +169,12 @@ const useStyles = makeStyles(theme => ({
     borderRadius: '30px 30px 30px 30px',
     margin: '10px'
   },
+  clientPopUpWide: {
+    borderRadius: '30px 30px 30px 30px',
+    margin: '10px',
+    width: '80vw',
+    maxWidth: '80vw'
+  },
   clientPopUpWithPadding: {
     borderRadius: '30px 30px 30px 30px',
     padding: '10px'
@@ -289,6 +295,11 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     selectGuestFromDirectory: false,
     guestQuickSearch: {
       accessList: [],
+      selections: [],
+      linkedPersonFilter: { raw: '', lower: '' }
+    },
+    selectSlotOwner: false,
+    slotOwnerQuickSearch: {
       selections: [],
       linkedPersonFilter: { raw: '', lower: '' }
     }
@@ -456,6 +467,22 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
           groups: []
         };
       });
+  }
+
+  async function buildWaitListAccessList() {
+    const entries = [];
+    for (const personId of reactData.waitList) {
+      const fullName = (await makeName(personId)) || personId;
+      const [first, last] = fullName.split(/\s(.*)/);
+      entries.push({
+        person_id: personId,
+        first: first || fullName,
+        last: last || '',
+        search_data: fullName,
+        groups: []
+      });
+    }
+    return entries;
   }
 
   const handleClick = async (event) => {
@@ -1029,7 +1056,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
   const okToShowSlot = (this_slot) => {
     return (this_slot?.slotData?.show_this_slot !== false
       && (['time', 'seats'].includes(pOccData.signup_type)
-      || ((this_slot?.slotData?.status || this_slot?.slotData?.current?.status) !== "released")));
+        || ((this_slot?.slotData?.status || this_slot?.slotData?.current?.status) !== "released")));
   };
 
   const getHistoryTimes = (this_item) => {
@@ -1329,6 +1356,16 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       if (body.allSubsequent === true) {
         writeRequest.allSubsequent = true;
       }
+      writeRequest.allowFrozenAssignment = isEventOwner;
+      if (pRelease && ['time', 'seats'].includes(pOccData.signup_type)) {
+        const wasEventFull = eventSlotList.every(row => isOwned(row.slotData));
+        writeRequest.slotData = Object.assign({}, body.slotData || {}, {
+          frozen: (wasEventFull && (reactData.waitList.length > 0))
+        });
+      }
+      else if (!pRelease) {
+        writeRequest.slotData = Object.assign({}, body.slotData || {}, { frozen: false });
+      }
       let slotInfo = await writeSlot(writeRequest);
       if (slotInfo.hasOwnProperty('success') && !slotInfo.success) {
         return { success: false, message: "Slot allocation failed", slotInfo };
@@ -1342,6 +1379,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
             name: '',
             owner: '',
             notes: '',
+            frozen: writeRequest.slotData?.frozen || false,
             guests: (pEvent?.number_of_guests ? new Array(pEvent.number_of_guests) : [])
           });
           workingList[pIndex] = {
@@ -1727,7 +1765,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     <Dialog
       open={true || forceRedisplay}
       position={'relative'}
-      classes={{ paper: classes.clientPopUp }}
+      classes={{ paper: classes.clientPopUpWide }}
       p={2}
     >
       <React.Fragment>
@@ -2141,34 +2179,36 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                   {rowsWritten++}
                 </Typography>
                 {/* Slot Name above Slot owner info */}
-                <Box display='flex'
-                  width='100%' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                  {/* Slot Name - only for "seats" and "time" signup types */}
-                  {(['time', 'seats'].includes(pOccData.signup_type)) &&
-                    <Box display='flex' mr={1} ml={0}
-                      flexDirection='row' justifyContent='center' alignItems='center'
-                    >
-                      <Typography style={AVATextStyle({
-                        size: 1,
-                        align: 'left',
-                      })} className={classes.standard} >
-                        {this_item.slotData?.slot_description?.trim() || makeSlotName(this_item.slotData?.id)}
-                      </Typography>
-                    </Box>
-                  }
-                  {/* Slot Owner */}
-                  {isOwned(this_item.slotData) &&
-                    <Box display='flex' width='100%'
-                      mt={0}
-                      flexDirection='row'
-                      flexWrap='wrap'
-                      justifyContent='space-between' alignItems='center'
-                    >
-                      <Box display='flex' mr={0} width='100%' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                        {/* Mark an item - Radio button */}
 
-                        <Box minWidth={40} maxWidth={40} display='flex' mr={0} flexDirection='column' justifyContent='center' alignItems='center'>
-                          {(isEventOwner || isSlotOwner(this_item.slotData)) && <Tooltip mr={0} ml={0} title={`Mark ${this_item.marked ? 'not ' : ''}attended`} >
+                {(['time', 'seats'].includes(pOccData.signup_type)) &&
+                  <Box display='flex' mr={1} ml={1}
+                    flexDirection='row' justifyContent='center' alignItems='center'
+                  >
+                    <Typography style={AVATextStyle({
+                      size: 1.2,
+                      padding: { top: 0, bottom: 0, left: 0, right: 0 },
+                      margin: { top: 0, bottom: 0, left: 0, right: 0 },
+                      bold: true,
+                      align: 'center',
+                    })} className={classes.standard} >
+                      {this_item.slotData?.slot_description?.trim() || makeSlotName(this_item.slotData?.id)}
+                    </Typography>
+                  </Box>
+                }
+                {/* Slot Owner */}
+                {isOwned(this_item.slotData) &&
+                  <Box display='flex' width='100%'
+                    mt={0}
+                    flexDirection='row'
+                    flexWrap='wrap'
+                    justifyContent='space-between' alignItems='center'
+                  >
+                    <Box display='flex' mr={0} width='100%' flexDirection='row' justifyContent='center' alignItems='center'>
+                      {/* Mark an item - Radio button */}
+
+                      <Box minWidth={40} maxWidth={40} display='flex' mr={0} flexDirection='column' justifyContent='center' alignItems='center'>
+                        {(isEventOwner || isSlotOwner(this_item.slotData)) &&
+                          <Tooltip mr={0} ml={0} title={`Mark ${this_item.marked ? 'not ' : ''}attended`} >
                             <IconButton mr={0} ml={0}
                               onClick={async () => {
                                 let { timestamp, location } = await getMarker();
@@ -2229,54 +2269,54 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                               }
                             </IconButton>
                           </Tooltip>}
-                        </Box>
-                        {/* Image and Name */}
-                        <Box display='flex' flexDirection='row' alignItems='flex-start' flexGrow={1} minWidth={0}>
-                          {(!(state.user.account_class
-                            && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
-                            && !(isEventOwner || isSlotOwner(this_item.slotData))
-                          )) &&
-                            (isGuestRow(this_item)
-                              ? <Box mr={1} minWidth={50} maxWidth={50} minHeight={50} maxHeight={50} />
-                              : <Box
-                                component="img"
-                                mr={1}
-                                minWidth={50}
-                                maxWidth={50}
-                                minHeight={50}
-                                maxHeight={50}
-                                border={1}
-                                alt=''
-                                src={getImage(((!['time', 'seats'].includes(pOccData.signup_type)
-                                  && (this_item.slotData.id !== this_item.slotData.owner)
-                                  && !(`${this_item.slotData.id}`.toLowerCase().startsWith('guest:')))
-                                  ? this_item.slotData.id
-                                  : this_item.slotData.owner), { allowS3Fallback: false, allowS3Backfill: false })}
-                              />)
-                          }
-                          <Box display='flex' flexDirection='column' flexGrow={1} minWidth={0}>
-                            <Typography style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}  >
-                              {(state.user.account_class
-                                && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
-                                && !(isEventOwner || isSlotOwner(this_item.slotData))
-                              ) ? 'Reserved' : this_item.slotData.display_name
-                              }
-                            </Typography>
-                            {!!getParticipantSubtitle(this_item.slotData) &&
-                              <Typography
-                                style={Object.assign(
-                                  {},
-                                  AVATextStyle({ size: 0.95, align: 'left', margin: { right: 1 } }),
-                                  {
-                                    paddingLeft: '10px',
-                                    opacity: 0.72
-                                  }
-                                )}
-                                className={classes.standard}
-                              >
-                                {getParticipantSubtitle(this_item.slotData)}
-                              </Typography>
+                      </Box>
+                      {/* Image and Name */}
+                      <Box display='flex' flexDirection='row' alignItems='center' flexGrow={1} minWidth={0}>
+                        {(!(state.user.account_class
+                          && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
+                          && !(isEventOwner || isSlotOwner(this_item.slotData))
+                        )) &&
+                          (isGuestRow(this_item)
+                            ? <Box mr={1} minWidth={50} maxWidth={50} minHeight={50} maxHeight={50} />
+                            : <Box
+                              component="img"
+                              mr={1}
+                              minWidth={50}
+                              maxWidth={50}
+                              minHeight={50}
+                              maxHeight={50}
+                              border={1}
+                              alt=''
+                              src={getImage(((!['time', 'seats'].includes(pOccData.signup_type)
+                                && (this_item.slotData.id !== this_item.slotData.owner)
+                                && !(`${this_item.slotData.id}`.toLowerCase().startsWith('guest:')))
+                                ? this_item.slotData.id
+                                : this_item.slotData.owner), { allowS3Fallback: false, allowS3Backfill: false })}
+                            />)
+                        }
+                        <Box display='flex' flexDirection='column' flexGrow={1} minWidth={0}>
+                          <Typography style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}  >
+                            {(state.user.account_class
+                              && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
+                              && !(isEventOwner || isSlotOwner(this_item.slotData))
+                            ) ? 'Reserved' : this_item.slotData.display_name
                             }
+                          </Typography>
+                          {!!getParticipantSubtitle(this_item.slotData) &&
+                            <Typography
+                              style={Object.assign(
+                                {},
+                                AVATextStyle({ size: 0.95, align: 'left', margin: { right: 1 } }),
+                                {
+                                  paddingLeft: '10px',
+                                  opacity: 0.72
+                                }
+                              )}
+                              className={classes.standard}
+                            >
+                              {getParticipantSubtitle(this_item.slotData)}
+                            </Typography>
+                          }
                           {this_item.marked
                             && (isSlotOwner(this_item.slotData) || (this_item.slotData.documents && (this_item.slotData.documents.length > 0)))
                             && (this_item.check_in || this_item.slotData.check_in)
@@ -2346,9 +2386,9 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                           const canEditClock = canManageSlot && isEventOwner && !pViewOnly
                             && this_item.slotData.documents
                             && (this_item.slotData.documents.length > 0);
-                            const canAddGuest = canManageSlot && !pViewOnly
-                              && !['time', 'seats'].includes(pOccData.signup_type)
-                              && getGuestUsage(this_item.slotData.owner).allowsGuests;
+                          const canAddGuest = canManageSlot && !pViewOnly
+                            && !['time', 'seats'].includes(pOccData.signup_type)
+                            && getGuestUsage(this_item.slotData.owner).allowsGuests;
                           const hasOverflowActions = canViewDocuments || canMessage || canRemove || canEditClock || canAddGuest || canManageSlot;
 
                           return hasOverflowActions ? (
@@ -2359,147 +2399,160 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                                   openRowActionMenu(event, index);
                                 }}
                                 size='small'
-                                style={{ marginLeft: 'auto', marginRight: 8, paddingRight: 4 }}
+                                style={{ marginLeft: 'auto', marginRight: 24, paddingRight: 4 }}
                               >
                                 <MoreHorizIcon />
                               </IconButton>
                             </Tooltip>
                           ) : null;
                         })()}
-                        </Box>
                       </Box>
                     </Box>
-                  }
-                  {!isOwned(this_item.slotData) && (isEventOwner || (!pViewOnly && reactData.signup_window.open)) &&
-                    (editNoteNumber === -1) &&
-                    <Box display='flex' width='100%' pr={2} flexDirection='row' justifyContent='flex-end' alignItems='center'>
-                      <Tooltip title={isEventOwner ? `Select someone` : `Add myself`}>
-                        <PersonAddIcon
-                          mr={2}
-                          onClick={async () => {
-                            if (isEventOwner) {
-                              updateReactData({ editIndex: index }, false);
-                              setEditSlot(true);
-                              await setChoices({ pGroups: peopleList });
-                              setSelectNewSlotOwner(true);
+                  </Box>
+                }
+                {!isOwned(this_item.slotData) && (isEventOwner || (!this_item.slotData.frozen && !pViewOnly && reactData.signup_window.open)) &&
+                  (editNoteNumber === -1) &&
+                  <Box display='flex' width='100%' pr={2} flexDirection='row' justifyContent='flex-end' alignItems='center'>
+                    <Tooltip title={isEventOwner ? `Select someone` : `Add myself`}>
+                      <PersonAddIcon
+                        mr={2}
+                        onClick={async () => {
+                          if (isEventOwner) {
+                            const restrictToWaitList = !!this_item.slotData.frozen && (reactData.waitList.length > 0);
+                            let slotAccessList;
+                            if (restrictToWaitList) {
+                              slotAccessList = await buildWaitListAccessList();
                             }
                             else {
-                              let pName = await makeName(pPatient);
-                              // Check for other occurrences in this event
-                              let othersExist = await checkOtherOccurrences();
-                              if (othersExist && (othersExist.length > 0)) {
-                                updateReactData({
-                                  other_occurrences: othersExist,
-                                  popupMenuOpen: false,
-                                  alert: {
-                                    severity: 'warning',
-                                    title: `Recurring event!`,
-                                    message: <div>
-                                      This event has multiple occurrences.<br />
-                                      Would you like to sign up for ALL occurrences of this event?<br />
-                                    </div>,
-                                    action: [
-                                      {
-                                        text: `I changed my mind.  Sign up for nothing at all.`,
-                                        function: (async () => {
-                                          updateReactData({
-                                            alert: false
-                                          }, true);
-                                        })
-                                      },
-                                      {
-                                        text: `Sign up for just this one.`,
-                                        function: (async () => {
-                                          await handleAllocateSlot({
-                                            body: {
-                                              person: `${pName}:${pPatient}`,
-                                              slot: this_item.slotData.id,
-                                              index: (index || 0),
-                                            }
-                                          });
-                                          updateReactData({
-                                            alert: false
-                                          }, true);
-                                        })
-                                      },
-                                      {
-                                        text: `Sign up this one and all future occurrences`,
-                                        function: (async () => {
-                                          await handleAllocateSlot({
-                                            body: {
-                                              person: `${pName}:${pPatient}`,
-                                              slot: this_item.slotData.id,
-                                              index: (index || 0),
-                                              allSubsequent: true
-                                            }
-                                          });
-                                          let eventID = pEventCode.split('#')[0];
-                                          let todayYMD = makeDate(new Date()).numeric;
-                                          let failures = 0;
-                                          for (let next_event of reactData.other_occurrences) {
-                                            if (next_event >= todayYMD) {
-                                              pEventCode = `${eventID}#${next_event}`;
-                                              let result = await handleAllocateSlot({
-                                                body: {
-                                                  person: `${pName}:${pPatient}`,
-                                                  slot: this_item.slotData.id,
-                                                  index: (index || 0),
-                                                  rejectDuplicate: true,
-                                                  no_messaging: true
-                                                },
-                                                allocateEventCode: pEventCode,
-                                                allocateOccurrence: next_event
-                                              });
-                                              if (typeof (result) === "object" && !result.success) {
-                                                failures++;
-                                              }
-                                            }
-                                          }
-                                          if (failures > 0) {
-                                            updateReactData({
-                                              alert: {
-                                                severity: 'error',
-                                                title: `Some sign-ups failed`,
-                                                message: `For ${failures} occurrence(s), someone else was already signed up.`,
-                                                action: [
-                                                  {
-                                                    text: `Acknowledged`,
-                                                    function: (async () => {
-                                                      onReset({ no_change: true });
-                                                    })
-                                                  }
-                                                ]
-                                              }
-                                            }, true);
-                                          }
-                                          else {
-                                            onReset({ no_change: true });
-                                          }
-                                        })
-                                      }
-                                    ]
-                                  }
-                                }, true);
-                              }
-                              else {
-                                await handleAllocateSlot({
-                                  body: {
-                                    person: `${pName}:${pPatient}`,
-                                    slot: this_item.slotData.id,
-                                    index: (index || 0),
-                                  }
-                                });
-                              }
+                              const directoryChoices = await setChoices({ pGroups: peopleList });
+                              slotAccessList = mapChoiceListToQuickSearchAccessList(directoryChoices || []);
                             }
-                            if (pOccData.notes_required) {
-                              setEditNoteNumber(index);
+                            updateReactData({
+                              selectSlotOwner: { index, slotId: this_item.slotData.id, restricted: restrictToWaitList },
+                              slotOwnerQuickSearch: {
+                                accessList: slotAccessList,
+                                selections: [],
+                                linkedPersonFilter: { raw: '', lower: '' }
+                              }
+                            }, true);
+                          }
+                          else {
+                            let pName = await makeName(pPatient);
+                            // Check for other occurrences in this event
+                            let othersExist = await checkOtherOccurrences();
+                            if (othersExist && (othersExist.length > 0)) {
+                              updateReactData({
+                                other_occurrences: othersExist,
+                                popupMenuOpen: false,
+                                alert: {
+                                  severity: 'warning',
+                                  title: `Recurring event!`,
+                                  message: <div>
+                                    This event has multiple occurrences.<br />
+                                    Would you like to sign up for ALL occurrences of this event?<br />
+                                  </div>,
+                                  action: [
+                                    {
+                                      text: `I changed my mind.  Sign up for nothing at all.`,
+                                      function: (async () => {
+                                        updateReactData({
+                                          alert: false
+                                        }, true);
+                                      })
+                                    },
+                                    {
+                                      text: `Sign up for just this one.`,
+                                      function: (async () => {
+                                        await handleAllocateSlot({
+                                          body: {
+                                            person: `${pName}:${pPatient}`,
+                                            slot: this_item.slotData.id,
+                                            index: (index || 0),
+                                          }
+                                        });
+                                        updateReactData({
+                                          alert: false
+                                        }, true);
+                                      })
+                                    },
+                                    {
+                                      text: `Sign up this one and all future occurrences`,
+                                      function: (async () => {
+                                        await handleAllocateSlot({
+                                          body: {
+                                            person: `${pName}:${pPatient}`,
+                                            slot: this_item.slotData.id,
+                                            index: (index || 0),
+                                            allSubsequent: true
+                                          }
+                                        });
+                                        let eventID = pEventCode.split('#')[0];
+                                        let todayYMD = makeDate(new Date()).numeric;
+                                        let failures = 0;
+                                        for (let next_event of reactData.other_occurrences) {
+                                          if (next_event >= todayYMD) {
+                                            pEventCode = `${eventID}#${next_event}`;
+                                            let result = await handleAllocateSlot({
+                                              body: {
+                                                person: `${pName}:${pPatient}`,
+                                                slot: this_item.slotData.id,
+                                                index: (index || 0),
+                                                rejectDuplicate: true,
+                                                no_messaging: true
+                                              },
+                                              allocateEventCode: pEventCode,
+                                              allocateOccurrence: next_event
+                                            });
+                                            if (typeof (result) === "object" && !result.success) {
+                                              failures++;
+                                            }
+                                          }
+                                        }
+                                        if (failures > 0) {
+                                          updateReactData({
+                                            alert: {
+                                              severity: 'error',
+                                              title: `Some sign-ups failed`,
+                                              message: `For ${failures} occurrence(s), someone else was already signed up.`,
+                                              action: [
+                                                {
+                                                  text: `Acknowledged`,
+                                                  function: (async () => {
+                                                    onReset({ no_change: true });
+                                                  })
+                                                }
+                                              ]
+                                            }
+                                          }, true);
+                                        }
+                                        else {
+                                          onReset({ no_change: true });
+                                        }
+                                      })
+                                    }
+                                  ]
+                                }
+                              }, true);
                             }
-                          }}
-                        />
-                      </Tooltip>
-                    </Box>
-                  }
-                </Box>
+                            else {
+                              await handleAllocateSlot({
+                                body: {
+                                  person: `${pName}:${pPatient}`,
+                                  slot: this_item.slotData.id,
+                                  index: (index || 0),
+                                }
+                              });
+                            }
+                          }
+                          if (pOccData.notes_required) {
+                            setEditNoteNumber(index);
+                          }
+                        }}
+                      />
+                    </Tooltip>
+                  </Box>
+                }
+
               </Box>
             ))}
             {!loading && (!eventSlotList || (eventSlotList.length === 0) || (rowsWritten === 0)) &&
@@ -2574,8 +2627,8 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               let nArray = selectedPerson.split('%%');
               let pID;
               if (nArray.length === 1) {
-                pID = nArray[0]; 
-                selectedPerson = nArray[0]; 
+                pID = nArray[0];
+                selectedPerson = nArray[0];
               }
               else {
                 pID = nArray[1];
@@ -3100,23 +3153,88 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
           />
         }
         {reactData.editWaitList &&
-          <PersonFilter
-            prompt={'Wait List'}
-            peopleList={reactData.choiceList}
-            alreadyChecked={reactData.waitList}
-            multiSelect={true}
-            splitter={'%%'}
-            onCancel={() => {
+          <QuickSearch
+            reactData={reactData.waitListQuickSearch || {
+              selections: [],
+              linkedPersonFilter: { raw: '', lower: '' }
+            }}
+            updateReactData={(newData) => {
               updateReactData({
-                editWaitList: false,
+                waitListQuickSearch: Object.assign({}, reactData.waitListQuickSearch || {}, newData)
               }, true);
             }}
-            onSelect={async (selectedPerson) => {
-              await handleUpdateWaitList(selectedPerson);
+            options={{
+              keepSelections: true,
+              withGroups: false,
+              withPreferred: false,
+              hidePeople: false,
+              pickAndGo: true,
+              showAll: true,
+              title: 'Wait List',
+              buttonText: { empty: 'Exit', selected: 'Save & Exit' }
+            }}
+            onClose={async (selections) => {
+              const newWaitList = (selections || []).map(s => s.person_id);
+              await handleUpdateWaitList(newWaitList);
               updateReactData({
-                waitList: selectedPerson,
+                waitList: newWaitList,
                 editWaitList: false
               }, true);
+            }}
+          />
+        }
+        {reactData.selectSlotOwner &&
+          <QuickSearch
+            reactData={reactData.slotOwnerQuickSearch || {
+              selections: [],
+              linkedPersonFilter: { raw: '', lower: '' }
+            }}
+            updateReactData={(newData) => {
+              updateReactData({
+                slotOwnerQuickSearch: Object.assign({}, reactData.slotOwnerQuickSearch || {}, newData)
+              });
+            }}
+            options={{
+              keepSelections: true,
+              withGroups: false,
+              withPreferred: false,
+              hidePeople: false,
+              pickOne: true,
+              showAll: true,
+              title: reactData.selectSlotOwner.restricted ? 'Select from Wait List' : 'Who are you adding?',
+              buttonText: 'Assign',
+              secondaryAction: reactData.selectSlotOwner.restricted ? {
+                text: 'Show everyone',
+                onClick: async () => {
+                  const directoryChoices = await setChoices({ pGroups: peopleList });
+                  const fullAccessList = mapChoiceListToQuickSearchAccessList(directoryChoices || []);
+                  updateReactData({
+                    selectSlotOwner: Object.assign({}, reactData.selectSlotOwner, { restricted: false }),
+                    slotOwnerQuickSearch: Object.assign({}, reactData.slotOwnerQuickSearch, {
+                      accessList: fullAccessList
+                    })
+                  }, true);
+                }
+              } : undefined
+            }}
+            onClose={async (selections) => {
+              const chosen = (selections || [])[0];
+              if (chosen && chosen.person_id) {
+                const chosenName = await makeName(chosen.person_id);
+                await handleAllocateSlot({
+                  body: {
+                    person: `${chosenName}:${chosen.person_id}`,
+                    slot: reactData.selectSlotOwner.slotId,
+                    index: reactData.selectSlotOwner.index
+                  }
+                });
+                if (reactData.waitList.includes(chosen.person_id)) {
+                  const newWaitList = reactData.waitList.filter(id => id !== chosen.person_id);
+                  await handleUpdateWaitList(newWaitList);
+                  updateReactData({ waitList: newWaitList });
+                }
+              }
+              updateReactData({ selectSlotOwner: false }, true);
             }}
           />
         }
@@ -3260,8 +3378,11 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                     size='small'
                     onClick={async () => {
                       if (isEventOwner) {
-                        await setChoices({ pGroups: peopleList, noCurrent: true });
                         updateReactData({
+                          waitListQuickSearch: {
+                            selections: reactData.waitList.map(id => ({ person_id: id })),
+                            linkedPersonFilter: { raw: '', lower: '' }
+                          },
                           editWaitList: true
                         }, true);
                       }

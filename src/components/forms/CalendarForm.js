@@ -669,12 +669,12 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     return (
       this_event.hasOwnProperty('wait_list')
       && this_event.wait_list.includes(reactData.selectedPerson_id)
-      && (this_event.occurrence_date < reactData.todayYMD)
+      && (this_event.occurrence_date >= reactData.todayYMD)
     );
   };
 
   const allSlotsFull = (this_event) => {
-    if ((this_event.type !== 'seats') || (this_event.type !== 'time')) {
+    if (!['seats', 'time'].includes(this_event.type)) {
       return false;
     }
     else if (!this_event.slotPattern) {
@@ -1464,7 +1464,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
             style={AVATextStyle({
               size: 0.8,
             })}>
-            {`${(this_event.type === 'time') ? makeTime(this_event.slot_owners[this_owner]).short + ' ' : ''}${getPersonName(this_owner.split('%%')[0])}`}
+            {`${(this_event.type === 'time') ? makeTime(this_event.slot_owners[this_owner]).short + ' ' : ''}${this_event.slot_holder_names?.[this_owner] || getPersonName(this_owner.split('%%')[0])}`}
           </Typography>
         ))}
     </Box>
