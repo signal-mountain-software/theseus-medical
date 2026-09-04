@@ -526,7 +526,7 @@ export function array_in_array(a1, a2) {
 export function titleCase(pString) {
   if (!pString) { return ''; }
   let words = pString.split(/([^\w':]+)/);
-  const smallWords = ['of', 'and', 'or', 'a', 'an', 'the', 'in', 'on', 'at', 'to', 'for', 'with', 'from', 'by'];
+  const smallWords = ['of', 'and', 'or', 'a', 'an', 'the', 'in', 'on', 'at', 'to', 'for', 'with', 'from', 'by', 'vs'];
   const allCapWords = ['ava', 'bbq', 'id', 'tv', 'ceo', 'cfo', 'coo', 'usa', 'uk', 'eu', 'am', 'pm'];
   const formatWordToken = (wordToken, isFirstWord) => {
     const lowerWordToken = wordToken.toLowerCase();
