@@ -35,7 +35,7 @@ import Avatar from '@material-ui/core/Avatar';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
 import Dialog from '@material-ui/core/Dialog';
-import DialogTitle from '@material-ui/core/DialogTitle';
+
 import DialogContent from '@material-ui/core/DialogContent';
 import DialogActions from '@material-ui/core/DialogActions';
 import Button from '@material-ui/core/Button';
@@ -864,7 +864,7 @@ export default ({ start_at }) => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [state.session?.client_id, state.session?.user_id]);
+  }, [state.session?.client_id, state.session?.user_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Browser autoplay policies block audio.play() unless a real user gesture (click/keydown/touchstart)
   // is in progress - re-prime the shared notification sound element on EVERY gesture (not just the
