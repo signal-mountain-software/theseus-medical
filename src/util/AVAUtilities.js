@@ -534,9 +534,10 @@ export function titleCase(pString) {
       return lowerWordToken;
     }
 
+    const contractionSuffixes = ['s', 't', 'd', 'm', 're', 've', 'll'];
     return wordToken
       .split(/([-'])/)
-      .map((part) => {
+      .map((part, partIndex, parts) => {
         if ((part === '-') || (part === "'")) {
           return part;
         }
@@ -563,6 +564,12 @@ export function titleCase(pString) {
 
         if (lowerPart.startsWith('mc') && (lowerPart.length > 2)) {
           return `Mc${lowerPart.charAt(2).toUpperCase()}${lowerPart.slice(3)}`;
+        }
+
+        // contraction/possessive suffix after an apostrophe (Smith's, don't, we're) stays lowercase;
+        // a name like O'Brien isn't affected since "brien" isn't in the suffix list
+        if ((parts[partIndex - 1] === "'") && contractionSuffixes.includes(lowerPart)) {
+          return lowerPart;
         }
 
         return lowerPart.charAt(0).toUpperCase() + lowerPart.slice(1);
