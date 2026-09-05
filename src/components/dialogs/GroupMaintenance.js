@@ -9,7 +9,6 @@ import useSession from '../../hooks/useSession';
 
 import GroupProfileSection from '../sections/GroupProfileSection';
 import GroupSecuritySection from '../sections/GroupSecuritySection';
-import GroupHierarchySection from '../sections/GroupHierarchySection';
 import GroupFormsSection from '../sections/GroupFormsSection';
 import GroupTasksSection from '../sections/GroupTasksSection';
 import GroupRulesSection from '../sections/GroupRulesSection';
@@ -114,11 +113,6 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
     isError: false,
     showQuickSearch: false,
     showGroupAccessSearch: false,
-    groupsToAdd: [],
-    groupsToRename: [],
-    groupsToReparent: [],
-    groupsToUpdateAdmins: [],
-    pendingAddIconGroups: [],
     addLink: false,
     needsHeader: false,
     changesMade: false,
@@ -128,9 +122,6 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
       },
       GroupSecuritySection: {
         component_id: GroupSecuritySection,
-      },
-      GroupHierarchySection: {
-        component_id: GroupHierarchySection,
       },
       GroupFormsSection: {
         component_id: GroupFormsSection,
@@ -192,7 +183,7 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
     updateReactData({ membershipChange: true }, true);
   }
 
-  // Mirrors GroupHierarchySection's groupHasChildren check - the orphan audit is only meaningful
+  // groupHasChildren check (see GroupControl.js's hasChildren) - the orphan audit is only meaningful
   // for a group that has children (a childless group's direct members can't be "orphaned").
   function currentGroupHasChildren() {
     const group_id = reactData.current[tableName]?.group_id;
@@ -222,14 +213,6 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
           isAuthorized: true,
           version_id: 0,
           component_name: 'GroupSecuritySection'
-        },
-        {
-          section_name: 'Parent & Children',
-          color: options?.color || 'orange',
-          isOpen: false,
-          isAuthorized: true,
-          version_id: 0,
-          component_name: 'GroupHierarchySection'
         },
         {
           section_name: 'Group Forms',
@@ -500,73 +483,9 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
         }
       }
     }
-    // add any new groups to the database
-    for (let newGroup of reactData.groupsToAdd) {
-      reactData.reload_onExit = true;  // if we are adding new groups, we need to do a full reload on exit to update the group list in the GroupHierarchySection
-      await dbClient.put({
-        TableName: 'Groups',
-        Item: newGroup
-      })
-        .promise()
-        .catch(error => {
-          console.log(`caught error putting to Groups; error is:`, error);
-          return false;
-        });
-    }
-    // apply any renames of already-existing groups made from the GroupHierarchySection list
-    for (let renameItem of (reactData.groupsToRename || [])) {
-      reactData.reload_onExit = true;  // the hierarchy list needs the fresh name(s) on next load
-      await dbClient.update({
-        TableName: 'Groups',
-        Key: { client_id, group_id: renameItem.group_id },
-        UpdateExpression: 'SET #n = :n, group_name = :n',
-        ExpressionAttributeNames: { '#n': 'name' },
-        ExpressionAttributeValues: { ':n': renameItem.name }
-      })
-        .promise()
-        .catch(error => {
-          console.log(`caught error renaming Groups ${renameItem.group_id}; error is:`, error);
-          return false;
-        });
-    }
-    // apply any Move (re-parent) actions on already-existing groups other than the one being edited
-    // (that group's own belongs_to change goes through reactData.current[tableName] via updateField instead)
-    for (let reparentItem of (reactData.groupsToReparent || [])) {
-      reactData.reload_onExit = true;  // the hierarchy list needs the new parent/order on next load
-      await dbClient.update({
-        TableName: 'Groups',
-        Key: { client_id, group_id: reparentItem.group_id },
-        UpdateExpression: 'SET belongs_to = :b',
-        ExpressionAttributeValues: { ':b': reparentItem.belongs_to }
-      })
-        .promise()
-        .catch(error => {
-          console.log(`caught error reparenting Groups ${reparentItem.group_id}; error is:`, error);
-          return false;
-        });
-    }
-    // apply admin_list unions from Move (new parent's admins extended onto the moved subtree)
-    for (let adminItem of (reactData.groupsToUpdateAdmins || [])) {
-      await dbClient.update({
-        TableName: 'Groups',
-        Key: { client_id, group_id: adminItem.group_id },
-        UpdateExpression: 'SET admin_list = :a',
-        ExpressionAttributeValues: { ':a': adminItem.admin_list }
-      })
-        .promise()
-        .catch(error => {
-          console.log(`caught error updating admin_list for Groups ${adminItem.group_id}; error is:`, error);
-          return false;
-        });
-    }
 
     updateReactData({
       unsavedChanges: false,
-      groupsToAdd: [],
-      groupsToRename: [],
-      groupsToReparent: [],
-      groupsToUpdateAdmins: [],
-      pendingAddIconGroups: [],
       reload_onExit: reactData.reload_onExit,
       og: reactData.og,
       current: reactData.current

@@ -4,9 +4,9 @@ import useSession from '../../hooks/useSession';
 
 import { createNewGroup, getGroupMembers, getMemberList, addMember, removeMember, getRole } from '../../util/AVAGroups';
 import { dbClient, isObject, listFromArray, cl, recordExists } from '../../util/AVAUtilities';
-import AVATextInput from '../forms/AVATextInput';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import GroupMaintenance from '../dialogs/GroupMaintenance';
+import AVAConfirm from './AVAConfirm';
 import { getPerson } from '../../util/AVAPeople';
 
 import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Checkbox, FormControlLabel, LinearProgress, Tooltip, Avatar, Menu, MenuList, MenuItem, CircularProgress } from '@material-ui/core';
@@ -29,7 +29,6 @@ import ExportFilterPrompt from '../dialogs/ExportFilterPrompt';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
-import GroupAddIcon from '@material-ui/icons/GroupAdd';
 import CloseIcon from '@material-ui/icons/ExitToApp';
 import DeleteIcon from '@material-ui/icons/Delete';
 import SendIcon from '@material-ui/icons/Send';
@@ -43,6 +42,10 @@ import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import PeopleIcon from '@material-ui/icons/People';
 import SupervisorAccountIcon from '@material-ui/icons/SupervisorAccount';
+import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
+import SaveIcon from '@material-ui/icons/Save';
+import BuildIcon from '@material-ui/icons/Build';
+import OpenWithIcon from '@material-ui/icons/OpenWith';
 
 import { SET_GROUPS, SET_ACCESSLIST } from '../../contexts/Session/actions';
 
@@ -156,15 +159,32 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   const familyDataCacheRef = React.useRef({});
   const [selectedFieldDropTargetIndex, setSelectedFieldDropTargetIndex] = React.useState(null);
   const [selectedFieldDragIndex, setSelectedFieldDragIndex] = React.useState(null);
+  // Admin Mode "Add group" inline input - which row it's open for, its uncommitted text,
+  // and a remount-key bumped after each save so the (uncontrolled) TextField clears for the next add.
+  const [addGroupTarget, setAddGroupTarget] = React.useState(null);
+  const [addGroupName, setAddGroupName] = React.useState("");
+  const [addGroupRowSeed, setAddGroupRowSeed] = React.useState(0);
+  // Admin Mode "Move group" - modal picker (deliberately separate from the main tree, unlike the
+  // drag-and-drop / tap-tap approaches tried previously) - moveGroupSource is the group being
+  // moved (dialog open when non-null), moveGroupCandidate the currently highlighted destination.
+  const [moveGroupSource, setMoveGroupSource] = React.useState(null);
+  const [moveGroupCandidate, setMoveGroupCandidate] = React.useState(null);
+  const [moveGroupFilter, setMoveGroupFilter] = React.useState("");
+  // Picker rows deeper than the top 2 levels start collapsed - set holds parent group_ids whose
+  // immediate children have been expanded via the eyeball icon (mirrors the main tree's scheme).
+  const [moveGroupExpanded, setMoveGroupExpanded] = React.useState(() => new Set());
+  // Admin Mode inline trash icon (leaf rows only) - holds the group_id awaiting AVAConfirm, once
+  // requestDeleteGroup's live children/members checks have already passed.
+  const [deleteGroupConfirmTarget, setDeleteGroupConfirmTarget] = React.useState(null);
 
   const { dispatch, state } = useSession();
-
-  const [promptForName, setPromptForName] = React.useState(false);
 
   const [reactData, setReactData] = React.useState({
     alert: false,
     window_width: window.window.innerWidth,
     administrative_account: (['admin', 'support', 'master'].includes(state.user.account_class)),
+    adminMode: false, // always opens in View Mode
+    groupListRefreshKey: 0, // bumped after any local groupsManagedObject mutation to force a full remount of the group list
 
     // from defaults
     agendaView: defaults.agendaView,
@@ -437,7 +457,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
   function hasChildren(this_index) {
     try {
-      return (groupsManagedObject[reactData.groupsManagedObject[this_index + 1]].level > groupsManagedObject[reactData.groupsManagedObject[this_index]].level);
+      // Reads keys live from groupsManagedObject rather than the frozen key snapshot taken at
+      // mount time, so this stays correct after any local insert/move/delete into the hierarchy.
+      const keys = Object.keys(groupsManagedObject);
+      return (groupsManagedObject[keys[this_index + 1]].level > groupsManagedObject[keys[this_index]].level);
     }
     catch {
       return false;
@@ -1191,6 +1214,64 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     return false;
   }
 
+  // Shared delete-execution (DB delete + local/session state cleanup) - used by both the
+  // drag-to-trash drop handler and the inline leaf-row trash icon. Callers are responsible for
+  // running whatever checks (authorization, children, members) are appropriate first.
+  const executeDeleteGroup = async (group_id, group_name) => {
+    delete groupsManagedObject[group_id];
+    await dbClient
+      .delete({
+        Key: {
+          client_id: pSession.client_id,
+          group_id
+        },
+        TableName: "Groups",
+      })
+      .promise()
+      .catch(error => {
+        console.log(`caught error deleting Group; error is: `, error);
+      });
+    let reactUpdObj = {
+      alert: {
+        severity: 'success',
+        title: `${group_name} removed`,
+        message: `${group_name} was successfully removed.`
+      }
+    };
+    delete state.groups.publicGroups[group_id];
+    delete state.groups.privateGroups[group_id];
+    dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups) });
+    if ((reactData.selectedGroupIds || []).includes(group_id)) {
+      const newIds = (reactData.selectedGroupIds || []).filter(id => id !== group_id);
+      const newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
+      delete newMembersPerGroup[group_id];
+      // Also prune ancestors that no longer have all their descendants selected
+      const toPrune = newIds.filter(id =>
+        getDescendants(id).some(d => groupsManagedObject[d] && !newIds.includes(d))
+      );
+      for (const id of toPrune) { delete newMembersPerGroup[id]; }
+      const prunedIds = newIds.filter(id => !toPrune.includes(id));
+      const newGroupMembers = {};
+      for (const id of prunedIds) { Object.assign(newGroupMembers, newMembersPerGroup[id] || {}); }
+      const titledIds = prunedIds.filter(id => Object.keys(newMembersPerGroup[id] || {}).length > 0);
+      const titleSource = titledIds.length > 0 ? titledIds : prunedIds;
+      const singleGroup = titleSource.length === 1;
+      reactUpdObj.selectedGroupIds = prunedIds;
+      reactUpdObj.selectedGroupMembersPerGroup = newMembersPerGroup;
+      reactUpdObj.selectedGroup_id = singleGroup ? titleSource[0] : null;
+      reactUpdObj.selectedGroupRec = prunedIds.length === 0
+        ? false
+        : singleGroup
+          ? groupsManagedObject[titleSource[0]]
+          : { group_id: null, group_name: 'Multiple Groups', multi: true };
+      reactUpdObj.selectedGroupMembers = Object.keys(newGroupMembers).length > 0 ? newGroupMembers : false;
+      reactUpdObj.sortedGroupMembers = sortGroupMembers(newGroupMembers);
+      reactUpdObj.showFamilyMembers = false;
+      reactUpdObj.showPrimaryCaregivers = false;
+    }
+    updateReactData(reactUpdObj, true);
+  };
+
   const handleDrop_removePerson = async (ev) => {
     ev.preventDefault();
     let draggedFrom = JSON.parse(ev.dataTransfer.getData('id'));
@@ -1200,6 +1281,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     }
     else if (draggedFrom.hasOwnProperty('groupObj')) {
       if (!(await guardGroupAuthorization(draggedFrom.groupObj.group_id))) { return; }
+      const childCount = getDescendants(draggedFrom.groupObj.group_id).length;
       if (Object.keys(reactData.selectedGroupMembers).length > 0) {
         updateReactData({
           alert: {
@@ -1209,92 +1291,68 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
           }
         }, true);
       }
-      else {
-        // we will delete thie group_id;  before we do, look for any direct descendants and change their parent to my parent
-        let targetGroup_parent = myParent(draggedFrom.groupObj.group_id);
-        if (state.groups.parent_of.hasOwnProperty(draggedFrom.groupObj.group_id)) {
-          for (const this_child of state.groups.parent_of[draggedFrom.groupObj.group_id]) {
-            if (myParent(this_child) === draggedFrom.groupObj.group_id) {    // if the child is a GRANDchild, don't change its parent
-              // take the child and make it a child of the parent of the group we are deleting;
-              await dbClient
-                .update({
-                  Key: {
-                    client_id: pSession.client_id,
-                    group_id: this_child
-                  },
-                  UpdateExpression: 'set #b = :b',
-                  ExpressionAttributeValues: { ':b': targetGroup_parent },
-                  ExpressionAttributeNames: { '#b': 'belongs_to' },
-                  TableName: "Groups",
-                })
-                .promise()
-                .catch(error => {
-                  console.log(`caught error updating Group; error is: `, error);
-                });
-              let foundAt = state.groups.adminHierarchy.findIndex(g => { return g.id === this_child; });
-              if (foundAt > -1) {
-                state.groups.adminHierarchy[foundAt].belongs_to = targetGroup_parent;
-              }
-            }
-            groupsManagedObject[this_child].level--;
-          }
-        }
-        // no children remain; go ahead with the delete
-        delete groupsManagedObject[draggedFrom.groupObj.group_id];
-        await dbClient
-          .delete({
-            Key: {
-              client_id: pSession.client_id,
-              group_id: draggedFrom.groupObj.group_id
-            },
-            TableName: "Groups",
-          })
-          .promise()
-          .catch(error => {
-            console.log(`caught error deleting Group; error is: `, error);
-          });
-        let reactUpdObj = {
+      else if (childCount > 0) {
+        updateReactData({
           alert: {
-            severity: 'success',
-            title: `${draggedFrom.groupObj.group_name} removed`,
-            message: `${draggedFrom.groupObj.group_name} was successfully removed.`
+            severity: 'error',
+            title: `${draggedFrom.groupObj.group_name} has sub-groups`,
+            message: `${draggedFrom.groupObj.group_name} has ${childCount} sub-group${(childCount > 1) ? 's' : ''}.  Move or delete them first, then delete this group.`
           }
-        };
-        delete state.groups.publicGroups[draggedFrom.groupObj.group_id];
-        delete state.groups.privateGroups[draggedFrom.groupObj.group_id];
-        dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups) });
-        const deletedId = draggedFrom.groupObj.group_id;
-        if ((reactData.selectedGroupIds || []).includes(deletedId)) {
-          const newIds = (reactData.selectedGroupIds || []).filter(id => id !== deletedId);
-          const newMembersPerGroup = { ...(reactData.selectedGroupMembersPerGroup || {}) };
-          delete newMembersPerGroup[deletedId];
-          // Also prune ancestors that no longer have all their descendants selected
-          const toPrune = newIds.filter(id =>
-            getDescendants(id).some(d => groupsManagedObject[d] && !newIds.includes(d))
-          );
-          for (const id of toPrune) { delete newMembersPerGroup[id]; }
-          const prunedIds = newIds.filter(id => !toPrune.includes(id));
-          const newGroupMembers = {};
-          for (const id of prunedIds) { Object.assign(newGroupMembers, newMembersPerGroup[id] || {}); }
-          const titledIds = prunedIds.filter(id => Object.keys(newMembersPerGroup[id] || {}).length > 0);
-          const titleSource = titledIds.length > 0 ? titledIds : prunedIds;
-          const singleGroup = titleSource.length === 1;
-          reactUpdObj.selectedGroupIds = prunedIds;
-          reactUpdObj.selectedGroupMembersPerGroup = newMembersPerGroup;
-          reactUpdObj.selectedGroup_id = singleGroup ? titleSource[0] : null;
-          reactUpdObj.selectedGroupRec = prunedIds.length === 0
-            ? false
-            : singleGroup
-              ? groupsManagedObject[titleSource[0]]
-              : { group_id: null, group_name: 'Multiple Groups', multi: true };
-          reactUpdObj.selectedGroupMembers = Object.keys(newGroupMembers).length > 0 ? newGroupMembers : false;
-          reactUpdObj.sortedGroupMembers = sortGroupMembers(newGroupMembers);
-          reactUpdObj.showFamilyMembers = false;
-          reactUpdObj.showPrimaryCaregivers = false;
-        }
-        updateReactData(reactUpdObj, true);
+        }, true);
+      }
+      else {
+        await executeDeleteGroup(draggedFrom.groupObj.group_id, draggedFrom.groupObj.group_name);
       }
     };
+  };
+
+  // Live existence check against PeopleGroups (status-index) - only need to know whether ANY
+  // active member row exists, not who they are, so Limit:1 keeps this cheap (same pattern as
+  // GroupHierarchySection.js's checkGroupHasMembers).
+  const checkGroupHasMembers = async (group_id) => {
+    const cgid = `${pSession.client_id}~${group_id}`;
+    const result = await dbClient
+      .query({
+        TableName: 'PeopleGroups',
+        IndexName: 'status-index',
+        KeyConditionExpression: 'client_group_id = :cgid AND membership_status = :active',
+        ExpressionAttributeValues: { ':cgid': cgid, ':active': 'active' },
+        Limit: 1
+      })
+      .promise()
+      .catch((error) => { cl({ 'GroupControl: membership check failed': error }); return null; });
+    return ((result?.Items?.length || 0) > 0);
+  };
+
+  // Inline leaf-row trash icon entry point. The icon itself is only rendered for childless rows
+  // (cheap, local hasChildren check), but "empty" is verified live here at click-time rather than
+  // precomputed for every row - avoids a membership query per row on every render.
+  const requestDeleteGroup = async (group_id) => {
+    if (!(await guardGroupAuthorization(group_id))) { return; }
+    const groupName = groupsManagedObject[group_id]?.group_name;
+    const childCount = getDescendants(group_id).length;
+    if (childCount > 0) {
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: `${groupName} has sub-groups`,
+          message: `${groupName} has ${childCount} sub-group${(childCount > 1) ? 's' : ''}.  Move or delete them first, then delete this group.`
+        }
+      }, true);
+      return;
+    }
+    const hasMembers = await checkGroupHasMembers(group_id);
+    if (hasMembers) {
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: `${groupName} has members`,
+          message: `You can't remove this group unless it is empty.  Reassign or remove its members first.`
+        }
+      }, true);
+      return;
+    }
+    setDeleteGroupConfirmTarget(group_id);
   };
 
   const myParent = (this_group) => {
@@ -1341,6 +1399,343 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     }, true);
     return false;
   };
+
+  // Admin Mode "Add group" - writes immediately (no staged/deferred save step here, unlike
+  // GroupHierarchySection's groupsToAdd pattern). Inserts the new group right after its parent
+  // in groupsManagedObject (a prop, mutated in place) so the contiguous level ordering the rest
+  // of this component relies on (hasChildren, expand/collapse, indentation) stays correct.
+  // parentGroupId === '__PUBLIC_GROUPS__' is the special-case: tapping the add icon on that
+  // placeholder header creates a new top-level PUBLIC group instead of a child of a real group.
+  async function saveNewChildGroup(parentGroupId, parentListIndex) {
+    const trimmedName = (addGroupName || '').trim();
+    if (!trimmedName) { return; }
+
+    const isPublicGroupAdd = (parentGroupId === '__PUBLIC_GROUPS__');
+    let newGroupID;
+    let newGroupEntry;
+    let newLevel;
+
+    if (isPublicGroupAdd) {
+      newGroupID = await createNewGroup({
+        client_id: pSession.client_id,
+        group_name: trimmedName,
+        adminList: pSession.patient_id,
+        memberList: []
+      });
+      newGroupEntry = {
+        group_name: trimmedName,
+        group_type: 'public',
+        group_id: newGroupID,
+        role: 'responsible',
+        level: 2
+      };
+    }
+    else {
+      const parentRec = await dbClient.get({ TableName: 'Groups', Key: { client_id: pSession.client_id, group_id: parentGroupId } }).promise().catch(() => null);
+      newGroupID = await createNewGroup({
+        client_id: pSession.client_id,
+        group_name: trimmedName,
+        madeFromGroup: parentRec?.Item || { group_id: parentGroupId },
+        adminList: pSession.patient_id,
+        memberList: []
+      });
+
+      newLevel = groupsManagedObject[parentGroupId].level + 1;
+      newGroupEntry = {
+        group_name: trimmedName,
+        group_type: 'admin',
+        group_id: newGroupID,
+        role: 'responsible',
+        level: newLevel
+      };
+    }
+
+    const orderedKeys = Object.keys(groupsManagedObject);
+    const insertAt = parentListIndex + 1;
+    const rebuilt = {};
+    orderedKeys.slice(0, insertAt).forEach((k) => { rebuilt[k] = groupsManagedObject[k]; });
+    rebuilt[newGroupID] = newGroupEntry;
+    orderedKeys.slice(insertAt).forEach((k) => { rebuilt[k] = groupsManagedObject[k]; });
+    orderedKeys.forEach((k) => { delete groupsManagedObject[k]; });
+    Object.assign(groupsManagedObject, rebuilt);
+
+    // levelHidden is positionally indexed to match groupsManagedObject's key order - splice in
+    // a visible (false) slot for the new row so every later row's collapse state stays aligned.
+    // levelHidden is normally sparse (shorter than insertAt), and .splice() silently clamps its
+    // start index to the array's current length rather than extending it - pad first so the
+    // insert lands at the exact intended index instead of being misplaced at the array's end.
+    const newLevelHidden = [...reactData.levelHidden];
+    while (newLevelHidden.length < insertAt) { newLevelHidden.push(undefined); }
+    newLevelHidden.splice(insertAt, 0, false);
+    _savedLevelHidden = newLevelHidden;
+
+    // Keep state.groups in sync so getDescendants/myParent see the new group immediately.
+    // Public groups live in state.groups.publicGroups, not the adminHierarchy/parent_of tree.
+    dispatch({
+      type: SET_GROUPS,
+      payload: isPublicGroupAdd
+        ? {
+          ...state.groups,
+          publicGroups: {
+            ...(state.groups.publicGroups || {}),
+            [newGroupID]: { group_name: trimmedName, group_id: newGroupID, role: 'responsible' }
+          }
+        }
+        : {
+          ...state.groups,
+          adminHierarchy: [...(state.groups.adminHierarchy || []), { id: newGroupID, belongs_to: parentGroupId, level: newLevel, name: trimmedName }],
+          parent_of: {
+            ...(state.groups.parent_of || {}),
+            [parentGroupId]: [...(state.groups.parent_of?.[parentGroupId] || []), newGroupID],
+            [newGroupID]: []
+          }
+        }
+    });
+
+    // Leave addGroupTarget set to this same parent so the row stays open for adding another
+    // sibling - only the X icon closes it.
+    setAddGroupName("");
+    setAddGroupRowSeed((seed) => seed + 1);
+    // Bumping groupListRefreshKey forces the group list to fully remount so the newly inserted
+    // group is guaranteed to show immediately, rather than relying on in-place diffing.
+    updateReactData({ levelHidden: newLevelHidden, groupListRefreshKey: reactData.groupListRefreshKey + 1, updatesMade: true }, true);
+  }
+
+  // Move destination picker is scoped to groups the user is authorized to manage. Every admin-type
+  // groupsManagedObject entry already carries a role computed via getRole() (see ShowGroup.js's
+  // prepareGroupObject), so this is a synchronous check - no extra DB round trip needed per row.
+  const isMoveDestinationAuthorized = (group_id) => {
+    return !!(pSession?.adminAccount || reactData.administrative_account || groupsManagedObject[group_id]?.role === 'responsible');
+  };
+
+  // Re-parents sourceId under newParentId - admin hierarchy only (no public/private groups).
+  // Writes immediately, matching this file's Add-group behavior (unlike GroupHierarchySection's
+  // staged groupsToReparent pattern).
+  async function performMoveGroup(sourceId, newParentId) {
+    if ((newParentId === sourceId) || getDescendants(sourceId).includes(newParentId)) {
+      updateReactData({
+        alert: {
+          severity: 'warning',
+          title: 'Circular Reference',
+          message: `A group can't be moved to become its own descendant.`
+        }
+      }, true);
+      return;
+    }
+
+    const orderedKeys = Object.keys(groupsManagedObject);
+    const sourceIdx = orderedKeys.indexOf(sourceId);
+    const sourceLevel = groupsManagedObject[sourceId].level;
+    const subtreeIds = [sourceId];
+    for (let i = sourceIdx + 1; i < orderedKeys.length; i++) {
+      if (groupsManagedObject[orderedKeys[i]].level <= sourceLevel) { break; }
+      subtreeIds.push(orderedKeys[i]);
+    }
+
+    const newParentLevel = groupsManagedObject[newParentId].level;
+    const levelDiff = (newParentLevel + 1) - sourceLevel;
+
+    // admin_list is checked per-group only and never inherited from an ancestor (see AVAGroups.js),
+    // so the new parent's admins need to be unioned onto the moved group and every descendant, or
+    // they'd lose access to what they now structurally own. Additive only - never removes an admin.
+    const [, newParentRec] = await Promise.all([
+      dbClient.update({
+        TableName: 'Groups',
+        Key: { client_id: pSession.client_id, group_id: sourceId },
+        UpdateExpression: 'set #b = :b',
+        ExpressionAttributeNames: { '#b': 'belongs_to' },
+        ExpressionAttributeValues: { ':b': newParentId }
+      }).promise().catch((error) => { cl({ 'Error updating Group belongs_to for move': error }); }),
+      dbClient.get({ TableName: 'Groups', Key: { client_id: pSession.client_id, group_id: newParentId } }).promise().catch(() => null)
+    ]);
+    const newParentAdminList = newParentRec?.Item?.admin_list || [];
+    if (newParentAdminList.length > 0) {
+      await Promise.all(subtreeIds.map(async (id) => {
+        const rec = await dbClient.get({ TableName: 'Groups', Key: { client_id: pSession.client_id, group_id: id } }).promise().catch(() => null);
+        const existingAdminList = rec?.Item?.admin_list || [];
+        const unionedAdminList = Array.from(new Set([...existingAdminList, ...newParentAdminList]));
+        if (unionedAdminList.length === existingAdminList.length) { return; }
+        await dbClient.update({
+          TableName: 'Groups',
+          Key: { client_id: pSession.client_id, group_id: id },
+          UpdateExpression: 'set admin_list = :a',
+          ExpressionAttributeValues: { ':a': unionedAdminList }
+        }).promise().catch((error) => { cl({ 'Error unioning admin_list during move': error }); });
+      }));
+    }
+
+    subtreeIds.forEach((id) => { groupsManagedObject[id].level += levelDiff; });
+
+    // Remove the contiguous subtree block from its old position, then reinsert it right after
+    // newParentId's own last existing descendant.
+    const beforeIds = orderedKeys.slice(0, sourceIdx);
+    const afterIds = orderedKeys.slice(sourceIdx + subtreeIds.length);
+    const remainingIds = [...beforeIds, ...afterIds];
+
+    const newParentIdx = remainingIds.indexOf(newParentId);
+    let insertAfterIdx = newParentIdx;
+    for (let i = newParentIdx + 1; i < remainingIds.length; i++) {
+      if (groupsManagedObject[remainingIds[i]].level <= newParentLevel) { break; }
+      insertAfterIdx = i;
+    }
+    const insertAt = insertAfterIdx + 1;
+
+    const newOrderedKeys = [...remainingIds.slice(0, insertAt), ...subtreeIds, ...remainingIds.slice(insertAt)];
+    const rebuilt = {};
+    newOrderedKeys.forEach((k) => { rebuilt[k] = groupsManagedObject[k]; });
+    orderedKeys.forEach((k) => { delete groupsManagedObject[k]; });
+    Object.assign(groupsManagedObject, rebuilt);
+
+    // levelHidden padding-before-splice (see saveNewChildGroup) applies to BOTH the removal and
+    // the reinsertion here, since it's positionally indexed to groupsManagedObject's key order.
+    const newLevelHidden = [...reactData.levelHidden];
+    while (newLevelHidden.length < sourceIdx + subtreeIds.length) { newLevelHidden.push(undefined); }
+    const movedLevelHiddenSlice = newLevelHidden.splice(sourceIdx, subtreeIds.length);
+    while (newLevelHidden.length < insertAt) { newLevelHidden.push(undefined); }
+    newLevelHidden.splice(insertAt, 0, ...movedLevelHiddenSlice);
+    _savedLevelHidden = newLevelHidden;
+
+    const oldParentId = myParent(sourceId);
+    const newAdminHierarchy = state.groups.adminHierarchy.map((h) => ((h.id === sourceId) ? { ...h, belongs_to: newParentId } : h));
+    const newParentOf = { ...state.groups.parent_of };
+    if (oldParentId) {
+      newParentOf[oldParentId] = (newParentOf[oldParentId] || []).filter((id) => (id !== sourceId));
+    }
+    newParentOf[newParentId] = [...(newParentOf[newParentId] || []), sourceId];
+
+    dispatch({
+      type: SET_GROUPS,
+      payload: { ...state.groups, adminHierarchy: newAdminHierarchy, parent_of: newParentOf }
+    });
+
+    const movedGroupName = groupsManagedObject[sourceId]?.group_name;
+    const newParentName = groupsManagedObject[newParentId]?.group_name;
+    setMoveGroupSource(null);
+    setMoveGroupCandidate(null);
+    setMoveGroupFilter("");
+    setMoveGroupExpanded(new Set());
+    updateReactData({
+      levelHidden: newLevelHidden,
+      groupListRefreshKey: reactData.groupListRefreshKey + 1,
+      updatesMade: true,
+      alert: {
+        severity: 'success',
+        title: 'Group moved',
+        message: `"${movedGroupName}" was moved under "${newParentName}".`
+      }
+    }, true);
+  }
+
+  // Duplicates sourceId and its entire subtree as brand-new groups (new group_ids, structure only
+  // - no members carried over) under newParentId. Unlike Move, there's no circular-reference risk
+  // (the copies are an independent tree), so every authorized candidate row is a valid destination.
+  async function performCopyGroup(sourceId, newParentId) {
+    const orderedKeys = Object.keys(groupsManagedObject);
+    const sourceIdx = orderedKeys.indexOf(sourceId);
+    const sourceLevel = groupsManagedObject[sourceId].level;
+    const subtreeIds = [sourceId];
+    for (let i = sourceIdx + 1; i < orderedKeys.length; i++) {
+      if (groupsManagedObject[orderedKeys[i]].level <= sourceLevel) { break; }
+      subtreeIds.push(orderedKeys[i]);
+    }
+
+    const newParentLevel = groupsManagedObject[newParentId].level;
+    const levelDiff = (newParentLevel + 1) - sourceLevel;
+
+    const newParentRec = await dbClient.get({ TableName: 'Groups', Key: { client_id: pSession.client_id, group_id: newParentId } }).promise().catch(() => null);
+    const newParentAdminList = newParentRec?.Item?.admin_list || [];
+
+    // Every duplicate's new id is generated up front so descendants can resolve their new
+    // parent's id (via idMap) when belongs_to is rewritten in the DB-write pass below.
+    const idMap = {};
+    subtreeIds.forEach((origId, i) => {
+      const origName = groupsManagedObject[origId].group_name || '';
+      idMap[origId] = 'group_' + origName.replace(/\s/g, '').substr(0, 5) + '_' + Date.now() + '_' + i;
+    });
+
+    const newGroupsEntries = {};
+    subtreeIds.forEach((origId) => {
+      newGroupsEntries[idMap[origId]] = {
+        group_name: groupsManagedObject[origId].group_name,
+        group_type: 'admin',
+        group_id: idMap[origId],
+        role: 'responsible',
+        level: groupsManagedObject[origId].level + levelDiff
+      };
+    });
+
+    await Promise.all(subtreeIds.map(async (origId) => {
+      const origRec = await dbClient.get({ TableName: 'Groups', Key: { client_id: pSession.client_id, group_id: origId } }).promise().catch(() => null);
+      const origItem = origRec?.Item || {};
+      const origParentId = myParent(origId);
+      const newBelongsTo = (origId === sourceId) ? newParentId : idMap[origParentId];
+      const unionedAdminList = Array.from(new Set([...(origItem.admin_list || []), ...newParentAdminList]));
+      await dbClient.put({
+        TableName: 'Groups',
+        Item: { ...origItem, client_id: pSession.client_id, group_id: idMap[origId], belongs_to: newBelongsTo, admin_list: unionedAdminList }
+      }).promise().catch((error) => { cl({ 'Error copying group': error }); });
+    }));
+
+    // Insert the new block right after newParentId's own last existing descendant - same
+    // placement rule as Move and Add-group.
+    const newParentIdx = orderedKeys.indexOf(newParentId);
+    let insertAfterIdx = newParentIdx;
+    for (let i = newParentIdx + 1; i < orderedKeys.length; i++) {
+      if (groupsManagedObject[orderedKeys[i]].level <= newParentLevel) { break; }
+      insertAfterIdx = i;
+    }
+    const insertAt = insertAfterIdx + 1;
+    const newOrderedIds = subtreeIds.map((origId) => idMap[origId]);
+
+    const rebuilt = {};
+    orderedKeys.slice(0, insertAt).forEach((k) => { rebuilt[k] = groupsManagedObject[k]; });
+    newOrderedIds.forEach((k) => { rebuilt[k] = newGroupsEntries[k]; });
+    orderedKeys.slice(insertAt).forEach((k) => { rebuilt[k] = groupsManagedObject[k]; });
+    orderedKeys.forEach((k) => { delete groupsManagedObject[k]; });
+    Object.assign(groupsManagedObject, rebuilt);
+
+    // levelHidden padding-before-splice (see saveNewChildGroup) - insert a visible (false) slot
+    // for every newly-added row so later rows' collapse state stays aligned.
+    const newLevelHidden = [...reactData.levelHidden];
+    while (newLevelHidden.length < insertAt) { newLevelHidden.push(undefined); }
+    newLevelHidden.splice(insertAt, 0, ...newOrderedIds.map(() => false));
+    _savedLevelHidden = newLevelHidden;
+
+    // Keep state.groups in sync so getDescendants/myParent see the copies immediately.
+    const newAdminHierarchyEntries = subtreeIds.map((origId) => ({
+      id: idMap[origId],
+      belongs_to: (origId === sourceId) ? newParentId : idMap[myParent(origId)],
+      level: newGroupsEntries[idMap[origId]].level,
+      name: newGroupsEntries[idMap[origId]].group_name
+    }));
+    const newParentOf = { ...state.groups.parent_of };
+    newParentOf[newParentId] = [...(newParentOf[newParentId] || []), idMap[sourceId]];
+    subtreeIds.forEach((origId) => {
+      newParentOf[idMap[origId]] = (state.groups.parent_of?.[origId] || []).map((childOrigId) => idMap[childOrigId]);
+    });
+
+    dispatch({
+      type: SET_GROUPS,
+      payload: { ...state.groups, adminHierarchy: [...(state.groups.adminHierarchy || []), ...newAdminHierarchyEntries], parent_of: newParentOf }
+    });
+
+    const copiedGroupName = groupsManagedObject[idMap[sourceId]]?.group_name;
+    const newParentName = groupsManagedObject[newParentId]?.group_name;
+    setMoveGroupSource(null);
+    setMoveGroupCandidate(null);
+    setMoveGroupFilter("");
+    setMoveGroupExpanded(new Set());
+    updateReactData({
+      levelHidden: newLevelHidden,
+      groupListRefreshKey: reactData.groupListRefreshKey + 1,
+      updatesMade: true,
+      alert: {
+        severity: 'success',
+        title: 'Group copied',
+        message: `"${copiedGroupName}" was copied under "${newParentName}".`
+      }
+    }, true);
+  }
 
   var rowsDisplayed;
   const suppressGroupSelectionUI = !!(preSelectedGroup && preSelectedFunction === 'directory');
@@ -1624,6 +2019,21 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
               keepMounted
             >
               <MenuList className={classes.popUpMenu}>
+                {canDragManage &&
+                  <MenuItem
+                    onClick={() => {
+                      updateReactData({
+                        adminMode: !reactData.adminMode,
+                        popUpOpen: false
+                      }, true);
+                    }}
+                  >
+                    <Box display='flex' flexDirection='row' alignItems={'center'} key={'vRowAdminMode'}>
+                      <BuildIcon />
+                      <Typography className={classes.popUpMenuRow}>{reactData.adminMode ? 'Switch to View Mode' : 'Switch to Admin Mode'}</Typography>
+                    </Box>
+                  </MenuItem>
+                }
                 {reactData.administrative_account &&
                   <MenuItem
                     onClick={() => {
@@ -1705,7 +2115,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                   style={{ paddingRight: '8px', scrollbarWidth: 'thin', flexGrow: 1, display: 'flex' }}
                 >
                   <Box display='flex' flexDirection='column'
-                    key={`activity-list_${Object.keys(groupsManagedObject).length}`}
+                    key={`activity-list_${reactData.groupListRefreshKey}`}
                     justifyContent='flex-start'
                     alignItems='flex-start'
                   >
@@ -1713,6 +2123,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                       <React.Fragment key={`frag_${listIndex}`}>
                         {(((groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) < 3) ||
                           !(reactData.levelHidden[listIndex] ?? reactData.defaultCollapsed)) &&
+                          <React.Fragment>
                           <Box
                             display='flex' flexDirection='row'
                             justifyContent='flex-start'
@@ -1860,6 +2271,48 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                               })}>
                               {groupsManagedObject[listEntry].group_name}
                             </Typography>
+                            {/* The Public/Private headers are UI-only placeholders, not real groups -
+                                only the Public Groups header also gets an add icon (creates a new
+                                top-level public group), gated the same as the old New Group button. */}
+                            {reactData.adminMode && canDragManage &&
+                              (groupsManagedObject[listEntry].group_type !== 'header'
+                                || (listEntry === '__PUBLIC_GROUPS__' && pSession?.adminAccount)) &&
+                              <AddCircleOutlineIcon
+                                style={{ fontSize: '1rem', marginRight: '0.4rem', cursor: 'pointer' }}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if ((groupsManagedObject[listEntry].group_type !== 'header') && !(await guardGroupAuthorization(listEntry))) { return; }
+                                  setAddGroupTarget(listEntry);
+                                  setAddGroupName("");
+                                }}
+                              />
+                            }
+                            {/* Move is scoped to the admin hierarchy only - no public/private/header rows. */}
+                            {reactData.adminMode && canDragManage && (groupsManagedObject[listEntry].group_type === 'admin') &&
+                              <OpenWithIcon
+                                style={{ fontSize: '1rem', marginRight: '0.4rem', cursor: 'pointer' }}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (!(await guardGroupAuthorization(listEntry))) { return; }
+                                  setMoveGroupSource(listEntry);
+                                  setMoveGroupCandidate(null);
+                                  setMoveGroupFilter("");
+                                  setMoveGroupExpanded(new Set());
+                                }}
+                              />
+                            }
+                            {/* Leaf rows only (no sub-groups) - matches drag-to-trash's own rule, just
+                                surfaced as a discoverable click target. "Empty" (no members) is checked
+                                live on click (see requestDeleteGroup), not precomputed per row. */}
+                            {reactData.adminMode && canDragManage && (groupsManagedObject[listEntry].group_type === 'admin') && !hasChildren(listIndex) &&
+                              <DeleteIcon
+                                style={{ fontSize: '1rem', marginRight: '0.4rem', cursor: 'pointer' }}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  await requestDeleteGroup(listEntry);
+                                }}
+                              />
+                            }
                             {(groupsManagedObject[listEntry].level - reactData.minimumGroupLevel > 1) && hasChildren(listIndex) && (
                               (reactData.levelHidden[listIndex + 1] ?? reactData.defaultCollapsed) ? (
                                 <ExpandMoreIcon
@@ -1896,6 +2349,41 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                               )
                             )}
                           </Box>
+                          {addGroupTarget === listEntry &&
+                            <Box
+                              display='flex' flexDirection='row'
+                              justifyContent='flex-start'
+                              alignItems='center'
+                              style={{
+                                marginLeft: `${(groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) * 1.5}rem`,
+                                marginTop: 2, marginBottom: 2,
+                              }}
+                            >
+                              <TextField
+                                key={`add_group_input_${listIndex}_${addGroupRowSeed}`}
+                                defaultValue={""}
+                                autoFocus
+                                onChange={(e) => { setAddGroupName(e.target.value); }}
+                                style={AVATextStyle({ size: 1.0, margin: { top: -0.2, bottom: 0 } })}
+                              />
+                              <SaveIcon
+                                style={{ fontSize: '0.9rem', marginLeft: '0.5rem', cursor: 'pointer' }}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  await saveNewChildGroup(listEntry, listIndex);
+                                }}
+                              />
+                              <HighlightOffIcon
+                                style={{ fontSize: '0.9rem', marginLeft: '0.4rem', cursor: 'pointer' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAddGroupTarget(null);
+                                  setAddGroupName("");
+                                }}
+                              />
+                            </Box>
+                          }
+                          </React.Fragment>
                         }
                       </React.Fragment>
                     ))}
@@ -2750,6 +3238,182 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
           );
         })()
       }
+      {moveGroupSource &&
+        <Dialog
+          open={!!moveGroupSource}
+          onClose={() => { setMoveGroupSource(null); setMoveGroupCandidate(null); setMoveGroupFilter(""); setMoveGroupExpanded(new Set()); }}
+          PaperProps={{ style: { borderRadius: '30px', display: 'flex', flexDirection: 'column', maxHeight: '80vh' } }}
+          maxWidth='sm'
+          fullWidth
+        >
+          <Box px={2} pt={2} pb={1} style={{ flexShrink: 0 }}>
+            <Typography style={AVATextStyle({ size: 1.3, bold: true, margin: { bottom: 0.5 } })}>
+              {`Move or copy "${groupsManagedObject[moveGroupSource]?.group_name}" to a new parent`}
+            </Typography>
+            <TextField
+              autoFocus
+              placeholder='Filter groups...'
+              value={moveGroupFilter}
+              onChange={(e) => { setMoveGroupFilter(e.target.value); }}
+              style={{ width: '100%' }}
+              variant='standard'
+            />
+          </Box>
+          <Box px={2} pb={1} style={{ flexGrow: 1, overflowY: 'auto' }}>
+            {(() => {
+              const disabledDescendants = new Set(getDescendants(moveGroupSource));
+              const currentParentId = myParent(moveGroupSource);
+              const lowerFilter = moveGroupFilter.trim().toLowerCase();
+              const allCandidateIds = Object.keys(groupsManagedObject).filter((id) => (
+                (id !== moveGroupSource)
+                && (groupsManagedObject[id].group_type === 'admin')
+                && isMoveDestinationAuthorized(id)
+              ));
+              const candidateIdSet = new Set(allCandidateIds);
+
+              // Base the "lowest 2 levels" default on the shallowest level actually PRESENT among
+              // this picker's candidates, not reactData.minimumGroupLevel (the whole tree's floor)
+              // - some clients have candidate roots that sit deeper than the tree's absolute
+              // minimum (e.g. an unauthorized or non-admin ancestor above them), which would
+              // otherwise leave only that one root row visible with its children stuck collapsed.
+              const candidateMinLevel = Math.min(...allCandidateIds.map((id) => groupsManagedObject[id].level));
+
+              // Parent -> immediate children map (children scoped to allCandidateIds only) drives
+              // both the eyeball expand icon and the collapse/expand visibility walk below.
+              const childrenMap = {};
+              allCandidateIds.forEach((id) => {
+                const parentId = myParent(id);
+                if (parentId && candidateIdSet.has(parentId)) {
+                  (childrenMap[parentId] = childrenMap[parentId] || []).push(id);
+                }
+              });
+
+              // Lowest + next-to-lowest levels always show; deeper rows require every ancestor
+              // down the chain to have been individually expanded via the eyeball icon. A parent
+              // that's excluded from candidates entirely (e.g. moveGroupSource itself, which never
+              // renders a row and so can never be expanded) can never reveal its own descendants -
+              // those rows stay hidden past the default 2 levels rather than falling back to visible.
+              const isRowVisible = (id) => {
+                const relLevel = groupsManagedObject[id].level - candidateMinLevel;
+                if (relLevel < 2) { return true; }
+                const parentId = myParent(id);
+                if (!parentId) { return true; }
+                if (!candidateIdSet.has(parentId)) { return false; }
+                return moveGroupExpanded.has(parentId) && isRowVisible(parentId);
+              };
+
+              const searchFiltered = lowerFilter
+                ? allCandidateIds.filter((id) => groupsManagedObject[id].group_name.toLowerCase().includes(lowerFilter))
+                : allCandidateIds;
+              // An active text filter bypasses collapse state entirely - the point of searching is
+              // to jump straight to a match regardless of what's currently expanded.
+              const visibleCandidateIds = lowerFilter ? searchFiltered : searchFiltered.filter(isRowVisible);
+
+              if (visibleCandidateIds.length === 0) {
+                return (
+                  <Typography style={AVATextStyle({ size: 1, color: 'textSecondary' })}>
+                    {'No matching groups found.'}
+                  </Typography>
+                );
+              }
+              return visibleCandidateIds.map((id) => {
+                const isDescendant = disabledDescendants.has(id);
+                const isCurrentParent = (id === currentParentId);
+                const disabled = isDescendant || isCurrentParent;
+                const isSelected = (moveGroupCandidate === id);
+                const hasChildrenHere = (childrenMap[id]?.length > 0);
+                const isExpanded = moveGroupExpanded.has(id);
+                return (
+                  <Box
+                    key={`move_candidate_${id}`}
+                    display='flex' flexDirection='row' alignItems='center'
+                    onClick={() => { if (!disabled) { setMoveGroupCandidate(id); } }}
+                    style={{
+                      marginLeft: `${(groupsManagedObject[id].level - reactData.minimumGroupLevel) * 1.5}rem`,
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      cursor: disabled ? 'default' : 'pointer',
+                      opacity: disabled ? 0.4 : 1,
+                      backgroundColor: isSelected ? (reactData.isDarkMode ? '#0d47a1' : '#90caf9') : 'transparent',
+                    }}
+                  >
+                    <Typography style={AVATextStyle({ size: 1.0 })}>
+                      {`${groupsManagedObject[id].group_name}${isDescendant ? ' (would create a loop)' : (isCurrentParent ? ' (current location)' : '')}`}
+                    </Typography>
+                    {hasChildrenHere && !lowerFilter && (
+                      isExpanded ? (
+                        <ExpandLessIcon
+                          style={{ fontSize: '1rem', marginLeft: '0.4rem', cursor: 'pointer' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMoveGroupExpanded((prev) => {
+                              const next = new Set(prev);
+                              next.delete(id);
+                              return next;
+                            });
+                          }}
+                        />
+                      ) : (
+                        <ExpandMoreIcon
+                          style={{ fontSize: '1rem', marginLeft: '0.4rem', cursor: 'pointer' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMoveGroupExpanded((prev) => new Set(prev).add(id));
+                          }}
+                        />
+                      )
+                    )}
+                  </Box>
+                );
+              });
+            })()}
+          </Box>
+          <DialogActions className={classes.buttonArea}>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: moveGroupCandidate ? 'blue' : '#aaa', color: 'white' }}
+              size='small'
+              disabled={!moveGroupCandidate}
+              onClick={async () => { await performMoveGroup(moveGroupSource, moveGroupCandidate); }}
+            >
+              {'Move Here'}
+            </Button>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: moveGroupCandidate ? 'green' : '#aaa', color: 'white' }}
+              size='small'
+              disabled={!moveGroupCandidate}
+              onClick={async () => { await performCopyGroup(moveGroupSource, moveGroupCandidate); }}
+            >
+              {'Copy Here'}
+            </Button>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'red', color: 'white' }}
+              size='small'
+              onClick={() => { setMoveGroupSource(null); setMoveGroupCandidate(null); setMoveGroupFilter(""); setMoveGroupExpanded(new Set()); }}
+            >
+              {'Cancel'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      }
+      {deleteGroupConfirmTarget &&
+        <AVAConfirm
+          promptText={[
+            'Are you sure?',
+            `Delete "${groupsManagedObject[deleteGroupConfirmTarget]?.group_name || 'this group'}"? This cannot be undone.`
+          ]}
+          cancelText={'Cancel'}
+          confirmText={'Delete'}
+          onCancel={() => { setDeleteGroupConfirmTarget(null); }}
+          onConfirm={async () => {
+            const groupName = groupsManagedObject[deleteGroupConfirmTarget]?.group_name;
+            setDeleteGroupConfirmTarget(null);
+            await executeDeleteGroup(deleteGroupConfirmTarget, groupName);
+          }}
+        />
+      }
       {reactData.sendMessage &&
         <MessageForm
           pPerson={state.session.patient_id}
@@ -2928,27 +3592,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
           }}
         />
       }
-      {promptForName &&
-        <AVATextInput
-          promptText="Enter a Name for the Group you're creating"
-          buttonText='Create'
-          onCancel={() => { setPromptForName(false); }}
-          onSave={async (newGroupName) => {
-            setPromptForName(false);
-            const newGroupID = await createNewGroup({
-              client_id: pSession.client_id,
-              group_name: newGroupName,
-              adminList: pSession.patient_id,
-              memberList: []
-            });
-            onRefresh({
-              newGroupID,
-              newGroupName
-            });
-          }}
-        />
-      }
-      {!promptForName && (rowsDisplayed === 0) &&
+      {(rowsDisplayed === 0) &&
         <Box display='flex' flexDirection='row' minWidth='100%' justifyContent='space-between' alignItems='center'>
           <Typography
             key={`g_text_end`}
@@ -2997,19 +3641,6 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         >
           {'Done'}
         </Button>
-        {pSession?.adminAccount &&
-          <Button
-            onClick={() => {
-              setPromptForName(true);
-            }}
-            className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'green', color: 'white' }}
-            size='small'
-            startIcon={<GroupAddIcon fontSize="small" />}
-          >
-            {`New Group`}
-          </Button>
-        }
       </DialogActions>
       {reactData.alert &&
         <Snackbar
