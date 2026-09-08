@@ -3,18 +3,22 @@ import React from 'react';
 import { deepCopy, isEmpty, dbClient, lambda, cl, recordExists } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle, isDark } from '../../util/AVAStyles';
 import { makeName } from '../../util/AVAPeople';
+import { findOrphanedGroupMembers, removeOrphanedGroupMembers } from '../../util/AVAGroups';
 
 import useSession from '../../hooks/useSession';
 
 import GroupProfileSection from '../sections/GroupProfileSection';
 import GroupSecuritySection from '../sections/GroupSecuritySection';
-import GroupHierarchySection from '../sections/GroupHierarchySection';
 import GroupFormsSection from '../sections/GroupFormsSection';
 import GroupTasksSection from '../sections/GroupTasksSection';
 import GroupRulesSection from '../sections/GroupRulesSection';
 
-import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
+import {
+  Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper,
+  DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemText, CircularProgress
+} from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
+import GroupWorkIcon from '@material-ui/icons/GroupWork';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 const useStyles = makeStyles(theme => ({
@@ -24,6 +28,13 @@ const useStyles = makeStyles(theme => ({
   popUpMenu: {
     marginRight: theme.spacing(3),
     paddingRight: 2,
+  },
+  popUpMenuRow: {
+    marginLeft: theme.spacing(1),
+    fontSize: theme.typography.fontSize * 1.0,
+  },
+  popUpFooter: {
+    fontSize: theme.typography.fontSize * 0.8,
   },
   paperPallette: {
     borderRadius: '30px 30px 30px 30px',
@@ -102,8 +113,6 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
     isError: false,
     showQuickSearch: false,
     showGroupAccessSearch: false,
-    groupsToAdd: [],
-    pendingAddIconGroups: [],
     addLink: false,
     needsHeader: false,
     changesMade: false,
@@ -113,9 +122,6 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
       },
       GroupSecuritySection: {
         component_id: GroupSecuritySection,
-      },
-      GroupHierarchySection: {
-        component_id: GroupHierarchySection,
       },
       GroupFormsSection: {
         component_id: GroupFormsSection,
@@ -148,6 +154,45 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
     }
   };
 
+  // Orphaned-member audit/cleanup (dry-run then apply) for the group this dialog is editing -
+  // see findOrphanedGroupMembers in AVAGroups.js. { group_name, loading, orphans, evaluatedCount, applying, applied }.
+  const [orphanCleanup, setOrphanCleanup] = React.useState(null);
+
+  async function startOrphanCleanup() {
+    const group_id = reactData.current[tableName]?.group_id;
+    const group_name = reactData.current[tableName]?.name;
+    if (!group_id) { return; }
+    setOrphanCleanup({ group_name, loading: true, orphans: null, evaluatedCount: null, applying: false, applied: null });
+    const { orphans, evaluatedCount } = await findOrphanedGroupMembers(client_id, group_id).catch((error) => {
+      cl({ 'GroupMaintenance: findOrphanedGroupMembers failed': error });
+      return { orphans: [], evaluatedCount: 0 };
+    });
+    setOrphanCleanup((prev) => (prev ? { ...prev, loading: false, orphans, evaluatedCount } : prev));
+  }
+
+  async function applyOrphanCleanup() {
+    const group_id = reactData.current[tableName]?.group_id;
+    const { orphans } = orphanCleanup;
+    setOrphanCleanup((prev) => ({ ...prev, applying: true }));
+    const personIds = orphans.map((o) => o.person_id);
+    const result = await removeOrphanedGroupMembers(client_id, group_id, personIds).catch((error) => {
+      cl({ 'GroupMaintenance: removeOrphanedGroupMembers failed': error });
+      return { updated: 0, total: personIds.length };
+    });
+    setOrphanCleanup((prev) => ({ ...prev, applying: false, applied: result }));
+    updateReactData({ membershipChange: true }, true);
+  }
+
+  // groupHasChildren check (see GroupControl.js's hasChildren) - the orphan audit is only meaningful
+  // for a group that has children (a childless group's direct members can't be "orphaned").
+  function currentGroupHasChildren() {
+    const group_id = reactData.current[tableName]?.group_id;
+    const groupKeys = Object.keys(reactData.groupsManagedObject || {});
+    const idx = groupKeys.indexOf(group_id);
+    if ((idx < 0) || (idx === groupKeys.length - 1)) { return false; }
+    return reactData.groupsManagedObject[groupKeys[idx + 1]].level > reactData.groupsManagedObject[group_id].level;
+  }
+
   React.useEffect(() => {
     async function initialize() {
       // Get information about the Group that we are updating
@@ -168,14 +213,6 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
           isAuthorized: true,
           version_id: 0,
           component_name: 'GroupSecuritySection'
-        },
-        {
-          section_name: 'Parent & Children',
-          color: options?.color || 'orange',
-          isOpen: false,
-          isAuthorized: true,
-          version_id: 0,
-          component_name: 'GroupHierarchySection'
         },
         {
           section_name: 'Group Forms',
@@ -446,24 +483,9 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
         }
       }
     }
-    // add any new groups to the database
-    for (let newGroup of reactData.groupsToAdd) {
-      reactData.reload_onExit = true;  // if we are adding new groups, we need to do a full reload on exit to update the group list in the GroupHierarchySection
-      await dbClient.put({
-        TableName: 'Groups',
-        Item: newGroup
-      })
-        .promise()
-        .catch(error => {
-          console.log(`caught error putting to Groups; error is:`, error);
-          return false;
-        });
-    }
 
     updateReactData({
       unsavedChanges: false,
-      groupsToAdd: [],
-      pendingAddIconGroups: [],
       reload_onExit: reactData.reload_onExit,
       og: reactData.og,
       current: reactData.current
@@ -560,16 +582,28 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
           }}
           keepMounted>
           <MenuList className={classes.popUpMenu}>
+            {currentGroupHasChildren() &&
+              <MenuItem
+                onClick={() => {
+                  updateReactData({ popupMenuOpen: false }, true);
+                  startOrphanCleanup();
+                }}
+              >
+                <Box display='flex' flexDirection='row' alignItems={'center'} key={'vRowOrphanCleanup'}>
+                  <GroupWorkIcon />
+                  <Typography className={classes.popUpMenuRow}>{'Clean up orphaned members'}</Typography>
+                </Box>
+              </MenuItem>
+            }
             <MenuItem>
               <Box
                 display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                 key={'vRowRefresh'}
-                style={AVATextStyle({ size: 0.8 })}
               >
-                <Typography style={AVATextStyle({ size: 0.8 })}>
+                <Typography className={classes.popUpFooter}>
                   {`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
                 </Typography>
-                <Typography style={AVATextStyle({ size: 0.8 })}>
+                <Typography className={classes.popUpFooter}>
                   {`User ${state.session.user_id}${state.session.patient_id !== state.session.user_id ? (' (' + state.session.patient_id + ')') : ''}`}
                 </Typography>
               </Box>
@@ -797,6 +831,55 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
             {reactData.alert.message}
           </Alert>
         </Snackbar >
+      }
+
+      {(orphanCleanup !== null) &&
+        <Dialog open onClose={() => { if (!orphanCleanup.applying) { setOrphanCleanup(null); } }} maxWidth='xs' fullWidth>
+          <DialogTitle>{`Orphaned members: "${orphanCleanup.group_name}"`}</DialogTitle>
+          <DialogContent>
+            {orphanCleanup.loading &&
+              <Box display='flex' flexDirection='row' alignItems='center' py={2}>
+                <CircularProgress size={20} style={{ marginRight: '12px' }} />
+                <Typography>{'Checking members for a valid child-group membership…'}</Typography>
+              </Box>
+            }
+            {(!orphanCleanup.loading && orphanCleanup.applied) &&
+              <Typography>{`Done - removed ${orphanCleanup.applied.updated} of ${orphanCleanup.applied.total} orphaned membership${(orphanCleanup.applied.total === 1) ? '' : 's'}.`}</Typography>
+            }
+            {(!orphanCleanup.loading && !orphanCleanup.applied) &&
+              (orphanCleanup.orphans.length === 0
+                ? <Typography>{`Evaluated ${orphanCleanup.evaluatedCount} member${(orphanCleanup.evaluatedCount === 1) ? '' : 's'} of "${orphanCleanup.group_name}". No orphaned members found.`}</Typography>
+                : <React.Fragment>
+                  <Typography style={{ marginBottom: '8px' }}>
+                    {`Evaluated ${orphanCleanup.evaluatedCount} member${(orphanCleanup.evaluatedCount === 1) ? '' : 's'} of "${orphanCleanup.group_name}". ${orphanCleanup.orphans.length} ${(orphanCleanup.orphans.length === 1) ? 'person is' : 'people are'} active here but not a member of any child group - likely left behind by a prior move. Remove them from this group?`}
+                  </Typography>
+                  <List dense style={{ maxHeight: '40vh', overflowY: 'auto' }}>
+                    {orphanCleanup.orphans.map((o) => (
+                      <ListItem key={o.person_id} style={{ paddingTop: 0, paddingBottom: 0 }}>
+                        <ListItemText primary={o.display_name} />
+                      </ListItem>
+                    ))}
+                  </List>
+                </React.Fragment>
+              )
+            }
+          </DialogContent>
+          <DialogActions>
+            {(orphanCleanup.applied || (orphanCleanup.orphans?.length === 0))
+              ? <Button onClick={() => setOrphanCleanup(null)}>{'Close'}</Button>
+              : <React.Fragment>
+                <Button onClick={() => setOrphanCleanup(null)} disabled={orphanCleanup.loading || orphanCleanup.applying}>{'Cancel'}</Button>
+                <Button
+                  color='primary'
+                  disabled={orphanCleanup.loading || orphanCleanup.applying || !orphanCleanup.orphans?.length}
+                  onClick={applyOrphanCleanup}
+                >
+                  {orphanCleanup.applying ? 'Removing…' : `Remove ${orphanCleanup.orphans?.length || ''}`}
+                </Button>
+              </React.Fragment>
+            }
+          </DialogActions>
+        </Dialog>
       }
     </Dialog >
   );

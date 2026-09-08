@@ -6,7 +6,7 @@ import { getImage } from '../../util/AVAPeople';
 import { AVATextStyle, AVAclasses, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
 import { clearPushSubscriptionFromDB, initPushNotifications, unsubscribeFromPush, isPushSupported, isPushOptedIn, syncAlertDeliveryMethod } from '../../util/AVAPushNotifications';
 import { getActivityDetail } from '../../util/AVAActivityLoaderV3';
-import { loadAndQueueNotifications, markNotificationShown, priorityToSeverity, getNotificationDisplayOptions, INITIAL_NOTIFICATION_CHECK_TIME, playNotificationSound } from '../../util/AVANotifications';
+import { loadAndQueueNotifications, markNotificationShown, resolveNotification, priorityToSeverity, getNotificationDisplayOptions, INITIAL_NOTIFICATION_CHECK_TIME, playNotificationSound, unlockNotificationSound } from '../../util/AVANotifications';
 import QuickAdd from './QuickAdd';
 
 import Card from '@material-ui/core/Card';
@@ -35,7 +35,7 @@ import Avatar from '@material-ui/core/Avatar';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
 import Dialog from '@material-ui/core/Dialog';
-import DialogTitle from '@material-ui/core/DialogTitle';
+
 import DialogContent from '@material-ui/core/DialogContent';
 import DialogActions from '@material-ui/core/DialogActions';
 import Button from '@material-ui/core/Button';
@@ -45,6 +45,7 @@ import IconButton from '@material-ui/core/IconButton';
 import Radio from '@material-ui/core/Radio';
 import RadioGroup from '@material-ui/core/RadioGroup';
 import LinearProgress from '@material-ui/core/LinearProgress';
+import CircularProgress from '@material-ui/core/CircularProgress';
 import Switch from '@material-ui/core/Switch';
 
 import Menu from '@material-ui/core/Menu';
@@ -75,6 +76,12 @@ import NotificationsActiveIcon from '@material-ui/icons/NotificationsActive';
 import NotificationsOffIcon from '@material-ui/icons/NotificationsOff';
 import VisibilityIcon from '@material-ui/icons/Visibility';
 import VisibilityOffIcon from '@material-ui/icons/VisibilityOff';
+import PauseIcon from '@material-ui/icons/Pause';
+import PlayArrowIcon from '@material-ui/icons/PlayArrow';
+import ErrorOutlineIcon from '@material-ui/icons/ErrorOutline';
+import WarningRoundedIcon from '@material-ui/icons/WarningRounded';
+import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
+import CheckCircleOutlineIcon from '@material-ui/icons/CheckCircleOutline';
 
 import Tooltip from '@material-ui/core/Tooltip';
 import QuickSearch from './QuickSearch';
@@ -274,6 +281,11 @@ export default ({ start_at }) => {
     liveLinkTitle: '',
     liveLinkSiblings: [],
     liveLinkCurrentIndex: -1,
+    liveLinkIsSlideshow: false,
+    liveLinkPaused: false,
+    liveLinkManualNavToken: 0,
+    liveLinkHeicConverting: false,
+    liveLinkHeicConvertedUrl: null,
     showIosInstall: false,
     alert: false,
     notification: null,
@@ -485,6 +497,14 @@ export default ({ start_at }) => {
   // Cache for the optional 'favorites' MenuV3 template record.
   // undefined = not yet fetched; null = fetched but not found; object = found record.
   const favoritesMenuTemplateRef = React.useRef(undefined);
+  // Tracks, per `${level_index}~${parent_menu_id}`, how many of that parent's child ids have
+  // already been requested from the DB - lets loadChildrenPage fetch huge children lists (e.g.
+  // a menu item with 2000+ photo sub-items) a page at a time instead of all at once. See
+  // loadChildrenPage/LAZY_CHILD_THRESHOLD below.
+  const lazyFetchCursorRef = React.useRef({});
+  // Holds the blob: URL for the most recently HEIC-converted live-link image, so it can be
+  // revoked (freeing memory) once it's replaced or the viewer closes.
+  const liveLinkHeicObjectUrlRef = React.useRef(null);
   const activePersonId = state.session?.patient_id || state.session?.person_id;
 
   const loadSubjectGroups = async () => {
@@ -686,7 +706,17 @@ export default ({ start_at }) => {
           }
           else if (startAtItem.menu_itemType === 'menu') {
             reactData.menu_hierarchy = reactUpd.menu_hierarchy;
-            await batchGetMenuItems(startAtItem.children || [], startAtLevel + 1, startAtItem);
+            if (useTileUI) {
+              delete lazyFetchCursorRef.current[`${startAtLevel + 1}~${startAtItem.menu_id}`];
+              await loadChildrenPage(startAtItem, startAtLevel + 1, 0);
+              reactData.levelPages = Object.assign({}, reactData.levelPages, { [startAtLevel + 1]: 0 });
+              reactUpd.levelPages = reactData.levelPages;
+            }
+            else {
+              // Accessible (non-tile) mode has no pagination UI for nested submenus, so it must
+              // keep loading the full children list up front rather than paging lazily.
+              await batchGetMenuItems(startAtItem.children || [], startAtLevel + 1, startAtItem);
+            }
             reactUpd.menu_hierarchy = reactData.menu_hierarchy;
           }
         }
@@ -732,11 +762,8 @@ export default ({ start_at }) => {
     if ((minutesSinceActive > 60) || (state.session?.kiosk_mode && state.profile?.kiosk_mode)) {
       window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
     }
-    else {
-      // Cheap, cursor-based poll — run on every idle tick (every 1 min) so a notification
-      // can't be missed indefinitely just because activity keeps resetting the 5-min refresh below.
-      await loadMenuNotifications();
-    }
+    // Notification polling now runs on its own always-on interval (see useEffect near useIdleTimer),
+    // independent of idle state, so it's no longer done here.
     if ((minutesSinceActive <= 60) && !(state.session?.kiosk_mode && state.profile?.kiosk_mode)
       && ((now.getTime() - reactData.lastActiveTime.getTime()) > (5 * oneMinute))) {
       cl(`Update while idle at ${now.toLocaleString()}.`);
@@ -839,6 +866,99 @@ export default ({ start_at }) => {
     }
   }, [reactData.renderFunctionCall, pause, start]);
 
+  // Notification poll, independent of the idle timer - previously this only ran on onIdle,
+  // so a continuously-active user (whose actions kept resetting the idle countdown) could go
+  // many minutes without ever being checked. Deliberately keeps polling while the tab is hidden
+  // (per user preference, 2026-09-01) so a notification can still pop/sound while the app is
+  // backgrounded, not just when the user comes back to look at it; still does an immediate
+  // catch-up check the moment the tab becomes visible again in case the background tick was throttled.
+  React.useEffect(() => {
+    if (!state.session?.client_id || !state.session?.user_id) { return undefined; }
+    const interval = setInterval(() => {
+      void loadMenuNotifications();
+    }, oneMinute);
+    const onVisibilityChange = () => {
+      if (!document.hidden) { void loadMenuNotifications(); }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [state.session?.client_id, state.session?.user_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Browser autoplay policies block audio.play() unless a real user gesture (click/keydown/touchstart)
+  // is in progress - re-prime the shared notification sound element on EVERY gesture (not just the
+  // first) so a later revocation of the unlock (e.g. after the tab spends time backgrounded) gets
+  // re-armed the next time the user interacts, instead of silently staying broken for the rest of the session.
+  React.useEffect(() => {
+    const unlockOnGesture = () => { unlockNotificationSound(); };
+    document.addEventListener('pointerdown', unlockOnGesture);
+    document.addEventListener('keydown', unlockOnGesture);
+    return () => {
+      document.removeEventListener('pointerdown', unlockOnGesture);
+      document.removeEventListener('keydown', unlockOnGesture);
+    };
+  }, []);
+
+  // Keep a ref in sync with the current slide so the interval below always reads a fresh index
+  // without needing to be re-armed (and thus re-created) on every single tick.
+  const liveLinkSlideIndexRef = React.useRef(-1);
+  React.useEffect(() => {
+    liveLinkSlideIndexRef.current = reactData.liveLinkCurrentIndex;
+  }, [reactData.liveLinkCurrentIndex]);
+
+  // Auto-advance slideshow-style Live Links (array of slide images), looping back to the first slide.
+  // Re-armed on pause/resume and on manual nav (via liveLinkManualNavToken) to restart the countdown,
+  // but NOT on every auto-tick, so it doesn't fall prey to the batching race that caused it to stall.
+  React.useEffect(() => {
+    if (!reactData.showLiveLink || !reactData.liveLinkIsSlideshow || reactData.liveLinkPaused) { return undefined; }
+    const siblings = reactData.liveLinkSiblings || [];
+    if (siblings.length <= 1) { return undefined; }
+    const interval = setInterval(() => {
+      const nextIndex = (liveLinkSlideIndexRef.current + 1) % siblings.length;
+      const nextSlide = siblings[nextIndex];
+      liveLinkSlideIndexRef.current = nextIndex;
+      updateReactData({ liveLinkUrl: nextSlide.url, liveLinkTitle: nextSlide.title, liveLinkCurrentIndex: nextIndex }, true);
+    }, DEFAULT_SLIDESHOW_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [reactData.showLiveLink, reactData.liveLinkIsSlideshow, reactData.liveLinkPaused, reactData.liveLinkSiblings, reactData.liveLinkManualNavToken]);
+
+  // HEIC/HEIF photos (default format for iPhone camera uploads) decode natively only in Safari -
+  // other browsers can't render them in <img>/<iframe> at all, which is what made the viewer fall
+  // through to a browser download instead of a preview. Convert to a displayable JPEG on the fly
+  // whenever the viewer shows one - covers single-image view, slideshow auto-advance, and manual
+  // sibling navigation, since all three just update liveLinkUrl.
+  React.useEffect(() => {
+    if (!reactData.showLiveLink || !isHeicUrl(reactData.liveLinkUrl)) {
+      return undefined;
+    }
+    let cancelled = false;
+    updateReactData({ liveLinkHeicConverting: true, liveLinkHeicConvertedUrl: null }, true);
+    (async () => {
+      const objectUrl = await convertHeicUrlToObjectUrl(reactData.liveLinkUrl);
+      if (cancelled) {
+        if (objectUrl) { URL.revokeObjectURL(objectUrl); }
+        return;
+      }
+      if (liveLinkHeicObjectUrlRef.current) {
+        URL.revokeObjectURL(liveLinkHeicObjectUrlRef.current);
+      }
+      liveLinkHeicObjectUrlRef.current = objectUrl;
+      updateReactData({ liveLinkHeicConverting: false, liveLinkHeicConvertedUrl: objectUrl }, true);
+    })();
+    return () => { cancelled = true; };
+  }, [reactData.showLiveLink, reactData.liveLinkUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Release the last HEIC-converted blob URL when the component unmounts.
+  React.useEffect(() => {
+    return () => {
+      if (liveLinkHeicObjectUrlRef.current) {
+        URL.revokeObjectURL(liveLinkHeicObjectUrlRef.current);
+      }
+    };
+  }, []);
+
   // Fire any start_at activation that was deferred because groups/accessList weren't loaded yet
   React.useEffect(() => {
     if (!state.groups || !state.accessList || !deferredStartAtRef.current) { return; }
@@ -871,10 +991,22 @@ export default ({ start_at }) => {
     }
     else if (deferredItem.menu_itemType === 'menu') {
       (async () => {
-        for (const childItem of (deferredItem.children || [])) {
-          await getMenuItem(childItem, deferredLevel + 1, deferredItem);
+        if (useTileUI) {
+          delete lazyFetchCursorRef.current[`${deferredLevel + 1}~${deferredItem.menu_id}`];
+          await loadChildrenPage(deferredItem, deferredLevel + 1, 0);
+          updateReactData({
+            menu_hierarchy: reactData.menu_hierarchy,
+            levelPages: Object.assign({}, reactData.levelPages, { [deferredLevel + 1]: 0 })
+          }, true);
         }
-        updateReactData({ menu_hierarchy: reactData.menu_hierarchy }, true);
+        else {
+          // Accessible (non-tile) mode has no pagination UI for nested submenus, so it must
+          // keep loading the full children list up front rather than paging lazily.
+          for (const childItem of (deferredItem.children || [])) {
+            await getMenuItem(childItem, deferredLevel + 1, deferredItem);
+          }
+          updateReactData({ menu_hierarchy: reactData.menu_hierarchy }, true);
+        }
       })();
     }
   }, [state.groups, state.accessList]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -896,8 +1028,8 @@ export default ({ start_at }) => {
     };
   };
 
-  const authorizedToMenuItem = (available_to) => {
-    if (reactData.is_master) {
+  const authorizedToMenuItem = (available_to, options = {}) => {
+    if (reactData.is_master && !options.ignoreMasterBypass) {
       return true;
     }
 
@@ -992,6 +1124,11 @@ export default ({ start_at }) => {
   };
 
   const MENU_PAGE_SIZE = 50;  // items shown per page per menu level (prev/next navigation)
+  // Parents with more children than this (e.g. a menu item with 2000+ photo sub-items) are paged
+  // in from the DB MENU_PAGE_SIZE ids at a time (see loadChildrenPage) instead of fetching every
+  // child record up front just to display 50 - that upfront fetch was what made opening such a
+  // menu slow and memory-heavy even though only one page is ever shown at once.
+  const LAZY_CHILD_THRESHOLD = 150;
 
   /**
    * Generate a tiny base64 JPEG thumbnail from an uploaded image/video File object.
@@ -1199,7 +1336,11 @@ export default ({ start_at }) => {
         }
       };
       img.onerror = () => resolve(null);
-      img.src = imageUrl;
+      // Force a distinct URL from any plain <img> that may have already cached this same
+      // resource as an opaque (no-cors) response — reusing that cached entry for a
+      // crossOrigin='anonymous' request gets silently blocked with no real network call.
+      const cacheBustSeparator = imageUrl.includes('?') ? '&' : '?';
+      img.src = `${imageUrl}${cacheBustSeparator}_thumbgen=1`;
     });
   };
 
@@ -1270,8 +1411,28 @@ export default ({ start_at }) => {
 
   /**
    * Load pending notifications for current user and queue for display.
-   * Called after menu rebuild, on component return, and on idle recovery.
+   * Called on mount, on a 60s always-on interval (see useEffect near useIdleTimer), and
+   * whenever a rendered dialog/form closes.
    */
+  // Builds the shape rendered by the notification Dialog from a raw queued notification record.
+  const buildNotificationDisplay = (notifRec) => {
+    const displayOptions = getNotificationDisplayOptions(notifRec);
+    return {
+      severity: priorityToSeverity(notifRec.priority || 'low'),
+      title: notifRec.title,
+      message: notifRec.message,
+      notification_id: notifRec.notification_id,
+      action_url: notifRec.action_url,
+      dismissible: notifRec.dismissible !== false,
+      persist_until_dismissed: !!notifRec.persist_until_dismissed,
+      resolution: notifRec.resolution,
+      position_vertical: notifRec.position_vertical,
+      position_horizontal: notifRec.position_horizontal,
+      autoHideDuration: displayOptions.autoHideDuration,
+      anchorOrigin: displayOptions.anchorOrigin
+    };
+  };
+
   const loadMenuNotifications = async () => {
     try {
       if (!state.session || !state.session.client_id || !state.session.user_id) {
@@ -1283,7 +1444,9 @@ export default ({ start_at }) => {
         clientId: state.session.client_id,
         userId: state.session.user_id,
         lastCheckTime: reactData.lastNotificationCheckTime,
-        authorizedToMenuItem
+        // Notifications must not honor the master-account bypass - master accounts should only see
+        // notifications actually targeted to them, not every notification in the client.
+        authorizedToMenuItem: (available_to) => authorizedToMenuItem(available_to, { ignoreMasterBypass: true })
       });
 
       // Policy: after initial app-start notification discovery, always attempt sound for attention,
@@ -1291,29 +1454,30 @@ export default ({ start_at }) => {
       const isPostInitialCheck = result.effectiveLastCheckTime !== INITIAL_NOTIFICATION_CHECK_TIME;
 
       if (result.success && result.notificationQueue.length > 0) {
-        // Queue loaded; display first notification
-        const firstNotif = result.notificationQueue[0];
-        const displayOptions = getNotificationDisplayOptions(firstNotif);
-        updateReactData({
-          notificationQueue: result.notificationQueue,
-          notificationCurrentIndex: 0,
-          //    notificationSoundNeeded: isPostInitialCheck,
-          lastNotificationCheckTime: result.lastCheckTime,
-          notification: {
-            severity: priorityToSeverity(firstNotif.priority || 'low'),
-            title: firstNotif.title,
-            message: firstNotif.message,
-            notification_id: firstNotif.notification_id,
-            action_url: firstNotif.action_url,
-            dismissible: firstNotif.dismissible !== false,
-            persist_until_dismissed: !!firstNotif.persist_until_dismissed,
-            position_vertical: firstNotif.position_vertical,
-            position_horizontal: firstNotif.position_horizontal,
-            autoHideDuration: displayOptions.autoHideDuration,
-            anchorOrigin: displayOptions.anchorOrigin
-          }
-        }, true);
-        if (isPostInitialCheck) {
+        // Merge newly-discovered notifications into whatever is already queued rather than
+        // replacing it outright - lastCheckTime-based querying guarantees no duplicates, but
+        // overwriting here used to stomp a notification the user was actively reading.
+        const existingQueue = reactData.notificationQueue || [];
+        const existingIds = new Set(existingQueue.map(n => n.notification_id));
+        const newlyArrived = result.notificationQueue.filter(n => !existingIds.has(n.notification_id));
+        const mergedQueue = [...existingQueue, ...newlyArrived];
+
+        if (reactData.notification) {
+          // Something is already on-screen - just extend the queue in the background; the user
+          // can reach the new arrival(s) via the Next button instead of losing their current spot.
+          updateReactData({
+            notificationQueue: mergedQueue,
+            lastNotificationCheckTime: result.lastCheckTime
+          }, true);
+        } else {
+          updateReactData({
+            notificationQueue: mergedQueue,
+            notificationCurrentIndex: 0,
+            lastNotificationCheckTime: result.lastCheckTime,
+            notification: buildNotificationDisplay(mergedQueue[0])
+          }, true);
+        }
+        if (newlyArrived.length > 0 && isPostInitialCheck) {
           playNotificationSound();
         }
       } else {
@@ -1329,39 +1493,45 @@ export default ({ start_at }) => {
   };
 
   /**
-   * Move to next notification in queue and display.
+   * Navigate to an arbitrary slot in the notification queue (Next/Previous) without marking
+   * anything as shown/dismissed - purely a display change so the user can page through everything
+   * currently queued.
    */
-  const showNextNotification = async () => {
+  const showNotificationAtIndex = (index) => {
     const queue = reactData.notificationQueue || [];
-    const nextIndex = (reactData.notificationCurrentIndex || 0) + 1;
+    if (index < 0 || index >= queue.length) { return; }
+    updateReactData({
+      notificationCurrentIndex: index,
+      notification: buildNotificationDisplay(queue[index])
+    }, true);
+  };
 
-    if (nextIndex < queue.length) {
-      const nextNotif = queue[nextIndex];
-      const displayOptions = getNotificationDisplayOptions(nextNotif);
-      updateReactData({
-        notificationCurrentIndex: nextIndex,
-        notification: {
-          severity: priorityToSeverity(nextNotif.priority || 'low'),
-          title: nextNotif.title,
-          message: nextNotif.message,
-          notification_id: nextNotif.notification_id,
-          action_url: nextNotif.action_url,
-          dismissible: nextNotif.dismissible !== false,
-          persist_until_dismissed: !!nextNotif.persist_until_dismissed,
-          position_vertical: nextNotif.position_vertical,
-          position_horizontal: nextNotif.position_horizontal,
-          autoHideDuration: displayOptions.autoHideDuration,
-          anchorOrigin: displayOptions.anchorOrigin
-        }
-      }, true);
-    } else {
-      // No more notifications
-      updateReactData({
-        notification: null,
-        notificationQueue: [],
-        notificationCurrentIndex: 0
-      }, true);
+  const showPreviousNotification = () => {
+    showNotificationAtIndex((reactData.notificationCurrentIndex || 0) - 1);
+  };
+
+  const showNextNotification = () => {
+    showNotificationAtIndex((reactData.notificationCurrentIndex || 0) + 1);
+  };
+
+  /**
+   * Removes the notification at `index` from the queue (it's been dismissed/resolved) and
+   * displays whatever now occupies that slot, clamping to the end of the queue if needed.
+   */
+  const advancePastQueueIndex = (index) => {
+    const queue = [...(reactData.notificationQueue || [])];
+    if (index >= 0 && index < queue.length) { queue.splice(index, 1); }
+
+    if (queue.length === 0) {
+      updateReactData({ notification: null, notificationQueue: [], notificationCurrentIndex: 0 }, true);
+      return;
     }
+    const nextIndex = Math.min(index, queue.length - 1);
+    updateReactData({
+      notificationQueue: queue,
+      notificationCurrentIndex: nextIndex,
+      notification: buildNotificationDisplay(queue[nextIndex])
+    }, true);
   };
 
   /**
@@ -1377,7 +1547,24 @@ export default ({ start_at }) => {
       });
     }
 
-    await showNextNotification();
+    advancePastQueueIndex(reactData.notificationCurrentIndex || 0);
+  };
+
+  /**
+   * Resolve a 'shared' notification (any one qualifying viewer handling it clears it for the
+   * whole available_to audience), then advance past it same as a normal dismiss.
+   */
+  const resolveCurrentNotification = async () => {
+    const currentNotificationId = reactData.notification?.notification_id;
+    if (currentNotificationId) {
+      await resolveNotification({
+        dbClient,
+        notificationId: currentNotificationId,
+        userId: state.session?.user_id
+      });
+    }
+
+    advancePastQueueIndex(reactData.notificationCurrentIndex || 0);
   };
 
   /**
@@ -1390,10 +1577,14 @@ export default ({ start_at }) => {
     const BATCH_SIZE = 100;
     // Build an ordered index so we can sort results back into children order
     const orderIndex = Object.fromEntries(childIds.map((id, i) => [id, i]));
-    const allFetched = [];
+    const chunks = [];
     for (let i = 0; i < childIds.length; i += BATCH_SIZE) {
-      const chunk = childIds.slice(i, i + BATCH_SIZE);
-      const result = await dbClient
+      chunks.push(childIds.slice(i, i + BATCH_SIZE));
+    }
+    // Fire all chunk requests concurrently instead of one at a time - for a parent with many
+    // children this turns N sequential round trips into roughly one round trip's worth of latency.
+    const chunkResults = await Promise.all(chunks.map((chunk) => (
+      dbClient
         .batchGet({
           RequestItems: {
             MenuV3: {
@@ -1405,10 +1596,9 @@ export default ({ start_at }) => {
         .catch(error => {
           console.error('BatchGet error fetching menu items:', error.message);
           return { Responses: {} };
-        });
-      const fetched = result?.Responses?.MenuV3 || [];
-      allFetched.push(...fetched);
-    }
+        })
+    )));
+    const allFetched = chunkResults.flatMap((result) => (result?.Responses?.MenuV3 || []));
     // Sort back to original children order
     allFetched.sort((a, b) => {
       const ia = orderIndex[a.menu_id] ?? 9999;
@@ -1416,7 +1606,12 @@ export default ({ start_at }) => {
       return ia - ib;
     });
     if (!reactData.menu_hierarchy[menu_level]) { reactData.menu_hierarchy[menu_level] = []; }
+    // Track already-loaded menu_id+parent combos in a Set instead of re-scanning the (potentially
+    // huge) level array with .some() for every fetched item - avoids an O(n^2) blowup on levels
+    // with thousands of cells (e.g. a menu item with 2000+ photo children).
+    const loadedKeys = new Set(reactData.menu_hierarchy[menu_level].map((cell) => `${cell.menu_id}~${cell.parent}`));
     const hiddenChildren = [];
+    const newlyAddedItems = [];
     for (const this_item of allFetched) {
       if (!this_item.hasOwnProperty('available_to') || authorizedToMenuItem(this_item.available_to)) {
         if (!this_item.color) {
@@ -1426,15 +1621,15 @@ export default ({ start_at }) => {
         if (state.session.client_style?.suppress_card_image) { this_item.icon = null; }
         else if (!this_item.icon) { this_item.icon = resolvedSessionClientLogo; }
         const targetParentId = parent?.menu_id || null;
-        const alreadyLoaded = reactData.menu_hierarchy[menu_level].some(
-          (existingCell) => existingCell.menu_id === this_item.menu_id && existingCell.parent === targetParentId
-        );
-        if (!alreadyLoaded) {
+        const loadedKey = `${this_item.menu_id}~${targetParentId}`;
+        if (!loadedKeys.has(loadedKey)) {
+          loadedKeys.add(loadedKey);
           reactData.menu_hierarchy[menu_level].push({
             menu_id: this_item.menu_id,
             menuItemRec: this_item,
             parent: targetParentId
           });
+          newlyAddedItems.push(this_item);
         }
         if (this_item.hidden && this_item.menu_itemType === 'menu') {
           hiddenChildren.push({ children: this_item.children || [], level: menu_level + 1, parent: this_item });
@@ -1446,9 +1641,32 @@ export default ({ start_at }) => {
       await batchGetMenuItems(children, level, hiddenParent);
     }
 
-    // Backfill icon_thumb for legacy items that were saved without one — fire and forget
-    const levelItems = (reactData.menu_hierarchy[menu_level] || []).map(c => c.menuItemRec);
-    void backfillMenuThumbs(levelItems);
+    // Backfill icon_thumb for legacy items that were saved without one — fire and forget.
+    // Only scan the items this call just added, not the whole (potentially huge) level.
+    void backfillMenuThumbs(newlyAddedItems);
+  };
+
+  const loadChildrenPage = async (parentItem, level_index, targetPageIndex) => {
+    const allChildIds = parentItem?.children || [];
+    if (allChildIds.length === 0) { return; }
+    const cursorKey = `${level_index}~${parentItem.menu_id}`;
+    if (allChildIds.length <= LAZY_CHILD_THRESHOLD) {
+      // Small enough to just load in full, same as before - no per-page fetching needed.
+      if (lazyFetchCursorRef.current[cursorKey]) { return; }
+      lazyFetchCursorRef.current[cursorKey] = allChildIds.length;
+      await batchGetMenuItems(allChildIds, level_index, parentItem);
+      return;
+    }
+    // Large parent - only fetch the ids needed to cover pages up through targetPageIndex.
+    // Note: pages are sliced from the raw children order, not the post-authorization/hidden-filtered
+    // list, so a page can occasionally render with fewer than MENU_PAGE_SIZE visible cards if some
+    // ids in that slice are unauthorized - an acceptable trade-off for not having to fetch every
+    // child record just to compute an exact visible-item page boundary.
+    const alreadyRequested = lazyFetchCursorRef.current[cursorKey] || 0;
+    const neededCount = Math.min((targetPageIndex + 1) * MENU_PAGE_SIZE, allChildIds.length);
+    if (alreadyRequested >= neededCount) { return; }
+    lazyFetchCursorRef.current[cursorKey] = neededCount;
+    await batchGetMenuItems(allChildIds.slice(alreadyRequested, neededCount), level_index, parentItem);
   };
 
   const normalizeFavorites = (favoriteList) => {
@@ -1736,6 +1954,16 @@ export default ({ start_at }) => {
     );
   };
 
+  const DEFAULT_SLIDESHOW_INTERVAL_MS = 5000;
+
+  // slide_show menu items store their images as (possibly nested) arrays; flatten to a clean list of URLs
+  const normalizeSlideShowUrls = (rawUrl) => {
+    const flatten = (value) => Array.isArray(value) ? value.flatMap(flatten) : (value ? [value] : []);
+    return flatten(rawUrl).filter(entry => typeof entry === 'string' && entry.trim());
+  };
+
+  const getPrimaryLinkUrl = (rawUrl) => Array.isArray(rawUrl) ? rawUrl[0] : rawUrl;
+
   const isPowerPointLink = (url = '') => {
     if (!url || typeof url !== 'string') {
       return false;
@@ -1773,6 +2001,70 @@ export default ({ start_at }) => {
       return false;
     }
     return ReactPlayer.canPlay(url.trim());
+  };
+
+  const isHeicUrl = (url) => /\.(heic|heif)(\?.*)?$/i.test((url || '').trim());
+
+  const isHeicFile = (file) => {
+    if (!file) { return false; }
+    return /^image\/hei[cf]/i.test(file.type || '') || /\.(heic|heif)$/i.test(file.name || '');
+  };
+
+  // Shared decode step used by both the view-time (object URL) and save-time (re-upload) HEIC
+  // conversion paths below - loaded on demand since heic2any is only needed for this rare format.
+  const convertHeicBlobToJpegBlob = async (sourceBlob) => {
+    const heic2any = (await import('heic2any')).default;
+    const convertedResult = await heic2any({ blob: sourceBlob, toType: 'image/jpeg', quality: 0.8 });
+    return Array.isArray(convertedResult) ? convertedResult[0] : convertedResult;
+  };
+
+  // Most browsers (everything but Safari/WebKit) can't decode HEIC/HEIF at all, so fetch the raw
+  // bytes and convert them to a JPEG blob URL client-side via heic2any. Returns null on any
+  // failure so callers can fall back. Used for viewing legacy/unconverted HEIC links.
+  const convertHeicUrlToObjectUrl = async (url) => {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) { return null; }
+      const sourceBlob = await response.blob();
+      const convertedBlob = await convertHeicBlobToJpegBlob(sourceBlob);
+      return URL.createObjectURL(convertedBlob);
+    }
+    catch (error) {
+      console.warn('HEIC conversion failed:', error.message);
+      return null;
+    }
+  };
+
+  // Converts an already-in-hand HEIC/HEIF File (from a local upload) to a JPEG File with the same
+  // base name, so it can go through the normal upload pipeline instead of storing the raw HEIC.
+  const convertHeicFileToJpegFile = async (sourceFile) => {
+    try {
+      const jpegBlob = await convertHeicBlobToJpegBlob(sourceFile);
+      const baseName = (sourceFile.name || 'photo').replace(/\.(heic|heif)$/i, '');
+      return new File([jpegBlob], `${baseName}.jpg`, { type: 'image/jpeg' });
+    }
+    catch (error) {
+      console.warn('HEIC file conversion failed:', error.message);
+      return null;
+    }
+  };
+
+  // Fetches a pasted HEIC/HEIF URL and converts it to a JPEG File for re-upload. Requires the
+  // source host to allow cross-origin reads (CORS) - returns null otherwise so the caller can
+  // fall back to storing the original url (still viewable via the on-view conversion above).
+  const convertHeicUrlToJpegFile = async (url) => {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) { return null; }
+      const sourceBlob = await response.blob();
+      const jpegBlob = await convertHeicBlobToJpegBlob(sourceBlob);
+      const urlBaseName = decodeURIComponent(url.split('/').pop() || '').split('?')[0].replace(/\.(heic|heif)$/i, '');
+      return new File([jpegBlob], `${urlBaseName || 'photo'}.jpg`, { type: 'image/jpeg' });
+    }
+    catch (error) {
+      console.warn('HEIC url conversion failed:', error.message);
+      return null;
+    }
   };
 
   const getLinkThumbnailUrl = (url, fallbackIcon) => {
@@ -2830,11 +3122,17 @@ export default ({ start_at }) => {
       const createdCells = [];
       const failedFiles = [];
       for (let fi = 0; fi < uploadFiles.length; fi++) {
-        const fileToUpload = uploadFiles[fi];
+        let fileToUpload = uploadFiles[fi];
         updateReactData({ addMenuDialogUploadFileIndex: fi, addMenuDialogUploadProgress: 0 }, true);
         let fileUrl = '';
         let thumbDataUrl = null;
         try {
+          // Most browsers can't render HEIC/HEIF at all - convert to JPEG before upload so the
+          // stored file is universally viewable. Falls back to the raw file if conversion fails.
+          if (isHeicFile(fileToUpload)) {
+            const convertedFile = await convertHeicFileToJpegFile(fileToUpload);
+            if (convertedFile) { fileToUpload = convertedFile; }
+          }
           // Generate thumbnail client-side before uploading — stored in DB, no extra fetches needed
           thumbDataUrl = await generateMenuThumb(fileToUpload);
           if (!thumbDataUrl && fileToUpload?.type?.startsWith('video/')) {
@@ -2943,6 +3241,24 @@ export default ({ start_at }) => {
     }
 
     let finalLinkUrl = urlText;
+    let convertedIconThumb = null;
+    if ((itemType === 'link') && isHeicUrl(urlText)) {
+      // Most browsers can't render HEIC/HEIF at all - fetch and convert to JPEG, then re-upload
+      // to our own S3 bucket, so the stored link is universally viewable. Requires the source
+      // host to allow cross-origin reads; on any failure, falls back to the original HEIC url
+      // (still viewable via the on-view conversion in the full-screen viewer).
+      const convertedFile = await convertHeicUrlToJpegFile(urlText);
+      if (convertedFile) {
+        const uploadResponse = await uploadMenuLinkFile(convertedFile).catch((error) => {
+          cl({ 'Error uploading converted HEIC file': error });
+          return null;
+        });
+        if (uploadResponse?.Location) {
+          finalLinkUrl = uploadResponse.Location;
+          convertedIconThumb = await generateMenuThumb(convertedFile);
+        }
+      }
+    }
     const newMenuId = await deriveUniqueMenuId(titleText);
     const newMenuItemType = (itemType === 'message_target') ? 'function' : (itemType === 'phone_dial') ? 'link' : itemType;
     const newMenuRec = {
@@ -2954,6 +3270,7 @@ export default ({ start_at }) => {
         short: titleText,
       },
       menu_itemType: newMenuItemType,
+      ...(convertedIconThumb ? { icon_thumb: convertedIconThumb } : {}),
       ...(reactData.addMenuDialogColor ? { color: reactData.addMenuDialogColor } : {})
     };
 
@@ -3291,6 +3608,17 @@ export default ({ start_at }) => {
     return (availableTo || []).every(r => r.startsWith('*') || defaultPersonEntries.has(r));
   };
 
+  const NOTIFICATION_SEVERITY_STYLE = {
+    error: { icon: ErrorOutlineIcon, color: '#c62828', background: '#fdecea' },
+    warning: { icon: WarningRoundedIcon, color: '#e65100', background: '#fff8e1' },
+    success: { icon: CheckCircleOutlineIcon, color: '#2e7d32', background: '#e8f5e9' },
+    info: { icon: InfoOutlinedIcon, color: '#1565c0', background: '#e3f2fd' },
+  };
+
+  const getNotificationSeverityStyle = (severity) => {
+    return NOTIFICATION_SEVERITY_STYLE[severity] || NOTIFICATION_SEVERITY_STYLE.info;
+  };
+
   const renderNotificationMessage = (message) => {
     if (typeof message !== 'string') {
       return message;
@@ -3359,8 +3687,8 @@ export default ({ start_at }) => {
       !['__top__', '__v3_favorites__', 'add_item_instructions'].includes(this_item.menu_id)
     );
     const canDropOnThisCard = !!((menuItemType === 'menu') && canManageMenuChildren(this_item));
-    const isLinkCard = ['link', 'live_link'].includes(normalizedMenuType);
-    const isTelLink = isLinkCard && String(this_item.url || '').trim().toLowerCase().startsWith('tel:');
+    const isLinkCard = ['link', 'live_link', 'slide_show'].includes(normalizedMenuType);
+    const isTelLink = isLinkCard && String(getPrimaryLinkUrl(this_item.url) || '').trim().toLowerCase().startsWith('tel:');
     const allowNestedAccessibleThumb = (!useTileUI)
       && (accessibleDepth > 0)
       && isLinkCard
@@ -3370,7 +3698,7 @@ export default ({ start_at }) => {
     // Prefer canonical icon URLs for non-link cards in both modes; keep icon_thumb
     // only as a fallback for legacy records without icon.
     const cardImageUrl = (isLinkCard && !isTelLink)
-      ? getLinkThumbnailUrl(this_item.url, this_item.icon || this_item.icon_thumb)
+      ? getLinkThumbnailUrl(getPrimaryLinkUrl(this_item.url), this_item.icon || this_item.icon_thumb)
       : (this_item.icon || this_item.icon_thumb);
     const hasLinkThumbnail = (isLinkCard && !isTelLink) && !!(cardImageUrl && cardImageUrl !== this_item.icon);
     const parentColor = (level_index > 0)
@@ -3379,11 +3707,15 @@ export default ({ start_at }) => {
     const tileColor = this_item.color || parentColor || stringToColor(this_item.menu_id);
     // const tileOpacity = Math.max(0.5, 1 - (level_index * 0.2));
     const tileOpacity = 1;
-    const isActiveParent = (menuItemType === 'menu') &&
-      (reactData.level_active_parent?.[level_index + 1] === this_item.menu_id);
     const hasChildren = (menuItemType === 'menu') && Array.isArray(this_item.children) && (this_item.children.length > 0);
-    const accessibleChildrenExpanded = (!useTileUI) && hasChildren &&
+    // Check directly whether this tile's children are currently expanded in the next level,
+    // rather than relying on the derived/guessed level_active_parent (based on whichever cell
+    // happens to be first in the next level) - that guess can silently point at a hidden
+    // pass-through wrapper's id or a no-longer-authorized id that matches no rendered tile,
+    // leaving every tile unbordered even though a branch is genuinely expanded below it.
+    const isActiveParent = hasChildren &&
       (reactData.menu_hierarchy[level_index + 1] || []).some((cell) => cell.parent === this_item.menu_id);
+    const accessibleChildrenExpanded = (!useTileUI) && isActiveParent;
 
     const cardTile = (
       <Card className={classes.root}
@@ -3419,7 +3751,7 @@ export default ({ start_at }) => {
               title: this_item.description?.short,
               message: <div>
                 ID: {this_item.menu_id}<br />
-                Type: {this_item.menu_itemType}{this_item.url && <><br />URL: {this_item.url.length > 60 ? this_item.url.slice(0, 60) + '…' : this_item.url}</>}<br />
+                Type: {this_item.menu_itemType}{this_item.url && <><br />URL: {Array.isArray(this_item.url) ? `${this_item.url.length} slide(s)` : (this_item.url.length > 60 ? this_item.url.slice(0, 60) + '…' : this_item.url)}</>}<br />
                 Security: {describeAvailableTo(this_item.available_to)}<br />
               </div>,
               editMenuItem: canEditFromAlert
@@ -3451,7 +3783,8 @@ export default ({ start_at }) => {
               reactData.level_active_parent[level_index + 1] = this_item.menu_id;
               // Reset to first page when opening a new menu level
               reactData.levelPages = Object.assign({}, reactData.levelPages, { [level_index + 1]: 0 });
-              await batchGetMenuItems(this_item.children, level_index + 1, this_item);
+              delete lazyFetchCursorRef.current[`${level_index + 1}~${this_item.menu_id}`];
+              await loadChildrenPage(this_item, level_index + 1, 0);
             }
             else {
               const nextLevelCells = reactData.menu_hierarchy[level_index + 1] || [];
@@ -3480,6 +3813,9 @@ export default ({ start_at }) => {
               else {
                 // Reset to first page when opening a menu
                 reactData.levelPages = Object.assign({}, reactData.levelPages, { [level_index + 1]: 0 });
+                // Note: accessible (non-tile) mode has no pagination UI for nested submenus
+                // (renderAccessibleSubMenu renders everything it's given), so it must keep loading
+                // the full children list up front rather than paging lazily like tile mode does.
                 await batchGetMenuItems(this_item.children, level_index + 1, this_item);
               }
             }
@@ -3516,7 +3852,38 @@ export default ({ start_at }) => {
               }, true);
             }
           }
-          else if (!isTelLink && (normalizedMenuType === 'live_link' || (useTileUI && hasLinkThumbnail && normalizedMenuType === 'link'))) {
+          else if (!isTelLink && (normalizedMenuType === 'live_link' || normalizedMenuType === 'slide_show' || (useTileUI && hasLinkThumbnail && normalizedMenuType === 'link'))) {
+            const itemTitle = this_item.description?.short || this_item.menu_id;
+            if (normalizedMenuType === 'slide_show') {
+              const slideUrls = normalizeSlideShowUrls(this_item.url)
+                .map(slideSrc => buildLiveLinkEmbedUrl(slideSrc))
+                .filter(Boolean);
+              if (slideUrls.length === 0) {
+                updateReactData({
+                  alert: {
+                    severity: 'warning',
+                    title: 'Missing URL',
+                    message: 'This Slide Show does not have any slide images configured.'
+                  }
+                }, true);
+                return;
+              }
+              const slideSiblings = slideUrls.map((url, slideIndex) => ({
+                url,
+                title: `${itemTitle} — Slide ${slideIndex + 1} of ${slideUrls.length}`
+              }));
+              updateReactData({
+                showLiveLink: true,
+                liveLinkUrl: slideSiblings[0].url,
+                liveLinkTitle: slideSiblings[0].title,
+                liveLinkSiblings: slideSiblings,
+                liveLinkCurrentIndex: 0,
+                liveLinkIsSlideshow: true,
+                liveLinkPaused: false,
+                liveLinkManualNavToken: 0
+              }, true);
+              return;
+            }
             const frameUrl = buildLiveLinkEmbedUrl(this_item.url);
             if (!frameUrl) {
               updateReactData({
@@ -3548,9 +3915,12 @@ export default ({ start_at }) => {
             updateReactData({
               showLiveLink: true,
               liveLinkUrl: frameUrl,
-              liveLinkTitle: this_item.description?.short || this_item.menu_id,
+              liveLinkTitle: itemTitle,
               liveLinkSiblings: urlSiblings,
-              liveLinkCurrentIndex: currentSiblingIndex
+              liveLinkCurrentIndex: currentSiblingIndex,
+              liveLinkIsSlideshow: false,
+              liveLinkPaused: false,
+              liveLinkManualNavToken: 0
             }, true);
           }
         }}
@@ -3835,7 +4205,7 @@ export default ({ start_at }) => {
       </Card>
     );
 
-    const wrappedCard = ((['link', 'live_link'].includes(normalizedMenuType)) && this_item.description?.long)
+    const wrappedCard = ((['link', 'live_link', 'slide_show'].includes(normalizedMenuType)) && this_item.description?.long)
       ? (
         <Tooltip
           key={`${keyPrefix}${level_index}_tooltip${item_index}`}
@@ -4459,14 +4829,29 @@ export default ({ start_at }) => {
                           >
                             {(() => {
                               const activeParent = reactData.level_active_parent?.[level_index];
+                              const activeParentItem = activeParent ? findMenuCellInHierarchy(activeParent)?.menuItemRec : null;
+                              const totalChildIdCount = activeParentItem?.children?.length || 0;
+                              // Huge parents (e.g. 2000+ photo children) are paged in from the DB on
+                              // demand (see loadChildrenPage), so total page count must come from the
+                              // parent's full children list, not from what's been fetched so far.
+                              const isLazyLevel = useTileUI && !!activeParentItem && (totalChildIdCount > LAZY_CHILD_THRESHOLD);
                               const visibleItems = this_level.filter(c => !c.menuItemRec.hidden && (!useTileUI || !activeParent || c.parent === activeParent));
                               const currentPage = reactData.levelPages?.[level_index] ?? 0;
-                              const totalPages = Math.ceil(visibleItems.length / MENU_PAGE_SIZE) || 1;
+                              const totalPages = Math.ceil((isLazyLevel ? totalChildIdCount : visibleItems.length) / MENU_PAGE_SIZE) || 1;
                               const safePage = Math.min(currentPage, totalPages - 1);
                               const pageStart = safePage * MENU_PAGE_SIZE;
                               const pageItems = visibleItems.slice(pageStart, pageStart + MENU_PAGE_SIZE);
                               const hasPrev = safePage > 0;
                               const hasNext = safePage < totalPages - 1;
+                              const goToPage = async (targetPage) => {
+                                if (isLazyLevel) {
+                                  await loadChildrenPage(activeParentItem, level_index, targetPage);
+                                }
+                                updateReactData({
+                                  menu_hierarchy: reactData.menu_hierarchy,
+                                  levelPages: Object.assign({}, reactData.levelPages, { [level_index]: targetPage })
+                                }, true);
+                              };
                               return (
                                 <>
                                   {pageItems.map((this_cell, item_index) =>
@@ -4485,11 +4870,7 @@ export default ({ start_at }) => {
                                         variant='contained'
                                         size='small'
                                         disabled={!hasPrev}
-                                        onClick={() => {
-                                          updateReactData({
-                                            levelPages: Object.assign({}, reactData.levelPages, { [level_index]: safePage - 1 })
-                                          }, true);
-                                        }}
+                                        onClick={() => { void goToPage(safePage - 1); }}
                                         style={{
                                           backgroundColor: hasPrev ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.2)',
                                           color: hasPrev ? 'white' : 'rgba(255,255,255,0.4)',
@@ -4517,11 +4898,7 @@ export default ({ start_at }) => {
                                         variant='contained'
                                         size='small'
                                         disabled={!hasNext}
-                                        onClick={() => {
-                                          updateReactData({
-                                            levelPages: Object.assign({}, reactData.levelPages, { [level_index]: safePage + 1 })
-                                          }, true);
-                                        }}
+                                        onClick={() => { void goToPage(safePage + 1); }}
                                         style={{
                                           backgroundColor: hasNext ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.2)',
                                           color: hasNext ? 'white' : 'rgba(255,255,255,0.4)',
@@ -4876,7 +5253,12 @@ export default ({ start_at }) => {
                   liveLinkUrl: '',
                   liveLinkTitle: '',
                   liveLinkSiblings: [],
-                  liveLinkCurrentIndex: -1
+                  liveLinkCurrentIndex: -1,
+                  liveLinkIsSlideshow: false,
+                  liveLinkPaused: false,
+                  liveLinkManualNavToken: 0,
+                  liveLinkHeicConverting: false,
+                  liveLinkHeicConvertedUrl: null
                 }, true);
               }}
               maxWidth={false}
@@ -4900,11 +5282,19 @@ export default ({ start_at }) => {
                     {(reactData.liveLinkSiblings?.length > 1) &&
                       <IconButton
                         size='small'
-                        disabled={reactData.liveLinkCurrentIndex <= 0}
+                        disabled={!reactData.liveLinkIsSlideshow && reactData.liveLinkCurrentIndex <= 0}
                         onClick={() => {
-                          const newIndex = reactData.liveLinkCurrentIndex - 1;
+                          const siblingCount = reactData.liveLinkSiblings.length;
+                          const newIndex = reactData.liveLinkIsSlideshow
+                            ? (reactData.liveLinkCurrentIndex - 1 + siblingCount) % siblingCount
+                            : reactData.liveLinkCurrentIndex - 1;
                           const sibling = reactData.liveLinkSiblings[newIndex];
-                          updateReactData({ liveLinkUrl: sibling.url, liveLinkTitle: sibling.title, liveLinkCurrentIndex: newIndex }, true);
+                          updateReactData({
+                            liveLinkUrl: sibling.url,
+                            liveLinkTitle: sibling.title,
+                            liveLinkCurrentIndex: newIndex,
+                            liveLinkManualNavToken: reactData.liveLinkManualNavToken + 1
+                          }, true);
                         }}
                       >
                         <NavigateBeforeIcon />
@@ -4913,14 +5303,33 @@ export default ({ start_at }) => {
                     {(reactData.liveLinkSiblings?.length > 1) &&
                       <IconButton
                         size='small'
-                        disabled={reactData.liveLinkCurrentIndex >= (reactData.liveLinkSiblings.length - 1)}
+                        disabled={!reactData.liveLinkIsSlideshow && reactData.liveLinkCurrentIndex >= (reactData.liveLinkSiblings.length - 1)}
                         onClick={() => {
-                          const newIndex = reactData.liveLinkCurrentIndex + 1;
+                          const siblingCount = reactData.liveLinkSiblings.length;
+                          const newIndex = reactData.liveLinkIsSlideshow
+                            ? (reactData.liveLinkCurrentIndex + 1) % siblingCount
+                            : reactData.liveLinkCurrentIndex + 1;
                           const sibling = reactData.liveLinkSiblings[newIndex];
-                          updateReactData({ liveLinkUrl: sibling.url, liveLinkTitle: sibling.title, liveLinkCurrentIndex: newIndex }, true);
+                          updateReactData({
+                            liveLinkUrl: sibling.url,
+                            liveLinkTitle: sibling.title,
+                            liveLinkCurrentIndex: newIndex,
+                            liveLinkManualNavToken: reactData.liveLinkManualNavToken + 1
+                          }, true);
                         }}
                       >
                         <NavigateNextIcon />
+                      </IconButton>
+                    }
+                    {reactData.liveLinkIsSlideshow &&
+                      <IconButton
+                        size='small'
+                        title={reactData.liveLinkPaused ? 'Resume Slide Show' : 'Pause Slide Show'}
+                        onClick={() => {
+                          updateReactData({ liveLinkPaused: !reactData.liveLinkPaused }, true);
+                        }}
+                      >
+                        {reactData.liveLinkPaused ? <PlayArrowIcon /> : <PauseIcon />}
                       </IconButton>
                     }
                     <IconButton
@@ -4955,7 +5364,12 @@ export default ({ start_at }) => {
                           liveLinkUrl: '',
                           liveLinkTitle: '',
                           liveLinkSiblings: [],
-                          liveLinkCurrentIndex: -1
+                          liveLinkCurrentIndex: -1,
+                          liveLinkIsSlideshow: false,
+                          liveLinkPaused: false,
+                          liveLinkManualNavToken: 0,
+                          liveLinkHeicConverting: false,
+                          liveLinkHeicConvertedUrl: null
                         }, true);
                       }}
                     >
@@ -4973,7 +5387,8 @@ export default ({ start_at }) => {
                     minHeight: 0,
                     paddingBottom: 24,
                     boxSizing: 'border-box',
-                    overflow: 'hidden'
+                    overflow: 'hidden',
+                    backgroundColor: '#000'
                   }}
                 >
                   {/\.(jpe?g|png|gif|webp|svg|bmp)(\?.*)?$/i.test((reactData.liveLinkUrl || '').trim())
@@ -4983,28 +5398,57 @@ export default ({ start_at }) => {
                       alt={reactData.liveLinkTitle || ''}
                       style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                     />
-                    : canPlayAsMedia(reactData.liveLinkUrl)
-                      ?
-                      <ReactPlayer
-                        url={reactData.liveLinkUrl}
-                        width='100%'
-                        height='100%'
-                        playing
-                        controls
-                        muted
-                      />
-                      :
-                      <iframe
-                        title={reactData.liveLinkTitle || 'Live Link'}
-                        src={reactData.liveLinkUrl}
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          border: 'none'
-                        }}
-                        allow='autoplay; fullscreen'
-                        allowFullScreen
-                      />
+                    : isHeicUrl(reactData.liveLinkUrl)
+                      ? (reactData.liveLinkHeicConverting
+                        ? <Box display='flex' flexDirection='column' alignItems='center' style={{ gap: 12 }}>
+                          <CircularProgress style={{ color: 'white' }} />
+                          <Typography style={{ color: 'white', textAlign: 'center' }}>
+                            {'Converting this photo to a viewable format\u2026'}
+                          </Typography>
+                        </Box>
+                        : reactData.liveLinkHeicConvertedUrl
+                          ? <Box
+                            component='img'
+                            src={reactData.liveLinkHeicConvertedUrl}
+                            alt={reactData.liveLinkTitle || ''}
+                            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                          />
+                          : <Box display='flex' flexDirection='column' alignItems='center' style={{ gap: 12 }}>
+                            <Typography style={{ color: 'white', textAlign: 'center' }}>
+                              {'This photo is in Apple\'s HEIC format and couldn\'t be previewed here.'}
+                            </Typography>
+                            <Button
+                              className={AVAClass.AVAButton}
+                              variant='contained'
+                              href={reactData.liveLinkUrl}
+                              target='_blank'
+                              rel='noopener noreferrer'
+                            >
+                              {'Download Photo'}
+                            </Button>
+                          </Box>)
+                      : canPlayAsMedia(reactData.liveLinkUrl)
+                        ?
+                        <ReactPlayer
+                          url={reactData.liveLinkUrl}
+                          width='100%'
+                          height='100%'
+                          playing
+                          controls
+                          muted
+                        />
+                        :
+                        <iframe
+                          title={reactData.liveLinkTitle || 'Live Link'}
+                          src={reactData.liveLinkUrl}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            border: 'none'
+                          }}
+                          allow='autoplay; fullscreen'
+                          allowFullScreen
+                        />
                   }
                 </Box>
               </Box>
@@ -5478,90 +5922,131 @@ export default ({ start_at }) => {
 
       {
         reactData.notification &&
-        <Dialog
-          open={!!reactData.notification}
-          onClose={(_event, reason) => {
-            if (reason === 'escapeKeyDown') {
-              dismissNotification();
-            }
-          }}
-          fullWidth
-          maxWidth='sm'
-          PaperProps={{
-            style: {
-              borderRadius: '30px',
-              boxShadow: '0 12px 35px rgba(0, 0, 0, 0.25)',
-              maxHeight: '85vh',
-              overflow: 'hidden',
-              width: 'min(92vw, 560px)'
-            }
-          }}
-          BackdropProps={{
-            style: {
-              backgroundColor: 'rgba(0, 0, 0, 0.35)'
-            }
-          }}
-        >
-          <DialogTitle style={{
-            padding: '16px 20px 12px',
-            borderBottom: '1px solid rgba(0,0,0,0.12)',
-            fontSize: '1.1rem',
-            fontWeight: 600,
-            backgroundColor: reactData.notification.severity === 'error'
-              ? '#fdecea'
-              : reactData.notification.severity === 'warning'
-                ? '#fff8e1'
-                : null
-          }}>
-            {reactData.notification.title || 'Notification'}
-          </DialogTitle>
-          <DialogContent dividers style={{
-            padding: '64px 20px',
-            maxHeight: '60vh',
-            minHeight: '40vh',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflowY: 'auto',
-            overflowX: 'hidden'
-          }}>
-            <div style={{
-              ...withMenuMobileTextCap(AVATextStyle({ size: 1, align: 'center' })),
-              width: '100%',
-              maxWidth: '100%',
-              overflowWrap: 'anywhere',
-              wordBreak: 'break-word',
-              whiteSpace: 'pre-wrap',
-              lineHeight: 1.5
-            }}>
-              {renderNotificationMessage(reactData.notification.message)}
-            </div>
-          </DialogContent>
-          <DialogActions style={{ padding: '12px 16px 16px', justifyContent: 'flex-end' }}>
-            {reactData.notification.action_url &&
-              <Button
-                className={AVAClass.AVAButton}
-                color='primary'
-                onClick={(ev) => {
-                  ev.preventDefault();
-                  ev.stopPropagation();
-                  window.open(reactData.notification.action_url, '_blank');
+        (() => {
+          const severityStyle = getNotificationSeverityStyle(reactData.notification.severity);
+          const SeverityIcon = severityStyle.icon;
+          return (
+            <Dialog
+              open={!!reactData.notification}
+              onClose={(_event, reason) => {
+                if (reason === 'escapeKeyDown') {
                   dismissNotification();
+                }
+              }}
+              fullWidth
+              maxWidth='sm'
+              PaperProps={{
+                style: {
+                  borderRadius: '20px',
+                  boxShadow: '0 12px 35px rgba(0, 0, 0, 0.25)',
+                  maxHeight: '80vh',
+                  overflow: 'hidden',
+                  width: 'min(92vw, 480px)',
+                  borderTop: `5px solid ${severityStyle.color}`
+                }
+              }}
+              BackdropProps={{
+                style: {
+                  backgroundColor: 'rgba(0, 0, 0, 0.35)'
+                }
+              }}
+            >
+              <Box
+                display='flex'
+                alignItems='center'
+                style={{
+                  padding: '16px 20px',
+                  gap: 12,
+                  backgroundColor: severityStyle.background
                 }}
               >
-                Open
-              </Button>
-            }
-            <Button
-              className={AVAClass.AVAButton}
-              variant='contained'
-              color='secondary'
-              onClick={dismissNotification}
-            >
-              Close
-            </Button>
-          </DialogActions>
-        </Dialog>
+                <SeverityIcon style={{ fontSize: '1.7rem', color: severityStyle.color, flexShrink: 0 }} />
+                <Typography style={{ fontSize: '1.1rem', fontWeight: 700, flexGrow: 1, color: '#222' }}>
+                  {reactData.notification.title || 'Notification'}
+                </Typography>
+                {(reactData.notificationQueue?.length || 0) > 1 &&
+                  <Typography style={{ fontSize: '0.8rem', color: '#555', flexShrink: 0, marginRight: 4 }}>
+                    {`${(reactData.notificationCurrentIndex || 0) + 1} of ${reactData.notificationQueue.length}`}
+                  </Typography>
+                }
+              </Box>
+              <DialogContent style={{
+                padding: '20px 24px',
+                maxHeight: '52vh',
+                overflowY: 'auto',
+                overflowX: 'hidden'
+              }}>
+                <div style={{
+                  ...withMenuMobileTextCap(AVATextStyle({ size: 1 })),
+                  width: '100%',
+                  maxWidth: '100%',
+                  overflowWrap: 'anywhere',
+                  wordBreak: 'break-word',
+                  whiteSpace: 'pre-wrap',
+                  lineHeight: 1.5
+                }}>
+                  {renderNotificationMessage(reactData.notification.message)}
+                </div>
+              </DialogContent>
+              <DialogActions style={{ padding: '10px 16px 16px', justifyContent: 'space-between' }}>
+                <Box display='flex' alignItems='center'>
+                  {(reactData.notificationQueue?.length || 0) > 1 &&
+                    <React.Fragment>
+                      <IconButton
+                        size='small'
+                        disabled={(reactData.notificationCurrentIndex || 0) <= 0}
+                        onClick={showPreviousNotification}
+                      >
+                        <NavigateBeforeIcon />
+                      </IconButton>
+                      <IconButton
+                        size='small'
+                        disabled={(reactData.notificationCurrentIndex || 0) >= (reactData.notificationQueue.length - 1)}
+                        onClick={showNextNotification}
+                      >
+                        <NavigateNextIcon />
+                      </IconButton>
+                    </React.Fragment>
+                  }
+                </Box>
+                <Box display='flex' alignItems='center'>
+                  {reactData.notification.action_url &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      color='primary'
+                      onClick={(ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        window.open(reactData.notification.action_url, '_blank');
+                        dismissNotification();
+                      }}
+                    >
+                      Open
+                    </Button>
+                  }
+                  {reactData.notification.resolution === 'shared' &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      variant='contained'
+                      color='primary'
+                      onClick={resolveCurrentNotification}
+                    >
+                      Resolve for Everyone
+                    </Button>
+                  }
+                  <Button
+                    className={AVAClass.AVAButton}
+                    variant='contained'
+                    color='secondary'
+                    onClick={dismissNotification}
+                  >
+                    Close
+                  </Button>
+                </Box>
+              </DialogActions>
+            </Dialog>
+          );
+        })()
       }
 
       {reactData.deleteMenuConfirm &&
@@ -5634,7 +6119,7 @@ export default ({ start_at }) => {
               variant='outlined'
               fullWidth
               multiline
-              rows={3}
+              minRows={3}
               style={{ marginBottom: 24 }}
             />
             <Box display='flex' alignItems='center' style={{ marginBottom: 16 }}>

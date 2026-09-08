@@ -212,6 +212,17 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
 
+  function alertQualifierLoadError() {
+    updateReactData({
+      alert: {
+        severity: 'error',
+        title: 'Network load error',
+        message: `AVA had trouble loading the options for this item.  You may need to exit and select this option again.`,
+        persist: true
+      }
+    }, true);
+  }
+
   async function resolveRowDisplayVariables(rowDetails) {
     if (!Array.isArray(rowDetails) || rowDetails.length === 0) { return rowDetails; }
     for (let i = 0; i < rowDetails.length; i++) {
@@ -276,6 +287,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           rowDetails[r].version = 1;
           if (rowDetails[r].checkbox && rowDetails[r].observationKey && !rowDetails[r].qualData) {
             let qualResponse = await buildQualifiers(rowDetails[r].observationKey);
+            if (qualResponse.dbError) {
+              alertQualifierLoadError();
+            }
             if (Object.keys(qualResponse.selections).length > 0) {
               rowDetails[r].qualSelections = deepCopy(qualResponse.selections);
             }
@@ -337,6 +351,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             rowDetails[r].version = 1;
             if (rowDetails[r].checkbox && rowDetails[r].observationKey && !rowDetails[r].qualData) {
               let qualResponse = await buildQualifiers(rowDetails[r].observationKey);
+              if (qualResponse.dbError) {
+                alertQualifierLoadError();
+              }
               if (Object.keys(qualResponse.selections).length > 0) {
                 rowDetails[r].qualSelections = deepCopy(qualResponse.selections);
               }
@@ -949,6 +966,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     if (this_row.isChecked && this_row.observationKey && !this_row.qualData) {
       // let [myQualSelections, myQualData] = await buildQualifiers(this_row.observationKey);
       let qualResponse = await buildQualifiers(this_row.observationKey);
+      if (qualResponse.dbError) {
+        alertQualifierLoadError();
+      }
       if (Object.keys(qualResponse.selections).length > 0) {
         this_row.qualSelections = deepCopy(qualResponse.selections);
       }
@@ -1319,6 +1339,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         this_column.rowDetails[rowNumber].version = new Date().getTime();
         if (this_column.rowDetails[rowNumber].observationKey && !this_column.rowDetails[rowNumber].qualData) {
           let qualResponse = await buildQualifiers(this_column.rowDetails[rowNumber].observationKey);
+          if (qualResponse.dbError) {
+            alertQualifierLoadError();
+          }
           if (Object.keys(qualResponse.selections).length > 0) {
             this_column.rowDetails[rowNumber].qualSelections = deepCopy(qualResponse.selections);
           }
@@ -1334,6 +1357,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           if (!this_column.rowDetails[rowNumber].qualData) {
             // [this_column.rowDetails[rowNumber].defaultSelections, this_column.rowDetails[rowNumber].qualData] = await buildQualifiers(this_column.rowDetails[rowNumber].observationKey);
             let qualResponse = await buildQualifiers(this_column.rowDetails[rowNumber].observationKey);
+            if (qualResponse.dbError) {
+              alertQualifierLoadError();
+            }
             this_column.rowDetails[rowNumber].defaultSelections = deepCopy(qualResponse.selections);
             this_column.rowDetails[rowNumber].qualData = deepCopy(qualResponse.data);
             this_column.rowDetails[rowNumber].moreInfo = deepCopy(qualResponse.moreInfo);

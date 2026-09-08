@@ -669,12 +669,12 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     return (
       this_event.hasOwnProperty('wait_list')
       && this_event.wait_list.includes(reactData.selectedPerson_id)
-      && (this_event.occurrence_date < reactData.todayYMD)
+      && (this_event.occurrence_date >= reactData.todayYMD)
     );
   };
 
   const allSlotsFull = (this_event) => {
-    if ((this_event.type !== 'seats') || (this_event.type !== 'time')) {
+    if (!['seats', 'time'].includes(this_event.type)) {
       return false;
     }
     else if (!this_event.slotPattern) {
@@ -772,6 +772,11 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
     else {
       return ((`${this_event.description} ${this_event.location}`).toLowerCase().includes(reactData.filterTextLower));
     }
+  }
+
+  function onlyLocationFilterActive() {
+    return !!(reactData.locationFilter && (reactData.locationFilter !== '*all')
+      && !reactData.filterTextLower && !reactData.idFilter && !reactData.eventIDFilter);
   }
 
   const handleDragStart = (ev, id) => {
@@ -1459,7 +1464,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
             style={AVATextStyle({
               size: 0.8,
             })}>
-            {`${(this_event.type === 'time') ? makeTime(this_event.slot_owners[this_owner]).short + ' ' : ''}${getPersonName(this_owner.split('%%')[0])}`}
+            {`${(this_event.type === 'time') ? makeTime(this_event.slot_owners[this_owner]).short + ' ' : ''}${this_event.slot_holder_names?.[this_owner] || getPersonName(this_owner.split('%%')[0])}`}
           </Typography>
         ))}
     </Box>
@@ -2152,7 +2157,11 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                   textWrap: 'wrap',
                                   padding: { left: 0.5 }
                                 })}>
-                                  {((this_date.eventList.length === 0) ? `No Events Scheduled` : `No Events Match your Filter`)}
+                                  {(this_date.eventList.length === 0)
+                                    ? `No Events Scheduled`
+                                    : (onlyLocationFilterActive()
+                                      ? `No Events in ${(reactData.locationFilter === '*none*') ? '(No Location)' : reactData.locationFilter}`
+                                      : `No Events Match your Filter`)}
                                 </Typography>
                                 :
                                 shownEntries.map(({ this_event, eventIndex }) => (

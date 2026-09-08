@@ -228,7 +228,8 @@ const useStyles = makeStyles(theme => ({
 
 export default ({ request = {}, onClose }) => {
   const MIN_FIELD_WIDTH_PX = 400;
-  const MAX_FIELD_WIDTH_PERCENT = 93;
+  const FORM_PAPER_WIDTH_VW = 80;
+  const MAX_FIELD_WIDTH_VW = (.93 * FORM_PAPER_WIDTH_VW);
   const PRINT_SNAPSHOT_VERSION = 1;
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -261,15 +262,16 @@ export default ({ request = {}, onClose }) => {
   const clampRequestedWidthToContainer = (requestedWidthPx, fallbackWidthPx) => {
     const requestedWidth = Number(requestedWidthPx);
     if (Number.isFinite(requestedWidth) && requestedWidth > 0) {
-      return `min(${requestedWidth}px, ${MAX_FIELD_WIDTH_PERCENT}%)`;
+      // vw, not %, so this cap holds regardless of an ancestor's own (possibly shrink-to-fit) width
+      return `min(${requestedWidth}px, ${MAX_FIELD_WIDTH_VW}vw)`;
     }
 
     const fallbackWidth = Number(fallbackWidthPx);
     if (Number.isFinite(fallbackWidth) && fallbackWidth > 0) {
-      return `min(${fallbackWidth}px, ${MAX_FIELD_WIDTH_PERCENT}%)`;
+      return `min(${fallbackWidth}px, ${MAX_FIELD_WIDTH_VW}vw)`;
     }
 
-    return `${MAX_FIELD_WIDTH_PERCENT}%`;
+    return `${MAX_FIELD_WIDTH_VW}vw`;
   };
 
   const generateHtmlOutput = () => {
@@ -1169,6 +1171,16 @@ export default ({ request = {}, onClose }) => {
         }
       }
 
+      // the logged-in account holder should always be a selectable family member, even if
+      // the family record fetched for reactData.pertains_to doesn't happen to list them
+      if (state.session.person_id && !familyMembers.some(member => member.id === state.session.person_id)) {
+        familyMembers.push({
+          id: state.session.person_id,
+          name: await makeName(state.session.person_id),
+          nickname: null
+        });
+      }
+
       returnObj.familyMembers = familyMembers;
       updateReactData({
         familyRec: reactData.familyRec,
@@ -1241,6 +1253,15 @@ export default ({ request = {}, onClose }) => {
         return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
       };
 
+      // 3-row checkbox label: event name (bold), date/time, location
+      const buildEventOptionDisplay = ({ eventName, dateTimeLine, eventLocation }) => (
+        <span style={{ display: 'flex', flexDirection: 'column', whiteSpace: 'normal', lineHeight: 1.3 }}>
+          {!!eventName && <span style={{ fontWeight: 'bold' }}>{eventName}</span>}
+          <span>{dateTimeLine}</span>
+          {!!eventLocation && <span>{eventLocation}</span>}
+        </span>
+      );
+
       // Build a flat list of future occurrences, each tagged with its parent event's metadata
       const allFutureOccurrences = [];
       for (let i = 0; i < eventIds.length; i++) {
@@ -1252,6 +1273,7 @@ export default ({ request = {}, onClose }) => {
         const eventType = (rawType === 'time') ? 'time' : (rawType === 'seats') ? 'seats' : 'open';
         const eventStartMins = eventRec?.eventData?.event_data?.time?.from_minutesSinceMidnight;
         const eventLocation = eventRec?.eventData?.event_data?.location?.description;
+        const eventDescription = eventRec?.eventData?.event_data?.description;
         const baseSlotPattern = eventRec?.eventData?.slotPattern || [];
         const signUpWindow = eventRec?.eventData?.sign_up?.window;
         allCalRecords
@@ -1276,7 +1298,7 @@ export default ({ request = {}, onClose }) => {
             return true;
           })
           .forEach(occRec => {
-            allFutureOccurrences.push({ occRec, eventType, eventStartMins, eventLocation, baseSlotPattern });
+            allFutureOccurrences.push({ occRec, eventType, eventStartMins, eventLocation, eventDescription, baseSlotPattern });
           });
       }
 
@@ -1303,19 +1325,19 @@ export default ({ request = {}, onClose }) => {
       const selectionList = [];
       const preSelectedValues = [];  // values to pre-populate as already selected
 
-      for (const { occRec, eventType, eventStartMins, eventLocation, baseSlotPattern } of filteredOccurrences) {
+      for (const { occRec, eventType, eventStartMins, eventLocation, eventDescription, baseSlotPattern } of filteredOccurrences) {
         const occEventKey = occRec.event_key;  // <event_id>#<occurrence_date>
         const occSlotPattern = occRec.occData?.slotPattern || baseSlotPattern;
         const occDateDisplay = makeDate(occRec.occurrence_date).absolute_full;
+        // occurrence-level description overrides the parent event's description, if present
+        const eventName = occRec.occData?.description || eventDescription || '';
 
         if (eventType === 'open') {
           // Open events: one entry per occurrence, no slot interrogation needed
-          const displayParts = [occDateDisplay];
-          if (eventStartMins != null) { displayParts.push(`at ${formatMins(eventStartMins)}`); }
-          if (eventLocation) { displayParts.push(`@ ${eventLocation}`); }
+          const dateTimeLine = [occDateDisplay, eventStartMins != null ? `at ${formatMins(eventStartMins)}` : null].filter(Boolean).join(' ');
           selectionList.push({
             value: occEventKey,
-            display: displayParts.join(' '),
+            display: buildEventOptionDisplay({ eventName, dateTimeLine, eventLocation }),
             event_type: eventType,
             slotPattern: occSlotPattern
           });
@@ -1341,12 +1363,10 @@ export default ({ request = {}, onClose }) => {
             const availableSlots = occSlotPattern.filter(slot => !occupiedSlots.has(String(slot)));
             const allOccupied = occSlotPattern.length > 0 && availableSlots.length === 0;
             if (!allOccupied || mySlotId) {
-              const displayParts = [occDateDisplay];
-              if (eventStartMins != null) { displayParts.push(`at ${formatMins(eventStartMins)}`); }
-              if (eventLocation) { displayParts.push(`@ ${eventLocation}`); }
+              const dateTimeLine = [occDateDisplay, eventStartMins != null ? `at ${formatMins(eventStartMins)}` : null].filter(Boolean).join(' ');
               selectionList.push({
                 value: occEventKey,
-                display: displayParts.join(' '),
+                display: buildEventOptionDisplay({ eventName, dateTimeLine, eventLocation }),
                 event_type: eventType,
                 slotPattern: occSlotPattern,
                 availableSlots,
@@ -1361,9 +1381,10 @@ export default ({ request = {}, onClose }) => {
               const slotStr = String(slot);
               const isMySlot = (mySlotId === slotStr);
               if (!occupiedSlots.has(slotStr) || isMySlot) {
+                const dateTimeLine = `${occDateDisplay} at ${formatHHMM(slot)}`;
                 selectionList.push({
                   value: `${occEventKey}#${slotStr}`,
-                  display: `${occDateDisplay} at ${formatHHMM(slot)}`,
+                  display: buildEventOptionDisplay({ eventName, dateTimeLine, eventLocation }),
                   event_type: eventType,
                   slotPattern: occSlotPattern,
                   slot_id: slotStr,
@@ -2738,7 +2759,7 @@ export default ({ request = {}, onClose }) => {
     const containerStyle = {
       width: clampRequestedWidthToContainer(promptWidth, 320),
       minWidth: clampRequestedWidthToContainer(MIN_FIELD_WIDTH_PX, MIN_FIELD_WIDTH_PX),
-      maxWidth: `${MAX_FIELD_WIDTH_PERCENT}%`,
+      maxWidth: `${MAX_FIELD_WIDTH_VW}vw`,
       marginTop: '24px',
       marginLeft: '8px',
       marginRight: '8px',
@@ -2878,19 +2899,24 @@ export default ({ request = {}, onClose }) => {
       ? (selectionMax <= 1)
       : !props.defaultMultiIfMaxMissing;
 
+    // set prompt.width (or value.width) on the field to control its width; omitted = auto-size to content
+    const requestedWidth = Number(fieldRec.prompt?.width);
+    const hasRequestedWidth = Number.isFinite(requestedWidth) && requestedWidth > 0;
+
     const containerStyle = props.useFamilySizing
       ? {
         width: clampRequestedWidthToContainer(fieldRec.prompt?.width, 320),
         minWidth: clampRequestedWidthToContainer(MIN_FIELD_WIDTH_PX, MIN_FIELD_WIDTH_PX),
-        maxWidth: `${MAX_FIELD_WIDTH_PERCENT}%`,
+        maxWidth: `${MAX_FIELD_WIDTH_VW}vw`,
         marginTop: '24px',
         marginLeft: '8px',
         marginRight: '8px',
         marginBottom: '8px'
       }
       : {
+        ...(hasRequestedWidth ? { width: clampRequestedWidthToContainer(fieldRec.prompt?.width) } : {}),
         minWidth: clampRequestedWidthToContainer(MIN_FIELD_WIDTH_PX, MIN_FIELD_WIDTH_PX),
-        maxWidth: `${MAX_FIELD_WIDTH_PERCENT}%`,
+        maxWidth: `${MAX_FIELD_WIDTH_VW}vw`,
         marginTop: '24px',
         marginLeft: '8px',
         marginRight: '8px',
@@ -3105,6 +3131,9 @@ export default ({ request = {}, onClose }) => {
         useFamilySizing={false}
         groupKeyPrefix={'CheckGroup'}
         ariaPrefix={'message_routing'}
+        optionRowStyle={props.multiLine
+          ? { height: 'auto', alignItems: 'center', marginBottom: '20px', paddingBottom: '8px' }
+          : undefined}
       />
     );
   };
@@ -3636,7 +3665,21 @@ export default ({ request = {}, onClose }) => {
         .filter(v => !isEmpty(v))
         .map(v => `${v}`);
     };
-   
+    // Determine who should be recorded as the slot owner for a set of family-signup participants:
+    //   1. if the logged-in account holder (state.session.person_id) is among the participants, they own every slot
+    //   2. else if the family's primary contact is among the participants, they own every slot
+    //   3. otherwise each participant owns their own slot
+    const resolveSlotOwner = (participants) => {
+      if (state.session.person_id && participants.includes(state.session.person_id)) {
+        return state.session.person_id;
+      }
+      const primaryContactId = reactData.familyRec?.primary_contact?.id;
+      if (primaryContactId && participants.includes(primaryContactId)) {
+        return primaryContactId;
+      }
+      return null;
+    };
+
     for (const this_field in reactData.fields) {
       if (reactData.fields[this_field].bonusText) {   // an extra value added to the end of a list of selections (as in "other - please specify")
         let current_value = [reactData.fields[this_field].value].flat();
@@ -3671,30 +3714,71 @@ export default ({ request = {}, onClose }) => {
         const selectedEventList = normalizeSelectEventList(reactData.fields[this_field].value);
         const previousEventList = normalizeSelectEventList(reactData.docRec?.field_values?.[this_field]);
 
+        // A linked 'family' field (selectionObj.family_signup_field) lets multiple family members
+        // share one event sign-up - each selected member gets their own slot/row instead of just participantId.
+        const familyFieldName = reactData.fields[this_field].selectionObj?.family_signup_field;
+        const currentFamilySelection = familyFieldName
+          ? makeArray(reactData.fields[familyFieldName]?.value).filter(v => !isEmpty(v))
+          : null;
+        const previousFamilySelection = familyFieldName
+          ? makeArray(reactData.docRec?.field_values?.[familyFieldName]).filter(v => !isEmpty(v))
+          : null;
+        const eventParticipants = (currentFamilySelection?.length > 0) ? currentFamilySelection : [participantId];
+        const resolvedFamilyOwner = resolveSlotOwner(eventParticipants);
+
+        const splitEventValue = (rawValue) => {
+          const valueParts = rawValue.split('#');
+          // For time type, value encodes the slot as the 3rd part; strip it for the event key
+          const eventKey = valueParts.length >= 3 ? `${valueParts[0]}#${valueParts[1]}` : rawValue;
+          const matchingEntry = selectionList.find(entry => entry.value === rawValue);
+          return { valueParts, eventKey, matchingEntry, entryEventType: matchingEntry?.event_type || 'open' };
+        };
+
         const selectedSet = new Set(selectedEventList);
         for (const selectedValue of selectedEventList) {
-          const valueParts = selectedValue.split('#');
-          // For time type, value encodes the slot as the 3rd part; strip it for the event key
-          const eventKey = valueParts.length >= 3 ? `${valueParts[0]}#${valueParts[1]}` : selectedValue;
-          const matchingEntry = selectionList.find(entry => entry.value === selectedValue);
-          const entryEventType = matchingEntry?.event_type || 'open';
-          let slot;
+          const { valueParts, eventKey, matchingEntry, entryEventType } = splitEventValue(selectedValue);
+
           if (entryEventType === 'time') {
-            slot = valueParts[2] || null;
-          } else if (entryEventType === 'seats') {
-            // prefer the user's existing slot (re-registration); fall back to first available seat
-            slot = matchingEntry?.mySlotId ?? matchingEntry?.availableSlots?.[0] ?? null;
-          } else {
-            slot = participantId;
+            // a single time slot can only have one owner - family multi-signup doesn't apply here
+            selectEventAssignments.set(selectedValue, { event: eventKey, slot: valueParts[2] || null, owner: resolvedFamilyOwner || participantId });
           }
-          selectEventAssignments.set(selectedValue, { event: eventKey, slot });
+          else if (entryEventType === 'seats') {
+            // give each selected family member their own seat, skipping seats already claimed this save
+            const claimedThisSave = new Set();
+            const candidateSeats = (matchingEntry?.availableSlots || []).slice();
+            for (const thisParticipant of eventParticipants) {
+              let seat = ((thisParticipant === participantId) && matchingEntry?.mySlotId) ? matchingEntry.mySlotId : null;
+              if (!seat) { seat = candidateSeats.find(s => !claimedThisSave.has(String(s))); }
+              if (!seat) { continue; } // no seats left for this participant
+              claimedThisSave.add(String(seat));
+              selectEventAssignments.set(`${selectedValue}::${thisParticipant}`, { event: eventKey, slot: seat, owner: resolvedFamilyOwner || thisParticipant });
+            }
+          }
+          else {
+            // open events have unlimited capacity - one row per selected participant
+            for (const thisParticipant of eventParticipants) {
+              selectEventAssignments.set(`${selectedValue}::${thisParticipant}`, { event: eventKey, slot: thisParticipant, owner: resolvedFamilyOwner || thisParticipant });
+            }
+          }
+
+          // release slots for family members who were signed up here but are no longer selected
+          if (previousFamilySelection) {
+            const removedParticipants = previousFamilySelection.filter(p => !eventParticipants.includes(p));
+            for (const removedParticipant of removedParticipants) {
+              const slot = (entryEventType === 'time') ? (valueParts[2] || null) : removedParticipant;
+              selectEventReleases.set(`${selectedValue}::${removedParticipant}`, { event: eventKey, slot, owner: resolvedFamilyOwner || removedParticipant });
+            }
+          }
         }
         for (const previousValue of previousEventList) {
           if (!selectedSet.has(previousValue)) {
-            const valueParts = previousValue.split('#');
-            const eventKey = valueParts.length >= 3 ? `${valueParts[0]}#${valueParts[1]}` : previousValue;
-            const slot = valueParts.length >= 3 ? valueParts[2] : participantId;
-            selectEventReleases.set(previousValue, { event: eventKey, slot });
+            const { valueParts, eventKey } = splitEventValue(previousValue);
+            const releaseParticipants = (previousFamilySelection?.length > 0) ? previousFamilySelection : [participantId];
+            const resolvedPreviousFamilyOwner = resolveSlotOwner(releaseParticipants);
+            for (const thisParticipant of releaseParticipants) {
+              const slot = valueParts.length >= 3 ? valueParts[2] : thisParticipant;
+              selectEventReleases.set(`${previousValue}::${thisParticipant}`, { event: eventKey, slot, owner: resolvedPreviousFamilyOwner || thisParticipant });
+            }
           }
         }
       }
@@ -3734,12 +3818,12 @@ export default ({ request = {}, onClose }) => {
       }
     }
 
-    for (const [, { event: releasedEvent, slot: releasedSlot }] of selectEventReleases) {
+    for (const [, { event: releasedEvent, slot: releasedSlot, owner: releasedOwner }] of selectEventReleases) {
       try {
         await writeSlot({
           client: state.session.client_id,
           event: releasedEvent,
-          owner: state.session.patient_id,
+          owner: releasedOwner || state.session.patient_id,
           slot: releasedSlot,
           status: 'released',
           show_this_slot: false,
@@ -3751,12 +3835,12 @@ export default ({ request = {}, onClose }) => {
       }
     }
 
-    for (const [, { event: selectedEvent, slot: selectedSlot }] of selectEventAssignments) {
+    for (const [, { event: selectedEvent, slot: selectedSlot, owner: selectedOwner }] of selectEventAssignments) {
       try {
         await writeSlot({
           client: state.session.client_id,
           event: selectedEvent,
-          owner: state.session.patient_id,
+          owner: selectedOwner || state.session.patient_id,
           slot: selectedSlot,
           show_this_slot: true,
           no_messaging: false,
@@ -4825,7 +4909,7 @@ export default ({ request = {}, onClose }) => {
     const containerStyle = {
       width: resolvedMinWidth,
       minWidth: clampRequestedWidthToContainer(MIN_FIELD_WIDTH_PX, MIN_FIELD_WIDTH_PX),
-      maxWidth: `${MAX_FIELD_WIDTH_PERCENT}%`,
+      maxWidth: `${MAX_FIELD_WIDTH_VW}vw`,
       marginTop: '24px',
       marginLeft: '8px',
       marginRight: '8px',
@@ -5134,8 +5218,8 @@ export default ({ request = {}, onClose }) => {
         PaperProps={{
           className: classes.dialogPaper,
           style: {
-            minWidth: '80vw',
-            maxWidth: '80vw',
+            minWidth: `${FORM_PAPER_WIDTH_VW}vw`,
+            maxWidth: `${FORM_PAPER_WIDTH_VW}vw`,
             maxHeight: 'calc(100dvh - 32px)',
             ...(['printPDF', 'printFirstPDF', 'printMidPDF', 'printLastPDF'].includes(reactData.options?.mode)
               ? { visibility: 'hidden', pointerEvents: 'none' }
@@ -5492,6 +5576,7 @@ export default ({ request = {}, onClose }) => {
                                         : null
                                       }
                                       column={reactData.fields[this_field].selectionObj.column || false}
+                                      multiLine={reactData.fields[this_field].type === 'select_event'}
                                     />
                                   </Box>
                                 }
@@ -5601,7 +5686,7 @@ export default ({ request = {}, onClose }) => {
                                         style={AVATextStyle({
                                           lineHeight: 1,
                                           minWidth: '60vw',
-                                          maxWidth: `${MAX_FIELD_WIDTH_PERCENT}%`,
+                                          maxWidth: `${MAX_FIELD_WIDTH_VW}vw`,
                                           size: 0.75,
                                           margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
                                         })}
@@ -5644,7 +5729,7 @@ export default ({ request = {}, onClose }) => {
                                         id={`selectParent-${this_field}`}
                                         width={clampRequestedWidthToContainer(reactData.fields[this_field].prompt?.width, 200)}
                                         minWidth={clampRequestedWidthToContainer(MIN_FIELD_WIDTH_PX, MIN_FIELD_WIDTH_PX)}
-                                        maxWidth={`${MAX_FIELD_WIDTH_PERCENT}%`}
+                                        maxWidth={`${MAX_FIELD_WIDTH_VW}vw`}
                                         flexGrow={1}
                                         marginBottom={0}
                                         justifyContent='flex-start'
@@ -5720,7 +5805,7 @@ export default ({ request = {}, onClose }) => {
                                                 style={AVATextStyle({
                                                   lineHeight: 1,
                                                   minWidth: '60vw',
-                                                  maxWidth: `${MAX_FIELD_WIDTH_PERCENT}%`,
+                                                  maxWidth: `${MAX_FIELD_WIDTH_VW}vw`,
                                                   size: 0.75,
                                                   opacity: '60%',
                                                   margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }

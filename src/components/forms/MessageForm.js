@@ -585,7 +585,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   const hideMessageImages = !state.session.client_style || (state.session.client_style.messages_hide_images !== false);
   const forceMessagePlainText = !state.session.client_style || (state.session.client_style.messages_plain_text_only !== false);
   const truncateMessageText = !state.session.client_style || (state.session.client_style.messages_truncate_body !== false);
-  const MESSAGE_TRUNCATE_LENGTH = 500;
+  // In em, not px, so the visible line count stays constant regardless of the user's font-size setting.
+  const MESSAGE_SCROLL_MAX_HEIGHT = '10em';
 
   const onAction = () => {
     if (reactData.idleState) {
@@ -2766,12 +2767,12 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                                             boxSizing: 'border-box',
                                             overflowWrap: 'break-word',
                                             wordWrap: 'break-word',
+                                            ...(truncateMessageText
+                                              ? { maxHeight: MESSAGE_SCROLL_MAX_HEIGHT, overflowY: 'auto' }
+                                              : {}),
                                           }}
                                         >
-                                          {truncateMessageText && this_message.message_text && (this_message.message_text.length > MESSAGE_TRUNCATE_LENGTH)
-                                            ? `${this_message.message_text.slice(0, MESSAGE_TRUNCATE_LENGTH)}\u2026`
-                                            : this_message.message_text
-                                          }
+                                          {this_message.message_text}
                                         </div>
                                       }
                                       {/* HTML message — suppressed when plain text flag is on */}

@@ -1,6 +1,6 @@
 {
   "name": "ava",
-  "version": "26.06.15",
+  "version": "26.09.08",
   "private": true,
   "scripts": {
     "start": "react-scripts --openssl-legacy-provider start",
@@ -24,6 +24,7 @@
     "clsx": "^1.1.1",
     "exceljs": "^4.4.0",
     "fontsource-roboto": "^3.0.3",
+    "heic2any": "^0.0.4",
     "html-to-formatted-text": "^2.7.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1",
