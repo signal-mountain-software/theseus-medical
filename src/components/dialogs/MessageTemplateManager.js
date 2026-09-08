@@ -129,21 +129,29 @@ const MessageTemplateManager = ({ open, onClose, onSelectTemplate }) => {
     const loadTemplates = async () => {
         setLoading(true);
         try {
-            const result = await dbClient
-                .query({
-                    TableName: 'MessageTemplates',
-                    KeyConditionExpression: 'client_id = :client_id',
-                    ExpressionAttributeValues: {
-                        ':client_id': state.session.client_id,
-                    },
-                })
-                .promise();
+            const items = [];
+            let lastEvaluatedKey;
+            do {
+                const result = await dbClient
+                    .query({
+                        TableName: 'MessageTemplates',
+                        KeyConditionExpression: 'client_id = :client_id',
+                        ExpressionAttributeValues: {
+                            ':client_id': state.session.client_id,
+                        },
+                        ...(lastEvaluatedKey && { ExclusiveStartKey: lastEvaluatedKey }),
+                    })
+                    .promise();
 
-            if (result.Items) {
-                setTemplates(result.Items.sort((a, b) =>
-                    (a.template_name || '').localeCompare(b.template_name || '')
-                ));
-            }
+                if (result.Items) {
+                    items.push(...result.Items);
+                }
+                lastEvaluatedKey = result.LastEvaluatedKey;
+            } while (lastEvaluatedKey);
+
+            setTemplates(items.sort((a, b) =>
+                (a.template_name || '').localeCompare(b.template_name || '')
+            ));
         } catch (error) {
             console.error('Error loading templates:', error);
             enqueueSnackbar('Failed to load templates', { variant: 'error' });
