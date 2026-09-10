@@ -284,6 +284,7 @@ export default ({ start_at }) => {
     liveLinkIsSlideshow: false,
     liveLinkPaused: false,
     liveLinkManualNavToken: 0,
+    liveLinkCacheBust: 0,
     liveLinkHeicConverting: false,
     liveLinkHeicConvertedUrl: null,
     showIosInstall: false,
@@ -301,6 +302,15 @@ export default ({ start_at }) => {
     ? clientUseTileUI
     : !!reactData.uiTilesOverride;
   const previousUseTileUIRef = React.useRef(useTileUI);
+
+  // Reads reactData.uiTilesOverride directly (it's a stable mutable object) instead of the
+  // `useTileUI` const above. Needed because the mount effect's rebuildMenuHierarchy() call is
+  // captured in a closure from the very first render (uiTilesOverride still null there); once the
+  // user's saved preference loads and mutates reactData, that stale closure's `useTileUI` const
+  // never picks up the change, so it can restore/persist open-menu state under the wrong mode key.
+  const getCurrentUseTileUI = () => ((reactData.uiTilesOverride === null) || (reactData.uiTilesOverride === undefined))
+    ? clientUseTileUI
+    : !!reactData.uiTilesOverride;
 
   const normalizeHexColor = (value) => {
     if (!value || typeof value !== 'string') { return null; }
@@ -706,7 +716,7 @@ export default ({ start_at }) => {
           }
           else if (startAtItem.menu_itemType === 'menu') {
             reactData.menu_hierarchy = reactUpd.menu_hierarchy;
-            if (useTileUI) {
+            if (getCurrentUseTileUI()) {
               delete lazyFetchCursorRef.current[`${startAtLevel + 1}~${startAtItem.menu_id}`];
               await loadChildrenPage(startAtItem, startAtLevel + 1, 0);
               reactData.levelPages = Object.assign({}, reactData.levelPages, { [startAtLevel + 1]: 0 });
@@ -919,10 +929,46 @@ export default ({ start_at }) => {
       const nextIndex = (liveLinkSlideIndexRef.current + 1) % siblings.length;
       const nextSlide = siblings[nextIndex];
       liveLinkSlideIndexRef.current = nextIndex;
-      updateReactData({ liveLinkUrl: nextSlide.url, liveLinkTitle: nextSlide.title, liveLinkCurrentIndex: nextIndex }, true);
+      updateReactData({ liveLinkUrl: nextSlide.url, liveLinkTitle: nextSlide.title, liveLinkCurrentIndex: nextIndex, liveLinkCacheBust: Date.now() }, true);
     }, DEFAULT_SLIDESHOW_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [reactData.showLiveLink, reactData.liveLinkIsSlideshow, reactData.liveLinkPaused, reactData.liveLinkSiblings, reactData.liveLinkManualNavToken]);
+
+  // A slide image that 404s/fails to load should just be dropped from the rotation
+  // rather than showing the browser's broken-image placeholder icon.
+  const handleLiveLinkImageError = () => {
+    if (!reactData.liveLinkIsSlideshow) { return; }
+    const failedUrl = reactData.liveLinkUrl;
+    const remainingSiblings = (reactData.liveLinkSiblings || []).filter(s => s.url !== failedUrl);
+    if (remainingSiblings.length === 0) {
+      updateReactData({
+        showLiveLink: false,
+        liveLinkUrl: '',
+        liveLinkTitle: '',
+        liveLinkSiblings: [],
+        liveLinkCurrentIndex: -1,
+        liveLinkIsSlideshow: false,
+        alert: {
+          severity: 'warning',
+          title: 'No images available',
+          message: 'None of this Slide Show\u2019s images could be loaded.'
+        }
+      }, true);
+      return;
+    }
+    // Removing the failed slide shifts everything after it down one index, so re-using
+    // the same (mod-wrapped) index lands on whichever slide came right after it.
+    const nextIndex = reactData.liveLinkCurrentIndex % remainingSiblings.length;
+    const nextSlide = remainingSiblings[nextIndex];
+    liveLinkSlideIndexRef.current = nextIndex;
+    updateReactData({
+      liveLinkSiblings: remainingSiblings,
+      liveLinkUrl: nextSlide.url,
+      liveLinkTitle: nextSlide.title,
+      liveLinkCurrentIndex: nextIndex,
+      liveLinkCacheBust: Date.now()
+    }, true);
+  };
 
   // HEIC/HEIF photos (default format for iPhone camera uploads) decode natively only in Safari -
   // other browsers can't render them in <img>/<iframe> at all, which is what made the viewer fall
@@ -1790,7 +1836,7 @@ export default ({ start_at }) => {
     return true;
   };
 
-  const getOpenMenuModeKey = () => (useTileUI ? 'ui_tiles' : 'accessible');
+  const getOpenMenuModeKey = () => (getCurrentUseTileUI() ? 'ui_tiles' : 'accessible');
 
   const getOpenMenuSessionContext = () => {
     const session_id = state.session?.patient_id;
@@ -2001,6 +2047,27 @@ export default ({ start_at }) => {
       return false;
     }
     return ReactPlayer.canPlay(url.trim());
+  };
+
+  // Signed URLs (S3/Google presigned) fail signature verification if any query param is added.
+  const looksLikeSignedMediaUrl = (url) => {
+    const lower = (url || '').toLowerCase();
+    return (
+      lower.includes('x-amz-signature=') ||
+      lower.includes('x-amz-credential=') ||
+      lower.includes('x-goog-signature=') ||
+      lower.includes('googleaccessid=') ||
+      lower.includes('signature=')
+    );
+  };
+
+  // The underlying photo behind an unchanged URL may be replaced between when the slideshow
+  // opened and when a slide is (re)displayed, so force a fresh fetch instead of a stale browser cache hit.
+  const withCacheBuster = (url, bust) => {
+    if (!url || typeof url !== 'string' || !bust) { return url; }
+    if (url.startsWith('data:') || url.startsWith('blob:') || looksLikeSignedMediaUrl(url)) { return url; }
+    const joiner = url.includes('?') ? '&' : '?';
+    return `${url}${joiner}_cb=${bust}`;
   };
 
   const isHeicUrl = (url) => /\.(heic|heif)(\?.*)?$/i.test((url || '').trim());
@@ -3868,9 +3935,9 @@ export default ({ start_at }) => {
                 }, true);
                 return;
               }
-              const slideSiblings = slideUrls.map((url, slideIndex) => ({
+              const slideSiblings = slideUrls.map(url => ({
                 url,
-                title: `${itemTitle} — Slide ${slideIndex + 1} of ${slideUrls.length}`
+                title: itemTitle
               }));
               updateReactData({
                 showLiveLink: true,
@@ -3880,7 +3947,8 @@ export default ({ start_at }) => {
                 liveLinkCurrentIndex: 0,
                 liveLinkIsSlideshow: true,
                 liveLinkPaused: false,
-                liveLinkManualNavToken: 0
+                liveLinkManualNavToken: 0,
+                liveLinkCacheBust: Date.now()
               }, true);
               return;
             }
@@ -3920,7 +3988,8 @@ export default ({ start_at }) => {
               liveLinkCurrentIndex: currentSiblingIndex,
               liveLinkIsSlideshow: false,
               liveLinkPaused: false,
-              liveLinkManualNavToken: 0
+              liveLinkManualNavToken: 0,
+              liveLinkCacheBust: Date.now()
             }, true);
           }
         }}
@@ -5293,7 +5362,8 @@ export default ({ start_at }) => {
                             liveLinkUrl: sibling.url,
                             liveLinkTitle: sibling.title,
                             liveLinkCurrentIndex: newIndex,
-                            liveLinkManualNavToken: reactData.liveLinkManualNavToken + 1
+                            liveLinkManualNavToken: reactData.liveLinkManualNavToken + 1,
+                            liveLinkCacheBust: Date.now()
                           }, true);
                         }}
                       >
@@ -5314,7 +5384,8 @@ export default ({ start_at }) => {
                             liveLinkUrl: sibling.url,
                             liveLinkTitle: sibling.title,
                             liveLinkCurrentIndex: newIndex,
-                            liveLinkManualNavToken: reactData.liveLinkManualNavToken + 1
+                            liveLinkManualNavToken: reactData.liveLinkManualNavToken + 1,
+                            liveLinkCacheBust: Date.now()
                           }, true);
                         }}
                       >
@@ -5394,8 +5465,9 @@ export default ({ start_at }) => {
                   {/\.(jpe?g|png|gif|webp|svg|bmp)(\?.*)?$/i.test((reactData.liveLinkUrl || '').trim())
                     ? <Box
                       component='img'
-                      src={reactData.liveLinkUrl}
+                      src={withCacheBuster(reactData.liveLinkUrl, reactData.liveLinkCacheBust)}
                       alt={reactData.liveLinkTitle || ''}
+                      onError={handleLiveLinkImageError}
                       style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                     />
                     : isHeicUrl(reactData.liveLinkUrl)
