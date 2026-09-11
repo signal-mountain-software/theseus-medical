@@ -174,12 +174,27 @@ export default ({ pClient, showUpload, handleClose }) => {
     pWorkbook.SheetNames.forEach((sheetName) => {
       let currentSheet = pWorkbook.Sheets[sheetName];
       for (const currentCell in currentSheet) {
-        if (!currentSheet[currentCell].v) { continue; }   // skip if no value in the cell
-        if (typeof (currentSheet[currentCell].v) !== 'string') { continue; }
-        if (!currentSheet[currentCell].v.startsWith('###')) { continue; }   // skip if not flagged as a key cell
-        let values = currentSheet[currentCell].v.replace('###', '').split('//');
-        let split_value = values[2].split('_');
+        if (currentCell.replace(/[0-9]+$/, '') !== 'A') { continue; }   // only column A drives row processing
+        if (!currentSheet[currentCell].v && currentSheet[currentCell].v !== 0) { continue; }   // skip if no value in the cell
+
+        let values;
+        if ((typeof currentSheet[currentCell].v === 'string') && currentSheet[currentCell].v.startsWith('###')) {
+          values = currentSheet[currentCell].v.replace('###', '').split('//');
+        } else {
+          // column-wise row: A = date, B = item text, C = type, D = observation key (optional)
+          const cellRow = currentCell.replace(/^[A-Z]+/, '');
+          values = [
+            currentSheet[currentCell].v,
+            currentSheet[`B${cellRow}`]?.v,
+            currentSheet[`C${cellRow}`]?.v,
+            currentSheet[`D${cellRow}`]?.v,
+          ];
+        }
+        if (!values[0] || !values[1] || !values[2]) { continue; }   // date, item text, and type are all required
+
+        let split_value = `${values[2]}`.split('_');
         let this_date = makeDate(values[0]);
+        if (this_date.error) { continue; }   // skip rows whose column A isn't a recognizable date (e.g. a header row)
         let hKey = `~~${this_date.absolute}${split_value[1] ? (' ' + sentenceCase(split_value[0])) : ''}`;
         if (!headers.includes(hKey)) {
           resultObj[`${this_date.ymd}.ava`] = {
@@ -214,7 +229,7 @@ export default ({ pClient, showUpload, handleClose }) => {
           type: values[2]
         };
         if (values[3]) {
-          resultObj[useKey].observation_key = values[3]
+          resultObj[useKey].oKey = values[3]
         }
       }
     });
@@ -223,6 +238,7 @@ export default ({ pClient, showUpload, handleClose }) => {
         date: resultObj[o].date,
         item: resultObj[o].item,
         type: resultObj[o].type,
+        oKey: resultObj[o].oKey,
         sort_order: o
       };
     });
