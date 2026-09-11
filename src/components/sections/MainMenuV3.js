@@ -5363,7 +5363,9 @@ export default ({ start_at }) => {
                             liveLinkTitle: sibling.title,
                             liveLinkCurrentIndex: newIndex,
                             liveLinkManualNavToken: reactData.liveLinkManualNavToken + 1,
-                            liveLinkCacheBust: Date.now()
+                            liveLinkCacheBust: Date.now(),
+                            // Manual nav during a slideshow implies the user wants to stop and look; auto-advance would otherwise fight them.
+                            ...(reactData.liveLinkIsSlideshow ? { liveLinkPaused: true } : {})
                           }, true);
                         }}
                       >
@@ -5385,7 +5387,9 @@ export default ({ start_at }) => {
                             liveLinkTitle: sibling.title,
                             liveLinkCurrentIndex: newIndex,
                             liveLinkManualNavToken: reactData.liveLinkManualNavToken + 1,
-                            liveLinkCacheBust: Date.now()
+                            liveLinkCacheBust: Date.now(),
+                            // Manual nav during a slideshow implies the user wants to stop and look; auto-advance would otherwise fight them.
+                            ...(reactData.liveLinkIsSlideshow ? { liveLinkPaused: true } : {})
                           }, true);
                         }}
                       >
