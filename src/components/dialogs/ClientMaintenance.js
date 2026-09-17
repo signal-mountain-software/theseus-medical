@@ -13,6 +13,7 @@ import GlobalMessagePreferencesSection from '../sections/GlobalMessagePreference
 import ClientImportSection from '../sections/ClientImportSection';
 import SessionSecuritySection from '../sections/SessionSecuritySection';
 import CampusLocationsSection from '../sections/CampusLocationsSection';
+import ProfileSectionsVisibility from '../sections/ProfileSectionsVisibility';
 
 import { Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -129,6 +130,9 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
       },
       CampusLocationsSection: {
         component_id: CampusLocationsSection,
+      },
+      ProfileSectionsVisibility: {
+        component_id: ProfileSectionsVisibility,
       }
 
     },
@@ -220,6 +224,14 @@ export default ({ client_id, personRec, initialValues, options = {}, onClose }) 
           isAuthorized: true,
           version_id: 0,
           component_name: 'ClientImportSection'
+        },
+        {
+          section_name: 'Profile Section Access',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'ProfileSectionsVisibility'
         }]
       };
       // incoming client_id should tell us who we are editing here
