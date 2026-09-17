@@ -33,7 +33,6 @@ const LoginModuleV2 = ({
   onSubmitPassword,
   onForgotPassword,
   onCancel,
-  onCreateAccount,
   onReady,
 }) => {
 
@@ -57,15 +56,12 @@ const LoginModuleV2 = ({
   const [backgroundImageUrl, setBackgroundImageUrl] = React.useState(null);
   const [clientNameOverride, setClientNameOverride] = React.useState('');
   const [clientLogoOverride, setClientLogoOverride] = React.useState('');
-  const [altMatchOptions, setAltMatchOptions] = React.useState(null);
-  const [altMatchMode, setAltMatchMode] = React.useState('first');
-  const [altMatchLabel, setAltMatchLabel] = React.useState('');
-  const [altOriginalEntry, setAltOriginalEntry] = React.useState('');
-  const [altMatchInputType, setAltMatchInputType] = React.useState('');
+  const [pendingAccountMatches, setPendingAccountMatches] = React.useState(null);
+  const [pendingMatchInputType, setPendingMatchInputType] = React.useState('');
+  const [pendingMatchClientId, setPendingMatchClientId] = React.useState(null);
   const [showCreateAccount, setShowCreateAccount] = React.useState(false);
-  const [createAccountEntry, setCreateAccountEntry] = React.useState('');
-  const [createAccountType, setCreateAccountType] = React.useState('');
-  const [showQuickAdd, setShowQuickAdd] = React.useState(false);
+  const [preauthInput, setPreauthInput] = React.useState('');
+  const [quickAddOptions, setQuickAddOptions] = React.useState(null);
   const [clientStyle, setClientStyle] = React.useState(branding.clientStyle || state?.session?.client_style || {});
   const bootStateRef = React.useRef({});
   const useSessionPatientRef = React.useRef(false);
@@ -97,15 +93,6 @@ const LoginModuleV2 = ({
       || message.includes('throttl')
     );
   };
-
-  const namePromptActive = Array.isArray(altMatchOptions) && altMatchOptions.length > 0;
-  const namePromptMode = altMatchMode === 'last' ? 'last' : 'first';
-  const namePromptLabel = namePromptActive
-    ? `${namePromptMode.charAt(0).toUpperCase()}${namePromptMode.slice(1)} name`
-    : 'User ID, e-Mail Address, or Phone Number';
-  const namePromptMessage = namePromptActive
-    ? `There are ${altMatchOptions.length} accounts with that ${altMatchLabel || 'entry'}. Enter your ${namePromptMode} name, so we can pick the right one.`
-    : '';
 
   const clientName = branding.clientName || clientNameOverride || state?.session?.client_name || 'AVA Sign-in';
   const logoUrl = branding.logoUrl || clientLogoOverride || state?.session?.client_logo_thumb || state?.session?.client_logo || state?.session?.client_icon;
@@ -292,50 +279,6 @@ const LoginModuleV2 = ({
     const requiredClientId = urlParams?.client || urlParams?.client_id || urlParams?.create || null;
     const inputType = detectInputType(rawInput);
     const normalizedInput = (rawInput || '').trim();
-    const effectiveInputType = altMatchInputType || inputType;
-
-    if (altMatchOptions && altMatchOptions.length > 0) {
-      const nameValue = normalizedInput.toLowerCase();
-      const matches = altMatchOptions.filter((option) => {
-        if (altMatchMode === 'last') {
-          return (option.lastName || '').toLowerCase() === nameValue;
-        }
-        return (option.firstName || '').toLowerCase() === nameValue;
-      });
-
-      if (matches.length === 1) {
-        setAltMatchOptions(null);
-        setAltMatchMode('first');
-        setAltMatchLabel('');
-        setAltOriginalEntry('');
-        setAltMatchInputType('');
-        setAlertMessage('');
-        return {
-          userId: matches[0].person_id,
-          nextStep: 'password',
-          inputType: effectiveInputType,
-          resolved: true,
-        };
-      }
-
-      if (matches.length > 1 && altMatchMode === 'first') {
-        setAltMatchOptions(matches);
-        setAltMatchMode('last');
-        setAlertMessage('Multiple accounts share that first name. Please enter your last name.');
-        setUserId('');
-      }
-      else {
-        setAlertMessage(`We could not match that ${altMatchMode === 'last' ? 'last' : 'first'} name. Please try again.`);
-      }
-
-      return {
-        userId: normalizedInput,
-        nextStep: 'user',
-        inputType: effectiveInputType,
-        resolved: false,
-        multipleMatch: true,
-      };
-    }
 
     if (onResolveIdentifier) {
       const resolved = await onResolveIdentifier({ rawInput: normalizedInput, inputType });
@@ -415,30 +358,19 @@ const LoginModuleV2 = ({
 
           const altItems = enriched.filter(Boolean);
 
-          if (altItems.length > 1) {
+          // Any contact-based match (even just one) is routed through TFA + the account-confirmation
+          // list, rather than resolved immediately, so a stranger who knows this contact can't skip
+          // straight past ownership verification and so people always get a chance to say "not me".
+          if (altItems.length > 0) {
             const label = inputType === 'email' ? 'e-mail address' : (inputType === 'phone' ? 'phone number' : 'entry');
-            setAltMatchOptions(altItems);
-            setAltMatchMode('first');
-            setAltMatchLabel(label);
-            setAlertMessage(`There are ${altItems.length} accounts with that ${label}. Enter your first name, so we can pick the right one.`);
-            setAltOriginalEntry(normalizedInput);
-            setAltMatchInputType(inputType);
-            setUserId('');
             return {
               userId: normalizedInput,
               nextStep: 'user',
               inputType,
               resolved: false,
               multipleMatch: true,
-            };
-          }
-
-          if (altItems.length === 1) {
-            return {
-              userId: altItems[0].person_id,
-              nextStep: 'password',
-              inputType,
-              resolved: true,
+              matches: altItems,
+              matchLabel: label,
             };
           }
         }
@@ -448,30 +380,78 @@ const LoginModuleV2 = ({
     return {
       userId: normalizedInput,
       nextStep: 'password',
-      inputType: effectiveInputType,
+      inputType,
       resolved: false,
     };
   };
 
-  const handleCreateAccount = async () => {
-    const entry = createAccountEntry || userId;
-    const inputType = createAccountType || detectInputType(entry);
+  // Duplicate/rogue accounts have been a real problem, so account creation always requires a valid
+  // pre-authorization code - no client-id shortcut bypasses this anymore.
+  const handleCreateAccount = () => {
+    setAlertMessage('');
+    setPreauthInput('');
+    setStep('preauth');
+  };
+
+  // Client scope for pre-auth lookup: prefer an already-established client (URL/session/cookie/pending match).
+  const getKnownClientIdForPreAuth = () => {
     const urlParams = getUrlParams();
-    const clientId = urlParams?.client || urlParams?.client_id || urlParams?.create || resolvedPerson?.client_id || resolvedSession?.client_id || savedClientCookie?.client || savedClientCookie?.client_id || null;
-    if (clientId) {
-      const baseUrl = window.location.href.split('?')[0];
-      window.location.replace(`${baseUrl}?create=${clientId}`);
+    return urlParams?.client || urlParams?.client_id || urlParams?.create
+      || resolvedPerson?.client_id || resolvedSession?.client_id
+      || pendingMatchClientId
+      || savedClientCookie?.client || savedClientCookie?.client_id
+      || null;
+  };
+
+  const handleSubmitPreAuthCode = async () => {
+    const normalizedCode = String(preauthInput || '').trim();
+    if (!normalizedCode) return;
+    const knownClientId = getKnownClientIdForPreAuth();
+    const matchesCode = (item) => String(item?.preauth_key || '').toLowerCase() === normalizedCode.toLowerCase();
+
+    let matchedRec = null;
+    if (knownClientId) {
+      const recs = await dbClient
+        .query({
+          KeyConditionExpression: 'client_id = :c',
+          ExpressionAttributeValues: { ':c': knownClientId },
+          TableName: 'PreAuthorization'
+        })
+        .promise()
+        .catch(() => null);
+      matchedRec = (recs?.Items || []).find(matchesCode) || null;
+    }
+    else {
+      // No established client context yet - scan for the first record anywhere with this code, and
+      // adopt its client_id, since pre-auth codes are otherwise scoped by client.
+      const scanRecs = await dbClient
+        .scan({ TableName: 'PreAuthorization' })
+        .promise()
+        .catch(() => null);
+      matchedRec = (scanRecs?.Items || []).find(matchesCode) || null;
+    }
+
+    if (!matchedRec) {
+      setAlertMessage('That authorization code was not recognized. Please check it and try again.');
       return;
     }
-    if (onCreateAccount) {
-      onCreateAccount({ rawInput: entry, inputType });
-      return;
-    }
-    setShowQuickAdd(true);
+
+    setAlertMessage('');
+    setPreauthInput('');
+    const contactValue = (userId || '').trim();
+    const contactType = detectInputType(contactValue);
+    setQuickAddOptions({
+      client_id: matchedRec.client_id,
+      preauth_code: matchedRec.preauth_key,
+      // Identity was already verified here (TFA + account-mismatch confirmation), so QuickAdd
+      // should skip its own "do you already exist" name check for this source.
+      source: 'login_preauth',
+      ...((contactType === 'email' || contactType === 'phone') ? { contact_type: contactType, contact_value: contactValue } : {})
+    });
   };
 
   const restartFromBeginning = () => {
-    setShowQuickAdd(false);
+    setQuickAddOptions(null);
     setUserId('');
     setResolvedUserId('');
     setResolvedSession(null);
@@ -483,14 +463,11 @@ const LoginModuleV2 = ({
     setTfaNextStep('ready');
     setTfaMessage('');
     setAlertMessage('');
-    setAltMatchOptions(null);
-    setAltMatchMode('first');
-    setAltMatchLabel('');
-    setAltOriginalEntry('');
-    setAltMatchInputType('');
+    setPendingAccountMatches(null);
+    setPendingMatchInputType('');
+    setPendingMatchClientId(null);
     setShowCreateAccount(false);
-    setCreateAccountEntry('');
-    setCreateAccountType('');
+    setPreauthInput('');
     setStep('user');
   };
 
@@ -987,6 +964,124 @@ const LoginModuleV2 = ({
     };
   }, [savedUserCookie, removeCookie, resolvePatientFromSession, fetchPerson, fetchSessionV2, getUrlParams, getClientNameForId]);
 
+  // Fetches session/person for a resolved account, validates client match, and stages it as the active login candidate.
+  const establishResolvedAccount = async (personId, requiredClientId) => {
+    const [sessionRec, personRec] = await Promise.all([
+      fetchSessionV2(personId),
+      fetchPerson(personId)
+    ]);
+    if (!sessionRec) {
+      setResolvedUserId('');
+      setResolvedSession(null);
+      setResolvedPerson(null);
+      setResolvedPatient(null);
+      setAlertMessage('This account cannot be used at this time, please contact AVA Support');
+      setStep('user');
+      return null;
+    }
+
+    if (requiredClientId && personRec?.client_id && personRec.client_id !== requiredClientId) {
+      const clientLabel = await getClientNameForId(requiredClientId);
+      setResolvedUserId('');
+      setResolvedSession(null);
+      setResolvedPerson(null);
+      setResolvedPatient(null);
+      setAlertMessage(`This account is not valid for ${clientLabel}`);
+      setStep('user');
+      return null;
+    }
+
+    setAlertMessage('');
+    setResolvedUserId(personId);
+    setResolvedSession(sessionRec);
+    setResolvedPerson(personRec);
+    resolvedSessionRef.current = sessionRec;
+    resolvedPersonRef.current = personRec;
+    setResolvedPatient(personRec);
+    return { sessionRec, personRec, computedNextStep: getNextStepFromSession(sessionRec) };
+  };
+
+  // Sends a TFA code to a single account's contact info, and moves to the tfa step; nextStepAfterTfa runs once the code is verified.
+  const sendLoginTfaCode = async ({ personRec, authorId, inputType, nextStepAfterTfa }) => {
+    const tempPass = uuid(6);
+    const clientLabel = await getClientNameForId(personRec?.client_id);
+    let prefMethod = inputType === 'email' ? 'email' : 'sms';
+    const my_email = personRec?.contact_info?.email?.address || personRec?.messaging?.email || null;
+    const my_phone = personRec?.contact_info?.cell?.number || personRec?.messaging?.sms || null;
+    const expectedAddress = (() => {
+      if (prefMethod === 'email') {
+        if (my_email) { return my_email; }
+        else if (my_phone) {
+          prefMethod = 'sms'
+          return my_phone;
+        }
+        else {
+          return null;
+        }
+      }
+      else {
+       if (my_phone) { return my_phone; }
+       else if (my_email) {
+         prefMethod = 'email';
+         return my_email;
+       }
+       else {
+         return null;
+       }
+      }
+    });
+
+    const resolvedAddress = expectedAddress();
+    if (!resolvedAddress) {
+      setAlertMessage('We could not determine a valid contact method for sending the security code.');
+      setStep('user');
+      return false;
+    }
+    try {
+      await sendMessages({
+        client: personRec?.client_id,
+        author: authorId || personRec?.person_id,
+        person_id: personRec?.person_id,
+        preferred_method: prefMethod,
+        messageText: `To access your ${clientLabel} account, use this code: ${tempPass}`,
+        recipientList: [personRec?.person_id],
+        subject: `Security message from ${clientLabel}`
+      });
+    }
+    catch {
+      setAlertMessage('We could not send a security code at this time. Please try again.');
+      setStep('user');
+      return false;
+    }
+
+    const promptMessage = prefMethod === 'email'
+      ? `We've sent an e-Mail to ${resolvedAddress}. Look for a security code in that message and enter it here.`
+      : `We've sent a text to (${String(resolvedAddress).slice(2, 5)}) ${String(resolvedAddress).slice(5, 8)}-${String(resolvedAddress).slice(8)}. Look for a security code in that message and enter it here.`;
+
+    setTfaCode(tempPass);
+    setTfaInput('');
+    setTfaNextStep(nextStepAfterTfa);
+    setTfaMessage(promptMessage);
+    setAlertMessage('');
+    setStep('tfa');
+    return true;
+  };
+
+  const proceedAfterAuth = async (personId, computedNextStep, inputType) => {
+    if (onSubmitUserId) {
+      const result = await onSubmitUserId(personId, {
+        rawInput: userId,
+        inputType,
+        nextStep: computedNextStep,
+      });
+      if (result && result.nextStep) {
+        setStep(result.nextStep);
+        return;
+      }
+    }
+    setStep(computedNextStep);
+  };
+
   const handleSubmitUser = async () => {
     useSessionPatientRef.current = false;
     if ((userId || '').trim().toLowerCase() === 'client') {
@@ -1000,132 +1095,85 @@ const LoginModuleV2 = ({
     const urlParams = getUrlParams();
     const requiredClientId = urlParams?.client || urlParams?.client_id || urlParams?.create || null;
     const resolved = await resolveIdentifier(userId);
-    if (!resolved.resolved) {
-      if (!resolved.multipleMatch) {
+
+    // Any contact-based match (even just one) is routed through the account-confirmation list, rather
+    // than resolved immediately, so people always get a chance to say "not me" before signing in.
+    if (resolved.multipleMatch && Array.isArray(resolved.matches) && resolved.matches.length > 0) {
+      const representativePerson = await fetchPerson(resolved.matches[0].person_id);
+      if (!representativePerson) {
         setAlertMessage('We could not find an account matching that entry. Please try again.');
-        setShowCreateAccount(true);
-        setCreateAccountEntry(userId);
-        setCreateAccountType(resolved.inputType);
+        setStep('user');
+        return;
       }
+      setPendingAccountMatches(resolved.matches);
+      setPendingMatchInputType(resolved.inputType);
+      setPendingMatchClientId(representativePerson.client_id || null);
+
+      if (clientStyle?.no_tfa) {
+        // TFA is disabled for this client - skip straight to the confirmation list.
+        setAlertMessage('');
+        setStep('select-account');
+        return;
+      }
+
+      await sendLoginTfaCode({
+        personRec: representativePerson,
+        authorId: representativePerson.person_id,
+        inputType: resolved.inputType,
+        nextStepAfterTfa: 'select-account',
+      });
+      return;
+    }
+
+    if (!resolved.resolved) {
+      const contactLabel = resolved.inputType === 'email' ? 'e-Mail address' : (resolved.inputType === 'phone' ? 'phone number' : null);
+      setAlertMessage(contactLabel
+        ? `We don't recognize that ${contactLabel}. Please try again, or tap below to create a new account.`
+        : 'We could not find an account matching that entry. Please try again.');
+      setShowCreateAccount(true);
       setStep('user');
       return;
     }
 
     const resolvedId = resolved.userId || userId;
-    const [sessionRec, personRec] = await Promise.all([
-      fetchSessionV2(resolvedId),
-      fetchPerson(resolvedId)
-    ]);
-    if (!sessionRec) {
-      setResolvedUserId('');
-      setResolvedSession(null);
-      setResolvedPerson(null);
-      setResolvedPatient(null);
-      setAlertMessage('This account cannot be used at this time, please contact AVA Support');
-      setStep('user');
-      return;
-    }
+    const established = await establishResolvedAccount(resolvedId, requiredClientId);
+    if (!established) return;
+    const { sessionRec, personRec, computedNextStep } = established;
 
-    if (requiredClientId && personRec?.client_id && personRec.client_id !== requiredClientId) {
-      const clientLabel = await getClientNameForId(requiredClientId);
-      setResolvedUserId('');
-      setResolvedSession(null);
-      setResolvedPerson(null);
-      setResolvedPatient(null);
-      setAlertMessage(`This account is not valid for ${clientLabel}`);
-      setStep('user');
-      return;
-    }
-
-    setAlertMessage('');
     setShowCreateAccount(false);
-    setCreateAccountEntry('');
-    setCreateAccountType('');
-    setResolvedUserId(resolvedId);
-    setResolvedSession(sessionRec);
-    setResolvedPerson(personRec);
-    resolvedSessionRef.current = sessionRec;
-    resolvedPersonRef.current = personRec;
-    setResolvedPatient(personRec);
 
-    const computedNextStep = getNextStepFromSession(sessionRec);
     if (!clientStyle?.no_tfa && (resolved.inputType === 'email' || resolved.inputType === 'phone')) {
-      const tempPass = uuid(6);
-      const clientLabel = await getClientNameForId(personRec?.client_id);
-      let prefMethod = resolved.inputType === 'email' ? 'email' : 'sms';
-      const my_email = personRec?.contact_info?.email?.address || personRec?.messaging?.email || null;
-      const my_phone = personRec?.contact_info?.cell?.number || personRec?.messaging?.sms || null;
-      const expectedAddress = (() => {
-        if (prefMethod === 'email') {
-          if (my_email) { return my_email; }
-          else if (my_phone) {
-            prefMethod = 'sms'
-            return my_phone;
-          }
-          else {
-            return null;
-          }
-        }
-        else {
-         if (my_phone) { return my_phone; }
-         else if (my_email) {
-           prefMethod = 'email';
-           return my_email;
-         }
-         else {
-           return null;
-         }
-        }
+      await sendLoginTfaCode({
+        personRec,
+        authorId: sessionRec?.user_id || personRec?.person_id,
+        inputType: resolved.inputType,
+        nextStepAfterTfa: computedNextStep,
       });
-
-      const resolvedAddress = expectedAddress();
-      if (!resolvedAddress) {
-        setAlertMessage('We could not determine a valid contact method for sending the security code.');
-        setStep('user');
-        return;
-      }
-      try {
-        await sendMessages({
-          client: personRec?.client_id,
-          author: sessionRec?.user_id || personRec?.person_id,
-          person_id: personRec?.person_id,
-          preferred_method: prefMethod,
-          messageText: `To access your ${clientLabel} account, use this code: ${tempPass}`,
-          recipientList: [personRec?.person_id],
-          subject: `Security message from ${clientLabel}`
-        });
-      }
-      catch {
-        setAlertMessage('We could not send a security code at this time. Please try again.');
-        setStep('user');
-        return;
-      }
-
-      const promptMessage = prefMethod === 'email'
-        ? `We've sent an e-Mail to ${resolvedAddress}. Look for a security code in that message and enter it here.`
-        : `We've sent a text to (${String(resolvedAddress).slice(2, 5)}) ${String(resolvedAddress).slice(5, 8)}-${String(resolvedAddress).slice(8)}. Look for a security code in that message and enter it here.`;
-
-      setTfaCode(tempPass);
-      setTfaInput('');
-      setTfaNextStep(computedNextStep);
-      setTfaMessage(promptMessage);
-      setAlertMessage('');
-      setStep('tfa');
       return;
     }
-    if (onSubmitUserId) {
-      const result = await onSubmitUserId(resolvedId, {
-        rawInput: userId,
-        inputType: resolved.inputType,
-        nextStep: computedNextStep,
-      });
-      if (result && result.nextStep) {
-        setStep(result.nextStep);
-        return;
-      }
-    }
 
-    setStep(computedNextStep);
+    await proceedAfterAuth(resolvedId, computedNextStep, resolved.inputType);
+  };
+
+  // Called once the person picks their account from the post-TFA list; contact ownership is already verified, so no second code is sent.
+  const handleSelectAccount = async (personId) => {
+    const urlParams = getUrlParams();
+    const requiredClientId = urlParams?.client || urlParams?.client_id || urlParams?.create || null;
+    const inputType = pendingMatchInputType;
+    const established = await establishResolvedAccount(personId, requiredClientId);
+    setPendingAccountMatches(null);
+    setPendingMatchInputType('');
+    if (!established) return;
+    setShowCreateAccount(false);
+    await proceedAfterAuth(personId, established.computedNextStep, inputType);
+  };
+
+  // Keeps pendingMatchClientId so the pre-auth code lookup below can still scope to this client.
+  const handleAccountMismatch = () => {
+    setPendingAccountMatches(null);
+    setPendingMatchInputType('');
+    setAlertMessage('');
+    handleCreateAccount();
   };
 
   const handleSubmitPassword = async () => {
@@ -1288,8 +1336,6 @@ const LoginModuleV2 = ({
     };
   }, [step, authCompleted, resolvedPerson, resolvedSession, resolvedUserId, userId, savedClientCookie, bakeCookies, finalizeLoadedSession]);
 
-  const urlParams = getUrlParams();
-
   return (
     <Box
       display='flex'
@@ -1305,9 +1351,9 @@ const LoginModuleV2 = ({
         backgroundRepeat: 'no-repeat'
       } : undefined}
     >
-      {showQuickAdd && (
+      {quickAddOptions && (
         <QuickAdd
-          options={{ client_id: urlParams?.client || urlParams?.client_id || urlParams?.create || resolvedPerson?.client_id || resolvedSession?.client_id || savedClientCookie?.client || savedClientCookie?.client_id }}
+          options={quickAddOptions}
           onClose={(createdPersonIds, onSaveCallback = null) => {
           // QuickAdd finished - redirect to login with first created person
           if (createdPersonIds && createdPersonIds.length > 0) {
@@ -1393,20 +1439,13 @@ const LoginModuleV2 = ({
                 <Typography style={{ marginLeft: 8, marginBottom: 8, fontSize: '2em', fontWeight: 'bold' }} >
                   {clientName}
                 </Typography>
-                {namePromptActive && (
-                  <Typography style={{ marginLeft: 8, marginBottom: 8 }}>
-                    {namePromptMessage}
-                  </Typography>
-                )}
                 <TextField
-                  label={namePromptLabel}
+                  label='User ID, e-Mail Address, or Phone Number'
                   value={userId}
                   onChange={(event) => {
                     setUserId(event.target.value);
                     if (showCreateAccount) {
                       setShowCreateAccount(false);
-                      setCreateAccountEntry('');
-                      setCreateAccountType('');
                     }
                   }}
                   onKeyDown={(event) => {
@@ -1445,27 +1484,7 @@ const LoginModuleV2 = ({
                     </Button>
                   </Box>
                 )}
-                <Box mt={2} display='flex' justifyContent={namePromptActive ? 'space-between' : 'flex-end'}>
-                  {namePromptActive && (
-                    <Button
-                      className={AVAClass.AVAButton}
-                      variant='outlined'
-                      onClick={() => {
-                        setAltMatchOptions(null);
-                        setAltMatchMode('first');
-                        setAltMatchLabel('');
-                        setAlertMessage('');
-                        setUserId(altOriginalEntry || '');
-                        setAltOriginalEntry('');
-                        setAltMatchInputType('');
-                        setShowCreateAccount(false);
-                        setCreateAccountEntry('');
-                        setCreateAccountType('');
-                      }}
-                    >
-                      Start Over
-                    </Button>
-                  )}
+                <Box mt={2} display='flex' justifyContent='flex-end'>
                   <Button
                     className={AVAClass.AVAButton}
                     variant='outlined'
@@ -1611,6 +1630,138 @@ const LoginModuleV2 = ({
                     onClick={handleSubmitTfa}
                     disabled={loading || !tfaInput}
                     style={{ marginLeft: 8 }}
+                  >
+                    Continue
+                  </Button>
+                </Box>
+              </Box>
+            </Box>
+          )}
+
+          {step === 'select-account' && (
+            <Box display='flex' justifyContent='center' width='100%'>
+              <Box
+                display='flex'
+                flexDirection='column'
+                alignItems='center'
+                justifyContent='center'
+                width='80%'
+                maxWidth='500px'
+                className={AVAClass.AVAClientBackground}
+                style={loginPanelStyle}
+              >
+                <Typography style={{ marginLeft: 8, marginBottom: 8, fontWeight: 'bold' }}>
+                  {(pendingAccountMatches || []).length > 1 ? 'Which account is yours?' : 'Is this your account?'}
+                </Typography>
+                {alertMessage && (
+                  <Box mt={1} width='100%'>
+                    <Alert severity='error'>
+                      {alertMessage}
+                    </Alert>
+                  </Box>
+                )}
+                <Box display='flex' flexDirection='column' width='100%' mt={1}>
+                  {(pendingAccountMatches || []).map((match) => (
+                    <Button
+                      key={match.person_id}
+                      className={AVAClass.AVAButton}
+                      variant='outlined'
+                      onClick={() => handleSelectAccount(match.person_id)}
+                      disabled={loading}
+                      style={{ marginTop: 8, justifyContent: 'flex-start' }}
+                    >
+                      {`${match.firstName || ''} ${match.lastName || ''}`.trim() || match.person_id}
+                    </Button>
+                  ))}
+                </Box>
+                <Box mt={2} display='flex' justifyContent='space-between' width='100%'>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    variant='outlined'
+                    onClick={() => {
+                      setPendingAccountMatches(null);
+                      setPendingMatchInputType('');
+                      setAlertMessage('');
+                      setStep('user');
+                    }}
+                    disabled={loading}
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    color='primary'
+                    variant='text'
+                    onClick={handleAccountMismatch}
+                    disabled={loading}
+                  >
+                    {(pendingAccountMatches || []).length > 1
+                      ? 'None of these are mine. Create a new account?'
+                      : "This isn't me. Create a new account?"}
+                  </Button>
+                </Box>
+              </Box>
+            </Box>
+          )}
+
+          {step === 'preauth' && (
+            <Box display='flex' justifyContent='center' width='100%'>
+              <Box
+                display='flex'
+                flexDirection='column'
+                alignItems='center'
+                justifyContent='center'
+                width='80%'
+                maxWidth='500px'
+                className={AVAClass.AVAClientBackground}
+                style={loginPanelStyle}
+              >
+                <Typography style={{ marginLeft: 8, marginBottom: 8, fontWeight: 'bold' }}>
+                  Enter your authorization code
+                </Typography>
+                <Typography style={{ marginLeft: 8, marginBottom: 8 }}>
+                  New accounts require an authorization code. Please check with your provider if you don't have one.
+                </Typography>
+                <TextField
+                  label='Authorization code'
+                  value={preauthInput}
+                  onChange={(event) => setPreauthInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && preauthInput && !loading) {
+                      event.preventDefault();
+                      handleSubmitPreAuthCode();
+                    }
+                  }}
+                  fullWidth
+                  variant='outlined'
+                  margin='normal'
+                  disabled={loading}
+                  autoFocus
+                />
+                {alertMessage && (
+                  <Box mt={1}>
+                    <Alert severity='error'>
+                      {alertMessage}
+                    </Alert>
+                  </Box>
+                )}
+                <Box mt={2} display='flex' justifyContent='space-between' width='100%'>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    variant='outlined'
+                    onClick={() => {
+                      setPreauthInput('');
+                      setAlertMessage('');
+                      setStep('user');
+                    }}
+                    disabled={loading}
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    variant='outlined'
+                    onClick={handleSubmitPreAuthCode}
+                    disabled={loading || !preauthInput}
                   >
                     Continue
                   </Button>

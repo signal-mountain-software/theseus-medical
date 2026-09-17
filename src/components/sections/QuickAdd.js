@@ -254,7 +254,7 @@ export default ({ onClose, options = {} }) => {
         reactUpd.all_account_prompts = deepCopy(newAccountForm);
         reactUpd.new_account_prompts = deepCopy(newAccountForm).filter(entry => {
           // If restrict_to_admin is true, only include if user is administrative account
-          if (entry.restrict_to_admin && (!reactData.administrative_account || options.source === 'url_parameter')) {
+          if (entry.restrict_to_admin && (!reactData.administrative_account || options.source === 'url_parameter' || options.source === 'login_preauth')) {
             return false;
           }
 
@@ -286,11 +286,25 @@ export default ({ onClose, options = {} }) => {
       }
 
       // Determine initial stage based on how QuickAdd was invoked
-      // If invoked via URL parameter (?create=client_id), start with name verification to prevent duplicates
-      // Otherwise, skip directly to account type selection for normal admin use
+      // - url_parameter (?create=client_id): start with name verification to prevent duplicates
+      // - login_preauth (from LoginModuleV2): identity already verified via TFA, so skip the
+      //   name-verification stage entirely and apply the code directly
+      // - otherwise: normal admin use, skip directly to account type selection
       const invokedViaUrl = options.source === 'url_parameter';
+      const invokedViaLoginPreauth = options.source === 'login_preauth';
 
-      if (invokedViaUrl) {
+      if (invokedViaLoginPreauth) {
+        // Pre-seed the contact info the person already entered at login so form fields can be
+        // pre-filled (see the parsed_email/parsed_phone handling in gatherFormFields below).
+        if (options.contact_type === 'email' && options.contact_value) {
+          reactUpd.parsed_email = options.contact_value;
+        } else if (options.contact_type === 'phone' && options.contact_value) {
+          reactUpd.parsed_phone = options.contact_value;
+        }
+        // Fallback stage in case the code can't be applied below (e.g. used up in the meantime).
+        reactUpd.preauth_code_input = options.preauth_code || '';
+        reactUpd.stage = 'prompt_for_preauth_code';
+      } else if (invokedViaUrl) {
         // URL-driven mode (?create=client_id) - start with name verification to prevent duplicates
         reactUpd.stage = 'prompt_for_name';
       } else {
@@ -299,6 +313,11 @@ export default ({ onClose, options = {} }) => {
       }
 
       updateReactData(reactUpd, true);
+
+      // Apply the already-validated code immediately, bypassing the name-verification stage above.
+      if (invokedViaLoginPreauth && options.preauth_code) {
+        await handlePreAuthCodeInput(options.preauth_code);
+      }
     }
     isMounted.current = true;
     initialize();
@@ -1106,17 +1125,20 @@ export default ({ onClose, options = {} }) => {
   /**
    * Fetch a single PreAuthorization record by its normalized key.
    * Table: PreAuthorization  PK: client_id  SK: preauth_key
+   * Matches case-insensitively since preauth_key casing isn't normalized at import time.
    */
   const lookupPreAuth = async (preauthKey) => {
     try {
       const result = await dbClient
-        .get({
-          Key: { client_id: reactData.client_id, preauth_key: preauthKey },
+        .query({
+          KeyConditionExpression: 'client_id = :c',
+          ExpressionAttributeValues: { ':c': reactData.client_id },
           TableName: 'PreAuthorization'
         })
         .promise()
         .catch(() => null);
-      return result?.Item || null;
+      const items = result?.Items || [];
+      return items.find(item => String(item?.preauth_key || '').toLowerCase() === String(preauthKey || '').toLowerCase()) || null;
     } catch (err) {
       console.error('lookupPreAuth error:', err);
       return null;

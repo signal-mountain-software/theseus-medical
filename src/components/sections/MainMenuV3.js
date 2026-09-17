@@ -271,6 +271,8 @@ export default ({ start_at }) => {
     editDescriptionDenyMode: false,
     editDescriptionItemType: null,
     editDescriptionTargets: [],
+    editDescriptionUrl: '',
+    editDescriptionHasUrl: false,
     showAccessToSearch: false,
     showAddMessageTargetSearch: false,
     showEditMessageTargetSearch: false,
@@ -2375,14 +2377,16 @@ export default ({ start_at }) => {
   };
 
   const handleSaveDescription = async () => {
-    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong, editDescriptionAvailableTo, editDescriptionColor, editDescriptionItemType, editDescriptionTargets } = reactData;
+    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong, editDescriptionAvailableTo, editDescriptionColor, editDescriptionItemType, editDescriptionTargets, editDescriptionHasUrl, editDescriptionUrl } = reactData;
     let saveWorked = true;
     const colorExpr = editDescriptionColor ? ', color = :c' : ' REMOVE color';
+    const urlExpr = editDescriptionHasUrl ? ', #u = :u' : '';
     const exprValues = {
       ':d': { short: editDescriptionShort, long: editDescriptionLong },
       ':a': editDescriptionAvailableTo || []
     };
     if (editDescriptionColor) { exprValues[':c'] = editDescriptionColor; }
+    if (editDescriptionHasUrl) { exprValues[':u'] = editDescriptionUrl || ''; }
     await dbClient
       .update({
         TableName: 'MenuV3',
@@ -2390,8 +2394,8 @@ export default ({ start_at }) => {
           client_id: state.session.client_id,
           menu_id: editDescriptionMenuId
         },
-        UpdateExpression: `set #d = :d, available_to = :a${colorExpr}`,
-        ExpressionAttributeNames: { '#d': 'description' },
+        UpdateExpression: `set #d = :d, available_to = :a${colorExpr}${urlExpr}`,
+        ExpressionAttributeNames: { '#d': 'description', ...(editDescriptionHasUrl ? { '#u': 'url' } : {}) },
         ExpressionAttributeValues: exprValues
       })
       .promise()
@@ -2438,6 +2442,7 @@ export default ({ start_at }) => {
             cell.available_to = editDescriptionAvailableTo || [];
             if (editDescriptionColor) { cell.menuItemRec.color = editDescriptionColor; }
             else { delete cell.menuItemRec.color; }
+            if (editDescriptionHasUrl) { cell.menuItemRec.url = editDescriptionUrl || ''; }
             if (editDescriptionItemType === 'message_target') {
               if (!cell.menuItemRec.call) { cell.menuItemRec.call = { target: 'MessageForm', params: { options: {} } }; }
               cell.menuItemRec.call.params = cell.menuItemRec.call.params || {};
@@ -2461,6 +2466,8 @@ export default ({ start_at }) => {
       editDescriptionDenyMode: false,
       editDescriptionItemType: null,
       editDescriptionTargets: [],
+      editDescriptionUrl: '',
+      editDescriptionHasUrl: false,
       menu_hierarchy: reactData.menu_hierarchy.map(level => level ? [...level] : level),
       alert: saveWorked
         ? { severity: 'success', title: 'Saved', message: 'Description updated.' }
@@ -3832,6 +3839,7 @@ export default ({ start_at }) => {
                   can_delete: canDeleteThisCard,
                   item_type: (this_item.call?.target === 'MessageForm' && Array.isArray(this_item.call?.params?.options?.recipients) && this_item.call.params.options.recipients.length > 0) ? 'message_target' : null,
                   targets: deepCopy(this_item.call?.params?.options?.recipients || []),
+                  url: (typeof this_item.url === 'string') ? this_item.url : '',
                 }
                 : null,
             }
@@ -5975,6 +5983,8 @@ export default ({ start_at }) => {
                       editDescriptionCanDelete: !!edit.can_delete,
                       editDescriptionItemType: edit.item_type || null,
                       editDescriptionTargets: deepCopy(edit.targets || []),
+                      editDescriptionUrl: edit.url || '',
+                      editDescriptionHasUrl: !!edit.url,
                     }, true);
                   }}
                 >
@@ -6151,7 +6161,7 @@ export default ({ start_at }) => {
       {reactData.editDescriptionDialog &&
         <Dialog
           open={reactData.editDescriptionDialog}
-          onClose={() => updateReactData({ editDescriptionDialog: false, editDescriptionDenyMode: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [] }, true)}
+          onClose={() => updateReactData({ editDescriptionDialog: false, editDescriptionDenyMode: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [], editDescriptionUrl: '', editDescriptionHasUrl: false }, true)}
           classes={{ paper: classes.clientPopUp }}
           fullWidth
         >
@@ -6198,6 +6208,16 @@ export default ({ start_at }) => {
               minRows={3}
               style={{ marginBottom: 24 }}
             />
+            {reactData.editDescriptionHasUrl &&
+              <TextField
+                label='Link address'
+                value={reactData.editDescriptionUrl}
+                onChange={(e) => updateReactData({ editDescriptionUrl: e.target.value }, true)}
+                variant='outlined'
+                fullWidth
+                style={{ marginBottom: 16 }}
+              />
+            }
             <Box display='flex' alignItems='center' style={{ marginBottom: 16 }}>
               <Typography variant='caption' style={{ color: 'gray', marginRight: 12, whiteSpace: 'nowrap' }}>{'Color'}</Typography>
               <Box style={{
@@ -6351,7 +6371,7 @@ export default ({ start_at }) => {
                   className={AVAClass.AVAButton}
                   style={{ backgroundColor: 'red', color: 'white' }}
                   size='small'
-                  onClick={() => updateReactData({ editDescriptionDialog: false, editDescriptionDenyMode: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [] }, true)}
+                  onClick={() => updateReactData({ editDescriptionDialog: false, editDescriptionDenyMode: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [], editDescriptionUrl: '', editDescriptionHasUrl: false }, true)}
                 >
                   Cancel
                 </Button>
