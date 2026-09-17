@@ -1,12 +1,15 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { s3, lambda, sentenceCase } from '../../util/AVAUtilities';
+import { s3, dbClient, sentenceCase } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContent from '@material-ui/core/DialogContent';
 import DialogContentText from '@material-ui/core/DialogContentText';
+import CircularProgress from '@material-ui/core/CircularProgress';
+import LinearProgress from '@material-ui/core/LinearProgress';
+import Typography from '@material-ui/core/Typography';
 
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import ShowBulkList from '../forms/ShowBulkList';
@@ -106,6 +109,8 @@ export default ({ pClient, showUpload, handleClose }) => {
 
   const [changeDetected, setChangeDetected] = React.useState(false);
   const [bulkItemList, setBulkItemList] = React.useState([]);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [saveProgress, setSaveProgress] = React.useState(null);   // { completed, total } while handleSave is writing records
 
   const entryTypes = [
     'header',
@@ -121,13 +126,6 @@ export default ({ pClient, showUpload, handleClose }) => {
     'dessert'
   ];
 
-  let params = {
-    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:ObservationMaintenance',
-    InvocationType: 'RequestResponse',
-    LogType: 'Tail',
-    Payload: ''
-  };
-
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
 
   const hiddenFileInput = React.useRef(null);
@@ -137,21 +135,54 @@ export default ({ pClient, showUpload, handleClose }) => {
   };
 
   const handleSave = async () => {
-    params.Payload = JSON.stringify({
-      action: "bulk_add",
-      clientId: pClient,
-      request: {
-        "item_list": bulkItemList
-      }
+    setIsLoading(true);
+    const putRequests = bulkItemList.map(entry => {
+      const dateInfo = makeDate(entry.date);
+      const item = {
+        composite_key: `${pClient}~${entry.type}_${dateInfo.obs}`,
+        client_id: pClient,
+        observation_code: entry.item,
+        date_key: dateInfo.ymd,
+        sort_order: entry.sort_order,
+        observation_type: entry.type,
+      };
+      if (entry.oKey) { item.observation_key = entry.oKey; }
+      return { PutRequest: { Item: item } };
     });
-    await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while updating that item.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-      });
+
+    const totalCount = putRequests.length;
+    let completedCount = 0;
+    setSaveProgress({ completed: completedCount, total: totalCount });
+
+    const chunkSize = 25;   // DynamoDB batchWrite limit
+    for (let i = 0; i < putRequests.length; i += chunkSize) {
+      let chunk = putRequests.slice(i, i + chunkSize);
+      const chunkCount = chunk.length;
+      let retryCount = 0;
+      let retryNeeded;
+      do {
+        retryNeeded = false;
+        const writeResponse = await dbClient
+          .batchWrite({ RequestItems: { Observations: chunk } })
+          .promise()
+          .catch(err => {
+            enqueueSnackbar(`AVA encountered an error while updating that item.  Error is ${err.message}`, {
+              variant: 'error'
+            });
+          });
+        const unprocessed = writeResponse?.UnprocessedItems?.Observations;
+        if (unprocessed && unprocessed.length > 0) {
+          chunk = unprocessed;
+          retryNeeded = true;
+          retryCount++;
+        }
+      } while (retryNeeded && (retryCount < 5));
+      completedCount += chunkCount;
+      setSaveProgress({ completed: completedCount, total: totalCount });
+    }
+
+    setSaveProgress(null);
+    setIsLoading(false);
     handleClose();
   };
 
@@ -164,6 +195,7 @@ export default ({ pClient, showUpload, handleClose }) => {
       var workbook = XLSX.read(data, { type: "array" });
       parseTemplateMenu(workbook);
       setChangeDetected(true);
+      setIsLoading(false);
     };
     req.send();
   };
@@ -229,7 +261,7 @@ export default ({ pClient, showUpload, handleClose }) => {
           type: values[2]
         };
         if (values[3]) {
-          resultObj[useKey].oKey = values[3]
+          resultObj[useKey].oKey = `${values[3]}`;   // coerce to string (column D may be read as a number)
         }
       }
     });
@@ -263,49 +295,66 @@ export default ({ pClient, showUpload, handleClose }) => {
         </DialogContentText>
         <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
           {
-            bulkItemList.length === 0 ?
-              <DialogContent dividers={true} className={classes.dialogBox}>
-                <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-                  <Button
-                    className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'blue', color: 'white' }}
-                    startIcon={<CloudUploadIcon />}
-                    onClick={handleFileUpload}
-                  >
-                    {'Choose File'}
-                  </Button>
+            saveProgress ?
+              <Box display='flex' flexDirection='column' padding={4} justifyContent='center' alignItems='center'>
+                <Typography variant='body2' style={{ marginBottom: 8 }}>
+                  {`Saving ${saveProgress.completed} of ${saveProgress.total} records...`}
+                </Typography>
+                <Box width='100%'>
+                  <LinearProgress variant='determinate' value={saveProgress.total ? (saveProgress.completed / saveProgress.total) * 100 : 100} />
                 </Box>
-                <input
-                  type="file"
-                  style={{ display: 'none' }}
-                  ref={hiddenFileInput}
-                  onChange={async (target) => {
-                    let fObj = target.target.files[0];
-                    const pFile = {
-                      Bucket: 'theseus-medical-storage',
-                      Key: 'public_uploads/' + fObj.name,
-                      Body: fObj,
-                      ACL: 'public-read-write',
-                      ContentType: fObj.ContentType
-                    };
-                    enqueueSnackbar(`Uploading your file`, { variant: 'success', persist: false });
-                    let s3Resp = await s3
-                      .upload(pFile)
-                      .promise()
-                      .catch(err => {
-                        enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
-                      });
-                    closeSnackbar();
-                    handleSpreadsheet(s3Resp.Location);
-                  }}
-                />
-              </DialogContent>
+              </Box>
               :
-              <ShowBulkList
-                pClient={pClient}
-                workingList={bulkItemList}
-                showList={bulkItemList.length > 0}
-              />
+              isLoading ?
+                <Box display='flex' flexDirection='column' padding={4} justifyContent='center' alignItems='center'>
+                  <CircularProgress />
+                </Box>
+                :
+                bulkItemList.length === 0 ?
+                  <DialogContent dividers={true} className={classes.dialogBox}>
+                    <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+                      <Button
+                        className={AVAClass.AVAButton}
+                        style={{ backgroundColor: 'blue', color: 'white' }}
+                        startIcon={<CloudUploadIcon />}
+                        onClick={handleFileUpload}
+                      >
+                        {'Choose File'}
+                      </Button>
+                    </Box>
+                    <input
+                      type="file"
+                      style={{ display: 'none' }}
+                      ref={hiddenFileInput}
+                      onChange={async (target) => {
+                        let fObj = target.target.files[0];
+                        const pFile = {
+                          Bucket: 'theseus-medical-storage',
+                          Key: 'public_uploads/' + fObj.name,
+                          Body: fObj,
+                          ACL: 'public-read-write',
+                          ContentType: fObj.ContentType
+                        };
+                        setIsLoading(true);
+                        enqueueSnackbar(`Uploading your file`, { variant: 'success', persist: false });
+                        let s3Resp = await s3
+                          .upload(pFile)
+                          .promise()
+                          .catch(err => {
+                            enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+                          });
+                        closeSnackbar();
+                        if (!s3Resp) { setIsLoading(false); return; }
+                        handleSpreadsheet(s3Resp.Location);
+                      }}
+                    />
+                  </DialogContent>
+                  :
+                  <ShowBulkList
+                    pClient={pClient}
+                    workingList={bulkItemList}
+                    showList={bulkItemList.length > 0}
+                  />
           }
         </Paper>
         <DialogActions className={classes.buttonArea} >
@@ -315,6 +364,7 @@ export default ({ pClient, showUpload, handleClose }) => {
                 className={AVAClass.AVAButton}
                 style={{ backgroundColor: 'red', color: 'white' }}
                 onClick={handleClose}
+                disabled={isLoading}
                 startIcon={<CloseIcon size="small" />}
               >
                 {'Cancel'}
@@ -324,6 +374,7 @@ export default ({ pClient, showUpload, handleClose }) => {
                   className={AVAClass.AVAButton}
                   style={{ backgroundColor: 'green', color: 'white' }}
                   onClick={handleSave}
+                  disabled={isLoading}
                   startIcon={<SaveIcon size="small" />}
                 >
                   Save

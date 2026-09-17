@@ -171,6 +171,7 @@ export default ({ pClient, showMenu, onClose }) => {
       response.forEach((item, x) => {
         if (seenLabel.hasOwnProperty(item.label)) {
           // label already exists; do we need to put a better value in?  (we shuold if the value is missing or '*nokey...')
+          console.log(seenLabel[item.label]);
           if (!seenLabel[item.label]
             || (seenLabel[item.label].startsWith('*noKey') && (item.value && !item.value.startsWith('*noKey')))
           ) {
