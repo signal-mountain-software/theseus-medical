@@ -271,6 +271,8 @@ export default ({ start_at }) => {
     editDescriptionDenyMode: false,
     editDescriptionItemType: null,
     editDescriptionTargets: [],
+    editDescriptionUrl: '',
+    editDescriptionHasUrl: false,
     showAccessToSearch: false,
     showAddMessageTargetSearch: false,
     showEditMessageTargetSearch: false,
@@ -284,6 +286,7 @@ export default ({ start_at }) => {
     liveLinkIsSlideshow: false,
     liveLinkPaused: false,
     liveLinkManualNavToken: 0,
+    liveLinkCacheBust: 0,
     liveLinkHeicConverting: false,
     liveLinkHeicConvertedUrl: null,
     showIosInstall: false,
@@ -301,6 +304,15 @@ export default ({ start_at }) => {
     ? clientUseTileUI
     : !!reactData.uiTilesOverride;
   const previousUseTileUIRef = React.useRef(useTileUI);
+
+  // Reads reactData.uiTilesOverride directly (it's a stable mutable object) instead of the
+  // `useTileUI` const above. Needed because the mount effect's rebuildMenuHierarchy() call is
+  // captured in a closure from the very first render (uiTilesOverride still null there); once the
+  // user's saved preference loads and mutates reactData, that stale closure's `useTileUI` const
+  // never picks up the change, so it can restore/persist open-menu state under the wrong mode key.
+  const getCurrentUseTileUI = () => ((reactData.uiTilesOverride === null) || (reactData.uiTilesOverride === undefined))
+    ? clientUseTileUI
+    : !!reactData.uiTilesOverride;
 
   const normalizeHexColor = (value) => {
     if (!value || typeof value !== 'string') { return null; }
@@ -706,7 +718,7 @@ export default ({ start_at }) => {
           }
           else if (startAtItem.menu_itemType === 'menu') {
             reactData.menu_hierarchy = reactUpd.menu_hierarchy;
-            if (useTileUI) {
+            if (getCurrentUseTileUI()) {
               delete lazyFetchCursorRef.current[`${startAtLevel + 1}~${startAtItem.menu_id}`];
               await loadChildrenPage(startAtItem, startAtLevel + 1, 0);
               reactData.levelPages = Object.assign({}, reactData.levelPages, { [startAtLevel + 1]: 0 });
@@ -919,10 +931,46 @@ export default ({ start_at }) => {
       const nextIndex = (liveLinkSlideIndexRef.current + 1) % siblings.length;
       const nextSlide = siblings[nextIndex];
       liveLinkSlideIndexRef.current = nextIndex;
-      updateReactData({ liveLinkUrl: nextSlide.url, liveLinkTitle: nextSlide.title, liveLinkCurrentIndex: nextIndex }, true);
+      updateReactData({ liveLinkUrl: nextSlide.url, liveLinkTitle: nextSlide.title, liveLinkCurrentIndex: nextIndex, liveLinkCacheBust: Date.now() }, true);
     }, DEFAULT_SLIDESHOW_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [reactData.showLiveLink, reactData.liveLinkIsSlideshow, reactData.liveLinkPaused, reactData.liveLinkSiblings, reactData.liveLinkManualNavToken]);
+
+  // A slide image that 404s/fails to load should just be dropped from the rotation
+  // rather than showing the browser's broken-image placeholder icon.
+  const handleLiveLinkImageError = () => {
+    if (!reactData.liveLinkIsSlideshow) { return; }
+    const failedUrl = reactData.liveLinkUrl;
+    const remainingSiblings = (reactData.liveLinkSiblings || []).filter(s => s.url !== failedUrl);
+    if (remainingSiblings.length === 0) {
+      updateReactData({
+        showLiveLink: false,
+        liveLinkUrl: '',
+        liveLinkTitle: '',
+        liveLinkSiblings: [],
+        liveLinkCurrentIndex: -1,
+        liveLinkIsSlideshow: false,
+        alert: {
+          severity: 'warning',
+          title: 'No images available',
+          message: 'None of this Slide Show\u2019s images could be loaded.'
+        }
+      }, true);
+      return;
+    }
+    // Removing the failed slide shifts everything after it down one index, so re-using
+    // the same (mod-wrapped) index lands on whichever slide came right after it.
+    const nextIndex = reactData.liveLinkCurrentIndex % remainingSiblings.length;
+    const nextSlide = remainingSiblings[nextIndex];
+    liveLinkSlideIndexRef.current = nextIndex;
+    updateReactData({
+      liveLinkSiblings: remainingSiblings,
+      liveLinkUrl: nextSlide.url,
+      liveLinkTitle: nextSlide.title,
+      liveLinkCurrentIndex: nextIndex,
+      liveLinkCacheBust: Date.now()
+    }, true);
+  };
 
   // HEIC/HEIF photos (default format for iPhone camera uploads) decode natively only in Safari -
   // other browsers can't render them in <img>/<iframe> at all, which is what made the viewer fall
@@ -1790,7 +1838,7 @@ export default ({ start_at }) => {
     return true;
   };
 
-  const getOpenMenuModeKey = () => (useTileUI ? 'ui_tiles' : 'accessible');
+  const getOpenMenuModeKey = () => (getCurrentUseTileUI() ? 'ui_tiles' : 'accessible');
 
   const getOpenMenuSessionContext = () => {
     const session_id = state.session?.patient_id;
@@ -2001,6 +2049,27 @@ export default ({ start_at }) => {
       return false;
     }
     return ReactPlayer.canPlay(url.trim());
+  };
+
+  // Signed URLs (S3/Google presigned) fail signature verification if any query param is added.
+  const looksLikeSignedMediaUrl = (url) => {
+    const lower = (url || '').toLowerCase();
+    return (
+      lower.includes('x-amz-signature=') ||
+      lower.includes('x-amz-credential=') ||
+      lower.includes('x-goog-signature=') ||
+      lower.includes('googleaccessid=') ||
+      lower.includes('signature=')
+    );
+  };
+
+  // The underlying photo behind an unchanged URL may be replaced between when the slideshow
+  // opened and when a slide is (re)displayed, so force a fresh fetch instead of a stale browser cache hit.
+  const withCacheBuster = (url, bust) => {
+    if (!url || typeof url !== 'string' || !bust) { return url; }
+    if (url.startsWith('data:') || url.startsWith('blob:') || looksLikeSignedMediaUrl(url)) { return url; }
+    const joiner = url.includes('?') ? '&' : '?';
+    return `${url}${joiner}_cb=${bust}`;
   };
 
   const isHeicUrl = (url) => /\.(heic|heif)(\?.*)?$/i.test((url || '').trim());
@@ -2308,14 +2377,16 @@ export default ({ start_at }) => {
   };
 
   const handleSaveDescription = async () => {
-    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong, editDescriptionAvailableTo, editDescriptionColor, editDescriptionItemType, editDescriptionTargets } = reactData;
+    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong, editDescriptionAvailableTo, editDescriptionColor, editDescriptionItemType, editDescriptionTargets, editDescriptionHasUrl, editDescriptionUrl } = reactData;
     let saveWorked = true;
     const colorExpr = editDescriptionColor ? ', color = :c' : ' REMOVE color';
+    const urlExpr = editDescriptionHasUrl ? ', #u = :u' : '';
     const exprValues = {
       ':d': { short: editDescriptionShort, long: editDescriptionLong },
       ':a': editDescriptionAvailableTo || []
     };
     if (editDescriptionColor) { exprValues[':c'] = editDescriptionColor; }
+    if (editDescriptionHasUrl) { exprValues[':u'] = editDescriptionUrl || ''; }
     await dbClient
       .update({
         TableName: 'MenuV3',
@@ -2323,8 +2394,8 @@ export default ({ start_at }) => {
           client_id: state.session.client_id,
           menu_id: editDescriptionMenuId
         },
-        UpdateExpression: `set #d = :d, available_to = :a${colorExpr}`,
-        ExpressionAttributeNames: { '#d': 'description' },
+        UpdateExpression: `set #d = :d, available_to = :a${colorExpr}${urlExpr}`,
+        ExpressionAttributeNames: { '#d': 'description', ...(editDescriptionHasUrl ? { '#u': 'url' } : {}) },
         ExpressionAttributeValues: exprValues
       })
       .promise()
@@ -2371,6 +2442,7 @@ export default ({ start_at }) => {
             cell.available_to = editDescriptionAvailableTo || [];
             if (editDescriptionColor) { cell.menuItemRec.color = editDescriptionColor; }
             else { delete cell.menuItemRec.color; }
+            if (editDescriptionHasUrl) { cell.menuItemRec.url = editDescriptionUrl || ''; }
             if (editDescriptionItemType === 'message_target') {
               if (!cell.menuItemRec.call) { cell.menuItemRec.call = { target: 'MessageForm', params: { options: {} } }; }
               cell.menuItemRec.call.params = cell.menuItemRec.call.params || {};
@@ -2394,6 +2466,8 @@ export default ({ start_at }) => {
       editDescriptionDenyMode: false,
       editDescriptionItemType: null,
       editDescriptionTargets: [],
+      editDescriptionUrl: '',
+      editDescriptionHasUrl: false,
       menu_hierarchy: reactData.menu_hierarchy.map(level => level ? [...level] : level),
       alert: saveWorked
         ? { severity: 'success', title: 'Saved', message: 'Description updated.' }
@@ -3765,6 +3839,7 @@ export default ({ start_at }) => {
                   can_delete: canDeleteThisCard,
                   item_type: (this_item.call?.target === 'MessageForm' && Array.isArray(this_item.call?.params?.options?.recipients) && this_item.call.params.options.recipients.length > 0) ? 'message_target' : null,
                   targets: deepCopy(this_item.call?.params?.options?.recipients || []),
+                  url: (typeof this_item.url === 'string') ? this_item.url : '',
                 }
                 : null,
             }
@@ -3868,9 +3943,9 @@ export default ({ start_at }) => {
                 }, true);
                 return;
               }
-              const slideSiblings = slideUrls.map((url, slideIndex) => ({
+              const slideSiblings = slideUrls.map(url => ({
                 url,
-                title: `${itemTitle} — Slide ${slideIndex + 1} of ${slideUrls.length}`
+                title: itemTitle
               }));
               updateReactData({
                 showLiveLink: true,
@@ -3880,7 +3955,8 @@ export default ({ start_at }) => {
                 liveLinkCurrentIndex: 0,
                 liveLinkIsSlideshow: true,
                 liveLinkPaused: false,
-                liveLinkManualNavToken: 0
+                liveLinkManualNavToken: 0,
+                liveLinkCacheBust: Date.now()
               }, true);
               return;
             }
@@ -3920,7 +3996,8 @@ export default ({ start_at }) => {
               liveLinkCurrentIndex: currentSiblingIndex,
               liveLinkIsSlideshow: false,
               liveLinkPaused: false,
-              liveLinkManualNavToken: 0
+              liveLinkManualNavToken: 0,
+              liveLinkCacheBust: Date.now()
             }, true);
           }
         }}
@@ -5293,7 +5370,10 @@ export default ({ start_at }) => {
                             liveLinkUrl: sibling.url,
                             liveLinkTitle: sibling.title,
                             liveLinkCurrentIndex: newIndex,
-                            liveLinkManualNavToken: reactData.liveLinkManualNavToken + 1
+                            liveLinkManualNavToken: reactData.liveLinkManualNavToken + 1,
+                            liveLinkCacheBust: Date.now(),
+                            // Manual nav during a slideshow implies the user wants to stop and look; auto-advance would otherwise fight them.
+                            ...(reactData.liveLinkIsSlideshow ? { liveLinkPaused: true } : {})
                           }, true);
                         }}
                       >
@@ -5314,7 +5394,10 @@ export default ({ start_at }) => {
                             liveLinkUrl: sibling.url,
                             liveLinkTitle: sibling.title,
                             liveLinkCurrentIndex: newIndex,
-                            liveLinkManualNavToken: reactData.liveLinkManualNavToken + 1
+                            liveLinkManualNavToken: reactData.liveLinkManualNavToken + 1,
+                            liveLinkCacheBust: Date.now(),
+                            // Manual nav during a slideshow implies the user wants to stop and look; auto-advance would otherwise fight them.
+                            ...(reactData.liveLinkIsSlideshow ? { liveLinkPaused: true } : {})
                           }, true);
                         }}
                       >
@@ -5394,8 +5477,9 @@ export default ({ start_at }) => {
                   {/\.(jpe?g|png|gif|webp|svg|bmp)(\?.*)?$/i.test((reactData.liveLinkUrl || '').trim())
                     ? <Box
                       component='img'
-                      src={reactData.liveLinkUrl}
+                      src={withCacheBuster(reactData.liveLinkUrl, reactData.liveLinkCacheBust)}
                       alt={reactData.liveLinkTitle || ''}
+                      onError={handleLiveLinkImageError}
                       style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                     />
                     : isHeicUrl(reactData.liveLinkUrl)
@@ -5899,6 +5983,8 @@ export default ({ start_at }) => {
                       editDescriptionCanDelete: !!edit.can_delete,
                       editDescriptionItemType: edit.item_type || null,
                       editDescriptionTargets: deepCopy(edit.targets || []),
+                      editDescriptionUrl: edit.url || '',
+                      editDescriptionHasUrl: !!edit.url,
                     }, true);
                   }}
                 >
@@ -6075,7 +6161,7 @@ export default ({ start_at }) => {
       {reactData.editDescriptionDialog &&
         <Dialog
           open={reactData.editDescriptionDialog}
-          onClose={() => updateReactData({ editDescriptionDialog: false, editDescriptionDenyMode: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [] }, true)}
+          onClose={() => updateReactData({ editDescriptionDialog: false, editDescriptionDenyMode: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [], editDescriptionUrl: '', editDescriptionHasUrl: false }, true)}
           classes={{ paper: classes.clientPopUp }}
           fullWidth
         >
@@ -6122,6 +6208,16 @@ export default ({ start_at }) => {
               minRows={3}
               style={{ marginBottom: 24 }}
             />
+            {reactData.editDescriptionHasUrl &&
+              <TextField
+                label='Link address'
+                value={reactData.editDescriptionUrl}
+                onChange={(e) => updateReactData({ editDescriptionUrl: e.target.value }, true)}
+                variant='outlined'
+                fullWidth
+                style={{ marginBottom: 16 }}
+              />
+            }
             <Box display='flex' alignItems='center' style={{ marginBottom: 16 }}>
               <Typography variant='caption' style={{ color: 'gray', marginRight: 12, whiteSpace: 'nowrap' }}>{'Color'}</Typography>
               <Box style={{
@@ -6275,7 +6371,7 @@ export default ({ start_at }) => {
                   className={AVAClass.AVAButton}
                   style={{ backgroundColor: 'red', color: 'white' }}
                   size='small'
-                  onClick={() => updateReactData({ editDescriptionDialog: false, editDescriptionDenyMode: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [] }, true)}
+                  onClick={() => updateReactData({ editDescriptionDialog: false, editDescriptionDenyMode: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [], editDescriptionUrl: '', editDescriptionHasUrl: false }, true)}
                 >
                   Cancel
                 </Button>

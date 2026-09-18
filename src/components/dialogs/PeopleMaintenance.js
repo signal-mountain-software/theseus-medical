@@ -551,7 +551,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         section_name: 'Additional Data',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('AdministrativeSection')) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('admin') : true)),
+        isAuthorized: reactData.master_account
+          || (reactData.sectionList ? reactData.sectionList.includes('admin') : state.session.client_style?.profile_sections_visible?.admin !== false),
         version_id: 0,
         component_name: 'AdministrativeSection'
       },
@@ -584,7 +585,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         section_name: 'Events & Participation',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('ActivitiesSection')) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('activities') : true))
+        isAuthorized: (reactData.master_account
+          || (reactData.sectionList ? reactData.sectionList.includes('activities') : state.session.client_style?.profile_sections_visible?.activities !== false))
           && !(reactUpdObj.mode === 'add'),
         version_id: 0,
         component_name: 'ActivitiesSection'
@@ -593,7 +595,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         section_name: 'Daily Activities & Tasks',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('TaskManagerSection')) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('task_manager') : true))
+        isAuthorized: (reactData.master_account
+          || (reactData.sectionList ? reactData.sectionList.includes('task_manager') : state.session.client_style?.profile_sections_visible?.task_manager !== false))
           && !(reactUpdObj.mode === 'add'),
         version_id: 0,
         component_name: 'TaskManagerSection'
@@ -603,7 +606,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('LinkedAccounts')) : false),
         isAuthorized: (!(reactUpdObj.mode === 'add') &&
-          (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('family') : true))),
+          (reactData.master_account
+            || (reactData.sectionList ? reactData.sectionList.includes('family') : state.session.client_style?.profile_sections_visible?.family !== false))),
         version_id: 0,
         component_name: 'LinkedAccounts'
       },
@@ -611,7 +615,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         section_name: 'Photo & Personalization',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PersonalizationSection')) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('personal') : true)),
+        isAuthorized: reactData.master_account
+          || (reactData.sectionList ? reactData.sectionList.includes('personal') : state.session.client_style?.profile_sections_visible?.personal !== false),
         version_id: 0,
         component_name: 'PersonalizationSection'
       },
@@ -619,7 +624,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         section_name: 'Groups',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('GroupAssignments')) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.administrative_account || (reactData.sectionList && reactData.sectionList.includes('groups')))),
+        isAuthorized: reactData.master_account
+          || (reactData.sectionList ? reactData.sectionList.includes('groups') : state.session.client_style?.profile_sections_visible?.groups !== false),
         version_id: 0,
         component_name: 'GroupAssignments'
       },
@@ -627,9 +633,12 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         section_name: 'Forms & Documents',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('FormSection')) : false),
-        isAuthorized: (reactData.sectionList
-          ? reactData.sectionList.includes('forms')
-          : (state.session.client_style?.suppress_forms_in_profile ? reactData.administrative_account : true)),
+        isAuthorized: reactData.master_account
+          || (reactData.sectionList
+            ? reactData.sectionList.includes('forms')
+            : (state.session.client_style?.profile_sections_visible?.hasOwnProperty('forms')
+              ? !!state.session.client_style.profile_sections_visible.forms
+              : !state.session.client_style?.suppress_forms_in_profile)),
         version_id: 0,
         component_name: 'FormSection'
       },
@@ -637,7 +646,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         section_name: 'Archived Documents',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PeopleDocumentsSection')) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('documents') : true)),
+        isAuthorized: reactData.master_account
+          || (reactData.sectionList ? reactData.sectionList.includes('documents') : state.session.client_style?.profile_sections_visible?.documents !== false),
         version_id: 0,
         component_name: 'PeopleDocumentsSection'
       },
@@ -645,7 +655,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         section_name: 'Notes',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PersonNotes')) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.sectionList && reactData.sectionList.includes('notes'))),
+        isAuthorized: reactData.master_account
+          || (reactData.sectionList ? reactData.sectionList.includes('notes') : state.session.client_style?.profile_sections_visible?.notes !== false),
         version_id: 0,
         component_name: 'PersonNotes'
       },
@@ -653,7 +664,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         section_name: 'Check-in/Check-out History',
         color: initialValues?.color || 'orange',
         isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('CheckoutHistory')) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('checkout') : true)),
+        isAuthorized: reactData.master_account
+          || (reactData.sectionList ? reactData.sectionList.includes('checkout') : state.session.client_style?.profile_sections_visible?.checkout !== false),
         version_id: 0,
         component_name: 'CheckoutHistory'
       },

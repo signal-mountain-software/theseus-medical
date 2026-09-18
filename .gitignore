@@ -39,3 +39,5 @@ amplifytools.xcconfig
 # Lambda functions — managed in a separate repository
 /lambda
 /send-push-notification.zip
+
+docker_build.log
