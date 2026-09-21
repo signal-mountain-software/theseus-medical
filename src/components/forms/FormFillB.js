@@ -19,6 +19,7 @@ import PrintIcon from '@material-ui/icons/Print';
 import LockIcon from '@material-ui/icons/Lock';
 import LockOpenIcon from '@material-ui/icons/LockOpen';
 import InsertDriveFileIcon from '@material-ui/icons/InsertDriveFile';
+import CloseIcon from '@material-ui/icons/Close';
 import { Dialog, DialogContent, Snackbar, Box, Typography, FormControlLabel, Button, TextField, Checkbox, IconButton, Chip } from '@material-ui/core';
 import LinearProgress from '@material-ui/core/LinearProgress';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -231,6 +232,19 @@ export default ({ request = {}, onClose }) => {
   const FORM_PAPER_WIDTH_VW = 80;
   const MAX_FIELD_WIDTH_VW = (.93 * FORM_PAPER_WIDTH_VW);
   const PRINT_SNAPSHOT_VERSION = 1;
+  // 'family&guests' fields append free-text guest names (people with no AVA person_id) to the
+  // same value array as selected family member person_ids; this prefix is how consumers tell
+  // the two apart (person_ids never contain a colon). Falling back to the raw prefixed string
+  // when a consumer doesn't know the convention still reads as a reasonable guest name.
+  const GUEST_VALUE_PREFIX = 'guest:';
+  const isGuestValue = (v) => (typeof v === 'string') && v.startsWith(GUEST_VALUE_PREFIX);
+  const stripGuestPrefix = (v) => v.slice(GUEST_VALUE_PREFIX.length);
+  // Matches CalendarEventEditForm's addGuestForOwner slug convention, so writeSlot's own
+  // 'guest:'-prefix display-name fallback stays sane if override_name is ever omitted.
+  const slugifyGuestName = (name) => (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'guest';
+  // Stable (non-timestamped) per-field-per-name slot key, so re-saving the form updates the
+  // same guest's slot instead of creating a new one each time.
+  const guestSlotToken = (fieldName, guestName) => `${GUEST_VALUE_PREFIX}${fieldName}_${slugifyGuestName(guestName)}`;
   const classes = useStyles();
   const AVAClass = AVAclasses();
   const signatureRef = [React.useRef(null), React.useRef(null), React.useRef(null)];
@@ -1098,10 +1112,14 @@ export default ({ request = {}, onClose }) => {
     let returnObj = {};
     let field_variables = await getFieldVariables({ field_key, field_name, fieldEntry, formRec });
 
+    // Legacy (pre-FormBuilder) field defs stored their input-box size as value.width/value.rows -
+    // that authoring tool is retired, and those stale sizes render far worse than the current
+    // auto-width default, so they're excluded here rather than bleeding into prompt.width/rows.
+    const { width: _legacyWidth, rows: _legacyRows, ...legacyValueForPrompt } = field_variables.value || {};
     if (isObject(field_variables.prompt)) {
-      returnObj.prompt = Object.assign({}, field_variables.value, field_variables.prompt);
+      returnObj.prompt = Object.assign({}, legacyValueForPrompt, field_variables.prompt);
     } else {
-      returnObj.prompt = Object.assign({}, field_variables.value, { value: field_variables.prompt });
+      returnObj.prompt = Object.assign({}, legacyValueForPrompt, { value: field_variables.prompt });
     }
 
     if (isObject(field_variables.default)) {
@@ -1149,7 +1167,7 @@ export default ({ request = {}, onClose }) => {
         max: 1
       };
     }
-    else if (returnObj.type === 'family'
+    else if ((returnObj.type === 'family' || returnObj.type === 'family&guests')
       && reactData.family_id) {
       let familyMembers = [];
       if (reactData.familyRec) {
@@ -1472,13 +1490,17 @@ export default ({ request = {}, onClose }) => {
   };
 
   const initializeFromFormDefinition = async ({ form_id, docFields = {} }) => {
-    const formRec = await getDb({
-      Key: {
-        client_id: state.session.client_id,
-        form_id
-      },
-      TableName: "Forms"
-    });
+    // Preview mode (used by FormBuilder's Preview button) passes the in-progress, unsaved
+    // form definition directly rather than reading a persisted Forms record.
+    const formRec = options.previewFormRec
+      ? deepCopy(options.previewFormRec)
+      : await getDb({
+        Key: {
+          client_id: state.session.client_id,
+          form_id
+        },
+        TableName: "Forms"
+      });
     if (!formRec) {
       return {
         fields: {},
@@ -1601,6 +1623,16 @@ export default ({ request = {}, onClose }) => {
                 };
               }
             }
+            if (fieldType === 'family&guests') {
+              const vals = [rawValue].flat().filter(v => !isEmpty(v));
+              const personIds = vals.filter(v => !isGuestValue(v));
+              const guestNames = vals.filter(isGuestValue).map(stripGuestPrefix);
+              return {
+                value: personIds,
+                valueText: formRec.fields[field_name].field_valueText,
+                guestNames: [...guestNames, '']
+              };
+            }
             return {
               value: rawValue,
               valueText: formRec.fields[field_name].field_valueText
@@ -1660,6 +1692,16 @@ export default ({ request = {}, onClose }) => {
                   bonusText: bonus
                 };
               }
+            }
+            if (fieldType === 'family&guests') {
+              const vals = [rawValue].flat().filter(v => !isEmpty(v));
+              const personIds = vals.filter(v => !isGuestValue(v));
+              const guestNames = vals.filter(isGuestValue).map(stripGuestPrefix);
+              return {
+                value: personIds,
+                valueText: formRec.fields[field_name].field_valueText,
+                guestNames: [...guestNames, '']
+              };
             }
             return {
               value: rawValue,
@@ -3115,6 +3157,7 @@ export default ({ request = {}, onClose }) => {
               }
             </React.Fragment>
           </Box>
+          {props.extraContent}
         </Box>
       </Box>
     );
@@ -3155,7 +3198,67 @@ export default ({ request = {}, onClose }) => {
         ariaPrefix={'family_member'}
         optionRowStyle={{ marginLeft: '16px' }}
         noOptionsMessage={'No family members found'}
+        extraContent={props.extraContent}
       />
+    );
+  };
+
+  // Free-text guest lines for 'family&guests' fields - guests have no AVA person_id, so their
+  // typed names live in fieldRec.guestNames until handleSave merges them (guest-prefixed) into
+  // the same value array the family checkboxes populate. A new blank line appears as soon as
+  // the current last line is given text, so authors never have to explicitly "add another".
+  const AVAFamilyGuestLines = (props) => {
+    const fieldRec = reactData.fields[props.prop];
+    if (!fieldRec) { return null; }
+
+    const isDisabled = fieldRec.options?.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked;
+    const guestNames = (Array.isArray(fieldRec.guestNames) && fieldRec.guestNames.length) ? fieldRec.guestNames : [''];
+
+    const commitGuestNames = (names) => {
+      const next = [...names];
+      if ((next.length === 0) || (next[next.length - 1] || '').trim() !== '') {
+        next.push('');
+      }
+      reactData.fields[props.prop].guestNames = next;
+      updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+    };
+
+    return (
+      <Box display='flex' flexDirection='column' style={{ marginTop: '8px', marginLeft: '16px', gap: '2px' }}>
+        <Typography className={classes.selectionFieldHelper}>{'Guest(s):'}</Typography>
+        {guestNames.map((name, gIndex) => (
+          <Box key={`${props.prop}_guest_${gIndex}`} display='flex' flexDirection='row' alignItems='center'>
+            <TextField
+              autoComplete='off'
+              disabled={isDisabled}
+              id={`${props.prop}_guest_${gIndex}`}
+              defaultValue={name}
+              placeholder='Guest name'
+              variant='standard'
+              style={{ width: '260px' }}
+              onChange={(event) => {
+                const nextNames = [...guestNames];
+                nextNames[gIndex] = event.target.value;
+                const cursorPos = event.target.selectionStart;
+                commitGuestNames(nextNames);
+                setTimeout(() => {
+                  const textInput = document.getElementById(`${props.prop}_guest_${gIndex}`);
+                  if (textInput) { textInput.focus(); textInput.setSelectionRange(cursorPos, cursorPos); }
+                }, 150);
+              }}
+            />
+            {(guestNames.length > 1) &&
+              <IconButton
+                size='small'
+                disabled={isDisabled}
+                onClick={() => commitGuestNames(guestNames.filter((_, idx) => idx !== gIndex))}
+              >
+                <CloseIcon fontSize='small' />
+              </IconButton>
+            }
+          </Box>
+        ))}
+      </Box>
     );
   };
 
@@ -3613,6 +3716,10 @@ export default ({ request = {}, onClose }) => {
   };
 
   const handleSave = async ({ document_id, final, timeout, pending = false, formLocked }) => {
+    // Preview mode never persists anything - report success without touching the DB.
+    if (options.mode === 'preview') {
+      return { goodPut: true, document_status: final ? 'complete' : 'in_process', document_id };
+    }
     if (!getDisplayState().hasDisplayableContent) {
       if (!timeout) {
         updateReactData({
@@ -3680,6 +3787,10 @@ export default ({ request = {}, onClose }) => {
       return null;
     };
 
+    // Merge 'other' bonus text and family&guests guest names into their fields' .value arrays
+    // BEFORE the main per-field loop below, since the select_event branch reads a *different*
+    // field's already-merged .value via selectionObj.family_signup_field - it must not depend
+    // on object key iteration order to see guest entries that "belong" to a field visited later.
     for (const this_field in reactData.fields) {
       if (reactData.fields[this_field].bonusText) {   // an extra value added to the end of a list of selections (as in "other - please specify")
         let current_value = [reactData.fields[this_field].value].flat();
@@ -3688,6 +3799,17 @@ export default ({ request = {}, onClose }) => {
         reactData.fields[this_field].value = current_value;
         reactData.fields[this_field].valueText = listFromArray(current_value);
       }
+      if ((reactData.fields[this_field].type === 'family&guests') && Array.isArray(reactData.fields[this_field].guestNames)) {
+        const guestNamesTrimmed = reactData.fields[this_field].guestNames.map(n => (n || '').trim()).filter(n => n);
+        if (guestNamesTrimmed.length) {
+          const current_value = [reactData.fields[this_field].value].flat().filter(v => !isEmpty(v));
+          reactData.fields[this_field].value = [...current_value, ...guestNamesTrimmed.map(n => `${GUEST_VALUE_PREFIX}${n}`)];
+          reactData.fields[this_field].valueText = listFromArray([...current_value, ...guestNamesTrimmed]);
+        }
+      }
+    }
+
+    for (const this_field in reactData.fields) {
       // Defensive recompute at save-time to avoid stale derived age values when users
       // click directly from a date field into Save/Complete.
       if (reactData.fields[this_field].type === 'age') {
@@ -3725,6 +3847,25 @@ export default ({ request = {}, onClose }) => {
           : null;
         const eventParticipants = (currentFamilySelection?.length > 0) ? currentFamilySelection : [participantId];
         const resolvedFamilyOwner = resolveSlotOwner(eventParticipants);
+        // Guests entered on a linked 'family&guests' field aren't real people - they never own
+        // a slot themselves, so they're always tied to the form's pertains_to person instead,
+        // using CalendarEventEditForm's addGuestForOwner as the template (owner/name = pertains_to,
+        // guest:-prefixed slot key, no_messaging, slotData.guest marker).
+        let participantName = null;
+        const resolveParticipantSlot = (thisParticipant, fallbackOwner, forcedSlot) => {
+          if (forcedSlot !== undefined) {
+            return { slot: forcedSlot, owner: fallbackOwner || thisParticipant, isGuest: false };
+          }
+          if (isGuestValue(thisParticipant)) {
+            return {
+              slot: guestSlotToken(familyFieldName, stripGuestPrefix(thisParticipant)),
+              owner: participantId,
+              isGuest: true,
+              guestName: stripGuestPrefix(thisParticipant)
+            };
+          }
+          return { slot: thisParticipant, owner: fallbackOwner || thisParticipant, isGuest: false };
+        };
 
         const splitEventValue = (rawValue) => {
           const valueParts = rawValue.split('#');
@@ -3751,22 +3892,37 @@ export default ({ request = {}, onClose }) => {
               if (!seat) { seat = candidateSeats.find(s => !claimedThisSave.has(String(s))); }
               if (!seat) { continue; } // no seats left for this participant
               claimedThisSave.add(String(seat));
-              selectEventAssignments.set(`${selectedValue}::${thisParticipant}`, { event: eventKey, slot: seat, owner: resolvedFamilyOwner || thisParticipant });
+              const { owner: seatOwner, isGuest: seatIsGuest, guestName: seatGuestName } = resolveParticipantSlot(thisParticipant, resolvedFamilyOwner);
+              if (seatIsGuest && !participantName) { participantName = await makeName(participantId); }
+              selectEventAssignments.set(`${selectedValue}::${thisParticipant}`, {
+                event: eventKey,
+                slot: seat,
+                owner: seatOwner,
+                ...(seatIsGuest ? { override_name: seatGuestName, slotData: { guest: true, guest_source: 'form', guest_owner_name: participantName } } : {})
+              });
             }
           }
           else {
             // open events have unlimited capacity - one row per selected participant
             for (const thisParticipant of eventParticipants) {
-              selectEventAssignments.set(`${selectedValue}::${thisParticipant}`, { event: eventKey, slot: thisParticipant, owner: resolvedFamilyOwner || thisParticipant });
+              const { slot: participantSlot, owner: participantOwner, isGuest, guestName } = resolveParticipantSlot(thisParticipant, resolvedFamilyOwner);
+              if (isGuest && !participantName) { participantName = await makeName(participantId); }
+              selectEventAssignments.set(`${selectedValue}::${thisParticipant}`, {
+                event: eventKey,
+                slot: participantSlot,
+                owner: participantOwner,
+                ...(isGuest ? { override_name: guestName, slotData: { guest: true, guest_source: 'form', guest_owner_name: participantName } } : {})
+              });
             }
           }
 
-          // release slots for family members who were signed up here but are no longer selected
+          // release slots for family members (or guests) who were signed up here but are no longer selected
           if (previousFamilySelection) {
             const removedParticipants = previousFamilySelection.filter(p => !eventParticipants.includes(p));
             for (const removedParticipant of removedParticipants) {
-              const slot = (entryEventType === 'time') ? (valueParts[2] || null) : removedParticipant;
-              selectEventReleases.set(`${selectedValue}::${removedParticipant}`, { event: eventKey, slot, owner: resolvedFamilyOwner || removedParticipant });
+              const forcedSlot = (entryEventType === 'time') ? (valueParts[2] || null) : undefined;
+              const { slot, owner } = resolveParticipantSlot(removedParticipant, resolvedFamilyOwner, forcedSlot);
+              selectEventReleases.set(`${selectedValue}::${removedParticipant}`, { event: eventKey, slot, owner });
             }
           }
         }
@@ -3776,8 +3932,9 @@ export default ({ request = {}, onClose }) => {
             const releaseParticipants = (previousFamilySelection?.length > 0) ? previousFamilySelection : [participantId];
             const resolvedPreviousFamilyOwner = resolveSlotOwner(releaseParticipants);
             for (const thisParticipant of releaseParticipants) {
-              const slot = valueParts.length >= 3 ? valueParts[2] : thisParticipant;
-              selectEventReleases.set(`${previousValue}::${thisParticipant}`, { event: eventKey, slot, owner: resolvedPreviousFamilyOwner || thisParticipant });
+              const forcedSlot = valueParts.length >= 3 ? valueParts[2] : undefined;
+              const { slot, owner } = resolveParticipantSlot(thisParticipant, resolvedPreviousFamilyOwner, forcedSlot);
+              selectEventReleases.set(`${previousValue}::${thisParticipant}`, { event: eventKey, slot, owner });
             }
           }
         }
@@ -3835,7 +3992,7 @@ export default ({ request = {}, onClose }) => {
       }
     }
 
-    for (const [, { event: selectedEvent, slot: selectedSlot, owner: selectedOwner }] of selectEventAssignments) {
+    for (const [, { event: selectedEvent, slot: selectedSlot, owner: selectedOwner, override_name: selectedOverrideName, slotData: selectedSlotData }] of selectEventAssignments) {
       try {
         await writeSlot({
           client: state.session.client_id,
@@ -3844,7 +4001,9 @@ export default ({ request = {}, onClose }) => {
           slot: selectedSlot,
           show_this_slot: true,
           no_messaging: false,
-          rejectDuplicate: true
+          rejectDuplicate: true,
+          ...(selectedOverrideName ? { override_name: selectedOverrideName } : {}),
+          ...(selectedSlotData ? { slotData: selectedSlotData } : {})
         });
       }
       catch (error) {
@@ -3866,10 +4025,48 @@ export default ({ request = {}, onClose }) => {
     }
 
     // check for actions needed leaving or entering stages
+    //
+    // Shape reference for hand-authoring stages[n].on_complete_message / on_entry_message
+    // (consumed by send_stageMessage) - either a single object or an array of objects:
+    //   {
+    //     showIf: [<test>, ...],       // optional - same test shapes as a section's show_if
+    //     ignoreIf: [<test>, ...],     // optional - same test shapes as a section's ignore_if (mutually exclusive with showIf)
+    //     template_id: <template_id>,  // OR text below - looked up in MessageTemplates
+    //     text: '<literal or %%field%% text>',
+    //     subject: '<optional subject, %%field%% tokens resolved>',
+    //     recipientList: ['person:<person_id>', 'group:<group_id>', 'user', 'pertains_to']
+    //       // 'user' = the logged-in operator, 'pertains_to' = this form's subject.
+    //       // OR the legacy shape { people: [<person_id>, ...], groups: [<group_id>, ...] } - unchanged.
+    //   }
+    //
+    // Shape reference for hand-authoring stages[n].on_complete_groups / on_entry_groups
+    // (consumed by resolveGroupInstructions below) - either a single object or an array of objects:
+    //   {
+    //     showIf: [<test>, ...],       // optional, same rules as above
+    //     ignoreIf: [<test>, ...],     // optional, same rules as above
+    //     add: ['<group_id>', ...],    // optional - group_id(s) to add pertains_to to
+    //     remove: ['<group_id>', ...]  // optional - group_id(s) to remove pertains_to from
+    //   }
     let this_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.current_formStage);
     // Collect stage-transition group changes; applied via addMember/removeMember after the saveAs put
     const pendingGroupAdditions = [];
     const pendingGroupRemovals = [];
+    // Coerces a single group-instruction object or array of them, gates each on an optional
+    // showIf/ignoreIf (evaluated exactly like section show_if/ignore_if), and collects add/remove group_ids.
+    const resolveGroupInstructions = (groupInstructionsRaw) => {
+      const instructionList = Array.isArray(groupInstructionsRaw) ? groupInstructionsRaw : [groupInstructionsRaw];
+      const removals = [];
+      const additions = [];
+      for (const this_instruction of instructionList) {
+        const showIgnoreTest = this_instruction.showIf
+          ? { show_if: this_instruction.showIf }
+          : (this_instruction.ignoreIf ? { ignore_if: this_instruction.ignoreIf } : {});
+        if (!okToShowSection(showIgnoreTest)) { continue; }
+        if (this_instruction.remove) { removals.push(...[this_instruction.remove].flat()); }
+        if (this_instruction.add) { additions.push(...[this_instruction.add].flat()); }
+      }
+      return { removals, additions };
+    };
     if ((reactData.previous_formStage !== reactData.current_formStage) && reactData.formRec.stages) {
       // log stage change
       cl(`Form ${document_id} stage changed from ${reactData.previous_formStage} to ${reactData.current_formStage}`);
@@ -3885,8 +4082,9 @@ export default ({ request = {}, onClose }) => {
         // remove and add groups from pertains_to account's group list if any
         let groupInstructions_onStageExit = reactData.formRec.stages[stage_we_finished].on_complete_groups;
         if (groupInstructions_onStageExit) {
-          if (groupInstructions_onStageExit.remove) { pendingGroupRemovals.push(...[groupInstructions_onStageExit.remove].flat()); }
-          if (groupInstructions_onStageExit.add) { pendingGroupAdditions.push(...[groupInstructions_onStageExit.add].flat()); }
+          const { removals, additions } = resolveGroupInstructions(groupInstructions_onStageExit);
+          pendingGroupRemovals.push(...removals);
+          pendingGroupAdditions.push(...additions);
         }
         // create tasks on stage exit
         const taskTemplates_onStageExit = reactData.formRec.stages[stage_we_finished].on_complete_tasks;
@@ -3906,8 +4104,9 @@ export default ({ request = {}, onClose }) => {
       // remove and add groups from pertains_to account's group list if any
       let groupInstructions_onStageEntry = reactData.formRec.stages[this_stageIndex].on_entry_groups;
       if (groupInstructions_onStageEntry) {
-        if (groupInstructions_onStageEntry.remove) { pendingGroupRemovals.push(...[groupInstructions_onStageEntry.remove].flat()); }
-        if (groupInstructions_onStageEntry.add) { pendingGroupAdditions.push(...[groupInstructions_onStageEntry.add].flat()); }
+        const { removals, additions } = resolveGroupInstructions(groupInstructions_onStageEntry);
+        pendingGroupRemovals.push(...removals);
+        pendingGroupAdditions.push(...additions);
       }
       // lock the form?
       if (reactData.formRec.stages[this_stageIndex].on_entry_lock) { formLocked = true; }
@@ -4110,50 +4309,75 @@ export default ({ request = {}, onClose }) => {
   }
 
   async function send_stageMessage(messageInstructions) {
-    let final_messageText = '';
-    let final_html = '';
-    if (messageInstructions.template_id) {
-      let templateRec = await getDb({
-        Key: {
-          client_id: state.session.client_id,
-          template_id: messageInstructions.template_id
-        },
-        TableName: 'MessageTemplates'
-      });
-      if (templateRec) {
-        final_messageText = await resolveVariables(templateRec.message_text);
-        final_html = templateRec.html_text ? await resolveVariables(templateRec.html_text) : final_messageText;
-      }
-    }
-    else if (messageInstructions.text) {
-      final_messageText = await deepResolve(messageInstructions.text, reactData.peopleRec[reactData.pertains_to]);
-      final_html = final_messageText;
-    }
-    let recipientList = [];
-    if (messageInstructions.recipientList) {
-      if (messageInstructions.recipientList.people) {
-        recipientList = recipientList.concat(messageInstructions.recipientList.people);
-      }
-      if (messageInstructions.recipientList.groups) {
-        for (const this_group of messageInstructions.recipientList.groups) {
-          recipientList.push(`GRP//${this_group}`);
+    // Accept either a single instruction object or an array of them.
+    const instructionList = Array.isArray(messageInstructions) ? messageInstructions : [messageInstructions];
+
+    for (const this_instruction of instructionList) {
+      // showIf/ignoreIf are evaluated exactly like a section's show_if/ignore_if (okToShowSection
+      // expects a {show_if: [...]} or {ignore_if: [...]} shaped object; neither present -> send).
+      const showIgnoreTest = this_instruction.showIf
+        ? { show_if: this_instruction.showIf }
+        : (this_instruction.ignoreIf ? { ignore_if: this_instruction.ignoreIf } : {});
+      if (!okToShowSection(showIgnoreTest)) { continue; }
+
+      let final_messageText = '';
+      let final_html = '';
+      if (this_instruction.template_id) {
+        let templateRec = await getDb({
+          Key: {
+            client_id: state.session.client_id,
+            template_id: this_instruction.template_id
+          },
+          TableName: 'MessageTemplates'
+        });
+        if (templateRec) {
+          final_messageText = await resolveVariables(templateRec.message_text);
+          final_html = templateRec.html_text ? await resolveVariables(templateRec.html_text) : final_messageText;
         }
       }
+      else if (this_instruction.text) {
+        final_messageText = await deepResolve(this_instruction.text, reactData.peopleRec[reactData.pertains_to]);
+        final_html = final_messageText;
+      }
+      let recipientList = [];
+      if (this_instruction.recipientList) {
+        if (Array.isArray(this_instruction.recipientList)) {
+          // person:<id> / group:<id> (same scheme as section audience), plus 'user' (the
+          // logged-in operator) and 'pertains_to' (this form's subject) as special values.
+          for (const entry of this_instruction.recipientList) {
+            if (entry.startsWith('person:')) { recipientList.push(entry.slice(7)); }
+            else if (entry.startsWith('group:')) { recipientList.push(`GRP//${entry.slice(6)}`); }
+            else if (entry === 'user') { recipientList.push(state.session.user_id); }
+            else if (entry === 'pertains_to') { recipientList.push(reactData.pertains_to); }
+          }
+        }
+        else {
+          // legacy shape: { people: [...], groups: [...] }
+          if (this_instruction.recipientList.people) {
+            recipientList = recipientList.concat(this_instruction.recipientList.people);
+          }
+          if (this_instruction.recipientList.groups) {
+            for (const this_group of this_instruction.recipientList.groups) {
+              recipientList.push(`GRP//${this_group}`);
+            }
+          }
+        }
+      }
+      final_html = final_messageText;
+      final_messageText = resolveMessageTokens(final_messageText);
+      final_html = resolveMessageTokens(final_html);
+      await sendMessages({
+        client: state.session.client_id,
+        author: state.session.user_id,
+        person_id: state.session.patient_id,
+        messageText: final_messageText,
+        htmlText: final_html,
+        recipientList: recipientList,
+        subject: this_instruction.subject
+          ? resolveMessageTokens(await resolveVariables(this_instruction.subject))
+          : `A message from ${reactData.peopleRec[reactData.pertains_to].display_name || 'AVA Document Management'}`
+      });
     }
-    final_html = final_messageText;
-    final_messageText = resolveMessageTokens(final_messageText);
-    final_html = resolveMessageTokens(final_html);
-    await sendMessages({
-      client: state.session.client_id,
-      author: state.session.user_id,
-      person_id: state.session.patient_id,
-      messageText: final_messageText,
-      htmlText: final_html,
-      recipientList: recipientList,
-      subject: messageInstructions.subject
-        ? resolveMessageTokens(await resolveVariables(messageInstructions.subject))
-        : `A message from ${reactData.peopleRec[reactData.pertains_to].display_name || 'AVA Document Management'}`
-    });
   }
 
   /*
@@ -4567,69 +4791,56 @@ export default ({ request = {}, onClose }) => {
   };
 
   const okToShowSection = (this_sectionObj) => {
+    // Shared by show_if/show_ifAll/ignore_ifAll/ignore_if below - a single test can be a plain
+    // {field, values} value test, the legacy group-only {pertainsTo_memberOf, memberOf} shape, the
+    // session-patient {memberOf} shape, or the newer {currentUser_audience, audience} shape (mixed
+    // 'group:<id>' / 'person:<id>' / bare account_class strings, authored via FormBuilder's
+    // "Specific people, groups, or account types" section condition). currentUser_audience tests
+    // the logged-in operator, NOT the form's pertains_to subject - it's how specific people (e.g.
+    // support staff, a group leader) are authorized to view/edit sections of someone else's form.
+    const evaluateSectionTest = (this_test) => {
+      if (this_test.hasOwnProperty('currentUser_audience')) {
+        return [this_test.audience].flat().some(entry => {
+          if (entry.startsWith('group:')) { return (state.user?.groups || []).includes(entry.slice(6)); }
+          if (entry.startsWith('person:')) { return state.session.user_id === entry.slice(7); }
+          if (entry === 'admin') { return state.user?.account_class && (['master', 'admin'].includes(state.user.account_class)); }
+          if (entry === 'support') { return state.user?.account_class && (['master', 'admin', 'support'].includes(state.user.account_class)); }
+          return state.user?.account_class === entry;
+        });
+      }
+      if (this_test.hasOwnProperty('pertainsTo_memberOf')) {
+        return (reactData.peopleRec[reactData.pertains_to]?.groups || []).some(g => {
+          return [this_test.memberOf].flat().includes(g);
+        });
+      }
+      if (this_test.hasOwnProperty('memberOf')) {
+        return (state.patient?.groups || []).some(g => {
+          return [this_test.memberOf].flat().includes(g);
+        });
+      }
+      const this_value = reactData.fields?.[this_test.field]?.value;
+      return matchesFieldValues(this_test, this_value);
+    };
+
     if (this_sectionObj.hasOwnProperty('show_if')) {
-      return (this_sectionObj.show_if.some(this_test => {
-        if (this_test.hasOwnProperty('pertainsTo_memberOf')) {
-          return reactData.peopleRec[reactData.pertains_to].groups.some(g => {
-            return [this_test.memberOf].flat().includes(g);
-          });
-        }
-        else if (this_test.hasOwnProperty('memberOf')) {
-          return state.patient.groups.some(g => {
-            return [this_test.memberOf].flat().includes(g);
-          });
-        }
-        else {
-          const this_value = reactData.fields?.[this_test.field]?.value;
-          return matchesFieldValues(this_test, this_value);
-        }
-      }));
+      return (this_sectionObj.show_if.some(evaluateSectionTest));
     }
     else if (this_sectionObj.hasOwnProperty('show_ifAll') || this_sectionObj.hasOwnProperty('ignore_ifAll')) {
       const testList = this_sectionObj.show_ifAll || this_sectionObj.ignore_ifAll;
-      const response = (testList.every(this_test => {
-        if (this_test.hasOwnProperty('pertainsTo_memberOf')) {
-          return reactData.peopleRec[reactData.pertains_to].groups.some(g => {
-            return [this_test.memberOf].flat().includes(g);
-          });
-        }
-        else if (this_test.hasOwnProperty('memberOf')) {
-          return state.patient.groups.some(g => {
-            return [this_test.memberOf].flat().includes(g);
-          });
-        }
-        else {
-          const this_value = reactData.fields?.[this_test.field]?.value;
-          return matchesFieldValues(this_test, this_value);
-        }
-      }));
+      const response = testList.every(evaluateSectionTest);
       if (this_sectionObj.hasOwnProperty('show_ifAll')) {
         return response;
       }
       else { return !response; }
     }
     else if (this_sectionObj.hasOwnProperty('ignore_if')) {
-      return !(this_sectionObj.ignore_if.some(this_test => {
-        if (this_test.hasOwnProperty('pertainsTo_memberOf')) {
-          return reactData.peopleRec[reactData.pertains_to].groups.some(g => {
-            return [this_test.memberOf].flat().includes(g);
-          });
-        }
-        else if (this_test.hasOwnProperty('memberOf')) {
-          return state.patient.groups.some(g => {
-            return [this_test.memberOf].flat().includes(g);
-          });
-        }
-        else {
-          const this_value = reactData.fields?.[this_test.field]?.value;
-          return matchesFieldValues(this_test, this_value);
-        }
-      }));
+      return !(this_sectionObj.ignore_if.some(evaluateSectionTest));
     }
     else {
       return true;
     }
   };
+
 
   const getSectionFieldName = ({ sectionObj, fieldEntry, index }) => {
     if (isObject(fieldEntry)) {
@@ -5203,6 +5414,7 @@ export default ({ request = {}, onClose }) => {
   };
 
   const disableSaveActions = !hasDisplayableContent;
+  const isPreviewMode = reactData.options?.mode === 'preview';
 
   return (
     <div ref={formContainerRef} id="content-to-export" className="my-form-container">
@@ -5246,6 +5458,11 @@ export default ({ request = {}, onClose }) => {
               style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0, overflow: 'hidden' }}
             >
               <Box m={2} className={classes.dialogTitleArea} style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                {isPreviewMode &&
+                  <Typography style={AVATextStyle({ size: 0.85, bold: true, color: '#b71c1c', margin: { bottom: 0.5 } })}>
+                    {'PREVIEW — nothing entered here will be saved'}
+                  </Typography>
+                }
                 <Typography style={AVATextStyle({
                 size: isMobile() ? 1.4 : 1.8, bold: true, margin: {
                   bottom: 1,
@@ -5594,7 +5811,7 @@ export default ({ request = {}, onClose }) => {
                                     />
                                   </Box>
                                 }
-                                {(reactData.fields[this_field].type === 'family') &&
+                                {(reactData.fields[this_field].type === 'family' || reactData.fields[this_field].type === 'family&guests') &&
                                   <Box
                                     display='flex'
                                     mb={1}
@@ -5605,6 +5822,8 @@ export default ({ request = {}, onClose }) => {
                                     <AVAFamilyCheckBoxGroup
                                       prop={this_field}
                                       familyMembers={reactData.fields[this_field].familyMembers || []}
+                                      extraContent={(reactData.fields[this_field].type === 'family&guests') &&
+                                        <AVAFamilyGuestLines prop={this_field} />}
                                     />
                                   </Box>
                                 }
@@ -5929,7 +6148,7 @@ export default ({ request = {}, onClose }) => {
               </Button>
               {!disableSaveActions &&
                 <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-                  {reactData.administrative_account && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode &&
+                  {!isPreviewMode && reactData.administrative_account && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode &&
                     <Button
                       onClick={handleToggleLock}
                       className={AVAClass.AVAButton}
@@ -5945,7 +6164,7 @@ export default ({ request = {}, onClose }) => {
                       {reactData.docRec?.formLocked ? 'Unlock' : 'Lock/Save'}
                     </Button>
                   }
-                  {!reactData.formRec?.options?.noSaveContinue && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
+                  {!isPreviewMode && !reactData.formRec?.options?.noSaveContinue && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
                     <Button
                       onClick={async () => {
                         const document_id = reactData.document_id || `${state.session.patient_id}_${reactData.form_id}_${new Date().getTime()}`;
@@ -5970,7 +6189,7 @@ export default ({ request = {}, onClose }) => {
                       {isMobile() ? 'Save' : 'Save/Continue'}
                     </Button>
                   }
-                  {!reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
+                  {!isPreviewMode && !reactData.clientSampleMode && !reactData.formRec.upload_only && !reactData.viewOnlyMode && !reactData.docRec?.formLocked &&
                     <Button
                       onClick={async () => {
                         await handleReview();
@@ -5994,7 +6213,7 @@ export default ({ request = {}, onClose }) => {
                       edge="start"
                     />
                   }
-                  {!reactData.formRec.upload_only &&
+                  {!isPreviewMode && !reactData.formRec.upload_only &&
                     <Button
                       onClick={async () => {
                         await printCurrentForm();

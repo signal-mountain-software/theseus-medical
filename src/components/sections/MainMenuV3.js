@@ -90,6 +90,7 @@ import QuickSearch from './QuickSearch';
 
 import { stringToColor, s3 } from '../../util/AVAUtilities';
 import FormManagement from '../dialogs/FormManagement';
+import FormBuilder from '../dialogs/FormBuilder';
 import FormFillB from '../forms/FormFillB';
 import ClientMaintenance from '../dialogs/ClientMaintenance';
 import MessageForm from '../forms/MessageForm';
@@ -2792,6 +2793,7 @@ export default ({ start_at }) => {
   const renderSectionRegistry = {
     ClientMaintenance,
     FormManagement,
+    FormBuilder,
     FormFillB,
     MessageForm,
     ShowGroup,

@@ -3,7 +3,7 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 
 import { getMemberList } from '../../util/AVAGroups';
-import { dbClient, recordExists, cl, titleCase, getDb, putDb, deepCopy } from '../../util/AVAUtilities';
+import { dbClient, recordExists, cl, titleCase, getDb, deepCopy } from '../../util/AVAUtilities';
 import QuickSearch from '../sections/QuickSearch';
 import { getPerson, getImage } from '../../util/AVAPeople';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
@@ -11,7 +11,7 @@ import { addDays, makeDate, makeTime } from '../../util/AVADateTime';
 import FormFillB from '../forms/FormFillB';
 import { createDocument } from '../../util/AVADocuments';
 import AVAUploadFile from '../../util/AVAUploadFile';
-import FormEditor from '../forms/FormEditor';
+import FormBuilder from '../dialogs/FormBuilder';
 
 import { Snackbar, Paper, Box, Dialog, DialogActions, DialogContent, DialogContentText, Button, Typography, Checkbox, FormControlLabel, TextField, LinearProgress, Tooltip } from '@material-ui/core';
 import Select from "react-dropdown-select";
@@ -1530,8 +1530,8 @@ export default ({ defaults, onClose }) => {
                               let formRec = await getDb(getSpec);
                               if (!formRec) return;
                               updateReactData({
-                                showFormEditor: true,
-                                formEditorRecord: deepCopy(formRec)
+                                showFormBuilder: true,
+                                formBuilderDirectForm: deepCopy(formRec)
                               }, true);
                             }}
                             style={AVATextStyle({
@@ -1540,7 +1540,7 @@ export default ({ defaults, onClose }) => {
                             })}
                             size='small'
                           />
-                          {/* FormEditor Dialog */}
+                          {/* FormBuilder Dialog */}
                           <Typography
                             key={`g_text_${listIndex}_0_${reactData.selectedPerson_id}`}
                             draggable={!!reactData.selectedPerson_id}
@@ -3481,71 +3481,36 @@ export default ({ defaults, onClose }) => {
         >
           {'Done'}
         </Button>
-        {false &&
-          <Button
-            variant="contained"
-            color="primary"
-            size="small"
-            style={{
-              borderRadius: '20px',
-              textTransform: 'none',
-              marginRight: '16px'
-            }}
-            onClick={() => {
-              const newForm = {
-                client_id: state.session.client_id,
-                form_id: `form_${Date.now()}`,
-                form_name: 'New Form',
-                category: '',
-                sections: [],
-                fields: {}
-              };
-              updateReactData({
-                showFormEditor: true,
-                formEditorRecord: newForm
-              }, true);
-            }}
-          >
-            + New Form
-          </Button>
-        }
-      </DialogActions>
-      {reactData.showFormEditor && (
-        <Dialog
-          open={true}
-          onClose={() => updateReactData({ showFormEditor: false }, true)}
-          classes={{
-            paper: classes.paperPallette
-          }}
-          PaperProps={{
-            style: {
-              width: '80vw',
-              maxWidth: '80vw',
-              minWidth: 400,
-            },
-          }}
+        <Button
+          variant="contained"
+          color="primary"
+          size="small"
           style={{
-            borderRadius: ('25px 25px 25px 25px'),
+            borderRadius: '20px',
+            textTransform: 'none',
+            marginRight: '16px'
+          }}
+          onClick={() => {
+            updateReactData({
+              showFormBuilder: true,
+              formBuilderDirectForm: 'new'
+            }, true);
           }}
         >
-          <DialogContent>
-            <FormEditor
-              form={reactData.formEditorRecord}
-              onSave={async (updatedForm) => {
-                // Save to Forms table
-                const putSpec = {
-                  TableName: 'Forms',
-                  Item: updatedForm
-                };
-                await putDb(putSpec);
-                updateReactData({ showFormEditor: false }, true);
-                // Reload the form list to include the new/updated form
-                await initialize();
-              }}
-              onCancel={() => updateReactData({ showFormEditor: false }, true)}
-            />
-          </DialogContent>
-        </Dialog>
+          + New Form
+        </Button>
+      </DialogActions>
+      {reactData.showFormBuilder && (
+        <FormBuilder
+          directForm={reactData.formBuilderDirectForm}
+          onClose={async (saved) => {
+            updateReactData({ showFormBuilder: false, formBuilderDirectForm: null }, true);
+            if (saved) {
+              // Reload the form list to include the new/updated form
+              await initialize();
+            }
+          }}
+        />
       )}
       {reactData.alert &&
         <Snackbar
