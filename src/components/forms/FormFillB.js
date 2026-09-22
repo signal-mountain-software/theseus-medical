@@ -1167,8 +1167,9 @@ export default ({ request = {}, onClose }) => {
         max: 1
       };
     }
-    else if ((returnObj.type === 'family' || returnObj.type === 'family&guests')
-      && reactData.family_id) {
+    else if (returnObj.type === 'family' || returnObj.type === 'family&guests') {
+      // No family_id (and thus no familyRec) is fine - the logged-in account holder fallback
+      // below still needs to run so the field isn't left with an empty familyMembers list.
       let familyMembers = [];
       if (reactData.familyRec) {
         // Add primary contact
@@ -3224,7 +3225,7 @@ export default ({ request = {}, onClose }) => {
     };
 
     return (
-      <Box display='flex' flexDirection='column' style={{ marginTop: '8px', marginLeft: '16px', gap: '2px' }}>
+      <Box display='flex' flexDirection='column' style={{ marginTop: '8px', marginLeft: '16px',  marginBottom: '16px', gap: '2px' }}>
         <Typography className={classes.selectionFieldHelper}>{'Guest(s):'}</Typography>
         {guestNames.map((name, gIndex) => (
           <Box key={`${props.prop}_guest_${gIndex}`} display='flex' flexDirection='row' alignItems='center'>
