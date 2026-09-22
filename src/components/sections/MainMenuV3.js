@@ -1996,11 +1996,12 @@ export default ({ start_at }) => {
   };
 
   const canManageMenuChildren = (menuItemRec) => {
-    return !!(
+    const canManage = !!(
       menuItemRec &&
       Object.prototype.hasOwnProperty.call(menuItemRec, 'allow_add') &&
       authorizedToMenuItem(menuItemRec.allow_add)
     );
+    return canManage;
   };
 
   const DEFAULT_SLIDESHOW_INTERVAL_MS = 5000;
@@ -2508,7 +2509,8 @@ export default ({ start_at }) => {
     }
 
     const sourceParentCell = findMenuCellInHierarchy(parentId);
-    if (!canManageMenuChildren(sourceParentCell?.menuItemRec)) {
+    // Admins bypass the parent's allow_add authorization check, matching canDeleteThisCard above.
+    if (!reactData.is_admin && !canManageMenuChildren(sourceParentCell?.menuItemRec)) {
       updateReactData({
         deleteMenuConfirm: false,
         deleteMenuTarget: null,
@@ -3757,11 +3759,11 @@ export default ({ start_at }) => {
     );
     const sourceParentCell = this_cell.parent ? findMenuCellInHierarchy(this_cell.parent) : null;
     const canDragThisCard = !!(this_cell.parent && canManageMenuChildren(sourceParentCell?.menuItemRec));
-    const canDeleteThisCard = !!(
-      this_cell.parent &&
-      canManageMenuChildren(sourceParentCell?.menuItemRec) &&
-      !['__top__', '__v3_favorites__', 'add_item_instructions'].includes(this_item.menu_id)
-    );
+    const _hasParent = !!this_cell.parent;
+    const _parentCanManage = canManageMenuChildren(sourceParentCell?.menuItemRec);
+    const _notProtectedId = !['__top__', '__v3_favorites__', 'add_item_instructions'].includes(this_item.menu_id);
+    // Admins can always delete (bypassing the parent's allow_add authorization check).
+    const canDeleteThisCard = reactData.is_admin ? _notProtectedId : !!(_hasParent && _parentCanManage && _notProtectedId);
     const canDropOnThisCard = !!((menuItemType === 'menu') && canManageMenuChildren(this_item));
     const isLinkCard = ['link', 'live_link', 'slide_show'].includes(normalizedMenuType);
     const isTelLink = isLinkCard && String(getPrimaryLinkUrl(this_item.url) || '').trim().toLowerCase().startsWith('tel:');
