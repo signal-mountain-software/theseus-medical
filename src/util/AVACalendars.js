@@ -2728,6 +2728,7 @@ export async function occurrenceData(body) {
         if (rec.eventData.sign_up.type === 'time') { returnObj.type = 'time'; }
         else { returnObj.type = 'seats'; }
       }
+      if (!returnObj.signup_type && rec.eventData.sign_up) { returnObj.signup_type = rec.eventData.sign_up.type; }
       if (!returnObj.time) {
         if (rec.eventData.event_data.time) {
           returnObj.time = rec.eventData.event_data.time.from;
@@ -2773,6 +2774,7 @@ export async function occurrenceData(body) {
         if (rec.occData.sign_up) {
           if (rec.occData.sign_up.type === 'time') { returnObj.type = 'time'; }
           else { returnObj.type = 'seats'; }
+          if (!returnObj.signup_type) { returnObj.signup_type = rec.occData.sign_up.type; }
         }
         if ('slotPattern' in rec.occData.event_data) {
           for (const sID in returnObj.slots) {
