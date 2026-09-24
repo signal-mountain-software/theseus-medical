@@ -160,6 +160,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   const personRowDragResetRef = React.useRef(null);
   const personRowShiftAnchorRef = React.useRef(null); // last ctrl/shift-clicked row index, for shift-range selection
   const familyDataCacheRef = React.useRef({});
+  const skipExtrasRecomputeRef = React.useRef(false); // set by a ctrl-click intersection that already narrowed extraPeople itself
   const [selectedFieldDropTargetIndex, setSelectedFieldDropTargetIndex] = React.useState(null);
   const [selectedFieldDragIndex, setSelectedFieldDragIndex] = React.useState(null);
   // Admin Mode "Add group" inline input - which row it's open for, its uncommitted text,
@@ -410,9 +411,19 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   // builds the deduplicated list of family members / primary caregivers to layer onto the right-hand people list
   React.useEffect(() => {
     if (!reactData.showFamilyMembers && !reactData.showPrimaryCaregivers) {
+      // Toggling off always wins, even if a ctrl-click narrowing was still pending consumption below -
+      // otherwise a quick toggle-off right after an intersection could skip clearing extraPeople entirely.
+      skipExtrasRecomputeRef.current = false;
       if ((reactData.extraPeople || []).length > 0) {
         updateReactData({ extraPeople: [] }, true);
       }
+      return;
+    }
+    if (skipExtrasRecomputeRef.current) {
+      // A ctrl-click intersection already filtered extraPeople directly (independent of whether each
+      // extra's linked base person survived) - a full recompute here would wrongly re-derive them from
+      // (and limit them to) the narrowed base instead.
+      skipExtrasRecomputeRef.current = false;
       return;
     }
     let cancelled = false;
@@ -807,13 +818,24 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       };
     }
 
-    const visibleMemberIds = (reactData.lower_people_filter
-      ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
-      : reactData.sortedGroupMembers
-    )?.filter((p) => ((rowSelection.length === 0) || rowSelection.includes(p))) || [];
+    // Mirror exactly what's rendered on the right side - base rows plus their indented (tier 2)
+    // extras - however that list was derived (plain selection, filtered, or ctrl-click narrowed).
+    // Tier-3 placeholder owner rows are excluded - they exist only as context for a surviving
+    // extra beneath them and were never really part of the current selection.
+    const visibleRows = personListDisplayRows.filter((row) => !row.isPhantomOwner
+      && ((rowSelection.length === 0) || rowSelection.includes(row.person_id)));
+
+    const visibleMemberIds = [...new Set(visibleRows.map((row) => row.person_id))];
+    const lookup = {};
+    for (const row of visibleRows) {
+      if (lookup[row.person_id]) { continue; }
+      lookup[row.person_id] = row.isExtra
+        ? { person_id: row.person_id, name: { first: row.first, last: row.last }, display_name: row.display_name }
+        : reactData.selectedGroupMembers?.[row.person_id];
+    }
     return {
       ids: visibleMemberIds,
-      lookup: reactData.selectedGroupMembers || {},
+      lookup,
       baseName: reactData.selectedGroupRec?.group_name || reactData.selectedGroup_id || 'group'
     };
   }
@@ -1182,7 +1204,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     return searchString.includes(reactData.lower_people_filter);
   };
 
-  // merges real group members with any extra family/caregiver entries into one alphabetically sorted list
+  // groups real group members with their linked family/caregiver entries indented immediately beneath
+  // them (each alphabetized within its own tier), instead of merging everyone into one flat A-Z list
   function buildDisplayRows() {
     const baseIds = (reactData.lower_people_filter
       ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
@@ -1196,34 +1219,77 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       isExtra: false
     }));
 
-    // when a text filter is active, an extra person is only shown if one of the
-    // primary accounts it's linked to still passes the filter — not its own name
-    const baseIdSet = new Set(baseIds);
-    const extraRows = (reactData.extraPeople || [])
-      .filter(this_extra => !reactData.lower_people_filter || (this_extra.linkedPersonIds || []).some(pid => baseIdSet.has(pid)))
-      .map(this_extra => {
-        const [first, ...rest] = (this_extra.display_name || '').split(' ');
-        return {
+    // "present" = still actually part of the current selection (survived any ctrl-click intersection),
+    // as opposed to merely passing (or failing) the text filter
+    const presentBaseIdSet = new Set(Object.keys(reactData.selectedGroupMembers || {}));
+    const visibleBaseIdSet = new Set(baseIds);
+
+    const sortRowsAlpha = (rows) => rows.sort((a, b) => {
+      if (state.session.client_style.sort_order === 'last_first') {
+        if (a.last === b.last) { return (a.first > b.first) ? 1 : -1; }
+        return (a.last > b.last) ? 1 : -1;
+      }
+      if (a.first === b.first) { return (a.last > b.last) ? 1 : -1; }
+      return (a.first > b.first) ? 1 : -1;
+    });
+
+    // group extras by each linked owner - an extra linked to multiple selected people is
+    // intentionally duplicated once under each owner (see repo notes), not shown just once
+    const extrasByOwner = new Map();
+    for (const this_extra of (reactData.extraPeople || [])) {
+      const linkedIds = this_extra.linkedPersonIds || [];
+      // orphaned: every owner this extra is linked to has been narrowed out of the current
+      // selection entirely (e.g. by a ctrl-click intersection) - text filtering shouldn't hide
+      // it in that case, since it's not the text filter that excluded it
+      const isOrphaned = linkedIds.length > 0 && linkedIds.every(pid => !presentBaseIdSet.has(pid));
+      const passesFilter = !reactData.lower_people_filter || isOrphaned || linkedIds.some(pid => visibleBaseIdSet.has(pid));
+      if (!passesFilter) { continue; }
+      const [first, ...rest] = (this_extra.display_name || '').split(' ');
+      for (const owner_id of linkedIds) {
+        if (!extrasByOwner.has(owner_id)) { extrasByOwner.set(owner_id, []); }
+        extrasByOwner.get(owner_id).push({
           person_id: this_extra.person_id,
           first: first || this_extra.display_name,
           last: rest.join(' '),
           display_name: this_extra.display_name,
           isExtra: true,
           kind: this_extra.kind
+        });
+      }
+    }
+    for (const rows of extrasByOwner.values()) { sortRowsAlpha(rows); }
+
+    sortRowsAlpha(baseRows);
+    const combinedRows = [];
+    const seenOwners = new Set();
+    for (const row of baseRows) {
+      combinedRows.push(row);
+      seenOwners.add(row.person_id);
+      combinedRows.push(...(extrasByOwner.get(row.person_id) || []));
+    }
+
+    // owners narrowed out of the selection but still referenced by a surviving extra get a
+    // translucent, display-only placeholder row so the indented extra beneath still has an anchor
+    const phantomRows = [...extrasByOwner.keys()]
+      .filter(owner_id => !seenOwners.has(owner_id))
+      .map(owner_id => {
+        const display_name = resolveDisplayName(owner_id);
+        const [first, ...rest] = (display_name || '').split(' ');
+        return {
+          person_id: owner_id,
+          first: first || display_name,
+          last: rest.join(' '),
+          display_name,
+          isExtra: false,
+          isPhantomOwner: true
         };
       });
+    sortRowsAlpha(phantomRows);
+    for (const row of phantomRows) {
+      combinedRows.push(row);
+      combinedRows.push(...(extrasByOwner.get(row.person_id) || []));
+    }
 
-    const combinedRows = [...baseRows, ...extraRows];
-    combinedRows.sort((a, b) => {
-      if (state.session.client_style.sort_order === 'last_first') {
-        if (a.last === b.last) { return (a.first > b.first) ? 1 : -1; }
-        return (a.last > b.last) ? 1 : -1;
-      }
-      else {
-        if (a.first === b.first) { return (a.last > b.last) ? 1 : -1; }
-        return (a.first > b.first) ? 1 : -1;
-      }
-    });
     return combinedRows;
   }
 
@@ -1778,6 +1844,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
   const canDragManage = !!(pSession?.adminAccount || reactData.administrative_account);
   const personListDisplayRows = buildDisplayRows();
+  // Directory/export should be enabled whenever anything real (base row or tier-2 extra) is
+  // visible - tier-3 placeholder owner rows are context-only and don't count.
+  const hasExportablePeople = personListDisplayRows.some((row) => !row.isPhantomOwner);
   const personRowSelectedStyle = (person_id) => (reactData.selectedPersonRowIds || []).includes(person_id) ? {
     backgroundColor: reactData.isDarkMode ? '#0d47a1' : '#90caf9',
     color: reactData.isDarkMode ? '#ffffff' : '#0d47a1',
@@ -2378,6 +2447,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                 let newIds, newMembersPerGroup, intersectionMode = false;
                                 // Preserved by default across a chained ctrl-click; explicitly cleared by the shift/plain branches below.
                                 let intersectingEventKey = reactData.intersectingEventKey || false;
+                                // Ctrl-click narrows the existing display rather than starting over, so the family/caregiver
+                                // toggle (and its already-loaded extraPeople) should survive it instead of being reset below.
+                                let keepExtrasToggle = false;
+                                let narrowedExtraPeople = reactData.extraPeople;
                                 if (event.ctrlKey || event.metaKey) {
                                   intersectionMode = true;
                                   // Ctrl/Cmd+click: intersection — narrow current display to members also in this group's subtree
@@ -2405,6 +2478,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                       );
                                       if (Object.keys(filtered).length > 0) newMembersPerGroup[id] = filtered;
                                     }
+                                    // A family member/caregiver can survive an intersection independent of the base person
+                                    // who linked them in - e.g. a caregiver who's directly a member of the ctrl-clicked
+                                    // group, even though the child they belong to isn't. Narrow extraPeople the same way,
+                                    // rather than letting it be wholly re-derived from (and limited to) the new base.
+                                    keepExtrasToggle = true;
+                                    narrowedExtraPeople = (reactData.extraPeople || []).filter(e => intersectPersonIds.has(e.person_id));
                                   }
                                   // Add the Ctrl+clicked subtree to selectedGroupIds so it appears highlighted;
                                   // member filtering is driven by newMembersPerGroup, not newIds
@@ -2466,6 +2545,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                     ? groupsManagedObject[titleSource[0]]
                                     : { group_id: null, group_name: 'Multiple Groups', multi: true };
                                 const newSelectedGroup_id = singleGroup ? titleSource[0] : null;
+                                if (keepExtrasToggle) { skipExtrasRecomputeRef.current = true; }
                                 updateReactData({
                                   selectedGroupIds: newIds,
                                   selectedGroupMembersPerGroup: newMembersPerGroup,
@@ -2480,8 +2560,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                   selectedPersonFirstName: false,
                                   selectedPersonLastName: false,
                                   selectedPersonRowIds: [],
-                                  showFamilyMembers: false,
-                                  showPrimaryCaregivers: false,
+                                  showFamilyMembers: keepExtrasToggle ? reactData.showFamilyMembers : false,
+                                  showPrimaryCaregivers: keepExtrasToggle ? reactData.showPrimaryCaregivers : false,
+                                  extraPeople: keepExtrasToggle ? narrowedExtraPeople : [],
                                   // Selecting a group is mutually exclusive with an event occurrence selection.
                                   selectedEventOccurrence: false,
                                   selectedEventAttendees: [],
@@ -2799,7 +2880,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                               userSelect: 'none',
                               margin: { top: 0, bottom: 0.8 },
                             }),
-                            opacity: 0.6,
+                            paddingLeft: '24px',
                             borderRadius: '4px',
                             ...personRowSelectedStyle(this_row.person_id),
                           }}
@@ -2812,7 +2893,25 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                         >
                           {this_row.display_name}
                         </Typography>
-                        :
+                        : this_row.isPhantomOwner ?
+                          // narrowed out of the selection by a ctrl-click intersection, but still shown
+                          // (very translucent, non-interactive) as the anchor for a surviving indented extra below
+                          <Typography
+                            key={`g_textphantom-${cX}`}
+                            style={{
+                              ...AVATextStyle({
+                                overflow: 'visible',
+                                size: 1.2,
+                                userSelect: 'none',
+                                margin: { top: 0, bottom: 0.8 },
+                              }),
+                              opacity: 0.3,
+                              borderRadius: '4px',
+                            }}
+                          >
+                            {this_row.display_name}
+                          </Typography>
+                          :
                         <Typography
                           key={`g_textpeople-${cX}`}
                           style={{
@@ -2968,10 +3067,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                   <PhotoLibraryIcon
                     classes={{ root: classes.rowButton }}
                     size='medium'
-                    style={{ marginRight: '12px', opacity: (reactData.sortedGroupMembers?.length > 0) ? 1 : 0.4 }}
+                    style={{ marginRight: '12px', opacity: hasExportablePeople ? 1 : 0.4 }}
                     aria-label="open_photo_directory_icon"
                     onClick={() => {
-                      if (reactData.sortedGroupMembers?.length > 0) {
+                      if (hasExportablePeople) {
                         openPhotoDirectory();
                       }
                     }}
@@ -2979,10 +3078,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                   <GetAppIcon
                     classes={{ root: classes.rowButton }}
                     size='medium'
-                    style={{ marginRight: reactData.administrative_account ? '12px' : 0, opacity: (reactData.sortedGroupMembers?.length > 0) ? 1 : 0.4 }}
+                    style={{ marginRight: reactData.administrative_account ? '12px' : 0, opacity: hasExportablePeople ? 1 : 0.4 }}
                     aria-label="download_csv_icon"
                     onClick={() => {
-                      if (reactData.sortedGroupMembers?.length > 0) {
+                      if (hasExportablePeople) {
                         openFieldPicker();
                       }
                     }}
