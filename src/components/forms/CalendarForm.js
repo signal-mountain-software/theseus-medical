@@ -21,7 +21,6 @@ import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import PrintIcon from '@material-ui/icons/Print';
-import AddEventIcon from '@material-ui/icons/Event';
 import DateRangeIcon from '@material-ui/icons/DateRange';
 import CalendarViewDayIcon from '@material-ui/icons/CalendarViewDay';
 import GroupIcon from '@material-ui/icons/Group';
@@ -2863,7 +2862,6 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               className={AVAClass.AVAButton}
               style={{ backgroundColor: 'green', color: 'white' }}
               size='small'
-              startIcon={<AddEventIcon fontSize="small" />}
               onClick={async () => {
                 let reactUpdObj = {
                   addPersonalEvent: true
@@ -2875,7 +2873,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 updateReactData(reactUpdObj, true);
               }}
             >
-              {(reactData.selectedPerson_id !== state.session.person_id) ? 'Make an Appointment' : 'Add an Event'}
+              Add a Private/Personal Event
             </Button>
           }
         </Box>
