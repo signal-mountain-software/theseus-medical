@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile, s3, cloudfront, getObject } from '../../util/AVAUtilities';
+import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile, s3, cloudfront, getObject, booleanLikeToken } from '../../util/AVAUtilities';
 import { putTask, parseQuickActivity } from '../../util/AVATasks';
 import { addMember, removeMember } from '../../util/AVAGroups';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
@@ -513,6 +513,7 @@ export default ({ request = {}, onClose }) => {
   const sectionRenderTimerRef = React.useRef(null);
   const formFieldDefinitionCacheRef = React.useRef({});
   const commonFieldDefinitionCacheRef = React.useRef({});
+  const dictionaryFieldDefinitionCacheRef = React.useRef({});
   const updateReactData = (newData, force = false) => {
     setReactData((prevValues) => (Object.assign(
       prevValues,
@@ -660,6 +661,15 @@ export default ({ request = {}, onClose }) => {
         (Array.isArray(valToCheck) && array_in_array(normalizedValues, valToCheck.map(v => typeof v === 'string' ? v.toLowerCase() : v)))
       ) {
         return true;
+      }
+      // Fallback: neither side matched literally - try again treating both as boolean-like
+      // (true/false/yes/no in any casing/type) in case this is a Yes/No or boolean field.
+      const valueTokens = (Array.isArray(valToCheck) ? valToCheck : [valToCheck]).map(booleanLikeToken).filter(t => t !== null);
+      if (valueTokens.length > 0) {
+        const testTokens = normalizedValues.map(booleanLikeToken).filter(t => t !== null);
+        if (valueTokens.some(t => testTokens.includes(t))) {
+          return true;
+        }
       }
       return false;
     };
@@ -1106,6 +1116,25 @@ export default ({ request = {}, onClose }) => {
     return field_variables;
   };
 
+  // DataDictionaryV3 is the authoritative type declaration for a dictionary-linked field - a
+  // FormBuilder-authored 'yes/no' field still needs this to know whether its underlying DB
+  // attribute (People/Session/Family, via saveAs) should be persisted as a real boolean.
+  const loadDictionaryFieldRec = async (field_key) => {
+    if (!field_key) { return null; }
+    if (Object.prototype.hasOwnProperty.call(dictionaryFieldDefinitionCacheRef.current, field_key)) {
+      return dictionaryFieldDefinitionCacheRef.current[field_key];
+    }
+    const fetchedDictionaryRec = await getDb({
+      Key: {
+        client_id: state.session.client_id,
+        field_key
+      },
+      TableName: "DataDictionaryV3"
+    });
+    dictionaryFieldDefinitionCacheRef.current[field_key] = fetchedDictionaryRec || null;
+    return dictionaryFieldDefinitionCacheRef.current[field_key];
+  };
+
   // Helper function to process a single field from a section
   const processFieldForSectionField = async ({ field_name, field_key, fieldEntry, docFields, index, section, formRec, response }) => {
 
@@ -1166,6 +1195,29 @@ export default ({ request = {}, onClose }) => {
         min: yesNoMin,
         max: 1
       };
+      // A default sourced from a boolean-typed DataDictionary/People/Session/Family record can
+      // arrive here as a real true/false - coerce it to the literal 'yes'/'no' string the
+      // selection UI (and handleMakeSelection) expect, so it renders pre-selected. null/undefined/''
+      // (no data) is left alone rather than defaulting to 'no' - "unanswered" isn't "false".
+      const yesNoToken = booleanLikeToken(returnObj.field_value);
+      if (yesNoToken !== null) {
+        returnObj.field_value = (yesNoToken === 'true') ? 'yes' : 'no';
+      }
+
+      // The DB attribute this field's saveAs writes to may be typed as a real boolean elsewhere
+      // (e.g. PeopleMaintenance's AdministrativeSection) - DataDictionary is authoritative for
+      // that when this field is dictionary-linked; otherwise trust whatever Form_Fields/
+      // Common_Fields/the Form's own field def already declared (field_variables.value.type -
+      // field_variables.type is FormBuilder's 'yes/no' UI type, not the persisted attribute type).
+      let persistAsBooleanType = false;
+      if (field_variables.dictionary_field_key) {
+        const dictRec = await loadDictionaryFieldRec(field_variables.dictionary_field_key);
+        persistAsBooleanType = ['boolean', 'bool'].includes((dictRec?.type || '').toString().toLowerCase());
+      }
+      else {
+        persistAsBooleanType = ['boolean', 'bool'].includes((field_variables.value?.type || '').toString().toLowerCase());
+      }
+      returnObj.persistAsBoolean = persistAsBooleanType;
     }
     else if (returnObj.type === 'family' || returnObj.type === 'family&guests') {
       // No family_id (and thus no familyRec) is fine - the logged-in account holder fallback
@@ -3942,11 +3994,20 @@ export default ({ request = {}, onClose }) => {
       }
       if (reactData.fields[this_field].saveAs) {
         const [save_file, ...save_instructions] = reactData.fields[this_field].saveAs;
+        // FormFillB's own 'yes/no' fields always hold the string 'yes'/'no' - but the target
+        // People/Session attribute may be declared (by DataDictionary, if linked, else by
+        // Form_Fields/Common_Fields/the Form's own field def) as a real boolean, which is what
+        // other consumers (e.g. PeopleMaintenance's AdministrativeSection) expect there.
+        let valueToSave = reactData.fields[this_field].value;
+        if (reactData.fields[this_field].persistAsBoolean) {
+          const saveToken = booleanLikeToken(valueToSave);
+          if (saveToken !== null) { valueToSave = (saveToken === 'true'); }
+        }
         if ((save_file === 'peopleRec') || (save_file === 'personRec')) {
           reactData.peopleRec[reactData.pertains_to] = resolveValue(
             reactData.peopleRec[reactData.pertains_to],
             save_instructions,
-            reactData.fields[this_field].value
+            valueToSave
           );
           needsUpdate.peopleRec = true;
         }
@@ -3954,7 +4015,7 @@ export default ({ request = {}, onClose }) => {
           reactData.sessionRec[reactData.pertains_to] = resolveValue(
             reactData.sessionRec[reactData.pertains_to],
             save_instructions,
-            reactData.fields[this_field].value
+            valueToSave
           );
           needsUpdate.sessionRec = true;
         }
@@ -4784,12 +4845,22 @@ export default ({ request = {}, onClose }) => {
   // Returns true if the test condition matches the given field value.
   // If test.values contains '*', matches any non-blank value.
   const matchesFieldValues = (test, fieldValue) => {
-    if ([test.values].flat().includes('*')) {
+    const testValues = [test.values].flat();
+    if (testValues.includes('*')) {
       if (Array.isArray(fieldValue)) { return fieldValue.length > 0; }
       return fieldValue !== null && fieldValue !== undefined && fieldValue !== '';
     }
-    return array_in_array([test.values].flat(), [fieldValue].flat());
+    if (array_in_array(testValues, [fieldValue].flat())) { return true; }
+    // Same true/false vs yes/no mismatch as checkIgnore's matchValues (field-level show_if/
+    // ignore_if) - bridge it here too for section-level conditions on a boolean/Yes-No field.
+    const fieldValueTokens = [fieldValue].flat().map(booleanLikeToken).filter(t => t !== null);
+    if (fieldValueTokens.length > 0) {
+      const testTokens = testValues.map(booleanLikeToken).filter(t => t !== null);
+      if (fieldValueTokens.some(t => testTokens.includes(t))) { return true; }
+    }
+    return false;
   };
+
 
   const okToShowSection = (this_sectionObj) => {
     // Shared by show_if/show_ifAll/ignore_ifAll/ignore_if below - a single test can be a plain

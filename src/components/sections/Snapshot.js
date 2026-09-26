@@ -6,7 +6,7 @@ import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { Box, Typography, Button } from '@material-ui/core/';
 import { formatPhone, createPersonPhotoThumbFromUrl, persistPersonPhotoThumb } from '../../util/AVAPeople';
 import { getPersonGroups, isLeaf } from '../../util/AVAGroups';
-import { deepCopy, titleCase, getObject, s3, cloudfront, cl } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, getObject, s3, cloudfront, cl, booleanLikeToken } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import SendIcon from '@material-ui/icons/Send';
@@ -573,7 +573,10 @@ export default ({ currentValues, reactData, updateReactData }) => {
             <React.Fragment
               key={`fraglocal_box__${cFNdx}`}
             >
-              {reactData.form_fields[this_formField].snapshot && reactData.form_fields[this_formField].value &&
+              {reactData.form_fields[this_formField].snapshot &&
+                (reactData.form_fields[this_formField].value !== null) &&
+                (reactData.form_fields[this_formField].value !== undefined) &&
+                (reactData.form_fields[this_formField].value !== '') &&
                 <Box
                   key={`local_box__${cFNdx}`}
                   display='flex' flexDirection='row'
@@ -591,7 +594,9 @@ export default ({ currentValues, reactData, updateReactData }) => {
                   >
                     {reactData.form_fields[this_formField].fieldRec?.value?.type === 'date'
                       ? makeDate(reactData.form_fields[this_formField].value).absolute_withAge
-                      : reactData.form_fields[this_formField].value
+                      : reactData.form_fields[this_formField].fieldRec?.value?.type === 'boolean'
+                        ? (booleanLikeToken(reactData.form_fields[this_formField].value) === 'true' ? 'Yes' : 'No')
+                        : reactData.form_fields[this_formField].value
                     }
                   </Typography>
                 </Box>

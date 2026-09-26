@@ -1,11 +1,18 @@
 import React from 'react';
 import { Box, Typography, Checkbox, FormControlLabel, Input, Switch, Select, MenuItem, Chip } from '@material-ui/core/';
-import { isEmpty, deepCopy } from '../../util/AVAUtilities';
+import { isEmpty, deepCopy, booleanLikeToken } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 
 import { AVATextStyle } from '../../util/AVAStyles';
 
 const DONE_SENTINEL = '__AVA_DONE__';
+
+// Persisted boolean-typed attributes aren't only ever a real true/false - the same attribute
+// can hold a 'yes'/'no'/'true'/'false' string if another tool (e.g. FormFillB) last wrote it.
+const isBooleanFieldChecked = (value) => {
+  const token = booleanLikeToken(value);
+  return (token !== null) ? (token === 'true') : !!value;
+};
 
 const DropdownField = ({ fieldKey, fieldEntry, allFields, updateField }) => {
   const ddSelection = fieldEntry.fieldRec.value.selection || {};
@@ -446,15 +453,23 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                 <Typography
                   style={AVATextStyle({
                     size: 0.8, margin: { right: 0.8 },
-                    bold: (!reactData.form_fields[this_formField].value || (typeof reactData.form_fields[this_formField].value === 'string' && reactData.form_fields[this_formField].value.toLowerCase() === 'no'))
+                    bold: !isBooleanFieldChecked(reactData.form_fields[this_formField].value)
                   })}
                 >
                   {'No'}
                 </Typography>
                 <Switch
-                  checked={(reactData.form_fields[this_formField].value && (typeof reactData.form_fields[this_formField].value !== 'string' || reactData.form_fields[this_formField].value.toLowerCase() !== 'no'))}
+                  checked={isBooleanFieldChecked(reactData.form_fields[this_formField].value)}
+                  disabled={reactData.form_fields[this_formField].fieldRec.options?.viewOnly || !reactData.form_fields[this_formField].fieldRec.value.saveAs}
                   onClick={async () => {
-                    const newValue = !reactData.form_fields[this_formField].value;
+                    if (reactData.form_fields[this_formField].fieldRec.options?.viewOnly
+                      || !reactData.form_fields[this_formField].fieldRec.value.saveAs) {
+                      return;
+                    }
+                    // Negate the *interpreted* checked state, not the raw value's truthiness -
+                    // otherwise a value already stored as the string 'no' (truthy, but meaning
+                    // unchecked) would toggle to false instead of true.
+                    const newValue = !isBooleanFieldChecked(reactData.form_fields[this_formField].value);
                     let splitSave = reactData.form_fields[this_formField].fieldRec.value.saveAs.split('.');
                     reactData.form_fields[this_formField].value = newValue;
                     await updateField({
@@ -475,7 +490,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                 <Typography
                   style={AVATextStyle({
                     size: 0.8, margin: { left: 0.8 },
-                    bold: (reactData.form_fields[this_formField].value && (typeof reactData.form_fields[this_formField].value !== 'string' || reactData.form_fields[this_formField].value.toLowerCase() !== 'no'))
+                    bold: isBooleanFieldChecked(reactData.form_fields[this_formField].value)
                   })}
                 >
                   {'Yes'}

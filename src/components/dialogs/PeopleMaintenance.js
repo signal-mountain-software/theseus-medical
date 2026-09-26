@@ -423,6 +423,30 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       const localdataFieldsDef = state.session?.profile_style?.localdata_fields;
       reactUpdObj.form_fields = {};
 
+      // No-form_field / form_field-not-found display paths have no editable field type of their
+      // own to consult - map DataDictionary's type onto AdministrativeSection's display types so
+      // e.g. a boolean DD field doesn't render as a blank text box.
+      const displayTypeFromDictionaryType = (ddType) => {
+        const normalizedDdType = (ddType || '').toString().toLowerCase();
+        if (['boolean', 'bool'].includes(normalizedDdType)) { return 'boolean'; }
+        return 'text';
+      };
+
+      // saveAs for a no-form_field DD field: reuse the DD source that actually resolved the
+      // value (falling back to the record's first declared source) so a field sourced straight
+      // from e.g. People.wheelchair_user is editable, not just displayed.
+      const dictionarySourceToRecordKey = { person: 'peopleRec', people: 'peopleRec', session: 'sessionRec', sessions: 'sessionRec', sessionsv2: 'sessionRec' };
+      const buildSaveAsFromDictionary = (ddRec, resolvedEntry) => {
+        const meta = resolvedEntry?.meta || {};
+        const firstSource = Array.isArray(ddRec.sources) ? ddRec.sources[0] : null;
+        const sourceName = (meta.source || firstSource?.source || '').toString().toLowerCase();
+        const recordKey = dictionarySourceToRecordKey[sourceName];
+        if (!recordKey) { return null; }
+        const attributePath = meta.path_used
+          || (Array.isArray(firstSource?.path) ? firstSource.path[0] : firstSource?.path);
+        return (typeof attributePath === 'string' && attributePath) ? `${recordKey}.${attributePath}` : null;
+      };
+
       if (Array.isArray(localdataFieldsDef) && localdataFieldsDef.length > 0) {
         // ── localdata_fields path: drive form_fields from DataDictionaryV3 ──
 
@@ -473,6 +497,13 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
               if (ffRec.value?.saveAs) {
                 ffRec.value.saveAs = ffRec.value.saveAs.replace('personRec.', 'peopleRec.');
               }
+              // DataDictionary is authoritative for a DD-sourced field's persisted type - if its
+              // companion Form_Fields record disagrees (or omits type), DD still wins so the
+              // boolean Switch (and its always-write-a-real-boolean save) renders correctly.
+              const ddIsBoolean = ['boolean', 'bool'].includes((ddRec.type || '').toString().toLowerCase());
+              if (ddIsBoolean && ffRec.value) {
+                ffRec.value = Object.assign({}, ffRec.value, { type: 'boolean' });
+              }
               fieldRec = Object.assign({}, ffRec, {
                 options: Object.assign({}, ffRec.options, {
                   viewOnly: viewOnly || !!ffRec.options?.viewOnly,
@@ -483,22 +514,24 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                 ? unresolve({ object: reactUpdObj.og, key: ffRec.value.saveAs.split('.') })
                 : resolvedValue;
             } else {
-              // form_field key present but record not found — fall back to viewOnly display
+              // form_field key present but record not found — fall back to a DD-sourced editable field
+              const inferredSaveAs = buildSaveAsFromDictionary(ddRec, resolvedEntry);
               fieldRec = {
                 field_name: dd_field_key,
                 prompt: { value: ddRec.description || dd_field_key },
-                value: { type: 'text', saveAs: null },
-                options: { viewOnly: true, non_admin: true }
+                value: { type: displayTypeFromDictionaryType(ddRec.type), saveAs: inferredSaveAs },
+                options: { viewOnly: viewOnly || !inferredSaveAs, non_admin: true }
               };
               currentValue = resolvedValue;
             }
           } else {
-            // No form_field on DD record — display only
+            // No form_field on DD record — derive an editable field straight from the DD source
+            const inferredSaveAs = buildSaveAsFromDictionary(ddRec, resolvedEntry);
             fieldRec = {
               field_name: dd_field_key,
               prompt: { value: ddRec.description || dd_field_key },
-              value: { type: 'text', saveAs: null },
-              options: { viewOnly: true, non_admin: true }
+              value: { type: displayTypeFromDictionaryType(ddRec.type), saveAs: inferredSaveAs },
+              options: { viewOnly: viewOnly || !inferredSaveAs, non_admin: true }
             };
             currentValue = resolvedValue;
           }

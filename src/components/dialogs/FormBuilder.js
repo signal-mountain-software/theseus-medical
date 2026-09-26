@@ -76,9 +76,16 @@ const HEIGHT_PRESETS = [
     { value: '5', label: 'Large (5 lines)' },
 ];
 
-// DataDictionary/legacy field records sometimes store their type as the generic 'string' -
-// coerce that to our 'text' type so it maps onto a real FIELD_TYPES entry.
-const coerceFieldType = (rawType) => ((rawType === 'string') ? 'text' : (rawType || 'text'));
+// DataDictionary/legacy field records sometimes store their type as the generic 'string', or
+// as 'boolean'/'bool' (DataDictionary's true/false type) - coerce those onto real FIELD_TYPES
+// entries. 'boolean' becomes 'yes/no' since that's the only boolean-capable type FormFillB and
+// this editor's condition-value UI actually know how to render/test.
+const coerceFieldType = (rawType) => {
+    const normalizedType = (rawType || '').toString().toLowerCase();
+    if (normalizedType === 'string') { return 'text'; }
+    if (normalizedType === 'boolean' || normalizedType === 'bool') { return 'yes/no'; }
+    return rawType || 'text';
+};
 
 // 'select&text' is not its own FIELD_TYPES entry - it's 'select' plus the "allow custom
 // value" checkbox checked. Both share the same list-of-values editor UI.
