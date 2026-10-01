@@ -12,6 +12,7 @@ import GroupSecuritySection from '../sections/GroupSecuritySection';
 import GroupFormsSection from '../sections/GroupFormsSection';
 import GroupTasksSection from '../sections/GroupTasksSection';
 import GroupRulesSection from '../sections/GroupRulesSection';
+import GroupMenuOptionsSection from '../sections/GroupMenuOptionsSection';
 
 import {
   Snackbar, Button, Avatar, Box, Dialog, Typography, Menu, MenuList, MenuItem, Paper,
@@ -131,6 +132,9 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
       },
       GroupRulesSection: {
         component_id: GroupRulesSection,
+      },
+      GroupMenuOptionsSection: {
+        component_id: GroupMenuOptionsSection,
       }
     },
     og: {
@@ -237,6 +241,14 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
           isAuthorized: reactData.administrative_account,
           version_id: 0,
           component_name: 'GroupRulesSection'
+        },
+        {
+          section_name: 'Menu Options',
+          color: options?.color || 'orange',
+          isOpen: false,
+          isAuthorized: reactData.administrative_account,
+          version_id: 0,
+          component_name: 'GroupMenuOptionsSection'
         }]
       };
 
