@@ -2,7 +2,7 @@ import React from 'react';
 
 import useSession from '../../hooks/useSession';
 
-import { createNewGroup, getGroupMembers, getMemberList, addMember, removeMember, getRole } from '../../util/AVAGroups';
+import { createNewGroup, getGroupMembers, getMemberList, addMember, removeMember, getRole, getPersonGroups } from '../../util/AVAGroups';
 import { dbClient, isObject, listFromArray, cl, recordExists } from '../../util/AVAUtilities';
 import { occurrenceData } from '../../util/AVACalendars';
 import { makeDate } from '../../util/AVADateTime';
@@ -180,6 +180,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   // Admin Mode inline trash icon (leaf rows only) - holds the group_id awaiting AVAConfirm, once
   // requestDeleteGroup's live children/members checks have already passed.
   const [deleteGroupConfirmTarget, setDeleteGroupConfirmTarget] = React.useState(null);
+  // Removing a person from a group whose descendant(s) they're still actively in (see
+  // findActiveDescendantMemberships) - holds { draggedFrom, conflictGroupIds } awaiting AVAConfirm.
+  const [removeConflict, setRemoveConflict] = React.useState(null);
 
   // Events section (left list) - deliberately independent of groupsManagedObject/reactData's group
   // fields per product decision: visual continuity only, no shared data model or admin actions.
@@ -550,7 +553,14 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
             },
             ...(sourceIsTopLevel ? [] : [{
               text: 'Move',
-              function: async () => { await executeMovePerson(draggedFrom, droppedOn); }
+              function: async () => {
+                const conflictGroupIds = await findActiveDescendantMemberships(draggedFrom.personObj.person_id, draggedFrom.personGroup);
+                if (conflictGroupIds.length > 0) {
+                  setRemoveConflict({ draggedFrom, droppedOn, conflictGroupIds, action: 'move' });
+                  return;
+                }
+                await executeMovePerson(draggedFrom, droppedOn);
+              }
             }])
           ]
         }
@@ -643,7 +653,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     updateReactData(reactUpdObj, true);
   };
 
-  const executeMovePerson = async (draggedFrom, droppedOn) => {
+  const executeMovePerson = async (draggedFrom, droppedOn, extraGroupIds = []) => {
     const person_id = draggedFrom.personObj.person_id;
     const firstName = (draggedFrom.personObj.name?.first || '').trim() || 'This person';
 
@@ -673,9 +683,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       .filter(g => !currentGroups.includes(g))
       .map(g => groupsManagedObject[g]?.group_name || g);
 
-    // delegate DB writes: add destination then remove source (removeMember handles orphan cleanup)
+    // delegate DB writes: add destination then remove source (removeMember handles orphan cleanup);
+    // extraGroupIds carries descendant groups the caller already confirmed removing alongside the source
     await addMember(person_id, pSession.client_id, droppedOn.group_id, { allowParent: true });
-    const newGroupList = await removeMember(person_id, pSession.client_id, draggedFrom.personGroup);
+    const newGroupList = await removeMember(person_id, pSession.client_id, [draggedFrom.personGroup, ...extraGroupIds]);
 
     // get fresh groups from DB — removeMember may have pruned orphaned ancestors
     const freshPerson = await getPerson(person_id);
@@ -722,7 +733,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     }, true);
   };
 
-  const executeRemovePersonFromGroup = async (draggedFrom) => {
+  const executeRemovePersonFromGroup = async (draggedFrom, extraGroupIds = []) => {
     const person_id = draggedFrom.personObj.person_id;
     const firstName = (draggedFrom.personObj.name?.first || '').trim() || 'This person';
 
@@ -732,8 +743,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     const accessEntry = state.accessList?.[pSession.client_id]?.list?.find(p => p.person_id === person_id);
     const currentGroups = [...(accessEntry?.groups || [])];
 
-    // delegate DB write to removeMember (handles orphan cleanup + PeopleGroups soft-delete)
-    const newGroupList = await removeMember(person_id, pSession.client_id, draggedFrom.personGroup);
+    // delegate DB write to removeMember (handles orphan cleanup + PeopleGroups soft-delete);
+    // extraGroupIds carries descendant groups the caller already confirmed removing alongside this one
+    const newGroupList = await removeMember(person_id, pSession.client_id, [draggedFrom.personGroup, ...extraGroupIds]);
 
     // get fresh groups from DB — removeMember may have pruned orphaned ancestors
     const freshPerson = await getPerson(person_id);
@@ -1374,11 +1386,27 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     updateReactData(reactUpdObj, true);
   };
 
+  // removeMember() only cleans up orphaned ANCESTOR memberships, not descendants - a person removed
+  // from a parent group stays actively enrolled in any descendant group they were separately added
+  // to, silently defeating the removal. Returns the subset of group_id's descendants they're still
+  // actively (live, not cached) a member of, so the caller can warn/offer to remove those too.
+  const findActiveDescendantMemberships = async (person_id, group_id) => {
+    const descendants = getDescendants(group_id);
+    if (descendants.length === 0) { return []; }
+    const activeGroups = await getPersonGroups(person_id, pSession.client_id);
+    return descendants.filter(d => activeGroups.includes(d));
+  };
+
   const handleDrop_removePerson = async (ev) => {
     ev.preventDefault();
     let draggedFrom = JSON.parse(ev.dataTransfer.getData('id'));
     console.log(draggedFrom);
     if (draggedFrom.hasOwnProperty('personGroup')) {
+      const conflictGroupIds = await findActiveDescendantMemberships(draggedFrom.personObj.person_id, draggedFrom.personGroup);
+      if (conflictGroupIds.length > 0) {
+        setRemoveConflict({ draggedFrom, conflictGroupIds, action: 'remove' });
+        return;
+      }
       await executeRemovePersonFromGroup(draggedFrom);
     }
     else if (draggedFrom.hasOwnProperty('groupObj')) {
@@ -1938,11 +1966,30 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     // data has People.groups set but is missing PeopleGroups rows for __TOP__/ALL.
     const normalizedGroup = (this_group || '').toString().toUpperCase();
     if (normalizedGroup === '__TOP__' || normalizedGroup === 'ALL') {
+      // A person may have been deliberately removed (membership_status: 'inactive') without their
+      // legacy People.groups array being cleaned up - exclude those explicitly so the backfill below
+      // doesn't resurrect them.
+      const inactiveIds = new Set();
+      let inactiveLastKey;
+      do {
+        const inactiveParams = {
+          TableName: 'PeopleGroups',
+          IndexName: 'status-index',
+          KeyConditionExpression: 'client_group_id = :cgid AND membership_status = :inactive',
+          ExpressionAttributeValues: { ':cgid': cgid, ':inactive': 'inactive' },
+        };
+        if (inactiveLastKey) { inactiveParams.ExclusiveStartKey = inactiveLastKey; }
+        const inactiveResult = await dbClient.query(inactiveParams).promise()
+          .catch(err => { cl({ 'selectMembers: PeopleGroups inactive query error': err }); return null; });
+        (inactiveResult?.Items || []).forEach(item => inactiveIds.add(item.person_id));
+        inactiveLastKey = inactiveResult?.LastEvaluatedKey;
+      } while (inactiveLastKey);
+
       const acceptableTopGroups = ['__TOP__', 'ALL'];
       for (const cached of Object.values(cacheById)) {
         const pid = cached?.person_id;
         const personGroups = Array.isArray(cached?.groups) ? cached.groups.map(g => `${g}`.toUpperCase()) : [];
-        if (!pid || response[pid]) { continue; }
+        if (!pid || response[pid] || inactiveIds.has(pid)) { continue; }
         if (!personGroups.some(g => acceptableTopGroups.includes(g))) { continue; }
         response[pid] = {
           person_id: pid,
@@ -3923,6 +3970,28 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
             const groupName = groupsManagedObject[deleteGroupConfirmTarget]?.group_name;
             setDeleteGroupConfirmTarget(null);
             await executeDeleteGroup(deleteGroupConfirmTarget, groupName);
+          }}
+        />
+      }
+      {removeConflict &&
+        <AVAConfirm
+          promptText={[
+            'Still a Member of a Sub-Group',
+            `${(removeConflict.draggedFrom.personObj.name?.first || '').trim() || 'This person'} is also still an active member of ${listFromArray(removeConflict.conflictGroupIds.map(g => groupsManagedObject[g]?.group_name || g))}, which ${removeConflict.conflictGroupIds.length > 1 ? 'are' : 'is'} sub-group${removeConflict.conflictGroupIds.length > 1 ? 's' : ''} of ${groupsManagedObject[removeConflict.draggedFrom.personGroup]?.group_name || 'this group'}.`,
+            `${removeConflict.action === 'move' ? 'Moving' : 'Removing'} them from here alone won't fully remove their access to this branch. Remove them from the sub-group${removeConflict.conflictGroupIds.length > 1 ? 's' : ''} first, or tap "Remove From All" to also remove them from the sub-group${removeConflict.conflictGroupIds.length > 1 ? 's' : ''} at the same time.`
+          ]}
+          cancelText={'Cancel'}
+          confirmText={'Remove From All'}
+          onCancel={() => { setRemoveConflict(null); }}
+          onConfirm={async () => {
+            const { draggedFrom, droppedOn, conflictGroupIds, action } = removeConflict;
+            setRemoveConflict(null);
+            if (action === 'move') {
+              await executeMovePerson(draggedFrom, droppedOn, conflictGroupIds);
+            }
+            else {
+              await executeRemovePersonFromGroup(draggedFrom, conflictGroupIds);
+            }
           }}
         />
       }
