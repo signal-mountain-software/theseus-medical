@@ -3,12 +3,23 @@ import useSession from '../../hooks/useSession';
 
 import { Box, Typography, Button } from '@material-ui/core/';
 
-import { AVATextStyle } from '../../util/AVAStyles';
+import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import QuickSearch from './QuickSearch';
 
 export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
   const { state } = useSession();
+  const AVAClass = AVAclasses();
+
+  // The three named star-values that can appear as access rules in accessible_to
+  // and need to be selectable (and pre-selected) in the QuickSearch dialog. Unlike
+  // group:/person: rules, these are stored bare (no prefix) in accessible_to.
+  const SPECIAL_ACCESS_VALUES = [
+    { person_id: '*all', first: '* Everybody', last: '' },
+    { person_id: '*admin', first: '* Administrators', last: '' },
+    { person_id: '*support', first: '* Support Staff', last: '' },
+  ];
+  const SPECIAL_ACCESS_IDS = SPECIAL_ACCESS_VALUES.map(v => v.person_id);
 
   // Convert an accessible_to rule string to a human-readable label
   function accessLabel(rule) {
@@ -27,6 +38,8 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
     if (rule.startsWith('person:')) {
       return `Person: ${rule.split(':')[1].trim()}`;
     }
+    const special = SPECIAL_ACCESS_VALUES.find(v => v.person_id === rule);
+    if (special) { return special.first; }
     return rule;
   }
 
@@ -35,12 +48,15 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
   const isAll = !isNone && currentAccessibleTo.includes('*all');
   const hasSpecificRestrictions = currentAccessibleTo.some(r => r.startsWith('group:') || r.startsWith('person:'));
 
-  // Build initial QuickSearch selections from the current accessible_to rules
+  // Build initial QuickSearch selections from the current accessible_to rules.
+  // SPECIAL_ACCESS_IDS rules are stored bare (no prefix) - include those directly.
   const existingSelections = currentAccessibleTo
-    .filter(r => r.startsWith('group:') || r.startsWith('person:'))
+    .filter(r => r.startsWith('group:') || r.startsWith('person:') || SPECIAL_ACCESS_IDS.includes(r))
     .map(r => r.startsWith('group:')
       ? { group_id: r.split(':')[1].trim() }
-      : { person_id: r.split(':')[1].trim() }
+      : r.startsWith('person:')
+        ? { person_id: r.split(':')[1].trim() }
+        : { person_id: r }
     );
 
   function saveAccessibleTo(newAccessibleTo, extraReactUpd = {}) {
@@ -85,6 +101,7 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
       <Box display='flex' flexDirection='row' style={{ gap: '8px', flexWrap: 'wrap' }}>
         <Button
+          className={AVAClass.AVAButton}
           onClick={() => {
             updateReactData({ showGroupAccessSearch: true, selections: existingSelections }, true);
           }}
@@ -93,12 +110,14 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
           {hasSpecificRestrictions ? 'Change Access Restrictions' : 'Restrict to Specific Groups/People'}
         </Button>
         <Button
+          className={AVAClass.AVAButton}
           onClick={() => saveAccessibleTo(['*all'])}
           style={{ backgroundColor: 'green', color: 'white' }}
         >
           Allow Everyone
         </Button>
         <Button
+          className={AVAClass.AVAButton}
           onClick={() => saveAccessibleTo(['*none'])}
           style={{ backgroundColor: 'red', color: 'white' }}
         >
@@ -117,6 +136,8 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
             showAll: true,
             pickAndGo: true,
             keepSelections: true,
+            withSpecialValues: true,
+            specialValueList: SPECIAL_ACCESS_VALUES,
             buttonText: {
               empty: 'No One (deny all)',
               selected: 'Use These'
@@ -124,14 +145,19 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
           }}
           onClose={(selections) => {
             const cleanSelections = ([selections].flat()).filter(s => s && (s.person_id || s.group_id));
-            // Preserve special rules other than *all/*none and group:/person: entries
+            // Preserve rules outside this dialog's scope: anything that isn't a group:/person:
+            // entry or one of SPECIAL_ACCESS_IDS (those round-trip through cleanSelections instead,
+            // which already reflects any SPECIAL_ACCESS_IDS the user kept/added/removed).
             const keptRules = currentAccessibleTo
-              .filter(r => !r.startsWith('group:') && !r.startsWith('person:') && r !== '*all' && r !== '*none');
+              .filter(r => !r.startsWith('group:') && !r.startsWith('person:') && !SPECIAL_ACCESS_IDS.includes(r) && r !== '*none');
             const newAccessibleTo = cleanSelections.length === 0
               ? ['*none']
               : [
                   ...keptRules,
-                  ...cleanSelections.map(s => s.group_id ? `group:${s.group_id}` : `person:${s.person_id}`)
+                  // SPECIAL_ACCESS_IDS (*all/*admin/*support) are stored bare - no person: prefix
+                  ...cleanSelections.map(s => s.group_id
+                    ? `group:${s.group_id}`
+                    : SPECIAL_ACCESS_IDS.includes(s.person_id) ? s.person_id : `person:${s.person_id}`)
                 ];
             saveAccessibleTo(newAccessibleTo, { selections: cleanSelections });
           }}
