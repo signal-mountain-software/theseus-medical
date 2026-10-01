@@ -360,21 +360,26 @@ export default ({ currentValues, reactData, updateReactData }) => {
     }
   };
 
+  // Returns an array of display lines; callers render one Typography per line.
   const makeLocation = () => {
     const addressStyle = state.session?.profile_style?.address_on_snapshot;
-    if (addressStyle === '*none') { return ''; }
+    if (addressStyle === '*none') { return []; }
+    if (addressStyle === 'apartment_suite') {
+      return [sanitizeLocation(currentValues.peopleRec.address?.apartment_suite || '')].filter(Boolean);
+    }
     if (addressStyle === 'short') {
       const city = currentValues.peopleRec.address?.city || currentValues.peopleRec.address?.address?.city;
       const stateVal = currentValues.peopleRec.address?.state || currentValues.peopleRec.address?.address?.state;
       const parts = [city && titleCase(city), stateVal].filter(Boolean);
-      return sanitizeLocation(parts.join(', '));
+      return [sanitizeLocation(parts.join(', '))].filter(Boolean);
     }
     if (currentValues.peopleRec.hasOwnProperty('address') && currentValues.peopleRec.address) {
       if ((!currentValues.peopleRec.address || Object.keys(currentValues.peopleRec.address).length === 0) && currentValues.peopleRec.location) {
-        return sanitizeLocation(currentValues.peopleRec.location);
+        return [sanitizeLocation(currentValues.peopleRec.location)].filter(Boolean);
       }
       else {
-        // adress is expected to be address.adress, address.adress2, address.city, address.state, address.zip - 
+        // adress is expected to be address.adress, address.adress2, address.apartment_suite,
+        // address.city, address.state, address.zip -
         // if street exists, convert that to new style - address.address  
         if (currentValues.peopleRec.address.street) {
           if (!currentValues.peopleRec.address.address) {
@@ -388,44 +393,41 @@ export default ({ currentValues, reactData, updateReactData }) => {
           }
            delete currentValues.peopleRec.address.address1;
         }
-        // Filter out nullish values and join with spaces
-        let addressParts = '';
-        if (currentValues.peopleRec.address.address
-          && currentValues.peopleRec.address.address.trim() !== ''
-          && currentValues.peopleRec.address.address.includes('undefined') !== true
-        ) {
-          addressParts += titleCase(currentValues.peopleRec.address.address) + " ";
+        const isValidPart = (value) => !!value && value.trim() !== '' && value.includes('undefined') !== true;
+
+        // Line 1: apartment/suite
+        const apartmentLine = isValidPart(currentValues.peopleRec.address.apartment_suite)
+          ? titleCase(currentValues.peopleRec.address.apartment_suite)
+          : '';
+
+        // Line 2: address; address2
+        const streetLineParts = [];
+        if (isValidPart(currentValues.peopleRec.address.address)) {
+          streetLineParts.push(titleCase(currentValues.peopleRec.address.address));
         }
-        if (currentValues.peopleRec.address.address2
-          && currentValues.peopleRec.address.address2.trim() !== ''
-          && currentValues.peopleRec.address.address2.includes('undefined') !== true
-        ) {
-          addressParts += titleCase(currentValues.peopleRec.address.address2) + " ";
+        if (isValidPart(currentValues.peopleRec.address.address2)) {
+          streetLineParts.push(titleCase(currentValues.peopleRec.address.address2));
         }
-        if (currentValues.peopleRec.address.city
-          && currentValues.peopleRec.address.city.trim() !== ''
-          && currentValues.peopleRec.address.city.includes('undefined') !== true
-        ) {
-          addressParts += titleCase(currentValues.peopleRec.address.city) + ", ";
+        const streetLine = streetLineParts.join('; ');
+
+        // Line 3: city, state zip
+        let cityStateZip = '';
+        if (isValidPart(currentValues.peopleRec.address.city)) {
+          cityStateZip += titleCase(currentValues.peopleRec.address.city) + ", ";
         }
-        if (currentValues.peopleRec.address.state
-          && currentValues.peopleRec.address.state.trim() !== ''
-          && currentValues.peopleRec.address.state.includes('undefined') !== true
-        ) {
-          addressParts += currentValues.peopleRec.address.state + " ";
+        if (isValidPart(currentValues.peopleRec.address.state)) {
+          cityStateZip += currentValues.peopleRec.address.state + " ";
         }
         const zipValue = currentValues.peopleRec.address.zip_code || currentValues.peopleRec.address.zip;
-        if (zipValue
-          && zipValue.trim() !== ''
-          && zipValue.includes('undefined') !== true
-        ) {
-          addressParts += zipValue;
+        if (isValidPart(zipValue)) {
+          cityStateZip += zipValue;
         }
-        return sanitizeLocation(addressParts);
+
+        return [apartmentLine, streetLine, cityStateZip].map(sanitizeLocation).filter(Boolean);
       }
     }
     else {
-      return sanitizeLocation(currentValues.peopleRec.location);
+      return [sanitizeLocation(currentValues.peopleRec.location)].filter(Boolean);
     }
   };
 
@@ -498,11 +500,14 @@ export default ({ currentValues, reactData, updateReactData }) => {
           >
             {`${currentValues.peopleRec.name?.first} ${currentValues.peopleRec.name?.last}`}
           </Typography>
-          <Typography
-            style={AVATextStyle({ bold: true, size: 1 })}
-          >
-            {makeLocation()}
-          </Typography>
+          {makeLocation().map((locationLine, locationLineNdx) => (
+            <Typography
+              key={`location_line__${locationLineNdx}`}
+              style={AVATextStyle({ bold: true, size: 1 })}
+            >
+              {locationLine}
+            </Typography>
+          ))}
           {currentValues.peopleRec.checkout_message &&
             <Typography
               style={AVATextStyle({ bold: true, size: 1 })}

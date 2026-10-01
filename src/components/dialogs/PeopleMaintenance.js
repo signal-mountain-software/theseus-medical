@@ -426,11 +426,26 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       // No-form_field / form_field-not-found display paths have no editable field type of their
       // own to consult - map DataDictionary's type onto AdministrativeSection's display types so
       // e.g. a boolean DD field doesn't render as a blank text box.
+      // AdministrativeSection only has dedicated editable renderers for 'boolean' and 'date' -
+      // everything else falls back to a plain text box, which would silently corrupt these
+      // structured/composite DD types if edited as free text, so they're forced read-only below.
       const displayTypeFromDictionaryType = (ddType) => {
         const normalizedDdType = (ddType || '').toString().toLowerCase();
         if (['boolean', 'bool'].includes(normalizedDdType)) { return 'boolean'; }
+        if (normalizedDdType === 'date') { return 'date'; }
         return 'text';
       };
+      const READ_ONLY_DICTIONARY_TYPES = new Set([
+        'email', 'e-mail', 'e_mail',
+        'phone',
+        'address', 'address-city', 'address-state', 'address-zip', 'address-county',
+        'name',
+        'datetime', 'date_time', 'date-time',
+        'time', 'time_only', 'time-only',
+        'age',
+        'select_event'
+      ]);
+      const isReadOnlyDictionaryType = (ddType) => READ_ONLY_DICTIONARY_TYPES.has((ddType || '').toString().toLowerCase());
 
       // saveAs for a no-form_field DD field: reuse the DD source that actually resolved the
       // value (falling back to the record's first declared source) so a field sourced straight
@@ -520,7 +535,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                 field_name: dd_field_key,
                 prompt: { value: ddRec.description || dd_field_key },
                 value: { type: displayTypeFromDictionaryType(ddRec.type), saveAs: inferredSaveAs },
-                options: { viewOnly: viewOnly || !inferredSaveAs, non_admin: true }
+                options: { viewOnly: viewOnly || !inferredSaveAs || isReadOnlyDictionaryType(ddRec.type), non_admin: true }
               };
               currentValue = resolvedValue;
             }
@@ -531,7 +546,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
               field_name: dd_field_key,
               prompt: { value: ddRec.description || dd_field_key },
               value: { type: displayTypeFromDictionaryType(ddRec.type), saveAs: inferredSaveAs },
-              options: { viewOnly: viewOnly || !inferredSaveAs, non_admin: true }
+              options: { viewOnly: viewOnly || !inferredSaveAs || isReadOnlyDictionaryType(ddRec.type), non_admin: true }
             };
             currentValue = resolvedValue;
           }
