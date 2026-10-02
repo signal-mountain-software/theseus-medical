@@ -228,7 +228,8 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
 
   const [reactData, setReactData] = React.useState({
     groupList: [],
-    restrictToGroups: [],
+    // seed from the client's configured default groups, if any, so the restriction isn't silently skipped
+    restrictToGroups: makeArray(state.session.client_style?.new_event_defaultGroups),
     slotObjList: [],
     event_date: (options.setDate ? options.setDate.dateObj : null),
     prefMethod: 'specific_date',
