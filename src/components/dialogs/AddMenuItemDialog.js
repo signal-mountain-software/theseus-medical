@@ -7,7 +7,7 @@ import QuickSearch from '../sections/QuickSearch';
 
 import {
   Box, Typography, Dialog, Button, TextField, FormControlLabel, IconButton,
-  Radio, RadioGroup, LinearProgress, CircularProgress, Switch, Snackbar
+  Radio, RadioGroup, LinearProgress, Switch, Snackbar
 } from '@material-ui/core/';
 import Alert from '@material-ui/lab/Alert';
 import CancelIcon from '@material-ui/icons/Cancel';
