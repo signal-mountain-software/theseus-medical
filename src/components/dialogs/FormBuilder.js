@@ -29,15 +29,25 @@ import {
     CircularProgress,
     Snackbar,
     InputAdornment,
+    Chip,
 } from '@material-ui/core';
 import { Alert, Autocomplete } from '@material-ui/lab/';
 
 import AddIcon from '@material-ui/icons/Add';
 import DeleteIcon from '@material-ui/icons/Delete';
+import FileCopyIcon from '@material-ui/icons/FileCopy';
 import CloseIcon from '@material-ui/icons/Close';
 import EditIcon from '@material-ui/icons/Edit';
 import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import DragIndicatorIcon from '@material-ui/icons/DragIndicator';
+import MailOutlineIcon from '@material-ui/icons/MailOutline';
+import NotificationsNoneIcon from '@material-ui/icons/NotificationsNone';
+import GroupIcon from '@material-ui/icons/Group';
+import WarningIcon from '@material-ui/icons/Warning';
+import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
+import ExpandLessIcon from '@material-ui/icons/ExpandLess';
+import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
+import ArrowDownwardIcon from '@material-ui/icons/ArrowDownward';
 
 // The list of field types a user can choose from when bootstrapping a field.
 // More types (header, signature, date-driven rules, saved/shared fields, etc.)
@@ -191,6 +201,29 @@ const CONDITION_CLASS_VALUES = [
     { person_id: '*admin', first: '* Admin Accounts', last: '' },
 ];
 
+// The three per-value stage-rule icons rendered beside each selectable value - see the
+// "Per-value stage rules" block further down for the classify/serialize logic they drive.
+const STAGE_RULE_ICON_DEFS = [
+    { kind: 'on_complete_message', Icon: MailOutlineIcon, label: 'Message' },
+    { kind: 'on_complete_notify', Icon: NotificationsNoneIcon, label: 'Notification' },
+    { kind: 'on_complete_groups', Icon: GroupIcon, label: 'Groups' },
+];
+
+// A short "The person this form is about" / "Group: Staff" label for a single recognized
+// recipient/available_to entry - shared by the message and notify rule editors.
+const describeRecipientValue = (entry, groupNameLookup) => {
+    if (!entry) { return 'Not set'; }
+    if (entry === 'pertains_to') { return 'The person this form is about'; }
+    if (entry === 'user') { return 'The logged-in staff member'; }
+    if (entry.startsWith('group:')) { return `Group: ${groupNameLookup?.(entry.slice(6)) || entry.slice(6)}`; }
+    if (entry.startsWith('person:')) { return `Person: ${entry.slice(7)}`; }
+    if (entry === '*all') { return 'Everybody'; }
+    if (entry === '*admin') { return 'Admin Accounts'; }
+    if (entry === '*support') { return 'Support Staff'; }
+    return entry;
+};
+
+
 // A short "2 Groups, 1 Person, Admin" summary of a stored audience array
 // (mixed 'group:<id>' / 'person:<id>' / bare class-name strings).
 const describeConditionAudience = (conditionValues) => {
@@ -247,6 +280,10 @@ export default ({ onClose, directForm }) => {
         saving: false,
         previewFormRec: null, // set while the Preview overlay (FormFillB) is open
         showConditionAudienceSearch: false, // true while QuickSearch is open, picking a condition's person/group/class audience
+        messageTemplates: [], // lazily loaded on first use by a message/notify rule editor
+        messageTemplatesLoaded: false,
+        showRuleRecipientSearch: false, // true while QuickSearch is open, picking a single group or person for a message/notify rule's recipient
+        showRuleGroupsSearch: null, // 'add' | 'remove' | null - which groups list a groups-rule QuickSearch picker is editing
         alert: false,
     });
     // A counter (not a boolean) - a boolean toggle would cancel itself out when `force` is
@@ -267,8 +304,25 @@ export default ({ onClose, directForm }) => {
     // otherwise clicking/selecting text anywhere else in the row would also start a drag.
     const [dragHandleKey, setDragHandleKey] = React.useState(null); // field.key of the row whose handle is pressed
 
+    // Which sections are collapsed (showing only their name + icon cluster) - pure UI state, keyed
+    // by section.key so it survives reordering (moveSection below) without needing remapping.
+    const [collapsedSections, setCollapsedSections] = React.useState(new Set());
+    const toggleSectionCollapsed = (sectionKey) => {
+        const next = new Set(collapsedSections);
+        if (next.has(sectionKey)) { next.delete(sectionKey); } else { next.add(sectionKey); }
+        setCollapsedSections(next);
+    };
+
     // Which field's "Conditional Display" popup is open, if any.
     const [conditionEditorTarget, setConditionEditorTarget] = React.useState(null); // { sectionIdx, fieldIdx } - fieldIdx null means a section-level condition
+
+    // Which value's message/notify/groups rule popup is open, if any - see the "Per-value stage
+    // rules" block below for classifyFieldStageRules/buildFieldStageRuleOutput.
+    const [ruleEditorTarget, setRuleEditorTarget] = React.useState(null); // { sectionIdx, fieldIdx, value, kind }
+    // Transient UI-only toggle for the open rule editor's content source - deliberately NOT part
+    // of the persisted edit (template_id/text must never both be set, including transiently as ''
+    // - see the Rule Editor dialog body for why this stays separate from currentEdit).
+    const [ruleContentMode, setRuleContentMode] = React.useState('text'); // 'text' | 'template'
 
     // Flat list of every other Item in the form (excluding the one being configured and any
     // header rows, which hold no value to test against) - used to populate the "other item"
@@ -376,6 +430,29 @@ export default ({ onClose, directForm }) => {
             return [];
         });
         updateReactData({ calendarEvents: events || [] }, true);
+    };
+
+    // Loads the client's MessageTemplates (lazily, the first time a message/notify rule editor
+    // needs the template picker) so an author can pick one by name instead of typing a template_id.
+    const loadMessageTemplatesIfNeeded = async () => {
+        if (reactData.messageTemplatesLoaded) { return; }
+        let items = [];
+        let lastKey;
+        do {
+            const result = await dbClient.query({
+                TableName: 'MessageTemplates',
+                KeyConditionExpression: 'client_id = :c',
+                ExpressionAttributeValues: { ':c': client_id },
+                ...(lastKey ? { ExclusiveStartKey: lastKey } : {}),
+            }).promise().catch((error) => {
+                cl(`Error reading MessageTemplates in FormBuilder: ${error}`);
+                return { Items: [] };
+            });
+            items = items.concat(result.Items || []);
+            lastKey = result.LastEvaluatedKey;
+        } while (lastKey);
+        items.sort((a, b) => (a.template_name || a.template_id || '').localeCompare(b.template_name || b.template_id || ''));
+        updateReactData({ messageTemplates: items, messageTemplatesLoaded: true }, true);
     };
 
     React.useEffect(() => {
@@ -533,6 +610,60 @@ export default ({ onClose, directForm }) => {
         }, true);
     };
 
+    // Clones a form as a raw DB duplicate - a direct deepCopy of the stored Forms item (sections,
+    // fields, stages, options, and anything else FormBuilder's editor doesn't explicitly model),
+    // not a round-trip through startEditingForm/buildFormRecord's reconstruction. form_id is
+    // regenerated (it's the table's key, so it must be unique) and form_name is prefixed; every
+    // other attribute is carried over untouched. Stays on the list view - the clone shows up there
+    // once loadFormList refreshes, ready to open/edit like any other form.
+    const cloneForm = async (formRec) => {
+        updateReactData({ loading: true }, true);
+        const cloned = deepCopy(formRec);
+        cloned.form_id = `form_${uuid(12)}`;
+        cloned.form_name = `Copy of ${formRec.form_name || formRec.form_id}`;
+        await putDb({ TableName: 'Forms', Item: cloned }).catch((error) => {
+            cl(`Error cloning form in FormBuilder: ${error}`);
+        });
+        await loadFormList(false);
+        updateReactData({
+            loading: false,
+            alert: { severity: 'success', message: `Cloned as "${cloned.form_name}"` },
+        }, true);
+    };
+
+    // Clone button for the edit view (reachable from directEditMode, where the list view - and
+    // its own Clone icon - never renders). Re-fetches the raw, currently-SAVED record by form_id
+    // rather than cloning reactData.editingForm directly, so the clone is a true DB copy and isn't
+    // subject to buildFormRecord's reconstruction; if there are unsaved changes here, they are
+    // deliberately NOT included; the success message says so.
+    const cloneCurrentForm = async () => {
+        const form_id = reactData.editingForm?.form_id;
+        if (!form_id) { return; }
+        updateReactData({ saving: true }, true);
+        const rawRec = await getDb({ Key: { client_id, form_id }, TableName: 'Forms' }).catch((error) => {
+            cl(`Error reading form to clone in FormBuilder: ${error}`);
+            return null;
+        });
+        if (!rawRec) {
+            updateReactData({
+                saving: false,
+                alert: { severity: 'error', message: 'Could not find a saved version of this form to clone - save it first.' },
+            }, true);
+            return;
+        }
+        const hadUnsavedChanges = hasUnsavedChanges();
+        await cloneForm(rawRec);
+        updateReactData({
+            saving: false,
+            alert: {
+                severity: 'success',
+                message: hadUnsavedChanges
+                    ? `Cloned the last saved version as "Copy of ${rawRec.form_name || rawRec.form_id}" - your unsaved changes here were not included.`
+                    : `Cloned as "Copy of ${rawRec.form_name || rawRec.form_id}"`,
+            },
+        }, true);
+    };
+
     // True once editingForm has diverged from the last loaded/saved snapshot.
     const hasUnsavedChanges = () => JSON.stringify(reactData.editingForm) !== reactData.savedSnapshot;
 
@@ -571,6 +702,23 @@ export default ({ onClose, directForm }) => {
         updateEditingForm({ sections });
     };
 
+    // Updates one stage's attributes by stage_name (e.g. its on_complete_message/
+    // on_complete_groups/on_complete_notify arrays) - a `changes` value of `undefined` deletes
+    // that key entirely (buildFieldStageRuleOutput returns undefined when nothing remains for a
+    // kind - we never want to persist an explicit `on_complete_groups: undefined`).
+    const updateStage = (stage_name, changes) => {
+        const stages = (reactData.editingForm.stages || []).map((stage) => {
+            if (stage.stage_name !== stage_name) { return stage; }
+            const next = Object.assign({}, stage);
+            Object.entries(changes).forEach(([key, value]) => {
+                if (value === undefined) { delete next[key]; }
+                else { next[key] = value; }
+            });
+            return next;
+        });
+        updateEditingForm({ stages });
+    };
+
     const addSection = () => {
         const existingStageNames = (reactData.editingForm.stages || []).map((stage) => stage.stage_name);
         const newSection = blankSection();
@@ -583,6 +731,38 @@ export default ({ onClose, directForm }) => {
 
     const removeSection = (sectionIdx) => {
         updateEditingForm({ sections: reactData.editingForm.sections.filter((_, idx) => idx !== sectionIdx) });
+    };
+
+    // Moves a section up (-1) or down (+1) in display order. The stages array is reordered to
+    // match - FormFillB's forward-progression logic (validateForm walking formStages to find the
+    // first stage with an error) assumes stage order mirrors section order, so reordering sections
+    // without also reordering stages would silently break stage progress for any form that relies
+    // on it. Any stage not referenced by a section (shouldn't normally happen under FormBuilder's
+    // one-stage-per-section model, but defensive) is left in its original relative position,
+    // appended after the ones that are.
+    const moveSection = (sectionIdx, direction) => {
+        const sections = reactData.editingForm.sections;
+        const targetIdx = sectionIdx + direction;
+        if ((targetIdx < 0) || (targetIdx >= sections.length)) { return; }
+        const newSections = [...sections];
+        const [moved] = newSections.splice(sectionIdx, 1);
+        newSections.splice(targetIdx, 0, moved);
+
+        const stages = reactData.editingForm.stages || [];
+        const stageByName = Object.fromEntries(stages.map((s) => [s.stage_name, s]));
+        const seen = new Set();
+        const orderedStageNames = [];
+        newSections.forEach((s) => {
+            if (s.belongs_to_stage && !seen.has(s.belongs_to_stage)) {
+                seen.add(s.belongs_to_stage);
+                orderedStageNames.push(s.belongs_to_stage);
+            }
+        });
+        const newStages = [
+            ...orderedStageNames.map((name) => stageByName[name]).filter(Boolean),
+            ...stages.filter((s) => !seen.has(s.stage_name)),
+        ];
+        updateEditingForm({ sections: newSections, stages: newStages });
     };
 
     const addField = (sectionIdx) => {
@@ -714,6 +894,293 @@ export default ({ onClose, directForm }) => {
         if (obj.conditionType === 'ignore_if') { return { ignore_if: [test] }; }
         return {};
     };
+
+    // ---------------------------------------------------------------------------------------
+    // Per-value stage rules (on_complete_message / on_complete_groups / on_complete_notify)
+    //
+    // FormBuilder renders one small icon per selectable value of a select/select&text/select_event
+    // field (message/notify/groups), each editable via a popup, mapping to a single showIf-gated
+    // instruction block - { showIf: [{ field: field_name, values: [value] }], ... } - appended to
+    // the owning stage's on_complete_<kind> array (see FormFillB.js for how those arrays are
+    // consumed at save time; nothing there needs to change for this).
+    //
+    // Recognition is purely structural and re-evaluated fresh every time the form loads - there is
+    // deliberately no persisted tag/flag marking a block as "FormBuilder-owned". A block is
+    // editable via the icon/popup UI if and only if it matches the exact shape FormBuilder itself
+    // would generate (classify*Rule below); anything else - including something a human wrote by
+    // hand - is left completely untouched on save and surfaced as a locked "Existing rule requires
+    // IT edit" indicator instead. This means a human can "promote" a hand-written rule to
+    // FormBuilder-editable just by writing it in the recognized shape, and FormBuilder can never
+    // silently reinterpret or clobber something it doesn't fully understand.
+    // ---------------------------------------------------------------------------------------
+
+    const STAGE_RULE_KINDS = ['on_complete_groups', 'on_complete_message', 'on_complete_notify'];
+
+    // Keys each kind's recognized shape is allowed to use - an instruction block carrying any
+    // other key is treated as not-simple, however its showIf/add/remove/etc. look otherwise.
+    const STAGE_RULE_RECOGNIZED_KEYS = {
+        on_complete_groups: ['showIf', 'add', 'remove'],
+        on_complete_message: ['showIf', 'template_id', 'text', 'subject', 'recipientList'],
+        on_complete_notify: ['showIf', 'template_id', 'text', 'title', 'available_to', 'options'],
+    };
+
+    // on_complete_notify's 'options' is Object.assign'd directly into the Notifications record by
+    // FormFillB - FormBuilder's popup only models this small subset as first-class controls, so an
+    // options object carrying any other key (or a nested object value) isn't recognized.
+    const STAGE_RULE_RECOGNIZED_NOTIFY_OPTION_KEYS = ['priority', 'dismissible', 'persist_until_dismissed', 'play_sound', 'action_url', 'resolution'];
+
+    // 'pertains_to'/'user' are FormFillB special values (resolved to person:<id> at send time);
+    // person:<id>/group:<id> are the normal explicit forms - shared by on_complete_message's
+    // recipientList and on_complete_notify's available_to.
+    const isRecognizedRecipientValue = (entry) => (
+        entry === 'pertains_to' || entry === 'user' || (typeof entry === 'string' && (entry.startsWith('person:') || entry.startsWith('group:')))
+    );
+    // available_to additionally accepts the broadcast/class values - recipientList has no
+    // equivalent (on_complete_message has no "everybody"/"all admins" concept today).
+    const isRecognizedAvailableToValue = (entry) => (
+        isRecognizedRecipientValue(entry) || entry === '*all' || entry === '*admin' || entry === '*support'
+    );
+
+    // A "simple" showIf is exactly one test, a plain {field, values} test (not currentUser_audience/
+    // memberOf/pertainsTo_memberOf), for the field FormBuilder is rendering icons for, matching
+    // exactly one of that field's known values. Two or more tests (effectively an OR condition),
+    // an ignoreIf, an audience/group test, or a test matching more than one value all fall outside
+    // what the per-value icon UI models and return null ("not simple").
+    const parseSimpleFieldShowIf = (block, field_name, validValues) => {
+        if (!block || block.ignoreIf || !Array.isArray(block.showIf) || block.showIf.length !== 1) { return null; }
+        const test = block.showIf[0];
+        if (!test || typeof test !== 'object') { return null; }
+        if (test.currentUser_audience || test.pertainsTo_memberOf || test.memberOf) { return null; }
+        if (test.field !== field_name) { return null; }
+        const values = Array.isArray(test.values) ? test.values : (test.values !== undefined ? [test.values] : []);
+        if (values.length !== 1 || !validValues.includes(values[0])) { return null; }
+        return { value: values[0] };
+    };
+
+    const hasOnlyRecognizedKeys = (block, kind) => (
+        Object.keys(block).every((k) => STAGE_RULE_RECOGNIZED_KEYS[kind].includes(k))
+    );
+
+    // template_id XOR text - shared by on_complete_message/on_complete_notify.
+    const hasRecognizedTemplateOrText = (block) => (!!block.template_id !== !!block.text);
+
+    // An "unconditional" gate is simply the absence of showIf/ignoreIf entirely - the instruction
+    // always applies when this stage completes/changes, regardless of any field's value. This is
+    // what lets a rule be associated with a whole section instead of one of its fields' values -
+    // see classifyUnconditionalStageRules below.
+    const parseUnconditionalGate = (block) => ((!block.showIf && !block.ignoreIf) ? {} : null);
+
+    // Each classify*Rule below is the field-value-scoped entry point (used by
+    // classifyFieldStageRules); classifyUnconditional*Rule is the section-scoped counterpart
+    // (used by classifyUnconditionalStageRules) - both share the same *RuleCore so "is this
+    // instruction shaped the way this editor models it" is defined exactly once per kind. gateResult
+    // is {} for an unconditional match, {value} for a field-value match, or null if the gate itself
+    // didn't match (wrong field, wrong value count, ignoreIf present, etc.).
+    const classifyGroupsRuleCore = (block, gateResult) => {
+        if (!gateResult || !hasOnlyRecognizedKeys(block, 'on_complete_groups')) { return null; }
+        const isStringArrayOrAbsent = (v) => (v === undefined) || (Array.isArray(v) && v.every((g) => typeof g === 'string'));
+        if (!isStringArrayOrAbsent(block.add) || !isStringArrayOrAbsent(block.remove)) { return null; }
+        return { ...gateResult, add: block.add || [], remove: block.remove || [] };
+    };
+    const classifyGroupsRule = (block, field_name, validValues) => (
+        classifyGroupsRuleCore(block, parseSimpleFieldShowIf(block, field_name, validValues))
+    );
+    const classifyUnconditionalGroupsRule = (block) => classifyGroupsRuleCore(block, parseUnconditionalGate(block));
+
+    const classifyMessageRuleCore = (block, gateResult) => {
+        if (!gateResult || !hasOnlyRecognizedKeys(block, 'on_complete_message') || !hasRecognizedTemplateOrText(block)) { return null; }
+        if (block.subject !== undefined && typeof block.subject !== 'string') { return null; }
+        if (block.recipientList !== undefined && (!Array.isArray(block.recipientList) || !block.recipientList.every(isRecognizedRecipientValue))) { return null; }
+        return {
+            ...gateResult,
+            template_id: block.template_id || null,
+            text: block.text || '',
+            subject: block.subject || '',
+            recipientList: block.recipientList || ['pertains_to'],
+        };
+    };
+    const classifyMessageRule = (block, field_name, validValues) => (
+        classifyMessageRuleCore(block, parseSimpleFieldShowIf(block, field_name, validValues))
+    );
+    const classifyUnconditionalMessageRule = (block) => classifyMessageRuleCore(block, parseUnconditionalGate(block));
+
+    // An explicit notification_id is deliberately NOT part of the recognized key set -
+    // FormBuilder's popup never sets one, so its presence signals a hand-authored choice (e.g. a
+    // custom dedup key) FormBuilder shouldn't silently take over.
+    const classifyNotifyRuleCore = (block, gateResult) => {
+        if (!gateResult || !hasOnlyRecognizedKeys(block, 'on_complete_notify') || !hasRecognizedTemplateOrText(block)) { return null; }
+        if (block.title !== undefined && typeof block.title !== 'string') { return null; }
+        if (block.available_to !== undefined && (!Array.isArray(block.available_to) || !block.available_to.every(isRecognizedAvailableToValue))) { return null; }
+        if (block.options !== undefined) {
+            if (typeof block.options !== 'object' || Array.isArray(block.options) || block.options === null) { return null; }
+            const optionKeys = Object.keys(block.options);
+            if (!optionKeys.every((k) => STAGE_RULE_RECOGNIZED_NOTIFY_OPTION_KEYS.includes(k))) { return null; }
+            if (optionKeys.some((k) => typeof block.options[k] === 'object' && block.options[k] !== null)) { return null; }
+        }
+        return {
+            ...gateResult,
+            template_id: block.template_id || null,
+            text: block.text || '',
+            title: block.title || '',
+            available_to: block.available_to || ['pertains_to'],
+            options: block.options || {},
+        };
+    };
+    const classifyNotifyRule = (block, field_name, validValues) => (
+        classifyNotifyRuleCore(block, parseSimpleFieldShowIf(block, field_name, validValues))
+    );
+    const classifyUnconditionalNotifyRule = (block) => classifyNotifyRuleCore(block, parseUnconditionalGate(block));
+
+    const STAGE_RULE_CLASSIFIERS = {
+        on_complete_groups: classifyGroupsRule,
+        on_complete_message: classifyMessageRule,
+        on_complete_notify: classifyNotifyRule,
+    };
+
+    const STAGE_RULE_UNCONDITIONAL_CLASSIFIERS = {
+        on_complete_groups: classifyUnconditionalGroupsRule,
+        on_complete_message: classifyUnconditionalMessageRule,
+        on_complete_notify: classifyUnconditionalNotifyRule,
+    };
+
+    // Scans one stage's on_complete_<kind> array for instructions that test field_name, split into
+    // byValue (recognized - keyed by the value they fire on, each carrying its original array
+    // index for buildFieldStageRuleOutput below) and lockedCount (instructions that mention this
+    // field but aren't in a shape FormBuilder models - the icon UI shows these as locked).
+    // Instructions unrelated to field_name entirely are skipped, not counted either way.
+    const classifyFieldStageRules = ({ stageDef, field_name, validValues }) => {
+        const result = {};
+        for (const kind of STAGE_RULE_KINDS) {
+            const instructionList = [stageDef?.[kind]].flat().filter(Boolean);
+            const classifier = STAGE_RULE_CLASSIFIERS[kind];
+            const byValue = {};
+            let lockedCount = 0;
+            instructionList.forEach((block, index) => {
+                const mentionedTests = [...(block.showIf || []), ...(block.ignoreIf || [])];
+                if (!mentionedTests.some((t) => t?.field === field_name)) { return; } // unrelated to this field
+                const parsed = classifier(block, field_name, validValues);
+                if (parsed) { byValue[parsed.value] = { index, ...parsed }; }
+                else { lockedCount += 1; }
+            });
+            result[kind] = { byValue, lockedCount };
+        }
+        return result;
+    };
+
+    // Section-scoped counterpart to classifyFieldStageRules - scans for UNCONDITIONAL
+    // instructions (no showIf/ignoreIf at all) in each kind. At most one recognized rule per kind
+    // is modeled (the single section-level icon); a second unconditional block for the same kind,
+    // or one using a shape this editor doesn't model, counts toward lockedCount instead of being
+    // silently merged or dropped. Instructions gated on any field (showIf/ignoreIf present) are
+    // skipped entirely - classifyFieldStageRules owns those.
+    const classifyUnconditionalStageRules = (stageDef) => {
+        const result = {};
+        for (const kind of STAGE_RULE_KINDS) {
+            const instructionList = [stageDef?.[kind]].flat().filter(Boolean);
+            const classifier = STAGE_RULE_UNCONDITIONAL_CLASSIFIERS[kind];
+            let rule = null;
+            let lockedCount = 0;
+            instructionList.forEach((block, index) => {
+                if (block.showIf || block.ignoreIf) { return; } // gated - classifyFieldStageRules' concern
+                const parsed = !rule && classifier(block);
+                if (parsed) { rule = { index, ...parsed }; }
+                else { lockedCount += 1; }
+            });
+            result[kind] = { rule, lockedCount };
+        }
+        return result;
+    };
+
+    // Builds one on_complete_<kind> instruction block from an editable descriptor - the inverse of
+    // classify*Rule above. field_name/value null builds an unconditional (no showIf) block.
+    const serializeStageRule = (kind, field_name, value, edit) => {
+        const showIf = field_name ? [{ field: field_name, values: [value] }] : null;
+        if (kind === 'on_complete_groups') {
+            return {
+                ...(showIf ? { showIf } : {}),
+                ...(edit.add?.length ? { add: edit.add } : {}),
+                ...(edit.remove?.length ? { remove: edit.remove } : {}),
+            };
+        }
+        const templateOrText = edit.template_id ? { template_id: edit.template_id } : { text: edit.text || '' };
+        if (kind === 'on_complete_message') {
+            return {
+                ...(showIf ? { showIf } : {}),
+                ...templateOrText,
+                ...(edit.subject ? { subject: edit.subject } : {}),
+                ...(edit.recipientList?.length ? { recipientList: edit.recipientList } : {}),
+            };
+        }
+        return { // on_complete_notify
+            ...(showIf ? { showIf } : {}),
+            ...templateOrText,
+            ...(edit.title ? { title: edit.title } : {}),
+            ...(edit.available_to?.length ? { available_to: edit.available_to } : {}),
+            ...(edit.options && Object.keys(edit.options).length ? { options: edit.options } : {}),
+        };
+    };
+
+    // Regenerates one stage's on_complete_<kind> array after editing field_name's per-value rules.
+    // valueEdits is { [value]: editableDescriptor | null|undefined } - null/undefined removes that
+    // value's rule if one existed. Every block NOT classified as "recognized for field_name" this
+    // kind (locked rules, rules for other fields, anything shaped differently) is preserved
+    // byte-for-byte at its original array position; recognized blocks for field_name are replaced
+    // by the freshly-serialized edited set, appended after the preserved blocks. Returns undefined
+    // (so the key can be omitted entirely) if nothing remains for this kind.
+    const buildFieldStageRuleOutput = ({ stageDef, kind, field_name, validValues, valueEdits }) => {
+        const instructionList = [stageDef?.[kind]].flat().filter(Boolean);
+        const classifier = STAGE_RULE_CLASSIFIERS[kind];
+        const recognizedIndices = new Set();
+        instructionList.forEach((block, index) => {
+            const showIfTests = Array.isArray(block.showIf) ? block.showIf : [];
+            if (showIfTests.some((t) => t?.field === field_name) && classifier(block, field_name, validValues)) {
+                recognizedIndices.add(index);
+            }
+        });
+        const preserved = instructionList.filter((_, index) => !recognizedIndices.has(index));
+        const regenerated = Object.entries(valueEdits || {})
+            .filter(([, edit]) => !!edit)
+            .map(([value, edit]) => serializeStageRule(kind, field_name, value, edit));
+        const finalList = [...preserved, ...regenerated];
+        return finalList.length ? finalList : undefined;
+    };
+
+    // Section-scoped counterpart to buildFieldStageRuleOutput - regenerates one stage's
+    // on_complete_<kind> array after editing its unconditional rule. edit is the editableDescriptor,
+    // or null/undefined to remove it if one existed. Every block other than the single recognized
+    // unconditional one (locked rules, per-field rules, anything shaped differently) is preserved
+    // byte-for-byte at its original array position.
+    const buildUnconditionalStageRuleOutput = ({ stageDef, kind, edit }) => {
+        const instructionList = [stageDef?.[kind]].flat().filter(Boolean);
+        const classifier = STAGE_RULE_UNCONDITIONAL_CLASSIFIERS[kind];
+        let recognizedIndex = -1;
+        instructionList.forEach((block, index) => {
+            if ((recognizedIndex === -1) && !block.showIf && !block.ignoreIf && classifier(block)) { recognizedIndex = index; }
+        });
+        const preserved = instructionList.filter((_, index) => index !== recognizedIndex);
+        const finalList = edit ? [...preserved, serializeStageRule(kind, null, null, edit)] : preserved;
+        return finalList.length ? finalList : undefined;
+    };
+
+    // Advisory only - true if attaching a message/notify rule to this value risks firing
+    // alongside another already-configured value's rule in the same save (the field allows >1
+    // simultaneous selections AND more than one of its values already has a message/notify rule).
+    // on_complete_groups is unaffected - cumulative additions are usually desirable even when
+    // multiple values are selected at once, so this isn't checked there.
+    const messageNotifyMultiSelectRisk = ({ field, messageByValue, notifyByValue }) => {
+        const { min } = computeSelectMinMax(field);
+        if (min <= 1) { return false; }
+        const configuredValueCount = new Set([...Object.keys(messageByValue || {}), ...Object.keys(notifyByValue || {})]).size;
+        return configuredValueCount > 1;
+    };
+
+    // True if this field can only ever have one value selected at a time (max selections capped at
+    // 1) - the only case where auto-generating "remove this field's OTHER values' groups" alongside
+    // an add-to-group rule is safe. Where more than one value can be selected at once, two values'
+    // auto-generated removals of each other's groups can overwrite one another (on_complete_groups'
+    // last-mention-wins resolution in FormFillB.js) even while both are still simultaneously
+    // selected - so this convenience should only be offered/auto-applied here.
+    const fieldSupportsSiblingGroupRemoval = (field) => (computeSelectMinMax(field).max <= 1);
 
     // Converts the editor's section/field row shape back into a Forms record
     // (sections referencing fields by name + a flat fields object). Shared by
@@ -878,6 +1345,9 @@ export default ({ onClose, directForm }) => {
                                                 {formRec.category || 'No Category'}{formRec.active === false ? ' - Inactive' : ''}
                                             </Typography>
                                         </Box>
+                                        <IconButton size='small' title='Clone this form' onClick={(e) => { e.stopPropagation(); cloneForm(formRec); }}>
+                                            <FileCopyIcon fontSize='small' />
+                                        </IconButton>
                                         <IconButton size='small' onClick={(e) => { e.stopPropagation(); startEditingForm(formRec); }}>
                                             <EditIcon fontSize='small' />
                                         </IconButton>
@@ -947,8 +1417,10 @@ export default ({ onClose, directForm }) => {
                 <Divider />
                 <DialogContent>
                     <Box display='flex' flexDirection='column'>
-                        {editingForm.sections.map((section, sectionIdx) => (
-                            <Paper key={section.key} variant='outlined' style={{ padding: '12px', marginTop: '16px' }}>
+                        {editingForm.sections.map((section, sectionIdx) => {
+                            const isCollapsed = collapsedSections.has(section.key);
+                            return (
+                            <Paper key={section.key} variant='outlined' style={{ padding: '12px', marginBottom: '60px' }}>
                                 <Box display='flex' flexDirection='row' alignItems='center' style={{ gap: '8px' }}>
                                     <TextField
                                         label='Section Name'
@@ -956,6 +1428,65 @@ export default ({ onClose, directForm }) => {
                                         onChange={(e) => updateSection(sectionIdx, { section_name: e.target.value })}
                                         style={{ flexGrow: 1 }}
                                     />
+                                    {(() => {
+                                        const stageDef = (editingForm.stages || []).find((s) => s.stage_name === section.belongs_to_stage);
+                                        if (!stageDef) { return null; }
+                                        const unconditionalRuleState = classifyUnconditionalStageRules(stageDef);
+                                        const totalLocked = STAGE_RULE_ICON_DEFS.reduce((sum, { kind }) => sum + (unconditionalRuleState[kind]?.lockedCount || 0), 0);
+                                        return (
+                                            <React.Fragment>
+                                                {STAGE_RULE_ICON_DEFS.map(({ kind, Icon, label }) => {
+                                                    const existingForIcon = unconditionalRuleState[kind]?.rule;
+                                                    const configured = !!existingForIcon;
+                                                    return (
+                                                        <IconButton
+                                                            key={kind}
+                                                            size='small'
+                                                            title={`${configured ? 'Edit' : 'Add'} an unconditional ${label.toLowerCase()} rule for this section (applies every time, regardless of field values)`}
+                                                            style={{ color: configured ? '#1976d2' : '#bbb' }}
+                                                            onClick={() => {
+                                                                setRuleContentMode(existingForIcon?.template_id ? 'template' : 'text');
+                                                                setRuleEditorTarget({ sectionIdx, fieldIdx: null, value: null, kind });
+                                                                if (kind !== 'on_complete_groups') { loadMessageTemplatesIfNeeded(); }
+                                                            }}
+                                                        >
+                                                            <Icon fontSize='small' />
+                                                        </IconButton>
+                                                    );
+                                                })}
+                                                {totalLocked > 0 &&
+                                                    <WarningIcon
+                                                        fontSize='small'
+                                                        style={{ color: '#f44336' }}
+                                                        titleAccess={`${totalLocked} existing unconditional rule(s) on this section use a shape FormBuilder doesn't model - edit them directly in the Forms record if they need to change.`}
+                                                    />
+                                                }
+                                            </React.Fragment>
+                                        );
+                                    })()}
+                                    <IconButton
+                                        size='small'
+                                        title='Move section up'
+                                        onClick={() => moveSection(sectionIdx, -1)}
+                                        disabled={sectionIdx === 0}
+                                    >
+                                        <ArrowUpwardIcon fontSize='small' />
+                                    </IconButton>
+                                    <IconButton
+                                        size='small'
+                                        title='Move section down'
+                                        onClick={() => moveSection(sectionIdx, 1)}
+                                        disabled={sectionIdx === editingForm.sections.length - 1}
+                                    >
+                                        <ArrowDownwardIcon fontSize='small' />
+                                    </IconButton>
+                                    <IconButton
+                                        size='small'
+                                        title={isCollapsed ? 'Expand section' : 'Collapse section'}
+                                        onClick={() => toggleSectionCollapsed(section.key)}
+                                    >
+                                        {isCollapsed ? <ExpandMoreIcon fontSize='small' /> : <ExpandLessIcon fontSize='small' />}
+                                    </IconButton>
                                     <IconButton
                                         size='small'
                                         onClick={() => removeSection(sectionIdx)}
@@ -964,6 +1495,8 @@ export default ({ onClose, directForm }) => {
                                         <DeleteIcon fontSize='small' />
                                     </IconButton>
                                 </Box>
+                                {!isCollapsed &&
+                                <React.Fragment>
                                 <Box display='flex' flexDirection='row' alignItems='center' style={{ gap: '8px', marginTop: '8px' }}>
                                     <Button
                                         size='small'
@@ -1137,30 +1670,72 @@ export default ({ onClose, directForm }) => {
                                                     style={{ marginTop: '20px' }}
                                                 />
                                                 {isSelectType(field.type) &&
+                                                    (() => {
+                                                        const validValues = field.selectionList.filter((v) => (v || '').trim());
+                                                        const stageDef = (reactData.editingForm.stages || []).find((s) => s.stage_name === section.belongs_to_stage);
+                                                        const stageRuleState = stageDef
+                                                            ? classifyFieldStageRules({ stageDef, field_name: field.field_name, validValues })
+                                                            : null;
+                                                        const totalLocked = stageRuleState
+                                                            ? STAGE_RULE_ICON_DEFS.reduce((sum, { kind }) => sum + (stageRuleState[kind]?.lockedCount || 0), 0)
+                                                            : 0;
+                                                        return (
                                                     <Box display='flex' flexDirection='column' style={{ marginTop: '20px', width: '60%', gap: '6px' }}>
-                                                        <Typography style={AVATextStyle({ size: 0.8, color: 'textSecondary', margin: { bottom: 0 } })}>
-                                                            {'Values to choose from:'}
-                                                        </Typography>
+                                                        <Box display='flex' flexDirection='row' alignItems='center' style={{ gap: '8px' }}>
+                                                            <Typography style={AVATextStyle({ size: 0.8, color: 'textSecondary', margin: { bottom: 0 } })}>
+                                                                {'Values to choose from:'}
+                                                            </Typography>
+                                                            {totalLocked > 0 &&
+                                                                <Typography
+                                                                    title={`${totalLocked} existing rule(s) on this Item use a condition FormBuilder doesn't model (e.g. more than one "show if" test) - edit them directly in the Forms record if they need to change.`}
+                                                                    style={AVATextStyle({ size: 0.75, color: 'error' })}
+                                                                >
+                                                                    <WarningIcon fontSize='inherit' style={{ verticalAlign: 'middle', marginRight: '2px' }} />
+                                                                    {'Existing rule requires IT edit'}
+                                                                </Typography>
+                                                            }
+                                                        </Box>
                                                         {field.selectionList.map((value, valueIdx) => (
-                                                            <TextField
-                                                                key={valueIdx}
-                                                                value={value}
-                                                                onChange={(e) => updateSelectionValue(sectionIdx, fieldIdx, valueIdx, e.target.value)}
-                                                                InputProps={{
-                                                                    endAdornment: field.selectionList.length > 1 && (
-                                                                        <InputAdornment position='end'>
-                                                                            <IconButton
-                                                                                size='small'
-                                                                                edge='end'
-                                                                                style={{ color: '#999' }}
-                                                                                onClick={() => removeSelectionValue(sectionIdx, fieldIdx, valueIdx)}
-                                                                            >
-                                                                                <CloseIcon fontSize='small' />
-                                                                            </IconButton>
-                                                                        </InputAdornment>
-                                                                    ),
-                                                                }}
-                                                            />
+                                                            <Box key={valueIdx} display='flex' flexDirection='row' alignItems='center' style={{ gap: '2px' }}>
+                                                                <TextField
+                                                                    fullWidth
+                                                                    value={value}
+                                                                    onChange={(e) => updateSelectionValue(sectionIdx, fieldIdx, valueIdx, e.target.value)}
+                                                                    InputProps={{
+                                                                        endAdornment: field.selectionList.length > 1 && (
+                                                                            <InputAdornment position='end'>
+                                                                                <IconButton
+                                                                                    size='small'
+                                                                                    edge='end'
+                                                                                    style={{ color: '#999' }}
+                                                                                    onClick={() => removeSelectionValue(sectionIdx, fieldIdx, valueIdx)}
+                                                                                >
+                                                                                    <CloseIcon fontSize='small' />
+                                                                                </IconButton>
+                                                                            </InputAdornment>
+                                                                        ),
+                                                                    }}
+                                                                />
+                                                                {stageDef && (value || '').trim() && STAGE_RULE_ICON_DEFS.map(({ kind, Icon, label }) => {
+                                                                    const existingForIcon = stageRuleState?.[kind]?.byValue?.[value];
+                                                                    const configured = !!existingForIcon;
+                                                                    return (
+                                                                        <IconButton
+                                                                            key={kind}
+                                                                            size='small'
+                                                                            title={`${configured ? 'Edit' : 'Add'} ${label.toLowerCase()} rule for "${value}"`}
+                                                                            style={{ color: configured ? '#1976d2' : '#bbb' }}
+                                                                            onClick={() => {
+                                                                                setRuleContentMode(existingForIcon?.template_id ? 'template' : 'text');
+                                                                                setRuleEditorTarget({ sectionIdx, fieldIdx, value, kind });
+                                                                                if (kind !== 'on_complete_groups') { loadMessageTemplatesIfNeeded(); }
+                                                                            }}
+                                                                        >
+                                                                            <Icon fontSize='small' />
+                                                                        </IconButton>
+                                                                    );
+                                                                })}
+                                                            </Box>
                                                         ))}
                                                         <Button
                                                             size='small'
@@ -1211,6 +1786,8 @@ export default ({ onClose, directForm }) => {
                                                             />
                                                         </Box>
                                                     </Box>
+                                                        );
+                                                    })()
                                                 }
                                                 {isFamilyType(field.type) &&
                                                     <Box display='flex' flexDirection='row' alignItems='center' style={{ marginTop: '20px' }}>
@@ -1430,16 +2007,18 @@ export default ({ onClose, directForm }) => {
                                         </Select>
                                     </FormControl>
                                 </Box>
+                                </React.Fragment>
+                                }
                             </Paper>
-                        ))}
+                            );
+                        })}
 
                         <Button
                             size='small'
                             startIcon={<AddIcon fontSize='small' />}
                             onClick={addSection}
-                            style={{ marginTop: '16px', alignSelf: 'flex-start' }}
-                        >
-                            {'Add Section'}
+                            style={{ marginTop: '-36px', alignSelf: 'flex-start' }}
+                        >                            {'Add Section'}
                         </Button>
                     </Box>
                 </DialogContent>
@@ -1461,6 +2040,16 @@ export default ({ onClose, directForm }) => {
                         disabled={reactData.saving}
                     >
                         {'Preview'}
+                    </Button>
+                    <Button
+                        className={AVAClass.AVAButton}
+                        size='small'
+                        startIcon={<FileCopyIcon fontSize='small' />}
+                        onClick={cloneCurrentForm}
+                        disabled={reactData.saving || (directForm === 'new')}
+                        title={hasUnsavedChanges() ? 'Clones the last saved version - unsaved changes here will not be included' : 'Clone this form'}
+                    >
+                        {'Clone'}
                     </Button>
                     <Button
                         className={AVAClass.AVAButton}
@@ -1718,6 +2307,349 @@ export default ({ onClose, directForm }) => {
                                         selections: cleanSelections,
                                     }, true);
                                     applyChanges({ conditionValues: mappedValues });
+                                }}
+                            />
+                        }
+                    </React.Fragment>
+                );
+            })()}
+            {ruleEditorTarget && (() => {
+                const { sectionIdx, fieldIdx, value, kind } = ruleEditorTarget;
+                const isUnconditional = (fieldIdx === null || fieldIdx === undefined);
+                const section = reactData.editingForm?.sections[sectionIdx];
+                const field = isUnconditional ? null : section?.fields[fieldIdx];
+                const stages = reactData.editingForm?.stages || [];
+                const stageDef = stages.find((s) => s.stage_name === section?.belongs_to_stage);
+                if (!section || !stageDef || (!isUnconditional && !field)) { return null; }
+                const validValues = isUnconditional ? [] : field.selectionList.filter((v) => (v || '').trim());
+                const classified = isUnconditional
+                    ? classifyUnconditionalStageRules(stageDef)
+                    : classifyFieldStageRules({ stageDef, field_name: field.field_name, validValues });
+                const stripHelperKeys = (e) => {
+                    const { index, value: _v, ...rest } = e;
+                    return rest;
+                };
+                const existingRaw = isUnconditional ? (classified[kind]?.rule || null) : (classified[kind]?.byValue?.[value] || null);
+                const defaultEdit = (kind === 'on_complete_groups')
+                    ? { add: [], remove: [] }
+                    : (kind === 'on_complete_message')
+                        ? { template_id: null, text: '', subject: '', recipientList: ['pertains_to'] }
+                        : { template_id: null, text: '', title: '', available_to: ['pertains_to'], options: {} };
+                const currentEdit = existingRaw ? stripHelperKeys(existingRaw) : defaultEdit;
+
+                const applyRuleEdit = (edit) => {
+                    if (isUnconditional) {
+                        const newArray = buildUnconditionalStageRuleOutput({ stageDef, kind, edit });
+                        updateStage(stageDef.stage_name, { [kind]: newArray });
+                        return;
+                    }
+                    const valueEdits = {};
+                    Object.entries(classified[kind].byValue).forEach(([v, e]) => {
+                        if (v === value) { return; }
+                        valueEdits[v] = stripHelperKeys(e);
+                    });
+                    if (edit) { valueEdits[value] = edit; }
+                    const newArray = buildFieldStageRuleOutput({ stageDef, kind, field_name: field.field_name, validValues, valueEdits });
+                    updateStage(stageDef.stage_name, { [kind]: newArray });
+                };
+
+                // Advisory only - warns (doesn't block) when this is a brand-new message/notify
+                // rule landing on a 2nd+ configured value of a field that allows multiple
+                // simultaneous selections (see messageNotifyMultiSelectRisk above). Not
+                // applicable to an unconditional (section-level) rule - there's no specific value
+                // to collide with another value's rule.
+                const warnIfMultiSelectRisk = () => {
+                    if (isUnconditional || (kind === 'on_complete_groups') || existingRaw) { return; }
+                    const risk = messageNotifyMultiSelectRisk({
+                        field,
+                        messageByValue: Object.assign({}, classified.on_complete_message.byValue, (kind === 'on_complete_message') ? { [value]: true } : {}),
+                        notifyByValue: Object.assign({}, classified.on_complete_notify.byValue, (kind === 'on_complete_notify') ? { [value]: true } : {}),
+                    });
+                    if (risk) {
+                        updateReactData({
+                            alert: {
+                                severity: 'warning',
+                                message: `"${field.prompt || field.field_name}" allows more than one selection at once - if more than one of its values is selected at the same time, more than one message/notification may be sent for the same save.`,
+                            },
+                        }, true);
+                    }
+                };
+
+                const patchEdit = (patch) => {
+                    applyRuleEdit(Object.assign({}, currentEdit, patch));
+                    warnIfMultiSelectRisk();
+                };
+
+                const removeRule = () => { applyRuleEdit(null); setRuleEditorTarget(null); };
+
+                const kindLabel = STAGE_RULE_ICON_DEFS.find((d) => d.kind === kind)?.label || '';
+                const recipientKey = (kind === 'on_complete_message') ? 'recipientList' : 'available_to';
+                const currentRecipient = (currentEdit[recipientKey] || ['pertains_to'])[0];
+                const isSpecificRecipient = (currentRecipient || '').startsWith('group:') || (currentRecipient || '').startsWith('person:');
+
+                return (
+                    <React.Fragment>
+                        <Dialog open={true} onClose={() => setRuleEditorTarget(null)} maxWidth='sm' fullWidth>
+                            <DialogTitle>{`${kindLabel} Rule`}</DialogTitle>
+                            <DialogContent>
+                                <Box display='flex' flexDirection='column' style={{ gap: '16px' }}>
+                                    <Typography style={AVATextStyle({ size: 0.85, color: 'textSecondary' })}>
+                                        {isUnconditional
+                                            ? 'Applies every time data in this section is changed, regardless of any field value.'
+                                            : `When "${(field.prompt || field.field_name).toString().replace(/<[^>]+>/g, '')}" is "${value}"...`}
+                                    </Typography>
+
+                                    {(kind === 'on_complete_groups') &&
+                                        <React.Fragment>
+                                            <Box>
+                                                <Typography style={AVATextStyle({ size: 0.8 })}>{'Add to these groups:'}</Typography>
+                                                <Box display='flex' flexDirection='row' flexWrap='wrap' style={{ gap: '4px', marginTop: '4px' }}>
+                                                    {(currentEdit.add || []).map((g) => (
+                                                        <Chip key={g} label={state.groups?.groupNames?.[g] || g} size='small' onDelete={() => patchEdit({ add: currentEdit.add.filter((x) => x !== g) })} />
+                                                    ))}
+                                                </Box>
+                                                <Button
+                                                    size='small'
+                                                    style={{ marginTop: '4px' }}
+                                                    onClick={() => updateReactData({
+                                                        showRuleGroupsSearch: 'add',
+                                                        selections: (currentEdit.add || []).map((g) => ({ group_id: g, group_name: state.groups?.groupNames?.[g] || g })),
+                                                    }, true)}
+                                                >
+                                                    {'+ Add Group'}
+                                                </Button>
+                                            </Box>
+                                            <Box>
+                                                <Typography style={AVATextStyle({ size: 0.8 })}>{'Remove from these groups:'}</Typography>
+                                                <Box display='flex' flexDirection='row' flexWrap='wrap' style={{ gap: '4px', marginTop: '4px' }}>
+                                                    {(currentEdit.remove || []).map((g) => (
+                                                        <Chip key={g} label={state.groups?.groupNames?.[g] || g} size='small' onDelete={() => patchEdit({ remove: currentEdit.remove.filter((x) => x !== g) })} />
+                                                    ))}
+                                                </Box>
+                                                <Box display='flex' flexDirection='row' style={{ gap: '8px', marginTop: '4px' }}>
+                                                    <Button
+                                                        size='small'
+                                                        onClick={() => updateReactData({
+                                                            showRuleGroupsSearch: 'remove',
+                                                            selections: (currentEdit.remove || []).map((g) => ({ group_id: g, group_name: state.groups?.groupNames?.[g] || g })),
+                                                        }, true)}
+                                                    >
+                                                        {'+ Remove Group'}
+                                                    </Button>
+                                                    {!isUnconditional && fieldSupportsSiblingGroupRemoval(field) &&
+                                                        <Button
+                                                            size='small'
+                                                            title="Fills in 'remove' with every group this field's OTHER values add - safe only because at most one value of this field can ever be selected at a time"
+                                                            onClick={() => {
+                                                                const siblingAdds = new Set();
+                                                                Object.entries(classified.on_complete_groups.byValue).forEach(([v, e]) => {
+                                                                    if (v === value) { return; }
+                                                                    (e.add || []).forEach((g) => siblingAdds.add(g));
+                                                                });
+                                                                const nextRemove = new Set(currentEdit.remove || []);
+                                                                siblingAdds.forEach((g) => { if (!(currentEdit.add || []).includes(g)) { nextRemove.add(g); } });
+                                                                patchEdit({ remove: [...nextRemove] });
+                                                            }}
+                                                        >
+                                                            {'Auto-fill from other values'}
+                                                        </Button>
+                                                    }
+                                                </Box>
+                                            </Box>
+                                        </React.Fragment>
+                                    }
+
+                                    {(kind === 'on_complete_message' || kind === 'on_complete_notify') &&
+                                        <React.Fragment>
+                                            <FormControl>
+                                                <InputLabel>{'Content'}</InputLabel>
+                                                <Select
+                                                    value={ruleContentMode}
+                                                    onOpen={loadMessageTemplatesIfNeeded}
+                                                    onChange={(e) => {
+                                                        const mode = e.target.value;
+                                                        setRuleContentMode(mode);
+                                                        if (mode === 'template') { loadMessageTemplatesIfNeeded(); }
+                                                        else { patchEdit({ template_id: null }); }
+                                                    }}
+                                                >
+                                                    <MenuItem value='text'>{'Write custom text'}</MenuItem>
+                                                    <MenuItem value='template'>{'Use a saved template'}</MenuItem>
+                                                </Select>
+                                            </FormControl>
+                                            {(ruleContentMode === 'template') ?
+                                                <FormControl fullWidth>
+                                                    <InputLabel>{'Template'}</InputLabel>
+                                                    <Select
+                                                        value={currentEdit.template_id || ''}
+                                                        onOpen={loadMessageTemplatesIfNeeded}
+                                                        onChange={(e) => patchEdit({ template_id: e.target.value, text: '' })}
+                                                    >
+                                                        {reactData.messageTemplates.map((t) => (
+                                                            <MenuItem key={t.template_id} value={t.template_id}>{t.template_name || t.template_id}</MenuItem>
+                                                        ))}
+                                                        {/* Keeps a stored template_id visible (rather than rendering blank) even if it
+                                                            doesn't match any currently-loaded template - e.g. templates still loading,
+                                                            the template was since deleted, or (as with hand-edited test data) the id
+                                                            doesn't correspond to a real template_id at all. Never silently hides what's
+                                                            actually persisted. */}
+                                                        {currentEdit.template_id && !reactData.messageTemplates.some((t) => t.template_id === currentEdit.template_id) &&
+                                                            <MenuItem value={currentEdit.template_id}>
+                                                                {`${currentEdit.template_id} ${reactData.messageTemplatesLoaded ? '(not found)' : '(loading…)'}`}
+                                                            </MenuItem>
+                                                        }
+                                                    </Select>
+                                                    {(reactData.messageTemplatesLoaded && reactData.messageTemplates.length === 0) &&
+                                                        <Typography style={AVATextStyle({ size: 0.75, color: 'textSecondary' })}>
+                                                            {'No message templates found for this client yet.'}
+                                                        </Typography>
+                                                    }
+                                                </FormControl>
+                                                :
+                                                <TextField
+                                                    label='Text'
+                                                    value={currentEdit.text || ''}
+                                                    onChange={(e) => patchEdit({ text: e.target.value, template_id: null })}
+                                                    multiline
+                                                    minRows={2}
+                                                    fullWidth
+                                                />
+                                            }
+                                            {(kind === 'on_complete_notify') &&
+                                                <TextField
+                                                    label='Title (optional)'
+                                                    value={currentEdit.title || ''}
+                                                    onChange={(e) => patchEdit({ title: e.target.value })}
+                                                    fullWidth
+                                                />
+                                            }
+                                            {(kind === 'on_complete_message') &&
+                                                <TextField
+                                                    label='Subject (optional)'
+                                                    value={currentEdit.subject || ''}
+                                                    onChange={(e) => patchEdit({ subject: e.target.value })}
+                                                    fullWidth
+                                                />
+                                            }
+                                            <FormControl fullWidth>
+                                                <InputLabel>{'Who receives this'}</InputLabel>
+                                                <Select
+                                                    value={isSpecificRecipient ? 'specific' : currentRecipient}
+                                                    onChange={(e) => {
+                                                        if (e.target.value === 'specific') {
+                                                            let preSeed = [];
+                                                            if (currentRecipient?.startsWith('group:')) {
+                                                                const gid = currentRecipient.slice(6);
+                                                                preSeed = [{ group_id: gid, group_name: state.groups?.groupNames?.[gid] || gid }];
+                                                            }
+                                                            else if (currentRecipient?.startsWith('person:')) {
+                                                                preSeed = [{ person_id: currentRecipient.slice(7) }];
+                                                            }
+                                                            updateReactData({ showRuleRecipientSearch: true, selections: preSeed }, true);
+                                                            return;
+                                                        }
+                                                        patchEdit({ [recipientKey]: [e.target.value] });
+                                                    }}
+                                                >
+                                                    <MenuItem value='pertains_to'>{'The person this form is about'}</MenuItem>
+                                                    <MenuItem value='user'>{'The person that is completing the form'}</MenuItem>
+                                                    <MenuItem value='specific'>{isSpecificRecipient ? describeRecipientValue(currentRecipient, (gid) => state.groups?.groupNames?.[gid]) : 'A specific group or person...'}</MenuItem>
+                                                </Select>
+                                            </FormControl>
+                                            {(kind === 'on_complete_notify') &&
+                                                <Box display='flex' flexDirection='row' style={{ gap: '16px' }} alignItems='center' flexWrap='wrap'>
+                                                    <FormControl style={{ minWidth: 140 }}>
+                                                        <InputLabel>{'Priority'}</InputLabel>
+                                                        <Select
+                                                            value={currentEdit.options?.priority || 'low'}
+                                                            onChange={(e) => patchEdit({ options: Object.assign({}, currentEdit.options, { priority: e.target.value }) })}
+                                                        >
+                                                            <MenuItem value='low'>{'Low'}</MenuItem>
+                                                            <MenuItem value='medium'>{'Medium'}</MenuItem>
+                                                            <MenuItem value='high'>{'High'}</MenuItem>
+                                                        </Select>
+                                                    </FormControl>
+                                                    <FormControlLabel
+                                                        control={
+                                                            <Checkbox
+                                                                size='small'
+                                                                checked={currentEdit.options?.persist_until_dismissed !== false}
+                                                                onChange={(e) => patchEdit({ options: Object.assign({}, currentEdit.options, { persist_until_dismissed: e.target.checked }) })}
+                                                            />
+                                                        }
+                                                        label='Stay until dismissed'
+                                                    />
+                                                    <FormControlLabel
+                                                        control={
+                                                            <Checkbox
+                                                                size='small'
+                                                                checked={!!currentEdit.options?.play_sound}
+                                                                onChange={(e) => patchEdit({ options: Object.assign({}, currentEdit.options, { play_sound: e.target.checked }) })}
+                                                            />
+                                                        }
+                                                        label='Play sound'
+                                                    />
+                                                </Box>
+                                            }
+                                        </React.Fragment>
+                                    }
+                                </Box>
+                            </DialogContent>
+                            <DialogActions>
+                                {existingRaw &&
+                                    <Button style={{ color: 'red' }} onClick={removeRule}>{'Remove Rule'}</Button>
+                                }
+                                <Button onClick={() => setRuleEditorTarget(null)}>{'Done'}</Button>
+                            </DialogActions>
+                        </Dialog>
+                        {reactData.showRuleGroupsSearch &&
+                            <QuickSearch
+                                reactData={reactData}
+                                updateReactData={updateReactData}
+                                options={{
+                                    title: (reactData.showRuleGroupsSearch === 'add') ? 'Add To Which Groups?' : 'Remove From Which Groups?',
+                                    withGroups: true,
+                                    showGroupList: true,
+                                    showAll: true,
+                                    hidePeople: true,
+                                    pickAndGo: true,
+                                    keepSelections: true,
+                                    buttonText: { empty: 'Done', selected: 'Use These' },
+                                }}
+                                onClose={(selections) => {
+                                    const targetKey = reactData.showRuleGroupsSearch;
+                                    const picked = ([selections].flat()).filter((s) => s && s.group_id);
+                                    updateReactData({ showRuleGroupsSearch: null, selections: [] }, true);
+                                    // Replaces (not merges) - QuickSearch opened with the current list pre-checked,
+                                    // so whatever comes back (including unchecked removals) is the new full list.
+                                    if (targetKey) { patchEdit({ [targetKey]: picked.map((s) => s.group_id) }); }
+                                }}
+                            />
+                        }
+                        {reactData.showRuleRecipientSearch &&
+                            <QuickSearch
+                                reactData={reactData}
+                                updateReactData={updateReactData}
+                                options={{
+                                    title: 'Which Group or Person?',
+                                    withGroups: true,
+                                    showGroupList: true,
+                                    showAll: true,
+                                    pickOne: true,
+                                    keepSelections: true,
+                                    buttonText: { empty: 'Cancel', selected: 'Use This' },
+                                }}
+                                onClose={(selections) => {
+                                    // Same clean/map convention as other available_to pickers (e.g.
+                                    // NotificationMaintenance's access picker): group_id -> 'group:<id>',
+                                    // else person_id -> 'person:<id>'.
+                                    const cleanSelections = ([selections].flat()).filter((s) => s && (s.person_id || s.group_id));
+                                    const picked = cleanSelections[0];
+                                    updateReactData({ showRuleRecipientSearch: false, selections: [] }, true);
+                                    if (picked) {
+                                        const mapped = picked.group_id ? `group:${picked.group_id}` : `person:${picked.person_id}`;
+                                        patchEdit({ [recipientKey]: [mapped] });
+                                    }
                                 }}
                             />
                         }

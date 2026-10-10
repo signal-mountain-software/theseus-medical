@@ -34,6 +34,7 @@ import { syncPersonToSessionCaches } from '../../util/AVASessionSync';
 import { useIdleTimer } from 'react-idle-timer';
 import { updateDocument, createDocument } from '../../util/AVADocuments';
 import { writeSlot, getCalendarEntries } from '../../util/AVACalendars';
+import { createNotification } from '../../util/AVANotifications';
 
 const useStyles = makeStyles(theme => ({
   dialogPaper: {
@@ -4089,7 +4090,8 @@ export default ({ request = {}, onClose }) => {
     // check for actions needed leaving or entering stages
     //
     // Shape reference for hand-authoring stages[n].on_complete_message / on_entry_message
-    // (consumed by send_stageMessage) - either a single object or an array of objects:
+    // (consumed by send_stageMessage/resolveMessageInstructions) - either a single object or an
+    // array of objects:
     //   {
     //     showIf: [<test>, ...],       // optional - same test shapes as a section's show_if
     //     ignoreIf: [<test>, ...],     // optional - same test shapes as a section's ignore_if (mutually exclusive with showIf)
@@ -4100,58 +4102,171 @@ export default ({ request = {}, onClose }) => {
     //       // 'user' = the logged-in operator, 'pertains_to' = this form's subject.
     //       // OR the legacy shape { people: [<person_id>, ...], groups: [<group_id>, ...] } - unchanged.
     //   }
+    //   on_complete_message is a point-in-time "here's your current status" notification, not a
+    //   cumulative log: if several stages are completed/changed in the same save, only the
+    //   highest (most-advanced) one's message is sent - see highestChangedIndex below.
+    //
+    // Shape reference for hand-authoring stages[n].on_complete_notify (consumed by
+    // send_stageNotify) - either a single object or an array of objects. Writes to the
+    // Notifications table (see AVANotifications.js) - a separate, in-app popup-alert mechanism
+    // from on_complete_message's threaded messages. Behaves exactly like on_complete_message:
+    // same showIf/ignoreIf gating, and only the highest-changed stage's instructions actually
+    // create a notification this save - see highestChangedIndex below.
+    //   {
+    //     showIf: [<test>, ...],       // optional, same rules as above
+    //     ignoreIf: [<test>, ...],     // optional, same rules as above
+    //     template_id: <template_id>,  // OR text below - looked up in MessageTemplates;
+    //       // template_body may be a string or an array of strings (joined, same convention as
+    //       // MessageTemplateManager/MessageForm) and may contain HTML.
+    //     text: '<literal or %%field%%/{{token}} HTML text>',
+    //     title: '<optional title - resolved the same way as text>',
+    //     available_to: ['person:<person_id>', 'group:<group_id>', '*all', '*admin', '*support', 'pertains_to', 'user'],
+    //       // 'pertains_to'/'user' are resolved to person:<id> here before calling the
+    //       // notification engine (same special values as on_complete_message's recipientList).
+    //       // Falls back to ['person:<the logged-in user_id>'] if omitted entirely.
+    //     notification_id: '<optional explicit id>', // default: `form-<document_id>-<stage_name>`
+    //       // - this deterministic default means a repeat save for the same stage naturally
+    //       // no-ops (createNotification's conditional put rejects a duplicate id) instead of
+    //       // re-notifying; supply your own notification_id if a given stage's distinct outcomes
+    //       // (e.g. different showIf branches) should each be able to notify independently.
+    //     options: { ... }  // optional - Object.assign'd directly into the Notifications record
+    //       // alongside message/title/available_to/notification_id above - e.g. priority,
+    //       // dismissible, persist_until_dismissed, play_sound, resolution, action_url,
+    //       // dont_show_before/dont_show_after. See createNotification in AVANotifications.js for
+    //       // the full field list/defaults.
+    //   }
     //
     // Shape reference for hand-authoring stages[n].on_complete_groups / on_entry_groups
-    // (consumed by resolveGroupInstructions below) - either a single object or an array of objects:
+    // (consumed by resolveGroupInstructions/applyGroupInstructionsToDispositions below) - either a
+    // single object or an array of objects:
     //   {
     //     showIf: [<test>, ...],       // optional, same rules as above
     //     ignoreIf: [<test>, ...],     // optional, same rules as above
     //     add: ['<group_id>', ...],    // optional - group_id(s) to add pertains_to to
     //     remove: ['<group_id>', ...]  // optional - group_id(s) to remove pertains_to from
     //   }
+    //   Unlike messages, on_complete_groups/on_complete_tasks are cumulative: every completed/
+    //   changed stage's instructions apply, in ascending stage order. If the same group_id is
+    //   mentioned by more than one of them (e.g. stage 1 adds it, stage 2 removes it), "last
+    //   mention wins" - whichever stage (then whichever instruction within that stage) mentions a
+    //   given group_id last determines that group_id's final disposition for the save.
     let this_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.current_formStage);
-    // Collect stage-transition group changes; applied via addMember/removeMember after the saveAs put
-    const pendingGroupAdditions = [];
-    const pendingGroupRemovals = [];
     // Coerces a single group-instruction object or array of them, gates each on an optional
     // showIf/ignoreIf (evaluated exactly like section show_if/ignore_if), and collects add/remove group_ids.
-    const resolveGroupInstructions = (groupInstructionsRaw) => {
-      const instructionList = Array.isArray(groupInstructionsRaw) ? groupInstructionsRaw : [groupInstructionsRaw];
+    // fieldValueOverrides (optional) evaluates the gate against an explicit value map instead of
+    // live state - see stageHasMaterialChange below.
+    const resolveGroupInstructions = (groupInstructionsRaw, fieldValueOverrides) => {
+      const instructionList = [groupInstructionsRaw].flat().filter(Boolean);
       const removals = [];
       const additions = [];
       for (const this_instruction of instructionList) {
         const showIgnoreTest = this_instruction.showIf
           ? { show_if: this_instruction.showIf }
           : (this_instruction.ignoreIf ? { ignore_if: this_instruction.ignoreIf } : {});
-        if (!okToShowSection(showIgnoreTest)) { continue; }
+        if (!okToShowSection(showIgnoreTest, fieldValueOverrides)) { continue; }
         if (this_instruction.remove) { removals.push(...[this_instruction.remove].flat()); }
         if (this_instruction.add) { additions.push(...[this_instruction.add].flat()); }
       }
       return { removals, additions };
     };
-    if ((reactData.previous_formStage !== reactData.current_formStage) && reactData.formRec.stages) {
-      // log stage change
-      cl(`Form ${document_id} stage changed from ${reactData.previous_formStage} to ${reactData.current_formStage}`);
 
-      // check stage exit
+    // group_id -> 'add' | 'remove', built by walking stages/instructions in order and overwriting
+    // each mentioned group_id - this is the "last mention wins" conflict resolution described above.
+    const groupDispositions = new Map();
+    const applyGroupInstructionsToDispositions = (groupInstructionsRaw) => {
+      const instructionList = [groupInstructionsRaw].flat().filter(Boolean);
+      for (const this_instruction of instructionList) {
+        const showIgnoreTest = this_instruction.showIf
+          ? { show_if: this_instruction.showIf }
+          : (this_instruction.ignoreIf ? { ignore_if: this_instruction.ignoreIf } : {});
+        if (!okToShowSection(showIgnoreTest)) { continue; }
+        for (const this_group of [this_instruction.remove].flat().filter(Boolean)) { groupDispositions.set(this_group, 'remove'); }
+        for (const this_group of [this_instruction.add].flat().filter(Boolean)) { groupDispositions.set(this_group, 'add'); }
+      }
+    };
+
+    // True if evaluating this stage's on_complete_groups/on_complete_message/on_complete_tasks
+    // against the document's last-saved field_values (baselineFieldValues) would produce a
+    // different outcome than evaluating them against the live, about-to-be-saved field values
+    // (liveFieldValues). This is what lets an already-finished stage (one the document moved past
+    // in a prior, already-closed save) be reconsidered when a user edits a field it depends on -
+    // see changedStageIndices below - without re-firing on every repeat save when nothing relevant
+    // has actually changed.
+    const stageHasMaterialChange = (stageDef, baselineFieldValues, liveFieldValues) => {
+      const sameSet = (a, b) => {
+        const normalize = (arr) => [...new Set(arr)].sort().join('\u0001');
+        return normalize(a) === normalize(b);
+      };
+      // Shared by on_complete_message/on_complete_notify - both are plain showIf/ignoreIf-gated
+      // instruction lists (resolveMessageInstructions only inspects showIf/ignoreIf, so it's
+      // agnostic to the rest of either instruction shape).
+      const instructionSetOutcomeChanged = (instructionsRaw) => {
+        const livePassing = resolveMessageInstructions(instructionsRaw);
+        const basePassing = resolveMessageInstructions(instructionsRaw, baselineFieldValues);
+        return livePassing.length !== basePassing.length || livePassing.some((instr, i) => instr !== basePassing[i]);
+      };
+      if (stageDef.on_complete_groups) {
+        const liveResult = resolveGroupInstructions(stageDef.on_complete_groups);
+        const baseResult = resolveGroupInstructions(stageDef.on_complete_groups, baselineFieldValues);
+        if (!sameSet(liveResult.additions, baseResult.additions) || !sameSet(liveResult.removals, baseResult.removals)) {
+          return true;
+        }
+      }
+      if (stageDef.on_complete_message && instructionSetOutcomeChanged(stageDef.on_complete_message)) {
+        return true;
+      }
+      if (stageDef.on_complete_notify && instructionSetOutcomeChanged(stageDef.on_complete_notify)) {
+        return true;
+      }
+      if (stageDef.on_complete_tasks) {
+        for (const template of [stageDef.on_complete_tasks].flat()) {
+          if (isTaskTemplateEligible(template, liveFieldValues) !== isTaskTemplateEligible(template, baselineFieldValues)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    if (reactData.formRec.stages) {
       let previous_stageIndex = reactData.formRec.stages.findIndex(s => s.stage_name === reactData.previous_formStage);
-      for (let stage_we_finished = previous_stageIndex; stage_we_finished < this_stageIndex; stage_we_finished++) {
-        // send message on stage exit /  complete     
-        let messageInstructions_onStageExit = reactData.formRec.stages[stage_we_finished].on_complete_message;
-        if (messageInstructions_onStageExit) {
-          await send_stageMessage(messageInstructions_onStageExit); // send stage complete message
+      // The document's field_values as of the last successful save (or {} if this document has
+      // never been saved) - the baseline that already-finished stages are diffed against.
+      const baselineFieldValues = reactData.docRec?.field_values || {};
+
+      // Stages eligible to have their on_complete_* instructions (re)applied this save: stages
+      // newly crossed since the last save (original forward-only behavior), OR already-finished
+      // stages (index < previous_stageIndex) whose conditions now resolve differently than they
+      // did against baselineFieldValues.
+      const changedStageIndices = [];
+      for (let stage_we_finished = 0; stage_we_finished < this_stageIndex; stage_we_finished++) {
+        const stageDef = reactData.formRec.stages[stage_we_finished];
+        const newlyCrossed = stage_we_finished >= previous_stageIndex;
+        if (newlyCrossed || stageHasMaterialChange(stageDef, baselineFieldValues, field_values)) {
+          changedStageIndices.push(stage_we_finished);
         }
-        // remove and add groups from pertains_to account's group list if any
-        let groupInstructions_onStageExit = reactData.formRec.stages[stage_we_finished].on_complete_groups;
-        if (groupInstructions_onStageExit) {
-          const { removals, additions } = resolveGroupInstructions(groupInstructions_onStageExit);
-          pendingGroupRemovals.push(...removals);
-          pendingGroupAdditions.push(...additions);
+      }
+
+      if (changedStageIndices.length > 0) {
+        cl(`Form ${document_id}: stages with completed/changed on_complete_* instructions this save: ${changedStageIndices.map(i => reactData.formRec.stages[i].stage_name).join(', ')}`);
+      }
+
+      // Only the highest (most-advanced) changed stage's on_complete_message is sent - see the
+      // shape-reference note above. Groups and tasks remain cumulative across the whole set.
+      const highestChangedIndex = changedStageIndices.length > 0 ? Math.max(...changedStageIndices) : -1;
+      for (const stage_we_finished of changedStageIndices) {
+        const stageDef = reactData.formRec.stages[stage_we_finished];
+        if (stageDef.on_complete_message && (stage_we_finished === highestChangedIndex)) {
+          await send_stageMessage(stageDef.on_complete_message); // send stage complete message
         }
-        // create tasks on stage exit
-        const taskTemplates_onStageExit = reactData.formRec.stages[stage_we_finished].on_complete_tasks;
-        if (taskTemplates_onStageExit) {
-          await createTasksFromTemplates(taskTemplates_onStageExit);
+        if (stageDef.on_complete_notify && (stage_we_finished === highestChangedIndex)) {
+          await send_stageNotify(stageDef.on_complete_notify, stageDef.stage_name); // post stage complete notification
+        }
+        if (stageDef.on_complete_groups) {
+          applyGroupInstructionsToDispositions(stageDef.on_complete_groups);
+        }
+        if (stageDef.on_complete_tasks) {
+          await createTasksFromTemplates(stageDef.on_complete_tasks);
         }
       }
     }
@@ -4163,15 +4278,24 @@ export default ({ request = {}, onClose }) => {
       if (messageInstructions_onStageEntry) {
         await send_stageMessage(messageInstructions_onStageEntry); // send stage entered message
       }
-      // remove and add groups from pertains_to account's group list if any
+      // remove and add groups from pertains_to account's group list if any - applied after the
+      // finished-stages loop above, so entering the current stage takes "last mention wins"
+      // precedence over any conflicting leftover disposition from a stage just exited.
       let groupInstructions_onStageEntry = reactData.formRec.stages[this_stageIndex].on_entry_groups;
       if (groupInstructions_onStageEntry) {
-        const { removals, additions } = resolveGroupInstructions(groupInstructions_onStageEntry);
-        pendingGroupRemovals.push(...removals);
-        pendingGroupAdditions.push(...additions);
+        applyGroupInstructionsToDispositions(groupInstructions_onStageEntry);
       }
       // lock the form?
       if (reactData.formRec.stages[this_stageIndex].on_entry_lock) { formLocked = true; }
+    }
+
+    // Split the resolved per-group dispositions into final add/remove lists - every group_id
+    // appears in exactly one (last-mention-wins already resolved any conflict), so call order
+    // between removeMember/addMember below no longer matters for correctness.
+    const pendingGroupRemovals = [];
+    const pendingGroupAdditions = [];
+    for (const [group_id, disposition] of groupDispositions) {
+      (disposition === 'remove' ? pendingGroupRemovals : pendingGroupAdditions).push(group_id);
     }
 
 
@@ -4370,18 +4494,27 @@ export default ({ request = {}, onClose }) => {
     });
   }
 
-  async function send_stageMessage(messageInstructions) {
-    // Accept either a single instruction object or an array of them.
-    const instructionList = Array.isArray(messageInstructions) ? messageInstructions : [messageInstructions];
-
-    for (const this_instruction of instructionList) {
-      // showIf/ignoreIf are evaluated exactly like a section's show_if/ignore_if (okToShowSection
-      // expects a {show_if: [...]} or {ignore_if: [...]} shaped object; neither present -> send).
+  // Returns the subset of a showIf/ignoreIf-gated instruction list (on_complete_message/
+  // on_entry_message shape) whose gate currently passes. fieldValueOverrides (optional) lets the
+  // gate be evaluated against an explicit value map (e.g. the document's last-saved field_values)
+  // instead of live state - used to detect whether a stage's message outcome has changed since
+  // the document was last saved.
+  const resolveMessageInstructions = (messageInstructionsRaw, fieldValueOverrides) => {
+    const instructionList = [messageInstructionsRaw].flat().filter(Boolean);
+    return instructionList.filter(this_instruction => {
       const showIgnoreTest = this_instruction.showIf
         ? { show_if: this_instruction.showIf }
         : (this_instruction.ignoreIf ? { ignore_if: this_instruction.ignoreIf } : {});
-      if (!okToShowSection(showIgnoreTest)) { continue; }
+      return okToShowSection(showIgnoreTest, fieldValueOverrides);
+    });
+  };
 
+  async function send_stageMessage(messageInstructions) {
+    // showIf/ignoreIf gating already applied by resolveMessageInstructions - only passing
+    // instructions reach this point.
+    const instructionList = resolveMessageInstructions(messageInstructions);
+
+    for (const this_instruction of instructionList) {
       let final_messageText = '';
       let final_html = '';
       if (this_instruction.template_id) {
@@ -4442,6 +4575,70 @@ export default ({ request = {}, onClose }) => {
     }
   }
 
+  // Posts to the (separate, in-app popup-alert) Notifications engine - see the on_complete_notify
+  // shape reference near the stage-exit loop above. showIf/ignoreIf gating is handled by
+  // resolveMessageInstructions, same as on_complete_message.
+  async function send_stageNotify(notifyInstructions, stage_name) {
+    const instructionList = resolveMessageInstructions(notifyInstructions);
+
+    for (const this_instruction of instructionList) {
+      let final_text = '';
+      if (this_instruction.template_id) {
+        let templateRec = await getDb({
+          Key: {
+            client_id: state.session.client_id,
+            template_id: this_instruction.template_id
+          },
+          TableName: 'MessageTemplates'
+        });
+        if (templateRec) {
+          // template_body may be a string or an array of strings - same join convention as
+          // MessageTemplateManager/MessageForm use for this field.
+          const rawBody = Array.isArray(templateRec.template_body) ? templateRec.template_body.join('') : (templateRec.template_body || '');
+          final_text = await resolveVariables(rawBody);
+        }
+      }
+      else if (this_instruction.text) {
+        final_text = await deepResolve(this_instruction.text, reactData.peopleRec[reactData.pertains_to]);
+      }
+      final_text = resolveMessageTokens(final_text);
+
+      const final_title = this_instruction.title
+        ? resolveMessageTokens(await resolveVariables(this_instruction.title))
+        : undefined;
+
+      // 'pertains_to'/'user' are resolved to person:<id> here - same special values as
+      // on_complete_message's recipientList - before reaching the Notifications engine's
+      // available_to scheme (person:<id>/group:<id>/*all/*admin/*support pass straight through).
+      let available_to;
+      if (this_instruction.available_to) {
+        available_to = [this_instruction.available_to].flat().map(entry => {
+          if (entry === 'pertains_to') { return `person:${reactData.pertains_to}`; }
+          if (entry === 'user') { return `person:${state.session.user_id}`; }
+          return entry;
+        });
+      }
+      else {
+        available_to = [`person:${state.session.user_id}`];
+      }
+
+      // Deterministic by default so a repeat save for the same stage naturally no-ops (the
+      // engine's conditional put rejects a duplicate notification_id) instead of re-notifying -
+      // see the shape-reference note above.
+      const notification_id = this_instruction.notification_id || `form-${reactData.document_id}-${stage_name}`;
+
+      const notificationRec = {
+        notification_id,
+        message: final_text,
+        ...(final_title ? { title: final_title } : {}),
+        available_to,
+        ...(this_instruction.options || {})
+      };
+
+      await createNotification({ dbClient, state, session: state.session, notificationRec });
+    }
+  }
+
   /*
   function update_stageGroups(groupInstructions) {
     let groupList = reactData.peopleRec[reactData.pertains_to].groups || [];
@@ -4469,6 +4666,22 @@ export default ({ request = {}, onClose }) => {
   }
   */
   
+  // Coarse (occurrence-1) eligibility check for a single on_complete_tasks template - mirrors the
+  // skip_if_blank/condition gating inside createTasksFromTemplates below, but as a pure boolean
+  // against an explicit fieldValues map. Used only to detect whether a stage's task outcome has
+  // changed since the document was last saved, not to actually create tasks.
+  const isTaskTemplateEligible = (template, fieldValues) => {
+    if (template.skip_if_blank) {
+      const skipVal = fieldValues?.[template.skip_if_blank];
+      if (!skipVal || String(skipVal).trim() === '') { return false; }
+    }
+    if (template.condition) {
+      const condVal = fieldValues?.[template.condition.field];
+      if (String(condVal ?? '').trim() !== String(template.condition.value ?? '').trim()) { return false; }
+    }
+    return true;
+  };
+
   // Creates tasks from an array of task-template objects (used by on_complete_tasks and options.tasks).
   // Each template: { text, iterate_over?, skip_if_blank?, condition?: { field, value } }
   // All field references use occurrence-1 naming (e.g. med_1_name); iterate_over causes them to
@@ -4862,7 +5075,7 @@ export default ({ request = {}, onClose }) => {
   };
 
 
-  const okToShowSection = (this_sectionObj) => {
+  const okToShowSection = (this_sectionObj, fieldValueOverrides) => {
     // Shared by show_if/show_ifAll/ignore_ifAll/ignore_if below - a single test can be a plain
     // {field, values} value test, the legacy group-only {pertainsTo_memberOf, memberOf} shape, the
     // session-patient {memberOf} shape, or the newer {currentUser_audience, audience} shape (mixed
@@ -4870,6 +5083,11 @@ export default ({ request = {}, onClose }) => {
     // "Specific people, groups, or account types" section condition). currentUser_audience tests
     // the logged-in operator, NOT the form's pertains_to subject - it's how specific people (e.g.
     // support staff, a group leader) are authorized to view/edit sections of someone else's form.
+    // fieldValueOverrides (optional) lets a {field, values} test be evaluated against an explicit
+    // value map (e.g. the document's last-saved field_values) instead of live reactData.fields -
+    // used to detect whether a stage's on_complete_* conditions changed since the last save.
+    // Non-field tests (currentUser_audience/memberOf/pertainsTo_memberOf) have no saved baseline
+    // to compare against, so they always evaluate against live state regardless of this override.
     const evaluateSectionTest = (this_test) => {
       if (this_test.hasOwnProperty('currentUser_audience')) {
         return [this_test.audience].flat().some(entry => {
@@ -4890,7 +5108,9 @@ export default ({ request = {}, onClose }) => {
           return [this_test.memberOf].flat().includes(g);
         });
       }
-      const this_value = reactData.fields?.[this_test.field]?.value;
+      const this_value = fieldValueOverrides
+        ? fieldValueOverrides[this_test.field]
+        : reactData.fields?.[this_test.field]?.value;
       return matchesFieldValues(this_test, this_value);
     };
 
