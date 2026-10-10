@@ -16,6 +16,63 @@ The hook is warning-only (it does not block the push).
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## QuickAdd Person Classification
+
+Every entry in the client's `new_account_form` customization must explicitly
+configure `person_type` as one of `staff`, `family`, `core`, or `guest`.
+For example, an entry with `"account_type": "camper"` can use
+`"person_type": "core"`. This classification is separate from account
+types, group membership, and access permissions.
+
+`core` identifies the primary population served by the client, such as residents,
+campers, or students. Its generic display label is "Core Member"; it does not
+describe access privileges, activity status, or who operates the app.
+
+An additional internal value, `admin` (displayed as "Internal Administrator"),
+identifies technical-support accounts. It is managed only by database
+administrators, not assigned by `new_account_form`. QuickAdd preserves existing
+`admin` classifications without offering reclassification and rejects `admin`
+in account-creation configuration. This value does not grant permissions;
+authorization continues to use the existing access controls.
+
+QuickAdd blocks saving when the selected entry has a missing or invalid
+`person_type`. New People records use the configured value. Existing records
+with an absent or null value receive it automatically; matching values are
+preserved. Different non-null values (except database-managed `admin`, and
+including invalid legacy values) require
+an explicit choice to keep the current classification or change it. Other form
+fields and preauthorization data cannot override that classification decision.
+
+## Supplying a QuickAdd Configuration
+
+QuickAdd accepts an optional `new_account_form` prop containing a **single entry**
+(not the client's full configuration array):
+
+```jsx
+<QuickAdd
+  onClose={handleClose}
+  new_account_form={{
+    account_type: 'visitor',
+    person_type: 'guest',
+    field_list: ['first_name', 'last_name'],
+    default_groups: ['guests'],
+    family_role: 'none'
+  }}
+/>
+```
+
+The supplied entry replaces initial account-type selection, including when
+adding to an existing family. It takes precedence over a database entry with the
+same `account_type`; other database entries remain available for configured
+follow-on accounts. The caller's object is copied, not mutated.
+
+The same field loading, required-field validation, group assignment, completion,
+person classification, and admin/group eligibility rules apply. Invalid or
+ineligible supplied entries show an error rather than falling back to another
+type. URL and login-preauthorization entry points retain their existing
+verification requirements, and authorization must name the supplied
+`account_type`. An absent or null prop preserves the existing selection flow.
+
 ## Available Scripts
 
 In the project directory, you can run:
